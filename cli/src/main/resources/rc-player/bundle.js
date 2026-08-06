@@ -30,6 +30,7 @@ var RC = (() => {
     cssFontStackFor: () => cssFontStackFor,
     cssQuoted: () => cssQuoted,
     ensureWebFont: () => ensureWebFont,
+    googleFontsAxisUrl: () => googleFontsAxisUrl,
     googleFontsUrl: () => googleFontsUrl,
     namedFontStack: () => namedFontStack,
     parseFamily: () => parseFamily,
@@ -17252,6 +17253,17 @@ void main() {
     const name = encodeURIComponent(family.trim()).replace(/%20/g, "+");
     return `${baseUrl}?family=${name}:ital,wght@${axis}&display=block`;
   }
+  function googleFontsAxisUrl(family, axes, baseUrl = config.baseUrl) {
+    const varying = axes.filter((a) => a.max > a.min).sort((a, b) => a.tag < b.tag ? -1 : 1);
+    if (varying.length === 0) return null;
+    const tags = varying.map((a) => a.tag).join(",");
+    const ranges = varying.map((a) => `${trimNumber(a.min)}..${trimNumber(a.max)}`).join(",");
+    const name = encodeURIComponent(family.trim()).replace(/%20/g, "+");
+    return `${baseUrl}?family=${name}:${tags}@${ranges}&display=block`;
+  }
+  function trimNumber(value) {
+    return Number.isInteger(value) ? `${value}` : `${value}`.replace(/0+$/, "");
+  }
   var GOOGLE_PREFIX = "google:";
   function parseFamily(family) {
     const trimmed = family.trim();
@@ -17264,8 +17276,9 @@ void main() {
   var variants = /* @__PURE__ */ new Map();
   var done = /* @__PURE__ */ new Set();
   var waiting = /* @__PURE__ */ new Map();
-  function variantKey(family, weight, italic) {
-    return `${family.toLowerCase()}|${weight}|${italic ? "i" : "n"}`;
+  function variantKey(family, weight, italic, axes = []) {
+    const axisPart = axes.map(({ tag, value }) => `${tag}=${value}`).join(",");
+    return `${family.toLowerCase()}|${weight}|${italic ? "i" : "n"}|${axisPart}`;
   }
   function notify(key) {
     done.add(key);
@@ -17288,6 +17301,15 @@ void main() {
     });
     return found;
   }
+  function hasLocalVariableFace(family) {
+    const want = family.toLowerCase();
+    let found = false;
+    document.fonts.forEach((face) => {
+      if (unquote(face.family).toLowerCase() !== want) return;
+      if (face.weight.includes(" ") || face.stretch.includes(" ")) found = true;
+    });
+    return found;
+  }
   function loadStylesheet(url) {
     return new Promise((resolve, reject) => {
       const link = document.createElement("link");
@@ -17298,8 +17320,24 @@ void main() {
       document.head.appendChild(link);
     });
   }
-  function registerStylesheet(family) {
+  var axisSpans = /* @__PURE__ */ new Map();
+  function recordAxes(family, axes) {
     const key = family.toLowerCase();
+    const spans = axisSpans.get(key) ?? /* @__PURE__ */ new Map();
+    for (const { tag, value } of axes) {
+      const span = spans.get(tag);
+      if (span) {
+        span.min = Math.min(span.min, value);
+        span.max = Math.max(span.max, value);
+      } else {
+        spans.set(tag, { min: value, max: value });
+      }
+    }
+    axisSpans.set(key, spans);
+    return [...spans].map(([tag, { min, max }]) => ({ tag, min, max }));
+  }
+  function registerStylesheet(family, url = googleFontsUrl(family), variable = false) {
+    const key = `${family.toLowerCase()}|${url}`;
     const existing = stylesheets.get(key);
     if (existing) return existing;
     let p;
@@ -17307,21 +17345,26 @@ void main() {
       p = Promise.resolve();
     } else if (typeof document === "undefined" || !document.fonts) {
       p = Promise.resolve();
-    } else if (hasLocalFace(family)) {
+    } else if (variable ? hasLocalVariableFace(family) : hasLocalFace(family)) {
       p = Promise.resolve();
     } else {
-      p = loadStylesheet(googleFontsUrl(family));
+      p = loadStylesheet(url);
     }
     stylesheets.set(key, p);
     return p;
   }
-  async function loadVariant(family, weight, italic) {
+  async function loadVariant(family, weight, italic, axes) {
     await registerStylesheet(family);
+    if (axes.length > 0) {
+      const url = googleFontsAxisUrl(family, recordAxes(family, axes));
+      if (url) await registerStylesheet(family, url, true).catch(() => {
+      });
+    }
     if (typeof document === "undefined" || !document.fonts) return;
     await document.fonts.load(`${italic ? "italic " : ""}${weight} 16px "${cssQuoted(family)}"`);
   }
-  function ensureWebFont(family, weight = 400, italic = false, onLoaded) {
-    const key = variantKey(family, weight, italic);
+  function ensureWebFont(family, weight = 400, italic = false, onLoaded, axes = []) {
+    const key = variantKey(family, weight, italic, axes);
     if (onLoaded && !done.has(key)) {
       const set = waiting.get(key) ?? /* @__PURE__ */ new Set();
       set.add(onLoaded);
@@ -17329,7 +17372,7 @@ void main() {
     }
     const existing = variants.get(key);
     if (existing) return existing;
-    const p = loadVariant(family, weight, italic).catch((e) => {
+    const p = loadVariant(family, weight, italic, axes).catch((e) => {
       const famKey = family.toLowerCase();
       if (!failed.has(famKey)) {
         failed.add(famKey);
@@ -17350,6 +17393,7 @@ void main() {
   }
   function resetWebFonts() {
     stylesheets.clear();
+    axisSpans.clear();
     variants.clear();
     done.clear();
     waiting.clear();
@@ -17358,6 +17402,24 @@ void main() {
   }
 
   // src/web/CanvasPaintContext.ts
+  var FONT_STRETCH_STEPS = [
+    [50, "ultra-condensed"],
+    [62.5, "extra-condensed"],
+    [75, "condensed"],
+    [87.5, "semi-condensed"],
+    [100, "normal"],
+    [112.5, "semi-expanded"],
+    [125, "expanded"],
+    [150, "extra-expanded"],
+    [200, "ultra-expanded"]
+  ];
+  function nearestFontStretch(percent) {
+    let best = FONT_STRETCH_STEPS[0];
+    for (const step of FONT_STRETCH_STEPS) {
+      if (Math.abs(step[0] - percent) < Math.abs(best[0] - percent)) best = step;
+    }
+    return best[1];
+  }
   function argbToRgba(argb) {
     const a = (argb >>> 24 & 255) / 255;
     const r = argb >>> 16 & 255;
@@ -17401,6 +17463,19 @@ void main() {
       this.fontFamily = cssFontStackFor(0);
       this.fontWeight = 400;
       this.fontItalic = false;
+      /** The document's font-variation axes for the current paint, resolved to their tag names. */
+      this.fontAxes = [];
+      /**
+       * The bare `google:` family of the current paint, or null when it names none.
+       *
+       * Kept because the axes arrive *after* the family does: a paint bundle serialises `setTextStyle`
+       * (TYPEFACE) before `setTextAxis` (FONT_AXIS), so the request made while resolving the typeface
+       * necessarily has no axes yet. Re-requesting once they are decoded is what actually asks the API
+       * for the variable face; without it a networked render keeps the enumerated static stylesheet and
+       * paints a `wdth` ramp as identical lines. (It looks fine on a page that vendored the variable
+       * face itself, which is exactly how this hid.)
+       */
+      this.googleFamily = null;
       this.colorFilterColor = null;
       this.colorFilterArgb = 0;
       this.colorFilterMode = 3;
@@ -17483,8 +17558,15 @@ void main() {
       if (!family) return cssFontStackFor(0);
       const { source, name } = parseFamily(family);
       if (!name) return cssFontStackFor(0);
+      this.googleFamily = source === "google" ? name : null;
       if (source === "google") {
-        ensureWebFont(name, this.fontWeight, this.fontItalic, this.onFontLoaded ?? void 0);
+        ensureWebFont(
+          name,
+          this.fontWeight,
+          this.fontItalic,
+          this.onFontLoaded ?? void 0,
+          this.fontAxes
+        );
       }
       return namedFontStack(name);
     }
@@ -17747,10 +17829,46 @@ void main() {
         doStroke();
       }
     }
+    /**
+     * The axis name a [tag] int stands for, in either encoding the format uses.
+     *
+     * A `CoreText` style interns its axis names in the text table like any other string and puts the
+     * *text id* in the array; the paint bundle's own `setTextAxis` carries the **raw OpenType tag**
+     * packed into four bytes (`0x77676874` = `wght`). Reading the text table first (ids start at
+     * `START_ID`, so the two ranges can't collide) and unpacking the bytes otherwise covers both
+     * without having to know which writer produced the document. Anything that is neither is dropped
+     * rather than guessed at.
+     */
+    axisName(tag) {
+      if (tag >= RemoteComposeState.START_ID) {
+        const name = this.getText(tag);
+        if (name) return name;
+      }
+      let packed = "";
+      for (let shift = 24; shift >= 0; shift -= 8) {
+        const code = tag >> shift & 255;
+        if (code < 33 || code > 126) return null;
+        packed += String.fromCharCode(code);
+      }
+      return packed;
+    }
+    axisValue(tag) {
+      const axis = this.fontAxes.find((a) => a.tag === tag);
+      return axis ? axis.value : null;
+    }
     setFont() {
-      const style = this.fontItalic ? "italic " : "";
-      const weight = this.fontWeight !== 400 ? `${this.fontWeight} ` : "";
+      const wght = this.axisValue("wght");
+      const ital = this.axisValue("ital");
+      const italic = this.fontItalic || ital !== null && ital >= 0.5;
+      const effectiveWeight = wght !== null ? Math.round(wght) : this.fontWeight;
+      const style = italic ? "italic " : "";
+      const weight = effectiveWeight !== 400 ? `${effectiveWeight} ` : "";
       this.ctx.font = `${style}${weight}${this.textSize}px ${this.fontFamily}`;
+      const stretchable = this.ctx;
+      if ("fontStretch" in stretchable) {
+        const wdth = this.axisValue("wdth");
+        stretchable.fontStretch = wdth !== null ? nearestFontStretch(wdth) : "normal";
+      }
     }
     // --- PaintContext abstract methods ---
     applyPaint(paintData) {
@@ -17901,7 +18019,24 @@ void main() {
             break;
           case PaintBundle.FONT_AXIS: {
             const axisCount = upper;
-            i += axisCount * 2;
+            const axes = [];
+            for (let k = 0; k < axisCount; k++) {
+              const tag2 = arr[i++];
+              const value = intBitsToFloat2(arr[i++]);
+              const name = this.axisName(tag2);
+              if (name) axes.push({ tag: name, value });
+            }
+            this.fontAxes = axes;
+            if (this.googleFamily && axes.length > 0) {
+              ensureWebFont(
+                this.googleFamily,
+                this.fontWeight,
+                this.fontItalic,
+                this.onFontLoaded ?? void 0,
+                axes
+              );
+            }
+            this.setFont();
             break;
           }
           case PaintBundle.TEXTURE: {
@@ -17971,6 +18106,8 @@ void main() {
       this.fontFamily = cssFontStackFor(0);
       this.fontWeight = 400;
       this.fontItalic = false;
+      this.fontAxes = [];
+      this.googleFamily = null;
       this.colorFilterColor = null;
       this.colorFilterArgb = 0;
       this.colorFilterMode = 3;
@@ -18093,6 +18230,8 @@ void main() {
         fontFamily: this.fontFamily,
         fontWeight: this.fontWeight,
         fontItalic: this.fontItalic,
+        fontAxes: this.fontAxes,
+        googleFamily: this.googleFamily,
         filterBitmap: this.filterBitmap,
         colorFilterColor: this.colorFilterColor,
         colorFilterArgb: this.colorFilterArgb,

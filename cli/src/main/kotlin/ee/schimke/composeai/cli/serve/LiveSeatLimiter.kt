@@ -44,7 +44,7 @@ class LiveSeatLimiter(val totalPermits: Int) {
    * coerced down to [totalPermits], so a backend heavier than the whole budget can still run alone
    * rather than being permanently refused.
    */
-  fun acquire(weight: Int, verified: Boolean = true): Ticket? {
+  fun acquire(weight: Int, verified: Boolean = true, countRefusal: Boolean = true): Ticket? {
     val sem = semaphore ?: return Ticket(0)
     if (weight <= 0) return Ticket(0)
     val permits = weight.coerceIn(1, totalPermits)
@@ -54,7 +54,13 @@ class LiveSeatLimiter(val totalPermits: Int) {
     // dropped: on a public box they are mostly noise anyone could generate, but on a `--revisions`
     // box a valid revision is *legitimately* unknown until its first lease builds it, and its
     // refusals are real demand. Two counters keep both readings honest.
-    if (verified) refusals.incrementAndGet() else unverifiedRefusals.incrementAndGet()
+    // Only count callers that actually turn someone away. A caller that degrades instead — the
+    // shared replica pool narrows its burst onto a host already in circulation and still serves the
+    // render — must not inflate this, or the one number that answers "is the budget too small here"
+    // starts reporting throttled batches as refused visitors.
+    if (countRefusal) {
+      if (verified) refusals.incrementAndGet() else unverifiedRefusals.incrementAndGet()
+    }
     return null
   }
 

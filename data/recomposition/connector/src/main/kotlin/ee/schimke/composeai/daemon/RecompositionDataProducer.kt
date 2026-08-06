@@ -230,19 +230,28 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     // payload — the client sees no `compose/recomposition` entry on `renderFinished` and
     // greys out its panel, which is the honest signal.
     if (globallyUnavailable || state.instrumentationUnavailable) return emptyList()
-    // Bump the input-seq counter once per attachment build — that's exactly one per
-    // post-input renderFinished in the interactive path (the dispatcher calls attachmentsFor
-    // once per render). Snapshot the counter map *before* incrementing so the payload reads
-    // monotonically from the client's perspective: the n-th attachment carries inputSeq=n.
     val nodes = state.snapshotAndReset()
-    state.inputSeq += 1L
+    // `sinceFrameStreamId` and `inputSeq` are the delta contract: "counts since the previous input
+    // on this frame stream". A snapshot payload has no previous input and no frame stream, so both
+    // stay null — they are declared nullable for exactly this case, and filling them in would
+    // describe an initial-composition snapshot as the n-th step of a stream that isn't running.
+    // Ordinary (non-interactive) renders take this path on every render, so it is the common one.
     val payload =
-      RecompositionPayload(
-        mode = state.mode,
-        sinceFrameStreamId = state.frameStreamId,
-        inputSeq = state.inputSeq,
-        nodes = nodes,
-      )
+      if (state.mode == MODE_DELTA) {
+        // Bump the input-seq counter once per attachment build — exactly one per post-input
+        // renderFinished (the dispatcher calls attachmentsFor once per render). The counter map is
+        // snapshotted *before* the increment so the payload reads monotonically from the client's
+        // perspective: the n-th attachment carries inputSeq=n.
+        state.inputSeq += 1L
+        RecompositionPayload(
+          mode = state.mode,
+          sinceFrameStreamId = state.frameStreamId,
+          inputSeq = state.inputSeq,
+          nodes = nodes,
+        )
+      } else {
+        RecompositionPayload(mode = state.mode, nodes = nodes)
+      }
     return listOf(
       DataProductAttachment(
         kind = KIND,
@@ -329,6 +338,37 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     } else {
       installObserverSafely(state, scene)
     }
+  }
+
+  /**
+   * One-shot render scene lifecycle — the *transient* counterpart of [onSessionLifecycle].
+   *
+   * The desktop `RenderEngine` announces every scene it builds, before `setContent` composes into
+   * it, so an ordinary (non-interactive) render can be instrumented too. That scene is torn down
+   * again a few milliseconds later, and the difference from a held session matters in two ways:
+   * - **No mode promotion.** [onSessionLifecycle] promotes a `snapshot` subscription to `delta`,
+   *   which is right when a live session means per-input deltas are about to become meaningful.
+   *   Here it would be a lie: the scene is gone before `attachmentsFor` builds the payload, so what
+   *   the panel receives is the initial composition of one render — a snapshot. Reporting it as
+   *   `delta` with an `inputSeq` would mislead every consumer of the wire contract.
+   * - **Not registered in [liveScenes].** That map answers "is there a live session for this
+   *   preview?" at subscribe time; a scene that will not outlive the render must not answer yes.
+   *
+   * `scene == null` disposes the observer and leaves the subscription (and its counters) in place,
+   * because `attachmentsFor` runs *after* teardown and still has to report the render it measured.
+   */
+  fun onRenderSceneLifecycle(previewId: String, scene: ImageComposeScene?) {
+    if (scene == null) {
+      subscriptions[previewId]?.disposeObserver()
+      return
+    }
+    val state = subscriptions[previewId] ?: return
+    if (state.observerHandle != null || state.instrumentationUnavailable) return
+    if (globallyUnavailable) {
+      state.instrumentationUnavailable = true
+      return
+    }
+    installObserverSafely(state, scene)
   }
 
   private fun installObserverSafely(state: SubscriptionState, scene: ImageComposeScene) {

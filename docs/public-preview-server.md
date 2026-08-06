@@ -91,6 +91,47 @@ design systems today) keeps the single flat grid, unchanged.
 
 ![Tabbed catalog page — meshcore-mobile (dark)](images/serve-tabs-sections-dark.png)
 
+## Every selection is in the URL
+
+What a visitor picks is reflected into the page URL, so the page on screen is the page its URL
+describes — bookmarkable, shareable, and reachable with **Back**. Picking Components and then a
+theme on `https://preview.coo.ee/meshcore-mobile/` lands on
+`…/meshcore-mobile/?tab=components&theme=theme:app.ui.DynamicDarkTheme`, and opening that link
+later reopens exactly there.
+
+Nothing reloads. Every write is a `history.pushState` / `replaceState` from
+[`assets/url-state.js`](../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/url-state.js),
+and Back/Forward re-points the grid (or the viewer's controls) in place — no second fetch of a page
+the browser already has, and no re-render the visitor didn't ask for. Params the server owns
+(`token`, `session`, …) are never touched, and a control back at its default **clears** its param
+rather than pinning a redundant value, so an untouched page keeps the clean URL it was opened with.
+
+| Surface | Carried in the URL |
+| --- | --- |
+| Catalog landing | `tab` (section), `theme` (a baked chip or `theme:<providerFqn>`), `q` (filter), `bg` |
+| Viewer | every override the render URL takes — `device`, `localeTag`, `orientation`, `background`, `fontScale`, `uiMode` / `themeProvider`, size bounds, `focus`, `gestures`, `scroll`, `mode`, `knob.<key>`, `rc.<name>` |
+| Format comparison | `format`, `theme`, `q` |
+
+Opening a bookmarked catalog URL — the tab it names is the selected one, and the theme it names is
+applied (here an app-declared theme, re-rendered on arrival because the link asked for it):
+
+| `…/meshcore-mobile/` | `…/meshcore-mobile/?tab=screens` |
+| --- | --- |
+| ![Catalog landing on its first tab](images/serve-url-state-tab-default.png) | ![Same catalog opened on the Screens tab from the URL](images/serve-url-state-tab-bookmarked.png) |
+
+| `…/compose-m3/` | `…/compose-m3/?theme=theme:com.example.HighContrastThemeCatalog` |
+| --- | --- |
+| ![Catalog landing on its baked Light chip](images/serve-url-state-theme-default.png) | ![Same catalog opened under the declared High Contrast theme from the URL](images/serve-url-state-theme-bookmarked.png) |
+
+A **discrete** choice (a tab, a theme, a lane) pushes its own history entry; **continuous** input (a
+filter, a slider) replaces the current one, so typing six characters costs one entry, not six.
+
+The URL outranks the remembered (`localStorage`) choice wherever the two disagree — it is on the
+address bar only because someone picked it here or was handed the link. That is also the one place a
+declared theme is replayed on load: a *stored* app-declared theme deliberately isn't (it would put
+the whole grid through the daemon on an ordinary page view), but a link that names one is a request
+for exactly that.
+
 In `--public` mode the landing page opens with a short **"about" intro** explaining what the host is
 and its safety model, with a link to the machine-readable [`/version`](#endpoints):
 
@@ -211,6 +252,97 @@ Two details make it behave under a real visitor's settings:
   thing in every system, and so do the sticker stages — a light-rendered sticker keeps its white
   backing and a dark-rendered one its dark backing, since those are pinned to the render's theme,
   not the page's.
+
+## Reporting a bad render
+
+Every viewer page carries a **report an issue** link beside its "source" link. It opens a
+**prefilled GitHub new-issue form** against the repo that owns the preview, carrying the facts a
+triager would otherwise have to ask for: the design system, the preview id, the source file, which
+catalog build was on screen (`repo@branch` + the compose-ai-tools version that rendered it), a deep
+link to the viewer, and the `/render` PNG **at the overrides in force when the link was clicked** —
+the viewer keeps the prefill current as the knobs, theme and size change.
+
+Mechanically it is a **GET form**, not an anchor: keeping the prefill current means writing page
+state into it, and writing a page-derived string into an `href` is a navigation sink (a
+`javascript:` URL there would execute). The form's action is a server-rendered literal the JS never
+touches, the live render URL only ever lands in a hidden input's value, and the browser does the
+query encoding on submit — so there is no sink to guard.
+
+| Before | After |
+| --- | --- |
+| ![Viewer title with only a source link](images/serve-viewer-report-issue-before.png) | ![Viewer title with source and "report an issue"](images/serve-viewer-report-issue-after.png) |
+
+![The same row on a dark catalog](images/serve-viewer-report-issue-after-dark.png)
+
+**Which repo it files against** is the catalog's **source** repo (the Kotlin the preview is declared
+in — `catalog.json`'s `source.repo`), falling back to the delivery repo and finally to
+`yschimke/compose-ai-tools`, whose renderer produced the pixels either way. A source repo that is a
+fork is still the right target: that fork is where the preview code that misrendered lives.
+
+**The render is embedded, and a paste is still offered.** The body carries the render as a markdown
+image (`![…](…/render/<id>.png?…)`), so GitHub shows the pixels inline and a triager sees the
+problem without clicking anything. That embed is a **live** render, though: it re-renders against
+whatever the catalog is when someone reads the issue, so it can drift away from what the reporter
+saw. The template says so, and still asks for a paste — **Copy PNG** (in *Export & direct links*)
+puts real `image/png` bytes on the clipboard rather than a base64 `data:` URI, so one Ctrl-V/Cmd-V
+uploads the exact pixels to GitHub's own CDN, where they stay put. Browsers without `ClipboardItem`
+fall back to the data URI.
+
+**The embed appears only when GitHub can actually load the URL**, which takes two things.
+*Reachable*: an inline image is fetched by GitHub's camo proxy, not by the reader's browser, so it
+must be reachable from the public internet over HTTPS — a `compose-preview serve` on
+`http://127.0.0.1:8080`, a box on a private LAN, or plain HTTP is not. *Answerable*: the render lane
+must serve the URL **without a session token**, because the token is stripped from everything that
+reaches an issue body. A token-gated (`--public` off) server 404s that tokenless request however
+public its hostname is, so its reports keep the `[PNG at these settings](…)` link form too. Both
+conditions are evaluated against the server's own external URL and mode, so the viewer's live
+re-substitution can never turn a working image into a broken one.
+
+**The server never files the issue itself**, and asks for no extra OAuth scope to offer this. The
+auth cookie holds only a login and a repo-access verdict — [the OAuth token is discarded after the
+check](#github-auth-for-live-lanes) — so filing server-side "as the visitor" would mean holding user
+tokens on a public box. Their browser is already signed in to GitHub, so the prefilled link files
+under their own identity with nothing to custody. When the box *does* know the visitor's login it
+names it in the link's tooltip ("File an issue on `owner/repo` as @login"); signed out, the flow
+still works, because GitHub prompts for sign-in on the issue form.
+
+A token-gated (`--public` off) server strips its **session token** from both URLs in the body — that
+token is the capability to drive the server, and an issue is public.
+
+### Opening the Figma node a preview is specified by
+
+When the served catalog publishes a **Figma-backed design reference** for a preview, the viewer adds
+a third link to that row: **figma spec**, opening the file focused on that exact node.
+
+| Before | After |
+| --- | --- |
+| ![Source and report an issue](images/serve-viewer-figma-spec-before.png) | ![…plus a figma spec link](images/serve-viewer-figma-spec-after.png) |
+
+![The same row on a dark catalog](images/serve-viewer-figma-spec-after-dark.png)
+
+Nothing new is published to make this work. A producer that keeps a `design-map.json` already emits
+its Figma entries into `references/index.json` as `source.provider = "figma"` plus a
+`figma:<fileKey>/<nodeId>` handle, and the server already keeps those fields — this only turns the
+handle into a URL (Figma's URL form spells a node id `73-6` where the map and the API use `73:6`).
+
+**It appears only when the catalog names a spec.** A preview whose reference is an HTML export or a
+plain PNG — and every catalog that publishes no references at all — gets no link rather than a guess
+or a dead one. Today that means a handful of meshcore-mobile screens; `compose-m3` and `wear-m3`
+publish no Figma references, so their viewers are unchanged.
+
+**The server still never talks to Figma.** `source.uri` remains informational: the browser
+navigates, nothing is fetched, and no Figma credential exists anywhere in `serve`. Because a catalog
+is third-party data, the handle is parsed strictly and the URL assembled from a literal origin plus
+a validated file key and node id, so a catalog declaring `javascript:…` resolves to no link at all
+rather than an attacker-chosen href on the viewer page.
+
+**Posting a comment from here would be a different feature**, and a much larger one. Figma has no
+prefilled-comment URL — the equivalent of GitHub's `issues/new?body=` — so it would mean calling
+`POST /v1/files/:key/comments` with a real Figma credential: either a server-held token (every
+comment authored by one bot account, and a public box holding write access to your design file) or a
+per-visitor Figma OAuth flow (a second token to custody, which is exactly what the GitHub path
+avoids). Figma comments also carry no image attachments, so the "paste the render" trick above has
+no equivalent there.
 
 ## Design references and UI mocks
 

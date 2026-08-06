@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ServeSharedDaemonPoolTest {
@@ -179,28 +180,48 @@ class ServeSharedDaemonPoolTest {
 
   @Test
   fun `does not open a replica the live-seat budget cannot afford`() {
-    val seats = LiveSeatLimiter(totalPermits = 1 + LiveSeatLimiter.STREAM_RESERVE)
-    // Spend everything above the stream reserve elsewhere — a stream, another catalog's pool.
+    // Budget fully spent elsewhere — a stream, another catalog's pool. Since a leased replica is
+    // charged as FOREGROUND (see the test below), "cannot afford" means literally nothing free:
+    // leaving the stream reserve open would leave a replica affordable, and the test would then
+    // pass or fail on whether the renders happened to overlap.
+    val seats = LiveSeatLimiter(totalPermits = 1)
     val held = requireNotNull(seats.acquire(1))
-    val primary = InstantHost("primary")
+    assertEquals(0, seats.availablePermits(), "precondition: nothing left to spend")
+
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    // Held mid-render, so the overlapping request has nothing to borrow and MUST reach the
+    // replica-launch path. With an InstantHost primary the overlap was a race, which is why this
+    // used to pass locally and fail on a loaded runner.
+    val primary = BlockingHost("primary", entered, release)
     val opened = AtomicInteger()
     val pool =
       ServeSharedDaemonPool(primary = primary, capacity = 3, liveSeats = seats) {
         opened.incrementAndGet()
         InstantHost("replica")
       }
+    val executor = Executors.newFixedThreadPool(2)
     try {
-      val executor = Executors.newFixedThreadPool(3)
-      try {
-        val results =
-          (1..3).map { executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) } }
-        // Every render still succeeds — they serialise onto the primary instead of spawning JVMs.
-        results.forEach { assertTrue(it.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok) }
-      } finally {
-        executor.shutdownNow()
-      }
+      val first = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(entered.await(5, TimeUnit.SECONDS), "the primary should be mid-render")
+
+      val second = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      // It must still be waiting: the only host is out and the budget affords no replica. Had one
+      // been spawned this would have completed, so the timeout is the assertion.
+      assertTrue(
+        runCatching { second.get(1, TimeUnit.SECONDS) }.isFailure,
+        "the overlapping render waits for the primary instead of spawning a replica",
+      )
       assertEquals(0, opened.get(), "no replica was spawned against an exhausted budget")
+
+      // Both still succeed — the second serialises onto the primary instead of spawning a JVM.
+      release.countDown()
+      assertTrue(first.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok)
+      assertTrue(second.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok)
+      assertEquals(0, opened.get(), "still no replica once the burst drains")
     } finally {
+      release.countDown()
+      executor.shutdownNow()
       pool.close()
       held.close()
     }
@@ -236,6 +257,82 @@ class ServeSharedDaemonPoolTest {
       release.countDown()
       executor.shutdownNow()
       pool.close()
+    }
+  }
+
+  /**
+   * A leased burst is a visitor waiting on the grid, so its replicas draw on the FOREGROUND budget
+   * — the same class as a stream — rather than the background remainder the prefetcher leaves. The
+   * per-preview pool stays on the background path, so the stream reserve still protects streams.
+   */
+  @Test
+  fun `a leased replica may use the seats reserved against background work`() {
+    // Exactly the stream reserve free: a background holder (the per-preview pool) would be refused
+    // here, but a leased burst is foreground and may take it.
+    val seats = LiveSeatLimiter(totalPermits = LiveSeatLimiter.STREAM_RESERVE)
+    assertNull(seats.acquireBackground(1), "precondition: background cannot touch the reserve")
+
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val primary = BlockingHost("primary", entered, release)
+    val opened = AtomicInteger()
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 2, liveSeats = seats) {
+        opened.incrementAndGet()
+        InstantHost("replica")
+      }
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      val held = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(entered.await(5, TimeUnit.SECONDS), "primary is mid-render")
+
+      // Overlapping leased render: the primary is out, so this must open a replica.
+      val second = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(second.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok)
+      assertEquals(1, opened.get(), "the burst widened onto a replica")
+
+      release.countDown()
+      assertTrue(held.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok)
+    } finally {
+      release.countDown()
+      executor.shutdownNow()
+      pool.close()
+    }
+  }
+
+  /**
+   * Codex review on #3355. `liveSeatRefusals` is the evidence any change to the seat budget rests
+   * on, so it must only count callers that actually turned someone away. A leased burst that can't
+   * widen still serves its render off a host already in circulation — throttled, not refused.
+   */
+  @Test
+  fun `replica backpressure is not counted as a live-seat refusal`() {
+    val seats = LiveSeatLimiter(totalPermits = 1)
+    val held = requireNotNull(seats.acquire(1))
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val primary = BlockingHost("primary", entered, release)
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 2, liveSeats = seats) {
+        InstantHost("replica")
+      }
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      val first = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(entered.await(5, TimeUnit.SECONDS))
+      // Wants to widen, cannot (budget spent elsewhere), so it waits for the primary instead.
+      val second = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+
+      release.countDown()
+      assertTrue(first.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok)
+      assertTrue(second.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok, "the render still succeeded")
+      assertEquals(0L, seats.refusalCount(), "narrowing a burst is not a refusal")
+      assertEquals(0L, seats.unverifiedRefusalCount())
+    } finally {
+      release.countDown()
+      executor.shutdownNow()
+      pool.close()
+      held.close()
     }
   }
 }

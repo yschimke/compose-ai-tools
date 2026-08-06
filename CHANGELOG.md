@@ -1,5 +1,97 @@
 # Changelog
 
+## [0.19.40](https://github.com/yschimke/compose-ai-tools/compare/v0.19.39...v0.19.40) (2026-08-06)
+
+
+### Features
+
+* **serve:** add @FixedTheme so a theme specimen opts out anywhere ([#3381](https://github.com/yschimke/compose-ai-tools/issues/3381)) ([692ff38](https://github.com/yschimke/compose-ai-tools/commit/692ff381cce6b9c97739ba158d7342accb06a3a7))
+
+
+### Bug Fixes
+
+* **serve:** re-enter the theme prefetch, and give Busy a ceiling ([#3382](https://github.com/yschimke/compose-ai-tools/issues/3382)) ([17dd843](https://github.com/yschimke/compose-ai-tools/commit/17dd843a39a8e2890d8645cf0419fbeaf35d4c3d))
+
+## [0.19.39](https://github.com/yschimke/compose-ai-tools/compare/v0.19.38...v0.19.39) (2026-08-05)
+
+
+### Features
+
+* **serve:** embed the render in the prefilled issue body instead of only linking it ([#3377](https://github.com/yschimke/compose-ai-tools/issues/3377)) ([1e94d16](https://github.com/yschimke/compose-ai-tools/commit/1e94d1619f85090b363ca5ddd39eb1044db8f049))
+* **serve:** link the Figma node a preview is specified by, when the catalog names one ([#3366](https://github.com/yschimke/compose-ai-tools/issues/3366)) ([6424371](https://github.com/yschimke/compose-ai-tools/commit/642437190ab1b689cff33fc2e65d9e50b07e6434))
+* **serve:** put every page selection in the URL ([#3371](https://github.com/yschimke/compose-ai-tools/issues/3371)) ([7245e55](https://github.com/yschimke/compose-ai-tools/commit/7245e55a9644593c504dddb45dcbb018f4bef4c5))
+* **serve:** report prefetch rate, time split and observed batch width on /status ([#3373](https://github.com/yschimke/compose-ai-tools/issues/3373)) ([27f5700](https://github.com/yschimke/compose-ai-tools/commit/27f57003e548b8acf8aa589de89f4a9e8ffe39c7))
+
+
+### Bug Fixes
+
+* correct the theme-optimizer prefetch stats ([#3376](https://github.com/yschimke/compose-ai-tools/issues/3376)) ([e7db9ae](https://github.com/yschimke/compose-ai-tools/commit/e7db9ae3ff953692336aeb626dbf455efb4235ec))
+* count only fresh renders as optimizer production ([#3379](https://github.com/yschimke/compose-ai-tools/issues/3379)) ([2213b69](https://github.com/yschimke/compose-ai-tools/commit/2213b690841d5450419df1f5ebcfc8ee4387d55f))
+* **figma-svg:** drop retired subcomposition slots from the export ([#3367](https://github.com/yschimke/compose-ai-tools/issues/3367)) ([e426c77](https://github.com/yschimke/compose-ai-tools/commit/e426c776e1650216e3776d85968af734bc51c23d))
+* **serve:** keep a Themes-tab specimen out of the theme override ([#3369](https://github.com/yschimke/compose-ai-tools/issues/3369)) ([f890511](https://github.com/yschimke/compose-ai-tools/commit/f89051198bf7c212c77ee5e320d21456f1820ead))
+* **serve:** make the viewer's lane and the grid's background survive the URL round trip ([#3372](https://github.com/yschimke/compose-ai-tools/issues/3372)) ([9fe2a8b](https://github.com/yschimke/compose-ai-tools/commit/9fe2a8b29b321fe46c826c5ada83b1dd4630bfb5))
+* **serve:** offer Wear watch shapes, not Pixel phones, for a Wear screen ([#3370](https://github.com/yschimke/compose-ai-tools/issues/3370)) ([bc102fa](https://github.com/yschimke/compose-ai-tools/commit/bc102fa93da380156066c6d82b40295a13396a5d))
+* **serve:** overlay the whole Compose Multiplatform graph on the daemon parent ([#3378](https://github.com/yschimke/compose-ai-tools/issues/3378)) ([016565b](https://github.com/yschimke/compose-ai-tools/commit/016565b6968f9177938d6ad77a2a91b12e514385))
+* **serve:** stop caching signed-in pages, and slide the GitHub session ([#3375](https://github.com/yschimke/compose-ai-tools/issues/3375)) ([c40e0b9](https://github.com/yschimke/compose-ai-tools/commit/c40e0b99706ed2dc88ad6221507f54971c2922b6))
+
+## [0.19.38](https://github.com/yschimke/compose-ai-tools/compare/v0.19.37...v0.19.38) (2026-08-05)
+
+
+### Features
+
+* **serve:** file a preview bug from the viewer, with a link and a pasteable screenshot ([#3357](https://github.com/yschimke/compose-ai-tools/issues/3357)) ([1469755](https://github.com/yschimke/compose-ai-tools/commit/146975520f6b4f9f1df15734543f57c78403d526))
+
+
+### Bug Fixes
+
+* **figma-svg:** write an off-frame raster at its own size, not the frame crop ([#3364](https://github.com/yschimke/compose-ai-tools/issues/3364)) ([7ca39cf](https://github.com/yschimke/compose-ai-tools/commit/7ca39cf1d20869e2fbb7b2053eb5af55a65fc585))
+* **gradle-plugin:** pack desktop classes, not the android compilation ([#3356](https://github.com/yschimke/compose-ai-tools/issues/3356)) ([d428231](https://github.com/yschimke/compose-ai-tools/commit/d428231c3b3314411a2452163d591695205be0e4))
+* **serve:** charge leased burst replicas as foreground seats ([#3355](https://github.com/yschimke/compose-ai-tools/issues/3355)) ([27caacf](https://github.com/yschimke/compose-ai-tools/commit/27caacfd84825db55c8056d75d7cc47382cf46c3))
+* **vscode:** keep elided composition spans inspectable in the Performance tab ([#3353](https://github.com/yschimke/compose-ai-tools/issues/3353)) ([04ece5a](https://github.com/yschimke/compose-ai-tools/commit/04ece5a08fce4ffc9a7715480072048ffe2cc74b))
+
+
+### Performance Improvements
+
+* **serve:** prefetch themes in per-preview batches through the replica pool ([#3363](https://github.com/yschimke/compose-ai-tools/issues/3363)) ([400989e](https://github.com/yschimke/compose-ai-tools/commit/400989e590db97ddbdcebc04a97795acec1b6fe6))
+
+## [0.19.37](https://github.com/yschimke/compose-ai-tools/compare/v0.19.36...v0.19.37) (2026-08-05)
+
+
+### Features
+
+* **daemon:** trace composition composable-by-composable into render/trace ([#3352](https://github.com/yschimke/compose-ai-tools/issues/3352)) ([c78d866](https://github.com/yschimke/compose-ai-tools/commit/c78d866e642ef2727ab4f493c5084b4bcc5114fa))
+* **rc-player:** apply a document's font-variation axes in the js lane ([#3348](https://github.com/yschimke/compose-ai-tools/issues/3348)) ([86be17e](https://github.com/yschimke/compose-ai-tools/commit/86be17e120b7d451a5f9edbdc471fdf81c010a05))
+
+
+### Bug Fixes
+
+* **daemon:** carry the trace origin alongside the overridden total ([#3349](https://github.com/yschimke/compose-ai-tools/issues/3349)) ([204cef0](https://github.com/yschimke/compose-ai-tools/commit/204cef02f797e9b8c1128f8921fa3532ebd737fd))
+* **daemon:** report complete trace bounds past the span cap and drop delta fields from snapshots ([#3346](https://github.com/yschimke/compose-ai-tools/issues/3346)) ([d96ce9e](https://github.com/yschimke/compose-ai-tools/commit/d96ce9ee6020f10be14a1e485ac889d72521c1c9))
+* **gradle-plugin:** resolve the desktop bundle classpath lazily ([#3351](https://github.com/yschimke/compose-ai-tools/issues/3351)) ([6835814](https://github.com/yschimke/compose-ai-tools/commit/68358143085f9215de6c6c85922bbc9d51d23814))
+* **serve:** let the theme optimizer keep its turn while the server is quiet ([#3347](https://github.com/yschimke/compose-ai-tools/issues/3347)) ([33a26be](https://github.com/yschimke/compose-ai-tools/commit/33a26bedc739b22db6218131acc84bfcff1283a6))
+
+## [0.19.36](https://github.com/yschimke/compose-ai-tools/compare/v0.19.35...v0.19.36) (2026-08-05)
+
+
+### Features
+
+* **daemon:** give render/trace real phase spans and reach recomposition from ordinary renders ([#3343](https://github.com/yschimke/compose-ai-tools/issues/3343)) ([5d4c407](https://github.com/yschimke/compose-ai-tools/commit/5d4c407eed2d284e550aec64189d0e628a774cdc))
+* **design-catalog-remote-m3:** add typeface and font-variation specimens ([#3329](https://github.com/yschimke/compose-ai-tools/issues/3329)) ([bc38d93](https://github.com/yschimke/compose-ai-tools/commit/bc38d9313e65721eef754183e77dbe3e14be34bb))
+* **fonts:** fetch a family's real variable font file, not a baked instance ([#3339](https://github.com/yschimke/compose-ai-tools/issues/3339)) ([98d6098](https://github.com/yschimke/compose-ai-tools/commit/98d6098c20318b5980f47866ed8c20f442fda2a2))
+* **rc-player-compose:** resolve the default face by name and apply font axes ([#3334](https://github.com/yschimke/compose-ai-tools/issues/3334)) ([4afba97](https://github.com/yschimke/compose-ai-tools/commit/4afba97c8655688bfca1800535a62a33a51782a1))
+* **rc-player-jvm:** apply a document's font-variation axes ([#3336](https://github.com/yschimke/compose-ai-tools/issues/3336)) ([51dab43](https://github.com/yschimke/compose-ai-tools/commit/51dab432da292b3064743a110170e3f6eb0e59e9))
+* **rc-player:** trace the CMP players with androidx.tracing 2 and profile four documents ([#3341](https://github.com/yschimke/compose-ai-tools/issues/3341)) ([a015ed7](https://github.com/yschimke/compose-ai-tools/commit/a015ed71ffd1314b6a33ec37ca4d566a6a37ae6d))
+* **remotecompose:** serve google: font families to the view player ([#3335](https://github.com/yschimke/compose-ai-tools/issues/3335)) ([27ea28c](https://github.com/yschimke/compose-ai-tools/commit/27ea28c1043b2758e3e206f8c98b4e0202cd9762))
+* **serve:** give the preview server room to breathe and cards a real hover ([#3333](https://github.com/yschimke/compose-ai-tools/issues/3333)) ([42654cb](https://github.com/yschimke/compose-ai-tools/commit/42654cb4797e820b1e953e9ee36f99c617234684))
+* **serve:** report playground health on /status.json ([#3330](https://github.com/yschimke/compose-ai-tools/issues/3330)) ([aec17a2](https://github.com/yschimke/compose-ai-tools/commit/aec17a2cffff8f4eafd80425c102dace6a0fb9d3))
+
+
+### Bug Fixes
+
+* **cli:** stream per-preview bundles out of bundle split instead of holding them all ([#3337](https://github.com/yschimke/compose-ai-tools/issues/3337)) ([03ecb67](https://github.com/yschimke/compose-ai-tools/commit/03ecb67993ff014ab379d352d8d7694358a01274))
+* **daemon:** keep render/trace aggregates complete and ordinary-render recomposition in snapshot mode ([#3344](https://github.com/yschimke/compose-ai-tools/issues/3344)) ([a253e9c](https://github.com/yschimke/compose-ai-tools/commit/a253e9c2f758721bed78d63e1a1368cc4a962dd8))
+* **serve:** render a cold-id theme request instead of abandoning it ([#3345](https://github.com/yschimke/compose-ai-tools/issues/3345)) ([b6e1fc3](https://github.com/yschimke/compose-ai-tools/commit/b6e1fc336859ad65683cd3e5d03fda2061ddf07f))
+
 ## [0.19.35](https://github.com/yschimke/compose-ai-tools/compare/v0.19.34...v0.19.35) (2026-08-05)
 
 

@@ -84,30 +84,40 @@ class ServeAuthTest {
   }
 
   @Test
-  fun `github protected live viewer pages are not cached`() {
+  fun `pages carrying sign-in state are never cached, shared or private`() {
+    // Every page on a GitHub-auth server renders the visitor's sign-in state, so none of them may
+    // be stored: `public` would let the CDN hand one visitor's login to the next, and even a purely
+    // private `max-age` replays the pre-sign-in HTML after the OAuth round-trip — the "still shows
+    // me logged out until I refresh" bug.
     assertEquals(
-      "no-store",
-      ServeHttpServer.viewerCacheControl(
-        githubAuthConfigured = true,
-        hasLiveStream = true,
-        isPublic = true,
-      ),
+      "private, no-store",
+      ServeHttpServer.pageCacheControl(githubAuthConfigured = true, isPublic = true),
     )
     assertEquals(
       "public, max-age=60, stale-while-revalidate=300",
-      ServeHttpServer.viewerCacheControl(
-        githubAuthConfigured = true,
-        hasLiveStream = false,
-        isPublic = true,
-      ),
+      ServeHttpServer.pageCacheControl(githubAuthConfigured = false, isPublic = true),
     )
     assertEquals(
       "no-store",
-      ServeHttpServer.viewerCacheControl(
-        githubAuthConfigured = false,
-        hasLiveStream = true,
-        isPublic = false,
-      ),
+      ServeHttpServer.pageCacheControl(githubAuthConfigured = false, isPublic = false),
+    )
+  }
+
+  @Test
+  fun `the viewer page follows the same personalisation rule as every other page`() {
+    // Not just the live-streaming viewer: the sign-in chip and the issue reporter's "filed as @you"
+    // are on the static viewer too.
+    assertEquals(
+      "private, no-store",
+      ServeHttpServer.viewerCacheControl(githubAuthConfigured = true, isPublic = true),
+    )
+    assertEquals(
+      "public, max-age=60, stale-while-revalidate=300",
+      ServeHttpServer.viewerCacheControl(githubAuthConfigured = false, isPublic = true),
+    )
+    assertEquals(
+      "no-store",
+      ServeHttpServer.viewerCacheControl(githubAuthConfigured = false, isPublic = false),
     )
   }
 

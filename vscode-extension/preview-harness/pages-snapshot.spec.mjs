@@ -72,9 +72,23 @@ const STYLED_FIXTURES = new Set([
     // real stylesheet routed in, `/assets/serve/.../serve.css` 404s and the daemon captures shoot
     // an unstyled span, so a change to that styling would move no baseline at all.
     "serve-landing-declared-themes",
+    // The front door is a *layout*: publisher sections, the card grid's density, and the card
+    // chrome (hero region, meta rhythm, hover affordance) are the whole page. Captured bare it
+    // shot an unstyled column of links, so a change to any of that moved no baseline at all —
+    // which is exactly how the section spacing and the card hover reached production unreviewed.
+    "serve-home-index",
+    // The catalog landing is the same claim one level down: the tab bar, the group headings and
+    // the preview-card grid ARE the page, and its cards share the front door's hover treatment.
+    "serve-landing-public",
+    // The Wear viewer exists for ONE claim: the Size panel offers watch shapes and no Orientation
+    // row. That claim lives entirely inside the override drawer, so it has to be painted by the
+    // real stylesheet — captured bare it is a column of unstyled labels where a panel regression
+    // moves nothing recognisable. Its `size-open` state below is what actually shows the menu.
+    "serve-viewer-wear-screen",
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
+    ["url-state.js", "text/javascript"],
     ["viewer.js", "text/javascript"],
     ["viewer-groups.js", "text/javascript"],
     ["viewer-drawers.js", "text/javascript"],
@@ -102,6 +116,34 @@ const FIXTURE_STATES = [
         apply: async (page) => {
             await page.click("#pg-add-file");
             await page.fill("#pg-source", "val Brand = 0xFF6750A4");
+        },
+    },
+    {
+        // Card hover. A hover state exists only under a pointer, so it is invisible to an ordinary
+        // end-state screenshot — and it is the front door's main affordance: the tile lifts, takes
+        // an accent rim and a top-edge wipe, and eases its artwork rather than underlining four
+        // lines of metadata. Hovering one card here means every future change to that treatment is
+        // diffed like any other pixel. Transitions are disabled first so the shot lands on the
+        // settled state instead of racing the ease.
+        fixture: "serve-home-index",
+        suffix: "card-hover",
+        apply: async (page) => {
+            await page.addStyleTag({
+                content: "*, *::before, *::after { transition-duration: 0ms !important; }",
+            });
+            await page.hover(".cp-syslist .cp-card");
+        },
+    },
+    {
+        // The same treatment on a catalog's preview cards, where the tiles are small and dense —
+        // the case where an underline sweeping four lines of metadata was worst.
+        fixture: "serve-landing-public",
+        suffix: "card-hover",
+        apply: async (page) => {
+            await page.addStyleTag({
+                content: "*, *::before, *::after { transition-duration: 0ms !important; }",
+            });
+            await page.hover(".cp-grid .cp-card");
         },
     },
     {
@@ -232,6 +274,23 @@ const FIXTURE_STATES = [
         suffix: "scroll-full-page",
         apply: async (page) => {
             await page.click('[data-cp-group="scroll"] > summary');
+        },
+    },
+    {
+        // The Wear device menu. A screen's device profiles are platform-specific — watch shapes on
+        // a Wear system, phones/foldable/tablet elsewhere — and BOTH halves of that claim are
+        // invisible to an end-state shot: the Size group renders closed, and a closed `<select>`
+        // paints only its selected option, so a regression back to Pixel devices (or an Orientation
+        // row reappearing on a watch) would move no baseline at all. Open the group and expand the
+        // menu into a list box so every offered device is pixels the diff bot can see.
+        fixture: "serve-viewer-wear-screen",
+        suffix: "size-open",
+        apply: async (page) => {
+            await page.click('[data-cp-group="size"] > summary');
+            await page.evaluate(() => {
+                const devices = document.getElementById("cp-device");
+                devices.size = devices.options.length;
+            });
         },
     },
     {

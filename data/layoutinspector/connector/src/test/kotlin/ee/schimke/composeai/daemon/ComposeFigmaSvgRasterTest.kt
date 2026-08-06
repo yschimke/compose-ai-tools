@@ -130,9 +130,11 @@ class ComposeFigmaSvgRasterTest {
   }
 
   @Test
-  fun `node measured partly off-canvas still yields a valid raster`() {
-    // Bounds run off the right/bottom edge of the frame; the crop clips to the frame and still
-    // produces a decodable PNG so the <image> reference resolves.
+  fun `node measured partly off-canvas keeps its own size with the off-frame part transparent`() {
+    // Bounds run off the right/bottom edge of the frame. The `<image>` is placed at the node's full
+    // box, so the PNG must be that box — clamping it to the frame made the browser stretch a short
+    // bitmap up to the declared width (issue #2852). The off-frame region is pixels the render
+    // never drew: transparent, not missing.
     val layout = LayoutInspectorPayload(node("Canvas", 150, 150, 320, 320))
     val frame = writeFrame(gl = 150, gt = 150, gr = 200, gb = 200)
 
@@ -146,7 +148,52 @@ class ComposeFigmaSvgRasterTest {
     val raster = rootDir.resolve("preview").resolve("figma-raster").resolve("Canvas.png")
     assertTrue("clipped raster PNG must be written", raster.exists())
     val cropped = ImageIO.read(raster)
-    assertEquals("clipped to frame width", 50, cropped.width)
-    assertEquals("clipped to frame height", 50, cropped.height)
+    assertEquals("PNG width = node width", 170, cropped.width)
+    assertEquals("PNG height = node height", 170, cropped.height)
+    // The in-frame quadrant carries the frame's pixels…
+    val onFrame = Color(cropped.getRGB(25, 25), true)
+    assertTrue("in-frame pixels must come from the frame, got $onFrame", onFrame.alpha > 200)
+    // …and the off-frame remainder is transparent rather than a stretched copy of them.
+    val offFrame = Color(cropped.getRGB(120, 120), true)
+    assertEquals("off-frame pixels must be transparent", 0, offFrame.alpha)
+  }
+
+  @Test
+  fun `an overflowing raster is placed at the size it was written`() {
+    // The end-to-end invariant behind the stretch: whatever `<image width/height>` the SVG declares
+    // must equal the PNG on disk, or the browser rescales the crop and nothing lines up with the
+    // render (issue #2852).
+    val layout =
+      LayoutInspectorPayload(
+        node(
+          "Screen",
+          0,
+          0,
+          200,
+          200,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFBFE", clipsContent = true),
+          children = listOf(node("Image", 120, 40, 340, 160)),
+        )
+      )
+    val frame = writeFrame(gl = 120, gt = 40, gr = 200, gb = 160)
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = rootDir,
+      previewId = "preview",
+      layout = layout,
+      frameImage = frame,
+    )
+
+    val previewDir = rootDir.resolve("preview")
+    val svg = previewDir.resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    val image =
+      Regex("""<image [^>]*href="figma-raster/Image\.png"[^>]*/>""").find(svg)?.value
+        ?: error("expected an <image> for the overflowing node:\n$svg")
+    val declaredWidth = Regex("""\bwidth="(\d+)"""").find(image)!!.groupValues[1].toInt()
+    val declaredHeight = Regex("""\bheight="(\d+)"""").find(image)!!.groupValues[1].toInt()
+
+    val raster = ImageIO.read(previewDir.resolve("figma-raster").resolve("Image.png"))
+    assertEquals("declared width must match the PNG", declaredWidth, raster.width)
+    assertEquals("declared height must match the PNG", declaredHeight, raster.height)
   }
 }

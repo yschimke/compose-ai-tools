@@ -1,6 +1,8 @@
 package ee.schimke.composeai.renderer
 
+import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
@@ -15,6 +17,7 @@ import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
@@ -26,7 +29,9 @@ import ee.schimke.composeai.daemon.LayoutInspectorDataProducer
 import ee.schimke.composeai.data.render.PreviewContext
 import java.io.File
 import java.nio.file.Files
+import javax.imageio.ImageIO
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -92,6 +97,49 @@ class FigmaSvgClipOverflowRenderTest {
       "canvas must clamp to the card, not grow to the overflowing child (got width=$width):\n$svg",
       width <= 140,
     )
+  }
+
+  @Test
+  fun `a raster child overflowing the frame is placed at the size it was written`() {
+    // The second half of Jetsnack Search/Categories: the overflowing child is an `Image`, so it
+    // exports as an `<image>` cropped out of the frame rather than as a vector rect. The crop used
+    // to be clamped to the frame while the `<image>` kept the node's full box, and the browser
+    // stretched the short bitmap across it — the dessert photo slid right and left a white wedge
+    // inside the card (issue #2852). Declared size and written PNG must agree.
+    val svg =
+      exportSvg("clip-overflow-raster") {
+        val bitmap =
+          Bitmap.createBitmap(80, 80, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(0xFF3366CC.toInt())
+          }
+        // The card fills the 160dp frame, so the offset image runs off the *frame* as well as the
+        // card — which is what makes the crop clamp.
+        Box(Modifier.size(160.dp).clip(RoundedCornerShape(20.dp)).background(Color(0xFFEEEEEE))) {
+          Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = null,
+            modifier = Modifier.offset(x = 120.dp).size(80.dp),
+          )
+        }
+      }
+
+    val image =
+      Regex("""<image [^>]*href="figma-raster/[^"]+"[^>]*/>""").find(svg)?.value
+        ?: error("expected an <image> for the overflowing raster child:\n$svg")
+    val href = Regex("""href="(figma-raster/[^"]+)"""").find(image)!!.groupValues[1]
+    val declaredX = Regex("""\bx="(\d+)"""").find(image)!!.groupValues[1].toInt()
+    val declaredWidth = Regex("""\bwidth="(\d+)"""").find(image)!!.groupValues[1].toInt()
+    val declaredHeight = Regex("""\bheight="(\d+)"""").find(image)!!.groupValues[1].toInt()
+
+    // The image runs to x=200 on a 160px frame, so this really is the clamped case, not a no-op.
+    assertTrue(
+      "the raster must overflow the frame (x=$declaredX width=$declaredWidth):\n$svg",
+      declaredX + declaredWidth > 160,
+    )
+
+    val raster = ImageIO.read(File(rootDir, "clip-overflow-raster/$href"))
+    assertEquals("declared <image> width must match the written PNG", declaredWidth, raster.width)
+    assertEquals("declared <image> height must match the written PNG", declaredHeight, raster.height)
   }
 
   private fun exportSvg(previewId: String, content: @Composable () -> Unit): String {

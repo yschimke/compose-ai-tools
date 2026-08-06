@@ -167,6 +167,14 @@ data class PreviewInfo(
   val captures: List<Capture> = listOf(Capture()),
   val dataProducts: List<PreviewDataProduct> = emptyList(),
   val catalog: CatalogEntry? = null,
+  /**
+   * `@FixedTheme` (or a `@ThemeCatalog`-synthesised sheet): this preview's subject **is** a theme,
+   * so a preview host must not re-render it under a `themeProvider` override. Mirrors
+   * `PreviewInfo.fixedTheme` in gradle-plugin/PreviewData.kt so this wire-format API exposes what
+   * discovery writes to `previews.json` — otherwise `ignoreUnknownKeys` would silently drop it for
+   * `compose-preview show --json`, contrib scripting, and MCP readers. False for ordinary previews.
+   */
+  val fixedTheme: Boolean = false,
 )
 
 @Serializable

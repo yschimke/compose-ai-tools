@@ -3,6 +3,8 @@ package ee.schimke.composeai.rcplayer.runtime
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperation
+import ee.schimke.composeai.rcplayer.trace.RcTraceCategory
+import ee.schimke.composeai.rcplayer.trace.rcTrace
 
 public sealed interface RcLinkedNode {
   public data class Operation(val operation: RcOperation) : RcLinkedNode
@@ -19,7 +21,10 @@ public class RcLinkException(message: String) : IllegalArgumentException(message
 public object RcDocumentLinker {
   private const val MAX_NESTING_DEPTH = 256
 
-  public fun link(document: RcDocument): RcLinkedDocument {
+  public fun link(document: RcDocument): RcLinkedDocument =
+    rcTrace(RcTraceCategory.DOCUMENT, "rc:link") { linkUnchecked(document) }
+
+  private fun linkUnchecked(document: RcDocument): RcLinkedDocument {
     val root = mutableListOf<RcLinkedNode>()
     val stack = mutableListOf<Frame>()
     var destination = root

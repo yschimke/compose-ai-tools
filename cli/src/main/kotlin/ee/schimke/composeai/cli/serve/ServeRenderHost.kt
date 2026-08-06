@@ -93,6 +93,16 @@ data class ServePreview(
    */
   val supportsGestures: Boolean = false,
   /**
+   * Whether this preview's **subject is a theme** — it carries `@FixedTheme`, or discovery
+   * synthesised it from a `@ThemeCatalog` / `@WearThemeCatalog`. Re-rendering such a card under a
+   * `themeProvider` override destroys the very thing it documents, so the landing keeps its baked
+   * pixels for the theme axis (the same "no themed base" path a card with no daemon twin takes).
+   *
+   * The catalog-wide counterpart is [section] == `"Themes"`, which speaks for a whole tab; this is
+   * the per-preview signal for a specimen that lives outside such a tab.
+   */
+  val fixedTheme: Boolean = false,
+  /**
    * The baked component **state** this preview render represents — `"unchecked"`, `"pressed"`,
    * `"disabled"`, `"unselected"`, … — or `null`/`"default"` for the default render (and for plain
    * bundles / app screens that carry no state). Carried from the catalog's `previews/variants.json`

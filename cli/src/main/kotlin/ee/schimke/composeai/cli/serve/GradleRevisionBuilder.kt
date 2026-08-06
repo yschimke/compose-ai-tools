@@ -57,6 +57,7 @@ class GradleRevisionBuilder(
           uiMode = it.params.uiMode,
           supportsFocus = focus,
           supportsGestures = gestures,
+          fixedTheme = it.fixedTheme,
         )
       } ?: emptyList()
     if (previews.isEmpty()) {

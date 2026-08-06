@@ -15,6 +15,7 @@
  */
 
 @file:Suppress("RestrictedApiAndroidX")
+@file:OptIn(androidx.tracing.DelicateTracingApi::class)
 
 package ee.schimke.composeai.rcembedded.jvm
 
@@ -58,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
+import androidx.tracing.Tracer
 import java.io.ByteArrayInputStream
 import org.jetbrains.skia.EncodedImageFormat
 
@@ -104,28 +106,54 @@ public fun renderRemoteDocumentToPng(
   heightPx: Int,
   density: Float = 2f,
   seeds: Map<String, RcSeed> = emptyMap(),
-): ByteArray {
-  val scene =
-    ImageComposeScene(width = widthPx, height = heightPx, density = Density(density)) {
-      val document = remember(bytes) { parseDocument(bytes) }
-      RcPlayerJvm(document, Modifier.fillMaxSize(), seeds)
+): ByteArray =
+  Tracer.global.trace(category = RC_EMBEDDED_TRACE_DOCUMENT, name = "rcEmbedded:renderToPng") {
+    val scene =
+      ImageComposeScene(width = widthPx, height = heightPx, density = Density(density)) {
+        val document = remember(bytes) { parseDocument(bytes) }
+        RcPlayerJvm(document, Modifier.fillMaxSize(), seeds)
+      }
+    try {
+      // The composition, measure, layout and draw of the whole document all happen inside this
+      // one call — `ImageComposeScene.render()` is the frame.
+      val image =
+        Tracer.global.trace(category = RC_EMBEDDED_TRACE_FRAME, name = "rcEmbedded:renderFrame") {
+          scene.render()
+        }
+      Tracer.global.trace(category = RC_EMBEDDED_TRACE_DOCUMENT, name = "rcEmbedded:encodePng") {
+        val data =
+          image.encodeToData(EncodedImageFormat.PNG)
+            ?: error("skiko could not encode the rendered image to PNG")
+        data.bytes
+      }
+    } finally {
+      scene.close()
     }
-  try {
-    val image = scene.render()
-    val data =
-      image.encodeToData(EncodedImageFormat.PNG)
-        ?: error("skiko could not encode the rendered image to PNG")
-    return data.bytes
-  } finally {
-    scene.close()
   }
-}
+
+/*
+ * Trace categories for the embedded (AndroidX) player lane.
+ *
+ * These are `androidx.tracing` 2.x categories, written through `Tracer.global` — the same tracer
+ * `:rc-player-trace` feeds from the CMP player, reached here directly rather than through that
+ * facade because this module renders AndroidX's own player and should not acquire a dependency on
+ * ours. The *values* are chosen to sit alongside `RcTraceCategory.DOCUMENT` / `.FRAME` so one
+ * capture shows both lanes with the same filtering, which is what makes the two comparable at all.
+ *
+ * As with the CMP player, nothing here installs a tracer: `Tracer.global` is a stub that drops
+ * every span until the embedding process registers a driver.
+ */
+internal const val RC_EMBEDDED_TRACE_DOCUMENT: String = "rc-embedded.document"
+
+internal const val RC_EMBEDDED_TRACE_FRAME: String = "rc-embedded.frame"
 
 /** Parse `.rc` bytes into a [CoreDocument]. Mirrors `RcPlayer(capturedDocument)`'s buffer load. */
 internal fun parseDocument(bytes: ByteArray): CoreDocument =
-  CoreDocument(RemoteClock.SYSTEM).apply {
-    ByteArrayInputStream(bytes).use { stream ->
-      initFromBuffer(RemoteComposeBuffer.fromInputStream(stream))
+  Tracer.global.trace(category = RC_EMBEDDED_TRACE_DOCUMENT, name = "rcEmbedded:parseDocument") {
+    CoreDocument(RemoteClock.SYSTEM).apply {
+      ByteArrayInputStream(bytes).use { stream ->
+        initFromBuffer(RemoteComposeBuffer.fromInputStream(stream))
+      }
     }
   }
 
@@ -197,61 +225,65 @@ private fun initDrawContext(
   fontScale: Float,
   seeds: Map<String, RcSeed>,
 ): JvmRemoteContext =
-  JvmRemoteContext(clock = clock).also { context ->
-    // Back the document's reactive scalar state with Compose snapshot state, so variables
-    // resolve reactively; swap before initializeContext propagates document state onto the
-    // context, and re-gather the collections the loader put in the previous state.
-    if (document.remoteComposeState !is SnapshotRemoteComposeState) {
-      document.setRemoteComposeState(SnapshotRemoteComposeState())
-      document.recollectCollectionsReflection()
-    }
-    // Seed the density built-ins before initializeContext, exactly as the Android player does: a
-    // document reading `ID_DENSITY` / `ID_FONT_SIZE` (e.g. a dp→px expression or default text
-    // sizing)
-    // must resolve at the render density, not the store default, or a density-driven layout would
-    // diff on geometry against the requested (xhdpi) size.
-    context.loadFloat(RemoteContext.ID_FONT_SIZE, 14f * fontScale * density)
-    context.loadFloat(RemoteContext.ID_DENSITY, density)
-    context.density = density
-    document.initializeContext(context)
-
-    // Register each bitmap's metadata (id + declared size) WITHOUT decoding pixels; the decode
-    // is deferred to first draw (resolveImage drives BitmapData.apply -> loadBitmap).
-    val bitmaps = ArrayList<BitmapData>()
-    findBitmaps(document.getOperationsReflection(), bitmaps)
-    bitmaps.forEach { bitmap -> context.putObject(bitmap.mImageId, bitmap) }
-
-    document.setLayoutCallback {}
-    document.updateTimeReflection(context)
-    document.registerVariablesReflection(context, document.getOperationsReflection())
-
-    // Global setup ops (everything up to the root layout component): color/float constants,
-    // named variables, top-level data collections. The layout tree's internal ops are applied
-    // in data order below and re-evaluated reactively at draw.
-    val rootComponent = document.rootLayoutComponent
-    val globalOps =
-      if (rootComponent != null) {
-        ArrayList(document.getOperationsReflection().takeWhile { it !== rootComponent })
-      } else {
-        document.getOperationsReflection()
+  Tracer.global.trace(category = RC_EMBEDDED_TRACE_DOCUMENT, name = "rcEmbedded:initContext") {
+    JvmRemoteContext(clock = clock).also { context ->
+      // Back the document's reactive scalar state with Compose snapshot state, so variables
+      // resolve reactively; swap before initializeContext propagates document state onto the
+      // context, and re-gather the collections the loader put in the previous state.
+      if (document.remoteComposeState !is SnapshotRemoteComposeState) {
+        document.setRemoteComposeState(SnapshotRemoteComposeState())
+        document.recollectCollectionsReflection()
       }
-    document.applyOperationsReflection(context, globalOps)
+      // Seed the density built-ins before initializeContext, exactly as the Android player does: a
+      // document reading `ID_DENSITY` / `ID_FONT_SIZE` (e.g. a dp→px expression or default text
+      // sizing)
+      // must resolve at the render density, not the store default, or a density-driven layout would
+      // diff on geometry against the requested (xhdpi) size.
+      context.loadFloat(RemoteContext.ID_FONT_SIZE, 14f * fontScale * density)
+      context.loadFloat(RemoteContext.ID_DENSITY, density)
+      context.density = density
+      document.initializeContext(context)
 
-    // Then every constant anywhere in the tree, so authored color/float defaults are in the
-    // store before the data pass.
-    val constantOps = ArrayList<Operation>()
-    collectConstants(document.getOperationsReflection(), constantOps)
-    document.applyOperationsReflection(context, constantOps)
+      // Register each bitmap's metadata (id + declared size) WITHOUT decoding pixels; the decode
+      // is deferred to first draw (resolveImage drives BitmapData.apply -> loadBitmap).
+      val bitmaps = ArrayList<BitmapData>()
+      findBitmaps(document.getOperationsReflection(), bitmaps)
+      bitmaps.forEach { bitmap -> context.putObject(bitmap.mImageId, bitmap) }
 
-    // Host knob edits (the serve `rc.<name>=…` seeds), applied on top of the authored defaults just
-    // loaded — exactly where Android `RcPlayer` applies its `namedColorOverrides` (RcPlayer.kt), so
-    // a
-    // seeded value wins over the constant and the draw resolves it.
-    applySeeds(context, seeds)
+      document.setLayoutCallback {}
+      document.updateTimeReflection(context)
+      document.registerVariablesReflection(context, document.getOperationsReflection())
 
-    val dataOps = ArrayList<Operation>()
-    document.rootLayoutComponent?.getData(dataOps, true)
-    document.applyOperationsReflection(context, dataOps)
+      // Global setup ops (everything up to the root layout component): color/float constants,
+      // named variables, top-level data collections. The layout tree's internal ops are applied
+      // in data order below and re-evaluated reactively at draw.
+      val rootComponent = document.rootLayoutComponent
+      val globalOps =
+        if (rootComponent != null) {
+          ArrayList(document.getOperationsReflection().takeWhile { it !== rootComponent })
+        } else {
+          document.getOperationsReflection()
+        }
+      document.applyOperationsReflection(context, globalOps)
+
+      // Then every constant anywhere in the tree, so authored color/float defaults are in the
+      // store before the data pass.
+      val constantOps = ArrayList<Operation>()
+      collectConstants(document.getOperationsReflection(), constantOps)
+      document.applyOperationsReflection(context, constantOps)
+
+      // Host knob edits (the serve `rc.<name>=…` seeds), applied on top of the authored defaults
+      // just
+      // loaded — exactly where Android `RcPlayer` applies its `namedColorOverrides` (RcPlayer.kt),
+      // so
+      // a
+      // seeded value wins over the constant and the draw resolves it.
+      applySeeds(context, seeds)
+
+      val dataOps = ArrayList<Operation>()
+      document.rootLayoutComponent?.getData(dataOps, true)
+      document.applyOperationsReflection(context, dataOps)
+    }
   }
 
 /**

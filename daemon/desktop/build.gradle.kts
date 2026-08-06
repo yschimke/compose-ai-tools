@@ -54,6 +54,8 @@ dependencies {
   // PreviewBackground — the shared showBackground/backgroundColor/uiMode resolution.
   implementation(project(":data-render-core"))
   implementation(project(":data-render-connector"))
+  // `CompositionTracing` — composable-level spans folded into the render trace.
+  implementation(project(":data-render-compose"))
   implementation(project(":data-history-connector"))
   implementation(project(":data-theme-connector"))
   implementation(project(":data-wallpaper-connector"))

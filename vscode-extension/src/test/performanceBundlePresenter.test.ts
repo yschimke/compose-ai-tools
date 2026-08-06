@@ -105,6 +105,161 @@ describe("computePerformanceBundleData — render/trace", () => {
         assert.strictEqual(data.renderTrace, null);
     });
 
+    it("projects v2 nested phases, µs precision and repeat aggregates", () => {
+        const data = computePerformanceBundleData(
+            null,
+            {
+                totalMs: 1,
+                totalUs: 1800,
+                backend: "desktop",
+                source: "spans",
+                phases: [
+                    {
+                        name: "render:once",
+                        startMs: 0,
+                        durationMs: 1,
+                        startUs: 0,
+                        durationUs: 1800,
+                        depth: 0,
+                        category: "compose-preview",
+                    },
+                    {
+                        name: "compose:frame",
+                        startMs: 0,
+                        durationMs: 0,
+                        startUs: 200,
+                        durationUs: 400,
+                        depth: 1,
+                        category: "compose-preview",
+                    },
+                    {
+                        name: "compose:frame",
+                        startMs: 0,
+                        durationMs: 0,
+                        startUs: 700,
+                        durationUs: 500,
+                        depth: 1,
+                        category: "compose-preview",
+                    },
+                ],
+                sections: [
+                    {
+                        name: "compose:frame",
+                        category: "compose-preview",
+                        count: 2,
+                        totalUs: 900,
+                        meanUs: 450,
+                        maxUs: 500,
+                    },
+                    {
+                        name: "render:once",
+                        category: "compose-preview",
+                        count: 1,
+                        totalUs: 1800,
+                        meanUs: 1800,
+                        maxUs: 1800,
+                    },
+                ],
+                metrics: { tookMs: 1 },
+            },
+            null,
+        );
+        const rt = data.renderTrace!;
+        assert.strictEqual(rt.source, "spans");
+        assert.strictEqual(rt.backend, "desktop");
+        assert.strictEqual(rt.totalUs, 1800);
+        assert.deepStrictEqual(
+            rt.phases.map((p) => p.depth),
+            [0, 1, 1],
+        );
+        // Sub-millisecond phases must keep their resolution: scaling on the
+        // millisecond fields would make both frames 0% of a 1ms render.
+        assert.strictEqual(rt.phases[0].widthPct, 100);
+        assert.ok(rt.phases[1].widthPct > 20 && rt.phases[1].widthPct < 24);
+        // Only names that actually repeat are worth a summary row.
+        assert.deepStrictEqual(
+            rt.repeats.map((r) => r.name),
+            ["compose:frame"],
+        );
+        assert.strictEqual(rt.repeats[0].count, 2);
+    });
+
+    it("keeps single-hit aggregates so elided phases stay inspectable", () => {
+        // Composition tracing makes most spans unique call sites. The timeline caps at 200 rows, so
+        // if the summary also dropped count==1 entries, a slow composable past that cap would have
+        // no row anywhere — which is what the "see the totals below" note points at.
+        const phases = Array.from({ length: 250 }, (_, i) => ({
+            name: "Composable" + i + " (File.kt:" + i + ")",
+            startMs: 0,
+            durationMs: 0,
+            startUs: i * 10,
+            durationUs: 10,
+            depth: 1,
+            category: "compose.composition",
+        }));
+        const sections = phases.map((p) => ({
+            name: p.name,
+            category: p.category,
+            count: 1,
+            totalUs: 10,
+            meanUs: 10,
+            maxUs: 10,
+        }));
+        const data = computePerformanceBundleData(
+            null,
+            {
+                totalMs: 3,
+                totalUs: 2500,
+                source: "spans",
+                backend: "desktop",
+                phases,
+                sections,
+                metrics: {},
+            },
+            null,
+        );
+        const rt = data.renderTrace!;
+        // `repeats` stays repeats-only — that is what a complete timeline wants.
+        assert.strictEqual(rt.repeats.length, 0);
+        // …but every aggregate survives, so the renderer has something to show for the elided tail.
+        assert.strictEqual(rt.allSections.length, 250);
+        assert.strictEqual(rt.allSections[0].count, 1);
+    });
+
+    it("reports a metrics-sourced payload as the fallback it is", () => {
+        const data = computePerformanceBundleData(
+            null,
+            {
+                totalMs: 40,
+                source: "metrics",
+                phases: [{ name: "render", startMs: 0, durationMs: 40 }],
+                metrics: { tookMs: 40 },
+            },
+            null,
+        );
+        assert.strictEqual(data.renderTrace!.source, "metrics");
+        assert.strictEqual(data.renderTrace!.repeats.length, 0);
+    });
+
+    it("treats a v1 payload with no v2 fields as metrics-sourced with sane defaults", () => {
+        const data = computePerformanceBundleData(
+            null,
+            {
+                totalMs: 10,
+                phases: [{ name: "render", startMs: 0, durationMs: 10 }],
+                metrics: {},
+            },
+            null,
+        );
+        const rt = data.renderTrace!;
+        assert.strictEqual(rt.source, "metrics");
+        assert.strictEqual(rt.backend, null);
+        assert.strictEqual(rt.phases[0].depth, 0);
+        // Derived from the millisecond field, so the bar and the label agree.
+        assert.strictEqual(rt.phases[0].durationUs, 10000);
+        assert.strictEqual(rt.totalUs, 10000);
+    });
+
     it("derives per-phase widthPct from totalMs as the chart scale", () => {
         const data = computePerformanceBundleData(
             null,

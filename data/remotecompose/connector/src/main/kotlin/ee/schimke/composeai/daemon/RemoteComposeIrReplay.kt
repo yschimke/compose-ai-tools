@@ -59,7 +59,10 @@ class RemoteComposeIrReplay {
         document = remoteDocument.document,
         documentWidth = displayMetrics.widthPixels,
         documentHeight = displayMetrics.heightPixels,
-        init = { player -> applyConnectorOverrides(player.stateUpdater, seededOverrides) },
+        init = { player ->
+          applyConnectorOverrides(player.stateUpdater, seededOverrides)
+          installGoogleFontTypefaceResolver(player)
+        },
       )
     }
   }

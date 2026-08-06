@@ -304,3 +304,107 @@ test("Wasm iframe re-renders on knob override", async ({ page }) => {
     )
     .toBeTruthy();
 });
+
+// ——— Address-bar state ————————————————————————————————————————————————————————————————————
+//
+// What a visitor picks on a catalog page — the section tab, the theme, the filter — is reflected
+// into the URL, so the page on screen is the page its URL describes: bookmarkable, shareable, and
+// reachable with Back. These drive the real server (not a fixture) because the claim is a
+// *navigation* one: the URL has to change, the page must NOT reload, and Back has to restore the
+// previous selection in place.
+test("catalog selections land in the URL and Back restores them without reloading", async ({
+  page,
+}) => {
+  await page.goto(`/${SYSTEM}/`, { waitUntil: "domcontentloaded" });
+  // A reload would re-run this, so it doubles as the no-reload probe below.
+  await page.evaluate(() => {
+    window.__cpNavigations = (window.__cpNavigations ?? 0) + 1;
+  });
+
+  const themeChips = page.locator(".cp-theme-btn");
+  test.skip(
+    (await themeChips.count()) < 2,
+    "catalog offers no theme control to pick from",
+  );
+  const chip = themeChips.nth(1);
+  const chosen = await chip.getAttribute("data-theme-choice");
+  await chip.click();
+  await expect
+    .poll(() => page.evaluate(() => new URLSearchParams(location.search).get("theme")))
+    .toBe(chosen);
+
+  // A tab, when the catalog authored sections — the "select Components, then a theme, and the URL
+  // takes you back there" flow.
+  const tabs = page.locator(".cp-tab");
+  if (await tabs.count()) {
+    const tab = tabs.nth(1);
+    const slug = await tab.getAttribute("data-tab");
+    await tab.click();
+    await expect
+      .poll(() => page.evaluate(() => new URLSearchParams(location.search).get("tab")))
+      .toBe(slug);
+    await expect(tab).toHaveAttribute("aria-selected", "true");
+  }
+
+  // Filtering replaces rather than pushes, so it must NOT cost a history entry: one Back from
+  // here returns to the theme pick, not to a half-typed query.
+  await page.fill("#cp-search", "a");
+  await expect
+    .poll(() => page.evaluate(() => new URLSearchParams(location.search).get("q")))
+    .toBe("a");
+
+  await page.goBack();
+  await expect
+    .poll(() => page.evaluate(() => new URLSearchParams(location.search).get("q")))
+    .toBeNull();
+  await expect(page.locator("#cp-search")).toHaveValue("");
+  // Still the same document — the whole point is that Back re-points the grid rather than
+  // re-fetching the catalog page.
+  expect(await page.evaluate(() => window.__cpNavigations)).toBe(1);
+});
+
+test("a bookmarked catalog URL opens on the theme and tab it names", async ({
+  page,
+}) => {
+  await page.goto(`/${SYSTEM}/`, { waitUntil: "domcontentloaded" });
+  const chips = page.locator(".cp-theme-btn");
+  test.skip((await chips.count()) < 2, "catalog offers no theme control to pick from");
+  const chosen = await chips.nth(1).getAttribute("data-theme-choice");
+  const tabs = page.locator(".cp-tab");
+  const slug = (await tabs.count()) ? await tabs.nth(1).getAttribute("data-tab") : null;
+
+  const query = new URLSearchParams({ theme: chosen });
+  if (slug) query.set("tab", slug);
+  await page.goto(`/${SYSTEM}/?${query}`, { waitUntil: "domcontentloaded" });
+
+  await expect(
+    page.locator(`.cp-theme-btn[data-theme-choice="${chosen}"]`),
+    "the bookmarked theme chip is the pressed one",
+  ).toHaveAttribute("aria-pressed", "true");
+  if (slug) {
+    await expect(page.locator(`.cp-tab[data-tab="${slug}"]`)).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  }
+});
+
+test("viewer overrides ride the page URL and survive Back", async ({ page }) => {
+  requirePreview();
+  await page.goto(`/${SYSTEM}/p/${previewId}`, { waitUntil: "domcontentloaded" });
+  await openOverridesGroup(page);
+
+  const knob = page.locator('.cp-knob[data-knob-key="label"]');
+  await knob.fill(OVERRIDE);
+  await knob.dispatchEvent("input");
+  await expect
+    .poll(() =>
+      page.evaluate(() => new URLSearchParams(location.search).get("knob.label")),
+    )
+    .toBe(OVERRIDE);
+
+  // Reloading that URL re-opens on the override — a bookmark, not just a live control state.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await openOverridesGroup(page);
+  await expect(page.locator('.cp-knob[data-knob-key="label"]')).toHaveValue(OVERRIDE);
+});

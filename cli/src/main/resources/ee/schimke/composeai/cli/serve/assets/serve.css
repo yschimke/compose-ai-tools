@@ -25,13 +25,13 @@
   --cp-on-accent-soft: #5a5a9a;
 }
 * { box-sizing: border-box; }
-body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+body { margin: 0; padding: 28px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   color: var(--cp-fg); background: var(--cp-bg); }
 a { color: var(--cp-accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .cp-main, .cp-site-header, .cp-site-footer { width: 100%; max-width: 1440px;
   margin-left: auto; margin-right: auto; }
-.cp-site-header { min-height: 44px; margin-bottom: 24px; padding: 0 0 12px; border-bottom: 1px solid var(--cp-border);
+.cp-site-header { min-height: 44px; margin-bottom: 30px; padding: 0 0 14px; border-bottom: 1px solid var(--cp-border);
   display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .cp-site-brand { display: inline-flex; align-items: center; gap: 8px; color: var(--cp-fg);
   font-size: 0.92rem; font-weight: 700; }
@@ -41,23 +41,39 @@ a:hover { text-decoration: underline; }
 .cp-site-nav { display: flex; align-items: center; gap: 18px; font-size: 0.8rem; }
 .cp-site-nav a { color: var(--cp-fg-muted); }
 .cp-site-nav .cp-gh-auth { color: var(--cp-fg-soft); }
-.cp-site-footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--cp-border);
+.cp-site-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--cp-border);
   color: var(--cp-fg-muted); font-size: 0.8rem; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cp-site-footer a { display: inline-flex; align-items: center; gap: 4px; }
 .cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
 .cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: var(--cp-fg-muted); }
 .cp-breadcrumb { margin: 0 0 8px; color: var(--cp-fg-faint); font-size: 0.78rem; }
-.cp-section-title { margin: 0 0 12px; display: flex; align-items: baseline; gap: 10px; }
-.cp-section-title .cp-head { margin: 0; }
+/* Front-door section rhythm. The page is a run of (title, grid) pairs with no wrapper element, so
+   the gap BETWEEN sections is expressed on the title that follows a grid — one section reads as one
+   band instead of the whole page reading as an undifferentiated column of cards. */
+.cp-section-title { margin: 0 0 16px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; }
+.cp-section-title .cp-head { margin: 0; font-size: 1.32rem; letter-spacing: -0.01em; }
+.cp-grid + .cp-section-title { margin-top: 44px; }
 .cp-section-count, .cp-catalog-id { color: var(--cp-fg-faint); font-size: 0.75rem; }
-.cp-catalog-id { margin: 0 0 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+/* The count reads as a quiet tally beside its heading, not as a second title. */
+.cp-section-count { padding: 2px 9px; border-radius: 999px; background: var(--cp-surface-2);
+  color: var(--cp-fg-muted); font-weight: 500; }
+.cp-catalog-id { margin: 0 0 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cp-catalog-head { font-size: 1.35rem; }
-/* Per-preview link to the source file on GitHub, under the viewer title. */
-.cp-source { margin: 0 0 8px; font-size: 0.8rem; }
-.cp-source-link { display: inline-flex; align-items: center; gap: 5px; color: var(--cp-fg-muted);
-  text-decoration: none; }
-.cp-source-link:hover { text-decoration: underline; }
-.cp-about { margin: 0 0 24px; padding: 14px 16px; border: 1px solid var(--cp-border); border-radius: 10px;
+/* Per-preview GitHub links under the viewer title: source file, and "report an issue". One flex
+   row so they read as a single line whether one or both are present. */
+.cp-preview-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px;
+  margin: 0 0 8px; }
+.cp-source, .cp-report, .cp-figma { margin: 0; font-size: 0.8rem; }
+/* The report affordance is a GET form (its action is the GitHub issue form, its title/body are
+   hidden inputs) so no page state ever reaches a navigation sink — but it reads as a link, so the
+   submit button is stripped of its button chrome and styled as one. */
+.cp-source-link, .cp-report-link, .cp-figma-link { display: inline-flex; align-items: center; gap: 5px;
+  color: var(--cp-fg-muted); text-decoration: none; }
+.cp-report-link { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+.cp-source-link:hover, .cp-report-link:hover, .cp-figma-link:hover { text-decoration: underline; }
+/* The Figma mark is 2:3, not square like the GitHub one — size it by height so it isn't squashed. */
+.cp-figma-mark { width: auto; height: 14px; }
+.cp-about { margin: 0 0 34px; padding: 16px 18px; border: 1px solid var(--cp-border); border-radius: 12px;
   background: var(--cp-surface); max-width: 720px; }
 .cp-about-title { font-size: 0.88rem; font-weight: 600; }
 .cp-about-body { margin: 0 0 8px; font-size: 0.84rem; line-height: 1.45; color: var(--cp-fg-soft); }
@@ -81,10 +97,13 @@ a:hover { text-decoration: underline; }
 .cp-back { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 14px;
   font-size: 0.82rem; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--cp-border-strong);
   background: var(--cp-surface); color: var(--cp-fg-soft); }
-.cp-back:hover { background: var(--cp-surface-2); text-decoration: none; }
+.cp-back { transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease; }
+.cp-back:hover { background: var(--cp-surface-2); border-color: var(--cp-accent-ring);
+  color: var(--cp-accent-strong); text-decoration: none; transform: translateX(-2px); }
+@media (prefers-reduced-motion: reduce) { .cp-back:hover { transform: none; } }
 /* Provenance strip: how/when/from-what this catalog was generated (branch, date, versions,
    a link to re-run the generating workflow). Shown near the catalog header. */
-.cp-prov { margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--cp-border); border-radius: 10px;
+.cp-prov { margin: 0 0 18px; padding: 12px 16px; border: 1px solid var(--cp-border); border-radius: 10px;
   background: var(--cp-surface); font-size: 0.78rem; color: var(--cp-fg-muted); max-width: 720px; }
 .cp-prov-title { color: var(--cp-fg-soft); font-weight: 600; }
 .cp-prov-body { display: flex; flex-wrap: wrap; gap: 8px 16px; }
@@ -104,7 +123,7 @@ a:hover { text-decoration: underline; }
 .cp-systems-cur { background: var(--cp-accent-soft); border-color: var(--cp-accent-ring); color: var(--cp-accent-strong); font-weight: 600; }
 .cp-toolbar { margin: 0; }
 .cp-searchbar { margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1 1 440px; }
-.cp-catalog-tools { position: sticky; top: 0; z-index: 18; margin: 0 0 16px; padding: 8px 0;
+.cp-catalog-tools { position: sticky; top: 0; z-index: 18; margin: 0 0 20px; padding: 10px 0;
   display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; background: var(--cp-bg); }
 .cp-search { flex: 1 1 260px; max-width: 420px; padding: 7px 12px; font: inherit; font-size: 0.85rem;
   border: 1px solid var(--cp-border-strong); border-radius: 999px; background: var(--cp-surface); color: inherit; }
@@ -116,7 +135,7 @@ a:hover { text-decoration: underline; }
    with no JS every section shows under its own <h2> and the tabs act as in-page anchor links;
    the filter script turns them into real tabs (one panel shown at a time) and adds `cp-js` to
    <html>, which hides the then-redundant per-section <h2> (the tab already names the section). */
-.cp-tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 0 0 18px;
+.cp-tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 0 0 22px;
   border-bottom: 1px solid var(--cp-border); }
 .cp-tab { display: inline-flex; align-items: center; gap: 7px; padding: 8px 15px;
   font-size: 0.85rem; color: var(--cp-fg-muted); border: 1px solid transparent; border-bottom: none;
@@ -128,13 +147,13 @@ a:hover { text-decoration: underline; }
   color: var(--cp-on-accent-soft); }
 .cp-section { margin: 0; }
 .cp-section[hidden] { display: none; }
-.cp-section-head { margin: 0 0 14px; font-size: 1rem; font-weight: 600; }
+.cp-section-head { margin: 0 0 16px; font-size: 1rem; font-weight: 600; }
 html.cp-js .cp-section-head { display: none; }
-.cp-subgroup { margin: 0 0 20px; }
+.cp-subgroup { margin: 0 0 30px; }
 .cp-subgroup[hidden] { display: none; }
-.cp-group-head { margin: 18px 0 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
+.cp-group-head { margin: 26px 0 12px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
   text-transform: uppercase; color: var(--cp-fg-faint); }
-.cp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.cp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; }
 /* The Theme picker carries one chip per configured theme (the baked light/dark pair plus any
    app-declared @ThemeCatalog theme), so it wraps rather than overflowing a narrow viewport. */
 .cp-theme { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--cp-border-strong); border-radius: 999px;
@@ -176,18 +195,62 @@ html.cp-js .cp-section-head { display: none; }
 .cp-table code { font-size: 0.76rem; padding: 0 4px; border-radius: 4px; background: var(--cp-surface-2); }
 .cp-ok { color: #1e7a34; font-weight: 600; }
 .cp-muted { color: var(--cp-fg-faint); font-size: 0.76rem; }
-.cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-.cp-syslist { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
-.cp-sys { display: grid; grid-template-rows: 220px auto; }
+.cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; }
+.cp-syslist { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 22px; }
+/* 220px hero + a meta row that takes the rest, so the meta block can bottom-align its count
+   line (`margin-top: auto`) and a row of cards agrees on where that line sits. Selected on
+   BOTH classes deliberately: `.cp-card { display: block }` is declared later in this sheet and
+   at equal specificity it won, which silently made the row template inert. */
+.cp-card.cp-sys { display: grid; grid-template-rows: 220px 1fr; }
 .cp-syslist .cp-imgwrap { min-height: 0; height: 220px; overflow: hidden; }
 .cp-syslist .cp-imgwrap > img { width: 100%; height: 100%; max-height: none; object-fit: contain; }
-.cp-sys-title { font-size: 0.98rem; font-weight: 600; }
-.cp-sys-desc { margin-top: 4px; font-size: 0.76rem; color: var(--cp-fg-muted); line-height: 1.4; }
-.cp-sys-foot { margin-top: 8px; font-size: 0.74rem; color: var(--cp-fg-muted); }
+/* A front-door card is a poster, not a table row: the meta block gets its own padding, the title
+   and the library coordinate sit on separate rhythms, and the count line is divided off so a
+   three-line coordinate can't run straight into it. */
+/* The meta block fills the card's second row so the count line can be pushed to the bottom: a
+   one-line coordinate and a three-line one then still land their footers on the same baseline
+   across a row, which is what makes the grid read as a grid rather than as ragged tiles. */
+.cp-sys .cp-meta { display: flex; flex-direction: column; padding: 14px 16px 15px; }
+.cp-sys-title { font-size: 1.02rem; font-weight: 650; line-height: 1.3; }
+.cp-sys .cp-id { margin-top: 5px; font-size: 0.72rem; }
+.cp-sys-desc { margin-top: 7px; font-size: 0.76rem; color: var(--cp-fg-muted); line-height: 1.5; }
+/* `auto` collapses to zero once the metadata fills the card, so the padding — not the margin — is
+   what guarantees the count never crowds the line above it. */
+.cp-sys-foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--cp-border);
+  font-size: 0.74rem; color: var(--cp-fg-muted); }
 .cp-sys-noimg { font-size: 0.78rem; color: var(--cp-fg-faint); }
-.cp-card { border: 1px solid var(--cp-border); border-radius: 10px; overflow: hidden; background: var(--cp-surface);
-  display: block; color: inherit; }
+.cp-card { position: relative; isolation: isolate; border: 1px solid var(--cp-border); border-radius: 12px;
+  overflow: hidden; background: var(--cp-surface); display: block; color: inherit;
+  transition: transform 0.2s cubic-bezier(0.2, 0.7, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease; }
 .cp-card[hidden] { display: none; }
+/* Card hover — the whole tile is the affordance, so it must NOT read as a hyperlink. The sheet's
+   global `a:hover { text-decoration: underline }` otherwise underlined every line of a card's meta
+   at once (title, id, coordinate, count), which looked like four separate links rather than one
+   target; the card answers the pointer as an object instead: it lifts off the page, casts a
+   shadow, takes an accent rim, and wipes an accent bar along its top edge while its artwork eases
+   in a little. Focus-visible gets the identical treatment so keyboard navigation is not a
+   second-class path. Everything here is transform/opacity-only, so it costs no layout. */
+.cp-card:hover, .cp-card:focus-visible {
+  transform: translateY(-3px); border-color: var(--cp-accent-ring); text-decoration: none;
+  box-shadow: 0 14px 28px -18px rgba(22, 22, 48, 0.45), 0 3px 8px -5px rgba(22, 22, 48, 0.3); }
+.cp-card:focus-visible { outline: 2px solid var(--cp-accent-ring); outline-offset: 2px; }
+.cp-card::after { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; z-index: 3;
+  background: linear-gradient(90deg, var(--cp-accent), var(--cp-accent-ring));
+  transform: scaleX(0); transform-origin: left center;
+  transition: transform 0.28s cubic-bezier(0.2, 0.7, 0.3, 1); pointer-events: none; }
+.cp-card:hover::after, .cp-card:focus-visible::after { transform: scaleX(1); }
+.cp-card:hover .cp-sys-title, .cp-card:focus-visible .cp-sys-title,
+.cp-card:hover .cp-label, .cp-card:focus-visible .cp-label { color: var(--cp-accent-strong); }
+.cp-card .cp-imgwrap img { transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.3, 1); }
+.cp-card:hover .cp-imgwrap img, .cp-card:focus-visible .cp-imgwrap img { transform: scale(1.035); }
+/* A card mid-render is already animating (fade + spinner); leave its artwork alone so the two
+   effects don't fight, and never zoom for a visitor who asked for less motion. */
+.cp-card.cp-reloading:hover .cp-imgwrap img { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .cp-card, .cp-card::after, .cp-card .cp-imgwrap img { transition-duration: 0.01ms; }
+  .cp-card:hover, .cp-card:focus-visible { transform: none; }
+  .cp-card:hover .cp-imgwrap img, .cp-card:focus-visible .cp-imgwrap img { transform: none; }
+}
 .cp-imgwrap { position: relative; display: flex; align-items: center; justify-content: center; min-height: 88px;
   background: var(--cp-surface); padding: 12px; }
 /* `width`/`height` stay auto so the max-* pair alone decides the used size and the image can
@@ -233,7 +296,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-bg-btn { border: 0; background: var(--cp-surface); color: var(--cp-fg-muted); font: inherit; font-size: 0.78rem;
   padding: 3px 14px; cursor: pointer; }
 .cp-bg-btn[aria-pressed="true"] { background: var(--cp-accent-soft); color: var(--cp-accent-strong); font-weight: 600; }
-.cp-meta { padding: 8px 10px; font-size: 0.82rem; }
+.cp-meta { padding: 10px 12px 11px; font-size: 0.82rem; }
 .cp-label { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-id { color: var(--cp-fg-muted); font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-engage { margin-top: 3px; color: var(--cp-fg-faint); font-size: 0.7rem; }
@@ -585,6 +648,11 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-url.cp-url-copied { box-shadow: 0 0 0 2px rgba(143, 143, 240, 0.3); }
   .cp-copyimg, .cp-dl { border-color: var(--cp-border); }
   .cp-card, .cp-about { background: var(--cp-surface); }
+  /* A lift needs a heavier, tighter shadow on a dark surface to read at all. */
+  .cp-card:hover, .cp-card:focus-visible { border-color: var(--cp-accent-ring);
+    box-shadow: 0 16px 30px -18px rgba(0, 0, 0, 0.85), 0 3px 10px -5px rgba(0, 0, 0, 0.6); }
+  .cp-section-count { background: var(--cp-surface-2); color: var(--cp-fg-muted); }
+  .cp-sys-foot { border-top-color: var(--cp-border); }
   .cp-systems a, .cp-systems-cur { border-color: var(--cp-border); }
   .cp-about-ver { border-color: var(--cp-border); }
   .cp-back { background: var(--cp-surface); border-color: var(--cp-border); color: var(--cp-fg-soft); }
@@ -682,7 +750,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     background: rgba(0, 0, 0, 0.38); }
   .cp-grid, .cp-cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
   .cp-syslist, .cp-syslist.cp-grid { grid-template-columns: 1fr; }
-  .cp-sys { grid-template-rows: 220px auto; }
+  .cp-card.cp-sys { grid-template-rows: 220px 1fr; }
   .cp-imgwrap img { max-height: 200px; }
   .cp-syslist .cp-imgwrap > img { max-height: none; }
   /* Copyable direct-link rows: the URL field takes its own line above the Copy/Download

@@ -17,6 +17,34 @@ data class ThemeOptimizationSnapshot(
   val fullyOptimized: Boolean,
   val startedAtEpochMillis: Long? = null,
   val completedAtEpochMillis: Long? = null,
+  /**
+   * Entries cached per minute over the pass's lifetime, and the projected seconds to finish at that
+   * rate. Null before the pass has done enough to divide by.
+   *
+   * The point of publishing a RATE rather than only `cached`/`remaining`: a cumulative count read
+   * twice looks the same whether the pass is keeping up or crawling, and reading progress off a
+   * lifetime average (which includes the server's startup, when the pass is parked) understates the
+   * current rate. Both mistakes were made against this catalog before this existed.
+   */
+  val entriesPerMinute: Double? = null,
+  val etaSeconds: Long? = null,
+  /**
+   * Where the pass's wall-clock actually goes: inside renders vs. waiting for its turn at the idle
+   * gate. This is the split that says whether throughput is render-bound (nothing to fix without a
+   * faster renderer) or gate-bound (a scheduling problem), which `cached` alone cannot distinguish.
+   */
+  val renderMillis: Long = 0,
+  val waitingMillis: Long = 0,
+  /** How often the idle gate granted the pass its turn, and how often traffic took it back. */
+  val turnsGranted: Int = 0,
+  val turnsYielded: Int = 0,
+  /**
+   * Renders actually issued concurrently in the last batch, and the widest so far. Makes "five
+   * wide" an observed fact rather than an assumption — a batch that silently collapses to 1 (a
+   * single-daemon lane, or a seat budget that affords no replicas) is otherwise invisible.
+   */
+  val lastBatchWidth: Int = 0,
+  val maxBatchWidth: Int = 0,
 )
 
 /** Memory occupancy of one catalog generation's rendered-preview cache. */
@@ -54,11 +82,60 @@ class CatalogThemeCache(
   // successful [put], so a key only stays latched while it keeps failing.
   private val failureCounts = ConcurrentHashMap<String, Int>()
   private val failureReasons = ConcurrentHashMap<String, String>()
+  // Consecutive background `Busy` outcomes per key. Separate from [failureCounts] because the two
+  // have very different tolerances — see [BUSY_LATCH]. Cleared by a successful [put] like the rest.
+  private val busyCounts = ConcurrentHashMap<String, Int>()
   private val byteCount = AtomicLong(0)
   private val evictionCount = AtomicLong(0)
   private val state = AtomicReference("waiting")
   private val startedAt = AtomicLong(0)
   private val completedAt = AtomicLong(0)
+  private val renderMillis = AtomicLong(0)
+  private val waitingMillis = AtomicLong(0)
+  private val turnsGranted = java.util.concurrent.atomic.AtomicInteger(0)
+  private val turnsYielded = java.util.concurrent.atomic.AtomicInteger(0)
+  private val lastBatchWidth = java.util.concurrent.atomic.AtomicInteger(0)
+  private val maxBatchWidth = java.util.concurrent.atomic.AtomicInteger(0)
+  // Entries the OPTIMIZER produced. The rate's denominator is optimizer time, so its numerator has
+  // to be optimizer output: foreground renders land in this same cache via `cacheCatalogRender`,
+  // and counting them would report a prefetch rate the prefetcher never achieved.
+  private val optimizerProduced = java.util.concurrent.atomic.AtomicInteger(0)
+
+  /** The idle gate handed the pass its turn. */
+  fun recordTurnGranted() {
+    turnsGranted.incrementAndGet()
+  }
+
+  /** Traffic took the turn back. */
+  fun recordTurnYielded() {
+    turnsYielded.incrementAndGet()
+  }
+
+  /** Wall-clock spent waiting at the idle gate rather than rendering. */
+  fun recordWaiting(millis: Long) {
+    if (millis > 0) waitingMillis.addAndGet(millis)
+  }
+
+  /** One batch completed: how wide it actually ran, and how long its renders took. */
+  fun recordBatch(width: Int, millis: Long) {
+    lastBatchWidth.set(width)
+    maxBatchWidth.accumulateAndGet(width, ::maxOf)
+    if (millis > 0) renderMillis.addAndGet(millis)
+  }
+
+  /** Entries this batch actually produced — the rate's numerator. */
+  fun recordProduced(count: Int) {
+    if (count > 0) optimizerProduced.addAndGet(count)
+  }
+
+  /**
+   * A cold daemon warm the optimizer waited out. Real render work and often the most expensive part
+   * of the pass, so it belongs in [renderMillis] — leaving it out of both buckets shrank the rate's
+   * denominator and made a cold catalog report a rate it was nowhere near.
+   */
+  fun recordWarm(millis: Long) {
+    if (millis > 0) renderMillis.addAndGet(millis)
+  }
 
   fun configureTargets(keys: Collection<String>) {
     targetKeys += keys
@@ -87,6 +164,7 @@ class CatalogThemeCache(
     failedKeys.remove(key)
     failureCounts.remove(key)
     failureReasons.remove(key)
+    busyCounts.remove(key)
     refreshCompletion()
   }
 
@@ -135,6 +213,31 @@ class CatalogThemeCache(
   }
 
   /**
+   * Record one **background** `Busy` outcome for [key] and report whether it has now latched
+   * ([BUSY_LATCH] consecutive).
+   *
+   * `Busy` is "ask again", and for a warming daemon that is exactly right — which is why the
+   * optimizer deliberately left it unmarked. But "ask again" with no ceiling is indistinguishable
+   * from "never", and the optimizer has no other way to notice: it does not re-enter a finished
+   * pass, so a key that answers `Busy` on the one pass it gets is simply abandoned, uncounted.
+   *
+   * Latching supplies the missing terminal state. Once latched the key gets a [reason], so
+   * [failureReason] answers the request lane immediately instead of sending the browser back into a
+   * `retry-after` loop it can never win, `markPassFinished` reports `degraded` rather than a
+   * `paused` that looks like ordinary throttling, and `/status` shows a non-zero `failed` naming
+   * how many previews are stuck. A successful [put] clears the count, so a genuinely contended key
+   * that eventually renders is never penalised.
+   */
+  fun recordBackgroundBusy(key: String): Boolean {
+    val count = busyCounts.merge(key, 1, Int::plus) ?: 1
+    if (count < BUSY_LATCH) return false
+    failedKeys += key
+    failureReasons[key] =
+      "no live lane produced this theme render after $count attempts (daemon busy or absent)"
+    return true
+  }
+
+  /**
    * Why [key] cannot be rendered, once it has latched as failed; null while it may still succeed.
    * Callers use this to answer a request without going near the daemon.
    *
@@ -173,6 +276,20 @@ class CatalogThemeCache(
       fullyOptimized = complete,
       startedAtEpochMillis = startedAt.get().takeIf { it > 0 },
       completedAtEpochMillis = completedAt.get().takeIf { it > 0 },
+      // Rate over the pass's ACTIVE time (render + gate wait), not wall-clock since it started:
+      // wall-clock includes stretches where the pass held no turn at all, which drags the figure
+      // toward zero and hides whether it is keeping up while it runs.
+      entriesPerMinute = ratePerMinute(),
+      etaSeconds =
+        ratePerMinute()
+          ?.takeIf { it > 0 }
+          ?.let { ((total - cachedTargets).coerceAtLeast(0) / it * 60).toLong() },
+      renderMillis = renderMillis.get(),
+      waitingMillis = waitingMillis.get(),
+      turnsGranted = turnsGranted.get(),
+      turnsYielded = turnsYielded.get(),
+      lastBatchWidth = lastBatchWidth.get(),
+      maxBatchWidth = maxBatchWidth.get(),
     )
   }
 
@@ -185,6 +302,13 @@ class CatalogThemeCache(
         evictions = evictionCount.get(),
       )
     }
+
+  private fun ratePerMinute(): Double? {
+    val produced = optimizerProduced.get()
+    val activeMillis = renderMillis.get() + waitingMillis.get()
+    if (produced <= 0 || activeMillis <= 0) return null
+    return produced / (activeMillis / 60_000.0)
+  }
 
   private fun refreshCompletion() {
     if (
@@ -201,5 +325,25 @@ class CatalogThemeCache(
      * Consecutive on-demand render failures before a key is treated as permanently unrenderable.
      */
     const val FAILURE_LATCH = 3
+
+    /**
+     * Consecutive `Busy` outcomes on the BACKGROUND lane before a key is treated as one the
+     * optimizer cannot fill.
+     *
+     * Deliberately far looser than [FAILURE_LATCH]: `Busy` really does mean "ask again" for a
+     * warming daemon, and a key that is merely contended must survive a long run of them. What it
+     * must not have is *no* ceiling. Without one the pass can never converge — `markPassFinished`
+     * only reports `complete` when every target is cached, and a key that answers `Busy` forever is
+     * neither cached nor failed, so the catalog sits at `paused` with `failed: 0` and nothing ever
+     * says which previews are stuck.
+     *
+     * Observed on meshcore-mobile: 84 of 372 targets (21 previews x 4 declared themes) pinned at
+     * `paused 288/372, failed: 0` across two server lifetimes, while all fourteen other catalogs on
+     * the same box reached `complete`. On the request lane those same previews answered `503 render
+     * busy; retry shortly` on 39 of 39 attempts spread over several minutes — a `retry-after` the
+     * server could never honour, which the grid's three retries then burned before showing "Theme
+     * preview unavailable".
+     */
+    const val BUSY_LATCH = 12
   }
 }

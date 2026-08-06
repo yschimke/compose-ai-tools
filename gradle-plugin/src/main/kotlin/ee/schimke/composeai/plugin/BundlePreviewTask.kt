@@ -410,6 +410,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     val classpath = assembleClasspath(jarsList, depDecisions, embed = embedDeps.getOrElse(false))
     val classpathEntries = classpath.entries
     val inlinedJars = classpath.inlinedJars
+    failOnAndroidClasspathInDesktopBundle(backend.get(), depDecisions)
 
     val report =
       MinimizationReport(
@@ -1199,7 +1200,7 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /** The classpath manifest entries, the jars to inline under `libs/`, and the resolution mode. */
-  private data class AssembledClasspath(
+  internal data class AssembledClasspath(
     val entries: List<ClasspathEntry>,
     val inlinedJars: Map<String, File>,
     val resolution: String,
@@ -1217,7 +1218,7 @@ abstract class BundlePreviewTask : DefaultTask() {
    * carried in `libs/`, `mixed` when some Maven deps are embedded and others referenced (it isn't
    * today, but the field stays accurate if that changes), else `coordinates`.
    */
-  private fun assembleClasspath(
+  internal fun assembleClasspath(
     jars: List<File>,
     deps: List<DependencyDecision>,
     embed: Boolean,
@@ -1278,6 +1279,71 @@ abstract class BundlePreviewTask : DefaultTask() {
    * SHA-256 is recorded so a player can verify the bytes after re-resolving the coordinate from any
    * source; [src] = null leaves the entry resolvable-but-unverifiable.
    */
+  /**
+   * Fails a `backend: desktop` pack that carries Android-only artifacts.
+   *
+   * A desktop bundle is replayed on a plain host JVM with no `android.jar`, so an `*-android` AAR
+   * on its classpath means every render dies at class-load with `NoClassDefFoundError:
+   * android/os/Parcelable` — instantly, and only once the bundle is already published and being
+   * served. That is exactly what shipped when [ComposePreviewTasks.registerBundleTask] resolved its
+   * consumer runtime config eagerly and fell through to `androidRuntimeClasspath` on a KMP-Android
+   * module that *does* declare `jvm("desktop")`.
+   *
+   * Checked against resolved Maven coordinates rather than file-path substrings: the
+   * `artifactType=jar` view hands back AGP-transformed `…/transformed/<name>/jars/classes.jar`
+   * paths, in which nothing of the original artifact id survives — which is why the desktop
+   * classpath guard's path matcher could not have caught this.
+   *
+   * Takes [DependencyDecision]s rather than the assembled [ClasspathEntry] list so the check is
+   * mode-independent. Under `--embed-deps` / `-PbundleEmbedDeps=true`, `assembleClasspath` turns
+   * every kept Maven dep into a metadata-free [ClasspathEntry.Embedded] pointing at `libs/…`, so an
+   * entry-based filter would find no coordinates to inspect and wave the same broken bundle through
+   * — just with the AGP-transformed `classes.jar` carried inside it instead of referenced.
+   * `DependencyDecision.coordinate` is populated identically in both modes.
+   */
+  internal fun failOnAndroidClasspathInDesktopBundle(
+    backendId: String,
+    decisions: List<DependencyDecision>,
+  ) {
+    if (backendId != "desktop") return
+    val offenders =
+      decisions
+        .filter { it.kept }
+        .mapNotNull { it.coordinate }
+        .mapNotNull { coord ->
+          // "<group>:<artifact>:<version>[:<type>]" — the `maven:`-stripped shape.
+          val parts = coord.split(':')
+          if (parts.size < 3) return@mapNotNull null
+          val (group, artifact, version) = parts
+          val type = parts.getOrNull(3) ?: "jar"
+          if (type.equals("aar", ignoreCase = true) || artifact.endsWith("-android")) {
+            "$group:$artifact:$version ($type)"
+          } else null
+        }
+        .distinct()
+        .sorted()
+    if (offenders.isEmpty()) return
+    throw GradleException(
+      buildString {
+        appendLine(
+          "composePreviewBundle: refusing to pack a desktop bundle whose classpath carries " +
+            "${offenders.size} Android-only artifact(s). A desktop bundle replays on a host JVM " +
+            "with no android.jar, so every render would fail with " +
+            "NoClassDefFoundError: android/os/Parcelable."
+        )
+        offenders.take(8).forEach { appendLine(" - $it") }
+        if (offenders.size > 8) appendLine(" - (+${offenders.size - 8} more)")
+        appendLine()
+        appendLine(
+          "This means the module's desktop runtime classpath resolved to androidRuntimeClasspath. " +
+            "If it is a com.android.kotlin.multiplatform.library (:shared) module, add a " +
+            "`jvm(\"desktop\")` target to its `kotlin { }` block. See " +
+            "compose-preview/references/cmp-shared.md."
+        )
+      }
+    )
+  }
+
   private fun parseMavenCoord(coord: String, src: File?): ClasspathEntry.Maven {
     val parts = coord.split(':')
     require(parts.size >= 3) { "composePreviewBundle: malformed Maven coordinate: $coord" }

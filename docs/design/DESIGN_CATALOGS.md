@@ -644,6 +644,40 @@ can render it on demand*, and needs a live path to be legal. `capture: "none"` s
 *nothing can render this to a PNG at all*, live path or not. A deferred entry is
 still coverage the sheet can produce; a `"none"` entry is a recorded gap.
 
+## Theme specimens (`section: "Themes"` / `@FixedTheme`)
+
+A card whose **subject is a theme** — a colour-role sheet, a typography scale, a
+`MeshCore · Light · Orbitron / Space Grotesk / JetBrains Mono` swatch — must not
+be re-rendered when a visitor picks a different theme on the browse surface.
+Doing so destroys the very thing it documents: the card still says "Light" and
+still names Orbitron while drawing dark in the default sans, pixels contradicting
+their own label.
+
+`serve` recognises two signals, either of which is enough:
+
+- **`section: "Themes"`** in `catalog.spec.json` — the author's statement of what
+  the tab *is*. It exempts every card in that tab at once, which is the right
+  granularity for a design system whose Themes tab is nothing but specimens.
+  Deliberately keyed on the section rather than a `theme-…` id prefix: the prefix
+  is an authoring convention, the section is a declaration.
+- **`@FixedTheme`** on the `@Preview` function
+  (`ee.schimke.composeai:preview-annotations`) — the per-preview override for a
+  specimen with no such tab to speak for it: an ungrouped bundle, a `Foundation`
+  section that mixes swatches with components, a plain `compose-preview serve` of
+  one module. Discovery matches it by FQN and writes `"fixedTheme": true` into
+  `previews.json`; the design-artifacts export lifts it onto the catalog image, so
+  the browse surface honours it before any daemon is opened.
+
+Sheets that discovery *synthesises* from `@ThemeCatalog` / `@WearThemeCatalog`
+(`themecatalog__<name>`) are theme-fixed by construction — the annotation already
+says the sheet's subject is one named theme, so no consumer-side `@FixedTheme` is
+needed.
+
+Neither signal disables the theme control: the rest of the catalog still
+re-renders, and a specimen simply keeps its baked pixels — the same treatment a
+card with no live daemon twin already gets. A catalog made up *only* of specimens
+offers no theme chips at all, since there would be nothing for them to redraw.
+
 
 1. Author a `@Composable` wrapped in the module's sticker theme, annotated with
    `@CatalogModes` (and extra `@Preview`s for states / breakpoints). Full-screen

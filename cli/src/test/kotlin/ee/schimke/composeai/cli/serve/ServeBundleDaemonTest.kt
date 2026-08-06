@@ -214,6 +214,34 @@ class ServeBundleDaemonTest {
       ),
       "bundle resource APIs must share the parent-loaded LocalResourceReader with the daemon",
     )
+    // Compose Multiplatform is `org.jetbrains.compose.*` by group but ships `androidx.compose.*`
+    // packages, which `mustDelegateToParent` force-delegates. Keyed on the group alone, these fell
+    // into the isolated child, were never consulted, and the sidecar's own Compose answered — a
+    // consumer pinning a different version got NoSuchMethodError mid-render (meshcore-mobile on
+    // material3 1.10.0-alpha05: `AppBarKt.TopAppBar-gNPyAyM`).
+    for (group in
+      listOf(
+        "org.jetbrains.compose.material3",
+        "org.jetbrains.compose.ui",
+        "org.jetbrains.compose.foundation",
+        "org.jetbrains.compose.animation",
+        "org.jetbrains.compose.runtime",
+        "org.jetbrains.compose.material",
+      )) {
+      assertTrue(
+        ServeBundleDaemon.shouldPrecedeDaemonSidecar(coordinate(group, "whatever-desktop")),
+        "$group ships androidx.compose.* packages, so the consumer ABI must win over the sidecar",
+      )
+    }
+    // Skiko must travel WITH Compose. `skiko-awt` carries the `org.jetbrains.skia.*` bindings that
+    // mustDelegateToParent force-delegates as well as `org.jetbrains.skiko.*`; promoting Compose
+    // without it pairs the consumer's newer bindings with the sidecar's older native library —
+    // the UnsatisfiedLinkError on skia.paragraph.TextStyleKt._nSetFontEdging that
+    // DesktopRendererGraphAlignmentFunctionalTest documents (#1844).
+    assertTrue(
+      ServeBundleDaemon.shouldPrecedeDaemonSidecar(coordinate("org.jetbrains.skiko", "skiko-awt")),
+      "Skiko bindings and native must stay version-coherent with the promoted Compose graph",
+    )
     assertTrue(
       !ServeBundleDaemon.shouldPrecedeDaemonSidecar(
         coordinate("org.jetbrains.kotlinx", "kotlinx-serialization-json-jvm")
@@ -242,11 +270,41 @@ class ServeBundleDaemonTest {
         File("/m2/org/jetbrains/kotlinx/kotlinx-io-core-jvm/0.9.1/library.jar")
       )
     )
+    // The whole Compose Multiplatform graph, in both cache layouts — not just components-resources.
+    assertTrue(
+      ServeBundleDaemon.jarPrecedesDaemonSidecar(
+        File("/cache/org.jetbrains.compose.material3/material3-desktop/1.10.0-alpha05/lib.jar")
+      ),
+      "material3-desktop ships androidx.compose.material3, which the child delegates to the parent",
+    )
+    assertTrue(
+      ServeBundleDaemon.jarPrecedesDaemonSidecar(
+        File("/m2/org/jetbrains/compose/ui/ui-desktop/1.11.1/ui-desktop-1.11.1.jar")
+      )
+    )
+    assertTrue(
+      ServeBundleDaemon.jarPrecedesDaemonSidecar(
+        File("/cache/org.jetbrains.skiko/skiko-awt/0.9.4.2/skiko-awt-0.9.4.2.jar")
+      ),
+      "Skiko carries the parent-delegated org.jetbrains.skia bindings, so it moves with Compose",
+    )
+    assertTrue(
+      ServeBundleDaemon.jarPrecedesDaemonSidecar(
+        File("/m2/org/jetbrains/skiko/skiko-awt-runtime-linux-x64/0.9.4.2/native.jar")
+      ),
+      "the native runtime artifact must not be split from its bindings",
+    )
     assertTrue(
       !ServeBundleDaemon.jarPrecedesDaemonSidecar(
         File("/work/catalog-kotlinx-io-demo/cache/com.example/unrelated/library.jar")
       ),
       "a system or work-root name must not promote unrelated jars to the daemon parent",
+    )
+    assertTrue(
+      !ServeBundleDaemon.jarPrecedesDaemonSidecar(
+        File("/work/org.jetbrains.composure/thing/library.jar")
+      ),
+      "a group merely prefixed by org.jetbrains.compose must not be promoted",
     )
   }
 

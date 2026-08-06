@@ -9,6 +9,7 @@ import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
@@ -226,6 +227,12 @@ class ServeHttpServer(
    * (playground + live WebSocket sessions) require a signed-in GitHub account.
    */
   private val githubAuth: ServeGithubAuth? = null,
+  /**
+   * Observability for the playground lane on `/status.json` — which posture admitted it, whether
+   * the configured jail actually contains anything on this host, and whether each mode's classpath
+   * has resolved. Null when the lane isn't wired at all. See [PlaygroundHealth].
+   */
+  private val playgroundHealth: (() -> PlaygroundHealth)? = null,
   /** Aggregate view counts; pass a file-backed store to keep them across server restarts. */
   private val engagementStore: ServeEngagementStore = ServeEngagementStore(),
 ) {
@@ -300,6 +307,17 @@ class ServeHttpServer(
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
       install(WebSockets)
+      // Sliding sessions: any request carrying a session past its half-life gets a freshly signed
+      // cookie, so a visitor who keeps coming back is never bounced through GitHub. Runs before
+      // routing so it covers every response, and no-ops (no `Set-Cookie` at all) for a young
+      // session or no session. See [ServeGithubAuth.refreshSession].
+      githubAuth?.let { auth ->
+        install(
+          createApplicationPlugin("github-session-refresh") {
+            onCall { call -> auth.refreshSession(call) }
+          }
+        )
+      }
       routing {
         // `/healthz` — ungated liveness: "ok" the moment the listener is up. Leaks nothing, and
         // proves nothing beyond "the process is answering HTTP". The rolling-update gate is
@@ -1143,6 +1161,12 @@ class ServeHttpServer(
   private fun RoutingContext.markGeneration(generation: String, cacheControl: String? = null) {
     call.response.headers.append(GENERATION_HEADER, generation)
     cacheControl?.let { call.response.headers.append(HttpHeaders.CacheControl, it) }
+    // Belt to `private, no-store`'s braces: an intermediary that under-honours the directive still
+    // learns the body turns on the session cookie, rather than keying one visitor's HTML by URL
+    // alone.
+    if (cacheControl == SIGNED_IN_PAGE_CACHE_CONTROL) {
+      call.response.headers.append(HttpHeaders.Vary, HttpHeaders.Cookie)
+    }
   }
 
   private fun incrementPreviewViews(
@@ -2071,6 +2095,38 @@ class ServeHttpServer(
               .mapNotNull { it.renderStats }
               .filter { it.renders + it.cacheHits + it.busy > 0 }
           ),
+        playground =
+          playgroundHealth?.invoke()?.let { h ->
+            PlaygroundDto(
+              admittedBy = h.admittedBy,
+              sandbox =
+                SandboxDto(
+                  profile = h.sandboxProfile,
+                  active = h.sandboxActive,
+                  memoryMb = h.sandboxMemoryMb,
+                  cpus = h.sandboxCpus,
+                  ttlSeconds = h.sandboxTtlSeconds,
+                  probe =
+                    h.probe?.let { p ->
+                      ProbeDto(
+                        ran = p.ran,
+                        detail = p.detail,
+                        failedChecks = p.failedChecks(),
+                        egressBlocked = p.egressBlocked,
+                        filesystemContained = p.filesystemContained,
+                        processIsolated = p.processIsolated,
+                        workDirWritable = p.workDirWritable,
+                      )
+                    },
+                ),
+              compilerJailed = h.compilerJailed,
+              compileSlots = h.compileSlots,
+              modes =
+                h.modes().map {
+                  ModeDto(mode = it.mode, source = it.source, resolved = it.resolved)
+                },
+            )
+          },
       )
 
     fun toView(): ServeWeb.StatusView {
@@ -2584,6 +2640,43 @@ class ServeHttpServer(
       val imageUrl =
         "$origin$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png${requestQuerySuffix()}"
       val engagement = incrementPreviewViews(sessionId, preview.id)
+      val bundleHost = catalogBundleHost(renderHost)
+      // Link the preview to its source file on GitHub, built from the catalog's SOURCE (repo/ref/
+      // module of the Kotlin — NOT the delivery branch) joined with the preview's module-relative
+      // sourceFile. Null when the session has no catalog source or the preview recorded no path.
+      val sourceHref =
+        bundleHost?.catalogSource?.let { src ->
+          ServeUrls.githubBlobUrl(src.repo, src.ref, src.module, preview.sourceFile)
+        }
+      // The prefilled "report an issue" link. Both URLs it carries are stripped of the session
+      // token: on a token-gated box every link on the page bakes the token in, and that token is
+      // the capability to drive this server — it must not ride along into a public issue body.
+      val reportContext =
+        ServeIssueReport.Context(
+          repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
+          previewId = preview.id,
+          previewLabel = preview.label,
+          system = basePath.trim('/').takeIf { it.isNotEmpty() },
+          sourceUrl = sourceHref,
+          catalog = bundleHost?.provenance?.let { "${it.repo}@${it.branch}" },
+          toolVersion = bundleHost?.provenance?.toolVersion,
+          viewerUrl = ServeIssueReport.withoutToken(externalPageUrl()),
+          renderUrl = ServeIssueReport.withoutToken(imageUrl),
+          // A token-gated box 404s the tokenless render URL this body carries, so its report keeps
+          // the link form rather than embedding an image that could never load.
+          publicRender = isPublic,
+        )
+      val reportIssue =
+        ServeWeb.ReportIssue(
+          action = ServeIssueReport.action(reportContext.repo),
+          title = ServeIssueReport.title(reportContext),
+          body = ServeIssueReport.body(reportContext),
+          bodyTemplate = ServeIssueReport.body(reportContext, renderPlaceholder = true),
+          repo = reportContext.repo,
+          // Named in the tooltip when this box has a GitHub session for the visitor, so they know
+          // whose account the issue will be authored by before they leave the page.
+          login = githubAuth?.currentLogin(call),
+        )
       val liveAuthPrompt =
         githubAuth
           ?.takeIf { renderHost.hasLiveStream }
@@ -2596,11 +2689,7 @@ class ServeHttpServer(
           }
       markGeneration(
         "static-page",
-        viewerCacheControl(
-          githubAuthConfigured = githubAuth != null,
-          hasLiveStream = renderHost.hasLiveStream,
-          isPublic = isPublic,
-        ),
+        viewerCacheControl(githubAuthConfigured = githubAuth != null, isPublic = isPublic),
       )
       call.respondText(
         ServeWeb.viewerPage(
@@ -2657,15 +2746,12 @@ class ServeHttpServer(
           degradations = renderHost.degradations,
           engagement = engagement,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = imageUrl),
-          // Per-preview: link the preview to its source file on GitHub, built from the catalog's
-          // SOURCE (repo/ref/module of the Kotlin — NOT the delivery branch) joined with the
-          // preview's module-relative sourceFile. Null when the session has no catalog source or
-          // the
-          // preview recorded no path ⇒ no link.
-          sourceHref =
-            catalogBundleHost(renderHost)?.catalogSource?.let { src ->
-              ServeUrls.githubBlobUrl(src.repo, src.ref, src.module, preview.sourceFile)
-            },
+          sourceHref = sourceHref,
+          reportIssue = reportIssue,
+          // The Figma node this preview is specified by, when the catalog publishes a Figma-backed
+          // design reference for it. Resolved from data the catalog already carries — nothing is
+          // fetched from Figma, here or anywhere else in serve.
+          figmaSpec = ServeFigmaSpec.of(renderHost.designReferencesFor(preview.id)),
           liveAuthPrompt = liveAuthPrompt,
           catalogTitle = catalogBundleHost(renderHost)?.title,
           // The same heartbeat the grid sends. The viewer needs it at least as much: it is where a
@@ -3006,7 +3092,7 @@ class ServeHttpServer(
   }
 
   private fun pageCacheControl(): String =
-    if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
+    pageCacheControl(githubAuthConfigured = githubAuth != null, isPublic = isPublic)
 
   private fun prebakedImageCacheControl(): String = prebakedImageCacheControl(isPublic)
 
@@ -3295,13 +3381,43 @@ class ServeHttpServer(
     /** Variant renders and all token-gated responses stay out of shared and browser caches. */
     private const val DYNAMIC_RESOURCE_CACHE_CONTROL = "no-store"
 
-    internal fun viewerCacheControl(
-      githubAuthConfigured: Boolean,
-      hasLiveStream: Boolean,
-      isPublic: Boolean,
-    ): String =
-      if (githubAuthConfigured && hasLiveStream) DYNAMIC_RESOURCE_CACHE_CONTROL
+    /**
+     * Caching for HTML whose body depends on *who is asking* — every page on a server with
+     * `--github-auth-*` configured, because they all render the sign-in chip (signed out → "Sign
+     * in"; signed in → the visitor's login), and some render more besides (the live-preview auth
+     * prompt, the issue-reporter's "filed as @you" tooltip).
+     *
+     * It cannot be [STATIC_PAGE_CACHE_CONTROL]. `public` licenses the CDN in front of the deployed
+     * server to store one visitor's HTML and hand it to the next, so a signed-in visitor's login
+     * leaks to strangers and a stranger's signed-out page comes back to them. And even with no
+     * shared cache at all, `max-age=60, stale-while-revalidate=300` means the *browser's own* cache
+     * replays the pre-sign-in HTML for a minute — served stale for five more while it revalidates
+     * behind the scenes — so returning from the GitHub callback to a page visited moments earlier
+     * paints it signed-out. That is the "it says I'm logged out until I hit refresh" report: a
+     * reload revalidates, which is why the state looks right the moment you ask for it again.
+     *
+     * `no-store` rather than `no-cache` on purpose: these pages carry no ETag, so a revalidation
+     * costs a full re-render anyway, and `no-store` additionally keeps the signed-out HTML out of
+     * the back/forward cache, where a plain Back would otherwise resurrect it.
+     */
+    internal const val SIGNED_IN_PAGE_CACHE_CONTROL = "private, no-store"
+
+    /**
+     * Caching for an assembled HTML page. Public and auth-free ⇒ short edge caching; otherwise the
+     * response is personal (sign-in state) or token-bearing, and is not stored at all.
+     */
+    internal fun pageCacheControl(githubAuthConfigured: Boolean, isPublic: Boolean): String =
+      if (githubAuthConfigured) SIGNED_IN_PAGE_CACHE_CONTROL
       else if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
+
+    /**
+     * The viewer page follows [pageCacheControl]. It used to drop to `no-store` only for a
+     * *live-streaming* preview under GitHub auth, on the theory that the live lane was the only
+     * personalised thing on the page — but the sign-in chip is on every viewer, live or not, so the
+     * non-live viewer was being cached with one visitor's identity baked in.
+     */
+    internal fun viewerCacheControl(githubAuthConfigured: Boolean, isPublic: Boolean): String =
+      pageCacheControl(githubAuthConfigured, isPublic)
 
     /** Classpath location of the vendored Remote Compose player IIFE bundle (global `RC`). */
     private const val RC_PLAYER_RESOURCE = "/rc-player/bundle.js"
@@ -3530,7 +3646,58 @@ private data class StatusResponse(
    * `compose-preview-serve/status/v1`; per-daemon detail is on `runningServers[].renderStats`.
    */
   val renderStats: RenderPerfSnapshot? = null,
+  /**
+   * Playground lane health, or null when the lane isn't wired. Additive on
+   * `compose-preview-serve/status/v1`, like [renderStats]. See [PlaygroundHealth] for why each
+   * field is here — in short, the playground can be half-up in several ways that were previously
+   * invisible without shell access to the box.
+   */
+  val playground: PlaygroundDto? = null,
 )
+
+@Serializable
+private data class PlaygroundDto(
+  /** Which admission posture let the lane serve (the gate's own words). */
+  val admittedBy: String,
+  val sandbox: SandboxDto,
+  /** True when compiles run in a jailed child rather than in the serve JVM. */
+  val compilerJailed: Boolean,
+  /** Concurrent jailed compiles allowed; inert unless [compilerJailed]. */
+  val compileSlots: Int,
+  val modes: List<ModeDto>,
+)
+
+@Serializable
+private data class SandboxDto(
+  val profile: String,
+  /**
+   * False ⇒ `none`: no jail, and **no `-Xmx`, CPU cap, or hard TTL on snippet JVMs either**. On a
+   * host with a large cgroup limit that matters — an uncapped JVM sizes its default max heap at a
+   * quarter of the limit.
+   */
+  val active: Boolean,
+  val memoryMb: Int,
+  val cpus: Double,
+  val ttlSeconds: Long,
+  /** Null when no preflight ran (token-gated host, or no sandbox configured). */
+  val probe: ProbeDto? = null,
+)
+
+@Serializable
+private data class ProbeDto(
+  /** False ⇒ the jail could not even launch here; [detail] says why. */
+  val ran: Boolean,
+  val detail: String,
+  /** Empty ⇒ the jail contained the preflight on every measured axis. */
+  val failedChecks: List<String>,
+  val egressBlocked: Boolean,
+  val filesystemContained: Boolean,
+  val processIsolated: Boolean,
+  val workDirWritable: Boolean,
+)
+
+@Serializable
+private data class ModeDto(val mode: String, val source: String, val resolved: Boolean)
 
 @Serializable
 private data class CatalogSummaryDto(

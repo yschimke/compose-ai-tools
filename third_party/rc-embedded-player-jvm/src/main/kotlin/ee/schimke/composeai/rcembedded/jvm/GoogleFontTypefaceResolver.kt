@@ -18,6 +18,7 @@ package ee.schimke.composeai.rcembedded.jvm
 
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import ee.schimke.composeai.fonts.google.GoogleFontCache
@@ -63,8 +64,20 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
    * ask the (possibly network-backed) source once per (family, weight, italic), not once per op.
    */
   private val files = ConcurrentHashMap<GoogleFontKey, File>()
+
+  /** Variable files by `(name, italic)` — weight-free, because one file serves every instance. */
+  private val variableFiles = ConcurrentHashMap<Pair<String, Boolean>, File>()
+
+  /** Font bytes by path, so building N instances of one variable file reads it once. */
+  private val fileContents = ConcurrentHashMap<String, ByteArray>()
   private val skiaTypefaces = ConcurrentHashMap<GoogleFontKey, SkiaTypeface>()
-  private val fontFamilies = ConcurrentHashMap<GoogleFontKey, FontFamily>()
+  /**
+   * Resolved families keyed by request *and* axis instance. A variable file serves many instances,
+   * and they are different faces — keying on the request alone would hand a `wght 100` line the
+   * `wght 1000` family the previous line built.
+   */
+  private val fontFamilies =
+    ConcurrentHashMap<Pair<GoogleFontKey, List<Pair<String, Float>>>, FontFamily>()
 
   /**
    * The Compose [FontFamily] for [family] at [weight]/[italic], or null when [family] is not a
@@ -73,25 +86,63 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
    * One face per family, not a full ramp: the file the cache serves is already the one for this
    * exact `(family, weight, italic)`, so Compose has nothing left to select between — and asking
    * for the weights the document never draws would mean fetches nothing needs.
+   *
+   * [settings] are the document's font-variation axes. A variable file is one file serving many
+   * instances, so they are applied when the face is built rather than selected afterwards: Compose
+   * carries variations on a `Font`, and a family's faces cannot be re-instanced once built.
    */
-  fun composeFontFamily(family: String?, weight: Int, italic: Boolean): FontFamily? {
-    val key = googleFontKey(family, weight, italic) ?: return null
-    fontFamilies[key]?.let {
+  fun composeFontFamily(
+    family: String?,
+    weight: Int,
+    italic: Boolean,
+    settings: FontVariation.Settings? = null,
+  ): FontFamily? {
+    // A `wght` axis also decides *which file to fetch* when all we can get is a static instance:
+    // the CSS API serves a named family as one baked instance per weight, so asking for
+    // `Roboto Flex` at 400 and then applying `wght 1000` to it varies nothing. Reading the axis as
+    // the requested weight at least fetches the instance nearest what the document asked for. This
+    // stays the fallback; the variable file below is the real answer.
+    val axes = settings?.settings.orEmpty().map { it.axisName to it.toVariationValue(null) }
+    val effectiveWeight =
+      axes.firstOrNull { (tag, _) -> tag == WEIGHT_AXIS }?.second?.toInt()?.coerceIn(1, 1000)
+        ?: weight
+    val key = googleFontKey(family, effectiveWeight, italic) ?: return null
+    val instanceKey = key to axes
+    fontFamilies[instanceKey]?.let {
       return it
     }
-    val file = resolveFile(key) ?: return null
+    // With axes to apply, prefer the family's **variable** file — the one that still carries an
+    // `fvar` table. Everything above resolves to a baked instance, so a `wdth` ramp built on it
+    // draws three identical lines however correctly the axes are attached. Falling back rather than
+    // failing keeps the previous behaviour for a family that ships no variable file (Lobster Two)
+    // and for a render given no font cache.
+    val variable = if (axes.isEmpty()) null else variableFile(key)
+    val file = variable ?: resolveFile(key) ?: return null
+    val style = if (key.italic) FontStyle.Italic else FontStyle.Normal
     val resolved =
       runCatching {
           FontFamily(
-            Font(
-              file = file,
-              weight = FontWeight(key.weight),
-              style = if (key.italic) FontStyle.Italic else FontStyle.Normal,
-            )
+            if (settings == null || settings.settings.isEmpty()) {
+              Font(file = file, weight = FontWeight(key.weight), style = style)
+            } else {
+              // Deliberately the `(identity, data)` overload rather than `Font(file = …)`, and the
+              // identity carries the axes. Compose's skiko font cache keys on a font's *identity*,
+              // and a `FileFont`'s identity is its path alone — so every instance of one variable
+              // file shares a cache entry and the first one built is handed to all of them. That
+              // renders a `wdth` ramp as three identical lines while a `wght` ramp still looks
+              // plausible, because weight alone can be synthesised. Same trap the browser lane hit.
+              Font(
+                identity = "${file.path}|${axes.joinToString(",") { (t, v) -> "$t=$v" }}",
+                data = fileBytes(file),
+                weight = FontWeight(key.weight),
+                style = style,
+                variationSettings = settings,
+              )
+            }
           )
         }
         .getOrNull() ?: return null
-    fontFamilies[key] = resolved
+    fontFamilies[instanceKey] = resolved
     return resolved
   }
 
@@ -123,9 +174,39 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
     return file
   }
 
+  /**
+   * [file]'s bytes, read once per file however many instances are built from it — a variable face
+   * is ~1.7 MB and a `wght` ramp asks for four of them.
+   */
+  private fun fileBytes(file: File): ByteArray =
+    fileContents.getOrPut(file.path) { file.readBytes() }
+
+  /**
+   * The family's variable file, or null when it has none.
+   *
+   * Keyed by `(name, italic)` and not by weight, because one variable file serves every weight —
+   * asking per weight would probe (and download) the same 1.7 MB once per line of a `wght` ramp.
+   * Misses are remembered for the same reason they are in [resolveFile]: a static-only family
+   * shouldn't cost a lookup per text op.
+   */
+  private fun variableFile(key: GoogleFontKey): File? {
+    val source = fonts ?: return null
+    val variableKey = key.name to key.italic
+    val cached = variableFiles[variableKey]
+    if (cached != null) return cached.takeIf { it !== NO_FILE }
+    val file = runCatching { source.loadVariable(key.name, key.italic) }.getOrNull()
+    variableFiles[variableKey] = file ?: NO_FILE
+    return file
+  }
+
   companion object {
     /** The namespace marking a family as one to fetch from Google Fonts. */
     const val GOOGLE_PREFIX = "google:"
+
+    /**
+     * The one axis that also selects a *file*: Google Fonts serves a static instance per weight.
+     */
+    private const val WEIGHT_AXIS = "wght"
 
     /** Negative-cache marker — a request the source could not serve. Never opened. */
     private val NO_FILE = File("")
@@ -158,9 +239,18 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
      * throw away. `compose-preview serve` and the CLI's daemon launchers set the property; the
      * `cmp-jvm` subprocess is handed it by [RcJvmServerRenderer][the cli's cmp-jvm launcher].
      */
-    val Default: GoogleFontTypefaceResolver by lazy {
+    private val systemPropertyDefault: GoogleFontTypefaceResolver by lazy {
       GoogleFontTypefaceResolver(systemPropertyGoogleFontSource())
     }
+
+    /**
+     * Overrides [Default] for a test that must resolve hermetically (a vendored face, no network).
+     * Null — always, in production — restores the system-property-configured resolver.
+     */
+    internal var testOverride: GoogleFontTypefaceResolver? = null
+
+    val Default: GoogleFontTypefaceResolver
+      get() = testOverride ?: systemPropertyDefault
 
     private fun systemPropertyGoogleFontSource(): GoogleFontSource? {
       val cacheDir = System.getProperty("composeai.fonts.cacheDir")?.takeIf { it.isNotBlank() }

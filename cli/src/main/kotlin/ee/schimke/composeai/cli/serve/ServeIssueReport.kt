@@ -1,0 +1,220 @@
+package ee.schimke.composeai.cli.serve
+
+/**
+ * Builds the prefilled GitHub **new-issue** link the viewer offers beside its "source" link, so
+ * someone looking at a preview that renders wrongly can file it against the repo that owns the code
+ * — carrying the facts a triager would otherwise have to ask for (which system, which preview,
+ * which catalog build, the deep link, and the PNG at the settings on screen).
+ *
+ * **Why a prefilled link rather than the server filing the issue itself.** [ServeGithubAuth] keeps
+ * only a signed cookie holding the visitor's login and their repo-access verdict — the OAuth token
+ * is deliberately discarded after the check. Filing server-side "as the visitor" would mean asking
+ * for issue-write scope and holding user tokens on a public box, a real escalation for no gain:
+ * their browser is already signed in to GitHub, so handing it a prefilled `issues/new` URL files
+ * the issue under their own identity with nothing to custody. Sign-in still shows up here — when
+ * the server knows the visitor's login it names it in the affordance's tooltip — but the flow works
+ * signed out too, because GitHub prompts for login on the issue form anyway.
+ *
+ * **The screenshot is pasted, not linked.** The body links the `/render` PNG at the current
+ * settings (handy, but it re-renders against whatever the catalog is when someone reads the issue),
+ * and asks for a paste — the viewer's "Copy PNG" puts real `image/png` bytes on the clipboard, so
+ * one keystroke in the issue box uploads the exact pixels to GitHub's own CDN, where they stay put.
+ */
+internal object ServeIssueReport {
+
+  /**
+   * Stand-in for the render URL inside [body], so the viewer JS can keep the report in sync with
+   * the on-screen overrides without re-assembling the whole body client-side: the form's hidden
+   * `body` input carries the text with this placeholder in it and swaps in the live `/render` URL
+   * on each refresh.
+   */
+  const val RENDER_PLACEHOLDER: String = "{{render}}"
+
+  /** Repo bugs fall back to when a session names no source of its own — the renderer is ours. */
+  const val FALLBACK_REPO: String = "yschimke/compose-ai-tools"
+
+  /**
+   * The facts a report carries. Everything but [repo] and [previewId] is optional: a plain local
+   * session knows neither its catalog nor a source file, and simply drops those rows rather than
+   * filing a half-empty template.
+   */
+  data class Context(
+    /** `owner/name` the issue is filed against — see [repoFor]. */
+    val repo: String,
+    /** The preview's flattened id (`Button__filled__dark`), the one unambiguous handle. */
+    val previewId: String,
+    /** Human label, when the manifest recorded one; the title falls back to [previewId]. */
+    val previewLabel: String? = null,
+    /** The served design system (`wear-m3`), when this session is a catalog. */
+    val system: String? = null,
+    /** GitHub blob URL of the preview's source file (from [ServeUrls.githubBlobUrl]). */
+    val sourceUrl: String? = null,
+    /**
+     * Delivery provenance as `owner/repo@branch` — which catalog build the visitor was looking at.
+     */
+    val catalog: String? = null,
+    /** compose-ai-tools version that rendered the catalog, from its `catalog.json`. */
+    val toolVersion: String? = null,
+    /** Absolute viewer URL for this preview. Token-bearing URLs are stripped by [withoutToken]. */
+    val viewerUrl: String? = null,
+    /** Absolute `/render/<id>.png` URL at the overrides in force when the page was served. */
+    val renderUrl: String? = null,
+    /**
+     * Whether the render lane answers **without a session token** — i.e. the server is `--public`.
+     *
+     * [withoutToken] strips the token from every URL that reaches an issue body, because the token
+     * is the capability to drive the server. On a token-gated box that makes [renderUrl] a URL the
+     * lane itself 404s ([ServeHttpServer]'s render handler rejects a tokenless request), so an
+     * embedded image would be broken in every filed issue no matter how reachable the host is.
+     * Defaults to false so a caller that doesn't know keeps the link form.
+     */
+    val publicRender: Boolean = false,
+  )
+
+  /**
+   * Which repo a preview's bug belongs to: the catalog's **source** repo (the Kotlin the preview is
+   * declared in) when known, else its **delivery** repo (the `design-artifacts/<system>` branch's
+   * repo — better than nothing, and usually the same project), else [FALLBACK_REPO].
+   *
+   * Note that the source repo can be a fork (Android's samples are rendered from preview branches
+   * in `yschimke/compose-samples`); that is deliberately where the report goes, because it is where
+   * the preview code that misrendered actually lives.
+   */
+  fun repoFor(source: ServeWeb.CatalogSource?, provenance: ServeWeb.CatalogProvenance?): String =
+    source?.repo?.trim()?.takeIf { it.isNotEmpty() }
+      ?: provenance?.repo?.trim()?.takeIf { it.isNotEmpty() }
+      ?: FALLBACK_REPO
+
+  /** Issue title — identifies the preview; the reporter writes the actual complaint. */
+  fun title(ctx: Context): String {
+    val what = ctx.previewLabel?.trim()?.takeIf { it.isNotEmpty() } ?: ctx.previewId
+    val where = ctx.system?.trim()?.takeIf { it.isNotEmpty() }?.let { " ($it)" } ?: ""
+    return "Preview issue: $what$where"
+  }
+
+  /**
+   * Issue body, in markdown. [renderPlaceholder] swaps the render link for [RENDER_PLACEHOLDER] so
+   * the viewer JS can substitute the live URL; the server-rendered `href` uses the real one, which
+   * is what a visitor with JS off gets.
+   */
+  fun body(ctx: Context, renderPlaceholder: Boolean = false): String {
+    val rows = buildList {
+      ctx.system?.trim()?.takeIf { it.isNotEmpty() }?.let { add("| Design system | `$it` |") }
+      add("| Preview | `${ctx.previewId}` |")
+      ctx.sourceUrl?.takeIf { it.isNotBlank() }?.let { add("| Source | $it |") }
+      ctx.catalog?.takeIf { it.isNotBlank() }?.let { add("| Catalog | `$it` |") }
+      ctx.toolVersion
+        ?.takeIf { it.isNotBlank() }
+        ?.let { add("| Rendered by | compose-ai-tools $it |") }
+    }
+    val render =
+      if (renderPlaceholder) RENDER_PLACEHOLDER else ctx.renderUrl?.takeIf { it.isNotBlank() }
+    // Whether the render can be *embedded* is decided by the real URL even when the body is the
+    // JS template, so both forms of the body have the same shape and the placeholder swap can't
+    // turn a working image into a broken one. Two independent conditions have to hold: GitHub's
+    // proxy must be able to *reach* the URL, and the lane must *answer* it without the token this
+    // body strips.
+    val embed = render != null && ctx.publicRender && isEmbeddable(ctx.renderUrl)
+    val links = buildList {
+      ctx.viewerUrl?.takeIf { it.isNotBlank() }?.let { add("[Open this preview]($it)") }
+      // Only worth its own line when the image isn't already showing it.
+      if (!embed) render?.let { add("[PNG at these settings]($it)") }
+    }
+    return buildString {
+      append("### What's wrong\n\n")
+      append("<!-- What did you expect to see, and what did you get? -->\n\n\n")
+      append("### Screenshot\n\n")
+      if (embed) {
+        append("![${altText(ctx)}]($render)\n\n")
+        append(
+          "<!-- That image is a LIVE render: it re-renders if the catalog changes, so it may " +
+            "stop showing what you saw. For a copy that stays put, use Copy PNG in the viewer's " +
+            "\"Export & direct links\" panel and paste it here — GitHub then hosts the pixels " +
+            "itself. -->\n\n\n"
+        )
+      } else {
+        append(
+          "<!-- Paste it here. The viewer's \"Export & direct links\" panel has a Copy PNG " +
+            "button that puts the image itself on your clipboard, so Ctrl-V / Cmd-V lands the " +
+            "exact render in this issue. -->\n\n\n"
+        )
+      }
+      append("### Which preview\n\n")
+      append("| | |\n| --- | --- |\n")
+      append(rows.joinToString("\n"))
+      if (links.isNotEmpty()) append("\n\n").append(links.joinToString(" · "))
+      append("\n")
+    }
+  }
+
+  /** Markdown-safe alt text: the preview's label or id, with `]` and `[` stripped. */
+  private fun altText(ctx: Context): String {
+    val what = ctx.previewLabel?.trim()?.takeIf { it.isNotEmpty() } ?: ctx.previewId
+    return what.replace('[', ' ').replace(']', ' ').trim()
+  }
+
+  /**
+   * Whether [url] is one GitHub can actually render inline.
+   *
+   * An embedded image is fetched **by GitHub's camo proxy, not by the reader's browser**, so it has
+   * to be reachable from the public internet over HTTPS. A developer's `compose-preview serve` on
+   * `http://127.0.0.1:8080` (or a box on a private LAN, or a plain-HTTP host) fails that, and an
+   * embed would put a broken-image icon in their issue where a working link belongs — so those
+   * bodies keep the link form instead. Deliberately conservative: anything not clearly public is
+   * treated as not embeddable.
+   *
+   * This is **reachability only**. Whether the lane will actually serve the request is a separate
+   * question — see [Context.publicRender], which [body] requires as well.
+   */
+  fun isEmbeddable(url: String?): Boolean {
+    val u = url?.trim() ?: return false
+    if (!u.startsWith("https://")) return false
+    val host = u.removePrefix("https://").substringBefore('/').substringBefore('?').lowercase()
+    val name = host.substringBeforeLast(':').trim('[', ']')
+    if (name.isEmpty()) return false
+    // A public host is a dotted name. Single-label intranet names, `.local`, and raw loopback /
+    // private addresses are all unreachable from camo.
+    if (!name.contains('.') || name.endsWith(".local") || name.endsWith(".internal")) return false
+    if (name == "localhost" || name.endsWith(".localhost")) return false
+    return !isPrivateIpv4(name)
+  }
+
+  /** Loopback and RFC 1918 literals, which are dotted but still unreachable from outside. */
+  private fun isPrivateIpv4(host: String): Boolean {
+    val parts = host.split('.')
+    if (parts.size != 4 || parts.any { it.toIntOrNull() == null }) return false
+    val (a, b) = parts[0].toInt() to parts[1].toInt()
+    return a == 127 || a == 10 || a == 0 || (a == 192 && b == 168) || (a == 172 && b in 16..31)
+  }
+
+  /**
+   * The GitHub new-issue form for [repo], used as a `<form action>` rather than a link the JS
+   * rewrites.
+   *
+   * The viewer surfaces this as a **GET form** whose `title` / `body` are hidden inputs. That is
+   * not a styling preference: keeping the prefilled report current as the knobs change means
+   * writing page state into it, and writing a page-derived string into an anchor's `href` is a
+   * navigation sink (a `javascript:` URL there would execute) — CodeQL flags it, correctly, no
+   * matter how the value is guarded afterwards. A form has no such sink: the action is a
+   * server-rendered literal the JS never touches, the live render URL only ever lands in an input
+   * value, and the browser does the query encoding on submit.
+   */
+  fun action(repo: String): String = "https://github.com/$repo/issues/new"
+
+  /**
+   * [url] with any `token=` query parameter dropped. A token-gated session bakes its session token
+   * into every link on the page; that token **is** the capability to drive the server, so it must
+   * never be carried into an issue body that gets posted publicly. The rest of the query (the
+   * overrides that shape the render) is kept, since it is what makes the link reproduce what the
+   * reporter saw.
+   */
+  fun withoutToken(url: String?): String? {
+    val u = url?.takeIf { it.isNotBlank() } ?: return null
+    val cut = u.indexOf('?')
+    if (cut < 0) return u
+    val kept =
+      u.substring(cut + 1).split('&').filter { it.isNotEmpty() && !it.startsWith("token=") }
+    return if (kept.isEmpty()) u.substring(0, cut)
+    else u.substring(0, cut) + "?" + kept.joinToString("&")
+  }
+}

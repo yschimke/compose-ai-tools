@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -1099,6 +1100,100 @@ class ServeCatalogLiveHostTest {
     assertEquals(1, peak.get(), "the background lane holds at most one render server-wide")
   }
 
+  /**
+   * The optimization pass used to run exactly once, from `prewarm` at catalog open. Anything it
+   * could not fill on that single attempt stayed unfilled for the life of the catalog generation —
+   * `startThemeOptimization` clears `optimizationStarted` in its `finally`, but nothing ever called
+   * it again.
+   *
+   * meshcore-mobile sat at `paused 288/372, failed: 0` across two server lifetimes because of it,
+   * stopping at the same 288 both times while the other fourteen catalogs on the box reached
+   * `complete`. The presence heartbeat is the natural re-entry point: it already fires while a
+   * visitor is on the catalog's pages, and the pass holds its own idle gate, so the work it
+   * schedules waits for quiet rather than competing with them.
+   */
+  @Test
+  fun `a presence heartbeat re-enters an optimization pass that ended unfinished`() {
+    val delegate =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    // The plain warm succeeds and only the THEMED render is Busy — the shape observed on the live
+    // server, where these previews' baked pixels and daemon warm were both fine.
+    val busyOnThemes =
+      object : ServeHost by delegate {
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          if (overrides.themeProvider != null) RenderOutcome.Busy
+          else delegate.render(previewId, overrides)
+      }
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = busyOnThemes,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+      )
+
+    composite.prewarm()
+    awaitPassIdle(composite)
+    // The pass finished without filling its one target, and said nothing about why.
+    assertEquals(1, composite.themeOptimizationSnapshot()?.remaining)
+    assertEquals(0, composite.themeOptimizationSnapshot()?.failed)
+
+    // Heartbeats re-enter it. Each pass records one Busy against the key; at BUSY_LATCH it latches.
+    repeat(CatalogThemeCache.BUSY_LATCH + 2) {
+      composite.keepLiveWarm()
+      awaitPassIdle(composite)
+    }
+
+    val snapshot = composite.themeOptimizationSnapshot()
+    assertEquals(1, snapshot?.failed, "the stuck target is now counted, not silently abandoned")
+    assertEquals("degraded", snapshot?.state, "and no longer reads as ordinary throttling")
+    // ...and the request lane can answer terminally (409) instead of a retry-after it can't honour.
+    assertNotNull(composite.renderFailureLatch(catalogId, themeOverride()))
+  }
+
+  @Test
+  fun `a heartbeat does not restart a pass that already filled everything`() {
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+      )
+
+    composite.prewarm()
+    assertTrue(awaitOptimization(composite).fullyOptimized)
+    val rendersAfterPass = live.renderCalls
+
+    repeat(5) { composite.keepLiveWarm() }
+    Thread.sleep(100)
+
+    assertEquals(rendersAfterPass, live.renderCalls, "a complete cache is not re-rendered")
+  }
+
+  /** Wait for the background pass to go quiet, finished or not (unlike [awaitOptimization]). */
+  private fun awaitPassIdle(host: ServeCatalogLiveHost) {
+    repeat(200) {
+      if (!host.backgroundWorkActive) return
+      Thread.sleep(25)
+    }
+    error("theme optimization pass did not settle: ${host.themeOptimizationSnapshot()}")
+  }
+
   private fun awaitOptimization(host: ServeCatalogLiveHost): ThemeOptimizationSnapshot {
     repeat(100) {
       host
@@ -1389,5 +1484,113 @@ class ServeCatalogLiveHostTest {
       RenderOutcome.Busy,
       composite.render(catalogId, PreviewOverrides(themeProvider = "com.example.Brand")),
     )
+  }
+
+  /**
+   * The theme cache is an optimization, not a correctness requirement. A cache miss on a cold
+   * daemon id used to schedule a warm and then abandon the request — returning Busy despite the
+   * caller already holding a render slot — which made a server restart (empty cache) break the
+   * whole grid until the hours-long background pass refilled it.
+   */
+  @Test
+  fun `a pure theme render on a cold id waits for its warm instead of reporting busy`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        warmInBackground = true,
+      )
+
+    // Nothing has warmed this id: under the old gate this returned Busy without rendering.
+    val outcome = composite.render(catalogId, themeOverride())
+
+    assertTrue(
+      outcome is RenderOutcome.Ok,
+      "a cold id must still produce themed pixels, got $outcome",
+    )
+    assertTrue(
+      live.renderCalls >= 2,
+      "one warm render plus the themed one, got ${live.renderCalls}",
+    )
+  }
+
+  /** A warm that never succeeds must not hold the request for the whole budget. */
+  @Test
+  fun `a pure theme render gives up when the warm itself fails`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        forcedRenderOutcome = RenderOutcome.Busy,
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        warmInBackground = true,
+      )
+
+    val startedAt = System.nanoTime()
+    val outcome = composite.render(catalogId, themeOverride())
+    val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+
+    assertEquals(
+      RenderOutcome.Busy,
+      outcome,
+      "a theme render that cannot succeed still reports busy",
+    )
+    assertTrue(
+      elapsedMs < ServeCatalogLiveHost.FOREGROUND_WARM_AWAIT_MILLIS,
+      "it must not burn the whole warm budget on a failing warm (took ${elapsedMs}ms)",
+    )
+  }
+
+  /**
+   * The optimizer used to re-demand the whole 60s entry window before EVERY render, so a server
+   * that was quiet-but-not-silent-for-a-minute advanced one entry and then stalled. On the public
+   * box that measured one entry per ~105s against a sub-second render — ~99% waiting.
+   *
+   * Modelled here by an idle clock that reports a full minute once (letting the pass start) and
+   * then a steady 10s: quiet by any reasonable measure, but under the entry window. The old gate
+   * caches exactly one entry and blocks; keeping the turn caches them all.
+   */
+  @Test
+  fun `the optimizer keeps its turn while the server stays quiet`() {
+    val secondTheme = ServeTheme("Brand Light", "com.example.BrandLight")
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme, secondTheme),
+      )
+    val cache = CatalogThemeCache()
+    val firstCall = java.util.concurrent.atomic.AtomicBoolean(true)
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        catalogThemeCache = cache,
+        // Quiet enough to keep a turn (>= OPTIMIZER_YIELD_MILLIS), never enough to re-earn entry.
+        serverIdleMillis = { if (firstCall.getAndSet(false)) 60_000L else 10_000L },
+        themeOptimizationIdleMillis = 60_000L,
+      )
+
+    composite.prewarm()
+
+    val snapshot = awaitOk(10_000) { cache.snapshot().takeIf { it.cached >= 2 } }
+    assertEquals(2, snapshot.cached, "both themes cached without re-earning the entry window")
   }
 }

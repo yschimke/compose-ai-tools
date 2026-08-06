@@ -11,6 +11,7 @@ internal object ServeWebAssets {
     mapOf(
       "serve.css" to "text/css; charset=utf-8",
       "playground.css" to "text/css; charset=utf-8",
+      "url-state.js" to "text/javascript; charset=utf-8",
       "viewer.js" to "text/javascript; charset=utf-8",
       "viewer-groups.js" to "text/javascript; charset=utf-8",
       "viewer-drawers.js" to "text/javascript; charset=utf-8",

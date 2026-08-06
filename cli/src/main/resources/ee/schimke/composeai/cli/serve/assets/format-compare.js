@@ -425,13 +425,29 @@
   var format = root.getAttribute("data-default-format") || "svg";
   var theme = root.getAttribute("data-default-theme") || "light";
   var params = new URLSearchParams(location.search);
-  if (params.get("format") === "rc" && root.getAttribute("data-has-rc") === "1") format = "rc";
-  if (params.get("format") === "svg" && root.getAttribute("data-has-svg") === "1") format = "svg";
-  if (params.get("format") === "reference" && root.getAttribute("data-has-reference") === "1") format = "reference";
+  // Which formats this page actually has something to compare — a `?format=` naming any other one
+  // is ignored rather than emptying the table.
+  function supportsFormat(candidate) {
+    if (candidate === "rc") return root.getAttribute("data-has-rc") === "1";
+    if (candidate === "svg") return root.getAttribute("data-has-svg") === "1";
+    if (candidate === "reference") return root.getAttribute("data-has-reference") === "1";
+    return false;
+  }
+  if (params.get("format") && supportsFormat(params.get("format"))) format = params.get("format");
   try {
     var remembered = localStorage.getItem(root.getAttribute("data-theme-key"));
     if (remembered === "light" || remembered === "dark") theme = remembered;
   } catch (ignore) {}
+  // An explicit ?theme= outranks the remembered one — the URL is only carrying it because someone
+  // picked it here or was handed the link.
+  var urlTheme = params.get("theme");
+  if (urlTheme === "light" || urlTheme === "dark") theme = urlTheme;
+  if (search && params.get("q")) search.value = params.get("q");
+  // What Back falls back to on an entry that names no format/theme: what this load resolved to.
+  var initialFormat = format;
+  var initialTheme = theme;
+  function pushUrl(values) { if (window.cpUrlState) window.cpUrlState.push(values); }
+  function replaceUrl(values) { if (window.cpUrlState) window.cpUrlState.replace(values); }
 
   function grade(percent) {
     if (percent >= 90) return "good";
@@ -563,7 +579,7 @@
 
   function applySearch() {
     var query = (search.value || "").trim().toLowerCase();
-    var preview = (params.get("preview") || "").toLowerCase();
+    var preview = (new URLSearchParams(location.search).get("preview") || "").toLowerCase();
     var visible = 0;
     rows.forEach(function (row) {
       var hasFormat = !!variantFor(row);
@@ -603,8 +619,9 @@
   Array.prototype.forEach.call(formatButtons, function (button) {
     button.addEventListener("click", function () {
       format = button.getAttribute("data-compare-format");
-      params.set("format", format);
-      history.replaceState(null, "", location.pathname + "?" + params.toString());
+      // A discrete pick gets its own history entry (it used to overwrite the current one), so Back
+      // returns to the format the visitor was comparing before.
+      pushUrl({ format: format });
       run();
     });
   });
@@ -612,9 +629,26 @@
     button.addEventListener("click", function () {
       theme = button.getAttribute("data-compare-theme");
       try { localStorage.setItem(root.getAttribute("data-theme-key"), theme); } catch (ignore) {}
+      pushUrl({ theme: theme });
       run();
     });
   });
-  search.addEventListener("input", applySearch);
+  // Typing replaces rather than pushes: the filter is still bookmarkable, without one entry per
+  // keystroke.
+  search.addEventListener("input", function () {
+    replaceUrl({ q: search.value.trim() });
+    applySearch();
+  });
+  if (window.cpUrlState) {
+    window.cpUrlState.onPop(function () {
+      var popped = new URLSearchParams(location.search);
+      var poppedFormat = popped.get("format");
+      format = poppedFormat && supportsFormat(poppedFormat) ? poppedFormat : initialFormat;
+      var poppedTheme = popped.get("theme");
+      theme = (poppedTheme === "light" || poppedTheme === "dark") ? poppedTheme : initialTheme;
+      if (search) search.value = popped.get("q") || "";
+      run();
+    });
+  }
   run();
 })();

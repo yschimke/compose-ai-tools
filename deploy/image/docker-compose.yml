@@ -248,7 +248,7 @@ services:
     # version 1.25 is too old. Minimum supported API version is 1.40"), so it silently
     # never updates anything. The fork is rebuilt against a current SDK. Pinned by
     # tag+digest; bump both together when adopting a newer release.
-    image: ghcr.io/nicholas-fedor/watchtower:1.19.0@sha256:c1dfdf27fe805dcfefe1cf048cee6960a511c097a99aa355b0bc4be6e6bb3bdf
+    image: ghcr.io/nicholas-fedor/watchtower:1.20.3@sha256:bee77696862e09521c49e5ab4904a4179accece6d561a2ef334c7589b84a2438
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

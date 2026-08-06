@@ -206,6 +206,20 @@ object ServeWeb {
       "8.01 0 0016 8c0-4.42-3.58-8-8-8z\"/></svg>"
 
   /**
+   * Inline Figma mark, monochrome in `currentColor` so it sits in the same muted link row as
+   * [GITHUB_ICON]. Its own class carries the 2:3 aspect (`.cp-gh` alone would squash the tall
+   * viewBox into a square).
+   */
+  private const val FIGMA_ICON =
+    "<svg class=\"cp-gh cp-figma-mark\" viewBox=\"0 0 38 57\" aria-hidden=\"true\" " +
+      "fill=\"currentColor\">" +
+      "<path d=\"M19 28.5a9.5 9.5 0 1 1 19 0 9.5 9.5 0 0 1-19 0z\"/>" +
+      "<path d=\"M0 47.5A9.5 9.5 0 0 1 9.5 38H19v9.5a9.5 9.5 0 0 1-19 0z\"/>" +
+      "<path d=\"M19 0v19h9.5a9.5 9.5 0 1 0 0-19H19z\"/>" +
+      "<path d=\"M0 9.5A9.5 9.5 0 0 0 9.5 19H19V0H9.5A9.5 9.5 0 0 0 0 9.5z\"/>" +
+      "<path d=\"M0 28.5A9.5 9.5 0 0 0 9.5 38H19V19H9.5A9.5 9.5 0 0 0 0 28.5z\"/></svg>"
+
+  /**
    * Public-mode "about" intro: a short, static explanation of what the host is and its safety
    * model, shown on public catalog landing pages. The home page uses [homeAboutSection], keeping
    * build links in [homeFooter].
@@ -336,6 +350,89 @@ object ServeWeb {
     return "\n      <p class=\"cp-source\">" +
       "<a class=\"cp-source-link\" href=\"${WebEscaping.htmlEscape(url)}\"$title>" +
       "$GITHUB_ICON source</a></p>"
+  }
+
+  /**
+   * The viewer's "report an issue" affordance: a prefilled GitHub new-issue **form** for the
+   * preview on screen, assembled by [ServeIssueReport] (see [ServeIssueReport.action] for why a
+   * form rather than a link). [action] is the issue form's URL, [title] and [body] are its hidden
+   * inputs — filled for the settings the page was served at, so it works with JS off — and
+   * [bodyTemplate] is the same body with the render link left as
+   * [ServeIssueReport.RENDER_PLACEHOLDER], which the viewer JS re-substitutes as the overrides
+   * change. [repo] names the target in the tooltip so nobody files against a repo they didn't mean
+   * to, and [login] — present only when the visitor has a GitHub session on this server — says
+   * whose account will author it.
+   */
+  data class ReportIssue(
+    val action: String,
+    val title: String,
+    val body: String,
+    val bodyTemplate: String,
+    val repo: String,
+    val login: String? = null,
+  )
+
+  /**
+   * The Figma node a preview is specified by, as the viewer offers it: a ready-to-open deep [url]
+   * (assembled by [ServeFigmaSpec] from a literal origin plus a validated file key and node id, so
+   * a hostile catalog cannot put an arbitrary href on the page) and the reference's [label], which
+   * names *which* spec the link opens when a producer publishes several.
+   */
+  data class FigmaSpec(val url: String, val label: String? = null)
+
+  /**
+   * The row under the viewer's title holding the per-preview provenance links: "source" (where the
+   * preview is declared), "report an issue" (a prefilled bug against the repo that owns it), and
+   * "figma spec" (the node this preview is specified by, when the catalog names one). They share
+   * one flex row so they read as one line of provenance actions; any can be absent, and when all
+   * are the row itself is omitted rather than left as empty vertical space.
+   */
+  private fun previewLinksHtml(
+    sourceHref: String?,
+    sourcePath: String?,
+    report: ReportIssue?,
+    figmaSpec: FigmaSpec?,
+  ): String {
+    val links =
+      sourceLinkHtml(sourceHref, sourcePath) + reportIssueHtml(report) + figmaSpecHtml(figmaSpec)
+    if (links.isBlank()) return ""
+    return "\n      <div class=\"cp-preview-links\">$links\n      </div>"
+  }
+
+  /**
+   * Renders [spec] as a link opening the Figma node this preview is specified by. Null — the common
+   * case, since only a catalog that publishes Figma-backed design references names one — renders
+   * nothing at all rather than a dead or guessed link.
+   */
+  private fun figmaSpecHtml(spec: FigmaSpec?): String {
+    val s = spec ?: return ""
+    val label =
+      s.label?.takeIf { it.isNotBlank() }?.let { " — ${WebEscaping.htmlEscape(it)}" } ?: ""
+    val tip = "Open the Figma node this preview is specified by$label"
+    return "\n      <p class=\"cp-figma\">" +
+      "<a class=\"cp-figma-link\" href=\"${WebEscaping.htmlEscape(s.url)}\"" +
+      " target=\"_blank\" rel=\"noopener noreferrer\" title=\"${WebEscaping.htmlEscape(tip)}\">" +
+      "$FIGMA_ICON figma spec</a></p>"
+  }
+
+  /**
+   * Renders [report] as the GET form that sits beside the per-preview "source" link — styled as a
+   * link, since that is what it behaves like. Null (a surface with no repo to file against) renders
+   * nothing.
+   */
+  private fun reportIssueHtml(report: ReportIssue?): String {
+    val r = report ?: return ""
+    val who =
+      r.login?.takeIf { it.isNotBlank() }?.let { " as @${WebEscaping.htmlEscape(it)}" } ?: ""
+    val tip = "File an issue on ${WebEscaping.htmlEscape(r.repo)}$who"
+    return "\n      <form class=\"cp-report\" id=\"cp-report\" method=\"get\" target=\"_blank\"" +
+      " rel=\"noopener\" action=\"${WebEscaping.htmlEscape(r.action)}\">" +
+      "<input type=\"hidden\" name=\"title\" value=\"${WebEscaping.htmlEscape(r.title)}\">" +
+      "<input type=\"hidden\" name=\"body\" id=\"cp-report-body\"" +
+      " value=\"${WebEscaping.htmlEscape(r.body)}\"" +
+      " data-report-template=\"${WebEscaping.htmlEscape(r.bodyTemplate)}\">" +
+      "<button type=\"submit\" class=\"cp-report-link\" title=\"$tip\">" +
+      "$GITHUB_ICON report an issue</button></form>"
   }
 
   /**
@@ -811,6 +908,37 @@ object ServeWeb {
   /** Fallback tab for section-bearing catalogs whose stray card carries no section of its own. */
   private const val OTHER_SECTION = "Other"
 
+  /**
+   * The catalog section whose cards ARE theme specimens — a colour-role/type sheet that exists to
+   * show one specific theme.
+   */
+  private const val THEMES_SECTION = "Themes"
+
+  /**
+   * Whether [p] is a theme **specimen**: a card that renders a named theme as its subject, so
+   * re-rendering it under a `themeProvider` override destroys the very thing it documents.
+   *
+   * meshcore-mobile's `Theme/MeshCore-Light` is the case that surfaced this. Its caption reads
+   * "MeshCore · Light · Orbitron / Space Grotesk / JetBrains Mono", and under a Dynamic Dark
+   * override the card drew dark, in the default sans — pixels contradicting their own label. Every
+   * card in a Themes tab has that property by construction.
+   *
+   * Two signals, either of which is enough:
+   * * the catalog **section** — deliberately keyed on that rather than the id, because `theme-…` id
+   *   prefixes are an authoring convention while `section` is the authored statement of what the
+   *   tab IS (`catalog.spec.json`'s `section: "Themes"`). It speaks for a whole tab at once.
+   * * the per-preview [ServePreview.fixedTheme] flag, from `@FixedTheme` on the function (or a
+   *   `@ThemeCatalog`-synthesised sheet). This is what a specimen living OUTSIDE a Themes tab says
+   *   for itself — an ungrouped bundle, a `Foundation` section that mixes swatches with components,
+   *   a plain `compose-preview serve` of one module, none of which have a section to speak for
+   *   them.
+   *
+   * This does NOT remove the theme chips: the rest of the catalog still re-renders, and a specimen
+   * simply keeps its baked pixels — the same treatment a card with no daemon twin already gets.
+   */
+  private fun isThemeSpecimen(p: ServePreview): Boolean =
+    p.fixedTheme || p.section?.equals(THEMES_SECTION, ignoreCase = true) == true
+
   /** One sub-heading group inside a section tab: its [name] (null ⇒ ungrouped) and its cards. */
   private class LandingGroup(val name: String?) {
     val cards = mutableListOf<GridCard>()
@@ -1109,6 +1237,11 @@ object ServeWeb {
         var stored = null;
         try { stored = localStorage.getItem("$themeStorageKey"); } catch (e) {}
         var themeBtns = document.querySelectorAll(".cp-theme-btn");
+        function chipOffered(t) {
+          var offered = false;
+          themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === t) offered = true; });
+          return offered;
+        }
         // The GRID always opens on published pixels. A stored app-declared theme
         // (`theme:<providerFqn>`) is deliberately NOT replayed here: restoring it would re-point
         // every card at a `?themeProvider=` render and put the whole grid through the daemon on
@@ -1127,6 +1260,16 @@ object ServeWeb {
         var known = false;
         themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === theme) known = true; });
         if (!known && themeBtns.length) theme = themeBtns[0].getAttribute("data-theme-choice");
+        // The URL wins over both. `?theme=` is on the address bar only because someone picked that
+        // chip (or was handed the link), which makes it the one case where replaying an app-declared
+        // theme IS what was asked for — the cost the stored-value rule above avoids is the cost of
+        // an *unrequested* grid re-render, not of honouring an explicit link. An unknown value (a
+        // theme this catalog no longer publishes) is ignored, exactly like a stale stored one.
+        var urlTheme = urlParam("theme");
+        if (urlTheme && chipOffered(urlTheme)) theme = urlTheme;
+        // What the page falls back to when Back lands on an entry with no `?theme=` — the choice
+        // this load resolved to, never the localStorage value a later click overwrote.
+        var initialTheme = theme;
         var appliedTheme = null;
         """
           .trimIndent()
@@ -1480,6 +1623,9 @@ object ServeWeb {
         b.addEventListener("click", function () {
           theme = b.getAttribute("data-theme-choice");
           try { localStorage.setItem("$themeStorageKey", theme); } catch (e) {}
+          // A discrete pick gets its own history entry, so Back returns to the previous theme
+          // rather than leaving the catalog. No navigation: the grid re-points its own images.
+          pushUrl({ theme: theme });
           apply();
         });
       });"""
@@ -1505,9 +1651,19 @@ object ServeWeb {
           "\n          if (t.getAttribute(\"data-tab\") === storedTab) current = storedTab;" +
           "\n        });" +
           "\n      } catch (e) {}" +
+          // `?tab=` outranks the remembered tab for the same reason `?theme=` outranks the
+          // remembered chip: it is on the URL because it was chosen, here or by whoever shared it.
+          "\n      var urlTab = urlParam(\"tab\");" +
           "\n      tabBtns.forEach(function (t) {" +
-          "\n        t.setAttribute(\"aria-selected\", t.getAttribute(\"data-tab\") === current ? \"true\" : \"false\");" +
+          "\n        if (t.getAttribute(\"data-tab\") === urlTab) current = urlTab;" +
           "\n      });" +
+          "\n      var initialTab = current;" +
+          "\n      function reflectTabs() {" +
+          "\n        tabBtns.forEach(function (t) {" +
+          "\n          t.setAttribute(\"aria-selected\", t.getAttribute(\"data-tab\") === current ? \"true\" : \"false\");" +
+          "\n        });" +
+          "\n      }" +
+          "\n      reflectTabs();" +
           "\n      document.documentElement.classList.add(\"cp-js\");"
       else ""
     // A card is shown when it matches the search AND (while not searching) sits in the current tab.
@@ -1534,18 +1690,59 @@ object ServeWeb {
           "\n          e.preventDefault();" +
           "\n          current = t.getAttribute(\"data-tab\");" +
           "\n          try { localStorage.setItem(\"$tabStorageKey\", current); } catch (e) {}" +
-          "\n          tabBtns.forEach(function (x) { x.setAttribute(\"aria-selected\", x === t ? \"true\" : \"false\"); });" +
+          "\n          reflectTabs();" +
+          "\n          pushUrl({ tab: current });" +
           "\n          apply();" +
           "\n        });" +
           "\n      });"
       else ""
+    // Back / Forward: re-read the whole selection off the URL and re-apply it in place — no
+    // reload, so nothing is re-fetched that the page already has. A history entry that carries no
+    // param for a control falls back to what THIS page load resolved to, never to the
+    // localStorage value a later click wrote: otherwise Back out of a theme would land right back
+    // on the theme the visitor was leaving.
+    val themePop =
+      if (hasThemes)
+        "\n          var poppedTheme = urlParam(\"theme\") || initialTheme;" +
+          "\n          if (chipOffered(poppedTheme)) theme = poppedTheme;"
+      else ""
+    val tabPop =
+      if (hasTabs)
+        "\n          var poppedTab = urlParam(\"tab\") || initialTab;" +
+          "\n          tabBtns.forEach(function (t) {" +
+          "\n            if (t.getAttribute(\"data-tab\") === poppedTab) current = poppedTab;" +
+          "\n          });" +
+          "\n          reflectTabs();"
+      else ""
+    val popWiring =
+      "\n      if (urlState) {" +
+        "\n        urlState.onPop(function () {$themePop$tabPop" +
+        "\n          if (input) input.value = urlParam(\"q\");" +
+        "\n          var poppedBg = urlParam(\"bg\") || initialBg;" +
+        "\n          document.documentElement.classList.toggle(\"cp-bg-transparent\", poppedBg === \"off\");" +
+        "\n          reflectBg();" +
+        "\n          apply();" +
+        "\n        });" +
+        "\n      }"
     return """
     (function () {
       var cards = document.querySelectorAll(".cp-card");
       var input = document.getElementById("cp-search");
       var count = document.getElementById("cp-count");
       var empty = document.getElementById("cp-empty");
-      var total = cards.length;$groupDecls$tabDecls
+      var total = cards.length;
+      // Address-bar state (url-state.js). Every selection below is reflected into the URL so the
+      // page someone is looking at is the page its URL describes — bookmarkable, shareable, and
+      // reachable with Back — without ever reloading: the grid re-points its own images.
+      var urlState = window.cpUrlState || null;
+      function urlParam(n) { return urlState ? urlState.get(n) : ""; }
+      function pushUrl(v) { if (urlState) urlState.push(v); }
+      function replaceUrl(v) { if (urlState) urlState.replace(v); }
+      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
+      // What Back falls back to when an entry carries no `bg` — read off the class the pre-paint
+      // script set, i.e. what THIS load resolved to. Re-reading localStorage here would return the
+      // value a later click wrote, so Back out of Transparent would stay transparent.
+      var initialBg = document.documentElement.classList.contains("cp-bg-transparent") ? "off" : "on";$groupDecls$tabDecls
       ${listOf(themeInit, themeRenderInit).filter { it.isNotEmpty() }.joinToString("\n")}
       function apply() {
         $applyTheme
@@ -1562,7 +1759,13 @@ object ServeWeb {
         if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
         if (empty) empty.hidden = shown !== 0;$groupPost$sectionPost
       }
-      if (input) input.addEventListener("input", apply);
+      if (input) input.addEventListener("input", function () {
+        // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
+        // visitor arrived from under five entries. The URL still carries the query, so the
+        // filtered grid is bookmarkable.
+        replaceUrl({ q: input.value.trim() });
+        apply();
+      });
       $themeWiring$tabWiring
       // Background/Transparent toggle: flips the whole page between a solid surface (default) and the
       // transparent-checkerboard backing, persisting the choice. Independent of theme/search filters.
@@ -1579,10 +1782,11 @@ object ServeWeb {
           var choice = b.getAttribute("data-bg-choice");
           document.documentElement.classList.toggle("cp-bg-transparent", choice === "off");
           try { localStorage.setItem("cp-bg", choice); } catch (e) {}
+          pushUrl({ bg: choice });
           reflectBg();
         });
       });
-      reflectBg();
+      reflectBg();$popWiring
       apply();$presenceWiring
     })();
     """
@@ -1720,12 +1924,26 @@ object ServeWeb {
       var root = document.querySelector(".cp-viewer");
       var pid = (root && root.getAttribute("data-preview-id")) || "";
       var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
+      // The page's own URL outranks the remembered choice: `?themeProvider=` / `?uiMode=` is there
+      // because someone picked it (or was handed the link), so a bookmarked viewer opens on the
+      // theme it was bookmarked in — including on an explicit __light/__dark preview.
+      var params = new URLSearchParams(location.search);
+      var provider = params.get("themeProvider");
+      var uiMode = params.get("uiMode");
+      var urlChoice = provider ? "theme:" + provider
+        : (uiMode === "light" || uiMode === "dark" ? uiMode : "");
+      var urlOption = null;
+      Array.prototype.forEach.call(el.options, function (o) { if (urlChoice && o.value === urlChoice) urlOption = o; });
+      if (urlOption) {
+        el.value = urlChoice;
+        el.setAttribute("data-theme-active", "1");
+      }
       try {
         var stored = localStorage.getItem("$themeStorageKey");
         var declared = stored && stored.indexOf("theme:") === 0;
         var option = null;
         Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
-        if (option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
+        if (!urlOption && option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
           el.value = stored;
           el.setAttribute("data-theme-active", "1");
         }
@@ -2983,17 +3201,27 @@ object ServeWeb {
     /**
      * A Wear / watch system id, matched on a `-`/`_` token so `confetti-wear` and `wear-m3` hit.
      */
-    private val darkFirstIdPattern = Regex("(^|[-_])(wear|watch)([-_]|$)")
+    private val wearIdPattern = Regex("(^|[-_])(wear|watch)([-_]|$)")
+
+    /**
+     * Whether [system] targets Wear OS, from the served id alone. Drives the platform-shaped bits
+     * of the viewer that are true of a watch regardless of surface colour — the watch device
+     * profiles in a screen's size picker, and the absence of an orientation control. Generic (any
+     * Wear/watch system), never per-app.
+     */
+    fun isWearOs(system: String): Boolean {
+      val s = system.trim('/').lowercase()
+      if (s.isBlank()) return false
+      return wearIdPattern.containsMatchIn(s)
+    }
 
     /**
      * Fallback dark-first guess from the system id alone, for a catalog that declares no
-     * `display.surface`. Generic (any Wear/watch system), never per-app.
+     * `display.surface`: a Wear system is black-watch-face-first, so [isWearOs] *is* the guess.
+     * Kept as its own name because a future non-Wear dark-first platform belongs here, not in
+     * [isWearOs].
      */
-    fun isDarkFirst(system: String): Boolean {
-      val s = system.trim('/').lowercase()
-      if (s.isBlank()) return false
-      return darkFirstIdPattern.containsMatchIn(s)
-    }
+    fun isDarkFirst(system: String): Boolean = isWearOs(system)
 
     /**
      * Wear/watch renders have no day mode; discard a generic UI's accidental light override.
@@ -3249,16 +3477,23 @@ object ServeWeb {
     // The app-declared themes join the header's Theme control only when this session can actually
     // re-render a card under one — otherwise the chips would redraw nothing.
     fun themeRenderable(p: ServePreview) = canRenderThemeFor(p.id)
+    // Whether a declared theme actually redraws this preview: it needs a daemon twin AND must not
+    // be a theme specimen, which has a twin but must keep its baked pixels ([isThemeSpecimen]).
+    // ONE predicate feeding both the chip gate and the per-card URL, deliberately: gating the chips
+    // on mere renderability while the URLs also excluded specimens would offer the control on a
+    // catalog whose only twinned cards are specimens — every `themeBase` empty, the browser's
+    // `if (!img || !base) return` skipping every card, and the chips a no-op.
+    fun themeOverridable(p: ServePreview) = themeRenderable(p) && !isThemeSpecimen(p)
     // The variant a card shows by default (server-side) — the one a declared theme re-renders.
     fun renderedVariant(card: GridCard) =
       if (card.swappable && darkFirst) card.dark!! else card.default
     val declaredThemeChips =
       if (declaredThemes.isEmpty()) emptyList()
-      else if (groups.any { themeRenderable(renderedVariant(it)) }) declaredThemes else emptyList()
-    // A card's themed-render base URL — "" when the session has no daemon twin for it, so it keeps
-    // its baked pixels (a themed render would ignore the theme anyway).
+      else if (groups.any { themeOverridable(renderedVariant(it)) }) declaredThemes else emptyList()
+    // A card's themed-render base URL — "" when a declared theme wouldn't redraw it, so it keeps
+    // its baked pixels.
     fun themeBase(card: GridCard) =
-      renderedVariant(card).let { if (themeRenderable(it)) renderSrc(it) else "" }
+      renderedVariant(card).let { if (themeOverridable(it)) renderSrc(it) else "" }
     fun cardViews(card: GridCard): Long =
       listOfNotNull(card.light, card.dark, card.neutral).sumOf { engagement[it.id]?.views ?: 0L }
     fun swapCard(card: GridCard): String {
@@ -3436,7 +3671,7 @@ object ServeWeb {
       else orderedCards.joinToString(", ", "[", "]") { WebEscaping.jsString(themeBase(it)) }
     val filterScript =
       if (hasPreviews)
-        "\n<script>${catalogFilterScript(
+        "\n${scriptTag("url-state.js")}\n<script>${catalogFilterScript(
           hasThemes,
           hasTabs,
           hasGroups,
@@ -3658,6 +3893,7 @@ object ServeWeb {
           </div>
           $empty
         </div>
+        ${scriptTag("url-state.js")}
         ${scriptTag("format-compare.js")}
         """
           .trimIndent(),
@@ -3784,6 +4020,7 @@ object ServeWeb {
           <label class="cp-overlay-control">Overlay <input class="cp-overlay-range" type="range" min="0" max="100" value="50"><span>50%</span></label>
           <div class="cp-reference-overlay"><img src="$raster" alt=""><img src="$actual" alt=""></div>
         </div>
+        ${scriptTag("url-state.js")}
         ${scriptTag("format-compare.js")}
         """
           .trimIndent(),
@@ -3940,6 +4177,18 @@ object ServeWeb {
      * renders no link, matching how the footer/landing source links depend on a known repo.
      */
     sourceHref: String? = null,
+    /**
+     * Prefilled GitHub new-issue link for this preview, built by the caller from the session's
+     * catalog source/provenance via [ServeIssueReport]. Null omits the affordance entirely (a
+     * surface with nothing sensible to file against); see [reportIssueHtml].
+     */
+    reportIssue: ReportIssue? = null,
+    /**
+     * The Figma node this preview is specified by, when the served catalog publishes a Figma-backed
+     * design reference for it (see [ServeFigmaSpec]). Null — every catalog that names none — omits
+     * the affordance entirely rather than offering a guessed or dead link.
+     */
+    figmaSpec: FigmaSpec? = null,
     /** GitHub sign-in prompt shown when the daemon live stream is present but requires auth. */
     liveAuthPrompt: LiveAuthPrompt? = null,
     /** Human catalog title used in the breadcrumb; falls back to a generic "Previews" label. */
@@ -4102,8 +4351,13 @@ object ServeWeb {
           "<span class=\"cp-rc-backends-label\">RC:</span>$chips</span>"
       }
     val isAppScreen = isScreenPreview(preview)
+    // A Wear catalog's screens are watch faces/tiles/activities — offering Pixel phones, a foldable
+    // and a tablet there is nonsense (and renders a watch-shaped composable onto a 1280dp stage).
+    // Same system-id signal the always-dark stage uses, so one heuristic decides "this is a Wear
+    // system" for both.
+    val isWearSystem = SystemDisplay.isWearOs(basePath.trim('/').ifBlank { sessionId ?: "" })
     val screenDeviceOptions =
-      SCREEN_DEVICES.joinToString("\n                  ") { device ->
+      screenDevicesFor(isWearSystem).joinToString("\n                  ") { device ->
         val value = WebEscaping.htmlEscape(device.id)
         val label = WebEscaping.htmlEscape("${device.name} · ${device.kind} (${device.sizeDp})")
         "<option value=\"$value\">$label</option>"
@@ -4167,12 +4421,21 @@ object ServeWeb {
     // day/night, font scale, locale &amp; knobs apply in the browser but size/device/orientation
     // need a live server). A catalog whose carried daemon re-renders on demand ([overridesLive]
     // true) needs no note — its controls all take effect.
+    // Watches don't rotate, so a Wear screen gets the device picker without the Orientation control
+    // — and the notes below must not promise a knob that isn't on the page.
+    val showOrientation = isAppScreen && !isWearSystem
     val serverOnlyOverrideNote =
-      if (isAppScreen) "Device size &amp; Orientation need the live server. "
-      else "Size needs the live server. "
+      when {
+        showOrientation -> "Device size &amp; Orientation need the live server. "
+        isAppScreen -> "Device size needs the live server. "
+        else -> "Size needs the live server. "
+      }
     val snapshotOverrideList =
-      if (isAppScreen) "device size, locale, font scale, orientation"
-      else "size, locale, font scale"
+      when {
+        showOrientation -> "device size, locale, font scale, orientation"
+        isAppScreen -> "device size, locale, font scale"
+        else -> "size, locale, font scale"
+      }
     val snapshotNote =
       when {
         overridesLive -> ""
@@ -4299,9 +4562,24 @@ object ServeWeb {
         """
           .trimIndent()
     // Catalog app screens represent a whole device surface. Arbitrary min/max constraints are
-    // useful for components, but are a poor model for a screen; give screens four recognisable,
-    // deliberately varied Android device profiles instead. The select retains #cp-device, so the
-    // existing override transport and deep-link behaviour apply unchanged.
+    // useful for components, but are a poor model for a screen; give screens a handful of
+    // recognisable, deliberately varied device profiles instead — Android phones/foldable/tablet
+    // for a phone catalog, the Wear OS watch shapes for a Wear one. The select retains #cp-device,
+    // so the existing override transport and deep-link behaviour apply unchanged.
+    val orientationControlHtml =
+      if (showOrientation)
+        """
+        <label>Orientation
+          <select id="cp-orientation"$serverDis>
+            <option value="">(device default)</option>
+            <option value="portrait">Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select>
+        </label>
+        """
+          .trimIndent()
+          .prependIndent("    ") + "\n"
+      else ""
     val sizeControlsHtml =
       if (isAppScreen)
         """
@@ -4314,17 +4592,12 @@ object ServeWeb {
                 SCREEN_DEVICE_OPTIONS_PLACEHOLDER
               </select>
             </label>
-            <label>Orientation
-              <select id="cp-orientation"$serverDis>
-                <option value="">(device default)</option>
-                <option value="portrait">Portrait</option>
-                <option value="landscape">Landscape</option>
-              </select>
-            </label>
+        ORIENTATION_CONTROL_PLACEHOLDER
           </div>
         </details>
         """
           .trimIndent()
+          .replace("ORIENTATION_CONTROL_PLACEHOLDER\n", orientationControlHtml)
           .replace("\n", "\n          ")
           .replace("SCREEN_DEVICE_OPTIONS_PLACEHOLDER", screenDeviceOptions)
       else
@@ -4408,7 +4681,7 @@ object ServeWeb {
       <p class="cp-breadcrumb"><a href="$basePath/$q">$catalogName</a> / Component</p>
       <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
       <p class="cp-preview-id" title="$idText"><code>$idText</code></p>
-      ${degradeBanner(degradations)}${sourceLinkHtml(sourceHref, preview.sourceFile)}
+      ${degradeBanner(degradations)}${previewLinksHtml(sourceHref, preview.sourceFile, reportIssue, figmaSpec)}
       ${viewerViewCountHtml(engagement.views)}
       $switchers
       <div class="cp-preview-primary" aria-label="Preview renderer">
@@ -4494,6 +4767,7 @@ object ServeWeb {
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
+      ${scriptTag("url-state.js")}
       ${scriptTag("viewer-groups.js")}
       ${scriptTag("viewer-drawers.js")}
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
@@ -4657,8 +4931,9 @@ object ServeWeb {
         <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
         <title>${WebEscaping.htmlEscape(title)}</title>
         <link rel="stylesheet" href="${assetHref("serve.css")}">$themeBlock
-        <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
-        <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
         ${siteHeader(navSuffix, headerAction)}
@@ -4999,6 +5274,7 @@ object ServeWeb {
     val sizeDp: String,
   )
 
+  /** Phone-family device profiles offered for an ordinary (handheld) catalog's screens. */
   private val SCREEN_DEVICES: List<ScreenDevice> =
     listOf(
       ScreenDevice("id:pixel_5", "Pixel 5", "compact phone", "393 × 851 dp"),
@@ -5006,4 +5282,27 @@ object ServeWeb {
       ScreenDevice("id:pixel_fold", "Pixel Fold", "foldable", "841 × 701 dp"),
       ScreenDevice("id:pixel_tablet", "Pixel Tablet", "tablet", "1280 × 800 dp"),
     )
+
+  /**
+   * Watch profiles offered instead for a Wear system's screens. Same ids and dimensions the
+   * renderer already resolves for `@Preview(device = …)`
+   * ([ee.schimke.composeai.daemon.devices.DeviceDimensions]), so a chosen override renders at the
+   * shape the author would have got from the annotation. Round shapes lead because Wear OS is
+   * overwhelmingly round; square/rectangular stay available for the shapes that still ship.
+   */
+  private val WEAR_SCREEN_DEVICES: List<ScreenDevice> =
+    listOf(
+      ScreenDevice("id:wearos_small_round", "Small round", "Wear OS watch", "192 × 192 dp"),
+      ScreenDevice("id:wearos_large_round", "Large round", "Wear OS watch", "227 × 227 dp"),
+      ScreenDevice("id:wearos_xl_round", "Extra large round", "Wear OS watch", "240 × 240 dp"),
+      ScreenDevice("id:wearos_square", "Square", "Wear OS watch", "180 × 180 dp"),
+      ScreenDevice("id:wearos_rect", "Rectangular", "Wear OS watch", "201 × 238 dp"),
+    )
+
+  /**
+   * The device profiles a screen's "Device size" picker offers — watch shapes for a Wear system,
+   * phones/foldable/tablet otherwise.
+   */
+  private fun screenDevicesFor(isWearSystem: Boolean): List<ScreenDevice> =
+    if (isWearSystem) WEAR_SCREEN_DEVICES else SCREEN_DEVICES
 }

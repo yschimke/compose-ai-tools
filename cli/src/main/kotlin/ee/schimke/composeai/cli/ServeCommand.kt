@@ -16,6 +16,7 @@ import ee.schimke.composeai.cli.serve.PlaygroundBundleSource
 import ee.schimke.composeai.cli.serve.PlaygroundCatalogClasspath
 import ee.schimke.composeai.cli.serve.PlaygroundClasspathSupplier
 import ee.schimke.composeai.cli.serve.PlaygroundCompileService
+import ee.schimke.composeai.cli.serve.PlaygroundHealth
 import ee.schimke.composeai.cli.serve.PlaygroundJailedCompiler
 import ee.schimke.composeai.cli.serve.PlaygroundMode
 import ee.schimke.composeai.cli.serve.PlaygroundPreviewDiscoverer
@@ -726,6 +727,7 @@ class ServeCommand(args: List<String>) : Command(args) {
             uiMode = it.params.uiMode,
             supportsFocus = focus,
             supportsGestures = gestures,
+            fixedTheme = it.fixedTheme,
           )
         }
     // The module's declared @ThemeCatalog themes — the Theme selector renders them so a preview can
@@ -1108,14 +1110,20 @@ class ServeCommand(args: List<String>) : Command(args) {
           )
           .also { System.err.println("serve: ${it.summary()}") }
       } else null
+    // Kept, not just logged: `/status.json` reports which posture admitted the lane, so an
+    // operator reading it later doesn't have to find the startup log to tell "admitted because
+    // collaborators only" from "admitted because contained".
+    val admittedBy: String
     when (val decision = PlaygroundPublicGate.decide(public, repoAccessGated, sandbox, probe)) {
       is PlaygroundPublicGate.Decision.Refuse -> {
         System.err.println("serve: ${decision.reason}")
         workRoot.deleteRecursively()
         return null
       }
-      is PlaygroundPublicGate.Decision.Allow ->
+      is PlaygroundPublicGate.Decision.Allow -> {
         System.err.println("serve: playground admitted — ${decision.detail}")
+        admittedBy = decision.detail
+      }
     }
     // A repo-access-gated lane is admitted without consulting the probe, so a broken jail would
     // otherwise pass unremarked — the operator asked for defence in depth and isn't getting it.
@@ -1310,13 +1318,58 @@ class ServeCommand(args: List<String>) : Command(args) {
         java.util.concurrent.TimeUnit.SECONDS,
       )
 
-    return PlaygroundLane(compile = service, redeem = redeem)
+    // Everything an operator needs to diagnose a half-up playground from `/status.json` — the
+    // admission posture, whether the configured jail actually contains anything HERE, and each
+    // mode's lazy-resolution state. Captured as a lambda so the mode rows are read fresh (a
+    // deferred classpath resolves minutes after this point) while staying side-effect free:
+    // `isResolved` reports the memo without forcing a resolve onto the status request path.
+    val health = {
+      PlaygroundHealth(
+        admittedBy = admittedBy,
+        sandboxProfile = sandbox.profile.id,
+        sandboxActive = sandbox.isActive,
+        sandboxMemoryMb = sandbox.memoryMb,
+        sandboxCpus = sandbox.cpus,
+        sandboxTtlSeconds = sandbox.ttlSeconds,
+        probe = probe,
+        compilerJailed = compiler !== inProcessCompiler,
+        compileSlots = playgroundCompileSlots,
+        modes = {
+          listOfNotNull(
+            cmpSupplier?.let {
+              PlaygroundHealth.Mode(PlaygroundMode.CMP.name, it.describeSource(), it.isResolved)
+            },
+            androidSupplier
+              ?.takeIf { androidRender != null }
+              ?.let {
+                PlaygroundHealth.Mode(
+                  PlaygroundMode.ANDROID.name,
+                  it.describeSource(),
+                  it.isResolved,
+                )
+              },
+            androidSupplier
+              ?.takeIf { rcCapture != null }
+              ?.let {
+                PlaygroundHealth.Mode(
+                  PlaygroundMode.REMOTE_COMPOSE.name,
+                  it.describeSource(),
+                  it.isResolved,
+                )
+              },
+          )
+        },
+      )
+    }
+    return PlaygroundLane(compile = service, redeem = redeem, health = health)
   }
 
   /** The playground's Stage-1 compile lane + Stage-2 redeem lane, sharing one token store. */
   private class PlaygroundLane(
     val compile: PlaygroundCompileService,
     val redeem: PlaygroundRedeemService,
+    /** Read by `/status.json` to report why the lane is (or isn't) fully up. */
+    val health: () -> PlaygroundHealth,
   )
 
   /**
@@ -1706,6 +1759,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         adminToken = adminToken,
         docStore = docStore,
         playgroundService = playgroundLane?.compile,
+        playgroundHealth = playgroundLane?.health,
         playgroundRedeem = playgroundLane?.redeem,
         githubAuth = githubAuth,
         engagementStore = ServeEngagementStore(engagementFile),

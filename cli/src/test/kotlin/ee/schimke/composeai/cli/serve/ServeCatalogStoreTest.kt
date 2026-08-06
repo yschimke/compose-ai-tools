@@ -597,6 +597,36 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a fixedTheme image reaches the browse surface with nothing else declared`() {
+    // A theme specimen declares no knobs and detects no features. `fixedTheme` therefore has to
+    // carry a variants-manifest entry on its own — if it didn't, the specimen would arrive with no
+    // metadata at all and the landing would happily re-render it under a themeProvider override.
+    val declared =
+      """
+      {"schema":"design-parity-catalog/v1","system":"meshcore","components":[
+        {"componentId":"Theme","images":[{
+          "path":"images/theme/meshcore-light.png",
+          "previewId":"themecatalog__MeshCore_Light",
+          "fixedTheme":true
+        }]}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> declared.toByteArray()
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+
+    assertTrue(
+      store(TrustStore.EMPTY, fetch = fetch).load("meshcore") is ServeCatalogStore.Result.Ok
+    )
+
+    assertTrue(registered.getValue("meshcore").previews.single().fixedTheme)
+  }
+
+  @Test
   fun `catalog props preserve arbitrary JSON values through the variants manifest`() {
     val flexibleProps =
       """

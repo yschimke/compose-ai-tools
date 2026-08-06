@@ -294,6 +294,9 @@ include(":samples:cmp-wasm-catalog")
 
 // Original Kotlin Multiplatform Remote Compose player. Unlike the vendored Android/JVM embedded
 // player this implementation owns a platform-neutral wire model and can compile to Kotlin/Wasm.
+include(":rc-player-trace")
+project(":rc-player-trace").projectDir = file("rc-player/trace")
+
 include(":rc-player-protocol")
 project(":rc-player-protocol").projectDir = file("rc-player/protocol")
 
@@ -308,6 +311,9 @@ project(":rc-player-wasm").projectDir = file("rc-player/wasm")
 
 include(":rc-player-compat-tests")
 project(":rc-player-compat-tests").projectDir = file("rc-player/compat-tests")
+
+include(":rc-player-profile")
+project(":rc-player-profile").projectDir = file("rc-player/profile")
 
 // Non-renderable KMP-Android library (no `jvm("desktop")` target) — regression fixture for
 // #1852 / #1855. See its build.gradle.kts. Must coexist in the build without breaking CLI

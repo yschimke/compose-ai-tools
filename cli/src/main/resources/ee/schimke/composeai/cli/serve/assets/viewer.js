@@ -82,35 +82,11 @@
   var token = new URLSearchParams(location.search).get("token") || "";
   // Carry the tenant through follow-up requests so a non-default ?session= stays on its module.
   var session = new URLSearchParams(location.search).get("session") || "";
-  // Hydrate the declared knob controls from the page URL's `knob.<key>` params, so a deep link
-  // (or a copied "Direct links — overrides applied" URL) opens with those values already set.
-  // The initial render then carries them through whichever transport is live — including the
-  // Wasm iframe, whose fragment/patch is built purely from control state — instead of showing
-  // the author default until the control is manually edited. Only the author-declared knobs this
-  // feature drives are hydrated (display axes are unchanged, pre-existing behaviour).
-  (function () {
-    var q = new URLSearchParams(location.search);
-    document.querySelectorAll(".cp-knob").forEach(function (el) {
-      var key = el.getAttribute("data-knob-key");
-      if (!key) return;
-      var v = q.get("knob." + key);
-      if (v === null) return;
-      if (el.type === "checkbox") el.checked = (v === "true" || v === "1");
-      else el.value = v;
-    });
-    // Remote Compose knobs hydrate from `rc.<name>`, whose value is `<kind>:<value>`; strip the
-    // control's own `data-rc-kind` prefix back off before assigning the bare value.
-    document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
-      var name = el.getAttribute("data-rc-name");
-      if (!name) return;
-      var v = q.get("rc." + name);
-      if (v === null) return;
-      var kind = el.getAttribute("data-rc-kind") || "";
-      if (kind && v.indexOf(kind + ":") === 0) v = v.substring(kind.length + 1);
-      if (el.type === "checkbox") el.checked = (v === "true" || v === "1");
-      else el.value = v;
-    });
-  })();
+  // Hydrating the controls from the page URL's params — the knobs this used to do inline, plus
+  // every display axis — now happens in one place (hydrateFromUrl, at the bottom of this file),
+  // because Back/Forward needs to run exactly the same restore. It still lands before the first
+  // render, so a deep link (or a copied "Direct links — overrides applied" URL) opens with those
+  // values already set and carries them through whichever transport is live.
   // The selects + text input are opt-in (empty value = "use the preview's default"). The font
   // scale slider has no empty state, so it's gated separately: we only send fontScale once the
   // user moves it (fontScaleTouched), otherwise the slider's standing 1.0 would override a
@@ -408,6 +384,10 @@
     return url + (url.indexOf("?") >= 0 ? "&" : "?") + "mode=" + mode;
   }
   function refreshLinks() {
+    // The page's own URL is kept in step with the controls for the same reason the direct links
+    // are: what's on screen should be something you can bookmark or hand to someone. Every path
+    // that changes viewer state already refreshes the links, so this one call covers all of them.
+    syncUrl();
     [["png", ".png"], ["svg", ".svg"]].forEach(function (pair) {
       var field = document.getElementById("cp-url-" + pair[0]);
       if (!field) return;
@@ -428,6 +408,33 @@
       }
     });
     updateSvgMatch();
+    refreshReportLink();
+  }
+  // Keep the "report an issue" report pointed at what is on screen. The server filled the form's
+  // hidden `body` for the settings the page was served at (so this works with JS off); the
+  // template it carries has the render URL as a `{{render}}` placeholder, which we swap for the
+  // live /render URL so a report filed after fiddling with the knobs shows the render that
+  // prompted it. The token is stripped for the same reason the server strips it: an issue body is
+  // public, a session token is a capability.
+  //
+  // Note this writes an INPUT VALUE, never an href: the affordance is a GET form whose action is a
+  // server-rendered literal, so no page-derived string ever reaches a navigation sink. The browser
+  // does the query encoding on submit, which is why the substituted URL goes in raw here.
+  function refreshReportLink() {
+    var body = document.getElementById("cp-report-body");
+    if (!body) return;
+    var tpl = body.getAttribute("data-report-template");
+    var field = document.getElementById("cp-url-png");
+    if (!tpl || !field || !field.value) return;
+    body.value = tpl.replace("{{render}}", stripToken(field.value));
+  }
+  function stripToken(url) {
+    var cut = url.indexOf("?");
+    if (cut < 0) return url;
+    var kept = url.slice(cut + 1).split("&").filter(function (p) {
+      return p && p.slice(0, 6) !== "token=";
+    });
+    return kept.length ? url.slice(0, cut) + "?" + kept.join("&") : url.slice(0, cut);
   }
   var svgMatch = document.getElementById("cp-svg-match");
   var svgDiff = document.getElementById("cp-svg-diff");
@@ -485,10 +492,11 @@
       }
     });
   });
-  // "Copy PNG" / "Copy SVG": fetch the current /render artefact and put it on the clipboard as
-  // text — SVG markup verbatim, PNG as a base64 data: URI — so it can be pasted straight into an
-  // editor, prompt, or issue without downloading a file. Uses the same live cp-url-<ext> field
-  // the URL Copy button reads, so the copied artefact matches the on-screen overrides.
+  // "Copy PNG" / "Copy SVG": fetch the current /render artefact and put it on the clipboard —
+  // PNG as real image/png bytes (falling back to a base64 data: URI), SVG as markup verbatim — so
+  // it can be pasted straight into an issue, editor, or prompt without downloading a file. Uses
+  // the same live cp-url-<ext> field the URL Copy button reads, so the copied artefact matches the
+  // on-screen overrides.
   document.querySelectorAll(".cp-copyimg").forEach(function (btn) {
     btn.addEventListener("click", function () {
       var field = document.getElementById(btn.getAttribute("data-copyimg-target"));
@@ -500,7 +508,7 @@
         btn.textContent = label;
         setTimeout(function () { btn.textContent = was; }, 1400);
       };
-      if (!navigator.clipboard || !navigator.clipboard.writeText) { reset("No clipboard"); return; }
+      if (!navigator.clipboard) { reset("No clipboard"); return; }
       btn.textContent = "Copying…";
       // Copy SVG targets the EMBEDDED variant (data-embed-url) — the field itself holds the
       // web-mode URL for Copy URL, but a copied SVG is usually pasted into Figma / an editor,
@@ -510,23 +518,41 @@
       // preview that can't export that lane), so guard on r.ok — otherwise the error body,
       // not the artefact, would land on the clipboard and still report "Copied".
       var okOrThrow = function (r) { if (!r.ok) throw new Error("render " + r.status); return r; };
-      var toText =
-        ext === ".svg"
-          ? fetch(src).then(okOrThrow).then(function (r) { return r.text(); })
-          : fetch(src)
-              .then(okOrThrow)
-              .then(function (r) { return r.blob(); })
-              .then(function (blob) {
-                return new Promise(function (resolve, reject) {
-                  var fr = new FileReader();
-                  fr.onload = function () { resolve(fr.result); };
-                  fr.onerror = function () { reject(fr.error); };
-                  fr.readAsDataURL(blob);
+      // PNG: hand the clipboard the real image/png bytes when the browser has ClipboardItem, so
+      // pasting into a GitHub issue (or a doc, or a chat) lands the picture — which is what makes
+      // "Copy PNG → paste into the bug report" a one-keystroke screenshot. The blob goes in as a
+      // *promise* because Safari requires the ClipboardItem to be constructed synchronously inside
+      // the click; awaiting the fetch first would lose the user gesture. Anything that can't do it
+      // — no ClipboardItem, a denied permission, a non-image response — falls through to the
+      // original base64 data: URI text, which still pastes into an editor or a prompt.
+      var copyAsText = function () {
+        if (!navigator.clipboard.writeText) { reset("No clipboard"); return; }
+        var toText =
+          ext === ".svg"
+            ? fetch(src).then(okOrThrow).then(function (r) { return r.text(); })
+            : fetch(src)
+                .then(okOrThrow)
+                .then(function (r) { return r.blob(); })
+                .then(function (blob) {
+                  return new Promise(function (resolve, reject) {
+                    var fr = new FileReader();
+                    fr.onload = function () { resolve(fr.result); };
+                    fr.onerror = function () { reject(fr.error); };
+                    fr.readAsDataURL(blob);
+                  });
                 });
-              });
-      toText
-        .then(function (text) { return navigator.clipboard.writeText(text); })
-        .then(function () { reset("Copied"); }, function () { reset("Failed"); });
+        toText
+          .then(function (text) { return navigator.clipboard.writeText(text); })
+          .then(function () { reset("Copied"); }, function () { reset("Failed"); });
+      };
+      if (ext === ".png" && window.ClipboardItem && navigator.clipboard.write) {
+        var pngBlob = fetch(src).then(okOrThrow).then(function (r) { return r.blob(); });
+        navigator.clipboard
+          .write([new ClipboardItem({ "image/png": pngBlob })])
+          .then(function () { reset("Copied"); }, copyAsText);
+        return;
+      }
+      copyAsText();
     });
   });
   function drawFrame(b64, codec) {
@@ -1200,6 +1226,11 @@
     return !!(svgToggle && svgToggle.getAttribute("aria-pressed") === "true");
   }
   function enterMode(m) {
+    // A lane switch is a discrete choice, so the URL sync it ends up triggering pushes a history
+    // entry rather than replacing one — Back returns to the lane the visitor came from. Set here
+    // rather than on each control because every transition (radio, Live/Wasm/RC toggle, or an
+    // auto-enable) passes through this function.
+    urlPush = true;
     // A mode switch always clears a prior lane's error; the new lane re-raises its own if it fails.
     clearModeError();
     if (m === "live") {
@@ -1255,6 +1286,12 @@
     // (and its direct links) instead of skipping the still-disabled control. The live/wasm lanes
     // drive their own render (openStream / openWasm), so only the static lane renders here.
     if (m !== "live" && m !== "wasm" && m !== "rc" && m !== "rc-wasm") refreshSnapshot();
+    // The interactive lanes drive their own render and never reach refreshLinks, so the URL would
+    // still describe the snapshot the visitor just left — the chosen lane unbookmarkable until
+    // some unrelated control moved, and the pending push landing on that edit instead. Sync here
+    // so every transition writes `?mode=` at the moment it happens. (The snapshot branch already
+    // synced via refreshSnapshot; this second call is a no-op replace with identical values.)
+    else syncUrl();
   }
   // SVG format toggle: swap the static snapshot between raster and vector. Pressing it while a
   // live lane is active drops back to the static vector render; pressing it in the static lane
@@ -1609,6 +1646,8 @@
   }
   if (themeChoice) themeChoice.addEventListener("change", function () {
     themeChoice.setAttribute("data-theme-active", "1");
+    // Like a lane switch: a picked theme earns its own history entry.
+    urlPush = true;
     if (chosenThemeProvider()) onKnobChanged();
     else onControlsChanged();
   });
@@ -1627,9 +1666,183 @@
   document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
     el.addEventListener(el.type === "checkbox" ? "change" : "input", onRcKnobChanged);
   });
+  // ——— Address-bar state ————————————————————————————————————————————————————————————————————
+  //
+  // The viewer's controls already produce a shareable /render URL; until now the *page* URL said
+  // nothing about them, so a bookmark of "this preview, Dynamic Dark, RTL, font scale 1.3"
+  // reopened on the preview's defaults. The params are exactly the /render override names, so the
+  // viewer URL and the copyable render URL describe the same state and a param learned from one
+  // works in the other.
+  //
+  // Only the params below are ours: `token` / `session` (and anything else the server put on the
+  // URL) are never touched, and a control returning to its default *removes* its param rather
+  // than pinning a redundant value, so an untouched viewer keeps the clean URL it was opened
+  // with.
+  var URL_STATE_PARAMS = [
+    "device", "localeTag", "orientation", "background", "fontScale",
+    "uiMode", "themeProvider", "focus", "gestures", "scroll", "mode", "sizeMode", "rcPlayer",
+    "widthPx", "heightPx", "minWidthPx", "minHeightPx", "maxWidthPx", "maxHeightPx",
+  ];
+  function ownsUrlParam(name) {
+    return URL_STATE_PARAMS.indexOf(name) >= 0 ||
+      name.indexOf("knob.") === 0 || name.indexOf("rc.") === 0;
+  }
+  function currentMode() {
+    var checked = document.querySelector("input[name=\"cp-mode\"]:checked");
+    return checked ? checked.value : "png";
+  }
+  // Set before a discrete choice (a lane switch, a theme pick) so the sync it triggers PUSHES a
+  // history entry — Back then returns to the previous lane/theme. Continuous edits (a slider, a
+  // typed knob) leave it false and replace instead, so one drag can't bury the catalog page under
+  // fifty entries. Consumed by the first sync that follows.
+  var urlPush = false;
+  function syncUrl() {
+    var push = urlPush;
+    urlPush = false;
+    if (!window.cpUrlState) return;
+    var values = {};
+    new URLSearchParams(query()).forEach(function (value, name) {
+      if (ownsUrlParam(name)) values[name] = value;
+    });
+    if (scrollLong && scrollLong.checked) values.scroll = "long";
+    var mode = currentMode();
+    if (mode !== "png") values.mode = mode;
+    var sizeModeEl = document.getElementById("cp-sizeMode");
+    if (sizeModeEl && sizeModeEl.value) values.sizeMode = sizeModeEl.value;
+    window.cpUrlState.sync(values, ownsUrlParam, !push);
+  }
+  // What the controls hold when the URL names nothing — captured after the server markup and the
+  // sticky-theme script have had their say, so Back out of a choice restores the page as it first
+  // opened rather than whatever localStorage was last written with.
+  var initialTheme = themeChoice ? themeChoice.value : "";
+  var initialThemeActive = themeChoice ? themeChoice.getAttribute("data-theme-active") : "0";
+  // px on the wire (like every override), dp in the input — the inverse of sizePx().
+  function setSizeInput(id, px) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var value = parseFloat(px);
+    el.value = value > 0 ? String(Math.round(value / renderDensity)) : "";
+  }
+  // Restore every owned control from the URL. Also runs for Back/Forward, so a param the entry
+  // does NOT carry has to reset its control — leaving the live value would make the restored page
+  // disagree with its own URL.
+  function hydrateFromUrl(popped) {
+    var q = new URLSearchParams(location.search);
+    fields.forEach(function (f) {
+      var el = document.getElementById("cp-" + f);
+      if (el) el.value = q.get(f) || "";
+    });
+    if (fs) {
+      var scale = q.get("fontScale");
+      fontScaleTouched = !!scale;
+      fs.value = scale || "1.0";
+      if (fsVal) fsVal.textContent = scale ? fs.value : "default";
+    }
+    if (scrollLong) scrollLong.checked = q.get("scroll") === "long";
+    ["focus", "gestures"].forEach(function (f) {
+      var el = document.getElementById("cp-" + f);
+      if (el) el.checked = q.get(f) !== null;
+    });
+    var sizeModeEl = document.getElementById("cp-sizeMode");
+    if (sizeModeEl) {
+      sizeModeEl.value = q.get("sizeMode") || "";
+      setSizeInput("cp-fixedW", q.get("widthPx"));
+      setSizeInput("cp-fixedH", q.get("heightPx"));
+      setSizeInput("cp-minW", q.get("minWidthPx"));
+      setSizeInput("cp-minH", q.get("minHeightPx"));
+      setSizeInput("cp-maxW", q.get("maxWidthPx"));
+      setSizeInput("cp-maxH", q.get("maxHeightPx"));
+      if (typeof syncSizeRows === "function") syncSizeRows();
+    }
+    document.querySelectorAll(".cp-knob").forEach(function (el) {
+      var key = el.getAttribute("data-knob-key");
+      if (!key) return;
+      var value = q.get("knob." + key);
+      if (value === null) value = el.getAttribute("data-knob-initial") || "";
+      if (el.type === "checkbox") el.checked = (value === "true" || value === "1");
+      else el.value = value;
+    });
+    document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+      var name = el.getAttribute("data-rc-name");
+      if (!name) return;
+      var kind = el.getAttribute("data-rc-kind") || "";
+      var value = q.get("rc." + name);
+      if (value === null) value = el.getAttribute("data-rc-initial") || "";
+      else if (kind && value.indexOf(kind + ":") === 0) value = value.substring(kind.length + 1);
+      if (el.type === "checkbox") el.checked = (value === "true" || value === "1");
+      else el.value = value;
+    });
+    // The theme select is seeded (from the URL first, then localStorage) by the sticky script
+    // before this file runs, so the initial pass must not touch it. A Back/Forward pass owns it:
+    // the entry's theme, or the one the page opened with when it names none.
+    if (popped && themeChoice) {
+      var provider = q.get("themeProvider");
+      var uiMode = q.get("uiMode");
+      var choice = provider ? "theme:" + provider
+        : (uiMode === "light" || uiMode === "dark" ? uiMode : "");
+      var offered = false;
+      Array.prototype.forEach.call(themeChoice.options, function (o) {
+        if (choice && o.value === choice) offered = true;
+      });
+      themeChoice.value = offered ? choice : initialTheme;
+      themeChoice.setAttribute("data-theme-active", offered ? "1" : initialThemeActive);
+    }
+  }
+  hydrateFromUrl(false);
+  // Read the bookmarked lane NOW, before the first refreshSnapshot's sync clears a param no
+  // control is holding yet. It is applied at the very bottom of this file, once the snapshot every
+  // lane falls back to has been requested.
+  var initialUrlMode = new URLSearchParams(location.search).get("mode") || "";
+  if (window.cpUrlState) {
+    window.cpUrlState.onPop(function () {
+      hydrateFromUrl(true);
+      var mode = currentMode();
+      var wanted = new URLSearchParams(location.search).get("mode") || "png";
+      // A lane change re-renders through enterMode; otherwise the restored overrides go out over
+      // whichever transport is already up. Either way nothing reloads.
+      if (wanted !== mode) setMode(wanted);
+      else onControlsChanged();
+    });
+  }
   // Reconcile the control enabled-state + the toggle's initial look with the session's
   // capabilities (matches the server-rendered markup; keeps them in sync after hydration).
   syncServerControls();
   updateLiveToggle();
   refreshSnapshot();
+  // A bookmarked `?mode=live` / `wasm` / `rc` opens in that lane — but only once the initial
+  // snapshot has LANDED, not merely been requested.
+  //
+  // The stage's <img> is emitted with no src: the refreshSnapshot() above is the only thing that
+  // will ever put pixels in it. Entering an interactive lane cancels any in-flight snapshot
+  // (cancelSnapshotLoading bumps the generation), so switching immediately would discard that one
+  // render and leave a cold bookmarked load looking at an empty stage behind a lane that may take
+  // seconds to paint — or that fails and shows an activation error over nothing. Waiting for the
+  // frame first makes the bookmark land in exactly the state a visitor reaches by loading the page
+  // and clicking the toggle, which is the whole claim.
+  //
+  // Bounded, because the snapshot may never settle: a render that errors sets no src (so neither
+  // event fires) and one that hangs would strand the bookmark on the snapshot lane forever.
+  // A mode this session doesn't offer (no daemon, no Wasm app) is ignored rather than entering a
+  // lane whose control is absent or disabled — the page stays on the snapshot and the param clears
+  // on the next sync.
+  (function () {
+    var wanted = initialUrlMode;
+    if (!wanted || wanted === "png" || wanted === currentMode()) return;
+    var radio = null;
+    Array.prototype.forEach.call(
+      document.querySelectorAll("input[name=\"cp-mode\"]"),
+      function (r) { if (r.value === wanted) radio = r; });
+    if (!radio || radio.disabled) return;
+    var entered = false;
+    function enterBookmarkedMode() {
+      if (entered) return;
+      entered = true;
+      img.removeEventListener("load", enterBookmarkedMode);
+      img.removeEventListener("error", enterBookmarkedMode);
+      setMode(wanted);
+    }
+    img.addEventListener("load", enterBookmarkedMode);
+    img.addEventListener("error", enterBookmarkedMode);
+    setTimeout(enterBookmarkedMode, 8000);
+  })();
 })();

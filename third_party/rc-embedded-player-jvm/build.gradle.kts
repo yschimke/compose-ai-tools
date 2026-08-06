@@ -149,7 +149,14 @@ kotlin {
     srcDir("../rc-embedded-player/src/main/kotlin")
     // `include` filters every srcDir of this source set, so this module's own sources need a
     // pattern too — otherwise the explicit list above would silently exclude them.
-    include(sharedPlayerSources + jvmPlayerSources + "ee/**")
+    //
+    // Scoped to `…/rcembedded/jvm/**` rather than `ee/**` for the same reason the file lists above
+    // are explicit: the pattern is matched across *both* srcDirs, so a bare `ee/**` also sweeps in
+    // whatever the Android module keeps under `ee/` — which is Android-only by construction (it
+    // names `androidx.compose.ui.text.font.Font(File, …)`, whose jvm counterpart lives in
+    // `…text.platform`). This module's own sources are all under the `jvm` package, so scoping the
+    // pattern to it keeps the boundary a build-level fact rather than a convention to remember.
+    include(sharedPlayerSources + jvmPlayerSources + "ee/schimke/composeai/rcembedded/jvm/**")
   }
 }
 
@@ -221,6 +228,12 @@ dependencies {
   // downloadable-font shadow and the figma-svg embed path use — one cache and one resolution rule,
   // so every lane draws the same file for the same family.
   implementation(project(":data-fonts-google"))
+
+  // androidx.tracing 2.x, used directly (not through `:rc-player-trace`) by `RcJvmRenderer`. This
+  // module renders through AndroidX's own embedded player, so it traces with AndroidX's own tracer;
+  // the category and span names deliberately line up with `RcTraceCategory`'s so a single Perfetto
+  // capture puts this lane and the CMP player's lane on comparable tracks. See `RcJvmRenderer.kt`.
+  implementation(libs.androidx.tracing.kmp)
 
   testImplementation(libs.junit)
   // Manifest parsing for the rc-compare jvm render harness (RcJvmRenderHarness) — parsed via the

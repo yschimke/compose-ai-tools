@@ -347,7 +347,8 @@ class ServeCatalogStore(
             image.overrides.isNotEmpty() ||
             image.remoteComposeKnobs.isNotEmpty() ||
             image.supportsFocus ||
-            image.supportsGestures
+            image.supportsGestures ||
+            image.fixedTheme
         ) {
           variants[id] =
             VariantMeta(
@@ -359,6 +360,7 @@ class ServeCatalogStore(
               remoteComposeKnobs = image.remoteComposeKnobs,
               supportsFocus = image.supportsFocus,
               supportsGestures = image.supportsGestures,
+              fixedTheme = image.fixedTheme,
               section = planned.section,
               group = planned.group,
               order = if (hasSectionInfo) count else null,
@@ -1483,6 +1485,13 @@ class ServeCatalogStore(
     val supportsFocus: Boolean = false,
     /** Discovery-time `@GestureHintPreview` support, recorded without opening the live bundle. */
     val supportsGestures: Boolean = false,
+    /**
+     * Discovery-time `@FixedTheme` (or a `@ThemeCatalog`-synthesised sheet): this render's subject
+     * IS a theme, so the browse surface must not re-render it under a `themeProvider` override.
+     * Recorded here so a specimen outside a `"Themes"` section is honoured before its per-preview
+     * daemon is ever opened.
+     */
+    val fixedTheme: Boolean = false,
   )
 
   /**
@@ -1515,6 +1524,8 @@ class ServeCatalogStore(
     val remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
     val supportsFocus: Boolean = false,
     val supportsGestures: Boolean = false,
+    /** Discovery-time `@FixedTheme` — see [Image.fixedTheme]. */
+    val fixedTheme: Boolean = false,
     val section: String? = null,
     val group: String? = null,
     val order: Int? = null,

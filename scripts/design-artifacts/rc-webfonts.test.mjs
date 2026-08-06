@@ -38,6 +38,8 @@ let origin;
 let skip = false;
 /** Font-file routes the page actually requested, so over-fetching is a testable claim. */
 const fetched = [];
+/** Every css2 query string requested, so the *shape* of the request is testable too. */
+const stylesheetQueries = [];
 
 before(async () => {
   try {
@@ -63,6 +65,7 @@ before(async () => {
       res.writeHead(200, { "content-type": "text/html" });
       res.end("<!doctype html><html><head></head><body></body></html>");
     } else if (route === "/css2") {
+      stylesheetQueries.push(req.url.slice(route.length));
       res.writeHead(200, { "content-type": "text/css", "access-control-allow-origin": "*" });
       res.end(
         [400, 700]
@@ -313,4 +316,97 @@ test("a family that cannot be served degrades to the fallback instead of throwin
   // paint the fallback rather than break the render or reject the readiness gate the harness awaits.
   assert.equal(r.threw, false, "ensureWebFont/webFontsReady must not reject");
   assert.equal(r.named, r.fallback, "an unavailable family should measure as the fallback");
+});
+
+test("an axis request asks for a range, which is what makes the face variable", async (t) => {
+  if (skip) return t.skip(skip);
+  const page = await playerPage();
+  const r = await page.evaluate(() => ({
+    ramp: RC.googleFontsAxisUrl("Roboto Flex", [
+      { tag: "wght", min: 100, max: 1000 },
+      { tag: "wdth", min: 25, max: 151 },
+    ]),
+    single: RC.googleFontsAxisUrl("Roboto Flex", [{ tag: "wdth", min: 100, max: 100 }]),
+    none: RC.googleFontsAxisUrl("Roboto Flex", []),
+  }));
+
+  // This is the whole point of the axis request. Asked for an enumerated weight list, css2 answers
+  // with a *pinned static instance per weight* (`font-weight: 100; font-stretch: 100%`); asked for
+  // ranges with the axes named, it answers with a variable face (`font-weight: 100 1000;
+  // font-stretch: 25% 151%`). Only the second can be varied, so a document carrying axes that asked
+  // the enumerated way would draw its `wdth` ramp as identical lines however correctly the canvas
+  // sets the axis.
+  assert.ok(
+    r.ramp.includes("family=Roboto+Flex:wdth,wght@25..151,100..1000"),
+    `axes must be alphabetical with values in the same order: ${r.ramp}`,
+  );
+  assert.match(r.ramp, /[?&]display=block/);
+  // A span of one value is null rather than `wdth@100..100`: css2 rejects a degenerate range with a
+  // 400, and a single value needs no variable face — the enumerated request already covers it.
+  assert.equal(r.single, null);
+  assert.equal(r.none, null);
+});
+
+test("a document's axis values accumulate into one range across paints", async (t) => {
+  if (skip) return t.skip(skip);
+  const page = await playerPage();
+  stylesheetQueries.length = 0;
+  await page.evaluate(
+    async ({ base, family }) => {
+      RC.resetWebFonts();
+      RC.configureWebFonts({ baseUrl: base });
+      // Three lines of a `wdth` specimen are three separate text ops, each carrying one value.
+      for (const value of [25, 100, 151]) {
+        await RC.ensureWebFont(family, 400, false, undefined, [{ tag: "wdth", value }]);
+      }
+      await RC.webFontsReady();
+    },
+    { base: `${origin}/css2`, family: FIXTURE_FAMILY },
+  );
+
+  const axisQueries = stylesheetQueries.filter((q) => q.includes("@"));
+  // The first value alone is a degenerate span with no variable face to ask for; only once a second
+  // value arrives is there a range. The widest span seen is what the last request carries — that is
+  // the face the frame a single-shot renderer keeps is painted with, since it repaints after
+  // `webFontsReady()`.
+  assert.ok(
+    axisQueries.some((q) => q.includes("wdth@25..151")),
+    `expected the accumulated span to be requested, saw: ${JSON.stringify(axisQueries)}`,
+  );
+  // The enumerated stylesheet is still registered — it is what serves a family with no variable
+  // face at all, and the fallback when the range is refused.
+  assert.ok(
+    stylesheetQueries.some((q) => q.includes("ital,wght@")),
+    `expected the enumerated request as well, saw: ${JSON.stringify(stylesheetQueries)}`,
+  );
+});
+
+test("axes that arrive after the family still reach the request", async (t) => {
+  if (skip) return t.skip(skip);
+  const page = await playerPage();
+  stylesheetQueries.length = 0;
+  await page.evaluate(
+    async ({ base, family }) => {
+      RC.resetWebFonts();
+      RC.configureWebFonts({ baseUrl: base });
+      // The order a paint bundle actually serialises in: `setTextStyle` (which resolves the family,
+      // and is where the request is made) comes *before* `setTextAxis`. So the first ask for a line
+      // necessarily carries no axes, and the axes are known only afterwards.
+      for (const value of [25, 151]) {
+        await RC.ensureWebFont(family, 400, false, undefined, []);
+        await RC.ensureWebFont(family, 400, false, undefined, [{ tag: "wdth", value }]);
+      }
+      await RC.webFontsReady();
+    },
+    { base: `${origin}/css2`, family: FIXTURE_FAMILY },
+  );
+
+  // Without a request made *after* the axes are decoded, this span is never asked for and the page
+  // keeps the enumerated static stylesheet — which is a face with nothing to vary, so the ramp draws
+  // as identical lines. It looks correct on a page that vendored the variable face itself, which is
+  // exactly how it would hide.
+  assert.ok(
+    stylesheetQueries.some((q) => q.includes("wdth@25..151")),
+    `expected the span requested after the axes arrived, saw: ${JSON.stringify(stylesheetQueries)}`,
+  );
 });

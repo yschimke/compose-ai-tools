@@ -29,6 +29,39 @@
       "groupName": "{{manager}} minor/patch"
     },
     {
+      "description": "Never take a `…-compat` backport artifact. JetBrains publishes compatibility variants of the kotlinx libraries under a `<version>-<oldline>.x-compat` suffix (e.g. `kotlinx-datetime:0.8.0-0.6.x-compat`, the 0.8.0 code recompiled against the 0.6.x API) and Renovate's gradle versioning ranks that suffix ABOVE the plain release, so it proposes a *downgrade of API surface* dressed as an upgrade (#3359). Filtering the suffix out of the candidate list — rather than disabling the update — keeps Renovate offering the next genuine release. Declared before the per-dep pins below so those stricter `allowedVersions` still win for their deps.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "allowedVersions": "!/-compat$/"
+    },
+    {
+      "description": "eclipse-temurin (cloudrun image): stay on the JDK 17 line. deploy/cloudrun/Dockerfile builds the tool from source inside the image, and the repo's Gradle daemon toolchain is pinned to 17 (gradle/gradle-daemon-jvm.properties) — a newer base JDK means Gradle's auto-detection finds no matching toolchain and the image build fails. Patch bumps inside 17.x are fine; changing the major is a manual decision that has to move the daemon toolchain with it (#3362).",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchFileNames": [
+        "deploy/cloudrun/Dockerfile"
+      ],
+      "matchDepNames": [
+        "eclipse-temurin"
+      ],
+      "allowedVersions": "/^17\\./"
+    },
+    {
+      "description": "eclipse-temurin (release image): stay on the JDK 21 line. deploy/image/Dockerfile runs the released CLI and the Android render daemon, which needs JDK 21+ for Robolectric SDK 36 (docs/SDK_COMPATIBILITY.md) and is built against 21. Patch bumps inside 21.x are fine; a major bump has to be validated against Gradle/AGP/Robolectric support first, so it stays manual (#3362).",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchFileNames": [
+        "deploy/image/Dockerfile"
+      ],
+      "matchDepNames": [
+        "eclipse-temurin"
+      ],
+      "allowedVersions": "/^21\\./"
+    },
+    {
       "description": "Freeze the AGP 8.x minimum-supported fixture: every pin here is deliberate and must be bumped by hand.",
       "matchFileNames": [
         ".github/ci/fixtures/agp8-min/**"

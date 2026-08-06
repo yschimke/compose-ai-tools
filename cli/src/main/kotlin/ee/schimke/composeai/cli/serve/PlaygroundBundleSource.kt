@@ -112,6 +112,9 @@ class PlaygroundClasspathSupplier(
   val isResolved: Boolean
     get() = resolved != null
 
+  /** How this mode's bundle was named, for `/status.json` and startup logs. */
+  fun describeSource(): String = source.describe()
+
   fun classpath(): PlaygroundCompileService.Classpath? {
     resolved?.let {
       return it

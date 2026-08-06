@@ -23,6 +23,8 @@ typealias TraceMetadata = ee.schimke.composeai.data.render.TraceMetadata
 
 typealias TracePayload = ee.schimke.composeai.data.render.TracePayload
 
+typealias RenderTrace = ee.schimke.composeai.data.render.RenderTrace
+
 object PerfettoTraceDataProducer {
   const val KIND: String = ee.schimke.composeai.data.render.PerfettoTraceDataProducer.KIND
   const val SCHEMA_VERSION: Int =
@@ -56,9 +58,34 @@ object PerfettoTraceDataProducer {
     fun <T> section(name: String, category: String = "compose-preview", block: () -> T): T =
       delegate.section(name = name, category = category, block = block)
 
-    fun record(name: String, category: String = "compose-preview", startNs: Long, endNs: Long) {
-      delegate.record(name = name, category = category, startNs = startNs, endNs = endNs)
+    /** See `PerfettoTraceDataProducer.Recorder.beginSection` — for non-lexical span pairs. */
+    fun beginSection(name: String, category: String = "compose-preview") {
+      delegate.beginSection(name = name, category = category)
     }
+
+    /** See `PerfettoTraceDataProducer.Recorder.endSection`. */
+    fun endSection() {
+      delegate.endSection()
+    }
+
+    fun record(
+      name: String,
+      category: String = "compose-preview",
+      startNs: Long,
+      endNs: Long,
+      depth: Int = 0,
+    ) {
+      delegate.record(
+        name = name,
+        category = category,
+        startNs = startNs,
+        endNs = endNs,
+        depth = depth,
+      )
+    }
+
+    /** Structured phase timings for `RenderResult.trace` — see [RenderTrace]. */
+    fun renderTrace(): RenderTrace = delegate.renderTrace()
 
     fun payload(): TracePayload = delegate.payload()
 

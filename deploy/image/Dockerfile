@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.25
+# syntax=docker/dockerfile:1.26
 
 # Fast, prebuilt-friendly image for `compose-preview serve`.
 #
@@ -13,7 +13,7 @@
 # `# x-release-please-version` can't go on the ARG line (Docker folds it into the value), so use
 # the block-marker form.
 # x-release-please-start-version
-ARG CP_VERSION=0.19.35
+ARG CP_VERSION=0.19.40
 # x-release-please-end
 
 # ---------------------------------------------------------------------------

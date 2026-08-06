@@ -93,4 +93,37 @@ class CatalogEntryWireTest {
 
     assertEquals(false, manifest.previews.single().catalog?.perBreakpoint)
   }
+
+  @Test
+  fun `fixedTheme survives the wire and defaults off`() {
+    // `ignoreUnknownKeys` would drop the flag silently if this API didn't mirror it, and a serve
+    // host reading the manifest would re-theme a specimen that discovery had already marked.
+    val manifest =
+      Json.decodeFromString<PreviewManifest>(
+        """
+        {
+          "module": ":sample",
+          "variant": "debug",
+          "previews": [
+            {
+              "id": "themecatalog__Brand_Light",
+              "functionName": "Brand Light theme",
+              "className": "test.BrandLightTheme",
+              "fixedTheme": true
+            },
+            {
+              "id": "test.ContactRow",
+              "functionName": "ContactRow",
+              "className": "test.PreviewsKt"
+            }
+          ]
+        }
+        """
+          .trimIndent()
+      )
+
+    val byId = manifest.previews.associateBy { it.id }
+    assertEquals(true, byId.getValue("themecatalog__Brand_Light").fixedTheme)
+    assertEquals(false, byId.getValue("test.ContactRow").fixedTheme)
+  }
 }

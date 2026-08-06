@@ -67,6 +67,57 @@ class ServeWebFixtureTest {
       designParityVersion = "0.1.25",
     )
 
+  // The viewer's prefilled "report an issue" link, built the way the server builds it: against the
+  // catalog's SOURCE repo, carrying the preview's facts and a token-free deep link, with the
+  // signed-in visitor's login named in the tooltip.
+  // The Figma node a preview is specified by, resolved the way the server resolves it — from a
+  // Figma-backed design reference the catalog published, not from a hand-written URL. Mirrors a
+  // real
+  // meshcore-mobile design-map entry (`figma:gYzowY4cQ7rNr2gYoco1M6/73:6`).
+  private val fixtureFigmaSpec =
+    ServeFigmaSpec.of(
+      DesignReference(
+        id = "contact-chat-figma",
+        previewId = "com.example.ProfileScreenPreview",
+        label = "Contact chat",
+        raster = DesignReferenceRaster(path = "references/contact-chat-figma.png"),
+        source =
+          DesignReferenceSource(provider = "figma", uri = "figma:gYzowY4cQ7rNr2gYoco1M6/73:6"),
+      )
+    )
+
+  private fun fixtureReportIssue(previewId: String, label: String, sourceFile: String) =
+    ServeIssueReport.Context(
+        repo = "yschimke/compose-ai-tools",
+        previewId = previewId,
+        previewLabel = label,
+        system = "compose-m3",
+        sourceUrl =
+          ServeUrls.githubBlobUrl(
+            "yschimke/compose-ai-tools",
+            "design-artifacts-source",
+            "samples/design-catalog-compose-m3",
+            sourceFile,
+          ),
+        catalog = "yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        toolVersion = provenance.toolVersion,
+        viewerUrl = "https://preview.coo.ee/compose-m3/p/$previewId",
+        renderUrl = "https://preview.coo.ee/compose-m3/render/$previewId.png",
+        // The goldens stand in for preview.coo.ee, whose render lane is token-free — so they
+        // capture the embedded-image form of the body.
+        publicRender = true,
+      )
+      .let { ctx ->
+        ServeWeb.ReportIssue(
+          action = ServeIssueReport.action(ctx.repo),
+          title = ServeIssueReport.title(ctx),
+          body = ServeIssueReport.body(ctx),
+          bodyTemplate = ServeIssueReport.body(ctx, renderPlaceholder = true),
+          repo = ctx.repo,
+          login = "yschimke",
+        )
+      }
+
   // The colour half of two REAL published token files (`design-artifacts/<system>/tokens.dtcg.json`
   // — the DTCG projection of the catalog's resolved MaterialTheme), trimmed to the roles the web
   // projection reads. Kept verbatim so the themed fixtures below are the palettes a visitor to
@@ -542,6 +593,14 @@ class ServeWebFixtureTest {
             "samples/design-catalog-compose-m3",
             "src/main/kotlin/com/example/ProfileScreen.kt",
           ),
+        // …and the prefilled "report an issue" link beside it, so the golden captures the bug-
+        // reporting affordance (and a signed-in visitor's "as @login" tooltip) next to source.
+        reportIssue =
+          fixtureReportIssue(
+            "com.example.ProfileScreenPreview",
+            "Profile screen",
+            "src/main/kotlin/com/example/ProfileScreen.kt",
+          ),
       )
     // A second viewer carrying the in-browser Wasm tier, so the harness captures the "Run in
     // browser (Wasm)" toggle + iframe seam a CMP catalog session shows.
@@ -598,6 +657,26 @@ class ServeWebFixtureTest {
             ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog", group = "Brand"),
             ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog", group = "Brand"),
           ),
+        // The source + "report an issue" row. `serve-viewer` carries it too, but this is the viewer
+        // fixture captured with the REAL stylesheet routed in (see STYLED_FIXTURES in
+        // pages-snapshot.spec.mjs), so it is the shot where a change to how that row is *painted*
+        // moves a baseline for the visual-diff bot rather than only changing the HTML.
+        sourceHref =
+          ServeUrls.githubBlobUrl(
+            "yschimke/compose-ai-tools",
+            "design-artifacts-source",
+            "samples/design-catalog-compose-m3",
+            "src/main/kotlin/com/example/Button.kt",
+          ),
+        reportIssue =
+          fixtureReportIssue(
+            knobPreview.id,
+            knobPreview.label,
+            "src/main/kotlin/com/example/Button.kt",
+          ),
+        // …and the third link in the row: the Figma node this preview is specified by, which only a
+        // catalog publishing Figma-backed references names.
+        figmaSpec = fixtureFigmaSpec,
       )
     // A catalog served under its canonical path (/meshcore-mobile/) rather than ?session=: same
     // pages, but links stay on the path (basePath) and drop the &session= param. Captures the
@@ -622,6 +701,27 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
         basePath = "/meshcore-mobile",
         siblings = previews,
+        // meshcore-mobile is the catalog that really publishes Figma-backed references, so its
+        // golden is where the affordance is captured in context.
+        figmaSpec = fixtureFigmaSpec,
+      )
+    // The Wear counterpart of [viewerPath]: a screen served under a Wear system path. Its Size
+    // panel must offer the watch shapes (not Pixel phones / a foldable / a tablet) and drop the
+    // Orientation control a watch can't honour — captured so the visual-diff bot covers the Wear
+    // control panel, which no other page fixture reaches.
+    val viewerWearScreen =
+      ServeWeb.viewerPage(
+        ServePreview(
+          "settings-complication",
+          "Settings complication",
+          section = "Screens",
+          componentId = "SettingsComplication",
+        ),
+        token,
+        sessionId = "home-assistant-wear",
+        canApplyOverrides = true,
+        basePath = "/home-assistant-wear",
+        trust = "branch:yschimke/home-assistant-wear@design-artifacts/home-assistant-wear",
       )
     // A daemon-backed viewer whose module declares `@ThemeCatalog` themes: the viewer adds an "App
     // theme" selector (grouped by `@ThemeCatalog(group=…)`) so a preview can be re-rendered under a
@@ -1162,6 +1262,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-viewer-gestures.html").writeText(viewerGestures)
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
+      File(pagesDir, "serve-viewer-wear-screen.html").writeText(viewerWearScreen)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
       File(pagesDir, "serve-landing-catalog-palette.html").writeText(landingCatalogPalette)
       File(pagesDir, "serve-viewer-catalog-palette.html").writeText(viewerCatalogPalette)
@@ -1280,6 +1381,7 @@ class ServeWebFixtureTest {
     )
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
+    assertGolden(File(pagesDir, "serve-viewer-wear-screen.html"), viewerWearScreen)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
     assertGolden(File(pagesDir, "serve-landing-catalog-palette.html"), landingCatalogPalette)
     assertGolden(File(pagesDir, "serve-viewer-catalog-palette.html"), viewerCatalogPalette)
@@ -2542,6 +2644,58 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `a Wear system's screens offer watch shapes instead of phones and no orientation`() {
+    val wearScreen =
+      ServeWeb.viewerPage(
+        ServePreview("settings-complication", "Settings complication", section = "Screens"),
+        token,
+        canApplyOverrides = true,
+        basePath = "/home-assistant-wear",
+      )
+    val phoneScreen =
+      ServeWeb.viewerPage(
+        ServePreview("settings", "Settings", section = "Screens"),
+        token,
+        canApplyOverrides = true,
+        basePath = "/meshcore-mobile",
+      )
+
+    assertTrue(wearScreen.contains("<label>Device size"), "a Wear screen keeps the device picker")
+    listOf(
+        "id:wearos_small_round",
+        "id:wearos_large_round",
+        "id:wearos_xl_round",
+        "id:wearos_square",
+        "id:wearos_rect",
+      )
+      .forEach { assertTrue(wearScreen.contains("value=\"$it\""), "Wear screen offers $it") }
+    listOf("id:pixel_5", "id:pixel_7", "id:pixel_fold", "id:pixel_tablet").forEach {
+      assertFalse(wearScreen.contains("value=\"$it\""), "Wear screen must not offer $it")
+      assertTrue(phoneScreen.contains("value=\"$it\""), "a handheld screen still offers $it")
+    }
+    // Watches don't rotate — the control is omitted rather than left as a dead knob, and neither
+    // static-snapshot note may advertise it.
+    assertFalse(wearScreen.contains("id=\"cp-orientation\""), "Wear screen omits orientation")
+    assertTrue(phoneScreen.contains("id=\"cp-orientation\""), "a handheld screen keeps orientation")
+
+    val staticWearScreen =
+      ServeWeb.viewerPage(
+        ServePreview("settings-complication", "Settings complication", section = "Screens"),
+        token,
+        canApplyOverrides = false,
+        basePath = "/home-assistant-wear",
+      )
+    assertFalse(
+      staticWearScreen.lowercase().contains("orientation"),
+      "the Wear snapshot note must not promise an orientation override",
+    )
+    assertTrue(
+      staticWearScreen.contains("device size, locale, font scale"),
+      "the Wear snapshot note still lists the overrides it does carry",
+    )
+  }
+
+  @Test
   fun `SVG is an on-screen format toggle and an export format when the session can export SVG`() {
     val card = previews.first { it.id.endsWith("CardPreview") }
     // SVG isn't part of the awkward PNG/live radio group any more, but it's still an on-screen
@@ -2586,6 +2740,48 @@ class ServeWebFixtureTest {
     assertFalse(
       plain.contains("id=\"cp-scroll-long\""),
       "no Full-page toggle without a scroll export",
+    )
+  }
+
+  @Test
+  fun `a card answers the pointer as a tile, not as an underlined hyperlink`() {
+    // Every clickable tile on the site — a front-door catalog card and a catalog's preview cards
+    // alike — is one `<a class="cp-card">` wrapping an image and several lines of metadata. The
+    // sheet's global `a:hover { text-decoration: underline }` therefore underlined ALL of that
+    // metadata at once, which reads as four stacked links rather than one target. The card must
+    // suppress that and answer as an object instead (lift + shadow + accent rim + top-edge wipe),
+    // and the same treatment must be reachable from the keyboard.
+    val css = assetText("serve.css")
+    assertTrue(
+      css.contains(".cp-card:hover, .cp-card:focus-visible {") &&
+        css.contains(
+          "transform: translateY(-3px); border-color: var(--cp-accent-ring); text-decoration: none;"
+        ),
+      "hovering a card lifts and rims it instead of underlining its text",
+    )
+    assertTrue(
+      css.contains(
+        ".cp-card:hover::after, .cp-card:focus-visible::after { transform: scaleX(1); }"
+      ),
+      "the accent bar wipes along the card's top edge on hover",
+    )
+    assertTrue(
+      css.contains(
+        ".cp-card:hover .cp-imgwrap img, .cp-card:focus-visible .cp-imgwrap img { transform: scale(1.035); }"
+      ),
+      "the card's artwork eases in under the pointer",
+    )
+    assertTrue(
+      css.contains(
+        ".cp-card:focus-visible { outline: 2px solid var(--cp-accent-ring); outline-offset: 2px; }"
+      ),
+      "keyboard focus gets the card treatment plus a visible ring",
+    )
+    // Motion is an enhancement, never the affordance: a visitor who asked for less motion still
+    // gets the rim, the shadow and the wipe target — just no travel.
+    assertTrue(
+      css.contains(".cp-card:hover, .cp-card:focus-visible { transform: none; }"),
+      "the lift and zoom are dropped under prefers-reduced-motion",
     )
   }
 
@@ -2642,7 +2838,7 @@ class ServeWebFixtureTest {
     )
     assertTrue(
       assetText("serve.css")
-        .contains(".cp-sys { display: grid; grid-template-rows: 220px auto; }") &&
+        .contains(".cp-card.cp-sys { display: grid; grid-template-rows: 220px 1fr; }") &&
         assetText("serve.css").contains(".cp-syslist .cp-imgwrap { min-height: 0; height: 220px;"),
       "system cards reserve one consistent hero region so metadata aligns across aspect ratios",
     )
@@ -3217,6 +3413,29 @@ class ServeWebFixtureTest {
       assetText("viewer.js").contains("readAsDataURL") &&
         assetText("viewer.js").contains("navigator.clipboard.writeText"),
       "the Copy PNG/SVG handler fetches the render and writes it to the clipboard as text",
+    )
+    // Copy PNG puts REAL image/png bytes on the clipboard where the browser supports it, so one
+    // paste into a GitHub issue uploads the exact render — the base64 data: URI above is the
+    // fallback, not the primary path. The blob is passed as a promise (Safari builds the
+    // ClipboardItem synchronously inside the click).
+    assertTrue(
+      assetText("viewer.js").contains("new ClipboardItem({ \"image/png\": pngBlob })"),
+      "Copy PNG writes image/png to the clipboard so it pastes as a picture",
+    )
+    // The prefilled "report an issue" link follows the on-screen overrides, and never carries the
+    // session token into a body destined for a public issue.
+    assertTrue(
+      assetText("viewer.js").contains("function refreshReportLink()") &&
+        assetText("viewer.js").contains("{{render}}") &&
+        assetText("viewer.js").contains("stripToken("),
+      "the report body is re-substituted at the current render, token stripped",
+    )
+    // …by writing an INPUT VALUE, never an href. The affordance is a GET form whose action is a
+    // server-rendered literal, so no page-derived string can reach a navigation sink.
+    assertTrue(
+      assetText("viewer.js").contains("body.value = tpl.replace(") &&
+        !assetText("viewer.js").contains("link.href = "),
+      "the report prefill goes into a form input, not a navigation sink",
     )
     // The URL itself is copied by clicking the field (no separate "Copy URL" button) — the handler
     // binds to .cp-url and flashes .cp-url-copied.

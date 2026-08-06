@@ -16,12 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.window.ComposeViewport
 import ee.schimke.composeai.rcplayer.compose.RcComposePlayer
+import ee.schimke.composeai.rcplayer.compose.RcFontFace
+import ee.schimke.composeai.rcplayer.compose.RcFontFaces
 import ee.schimke.composeai.rcplayer.compose.composeSupportReport
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
@@ -30,6 +28,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import ee.schimke.composeai.rcplayer.runtime.RcHostActionValue
 import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent
+import ee.schimke.composeai.rcplayer.trace.RcTraceCategory
+import ee.schimke.composeai.rcplayer.trace.rcTrace
+import ee.schimke.composeai.rcplayer.trace.setRcPlatformTracingEnabled
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.io.encoding.Base64
@@ -43,7 +44,7 @@ private sealed interface LoadState {
 
   data class Ready(
     val document: RcDocument,
-    val fontFamilies: Map<String, FontFamily>,
+    val fontFamilies: Map<String, RcFontFaces>,
     val namedValues: Map<String, RcNamedValue>,
   ) : LoadState
 
@@ -53,6 +54,11 @@ private sealed interface LoadState {
 private var loadState by mutableStateOf<LoadState>(LoadState.Loading)
 
 public fun main() {
+  // Browser User Timing marks are opt-in: `performance`'s entry buffer is finite and shared with
+  // whatever else the embedding page measures, so a player embedded in someone's dashboard should
+  // not be filling it on every frame. `?rcTrace=1` turns the player's spans on for a session; the
+  // span names match the ones the desktop player writes into Perfetto.
+  setRcPlatformTracingEnabled(queryParameter("rcTrace") == "1")
   val source = queryParameter("src")
   val theme =
     when (queryParameter("theme")?.lowercase()) {
@@ -66,7 +72,9 @@ public fun main() {
         if (source == null) LoadState.Failed("Missing ?src=<document.rc>")
         else
           runCatching {
-              val document = RcDocumentCodec.decode(fetchBytes(source))
+              val bytes =
+                rcTrace(RcTraceCategory.DOCUMENT, "rc:fetchDocument") { fetchBytes(source) }
+              val document = RcDocumentCodec.decode(bytes)
               val fontFamilies = withTimeout(8_000) { loadHostFontFamilies() }
               document
                 .composeSupportReport(
@@ -146,7 +154,19 @@ private data class ManifestFont(
   val italic: Boolean,
 )
 
-private suspend fun loadHostFontFamilies(): Map<String, FontFamily> {
+/**
+ * The host's font families, keyed by lowercase family name.
+ *
+ * Every role in the manifest is loaded, `default` included. A `default`-role family is a real,
+ * nameable family — the catalog's own text face — and a document is free to name it the way it
+ * names any other (`google:Roboto Flex`). Loading it only as "the fallback" left that name
+ * unresolvable: `RcComposeSupport` checks a named family against exactly this set, so a document
+ * naming the default face failed to load rather than rendering in it.
+ *
+ * Faces are kept as [RcFontFace] — bytes, not a built `FontFamily` — so a document that also names
+ * font-variation axes can be given the instance it asked for. See [RcFontFaces].
+ */
+private suspend fun loadHostFontFamilies(): Map<String, RcFontFaces> {
   val rawBase = queryParameter("fontsBase") ?: "./fonts/"
   val base =
     (if (rawBase.endsWith('/')) rawBase else "$rawBase/").takeIf {
@@ -154,18 +174,18 @@ private suspend fun loadHostFontFamilies(): Map<String, FontFamily> {
     } ?: "./fonts/"
   val entries = parseFontsManifest(fetchText(base + "fonts.json"))
   suspend fun load(entry: ManifestFont) =
-    Font(
+    RcFontFace(
       identity = entry.file,
       data = fetchBytes(base + entry.file),
-      weight = FontWeight(entry.weight),
-      style = if (entry.italic) FontStyle.Italic else FontStyle.Normal,
+      weight = entry.weight,
+      italic = entry.italic,
     )
   return buildMap {
     entries
-      .filter { it.role == "named" || it.role == "generic" }
       .groupBy { it.family }
       .forEach { (family, faces) ->
-        runCatching { FontFamily(faces.map { load(it) }) }.onSuccess { put(family.lowercase(), it) }
+        runCatching { RcFontFaces(faces.map { load(it) }) }
+          .onSuccess { put(family.lowercase(), it) }
       }
   }
 }

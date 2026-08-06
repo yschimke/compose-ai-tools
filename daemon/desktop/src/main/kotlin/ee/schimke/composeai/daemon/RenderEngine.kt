@@ -44,6 +44,7 @@ import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
 import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
 import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
+import ee.schimke.composeai.data.render.extensions.compose.CompositionTracing
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.render.extensions.provides
@@ -118,6 +119,22 @@ class RenderEngine(
     PreviewOverrideExtensions.Empty,
   private val frameNanoTime: () -> Long = System::nanoTime,
   private val fileSystem: FileSystem = SystemFileSystem,
+  /**
+   * Scene lifecycle hook — fires with the freshly allocated [ImageComposeScene] **before**
+   * `setContent` composes into it, and again with `null` at tearDown.
+   *
+   * This exists so `compose/recomposition` can answer for an ordinary render. That producer
+   * instruments a scene's `Recomposer`, and until now the only scene it could reach was the one a
+   * *live interactive session* held (`DesktopHost.InteractiveSessionListener`), so recomposition
+   * counts were unavailable for the plain render path — which is the path almost every preview
+   * takes. The install has to happen before `setContent` or the initial composition, the very thing
+   * worth counting, has already run by the time the observer attaches.
+   *
+   * Deliberately a plain function type rather than `DesktopHost.InteractiveSessionListener`: the
+   * engine has no business knowing about interactive sessions, and the two callers converge on the
+   * same producer method anyway. Null (the default) keeps every test's behaviour.
+   */
+  private val sceneLifecycleListener: ((String, ImageComposeScene?) -> Unit)? = null,
   /**
    * Always-on post-capture data-artifact extensions, mirroring the Android engine's
    * `builtDataArtifactExtensions` seam. Each [PostCaptureProcessor] runs after the PNG capture,
@@ -196,14 +213,20 @@ class RenderEngine(
       trace.section("compose:setUp") {
         setUp(spec, classLoader, inspectionMode = spec.inspectionMode ?: true, trace = trace)
       }
-    try {
-      return trace.section("render:once") {
-        renderOnce(state, requestId, sandboxStats = sandboxStats, trace = trace)
+    val result =
+      try {
+        trace.section("render:once") {
+          renderOnce(state, requestId, sandboxStats = sandboxStats, trace = trace)
+        }
+      } finally {
+        trace.section("compose:tearDown") { tearDown(state) }
+        trace.write(dataDir)
       }
-    } finally {
-      trace.section("compose:tearDown") { tearDown(state) }
-      trace.write(dataDir)
-    }
+    // Re-stamp the trace here rather than taking `renderOnce`'s: `finally` has run by now, so this
+    // snapshot is the only one that includes `compose:setUp`, `render:once` and `compose:tearDown`.
+    // `renderOnce` still stamps its own, which is what the interactive session (which calls it
+    // directly, once per input) reports.
+    return result.copy(trace = trace.renderTrace())
   }
 
   /**
@@ -375,150 +398,180 @@ class RenderEngine(
     // interactive/recording
     // session leak its locale onto every other render in the same daemon until it closed;
     // [renderOnce] re-applies it around each frame instead. See [overrideJvmDefaultLocale].
+    // Announce the scene before anything composes into it — see [sceneLifecycleListener]. Guarded
+    // because a producer-side failure must never fail the render it is only observing.
+    val lifecyclePreviewId = spec.previewId
+    if (sceneLifecycleListener != null && lifecyclePreviewId != null) {
+      try {
+        sceneLifecycleListener.invoke(lifecyclePreviewId, scene)
+      } catch (t: Throwable) {
+        System.err.println(
+          "RenderEngine: scene lifecycle listener failed for $lifecyclePreviewId: " +
+            "${t.javaClass.simpleName}: ${t.message}"
+        )
+      }
+    }
     val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(spec.localeTag))
     try {
-      trace.section("compose:setContent") {
-        scene.setContent {
-          // PROTOCOL.md § 5 (`renderNow.overrides.uiMode`) — Compose Desktop's
-          // `isSystemInDarkTheme()` reads `LocalSystemTheme.current` (foundation-desktop's
-          // `DarkTheme.skiko.kt`). Override it here so `uiMode = "dark"` actually flips dark-aware
-          // composables instead of falling through to the JVM's `org.jetbrains.skiko.SystemTheme`
-          // probe.
-          val systemTheme =
-            when (spec.uiMode) {
-              RenderSpec.SpecUiMode.DARK -> SystemTheme.Dark
-              RenderSpec.SpecUiMode.LIGHT -> SystemTheme.Light
-              null -> SystemTheme.Unknown
-            }
-          val previewResources = remember(classLoader) { previewResourceReader(classLoader) }
-          CompositionLocalProvider(
-            LocalInspectionMode provides inspectionMode,
-            // Compose Resources' desktop default reader is permanently bound to the classloader
-            // that loaded components-resources (the daemon parent). Bundle classes and their
-            // composeResources payload live only on this render's disposable child loader, so an
-            // unqualified stringResource() lookup can otherwise miss a resource that is visibly
-            // present beside the preview classes. Point the public reader local at the same child
-            // loader used to invoke the preview; unlike the thread context-loader install above,
-            // Compose Resources actually consults this value.
-            LocalResourceReader provides previewResources,
-            // Slot mode: a `PreviewSlot` marker renders a labelled placeholder instead of its
-            // content, so a structured-screen builder gets a visible slot map. Defaults false.
-            ee.schimke.composeai.preview.slots.LocalSlotMode provides (spec.slotMode ?: false),
-            // Cleared background ("crisp outline"): a composable drawing its own opaque fill drops
-            // it to match the transparent harness background below. Defaults false.
-            ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
-              spec.clearBackground,
-            androidx.compose.ui.LocalSystemTheme provides systemTheme,
-            LocalDensity provides density,
-            // Interactive Lottie scrubbing: a non-null progress lands the captured frame at that
-            // timeline position, winning over the composable's authored progress (file-discovered
-            // `LottiePreview` below, or any `@Preview` calling it). Read from snapshot state so a
-            // held session's `dispatchLottieProgress` recomposes live; sticky across fresh renders
-            // via [LottieProgressController] so an unrelated re-render keeps the scrubbed frame.
-            ee.schimke.composeai.preview.lottie.LocalLottieProgress provides
-              lottieProgressState.value,
-            *localeProviders,
-          ) {
-            if (previewContextCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
-              CaptureMaterialTheme { _, typography, shapes, payload ->
-                themeFallbackCapture?.capture(typography, shapes)
-                themeFallbackCapture?.capture(payload)
+      // Composable-level spans nest *inside* `compose:setContent`, which is the phase that actually
+      // composes — so the trace reads "setContent took 40ms, and here is which composable spent
+      // it".
+      // Opt-in: a real screen emits thousands of these against a dozen engine phases.
+      compositionTracing(trace) {
+        trace.section("compose:setContent") {
+          scene.setContent {
+            // PROTOCOL.md § 5 (`renderNow.overrides.uiMode`) — Compose Desktop's
+            // `isSystemInDarkTheme()` reads `LocalSystemTheme.current` (foundation-desktop's
+            // `DarkTheme.skiko.kt`). Override it here so `uiMode = "dark"` actually flips
+            // dark-aware
+            // composables instead of falling through to the JVM's `org.jetbrains.skiko.SystemTheme`
+            // probe.
+            val systemTheme =
+              when (spec.uiMode) {
+                RenderSpec.SpecUiMode.DARK -> SystemTheme.Dark
+                RenderSpec.SpecUiMode.LIGHT -> SystemTheme.Light
+                null -> SystemTheme.Unknown
               }
-            }
-            val content: @Composable () -> Unit = {
-              val bgColor = previewBackgroundColor(spec)
-              // The AS-parity wrap-measure box (and its fixed-axis `fillMaxSize` counterpart) is
-              // shared with the one-shot `:renderer-desktop` fork via [ComposePreviewContentBox],
-              // so
-              // both size the preview and capture its intrinsic bounds identically.
-              // `measuredContent`
-              // is written only on a wrapped axis, then read by [renderOnce] to crop the PNG to the
-              // composable's natural size instead of the whole sandbox.
-              ee.schimke.composeai.renderer.ComposePreviewContentBox(
-                wrapWidth = spec.wrapWidth,
-                wrapHeight = spec.wrapHeight,
-                backgroundColor = bgColor,
-                sizeBounds = sizeBounds,
-                onMeasured = { w, h ->
-                  measuredContent[0] = w
-                  measuredContent[1] = h
-                },
-              ) {
-                ComposeDataExtensionPipeline.Apply(
-                  extensions = previewOverrideExtensions.plan(spec.overrides),
-                  previewId = spec.previewId,
-                  renderMode = spec.renderMode,
-                  sink = RecordingExtensionCompositionSink(),
+            val previewResources = remember(classLoader) { previewResourceReader(classLoader) }
+            CompositionLocalProvider(
+              LocalInspectionMode provides inspectionMode,
+              // Compose Resources' desktop default reader is permanently bound to the classloader
+              // that loaded components-resources (the daemon parent). Bundle classes and their
+              // composeResources payload live only on this render's disposable child loader, so an
+              // unqualified stringResource() lookup can otherwise miss a resource that is visibly
+              // present beside the preview classes. Point the public reader local at the same child
+              // loader used to invoke the preview; unlike the thread context-loader install above,
+              // Compose Resources actually consults this value.
+              LocalResourceReader provides previewResources,
+              // Slot mode: a `PreviewSlot` marker renders a labelled placeholder instead of its
+              // content, so a structured-screen builder gets a visible slot map. Defaults false.
+              ee.schimke.composeai.preview.slots.LocalSlotMode provides (spec.slotMode ?: false),
+              // Cleared background ("crisp outline"): a composable drawing its own opaque fill
+              // drops
+              // it to match the transparent harness background below. Defaults false.
+              ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                spec.clearBackground,
+              androidx.compose.ui.LocalSystemTheme provides systemTheme,
+              LocalDensity provides density,
+              // Interactive Lottie scrubbing: a non-null progress lands the captured frame at that
+              // timeline position, winning over the composable's authored progress (file-discovered
+              // `LottiePreview` below, or any `@Preview` calling it). Read from snapshot state so a
+              // held session's `dispatchLottieProgress` recomposes live; sticky across fresh
+              // renders
+              // via [LottieProgressController] so an unrelated re-render keeps the scrubbed frame.
+              ee.schimke.composeai.preview.lottie.LocalLottieProgress provides
+                lottieProgressState.value,
+              *localeProviders,
+            ) {
+              if (previewContextCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
+                CaptureMaterialTheme { _, typography, shapes, payload ->
+                  themeFallbackCapture?.capture(typography, shapes)
+                  themeFallbackCapture?.capture(payload)
+                }
+              }
+              val content: @Composable () -> Unit = {
+                val bgColor = previewBackgroundColor(spec)
+                // The AS-parity wrap-measure box (and its fixed-axis `fillMaxSize` counterpart) is
+                // shared with the one-shot `:renderer-desktop` fork via [ComposePreviewContentBox],
+                // so
+                // both size the preview and capture its intrinsic bounds identically.
+                // `measuredContent`
+                // is written only on a wrapped axis, then read by [renderOnce] to crop the PNG to
+                // the
+                // composable's natural size instead of the whole sandbox.
+                ee.schimke.composeai.renderer.ComposePreviewContentBox(
+                  wrapWidth = spec.wrapWidth,
+                  wrapHeight = spec.wrapHeight,
+                  backgroundColor = bgColor,
+                  sizeBounds = sizeBounds,
+                  onMeasured = { w, h ->
+                    measuredContent[0] = w
+                    measuredContent[1] = h
+                  },
                 ) {
-                  // Trampoline through a @Composable so the reflective invocation lands inside the
-                  // running composition. Mirrors `:renderer-desktop`'s InvokeComposable. Honours
-                  // `@PreviewWrapper(SomeProvider::class)` by routing through the wrapper's `Wrap`.
-                  if (isLottie) {
-                    // Drive the file-discovered Lottie through the draw-time `progress` lambda
-                    // reading the snapshot state, so a held-session scrub (mutating
-                    // `lottieProgressState`) repaints on the next `render()` by redraw alone — no
-                    // recomposition required. This is the same redraw-only path `renderLottieApng`
-                    // uses to sweep a single held scene into GIF frames. Shadow
-                    // `LocalLottieProgress`
-                    // to null here so the overload's draw-time `progress()` wins; the outer provide
-                    // still targets user `@Preview`s that call `LottiePreview` themselves.
-                    CompositionLocalProvider(
-                      ee.schimke.composeai.preview.lottie.LocalLottieProgress provides null
-                    ) {
-                      LottiePreview(
-                        asset = spec.assetPath.orEmpty(),
-                        modifier = Modifier.fillMaxSize(),
+                  ComposeDataExtensionPipeline.Apply(
+                    extensions = previewOverrideExtensions.plan(spec.overrides),
+                    previewId = spec.previewId,
+                    renderMode = spec.renderMode,
+                    sink = RecordingExtensionCompositionSink(),
+                  ) {
+                    // Trampoline through a @Composable so the reflective invocation lands inside
+                    // the
+                    // running composition. Mirrors `:renderer-desktop`'s InvokeComposable. Honours
+                    // `@PreviewWrapper(SomeProvider::class)` by routing through the wrapper's
+                    // `Wrap`.
+                    if (isLottie) {
+                      // Drive the file-discovered Lottie through the draw-time `progress` lambda
+                      // reading the snapshot state, so a held-session scrub (mutating
+                      // `lottieProgressState`) repaints on the next `render()` by redraw alone — no
+                      // recomposition required. This is the same redraw-only path
+                      // `renderLottieApng`
+                      // uses to sweep a single held scene into GIF frames. Shadow
+                      // `LocalLottieProgress`
+                      // to null here so the overload's draw-time `progress()` wins; the outer
+                      // provide
+                      // still targets user `@Preview`s that call `LottiePreview` themselves.
+                      CompositionLocalProvider(
+                        ee.schimke.composeai.preview.lottie.LocalLottieProgress provides null
                       ) {
-                        lottieProgressState.value ?: 0f
+                        LottiePreview(
+                          asset = spec.assetPath.orEmpty(),
+                          modifier = Modifier.fillMaxSize(),
+                        ) {
+                          lottieProgressState.value ?: 0f
+                        }
                       }
+                    } else {
+                      InvokeWithOptionalWrapper(
+                        composableMethod!!,
+                        spec.wrapperClassName,
+                        // A `themeProvider` override (an app-declared @ThemeCatalog
+                        // `PreviewWrapperProvider` FQN) replaces the preview's own
+                        // `@PreviewWrapper`
+                        // —
+                        // "render this preview under theme X" — but only when it resolves; a
+                        // stale/misspelled FQN falls back to the declared wrapper.
+                        themeProviderFqn = spec.overrides?.themeProvider,
+                        // The provider's first value for a `@PreviewParameter` preview; empty for a
+                        // plain parameterless one.
+                        previewArgs = previewArgs,
+                      )
                     }
-                  } else {
-                    InvokeWithOptionalWrapper(
-                      composableMethod!!,
-                      spec.wrapperClassName,
-                      // A `themeProvider` override (an app-declared @ThemeCatalog
-                      // `PreviewWrapperProvider` FQN) replaces the preview's own `@PreviewWrapper`
-                      // —
-                      // "render this preview under theme X" — but only when it resolves; a
-                      // stale/misspelled FQN falls back to the declared wrapper.
-                      themeProviderFqn = spec.overrides?.themeProvider,
-                      // The provider's first value for a `@PreviewParameter` preview; empty for a
-                      // plain parameterless one.
-                      previewArgs = previewArgs,
-                    )
                   }
                 }
               }
-            }
-            // `@Preview(showSystemUi = true)` (issue #1930) — wrap the composition in the synthetic
-            // [ee.schimke.composeai.renderer.SystemBarsFrame] so the daemon's desktop capture draws
-            // the same Android phone chrome (status bar + gesture-nav pill) the Android renderer
-            // and
-            // the standalone `:renderer-desktop` path do, instead of a chrome-less surface. Dark
-            // chrome follows the resolved [RenderSpec.uiMode]; skipped for round/Wear devices.
-            val framed: @Composable () -> Unit = {
-              if (
-                ee.schimke.composeai.renderer.shouldApplySystemBars(
-                  showSystemUi = spec.showSystemUi,
-                  device = spec.device,
-                  kind = spec.kind,
-                )
-              ) {
-                ee.schimke.composeai.renderer.SystemBarsFrame(
-                  // 0x20 == Configuration.UI_MODE_NIGHT_YES — the only bit SystemBarsFrame
-                  // inspects.
-                  uiMode = if (spec.uiMode == RenderSpec.SpecUiMode.DARK) 0x20 else 0
+              // `@Preview(showSystemUi = true)` (issue #1930) — wrap the composition in the
+              // synthetic
+              // [ee.schimke.composeai.renderer.SystemBarsFrame] so the daemon's desktop capture
+              // draws
+              // the same Android phone chrome (status bar + gesture-nav pill) the Android renderer
+              // and
+              // the standalone `:renderer-desktop` path do, instead of a chrome-less surface. Dark
+              // chrome follows the resolved [RenderSpec.uiMode]; skipped for round/Wear devices.
+              val framed: @Composable () -> Unit = {
+                if (
+                  ee.schimke.composeai.renderer.shouldApplySystemBars(
+                    showSystemUi = spec.showSystemUi,
+                    device = spec.device,
+                    kind = spec.kind,
+                  )
                 ) {
+                  ee.schimke.composeai.renderer.SystemBarsFrame(
+                    // 0x20 == Configuration.UI_MODE_NIGHT_YES — the only bit SystemBarsFrame
+                    // inspects.
+                    uiMode = if (spec.uiMode == RenderSpec.SpecUiMode.DARK) 0x20 else 0
+                  ) {
+                    content()
+                  }
+                } else {
                   content()
                 }
-              } else {
-                content()
               }
-            }
-            if (slotTableCapture != null) {
-              InspectablePreviewContent(slotTableCapture, framed)
-            } else {
-              framed()
+              if (slotTableCapture != null) {
+                InspectablePreviewContent(slotTableCapture, framed)
+              } else {
+                framed()
+              }
             }
           }
         }
@@ -783,6 +836,10 @@ class RenderEngine(
       metrics = metrics,
       previewContext = previewContext,
       outputBaseName = state.spec.outputBaseName,
+      // The interactive session calls this directly, once per input, and never goes through
+      // `render`'s setUp/tearDown wrapper — so this is the trace that path reports. The one-shot
+      // `render` overwrites it with a wider snapshot that also covers setUp and tearDown.
+      trace = trace.renderTrace(),
     )
   }
 
@@ -864,8 +921,31 @@ class RenderEngine(
    * [DesktopInteractiveSession.close] under daemon shutdown, callers are responsible for ensuring
    * no in-flight render is using [state] — the daemon's drain loop handles that on shutdown.
    */
+  /**
+   * Run [block] with composable-level composition spans recording into [trace], when the opt-in is
+   * on. Off, this is a straight call — no tracer installed, so the compiler-generated trace call
+   * sites short-circuit and cost a boolean.
+   */
+  private fun <T> compositionTracing(trace: PerfettoTraceDataProducer.Recorder, block: () -> T): T =
+    if (CompositionTracing.enabled()) {
+      CompositionTracing.record(
+        beginSection = { name, category -> trace.beginSection(name, category) },
+        endSection = { trace.endSection() },
+        block = block,
+      )
+    } else block()
+
   fun tearDown(state: SceneState) {
     try {
+      val previewId = state.spec.previewId
+      if (sceneLifecycleListener != null && previewId != null) {
+        try {
+          sceneLifecycleListener.invoke(previewId, null)
+        } catch (_: Throwable) {
+          // Already reported at install time; a teardown failure has nowhere useful to go and must
+          // not stop the scene from closing.
+        }
+      }
       state.scene.close()
     } finally {
       Thread.currentThread().contextClassLoader = state.previousContext

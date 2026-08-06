@@ -504,6 +504,111 @@ class ServeWebTest {
   }
 
   @Test
+  fun `the viewer offers a prefilled issue link beside the source link`() {
+    val preview = ServePreview(id = "plain.Button", label = "button", sourceFile = "src/main/A.kt")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+        sourceHref = "https://github.com/o/r/blob/main/src/main/A.kt",
+        reportIssue =
+          ServeWeb.ReportIssue(
+            action = "https://github.com/o/r/issues/new",
+            title = "Preview issue: button",
+            body = "render: https://host/render/x.png",
+            bodyTemplate = "render: {{render}}",
+            repo = "o/r",
+            login = "octocat",
+          ),
+      )
+    assertTrue(html.contains("class=\"cp-preview-links\""), "source + report share one row")
+    assertTrue(html.contains("id=\"cp-report\""), "report affordance rendered")
+    // A GET form, not a link: nothing page-derived may reach a navigation sink, so the action is a
+    // server-rendered literal and the prefill rides in hidden inputs the browser encodes on submit.
+    assertTrue(
+      html.contains("<form class=\"cp-report\" id=\"cp-report\" method=\"get\"") &&
+        html.contains("action=\"https://github.com/o/r/issues/new\""),
+      "the issue form posts to the resolved repo",
+    )
+    assertTrue(
+      html.contains("name=\"title\" value=\"Preview issue: button\"") &&
+        html.contains("name=\"body\" id=\"cp-report-body\"") &&
+        html.contains("value=\"render: https://host/render/x.png\""),
+      "the server-filled prefill works without JS",
+    )
+    assertTrue(
+      html.contains("data-report-template=\"render: {{render}}\""),
+      "carries the template the viewer JS re-substitutes at the current overrides",
+    )
+    // The tooltip names the repo the issue lands on, and — when this box knows the visitor's GitHub
+    // session — whose account will author it.
+    assertTrue(html.contains("title=\"File an issue on o/r as @octocat\""), html)
+  }
+
+  @Test
+  fun `the viewer links the figma node a preview is specified by`() {
+    val preview = ServePreview(id = "plain.Button", label = "button")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/meshcore-mobile",
+        siblings = listOf(preview),
+        figmaSpec =
+          ServeWeb.FigmaSpec(
+            url = "https://www.figma.com/design/abc123?node-id=73-6",
+            label = "Contact chat",
+          ),
+      )
+    assertTrue(html.contains("class=\"cp-preview-links\""), "the provenance row is rendered")
+    assertTrue(html.contains("class=\"cp-figma-link\""), "figma spec link rendered")
+    assertTrue(
+      html.contains("href=\"https://www.figma.com/design/abc123?node-id=73-6\""),
+      "links the resolved node",
+    )
+    // Opened in a new tab, and the label names which spec it is.
+    assertTrue(html.contains("rel=\"noopener noreferrer\""), html)
+    assertTrue(html.contains("specified by — Contact chat"), "the tooltip names the reference")
+  }
+
+  @Test
+  fun `the viewer renders no figma link when the catalog names no spec`() {
+    // The common case: a catalog with no references, or whose references are HTML/PNG exports.
+    val preview = ServePreview(id = "plain.Button", label = "button")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+      )
+    assertFalse(html.contains("cp-figma-link"), "no figma link when no spec is supplied")
+    assertFalse(
+      html.contains("class=\"cp-preview-links\""),
+      "the links row is omitted entirely when nothing fills it",
+    )
+  }
+
+  @Test
+  fun `the viewer renders no report link without a report target`() {
+    val preview = ServePreview(id = "plain.Button", label = "button")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+      )
+    assertFalse(html.contains("id=\"cp-report\""), "no report link when no target is supplied")
+    assertFalse(
+      html.contains("class=\"cp-preview-links\""),
+      "the links row is omitted entirely when neither link exists",
+    )
+  }
+
+  @Test
   fun `the viewer renders no source link without a source href`() {
     // A local / unprovenanced session (or a preview with no recorded source) passes sourceHref
     // null.

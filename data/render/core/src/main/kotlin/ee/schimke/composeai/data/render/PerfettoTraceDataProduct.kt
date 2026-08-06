@@ -68,7 +68,67 @@ object PerfettoTraceDataProducer {
     private val originNs: Long = System.nanoTime()
     private val events = mutableListOf<TraceEvent>()
 
-    fun <T> section(name: String, category: String = "compose-preview", block: () -> T): T {
+    /**
+     * Closed sections, always collected — this is what [renderTrace] turns into the `render/trace`
+     * data product.
+     *
+     * Deliberately *not* gated on [enabled]. That flag is the opt-in for writing the Perfetto JSON
+     * artefact to disk, which is a different question from whether the daemon can answer "how long
+     * did each phase of this render take" over the wire. The cost of always collecting is one
+     * `System.nanoTime()` pair and one small object per section, and a render opens on the order of
+     * a dozen — far below the noise floor of the work each section wraps.
+     */
+    private val spans = mutableListOf<RenderTrace.Recorded>()
+
+    /** Sections shed once [MAX_SPANS] was reached. Reported on [RenderTrace.droppedSpans]. */
+    private var droppedSpans: Int = 0
+
+    /**
+     * Running per-name aggregates, accumulated for **every** section including the ones the
+     * retention cap sheds.
+     *
+     * Kept separately from [spans] rather than derived from them at the end, because those are two
+     * different promises. `spans` is a timeline and is allowed to truncate — a UI can only draw so
+     * many rows, and [RenderTrace.droppedSpans] says when it did. `sections` is the "where did the
+     * time actually go" summary, and a summary that silently omits phases is worse than no summary:
+     * it under-reports exactly the hot repeated phase that made a long session hit the cap in the
+     * first place.
+     */
+    private val aggregates = LinkedHashMap<String, MutableAggregate>()
+
+    /**
+     * Bounds of *every* section the recorder saw, tracked alongside [aggregates] and for the same
+     * reason: once [spans] truncates, the retained prefix ends before the render does, so a total
+     * derived from it would be short — and the phase bars would be scaled against a window that
+     * closed early.
+     */
+    private var firstStartNs: Long = Long.MAX_VALUE
+    private var lastEndNs: Long = Long.MIN_VALUE
+
+    /**
+     * Current nesting level. Incremented for the duration of each [section] body, so a section
+     * records the depth it was *entered* at — see [RenderTrace.Recorded.depth] for why that beats
+     * reconstructing containment afterwards.
+     */
+    private var depth: Int = 0
+
+    /**
+     * Sections opened by [beginSection] and not yet closed, innermost last.
+     *
+     * The scoped [section] does not need this — its `try`/`finally` holds the state on the call
+     * stack. It exists for callers whose start and end arrive as separate events with no lexical
+     * scope between them, which is the shape of a Compose `CompositionTracer` (`traceEventStart` /
+     * `traceEventEnd` fire from compiler-generated call sites).
+     */
+    private val openSections = ArrayDeque<OpenSection>()
+
+    private class OpenSection(val name: String, val category: String, val startNs: Long)
+
+    /**
+     * Open a section that [endSection] will close. Prefer [section] wherever the work is lexically
+     * scoped — an unbalanced pair here silently mis-nests everything after it.
+     */
+    fun beginSection(name: String, category: String = "compose-preview") {
       // Mirror the span onto the platform tracer when one is installed (see [sectionBackend]).
       // Independent of [enabled] — the JSON recorder and an atrace capture are separate opt-ins —
       // and guarded so a tracer failure can never fail the render it's observing.
@@ -78,24 +138,66 @@ object PerfettoTraceDataProducer {
           platform.begin(name)
         } catch (_: Throwable) {}
       }
-      try {
-        if (!enabled) return block()
-        val startNs = System.nanoTime()
+      openSections.addLast(
+        OpenSection(name = name, category = category, startNs = System.nanoTime())
+      )
+      depth += 1
+    }
+
+    /** Close the innermost section opened by [beginSection]. Ignored when none is open. */
+    fun endSection() {
+      val open = openSections.removeLastOrNull() ?: return
+      depth -= 1
+      record(
+        name = open.name,
+        category = open.category,
+        startNs = open.startNs,
+        endNs = System.nanoTime(),
+        depth = depth,
+      )
+      val platform = sectionBackend
+      if (platform != null) {
         try {
-          return block()
-        } finally {
-          record(name = name, category = category, startNs = startNs, endNs = System.nanoTime())
-        }
-      } finally {
-        if (platform != null) {
-          try {
-            platform.end()
-          } catch (_: Throwable) {}
-        }
+          platform.end()
+        } catch (_: Throwable) {}
       }
     }
 
-    fun record(name: String, category: String = "compose-preview", startNs: Long, endNs: Long) {
+    fun <T> section(name: String, category: String = "compose-preview", block: () -> T): T {
+      beginSection(name = name, category = category)
+      try {
+        return block()
+      } finally {
+        endSection()
+      }
+    }
+
+    @JvmOverloads
+    fun record(
+      name: String,
+      category: String = "compose-preview",
+      startNs: Long,
+      endNs: Long,
+      depth: Int = 0,
+    ) {
+      val durationMicros = (endNs - startNs).coerceAtLeast(0L) / 1_000L
+      aggregates.getOrPut(name) { MutableAggregate(category) }.add(durationMicros)
+      if (startNs < firstStartNs) firstStartNs = startNs
+      if (endNs > lastEndNs) lastEndNs = endNs
+      if (spans.size < MAX_SPANS) {
+        spans +=
+          RenderTrace.Recorded(
+            name = name,
+            category = category,
+            startNanos = startNs,
+            endNanos = endNs,
+            depth = depth,
+          )
+      } else {
+        droppedSpans += 1
+      }
+      // The Chrome-trace event list stays behind the disk opt-in: it exists only to be written out
+      // as `render-perfetto-trace.json`, and building it for every render would be pure waste.
       if (!enabled) return
       events +=
         TraceEvent(
@@ -104,6 +206,53 @@ object PerfettoTraceDataProducer {
           timestampMicros = (startNs - originNs) / 1_000.0,
           durationMicros = (endNs - startNs).coerceAtLeast(0L) / 1_000.0,
           args = mapOf("previewId" to previewId, "backend" to backend),
+        )
+    }
+
+    /**
+     * The structured phase timings for this render, for `RenderResult.trace`.
+     *
+     * Snapshot semantics: call it after the outermost section has closed, or the phases still open
+     * are simply absent. Cheap enough to call more than once.
+     */
+    fun renderTrace(): RenderTrace =
+      RenderTrace.of(
+        backend = backend,
+        events = spans.toList(),
+        sections =
+          aggregates
+            .map { (name, aggregate) -> aggregate.toSection(name) }
+            .sortedByDescending { it.totalMicros },
+        totalMicros =
+          if (firstStartNs == Long.MAX_VALUE) null
+          else (lastEndNs - firstStartNs).coerceAtLeast(0L) / 1_000L,
+        // Must travel with the total: the cap sheds the outermost section first (it closes last),
+        // so the retained spans can start after the render did. Rebasing them onto their own
+        // minimum would place every phase at the wrong offset under a correctly-scaled total.
+        originNanos = firstStartNs.takeIf { it != Long.MAX_VALUE },
+        droppedSpans = droppedSpans,
+      )
+
+    /** Mutable accumulator behind one [RenderTraceSection]. */
+    private class MutableAggregate(private val category: String) {
+      private var count: Int = 0
+      private var totalMicros: Long = 0L
+      private var maxMicros: Long = 0L
+
+      fun add(durationMicros: Long) {
+        count += 1
+        totalMicros += durationMicros
+        if (durationMicros > maxMicros) maxMicros = durationMicros
+      }
+
+      fun toSection(name: String): RenderTraceSection =
+        RenderTraceSection(
+          name = name,
+          category = category,
+          count = count,
+          totalMicros = totalMicros,
+          meanMicros = if (count == 0) 0L else totalMicros / count,
+          maxMicros = maxMicros,
         )
     }
 
@@ -120,6 +269,15 @@ object PerfettoTraceDataProducer {
 
     fun write(rootDir: File) {
       if (enabled) writeArtifacts(rootDir = rootDir, previewId = previewId, trace = payload())
+    }
+
+    private companion object {
+      /**
+       * Retention cap on the in-memory span list. A one-shot render opens a dozen sections; a long
+       * interactive session reuses one recorder across many frames, so the bound exists to keep a
+       * pathological case from growing without limit rather than to constrain normal use.
+       */
+      const val MAX_SPANS = 4_096
     }
   }
 
