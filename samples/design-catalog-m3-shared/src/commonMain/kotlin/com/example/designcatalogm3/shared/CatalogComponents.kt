@@ -214,36 +214,48 @@ fun CatalogComponent(id: String, interactive: Boolean) {
     // filling the fixed 160×80 box: a no-op in a normal render (draws the — now editable — label,
     // tagged `dp-slot:content`), it swaps to a labelled placeholder under slot mode so a
     // structured-screen builder can drop a child into that exact box.
-    "card-elevated" ->
-      ElevatedCard {
-        Box(Modifier.size(160.dp, 80.dp)) {
-          PreviewSlot("content", Modifier.fillMaxSize()) {
-            Text(catalogOverrideString("label", stringResource(Res.string.card_elevated)))
-          }
-        }
-      }
-    "card-outlined" ->
-      OutlinedCard {
-        Box(Modifier.size(160.dp, 80.dp)) {
-          PreviewSlot("content", Modifier.fillMaxSize()) {
-            Text(catalogOverrideString("label", stringResource(Res.string.card_outlined)))
-          }
-        }
-      }
-    "card-filled" ->
-      Card {
-        Box(Modifier.size(160.dp, 80.dp)) {
-          PreviewSlot("content", Modifier.fillMaxSize()) {
-            Text(catalogOverrideString("label", stringResource(Res.string.card_filled)))
-          }
-        }
-      }
+    // M3's cards — unlike Wear's and Remote's, whose APIs take a required `onClick` — ship both a
+    // plain and a clickable overload. The interactive lane picks the clickable one so a tap does
+    // something (the label counts, as everywhere else); the baked lane composes the **same plain
+    // overload it always did**, so the published capture keeps its exact node tree, not just its
+    // pixels — the `a11y/touchTargets` greenlines and the layout wireframe would otherwise gain a
+    // clickable node that no longer describes the sticker.
+    "card-elevated" -> {
+      val (label, onClick) =
+        counted(
+          catalogOverrideString("label", stringResource(Res.string.card_elevated)),
+          interactive,
+        )
+      if (interactive) ElevatedCard(onClick = onClick) { CardContentSlot(label) }
+      else ElevatedCard { CardContentSlot(label) }
+    }
+    "card-outlined" -> {
+      val (label, onClick) =
+        counted(
+          catalogOverrideString("label", stringResource(Res.string.card_outlined)),
+          interactive,
+        )
+      if (interactive) OutlinedCard(onClick = onClick) { CardContentSlot(label) }
+      else OutlinedCard { CardContentSlot(label) }
+    }
+    "card-filled" -> {
+      val (label, onClick) =
+        counted(catalogOverrideString("label", stringResource(Res.string.card_filled)), interactive)
+      if (interactive) Card(onClick = onClick) { CardContentSlot(label) }
+      else Card { CardContentSlot(label) }
+    }
     // A **slotted** card: each region is wrapped in `PreviewSlot(name) { … }`, a no-op in a normal
     // render (draws the content, tagged `dp-slot:<name>`) that swaps to a labelled placeholder
     // under
     // slot mode. Each slot carries an explicit size, so the box a child fills — and the placeholder
     // shown under slot mode — is well-defined. The structured-screen builder reads these slots from
     // `/render/card-slots.slots` and fills each by rendering another component to that size.
+    //
+    // Deliberately NOT clickable on either lane, unlike the three plain cards above. This one is a
+    // slot **host**: the builder drops real components into those regions, and a card-wide click
+    // target sitting over them would swallow the taps meant for the children — making the filled
+    // card less interactive, not more. The slots' own contents carry whatever click behaviour they
+    // came with.
     "card-slots" ->
       ElevatedCard {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -493,6 +505,18 @@ fun StatefulSlider() {
 fun StatefulFilterChip(initial: Boolean, label: String = "Filter") {
   var selected by remember { mutableStateOf(initial) }
   FilterChip(selected = selected, onClick = { selected = !selected }, label = { Text(label) })
+}
+
+/**
+ * The fixed 160×80 content box the three plain cards share, wrapped in its `PreviewSlot("content")`
+ * marker. Factored out so each card can compose the identical body through either its plain or its
+ * clickable overload without the body being written twice per card.
+ */
+@Composable
+private fun CardContentSlot(label: String) {
+  Box(Modifier.size(160.dp, 80.dp)) {
+    PreviewSlot("content", Modifier.fillMaxSize()) { Text(label) }
+  }
 }
 
 /**

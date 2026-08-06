@@ -76,6 +76,40 @@ class CatalogInteractivityTest {
   }
 
   @Test
+  fun `the plain cards count their clicks when interactive`() {
+    // M3 cards ship both a plain and a clickable overload; the interactive lane takes the clickable
+    // one. `card-slots` is deliberately absent — see its branch for why a slot host stays inert.
+    for ((id, label) in
+      listOf(
+        "card-elevated" to "Elevated card",
+        "card-outlined" to "Outlined card",
+        "card-filled" to "Filled card",
+      )) {
+      runComposeUiTest {
+        setContent { CatalogComponent(id, interactive = true) }
+        onNodeWithText(label).performClick()
+        onNodeWithText("$label (1)").assertExists()
+      }
+    }
+  }
+
+  @Test
+  fun `the plain cards are inert when baked`() {
+    for ((id, label) in
+      listOf(
+        "card-elevated" to "Elevated card",
+        "card-outlined" to "Outlined card",
+        "card-filled" to "Filled card",
+      )) {
+      runComposeUiTest {
+        setContent { CatalogComponent(id, interactive = false) }
+        onNodeWithText(label).performClick()
+        onNodeWithText(label).assertExists()
+      }
+    }
+  }
+
+  @Test
   fun `a switch toggles when interactive and holds its seeded value when baked`() {
     runComposeUiTest {
       setContent { CatalogComponent("switch-on", interactive = true) }

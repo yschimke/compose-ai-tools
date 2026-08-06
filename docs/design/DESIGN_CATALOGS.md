@@ -303,13 +303,24 @@ affordance — it reads the same across all three sheets, and it composes over a
 label that is itself bound (remote-m3's named-value button counts on top of its
 override rather than replacing it).
 
-Three kinds of exception, all deliberate:
+M3's cards are the one family that ships *both* a plain and a clickable
+overload (Wear's and Remote's take a required `onClick`). The interactive lane
+picks the clickable one; the baked lane composes the same plain overload it
+always did, so the published capture keeps its exact node tree rather than just
+its pixels — otherwise the `a11y/touchTargets` greenlines and the layout
+wireframe would gain a clickable node that no longer describes the sticker.
+
+Four kinds of exception, all deliberate:
 
 - **Disabled** stickers stay inert — unresponsiveness is the state they document.
 - Wear's `Layout/List` skeleton has empty slots by design, so there is nowhere
   to put a count.
 - The **icon buttons** carry no label at all. They read as a favourite toggle
   instead: Wear tints the glyph, remote-m3 tweens the container colour.
+- `Card/Slots` stays inert on both lanes because it is a slot **host**: the
+  structured-screen builder drops real components into its regions, and a
+  card-wide click target over them would swallow the taps meant for those
+  children — making the filled card less interactive, not more.
 
 `remote-m3` gets there differently, because a `RemoteDocument` is replayed by a
 player rather than recomposed. `hostAction(...)` — what every button on that
