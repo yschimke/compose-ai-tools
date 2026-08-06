@@ -133,7 +133,20 @@ class LiveSeatLimiter(
    * can never over-admit under a race — the worst case is a background holder briefly seeing less
    * headroom than really exists and declining, which is the safe direction.
    */
-  fun acquireBackground(weight: Int, reserve: Int = STREAM_RESERVE): Ticket? {
+  fun acquireBackground(
+    weight: Int,
+    reserve: Int = STREAM_RESERVE,
+    /**
+     * Whether this caller may draw on the per-preview slice. True for the per-preview lane the
+     * slice was carved out for; **false** for any other background holder.
+     *
+     * The shared prefetch pool is background work but it is not per-preview work. Letting it take
+     * the slice would hand away the one seat a supplement-only preview is guaranteed — and once the
+     * general lane fills to its stream headroom that preview cannot open its only daemon and falls
+     * back to Busy/503, which is exactly the starvation the slice was added to prevent.
+     */
+    dedicatedSlice: Boolean = true,
+  ): Ticket? {
     val sem = semaphore ?: return Ticket(0)
     if (weight <= 0) return Ticket(0)
     val permits = weight.coerceIn(1, totalPermits)
@@ -142,7 +155,11 @@ class LiveSeatLimiter(
     // this, so it is taken WITHOUT the stream headroom check — those permits were never available
     // to a stream in the first place, and demanding headroom that by construction cannot exist
     // would make the reserve unusable.
-    perPreviewSemaphore?.let { if (it.tryAcquire(permits)) return Ticket(permits, reserved = true) }
+    if (dedicatedSlice) {
+      perPreviewSemaphore?.let {
+        if (it.tryAcquire(permits)) return Ticket(permits, reserved = true)
+      }
+    }
     // Otherwise the general lane, still leaving room for an interactive stream.
     if (!sem.tryAcquire(permits + reserve.coerceAtLeast(0))) return null
     if (reserve > 0) sem.release(reserve)

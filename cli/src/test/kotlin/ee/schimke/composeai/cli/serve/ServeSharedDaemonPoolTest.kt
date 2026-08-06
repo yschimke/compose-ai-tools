@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -310,6 +311,116 @@ class ServeSharedDaemonPoolTest {
         "the reserve is intact, so a stream could still start",
       )
       assertEquals(0L, seats.refusalCount(), "and narrowing is not a refused visitor")
+    } finally {
+      release.countDown()
+      executor.shutdownNow()
+      pool.close()
+    }
+  }
+
+  /**
+   * Codex review on #3393. Pricing replicas the optimizer OPENS is only half the job: a visitor's
+   * burst leaves a foreground-priced replica behind, and a continuously running optimizer would
+   * then reuse it and keep it alive — refreshing `replicaLastUsed` every batch so the idle sweep
+   * never closes it — while it occupies the stream reserve. Same production state, another road.
+   */
+  @Test
+  fun `a prefetch cannot extend the life of a replica it could not reprice`() {
+    var now = 0L
+    // One seat above the reserve. A visitor's burst can open a replica on it, but there is then no
+    // background headroom (weight + STREAM_RESERVE) to move that seat onto — so the reprice below
+    // must fail, which is the branch worth pinning: the prefetch keeps rendering, but it must not
+    // buy the replica more time on a foreground seat.
+    val seats = LiveSeatLimiter(totalPermits = 1 + LiveSeatLimiter.STREAM_RESERVE)
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val primary = BlockingHost("primary", entered, release)
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 2, clock = { now }, liveSeats = seats) {
+        InstantHost("replica")
+      }
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      // A visitor's burst opens the replica on the FOREGROUND budget, at t=0.
+      val held = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(entered.await(5, TimeUnit.SECONDS), "primary is mid-render")
+      assertTrue(
+        executor
+          .submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+          .get(10, TimeUnit.SECONDS) is RenderOutcome.Ok
+      )
+      release.countDown()
+      assertTrue(held.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok)
+      assertEquals(1, pool.replicaProcessCount(), "the burst left a replica behind")
+      assertEquals(
+        LiveSeatLimiter.STREAM_RESERVE,
+        seats.availablePermits(),
+        "precondition: only the reserve is left, so there is nowhere to reprice to",
+      )
+
+      // The optimizer reuses it a second later. It still gets its render …
+      now = 1_000
+      assertTrue(pool.render("p", PreviewOverrides(), background = true) is RenderOutcome.Ok)
+
+      // … but the replica's clock still reads from the VISITOR's use, not the prefetch's. Just past
+      // the window measured from t=0 and short of it measured from t=1_000, so this only passes if
+      // the prefetch left `replicaLastUsed` alone.
+      now = 60_500
+      assertEquals(1, pool.reapIdle(idleMillis = 60_000), "the prefetch did not buy it more time")
+      assertEquals(
+        1 + LiveSeatLimiter.STREAM_RESERVE,
+        seats.availablePermits(),
+        "and the foreground seat is back",
+      )
+    } finally {
+      release.countDown()
+      executor.shutdownNow()
+      pool.close()
+    }
+  }
+
+  /**
+   * Codex review on #3393. `acquireBackground` tries the per-preview slice FIRST, and that slice is
+   * the one seat a supplement-only preview is guaranteed. A shared prefetch replica taking it
+   * recreates exactly the starvation the slice was carved out to prevent.
+   */
+  @Test
+  fun `a background replica never takes the per-preview slice`() {
+    // A one-seat slice on top of a general lane just wide enough for one background holder
+    // (weight + STREAM_RESERVE = 3). Sized so the two worlds diverge: taking the slice leaves the
+    // general lane wider, taking the general lane leaves the slice intact.
+    val seats = LiveSeatLimiter(totalPermits = 4, perPreviewReserve = 1)
+    assertEquals(1, seats.perPreviewPermits, "precondition: the box affords a one-seat slice")
+
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val primary = BlockingHost("primary", entered, release)
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 2, liveSeats = seats) {
+        InstantHost("replica")
+      }
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      val held = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(entered.await(5, TimeUnit.SECONDS), "primary is mid-render")
+      // A background replica: the general lane has room, and it must be taken from there.
+      assertTrue(
+        executor
+          .submit<RenderOutcome> { pool.render("p", PreviewOverrides(), background = true) }
+          .get(10, TimeUnit.SECONDS) is RenderOutcome.Ok
+      )
+
+      // Fill the general lane, the state in which the slice is the only thing standing between a
+      // supplement-only preview and a Busy/503. Taking the slice above would leave the general lane
+      // with room to absorb this instead, and the acquire below would then find nothing anywhere.
+      assertNotNull(seats.acquire(2), "the general lane still had room for a stream")
+      assertNotNull(
+        seats.acquireBackground(1),
+        "the per-preview lane still has the seat carved out for it",
+      )
+
+      release.countDown()
+      assertTrue(held.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok)
     } finally {
       release.countDown()
       executor.shutdownNow()
