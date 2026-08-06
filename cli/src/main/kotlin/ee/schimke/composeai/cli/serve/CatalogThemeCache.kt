@@ -137,8 +137,6 @@ class CatalogThemeCache(
     if (millis > 0) permitWaitMillis.addAndGet(millis)
   }
 
-  private fun waitingMillis(): Long = gateWaitMillis.get() + permitWaitMillis.get()
-
   /** One batch completed: how wide it actually ran, and how long its renders took. */
   fun recordBatch(width: Int, millis: Long) {
     lastBatchWidth.set(width)
@@ -285,6 +283,16 @@ class CatalogThemeCache(
     val cachedTargets = synchronized(renderLock) { targetKeys.count(renders::containsKey) }
     val total = targetKeys.size
     val complete = total > 0 && cachedTargets == total
+    // Read each counter ONCE and derive everything from those values. Reading them per-field lets a
+    // wait that finishes mid-snapshot land in one field and not another, publishing a row where
+    // `waitingMillis < gateWaitMillis + permitWaitMillis` — a self-contradicting diagnostic is
+    // worse
+    // than a slightly stale one.
+    val render = renderMillis.get()
+    val gateWait = gateWaitMillis.get()
+    val permitWait = permitWaitMillis.get()
+    val waiting = gateWait + permitWait
+    val rate = ratePerMinute(render + waiting)
     return ThemeOptimizationSnapshot(
       state =
         if (complete) "complete" else state.get().let { if (it == "complete") "paused" else it },
@@ -302,15 +310,15 @@ class CatalogThemeCache(
       // Rate over the pass's ACTIVE time (render + gate wait), not wall-clock since it started:
       // wall-clock includes stretches where the pass held no turn at all, which drags the figure
       // toward zero and hides whether it is keeping up while it runs.
-      entriesPerMinute = ratePerMinute(),
+      entriesPerMinute = rate,
       etaSeconds =
-        ratePerMinute()
+        rate
           ?.takeIf { it > 0 }
           ?.let { ((total - cachedTargets).coerceAtLeast(0) / it * 60).toLong() },
-      renderMillis = renderMillis.get(),
-      waitingMillis = waitingMillis(),
-      gateWaitMillis = gateWaitMillis.get(),
-      permitWaitMillis = permitWaitMillis.get(),
+      renderMillis = render,
+      waitingMillis = waiting,
+      gateWaitMillis = gateWait,
+      permitWaitMillis = permitWait,
       turnsGranted = turnsGranted.get(),
       turnsYielded = turnsYielded.get(),
       lastBatchWidth = lastBatchWidth.get(),
@@ -328,9 +336,9 @@ class CatalogThemeCache(
       )
     }
 
-  private fun ratePerMinute(): Double? {
+  /** [activeMillis] is passed in so the rate divides by the same numbers the snapshot publishes. */
+  private fun ratePerMinute(activeMillis: Long): Double? {
     val produced = optimizerProduced.get()
-    val activeMillis = renderMillis.get() + waitingMillis()
     if (produced <= 0 || activeMillis <= 0) return null
     return produced / (activeMillis / 60_000.0)
   }
