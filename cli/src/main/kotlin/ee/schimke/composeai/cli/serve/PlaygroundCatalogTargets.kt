@@ -126,8 +126,13 @@ class PlaygroundCatalogTargets(
         ?.let {
           return it.classpath()
         }
-      val existing = suppliers[system]
-      if (existing == null && resolvedCount() >= limit) {
+      // Past the check above, this system's supplier is absent or UNRESOLVED either way — so it
+      // holds none of the budget, and a full budget refuses it either way. Deliberately not keyed
+      // on
+      // "have we seen this system before": a supplier whose first resolve failed (a transient Maven
+      // miss, a bundle that hadn't landed) is still in the map, and letting its retry through
+      // because it exists would resolve an N+1st catalog straight past the cap.
+      if (resolvedCount() >= limit) {
         onLog(
           "playground catalog budget spent: $limit catalog(s) already hold a resolved classpath " +
             "and they cannot be evicted while snippet JVMs hold their jars open, so '$system' is " +
@@ -135,7 +140,7 @@ class PlaygroundCatalogTargets(
         )
         return null
       }
-      val supplier = existing ?: newSupplier(system).also { suppliers[system] = it }
+      val supplier = suppliers[system] ?: newSupplier(system).also { suppliers[system] = it }
       return supplier.classpath()
     }
   }

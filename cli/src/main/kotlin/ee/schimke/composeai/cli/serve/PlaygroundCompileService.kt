@@ -73,11 +73,24 @@ class PlaygroundCompileService(
   private val publishRemoteDocument: (String, ByteArray, Boolean) -> String? = { _, _, _ -> null },
   /**
    * The served catalogs a request may name in [PlaygroundRunRequest.catalog]. Read fresh per call —
-   * catalogs load in the background after the lane is wired. Empty ⇒ this host pins its bundles and
-   * offers no runtime choice, which is the pre-selector behaviour.
+   * catalogs load in the background after the lane is wired.
+   *
+   * **Null and "returns empty" are different states**, which is why this is nullable rather than
+   * defaulting to `{ emptyList() }`: null means this host pins its bundles and offers no runtime
+   * choice at all (the pre-selector behaviour), while a non-null seam returning nothing means
+   * `--playground` is on and no catalog has loaded *yet*. The editor renders a selector for the
+   * second and not the first, so collapsing them would leave a host that started before its
+   * catalogs permanently without the control it was configured to have.
    */
-  private val catalogTargets: () -> List<PlaygroundCatalogTarget> = { emptyList() },
+  private val catalogTargets: (() -> List<PlaygroundCatalogTarget>)? = null,
 ) {
+
+  /**
+   * True when `--playground` put a runtime catalog selector on this host, whether or not any
+   * catalog has loaded into it yet. Drives whether the editor renders the Catalog control at all.
+   */
+  val catalogSelectorEnabled: Boolean
+    get() = catalogTargets != null
 
   /**
    * The modes this host can serve **on its pinned default** — the ones whose [catalogClasspath]
@@ -118,7 +131,7 @@ class PlaygroundCompileService(
           resolved = true,
         )
     return listOfNotNull(default) +
-      catalogTargets().map {
+      catalogTargets?.invoke().orEmpty().map {
         PlaygroundCatalogInfo(
           id = it.system,
           label = "${it.system} (${it.backend})",

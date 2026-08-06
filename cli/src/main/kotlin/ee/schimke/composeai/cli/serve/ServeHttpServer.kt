@@ -996,6 +996,7 @@ class ServeHttpServer(
         token = token,
         isPublic = isPublic,
         catalogs = service.catalogChoices(),
+        catalogSelectorEnabled = service.catalogSelectorEnabled,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
       ),
       ContentType.Text.Html,
