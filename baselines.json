@@ -445,29 +445,41 @@
       "sha256": "bed7132ea4fd2fb40be32ff1661fbe62b3c9904d632322fbf39998c7caa7005b",
       "size": 16380
     },
+    "serve-playground-android-catalog.dark.png": {
+      "fixture": "serve-playground-android-catalog",
+      "theme": "dark",
+      "sha256": "ceb34b13717c56d775b5b2cc706a065b0c6ca3e5566f9272c14093359aa00fb9",
+      "size": 29778
+    },
+    "serve-playground-android-catalog.light.png": {
+      "fixture": "serve-playground-android-catalog",
+      "theme": "light",
+      "sha256": "80a038b90487628abdc9eb065217d164e3db3df66880483161bd19a80531cbc3",
+      "size": 29781
+    },
     "serve-playground-multifile.dark.png": {
       "fixture": "serve-playground-multifile",
       "theme": "dark",
-      "sha256": "b3c37c20b0db9eb8751d126370d9633d8e1c81ad4f5e98af13df4c4e17b97fd7",
-      "size": 29154
+      "sha256": "b188e42d39845c90f28ed61f1944c3091ab7c90fc204d31e37a6edd64b1d088b",
+      "size": 30856
     },
     "serve-playground-multifile.light.png": {
       "fixture": "serve-playground-multifile",
       "theme": "light",
-      "sha256": "b3c37c20b0db9eb8751d126370d9633d8e1c81ad4f5e98af13df4c4e17b97fd7",
-      "size": 29154
+      "sha256": "c39d53feb6a60fa0f77832693221154ae591e1e952e6f6efc8e12a8eda5afcb6",
+      "size": 30858
     },
     "serve-playground.dark.png": {
       "fixture": "serve-playground",
       "theme": "dark",
-      "sha256": "9f9ef44fee79fb12035ea0eda92ec617007c2c5e4897b453e2db43d87d77ffdf",
-      "size": 27492
+      "sha256": "00ee1c69bff0fe5899858cfc54dff9d40d30e5687469cc93d9a31bcbd6855587",
+      "size": 29218
     },
     "serve-playground.light.png": {
       "fixture": "serve-playground",
       "theme": "light",
-      "sha256": "9f9ef44fee79fb12035ea0eda92ec617007c2c5e4897b453e2db43d87d77ffdf",
-      "size": 27492
+      "sha256": "00ee1c69bff0fe5899858cfc54dff9d40d30e5687469cc93d9a31bcbd6855587",
+      "size": 29218
     },
     "serve-reference-compare-annotated.dark.png": {
       "fixture": "serve-reference-compare-annotated",
