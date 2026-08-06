@@ -98,7 +98,22 @@ class ServeSharedDaemonPool(
    */
   fun takeColdStartMillis(): Long = peakColdStartMillis.getAndSet(0)
 
-  fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+  /**
+   * [background] prices any replica this render has to open against the BACKGROUND remainder
+   * ([LiveSeatLimiter.acquireBackground]), leaving [LiveSeatLimiter.STREAM_RESERVE] free.
+   *
+   * The default (foreground) is right for a leased browse burst: a visitor is sitting in front of
+   * the grid waiting for those pixels, so it is the same class of demand as a stream. It is wrong
+   * for the idle theme optimizer, which reaches this pool through the same *leased* path but is
+   * background residency by definition — and, unlike a burst, does not end. On the deployed box
+   * that combination held 6-8 of 8 seats for hours with `activeStreams: 0`, against a reserve whose
+   * entire job is to guarantee a visitor can always start a stream.
+   */
+  fun render(
+    previewId: String,
+    overrides: PreviewOverrides,
+    background: Boolean = false,
+  ): RenderOutcome {
     permits.acquire()
     var borrowed: ServeHost? = null
     // An explicit flag, not a `coldStartFrom > 0` sentinel: [clock] is injectable and a test clock
@@ -109,7 +124,7 @@ class ServeSharedDaemonPool(
     try {
       borrowed = lock.withLock {
         check(!closed) { "shared daemon pool is closed" }
-        val host = available.removeFirstOrNull() ?: openSeatedReplica()
+        val host = available.removeFirstOrNull() ?: openSeatedReplica(background)
         // Claimed under the lock so exactly one borrow times the cold start.
         cold = coldReplicas.remove(host)
         if (cold) coldStartFrom = clock()
@@ -149,15 +164,20 @@ class ServeSharedDaemonPool(
    * it waits for one of its own in-flight borrows to come back. That wait is bounded by a render,
    * and the primary is always in circulation, so there is always something to wait for — the batch
    * simply narrows to the width the box can afford instead of adding a JVM it can't.
+   *
+   * [background] takes the seat from the background remainder instead, so prefetch residency can
+   * never occupy the stream reserve — see [render].
    */
-  private fun openSeatedReplica(): ServeHost {
+  private fun openSeatedReplica(background: Boolean): ServeHost {
     var ticket: LiveSeatLimiter.Ticket? = null
     if (liveSeats != null) {
       // countRefusal = false: a miss here does NOT refuse the render. The burst simply narrows
       // onto a host already in circulation (below), so counting it would report throttled widening
       // as visitors turned away — and `liveSeatRefusals` is the evidence any budget change rests
-      // on.
-      ticket = liveSeats.acquire(seatWeight(), countRefusal = false)
+      // on. (`acquireBackground` never counts a refusal for the same reason.)
+      ticket =
+        if (background) liveSeats.acquireBackground(seatWeight())
+        else liveSeats.acquire(seatWeight(), countRefusal = false)
       if (ticket == null) {
         while (available.isEmpty() && !closed) hostReturned.await()
         check(!closed) { "shared daemon pool is closed" }

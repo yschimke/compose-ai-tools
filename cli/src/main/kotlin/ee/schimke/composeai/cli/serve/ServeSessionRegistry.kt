@@ -46,6 +46,20 @@ class ServeSessionRegistry(
    * clock).
    */
   private val suspendedGcTimeoutMillis: Long = DEFAULT_SUSPENDED_GC_TIMEOUT_MILLIS,
+  /**
+   * Idle window for shedding **pooled daemons** ([releaseIdleDaemons]), separate from
+   * [idleTimeoutMillis], which suspends whole sessions.
+   *
+   * They are different questions. Suspending a session throws away a catalog's warm state and the
+   * visitor pays to rebuild it, so ten minutes is a reasonable price of admission. A pool replica
+   * is reopened from the same launch descriptor whenever the next burst needs it, and while it sits
+   * there it holds a live seat weighted 2 — so on an eight-seat box a handful of forgotten replicas
+   * is the whole budget. Reusing the session window meant a replica could hold its seat for the ten
+   * minutes it takes to qualify plus up to another sweep interval before anything looked.
+   *
+   * Non-positive falls back to [idleTimeoutMillis], preserving the old behaviour.
+   */
+  private val daemonIdleMillis: Long = DEFAULT_DAEMON_IDLE_MILLIS,
   private val clock: () -> Long = System::currentTimeMillis,
 ) : AutoCloseable {
 
@@ -160,6 +174,18 @@ class ServeSessionRegistry(
             reaperIntervalMillis,
             TimeUnit.MILLISECONDS,
           )
+          // Pooled daemons are swept on their OWN cadence when it is shorter. A replica holds a
+          // live seat weighted 2 and is cheap to reopen, so waiting a session-suspension interval
+          // to look at it means a handful of forgotten replicas can hold an eight-seat box's whole
+          // budget. Same single thread, so the two sweeps never overlap.
+          if (daemonIdleMillis > 0 && daemonIdleMillis < reaperIntervalMillis) {
+            it.scheduleWithFixedDelay(
+              { runCatching { releaseIdleDaemons() } },
+              daemonIdleMillis,
+              daemonIdleMillis,
+              TimeUnit.MILLISECONDS,
+            )
+          }
         }
     } else {
       null
@@ -348,13 +374,12 @@ class ServeSessionRegistry(
    * unrelated session's acquire. A host closed concurrently by [suspendIdle] just reports zero.
    */
   fun releaseIdleDaemons(): Int {
-    if (idleTimeoutMillis <= 0) return 0
+    val window = if (daemonIdleMillis > 0) daemonIdleMillis else idleTimeoutMillis
+    if (window <= 0) return 0
     val hosts = lock.withLock {
       if (closed) emptyList() else sessions.values.mapNotNull { it.host }
     }
-    return hosts.sumOf { host ->
-      runCatching { host.releaseIdleDaemons(idleTimeoutMillis) }.getOrDefault(0)
-    }
+    return hosts.sumOf { host -> runCatching { host.releaseIdleDaemons(window) }.getOrDefault(0) }
   }
 
   /**
@@ -508,5 +533,13 @@ class ServeSessionRegistry(
      * always suspends first. Pinned/registered sessions are exempt regardless.
      */
     const val DEFAULT_SUSPENDED_GC_TIMEOUT_MILLIS = 60 * 60 * 1000L
+
+    /**
+     * Default idle window before a pooled daemon is closed and its live seat returned — a minute,
+     * against the ten a whole session gets. A replica reopens from its launch descriptor whenever
+     * the next burst needs it; a suspended session costs a visitor a rebuild. Different prices, so
+     * different windows.
+     */
+    const val DEFAULT_DAEMON_IDLE_MILLIS = 60 * 1000L
   }
 }

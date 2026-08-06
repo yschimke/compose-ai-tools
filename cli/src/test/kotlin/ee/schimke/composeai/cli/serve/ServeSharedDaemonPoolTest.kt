@@ -266,6 +266,57 @@ class ServeSharedDaemonPoolTest {
     }
   }
 
+  /**
+   * The stream reserve exists so a visitor can always start a stream no matter how much render
+   * residency has built up. A leased *browse* burst is allowed to take it — a visitor is already
+   * waiting on those pixels. The idle theme optimizer reaches this same pool through the same
+   * leased path, but it is background residency and, unlike a burst, it does not end: on the
+   * deployed box that held 6-8 of 8 seats for hours with `activeStreams: 0`.
+   */
+  @Test
+  fun `a background render may not open a replica inside the stream reserve`() {
+    // Exactly the reserve free: foreground may take it, background may not.
+    val seats = LiveSeatLimiter(totalPermits = LiveSeatLimiter.STREAM_RESERVE)
+    val opened = AtomicInteger()
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val primary = BlockingHost("primary", entered, release)
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 2, liveSeats = seats) {
+        opened.incrementAndGet()
+        InstantHost("replica")
+      }
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      val held = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(entered.await(5, TimeUnit.SECONDS), "primary is mid-render")
+
+      // Prefetch overlapping the busy primary: it must NOT spawn into the reserve, so it waits.
+      val prefetch =
+        executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides(), background = true) }
+      assertTrue(
+        runCatching { prefetch.get(1, TimeUnit.SECONDS) }.isFailure,
+        "the prefetch waits for the primary rather than taking the stream reserve",
+      )
+      assertEquals(0, opened.get(), "no replica opened against the reserve")
+
+      release.countDown()
+      assertTrue(held.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok)
+      // It still gets served — narrowing the lane, never failing the render.
+      assertTrue(prefetch.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok)
+      assertEquals(
+        LiveSeatLimiter.STREAM_RESERVE,
+        seats.availablePermits(),
+        "the reserve is intact, so a stream could still start",
+      )
+      assertEquals(0L, seats.refusalCount(), "and narrowing is not a refused visitor")
+    } finally {
+      release.countDown()
+      executor.shutdownNow()
+      pool.close()
+    }
+  }
+
   /** The other direction: when replicas ARE affordable, the peak sees them. */
   @Test
   fun `peak in-flight rises with genuinely concurrent renders`() {

@@ -549,12 +549,12 @@ class ServeCatalogLiveHost(
   private fun renderOptimizerBatch(batch: List<ThemeOptimizationJob>): List<RenderOutcome> {
     if (batch.size == 1) {
       val job = batch.single()
-      return listOf(renderLeased(job.previewId, job.overrides))
+      return listOf(renderPrefetch(job.previewId, job.overrides))
     }
     return batch
       .map { job ->
         optimizerBatchExecutor.submit<RenderOutcome> {
-          runCatching { renderLeased(job.previewId, job.overrides) }
+          runCatching { renderPrefetch(job.previewId, job.overrides) }
             .getOrElse { RenderOutcome.Failed("prefetch render threw: ${it.message}") }
         }
       }
@@ -808,10 +808,22 @@ class ServeCatalogLiveHost(
   override fun renderLeased(previewId: String, overrides: PreviewOverrides): RenderOutcome =
     renderInternal(previewId, overrides, leased = true)
 
+  /**
+   * A leased render issued by the idle theme optimizer rather than by a waiting visitor.
+   *
+   * Identical routing to [renderLeased] — it wants the same wide shared-daemon lane — but any
+   * replica it opens is charged to the BACKGROUND seat remainder. The optimizer is background
+   * residency by definition and does not end, so pricing it as foreground let prefetching hold the
+   * stream reserve for hours; see [ServeSharedDaemonPool.render].
+   */
+  private fun renderPrefetch(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+    renderInternal(previewId, overrides, leased = true, background = true)
+
   private fun renderInternal(
     previewId: String,
     overrides: PreviewOverrides,
     leased: Boolean,
+    background: Boolean = false,
   ): RenderOutcome {
     val catalogCacheKey = catalogCacheKey(previewId, overrides)
     val themeCacheKey = themeCacheKey(previewId, overrides)
@@ -837,7 +849,10 @@ class ServeCatalogLiveHost(
       // lane, so it must be awaited even cold and its outcome returned as-is. Everything below is
       // the baked-first routing, which such an id can't use.
       if (previewId in liveOnlyPreviewIds) {
-        return cacheCatalogRender(catalogCacheKey, renderDaemon(daemonId, overrides, leased))
+        return cacheCatalogRender(
+          catalogCacheKey,
+          renderDaemon(daemonId, overrides, leased, background),
+        )
       }
       // Only await the daemon when it's warm and free. A cold Android render can take minutes, and
       // blocking the browse — and the HTTP render slot it holds — on it is what saturates the whole
@@ -861,7 +876,7 @@ class ServeCatalogLiveHost(
       if (
         leased || daemonWarmOrScheduling(daemonId) || awaitForegroundWarm(daemonId, themeCacheKey)
       ) {
-        val live = renderDaemon(daemonId, overrides, leased)
+        val live = renderDaemon(daemonId, overrides, leased, background)
         // Count a real render failure against this theme key so a permanently broken preview stops
         // being re-attempted (see [CatalogThemeCache.recordRenderFailure]). Busy / NotFound are not
         // failures of the render — they are "ask again" and "wrong lane" — and must not latch.
@@ -991,10 +1006,11 @@ class ServeCatalogLiveHost(
     daemonId: String,
     overrides: PreviewOverrides,
     leased: Boolean = false,
+    background: Boolean = false,
   ): RenderOutcome {
     val outcome =
       if (sharedDaemonRenders && leased && sharedDaemonPool != null) {
-        sharedDaemonPool.render(daemonId, overrides)
+        sharedDaemonPool.render(daemonId, overrides, background = background)
       } else {
         renderHostFor(daemonId).render(daemonId, overrides)
       }
