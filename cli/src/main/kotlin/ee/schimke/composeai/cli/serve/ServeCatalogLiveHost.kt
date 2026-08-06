@@ -320,13 +320,33 @@ class ServeCatalogLiveHost(
    * A visitor is on this catalog's pages: make sure the shared daemon is up, so their first theme
    * selection is a warm render rather than a cold start.
    *
-   * This is [prewarm]'s warming half without the theme-optimization pass — the same [scheduleWarm]
-   * call, under the same conditions. It is safe to call on every heartbeat because `scheduleWarm`
-   * returns immediately once the id is warm or a warm is already in flight; a suspended session is
-   * rebuilt with a fresh host (and so a fresh warm set) on resume, which is exactly when a
-   * heartbeat should warm it again.
+   * This is [prewarm]'s warming half — the same [scheduleWarm] call, under the same conditions. It
+   * is safe to call on every heartbeat because `scheduleWarm` returns immediately once the id is
+   * warm or a warm is already in flight; a suspended session is rebuilt with a fresh host (and so a
+   * fresh warm set) on resume, which is exactly when a heartbeat should warm it again.
+   *
+   * It also **re-enters the theme-optimization pass**. That pass used to run exactly once, from
+   * [prewarm] at catalog open, and `startThemeOptimization` clears `optimizationStarted` in its
+   * `finally` — so a pass that ended with targets still unfilled left them unfilled for the life of
+   * the catalog generation, with nothing to start another. Anything the one pass could not get on
+   * its single attempt (a daemon still warming, a replica the seat budget could not afford, a
+   * preview whose live lane was momentarily contended) was simply abandoned.
+   *
+   * meshcore-mobile sat at `paused 288/372, failed: 0` across two server lifetimes because of it,
+   * stopping at the same 288 both times while the other fourteen catalogs on the box reached
+   * `complete`. `failed: 0` is what makes this hard to see: the missing 84 were never *attempted*
+   * again, so nothing was ever recorded against them.
+   *
+   * Re-entering here is safe and self-limiting: `startThemeOptimization` returns immediately when
+   * the cache is already `fullyOptimized` or a pass is in flight (`optimizationStarted` is a CAS),
+   * and the pass's own [awaitOptimizerTurn] still holds the idle gate — so a heartbeat arriving
+   * while a visitor is browsing schedules work that waits for quiet rather than competing with
+   * them.
    */
   override fun keepLiveWarm() {
+    // Ahead of the `warmInBackground` guard, exactly as in [prewarm]: the two are independent
+    // switches, and a box that has disabled background warming still wants its prefetch to finish.
+    startThemeOptimization()
     if (!warmInBackground) return
     if (perPreviewResolve != null && !sharedDaemonRenders) return
     alias.values.firstOrNull()?.let { scheduleWarm(it, live) }
@@ -454,9 +474,13 @@ class ServeCatalogLiveHost(
               // Busy is "ask again", not a failure: the warm above may still be settling. Leave it
               // unmarked so a later pass retries instead of spending the `failed` count on it.
               when (outcome) {
-                // "ask again" — the warm above may still be settling. Left unmarked so a later
-                // pass retries rather than spending the catalog's `failed` count on it.
-                RenderOutcome.Busy -> Unit
+                // "ask again" — the warm above may still be settling, so a later pass retries
+                // rather than spending the catalog's `failed` count on it. Counted, though: "ask
+                // again" with no ceiling is indistinguishable from "never", and this is the only
+                // lane that can tell them apart. After `BUSY_LATCH` consecutive passes the key
+                // latches with a reason, so /status names it instead of reporting `failed: 0`
+                // beside a `remaining` that never moves. A successful render clears the count.
+                RenderOutcome.Busy -> catalogThemeCache.recordBackgroundBusy(job.cacheKey)
                 // Count the failure but do NOT latch on the first one. `failureReason` treats a
                 // latched key as terminal and answers foreground requests with a 409, so a single
                 // flaky background render — a cold-start timeout, a daemon restart — would

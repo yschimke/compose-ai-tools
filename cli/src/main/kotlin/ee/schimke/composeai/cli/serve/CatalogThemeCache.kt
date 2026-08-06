@@ -82,6 +82,9 @@ class CatalogThemeCache(
   // successful [put], so a key only stays latched while it keeps failing.
   private val failureCounts = ConcurrentHashMap<String, Int>()
   private val failureReasons = ConcurrentHashMap<String, String>()
+  // Consecutive background `Busy` outcomes per key. Separate from [failureCounts] because the two
+  // have very different tolerances — see [BUSY_LATCH]. Cleared by a successful [put] like the rest.
+  private val busyCounts = ConcurrentHashMap<String, Int>()
   private val byteCount = AtomicLong(0)
   private val evictionCount = AtomicLong(0)
   private val state = AtomicReference("waiting")
@@ -161,6 +164,7 @@ class CatalogThemeCache(
     failedKeys.remove(key)
     failureCounts.remove(key)
     failureReasons.remove(key)
+    busyCounts.remove(key)
     refreshCompletion()
   }
 
@@ -205,6 +209,31 @@ class CatalogThemeCache(
     val count = failureCounts.merge(key, 1, Int::plus) ?: 1
     if (count < FAILURE_LATCH) return false
     failedKeys += key
+    return true
+  }
+
+  /**
+   * Record one **background** `Busy` outcome for [key] and report whether it has now latched
+   * ([BUSY_LATCH] consecutive).
+   *
+   * `Busy` is "ask again", and for a warming daemon that is exactly right — which is why the
+   * optimizer deliberately left it unmarked. But "ask again" with no ceiling is indistinguishable
+   * from "never", and the optimizer has no other way to notice: it does not re-enter a finished
+   * pass, so a key that answers `Busy` on the one pass it gets is simply abandoned, uncounted.
+   *
+   * Latching supplies the missing terminal state. Once latched the key gets a [reason], so
+   * [failureReason] answers the request lane immediately instead of sending the browser back into a
+   * `retry-after` loop it can never win, `markPassFinished` reports `degraded` rather than a
+   * `paused` that looks like ordinary throttling, and `/status` shows a non-zero `failed` naming
+   * how many previews are stuck. A successful [put] clears the count, so a genuinely contended key
+   * that eventually renders is never penalised.
+   */
+  fun recordBackgroundBusy(key: String): Boolean {
+    val count = busyCounts.merge(key, 1, Int::plus) ?: 1
+    if (count < BUSY_LATCH) return false
+    failedKeys += key
+    failureReasons[key] =
+      "no live lane produced this theme render after $count attempts (daemon busy or absent)"
     return true
   }
 
@@ -296,5 +325,25 @@ class CatalogThemeCache(
      * Consecutive on-demand render failures before a key is treated as permanently unrenderable.
      */
     const val FAILURE_LATCH = 3
+
+    /**
+     * Consecutive `Busy` outcomes on the BACKGROUND lane before a key is treated as one the
+     * optimizer cannot fill.
+     *
+     * Deliberately far looser than [FAILURE_LATCH]: `Busy` really does mean "ask again" for a
+     * warming daemon, and a key that is merely contended must survive a long run of them. What it
+     * must not have is *no* ceiling. Without one the pass can never converge — `markPassFinished`
+     * only reports `complete` when every target is cached, and a key that answers `Busy` forever is
+     * neither cached nor failed, so the catalog sits at `paused` with `failed: 0` and nothing ever
+     * says which previews are stuck.
+     *
+     * Observed on meshcore-mobile: 84 of 372 targets (21 previews x 4 declared themes) pinned at
+     * `paused 288/372, failed: 0` across two server lifetimes, while all fourteen other catalogs on
+     * the same box reached `complete`. On the request lane those same previews answered `503 render
+     * busy; retry shortly` on 39 of 39 attempts spread over several minutes — a `retry-after` the
+     * server could never honour, which the grid's three retries then burned before showing "Theme
+     * preview unavailable".
+     */
+    const val BUSY_LATCH = 12
   }
 }
