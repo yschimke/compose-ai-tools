@@ -237,6 +237,23 @@ class ServeHttpServer(
    * has resolved. Null when the lane isn't wired at all. See [PlaygroundHealth].
    */
   private val playgroundHealth: (() -> PlaygroundHealth)? = null,
+  /**
+   * Per-caller budget on the compile lane (issue #3214), or null to leave it unmetered. Every other
+   * playground bound is a whole-host one, so without this two callers issuing back-to-back compiles
+   * hold every slot and everyone else is told the playground is busy.
+   */
+  private val playgroundRateLimiter: ServeRateLimiter? = null,
+  /**
+   * Trust the **last** entry of `X-Forwarded-For` as the client address when rate-limiting an
+   * anonymous caller, instead of the socket peer.
+   *
+   * Off by default and opt-in for a reason: the header is client-supplied, so trusting it on a
+   * directly-exposed host lets a caller forge a fresh identity per request and bypass the limit
+   * entirely. The *last* entry — not the first — is the one a single reverse proxy appended from
+   * the peer address it actually saw (nginx's `$proxy_add_x_forwarded_for`), which a client cannot
+   * forge. That is exactly one hop's worth of trust; behind two proxies this names the inner one.
+   */
+  private val trustForwardedFor: Boolean = false,
   /** Aggregate view counts; pass a file-backed store to keep them across server restarts. */
   private val engagementStore: ServeEngagementStore = ServeEngagementStore(),
 ) {
@@ -1069,10 +1086,73 @@ class ServeHttpServer(
     }
   }
 
+  /**
+   * Who to charge for a request, for rate-limiting purposes.
+   *
+   * The **authenticated GitHub login** where there is one: it survives a changed address, it is the
+   * identity the repo-access gate already admitted on, and on a repo-access-gated host it is what
+   * every compile carries. Otherwise the client address, which is all a token-gated or local host
+   * has. Prefixed so the two spaces can never collide — a login is not an address, and a caller who
+   * signs in should not inherit the budget an anonymous neighbour behind the same NAT just spent.
+   */
+  private fun RoutingContext.rateLimitKey(): String {
+    githubAuth
+      ?.currentLogin(call)
+      ?.takeIf { it.isNotBlank() }
+      ?.let {
+        return "gh:$it"
+      }
+    val forwarded =
+      if (!trustForwardedFor) null
+      else
+        call.request.headers["X-Forwarded-For"]
+          ?.split(',')
+          ?.map { it.trim() }
+          ?.lastOrNull { it.isNotEmpty() }
+    return "ip:" + (forwarded ?: call.request.origin.remoteHost)
+  }
+
+  /**
+   * Charge this request against its caller's budget, responding `429` + `Retry-After` and returning
+   * null when they are over it. A non-null result MUST be released when the work finishes.
+   */
+  private suspend fun RoutingContext.acquirePlaygroundPermit():
+    ServeRateLimiter.Decision.Admitted? {
+    val limiter = playgroundRateLimiter ?: return ServeRateLimiter.Decision.Admitted {}
+    return when (val decision = limiter.tryAcquire(rateLimitKey())) {
+      is ServeRateLimiter.Decision.Admitted -> decision
+      is ServeRateLimiter.Decision.Throttled -> {
+        call.response.headers.append(HttpHeaders.RetryAfter, decision.retryAfterSeconds.toString())
+        call.respondText(
+          JSON.encodeToString(
+            PlaygroundRunResponse.serializer(),
+            PlaygroundRunResponse(exception = "Too many requests — ${decision.reason}."),
+          ),
+          ContentType.Application.Json,
+          HttpStatusCode.TooManyRequests,
+        )
+        null
+      }
+    }
+  }
+
   private suspend fun RoutingContext.handlePlaygroundRun(service: PlaygroundCompileService) {
     if (rejectBadToken()) return
     if (rejectMissingGithubAuth(api = true)) return
     if (rejectMissingGithubRepoAccess(api = true)) return
+    // After the gates, before the body read: a throttled caller should cost this host a 429 and
+    // nothing else — not 256 KB of buffered upload, and certainly not a compile slot.
+    val permit = acquirePlaygroundPermit() ?: return
+    try {
+      handlePlaygroundRunAdmitted(service)
+    } finally {
+      permit.release()
+    }
+  }
+
+  private suspend fun RoutingContext.handlePlaygroundRunAdmitted(
+    service: PlaygroundCompileService
+  ) {
     val body =
       withContext(Dispatchers.IO) {
         call.receiveStream().use { readCapped(it, MAX_PLAYGROUND_BYTES) }
@@ -2191,6 +2271,13 @@ class ServeHttpServer(
               catalogSelector =
                 h.catalogSelector?.invoke()?.let {
                   CatalogSelectorDto(offered = it.offered, resolved = it.resolved, limit = it.limit)
+                },
+              rateLimit =
+                playgroundRateLimiter?.let {
+                  RateLimitDto(
+                    activeCallers = it.activeCallers(),
+                    trackedCallers = it.trackedCallers(),
+                  )
                 },
             )
           },
@@ -3734,6 +3821,19 @@ private data class PlaygroundDto(
   val modes: List<ModeDto>,
   /** The runtime catalog selector (`--playground`), or null when this host pins its bundles. */
   val catalogSelector: CatalogSelectorDto? = null,
+  /** The per-caller compile budget, or null when the lane is unmetered. */
+  val rateLimit: RateLimitDto? = null,
+)
+
+@Serializable
+private data class RateLimitDto(
+  /** Callers holding a compile permit right now. */
+  val activeCallers: Int,
+  /**
+   * Distinct callers the limiter is tracking. A number pinned near its cap on a public host is the
+   * signature of a key-space spray, not of an audience.
+   */
+  val trackedCallers: Int,
 )
 
 @Serializable
