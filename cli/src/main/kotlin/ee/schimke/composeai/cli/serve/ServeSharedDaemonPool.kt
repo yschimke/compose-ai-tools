@@ -264,9 +264,16 @@ class ServeSharedDaemonPool(
         break
       }
       lock.withLock {
+        // Every per-host collection, or a closed host stays strongly reachable until the whole
+        // pool closes — and a pinned catalog repeats burst-to-idle indefinitely, so that is
+        // unbounded retention rather than a bounded wart. `coldReplicas` is on this list too: a
+        // replica reaped before its first render (opened, answered NotFound, went idle) never
+        // clears itself.
         available.remove(victim)
         replicas.remove(victim)
         replicaLastUsed.remove(victim)
+        coldReplicas.remove(victim)
+        foregroundSeated.remove(victim)
         seatTickets.remove(victim)?.close()
       }
       permits.release()
