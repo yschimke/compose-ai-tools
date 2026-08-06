@@ -2406,6 +2406,10 @@ object ServeWeb {
         editor = window.CodeMirror.fromTextArea(source, {
           mode: "text/x-kotlin",
           lineNumbers: true,
+          // `fromTextArea` hides the original textarea, which takes its aria-label out of the
+          // accessibility tree with it. CodeMirror only names its own generated input through
+          // this option, so without it a screen reader announces an unlabelled edit box.
+          screenReaderLabel: "Kotlin source",
           indentUnit: 4,
           // Kotlin is space-indented; without this Tab inserts a literal tab that the compiler
           // accepts but nobody wants pasted back into a file.
@@ -2467,7 +2471,7 @@ object ServeWeb {
         active = files.length - 1;
         writeSource("");
         renderFiles();
-        source.focus();
+        if (editor) editor.focus(); else source.focus();
       });
       removeFile.addEventListener("click", function () {
         if (files.length < 2) return;
