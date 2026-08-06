@@ -13,6 +13,9 @@ import kotlin.test.assertTrue
  * that let one heavy catalog starve the rest.
  */
 class LiveSeatLimiterTest {
+  // Several cases below pass `perPreviewReserve = 0` deliberately. They pin the GENERAL lane's
+  // arithmetic against the whole budget, which is what they were written to describe; the slice
+  // carved out of that budget by default is covered by LiveSeatLimiterPerPreviewReserveTest.
 
   @Test
   fun `refusals are counted so seat pressure is visible after the fact`() {
@@ -84,7 +87,7 @@ class LiveSeatLimiterTest {
 
   @Test
   fun `desktop-weight sessions fill the budget then the next is refused`() {
-    val limiter = LiveSeatLimiter(2)
+    val limiter = LiveSeatLimiter(2, perPreviewReserve = 0)
     val a = limiter.acquire(1)
     val b = limiter.acquire(1)
     assertNotNull(a)
@@ -101,7 +104,7 @@ class LiveSeatLimiterTest {
 
   @Test
   fun `an Android session costs its heavier weight and blocks a concurrent desktop one`() {
-    val limiter = LiveSeatLimiter(2)
+    val limiter = LiveSeatLimiter(2, perPreviewReserve = 0)
     // Weight 2 (Android) consumes the whole budget of 2.
     val android = limiter.acquire(ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT)
     assertNotNull(android)
@@ -133,7 +136,7 @@ class LiveSeatLimiterTest {
 
   @Test
   fun `releasing a ticket is idempotent — a double close returns permits only once`() {
-    val limiter = LiveSeatLimiter(2)
+    val limiter = LiveSeatLimiter(2, perPreviewReserve = 0)
     val a = limiter.acquire(1)
     assertNotNull(a)
     a!!.close()

@@ -2063,6 +2063,9 @@ class ServeHttpServer(
             liveSeatsTotal = if (liveSeats.unbounded) 0 else liveSeats.totalPermits,
             liveSeatsAvailable = if (liveSeats.unbounded) -1 else liveSeats.availablePermits(),
             liveSeatsUnbounded = liveSeats.unbounded,
+            perPreviewSeatsTotal = if (liveSeats.unbounded) 0 else liveSeats.perPreviewReserve,
+            perPreviewSeatsAvailable =
+              if (liveSeats.unbounded) -1 else liveSeats.perPreviewPermitsAvailable(),
             liveSeatRefusals = liveSeats.refusalCount(),
             liveSeatRefusalsUnverified = liveSeats.unverifiedRefusalCount(),
           ),
@@ -3757,6 +3760,15 @@ private data class DaemonSummaryDto(
   /** Free permits; `-1` ⇒ unbounded. */
   val liveSeatsAvailable: Int,
   val liveSeatsUnbounded: Boolean,
+  /**
+   * The slice of [liveSeatsTotal] only the per-preview daemon lane may draw on, and how much of it
+   * is free. Published because its absence is exactly what made a total starvation invisible: with
+   * every general permit held by resident catalog daemons, `liveSeatsAvailable` read `0 / 8` and
+   * `liveSeatRefusals` read `0` (the background path never counted one), while every
+   * supplement-module preview on the box answered `503 render busy` forever.
+   */
+  val perPreviewSeatsTotal: Int = 0,
+  val perPreviewSeatsAvailable: Int = 0,
   /**
    * Live sessions turned away for want of seats since startup, monotonic. A counter rather than a
    * gauge because a refusal is an event: [liveSeatsAvailable] beside it is a level, and on a

@@ -27,8 +27,39 @@ import java.util.concurrent.atomic.AtomicLong
  * Thread-safe: the backing [Semaphore] is fair-agnostic like the old flat gate, and each [Ticket]
  * releases its permits at most once.
  */
-class LiveSeatLimiter(val totalPermits: Int) {
-  private val semaphore: Semaphore? = if (totalPermits > 0) Semaphore(totalPermits) else null
+class LiveSeatLimiter(
+  val totalPermits: Int,
+  /**
+   * Permits carved out of [totalPermits] that **only** [acquireBackground] can draw on — the
+   * per-preview lane's guaranteed slice.
+   *
+   * Without it that lane can be starved to a standstill, and was. On preview.coo.ee the eight
+   * resident catalog daemons held all 8 permits with `activeStreams: 0`, so every
+   * `acquireBackground` was refused, [ServePerPreviewDaemonPool.get] returned null, and
+   * `ServeCatalogLiveHost.renderInternal` turned that `NotFound` into `Busy` — a `503 render busy;
+   * retry shortly` on 39 of 39 attempts for all 21 of meshcore-mobile's supplement-module previews,
+   * for the life of the server. The catalog's theme prefetch then pinned at 288/372 forever because
+   * those 84 targets could never be filled.
+   *
+   * It is deliberately small — one desktop daemon's worth by default. The point is not to give the
+   * lane a fair share, only to make it impossible to starve completely: a preview whose ONLY live
+   * lane is its own per-preview bundle (a catalog with a supplement module, where the monolithic
+   * daemon simply does not carry the id) has no fallback that renders, unlike a burst replica which
+   * can narrow onto the primary.
+   */
+  val perPreviewReserve: Int = DEFAULT_PER_PREVIEW_RESERVE,
+) {
+  // The reserve is held in its own semaphore rather than subtracted from a single one, so no
+  // amount of general-lane demand can consume it. `acquire` never sees it at all.
+  private val reservedPermits: Int =
+    if (totalPermits > 0) perPreviewReserve.coerceIn(0, (totalPermits - 1).coerceAtLeast(0)) else 0
+  /**
+   * Permits the general lane (streams, burst replicas) may draw on — the budget minus the slice.
+   */
+  private val generalPermits: Int = (totalPermits - reservedPermits).coerceAtLeast(0)
+  private val semaphore: Semaphore? = if (totalPermits > 0) Semaphore(generalPermits) else null
+  private val perPreviewSemaphore: Semaphore? =
+    if (reservedPermits > 0) Semaphore(reservedPermits) else null
 
   /** True when this limiter imposes no bound (`totalPermits <= 0`). */
   val unbounded: Boolean
@@ -47,7 +78,10 @@ class LiveSeatLimiter(val totalPermits: Int) {
   fun acquire(weight: Int, verified: Boolean = true, countRefusal: Boolean = true): Ticket? {
     val sem = semaphore ?: return Ticket(0)
     if (weight <= 0) return Ticket(0)
-    val permits = weight.coerceIn(1, totalPermits)
+    // Coerced to the GENERAL lane's capacity, not [totalPermits]: the reserve is not available
+    // here, so coercing to the whole budget would ask for more permits than this semaphore can
+    // ever hold and refuse a heavy backend forever — the deadlock the coercion exists to avoid.
+    val permits = weight.coerceIn(1, generalPermits)
     if (sem.tryAcquire(permits)) return Ticket(permits)
     // Seats are reserved before the session is leased (see the stream lane), so a request naming
     // a session the registry doesn't have reaches the budget too. Those are split off rather than
@@ -84,13 +118,32 @@ class LiveSeatLimiter(val totalPermits: Int) {
     val sem = semaphore ?: return Ticket(0)
     if (weight <= 0) return Ticket(0)
     val permits = weight.coerceIn(1, totalPermits)
+    // The dedicated slice first (see above). It exists precisely so a saturated general lane cannot
+    // refuse
+    // this, so it is taken WITHOUT the stream headroom check — those permits were never available
+    // to a stream in the first place, and demanding headroom that by construction cannot exist
+    // would make the reserve unusable.
+    perPreviewSemaphore?.let { if (it.tryAcquire(permits)) return Ticket(permits, reserved = true) }
+    // Otherwise the general lane, still leaving room for an interactive stream.
     if (!sem.tryAcquire(permits + reserve.coerceAtLeast(0))) return null
     if (reserve > 0) sem.release(reserve)
     return Ticket(permits)
   }
 
-  /** Permits currently available — for tests/diagnostics. */
-  fun availablePermits(): Int = semaphore?.availablePermits() ?: Int.MAX_VALUE
+  /**
+   * Permits currently available across BOTH lanes — for tests/diagnostics and `/status`.
+   *
+   * Summed rather than reporting the general lane alone, so the figure stays comparable to
+   * [totalPermits]: a box with its slice free but its general lane full is not at capacity, and
+   * reporting `0 free / 8` there would restate the very confusion this reserve fixes.
+   */
+  fun availablePermits(): Int =
+    semaphore?.let { it.availablePermits() + (perPreviewSemaphore?.availablePermits() ?: 0) }
+      ?: Int.MAX_VALUE
+
+  /** Permits free in the per-preview slice alone — lets `/status` show the lane isn't starved. */
+  fun perPreviewPermitsAvailable(): Int =
+    perPreviewSemaphore?.availablePermits() ?: if (unbounded) Int.MAX_VALUE else 0
 
   /**
    * How many live sessions this limiter has turned away since startup, monotonic.
@@ -123,17 +176,38 @@ class LiveSeatLimiter(val totalPermits: Int) {
      * always start no matter how much render residency has built up.
      */
     const val STREAM_RESERVE: Int = ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT
+
+    /**
+     * Default [perPreviewReserve]: one desktop daemon's worth (weight 1).
+     *
+     * Enough that a catalog whose supplement module carries its own per-preview bundles can always
+     * open one, which is the difference between those previews rendering and never rendering at
+     * all. Kept to one so the general lane — streams, and the burst replicas that widen a themed
+     * batch — gives up as little as possible; a second concurrent per-preview daemon still competes
+     * for the general pool exactly as before.
+     */
+    const val DEFAULT_PER_PREVIEW_RESERVE: Int = 1
   }
 
   private val refusals = AtomicLong()
   private val unverifiedRefusals = AtomicLong()
 
-  /** A held reservation of [permits] live-seat permits; [close] returns them (idempotent). */
-  inner class Ticket internal constructor(val permits: Int) : AutoCloseable {
+  /**
+   * A held reservation of [permits] live-seat permits; [close] returns them (idempotent).
+   *
+   * [reserved] records which pool they came from, so they go back where they came from — returning
+   * a reserved permit to the general semaphore would quietly transfer the per-preview lane's slice
+   * to the general one, and the starvation this class now prevents would reappear after the first
+   * eviction.
+   */
+  inner class Ticket internal constructor(val permits: Int, private val reserved: Boolean = false) :
+    AutoCloseable {
     private val released = AtomicBoolean(false)
 
     override fun close() {
-      if (permits > 0 && released.compareAndSet(false, true)) semaphore?.release(permits)
+      if (permits > 0 && released.compareAndSet(false, true)) {
+        if (reserved) perPreviewSemaphore?.release(permits) else semaphore?.release(permits)
+      }
     }
   }
 }

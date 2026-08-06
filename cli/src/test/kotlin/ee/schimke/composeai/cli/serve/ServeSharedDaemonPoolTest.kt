@@ -333,7 +333,13 @@ class ServeSharedDaemonPoolTest {
   fun `a leased replica may use the seats reserved against background work`() {
     // Exactly the stream reserve free: a background holder (the per-preview pool) would be refused
     // here, but a leased burst is foreground and may take it.
-    val seats = LiveSeatLimiter(totalPermits = LiveSeatLimiter.STREAM_RESERVE)
+    //
+    // `perPreviewReserve = 0` because this case is about the STREAM reserve. With the per-preview
+    // slice in play the background holder would be admitted from its own permits — correct, and
+    // covered by LiveSeatLimiterPerPreviewReserveTest — which would silently void the precondition
+    // below and leave this asserting nothing about the interaction it was written for.
+    val seats =
+      LiveSeatLimiter(totalPermits = LiveSeatLimiter.STREAM_RESERVE, perPreviewReserve = 0)
     assertNull(seats.acquireBackground(1), "precondition: background cannot touch the reserve")
 
     val entered = CountDownLatch(1)
