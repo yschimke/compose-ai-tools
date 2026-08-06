@@ -454,11 +454,18 @@ class ServeCatalogLiveHost(
               backgroundWork.withRenderPermit {
                 val renderFrom = clock()
                 catalogThemeCache.recordPermitWait(renderFrom - permitWaitFrom)
+                // Clear the pool's high-water mark so the peak read below belongs to THIS batch.
+                sharedDaemonPool?.takePeakInFlight()
                 renderOptimizerBatch(batch).also {
-                  // Width from the batch actually issued, not the requested ceiling — a batch that
-                  // collapses to 1 (single-daemon lane, or a seat budget with no replicas to spare)
-                  // is exactly the case that is invisible from `cached` alone.
-                  catalogThemeCache.recordBatch(batch.size, clock() - renderFrom)
+                  // Width is the peak number of daemons that ran CONCURRENTLY, not the job count.
+                  // A batch submits N jobs, but when the seat budget affords no replica the pool
+                  // queues them onto a host already in circulation instead of spawning one — so N
+                  // jobs can be N threads taking turns on one daemon. Counting jobs reported that
+                  // as N-wide, which is exactly the collapse this number exists to expose.
+                  catalogThemeCache.recordBatch(
+                    sharedDaemonPool?.takePeakInFlight() ?: 1,
+                    clock() - renderFrom,
+                  )
                 }
               } ?: return@execute
             // Only a FRESH daemon render is optimizer production. The batch is filtered for cache

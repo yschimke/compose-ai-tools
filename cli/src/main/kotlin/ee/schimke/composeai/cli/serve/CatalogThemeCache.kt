@@ -33,7 +33,24 @@ data class ThemeOptimizationSnapshot(
    * says whether throughput is render-bound (nothing to fix without a faster renderer) or
    * wait-bound (a scheduling problem), which `cached` alone cannot distinguish.
    */
+  /** [batchMillis] + [warmMillis], kept as the single "rendering" total. */
   val renderMillis: Long = 0,
+  /**
+   * The render bucket, separated — because a cold start and a steady-state render are not the same
+   * cost and the sum reads as though they were.
+   *
+   * [batchMillis] is time inside theme-render batches: the recurring, per-entry cost, and the only
+   * part that scales with how much is left to do. [warmMillis] is time waiting out a cold daemon,
+   * paid once per daemon per pass but running to **34–68s** on an Android/Robolectric lane — so on
+   * a pass that has had only a handful of turns it can be most of [renderMillis] while producing
+   * nothing.
+   *
+   * Reading only the total, a box whose renders are genuinely slow is indistinguishable from one
+   * that is fast but keeps paying for cold starts — and "the renderer is the bottleneck" is the
+   * wrong conclusion to draw from the second. It was very nearly drawn from this catalog.
+   */
+  val batchMillis: Long = 0,
+  val warmMillis: Long = 0,
   /** [gateWaitMillis] + [permitWaitMillis], kept as the single "not rendering" total. */
   val waitingMillis: Long = 0,
   /**
@@ -54,9 +71,14 @@ data class ThemeOptimizationSnapshot(
   val turnsGranted: Int = 0,
   val turnsYielded: Int = 0,
   /**
-   * Renders actually issued concurrently in the last batch, and the widest so far. Makes "five
-   * wide" an observed fact rather than an assumption — a batch that silently collapses to 1 (a
-   * single-daemon lane, or a seat budget that affords no replicas) is otherwise invisible.
+   * Daemons that actually rendered **concurrently** in the last batch, and the most so far.
+   *
+   * Deliberately not the batch's job count. The optimizer submits N jobs to an executor and the
+   * shared pool hands each one a daemon — but when the live-seat budget affords no replica the pool
+   * does not spawn one, it queues the job onto a host already in circulation. So N jobs can be N
+   * threads taking turns on a single daemon, and a count of jobs submitted reports that as "N
+   * wide". This is the peak concurrent borrow observed inside the batch, which is the number that
+   * distinguishes the two.
    */
   val lastBatchWidth: Int = 0,
   val maxBatchWidth: Int = 0,
@@ -105,7 +127,8 @@ class CatalogThemeCache(
   private val state = AtomicReference("waiting")
   private val startedAt = AtomicLong(0)
   private val completedAt = AtomicLong(0)
-  private val renderMillis = AtomicLong(0)
+  private val batchMillis = AtomicLong(0)
+  private val warmMillis = AtomicLong(0)
   private val gateWaitMillis = AtomicLong(0)
   private val permitWaitMillis = AtomicLong(0)
   private val turnsGranted = java.util.concurrent.atomic.AtomicInteger(0)
@@ -137,11 +160,14 @@ class CatalogThemeCache(
     if (millis > 0) permitWaitMillis.addAndGet(millis)
   }
 
-  /** One batch completed: how wide it actually ran, and how long its renders took. */
+  /**
+   * One batch completed. [width] is the peak number of daemons that rendered **concurrently**, not
+   * the job count — see [ThemeOptimizationSnapshot.lastBatchWidth] for why those differ.
+   */
   fun recordBatch(width: Int, millis: Long) {
     lastBatchWidth.set(width)
     maxBatchWidth.accumulateAndGet(width, ::maxOf)
-    if (millis > 0) renderMillis.addAndGet(millis)
+    if (millis > 0) batchMillis.addAndGet(millis)
   }
 
   /** Entries this batch actually produced — the rate's numerator. */
@@ -150,12 +176,13 @@ class CatalogThemeCache(
   }
 
   /**
-   * A cold daemon warm the optimizer waited out. Real render work and often the most expensive part
-   * of the pass, so it belongs in [renderMillis] — leaving it out of both buckets shrank the rate's
-   * denominator and made a cold catalog report a rate it was nowhere near.
+   * A cold daemon warm the optimizer waited out. Real render work, so it counts toward
+   * [ThemeOptimizationSnapshot.renderMillis] and the rate's denominator — leaving it out of every
+   * bucket made a cold catalog report a rate it was nowhere near. But it is kept apart from
+   * [recordBatch] time because it produces no entries and does not recur per entry.
    */
   fun recordWarm(millis: Long) {
-    if (millis > 0) renderMillis.addAndGet(millis)
+    if (millis > 0) warmMillis.addAndGet(millis)
   }
 
   fun configureTargets(keys: Collection<String>) {
@@ -286,9 +313,10 @@ class CatalogThemeCache(
     // Read each counter ONCE and derive everything from those values. Reading them per-field lets a
     // wait that finishes mid-snapshot land in one field and not another, publishing a row where
     // `waitingMillis < gateWaitMillis + permitWaitMillis` — a self-contradicting diagnostic is
-    // worse
-    // than a slightly stale one.
-    val render = renderMillis.get()
+    // worse than a slightly stale one.
+    val batch = batchMillis.get()
+    val warm = warmMillis.get()
+    val render = batch + warm
     val gateWait = gateWaitMillis.get()
     val permitWait = permitWaitMillis.get()
     val waiting = gateWait + permitWait
@@ -316,6 +344,8 @@ class CatalogThemeCache(
           ?.takeIf { it > 0 }
           ?.let { ((total - cachedTargets).coerceAtLeast(0) / it * 60).toLong() },
       renderMillis = render,
+      batchMillis = batch,
+      warmMillis = warm,
       waitingMillis = waiting,
       gateWaitMillis = gateWait,
       permitWaitMillis = permitWait,
