@@ -605,16 +605,58 @@ so refreshing the viewer tab doesn't burn the link. `PlaygroundRedeemServiceTest
 both halves — the second redemption reuses the session rather than standing up a
 second one.
 
-### 8.4 Classpath source per mode — **one canonical classpath per mode, for now**
+### 8.4 Classpath source per mode — **pinned by default, selectable at runtime**
 
-A snippet compiles against the catalog its mode was configured with
-(`--playground-bundle` for CMP, `--playground-android-bundle` for Android/RC).
-Snippet-selectable catalogs stay out of v1 deliberately: each additional catalog
-is another liveBundle to resolve and hold open at startup, another set of live
-seats to account for, and a per-request choice the `--public` gate would have to
-reason about. The seam is ready when demand is (`catalogClasspath` is already a
-`(PlaygroundMode) -> Classpath?` function), so this is a wiring change plus a
-request field, not a redesign.
+v1 compiled against the catalog its mode was configured with
+(`--playground-bundle` for CMP, `--playground-android-bundle` for Android/RC) and
+nothing else. That is still the default, and it is still what a stock
+`kotlin-playground` frontend gets. But on a box already serving twenty verified
+catalogs, "try this snippet against a different design system" was an operator
+edit plus a restart — for catalogs the host had *already* fetched, verified and
+unpacked, each carrying the two things a compile needs: a `manifest.classpath` to
+resolve and a `manifest.backend` to pick the renderer.
+
+`--playground` (env `SERVE_PLAYGROUND=1`) moves that choice to the request.
+
+| Flag | Lane | Selector |
+|---|---|---|
+| `--playground-bundle <path\|system>` | enabled, CMP pinned | offers the pin as **Server default** |
+| `--playground` | enabled, nothing pinned | offers every served catalog |
+| both | enabled, pin preselected | pin first, then every served catalog |
+
+The two compose, so adding `--playground` to an existing deployment changes
+nothing about what it already served — it only adds entries after the default.
+
+**A catalog is the whole compile target, not just a classpath.** Its bundle
+backend picks the renderer, so selecting it also selects the mode set: `desktop`
+→ CMP; `android` → Android + Remote Compose. `PlaygroundCatalogTargets` intersects
+that with the render backends that actually came up (no Robolectric sidecar ⇒ no
+Android modes; no `/d/` store ⇒ no Remote Compose) and omits a catalog with
+nothing left, so the editor never offers a target the host would refuse on Run.
+The page ships each entry's mode list and repopulates the Mode control from the
+selection; `GET /api/{v}/compiler/catalogs` returns the same list, and the editor
+re-asks once on load because catalogs are fetched *after* the server is up.
+
+Three properties are load-bearing:
+
+- **A named catalog never falls back to the default.** Unknown, unloaded, wrong
+  backend, over budget — all answer "catalog '<id>' cannot serve mode X on this
+  host". Silently compiling against a different design system than the one asked
+  for would report success for the wrong thing.
+- **Resolution stays lazy and per catalog.** Resolving twenty catalogs at startup
+  is minutes of unpack + Maven work for a lane most visitors never touch; each
+  resolves on the first compile that names it, through the same
+  `PlaygroundClasspathSupplier` the pinned flags use.
+- **The number of *resolved* catalogs is capped** (`--playground-catalog-limit`,
+  default 6). A resolved catalog is held for the process's life — its jars are
+  open in live snippet JVMs, so it cannot be evicted (same reason auto-refresh
+  isn't followed, below). Past the cap a request naming a new catalog is refused
+  with a message saying so, rather than letting a visitor clicking through every
+  entry grow the host's disk one unpack at a time. `/status.json` reports
+  `playground.catalogSelector.{offered,resolved,limit}`.
+
+What this deliberately does **not** change: live-seat accounting. A redeemed
+snippet session charges permits exactly as before, whichever catalog compiled it.
 
 #### Naming that catalog: a path, or a system this box already serves
 

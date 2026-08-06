@@ -207,10 +207,18 @@ if [[ "${SERVE_ALLOW_RENDER_TRUSTED}" == "1" || "${SERVE_ALLOW_RENDER_TRUSTED}" 
 fi
 
 # Playground compile lane. Off by default because it compiles and runs visitor-supplied Kotlin.
-# SERVE_PLAYGROUND_BUNDLE takes a served catalog system id (`compose-m3`) or a local .bundle path.
+# SERVE_PLAYGROUND=1 enables it with NOTHING pinned: the editor offers a runtime selector over the
+# catalogs this host already serves, and the chosen catalog's bundle backend picks the renderer and
+# the dependencies. SERVE_PLAYGROUND_BUNDLE still pins a default (a served catalog system id like
+# `compose-m3`, or a local .bundle path) and the two compose — a pinned bundle becomes the
+# selector's preselected "Server default" entry.
 # A public server must be admitted by one of the two postures the CLI gate accepts — GitHub auth
 # configured (repo-access-gated), or a sandbox profile that passes the preflight — otherwise serve
 # refuses the lane and `/playground` shows an explanatory disabled page.
+[[ -n "${SERVE_PLAYGROUND:-}" && "${SERVE_PLAYGROUND}" != "0" ]] &&
+  args+=(--playground)
+[[ -n "${SERVE_PLAYGROUND_CATALOG_LIMIT:-}" ]] &&
+  args+=(--playground-catalog-limit "${SERVE_PLAYGROUND_CATALOG_LIMIT}")
 [[ -n "${SERVE_PLAYGROUND_BUNDLE:-}" ]] &&
   args+=(--playground-bundle "${SERVE_PLAYGROUND_BUNDLE}")
 [[ -n "${SERVE_PLAYGROUND_ANDROID_BUNDLE:-}" ]] &&

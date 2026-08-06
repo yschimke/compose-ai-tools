@@ -4,6 +4,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -2315,21 +2316,83 @@ object ServeWeb {
     token: String,
     isPublic: Boolean,
     /**
-     * The modes this host serves — the selector offers only these, and the first is preselected.
+     * What the catalog selector offers, first entry preselected: the host's pinned default (id
+     * `""`, present only when a `--playground-bundle` resolved) followed by every served catalog a
+     * snippet may be compiled against. Each entry carries its own mode list — a catalog's bundle
+     * backend decides its renderer — so the Mode control is repopulated from the selected entry
+     * rather than offering modes the host would then refuse.
+     *
+     * May be **empty** on a `--playground` host during startup: catalogs are fetched in the
+     * background after the server is up. The page says so and refreshes itself from
+     * `/api/1/compiler/catalogs` rather than making the visitor reload.
      */
-    modes: List<PlaygroundMode>,
+    catalogs: List<PlaygroundCatalogInfo>,
     unfurl: UnfurlMetadata? = null,
   ): String {
     val suffix = querySuffix(queryString(token, sessionId = null, isPublic = isPublic))
     val sample = WebEscaping.htmlEscape(PLAYGROUND_SAMPLE)
+    // A host that pins its bundles and offers no runtime choice renders exactly the bar it always
+    // did — one Mode select — rather than a one-entry "Catalog" control that decides nothing. An
+    // EMPTY list is not that case: it means nothing has resolved *yet* (catalogs load in the
+    // background), so the control is rendered saying so and the script's refresh fills it in.
+    val showCatalogs = catalogs.isEmpty() || catalogs.size > 1 || catalogs.first().id.isNotEmpty()
+    val catalogOptions =
+      if (catalogs.isEmpty())
+        """<option value="" disabled selected>No catalogs available yet…</option>"""
+      else
+        catalogs
+          .mapIndexed { i, c ->
+            val selected = if (i == 0) " selected" else ""
+            """<option value="${WebEscaping.htmlEscape(c.id)}"$selected>${
+              WebEscaping.htmlEscape(c.label)
+            }</option>"""
+          }
+          .joinToString("\n              ")
     val options =
-      modes
+      catalogs
+        .firstOrNull()
+        ?.modes
+        .orEmpty()
         .mapIndexed { i, mode ->
           val (value, label) = playgroundModeChoice(mode)
           val selected = if (i == 0) " selected" else ""
           """<option value="$value"$selected>$label</option>"""
         }
         .joinToString("\n              ")
+    // Hand-indented to sit at the interpolation point's column (12) — a `trimIndent()`ed block
+    // would
+    // re-flush every line but the first back to column 0 in the emitted page.
+    val catalogRow =
+      if (!showCatalogs) ""
+      else
+        listOf(
+            """<label class="cp-pg-modelabel" for="pg-catalog">Catalog</label>""",
+            """<select id="pg-catalog" class="cp-pg-mode">""",
+            "  $catalogOptions",
+            "</select>",
+            "",
+          )
+          .joinToString("\n            ")
+    // "Nothing to compile against" has two causes that look identical from here — catalogs load in
+    // the background (transient, self-healing) and a catalog must verify as trusted *and* carry a
+    // liveBundle to back a compile (permanent, a config problem). Naming both beats leaving an
+    // operator staring at an empty selector wondering which one they have.
+    val emptyNote =
+      if (catalogs.isNotEmpty()) ""
+      else
+        """
+
+          <p id="pg-empty" class="cp-sub">No catalog can back a compile here yet. Catalogs are
+            fetched in the background after the server starts, so this usually clears on its own —
+            but a catalog also has to verify as <strong>trusted</strong> and publish a live bundle
+            before the playground will compile against it.</p>"""
+    val catalogData =
+      jsString(
+        JSON_COMPACT.encodeToString(
+          PlaygroundCatalogsResponse.serializer(),
+          PlaygroundCatalogsResponse(catalogs),
+        )
+      )
     return document(
       title = "Playground — compose-preview",
       unfurlDescription = "Compile a Compose snippet against the live catalog and open a preview.",
@@ -2342,9 +2405,9 @@ object ServeWeb {
         <h1 class="cp-head">Playground</h1>
         <p class="cp-sub">Write a Compose snippet, compile it against the live catalog, and open a
           preview. This lane runs your code on the server, so it stays behind your token.</p>
-        <div class="cp-pg">
+        <div class="cp-pg">$emptyNote
           <div class="cp-pg-bar">
-            <label class="cp-pg-modelabel" for="pg-mode">Mode</label>
+            $catalogRow<label class="cp-pg-modelabel" for="pg-mode">Mode</label>
             <select id="pg-mode" class="cp-pg-mode">
               $options
             </select>
@@ -2369,7 +2432,7 @@ object ServeWeb {
           </div>
         </div>
         ${scriptTag("codemirror.js")}
-        <script>${playgroundScript(suffix)}</script>
+        <script>${playgroundScript(suffix, catalogData)}</script>
         """
           .trimIndent(),
     )
@@ -2380,11 +2443,12 @@ object ServeWeb {
    * surface the `/pg/<token>` (live) or `/d/<id>` (Remote Compose) handoff link. Kept
    * dependency-free (no bundle) so the page is one self-contained document.
    */
-  private fun playgroundScript(querySuffix: String): String =
+  private fun playgroundScript(querySuffix: String, catalogsJson: String): String =
     """
     (function () {
       var source = document.getElementById("pg-source");
       var mode = document.getElementById("pg-mode");
+      var catalog = document.getElementById("pg-catalog");
       var run = document.getElementById("pg-run");
       var fileBar = document.getElementById("pg-files");
       var addFile = document.getElementById("pg-add-file");
@@ -2397,6 +2461,81 @@ object ServeWeb {
       var openLink = document.getElementById("pg-open");
       var note = document.getElementById("pg-preview-note");
       var suffix = ${jsString(querySuffix)};
+      // The catalog selector. Each entry carries its own mode list because a catalog's bundle
+      // backend picks the renderer — selecting `compose-m3` (desktop) and selecting an Android
+      // catalog are not the same choice with a different classpath, they are different modes.
+      var catalogs = JSON.parse($catalogsJson).catalogs || [];
+      var modeLabels = {${
+      PlaygroundMode.entries.joinToString(", ") { m ->
+        val (value, label) = playgroundModeChoice(m)
+        "${jsString(value)}: ${jsString(label)}"
+      }
+    }};
+      function selectedCatalog() {
+        var id = catalog ? catalog.value : "";
+        for (var i = 0; i < catalogs.length; i++) if (catalogs[i].id === id) return catalogs[i];
+        return catalogs.length ? catalogs[0] : null;
+      }
+      // Repopulate Mode from the selected catalog, keeping the current mode when that catalog still
+      // offers it — switching between two desktop catalogs must not silently reset the mode.
+      function syncModes() {
+        var entry = selectedCatalog();
+        var wanted = mode.value;
+        var offered = entry ? (entry.modes || []) : [];
+        mode.innerHTML = "";
+        offered.forEach(function (m) {
+          var opt = document.createElement("option");
+          opt.value = m;
+          opt.textContent = modeLabels[m] || m;
+          mode.appendChild(opt);
+        });
+        if (offered.indexOf(wanted) >= 0) mode.value = wanted;
+        mode.disabled = offered.length === 0;
+        run.disabled = offered.length === 0;
+      }
+      // Catalogs are fetched in the BACKGROUND after the server starts, so a page opened during
+      // startup legitimately renders a short (or empty) list. Re-ask once on load rather than
+      // making the visitor guess that a reload would help.
+      function refreshCatalogs() {
+        fetch("/api/1/compiler/catalogs" + suffix, { headers: { "Accept": "application/json" } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (res) {
+            if (!res || !res.catalogs) return;
+            var previous = catalog ? catalog.value : "";
+            catalogs = res.catalogs;
+            if (catalog) {
+              catalog.innerHTML = "";
+              catalogs.forEach(function (c) {
+                var opt = document.createElement("option");
+                opt.value = c.id;
+                opt.textContent = c.label;
+                catalog.appendChild(opt);
+              });
+              if (!catalogs.length) {
+                var none = document.createElement("option");
+                none.value = ""; none.disabled = true; none.selected = true;
+                none.textContent = "No catalogs available yet…";
+                catalog.appendChild(none);
+              } else {
+                var keep = false;
+                for (var i = 0; i < catalogs.length; i++) {
+                  if (catalogs[i].id === previous) keep = true;
+                }
+                catalog.value = keep ? previous : catalogs[0].id;
+              }
+            }
+            var empty = document.getElementById("pg-empty");
+            if (empty) empty.hidden = catalogs.length > 0;
+            syncModes();
+          })
+          .catch(function () { /* the baked-in list still stands */ });
+      }
+      if (catalog) catalog.addEventListener("change", syncModes);
+      syncModes();
+      // Unconditional, not just when there is a selector: a page opened before the host's own pinned
+      // bundle finished resolving renders with no modes at all, and the refresh is what recovers it
+      // without asking the visitor to reload.
+      refreshCatalogs();
       // CodeMirror over the textarea when the vendored bundle loaded, plain textarea when it
       // didn't. Every read/write of the buffer goes through readSource/writeSource, so a failed
       // asset fetch degrades to exactly the pre-editor behaviour instead of a dead page — the
@@ -2532,7 +2671,11 @@ object ServeWeb {
         clearOut();
         setStatus("Compiling…", false);
         files[active].text = readSource();
-        var body = JSON.stringify({ confType: mode.value, files: files });
+        var body = JSON.stringify({
+          confType: mode.value,
+          catalog: catalog ? catalog.value : "",
+          files: files
+        });
         fetch("/api/1/compiler/run" + suffix, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2599,8 +2742,9 @@ object ServeWeb {
           run live previews but cannot compile playground snippets.
         </p>
         <p class="cp-sub">
-          Configure <code>--playground-bundle</code> or
-          <code>--playground-android-bundle</code>, and on public servers also configure
+          Configure <code>--playground</code> to compile against any catalog this server already
+          serves, or pin one with <code>--playground-bundle</code> /
+          <code>--playground-android-bundle</code>. On public servers also configure
           <code>--playground-sandbox</code>.
         </p>
         <a class="cp-back" href="/$suffix">← All design systems</a>
@@ -2898,7 +3042,23 @@ object ServeWeb {
     }
 
   /** A JS string literal for [value] — escaped via the JSON encoder, so quotes/slashes are safe. */
-  private fun jsString(value: String): String = JsonPrimitive(value).toString()
+  private fun jsString(value: String): String =
+    JsonPrimitive(value)
+      .toString()
+      // JSON quoting is not enough inside an inline `<script>`: the HTML parser ends the element at
+      // the first literal `</script>` regardless of JS string context, so a value carrying one
+      // would
+      // close the script and let the rest render as markup. `<` is the same character to
+      // `JSON.parse` and to a JS string literal, and can never form a tag.
+      .replace("<", "\\u003c")
+      .replace(">", "\\u003e")
+
+  /**
+   * Encoder for data baked into a page as a JS string literal (the playground's catalog list). Not
+   * the HTTP wire encoder — this one is only ever read back by [jsString] + `JSON.parse`, so it
+   * stays compact and omits defaults exactly like the API's.
+   */
+  private val JSON_COMPACT = Json { encodeDefaults = true }
 
   /** A labelled figure (a stat tile / config row) on the [statusPage]. */
   data class Stat(val key: String, val value: String)

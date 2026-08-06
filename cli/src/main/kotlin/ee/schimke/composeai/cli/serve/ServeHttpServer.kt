@@ -525,6 +525,12 @@ class ServeHttpServer(
         if (playgroundService != null) {
           val svc = playgroundService
           post("/api/{version}/compiler/run") { handlePlaygroundRun(svc) }
+          // The runtime catalog selector's list. Fetched by the editor on load rather than only
+          // baked into the page: catalogs are fetched in the background *after* the server is up,
+          // so
+          // a page rendered during startup would otherwise show a short (or empty) selector and
+          // never learn better without a manual reload.
+          get("/api/{version}/compiler/catalogs") { handlePlaygroundCatalogs(svc) }
           // The Stage-1 editor page (`GET /playground`): the browser surface that POSTs to the run
           // route above and surfaces the diagnostics + first-frame + `/pg/` (live) or `/d/` (RC)
           // handoff. Only mounted when the lane is enabled, and — like the lane — never under
@@ -989,10 +995,31 @@ class ServeHttpServer(
       ServeWeb.playgroundPage(
         token = token,
         isPublic = isPublic,
-        modes = service.availableModes,
+        catalogs = service.catalogChoices(),
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
       ),
       ContentType.Text.Html,
+    )
+  }
+
+  /**
+   * `GET /api/{version}/compiler/catalogs`: what the editor's catalog selector may offer — the
+   * host's pinned default (when it has one) plus every served catalog that can back a compile here,
+   * each with the modes its bundle backend supports. Gated exactly like the run route: it
+   * enumerates what this host serves, and the playground's whole point is that only admitted
+   * callers see it.
+   */
+  private suspend fun RoutingContext.handlePlaygroundCatalogs(service: PlaygroundCompileService) {
+    if (rejectBadToken()) return
+    if (rejectMissingGithubAuth(api = true)) return
+    if (rejectMissingGithubRepoAccess(api = true)) return
+    markGeneration("playground-catalogs", DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(
+      JSON.encodeToString(
+        PlaygroundCatalogsResponse.serializer(),
+        PlaygroundCatalogsResponse(service.catalogChoices()),
+      ),
+      ContentType.Application.Json,
     )
   }
 
@@ -2159,6 +2186,10 @@ class ServeHttpServer(
               modes =
                 h.modes().map {
                   ModeDto(mode = it.mode, source = it.source, resolved = it.resolved)
+                },
+              catalogSelector =
+                h.catalogSelector?.invoke()?.let {
+                  CatalogSelectorDto(offered = it.offered, resolved = it.resolved, limit = it.limit)
                 },
             )
           },
@@ -3700,6 +3731,22 @@ private data class PlaygroundDto(
   /** Concurrent jailed compiles allowed; inert unless [compilerJailed]. */
   val compileSlots: Int,
   val modes: List<ModeDto>,
+  /** The runtime catalog selector (`--playground`), or null when this host pins its bundles. */
+  val catalogSelector: CatalogSelectorDto? = null,
+)
+
+@Serializable
+private data class CatalogSelectorDto(
+  /**
+   * Catalogs the selector offers right now. Empty on a freshly started host (nothing has loaded
+   * yet) and on one whose catalogs all declare a backend this host cannot render — `modes` and the
+   * startup log tell those apart.
+   */
+  val offered: List<String>,
+  /** How many of them hold a resolved compile classpath, against [limit]. */
+  val resolved: Int,
+  /** `--playground-catalog-limit`; at [resolved] == this, a run naming a new catalog is refused. */
+  val limit: Int,
 )
 
 @Serializable

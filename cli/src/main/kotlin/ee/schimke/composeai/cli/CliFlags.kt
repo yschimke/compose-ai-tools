@@ -73,6 +73,7 @@ internal object CliFlags {
       "--playground-sandbox-ttl",
       "--playground-sandbox-ro",
       "--playground-compile-slots",
+      "--playground-catalog-limit",
       "--extra-maven-repos",
       "--trust-store",
       "--catalogs",

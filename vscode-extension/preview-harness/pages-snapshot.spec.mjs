@@ -119,6 +119,22 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The playground's runtime catalog selector: a catalog's bundle backend decides its
+        // renderer, so picking an Android catalog re-derives the Mode control rather than leaving a
+        // mode the host would refuse. The committed HTML always opens on the first entry, so the
+        // *derivation* — the thing worth diffing — only exists after a selection. Making it a
+        // captured state means every future change to the bar (and to the mode labels) is diffed.
+        fixture: "serve-playground",
+        suffix: "android-catalog",
+        apply: async (page) => {
+            // States compose on the already-loaded page, so undo the multi-file state above first —
+            // this shot is about the bar, and a stray second tab in it would read as part of the
+            // selector's behaviour.
+            await page.click("#pg-remove-file");
+            await page.selectOption("#pg-catalog", "compose-wear");
+        },
+    },
+    {
         // Card hover. A hover state exists only under a pointer, so it is invisible to an ordinary
         // end-state screenshot — and it is the front door's main affordance: the tile lifts, takes
         // an accent rim and a top-edge wipe, and eases its artwork rather than underlining four

@@ -435,9 +435,12 @@ and selecting it scores each mock against the sticker it is mapped to:
 These are orthogonal. **Trust** decides attribution; **format** decides what draws the pixels. Neither
 ever lets untrusted code run *on the server*.
 
-> **The one deliberate exception: the playground.** `--playground-bundle` /
-> `--playground-android-bundle` exist to compile and run someone else's snippet, which inverts the
-> constraint above. Under `--public` the lane is admitted on either of two independent bases:
+> **The one deliberate exception: the playground.** `--playground` /
+> `--playground-bundle` / `--playground-android-bundle` exist to compile and run someone else's
+> snippet, which inverts the constraint above. (`--playground` adds a runtime **catalog selector**
+> over the systems this host already serves; it changes which classpath a snippet compiles against,
+> never who may compile — the gate below is the same either way.) Under `--public` the lane is
+> admitted on either of two independent bases:
 >
 > - **contained** — the operator configures a per-session sandbox (`--playground-sandbox strict`, or
 >   a `custom:` jail that supplies its own resource caps) **and** the startup probe proves that jail

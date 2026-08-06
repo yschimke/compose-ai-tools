@@ -126,6 +126,34 @@ unavailable. Once resolved it is **pinned for the life of the process**: a later
 does not move it, because live snippet JVMs hold those jars open. Restart the container to compile
 against a newer catalog ABI.
 
+### Letting visitors pick the catalog
+
+`SERVE_PLAYGROUND=1` adds a **Catalog** selector to the editor, offering every catalog this box
+already serves instead of only the pinned one:
+
+```bash
+SERVE_PLAYGROUND=1
+SERVE_PLAYGROUND_BUNDLE=compose-m3     # optional: preselected as "Server default"
+SERVE_PLAYGROUND_CATALOG_LIMIT=6       # optional: how many may resolve at once (default 6)
+```
+
+The two compose — with both set, the pin stays the preselected default and the served catalogs
+follow it, so adding `SERVE_PLAYGROUND=1` to a working deployment changes nothing about what it
+already compiled. Set on its own it enables the lane with **nothing** pinned; the selector then
+starts on the first catalog that has loaded, and `/playground` says "No catalogs available yet…"
+until one does.
+
+The selected catalog decides the mode too: its bundle `backend` is what picks the renderer, so a
+`desktop` catalog offers Compose (Desktop) and an `android` one offers Compose (Android) + Remote
+Compose. Catalogs whose modes this container can't render — Android ones without the
+`lib-daemon-android` sidecar — are simply not listed.
+
+Each catalog resolves the first time someone compiles against it and is then held for the life of
+the process (its jars are open in live snippet JVMs, so it can't be evicted). That is what
+`SERVE_PLAYGROUND_CATALOG_LIMIT` bounds: past it, a run naming a *new* catalog is refused with a
+message rather than unpacking yet another bundle onto the disk. Watch it on `/status.json` at
+`playground.catalogSelector` (`offered`, `resolved`, `limit`).
+
 Peak compile memory is `SERVE_PLAYGROUND_COMPILE_SLOTS × SERVE_PLAYGROUND_SANDBOX_MEMORY_MB`
 (≈3 GB at defaults) on top of the catalogs already loaded, so review `SERVE_LIVE_SEATS` in the same
 change on a small box.

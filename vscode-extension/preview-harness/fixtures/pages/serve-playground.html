@@ -29,6 +29,12 @@
           preview. This lane runs your code on the server, so it stays behind your token.</p>
         <div class="cp-pg">
           <div class="cp-pg-bar">
+            <label class="cp-pg-modelabel" for="pg-catalog">Catalog</label>
+            <select id="pg-catalog" class="cp-pg-mode">
+              <option value="" selected>Server default</option>
+              <option value="compose-m3">compose-m3 (desktop)</option>
+              <option value="compose-wear">compose-wear (android)</option>
+            </select>
             <label class="cp-pg-modelabel" for="pg-mode">Mode</label>
             <select id="pg-mode" class="cp-pg-mode">
               <option value="compose-cmp" selected>Compose (Desktop)</option>
@@ -70,6 +76,7 @@ fun Greeting() {
         <script>(function () {
   var source = document.getElementById("pg-source");
   var mode = document.getElementById("pg-mode");
+  var catalog = document.getElementById("pg-catalog");
   var run = document.getElementById("pg-run");
   var fileBar = document.getElementById("pg-files");
   var addFile = document.getElementById("pg-add-file");
@@ -82,6 +89,76 @@ fun Greeting() {
   var openLink = document.getElementById("pg-open");
   var note = document.getElementById("pg-preview-note");
   var suffix = "?token=demo-token-fixture";
+  // The catalog selector. Each entry carries its own mode list because a catalog's bundle
+  // backend picks the renderer — selecting `compose-m3` (desktop) and selecting an Android
+  // catalog are not the same choice with a different classpath, they are different modes.
+  var catalogs = JSON.parse("{\"catalogs\":[{\"id\":\"\",\"label\":\"Server default\",\"backend\":\"\",\"modes\":[\"compose-cmp\",\"compose-android\",\"remote-compose\"],\"resolved\":true},{\"id\":\"compose-m3\",\"label\":\"compose-m3 (desktop)\",\"backend\":\"desktop\",\"modes\":[\"compose-cmp\"],\"resolved\":true},{\"id\":\"compose-wear\",\"label\":\"compose-wear (android)\",\"backend\":\"android\",\"modes\":[\"compose-android\",\"remote-compose\"],\"resolved\":false}]}").catalogs || [];
+  var modeLabels = {"compose-cmp": "Compose (Desktop)", "compose-android": "Compose (Android)", "remote-compose": "Remote Compose"};
+  function selectedCatalog() {
+    var id = catalog ? catalog.value : "";
+    for (var i = 0; i < catalogs.length; i++) if (catalogs[i].id === id) return catalogs[i];
+    return catalogs.length ? catalogs[0] : null;
+  }
+  // Repopulate Mode from the selected catalog, keeping the current mode when that catalog still
+  // offers it — switching between two desktop catalogs must not silently reset the mode.
+  function syncModes() {
+    var entry = selectedCatalog();
+    var wanted = mode.value;
+    var offered = entry ? (entry.modes || []) : [];
+    mode.innerHTML = "";
+    offered.forEach(function (m) {
+      var opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = modeLabels[m] || m;
+      mode.appendChild(opt);
+    });
+    if (offered.indexOf(wanted) >= 0) mode.value = wanted;
+    mode.disabled = offered.length === 0;
+    run.disabled = offered.length === 0;
+  }
+  // Catalogs are fetched in the BACKGROUND after the server starts, so a page opened during
+  // startup legitimately renders a short (or empty) list. Re-ask once on load rather than
+  // making the visitor guess that a reload would help.
+  function refreshCatalogs() {
+    fetch("/api/1/compiler/catalogs" + suffix, { headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) {
+        if (!res || !res.catalogs) return;
+        var previous = catalog ? catalog.value : "";
+        catalogs = res.catalogs;
+        if (catalog) {
+          catalog.innerHTML = "";
+          catalogs.forEach(function (c) {
+            var opt = document.createElement("option");
+            opt.value = c.id;
+            opt.textContent = c.label;
+            catalog.appendChild(opt);
+          });
+          if (!catalogs.length) {
+            var none = document.createElement("option");
+            none.value = ""; none.disabled = true; none.selected = true;
+            none.textContent = "No catalogs available yet…";
+            catalog.appendChild(none);
+          } else {
+            var keep = false;
+            for (var i = 0; i < catalogs.length; i++) {
+              if (catalogs[i].id === previous) keep = true;
+            }
+            catalog.value = keep ? previous : catalogs[0].id;
+          }
+        }
+        var empty = document.getElementById("pg-empty");
+        if (empty) empty.hidden = catalogs.length > 0;
+        syncModes();
+      })
+      .catch(function () { /* the baked-in list still stands */ });
+  }
+  if (catalog) catalog.addEventListener("change", syncModes);
+  syncModes();
+  // Unconditional, not just when there is a selector: a page opened before the host's own pinned
+  // bundle finished resolving renders with no modes at all, and the refresh is what recovers it
+  // without asking the visitor to reload.
+  refreshCatalogs();
   // CodeMirror over the textarea when the vendored bundle loaded, plain textarea when it
   // didn't. Every read/write of the buffer goes through readSource/writeSource, so a failed
   // asset fetch degrades to exactly the pre-editor behaviour instead of a dead page — the
@@ -217,7 +294,11 @@ fun Greeting() {
     clearOut();
     setStatus("Compiling…", false);
     files[active].text = readSource();
-    var body = JSON.stringify({ confType: mode.value, files: files });
+    var body = JSON.stringify({
+      confType: mode.value,
+      catalog: catalog ? catalog.value : "",
+      files: files
+    });
     fetch("/api/1/compiler/run" + suffix, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
