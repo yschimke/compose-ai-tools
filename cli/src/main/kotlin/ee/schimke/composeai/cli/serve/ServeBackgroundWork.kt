@@ -24,14 +24,17 @@ import java.util.concurrent.atomic.AtomicLong
  *   whole startup pass read as *busy* so the optimizer stays parked until the catalogs are up.
  * - **Each other.** Once loading finishes, every catalog's optimizer becomes runnable at the same
  *   instant. [withRenderPermit] caps the background lane at [maxConcurrentRenders] renders
- *   server-wide (one by default), so the optimizers take turns instead of holding every live seat —
- *   and a foreground render is never queued behind more than one background one.
+ *   server-wide, so the optimizers take turns instead of holding every live seat.
  *
  * Both knobs are process-wide: one instance is built per `serve` run and shared by every catalog
  * host it opens.
  */
 class ServeBackgroundWork(
-  maxConcurrentRenders: Int = 1,
+  /**
+   * Background renders admitted at once, server-wide. See [DEFAULT_MAX_CONCURRENT_RENDERS] for why
+   * this is no longer 1.
+   */
+  maxConcurrentRenders: Int = DEFAULT_MAX_CONCURRENT_RENDERS,
   private val clock: () -> Long = System::currentTimeMillis,
 ) {
   private val loadsInFlight = AtomicInteger()
@@ -111,5 +114,34 @@ class ServeBackgroundWork(
     } finally {
       renderPermits.release()
     }
+  }
+
+  companion object {
+    /**
+     * Background renders admitted at once, server-wide.
+     *
+     * **This was 1, and one permit for every catalog on the box was the prefetcher's dominant
+     * bottleneck.** Measured on the deployed server (0.19.41, 15 catalogs, no visitors) once the
+     * gate/permit split made it visible: **74.3%** of the optimizer's active time was spent waiting
+     * for this permit, against 10.1% at the idle gate and **6.3%** actually rendering. Fifteen
+     * optimizers queueing on one permit, and every batch collapsing to a single daemon as a result.
+     *
+     * The 1 was chosen so "a foreground render is never queued behind more than one background
+     * one". That guarantee is worth less than it sounds and cost more than it saved: a background
+     * batch holds this permit only for its renders — the expensive part, a cold daemon warm of
+     * 34-68s, is awaited *outside* it — and a warm background render is sub-second, so the
+     * foreground now queues behind at most a few seconds instead of one.
+     *
+     * Sized to what the box can actually run concurrently rather than to a round number: the live
+     * seat budget is 8 with Android weight 2, and prefetch replicas are charged to the background
+     * remainder (leaving [LiveSeatLimiter.STREAM_RESERVE] for a visitor), so at most three heavy
+     * daemons can be rendering at once anyway. A larger cap would only queue inside the seat budget
+     * instead of here, moving the wait rather than removing it.
+     *
+     * `-Dcomposeai.serve.backgroundRenders=<n>` overrides it; a box with a different seat budget is
+     * the case that wants a different number.
+     */
+    val DEFAULT_MAX_CONCURRENT_RENDERS: Int =
+      System.getProperty("composeai.serve.backgroundRenders")?.toIntOrNull()?.coerceAtLeast(1) ?: 3
   }
 }

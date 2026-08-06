@@ -82,35 +82,58 @@ class ServeBackgroundWorkTest {
     assertEquals(60_000L, clock())
   }
 
+  /**
+   * The cap is what matters, not any particular value — so this asserts the permit admits exactly
+   * as many as it was built for, at 1 (the old default, still the right shape for a small box) and
+   * at a wider setting. The default itself moved from 1 to 3 because one permit shared by every
+   * catalog was measured as 74.3% of the prefetcher's active time on the deployed server.
+   */
   @Test
-  fun `the render permit admits one background render at a time`() {
-    val work = ServeBackgroundWork()
-    val inFlight = AtomicInteger()
-    val peak = AtomicInteger()
-    val done = CountDownLatch(4)
-    val pool = Executors.newFixedThreadPool(4)
-    try {
-      repeat(4) {
-        pool.execute {
-          work.withRenderPermit {
-            peak.accumulateAndGet(inFlight.incrementAndGet()) { a, b -> maxOf(a, b) }
-            Thread.sleep(25)
-            inFlight.decrementAndGet()
+  fun `the render permit admits exactly as many background renders as it was built for`() {
+    for (cap in listOf(1, 3)) {
+      val work = ServeBackgroundWork(maxConcurrentRenders = cap)
+      val inFlight = AtomicInteger()
+      val peak = AtomicInteger()
+      val started = CountDownLatch(cap)
+      val done = CountDownLatch(6)
+      val pool = Executors.newFixedThreadPool(6)
+      try {
+        repeat(6) {
+          pool.execute {
+            work.withRenderPermit {
+              peak.accumulateAndGet(inFlight.incrementAndGet()) { a, b -> maxOf(a, b) }
+              started.countDown()
+              Thread.sleep(25)
+              inFlight.decrementAndGet()
+            }
+            done.countDown()
           }
-          done.countDown()
         }
+        // Reaching the cap is asserted, not just staying under it: a permit stuck at 1 would keep
+        // `peak` low and pass a ceiling-only check while starving exactly as it did in production.
+        assertTrue(started.await(10, TimeUnit.SECONDS), "cap $cap was never reached")
+        assertTrue(done.await(10, TimeUnit.SECONDS), "background renders did not drain")
+      } finally {
+        pool.shutdownNow()
       }
-      assertTrue(done.await(10, TimeUnit.SECONDS), "background renders did not drain")
-    } finally {
-      pool.shutdownNow()
-    }
 
-    assertEquals(1, peak.get())
+      assertEquals(cap, peak.get(), "cap $cap admitted the wrong number")
+    }
+  }
+
+  @Test
+  fun `the default admits more than one, since one permit per box starved the prefetcher`() {
+    assertTrue(
+      ServeBackgroundWork.DEFAULT_MAX_CONCURRENT_RENDERS > 1,
+      "15 catalogs queueing on a single permit was 74.3% of the optimizer's active time",
+    )
   }
 
   @Test
   fun `an interrupted wait for the permit reports stop rather than rendering anyway`() {
-    val work = ServeBackgroundWork()
+    // Cap of 1 so the second caller is guaranteed to be *waiting* when it is interrupted — that is
+    // this test's subject. With the wider default it would sail through without ever blocking.
+    val work = ServeBackgroundWork(maxConcurrentRenders = 1)
     val held = CountDownLatch(1)
     val release = CountDownLatch(1)
     val holder = Thread {
