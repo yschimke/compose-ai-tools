@@ -4627,20 +4627,43 @@ object ServeWeb {
     val liveAuthTitle = liveAuthPrompt?.let { "Sign in with GitHub to enable Live preview." }
     val liveToggleTitleAttr =
       liveAuthTitle?.let { " title=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
-    val liveAuthDataAttr =
-      liveAuthPrompt?.let {
-        " data-github-login=\"${WebEscaping.htmlEscape(it.loginHref)}\" " +
-          "data-github-repo=\"${WebEscaping.htmlEscape(it.repository)}\""
-      } ?: ""
     val liveToggleButton =
       "<button type=\"button\" id=\"cp-live-toggle\" class=\"cp-live-toggle\" " +
-        "aria-pressed=\"false\"$liveToggleDis$liveToggleTitleAttr>\n" +
+        "aria-pressed=\"false\"$liveToggleDis>\n" +
         "            <span class=\"cp-live-dot\" aria-hidden=\"true\"></span>\n" +
         "            <span id=\"cp-live-toggle-label\">Live preview</span>\n" +
         "          </button>"
+    // When sign-in is the ONLY thing between the visitor and the daemon lane, offer the sign-in
+    // itself rather than a dead control.
+    //
+    // What this replaces: a `disabled` button wrapped in a span carrying `data-github-login`. That
+    // said "sign in" three ways that a visitor cannot act on — a `title` tooltip (never shown on
+    // touch, and never announced for a `disabled` button, which is not focusable), a greyed-out
+    // chip that reads as "not available here" rather than "one click away", and a login URL sitting
+    // in the DOM that **no script ever read** (nothing anywhere referenced `data-github-login`), so
+    // clicking did nothing at all.
+    //
+    // An anchor fixes all three at once: the reason is in the visible label, it is focusable and
+    // keyboard-activatable, and following it is the browser's job rather than a handler that was
+    // never written. It deliberately does NOT carry `id="cp-live-toggle"` — `updateLiveToggle()`
+    // drives that element through `.disabled` and `aria-pressed`, which are meaningless on a link.
+    // Leaving the id off makes `liveToggle` null, so every `if (liveToggle)` branch skips instead
+    // of quietly writing button properties onto an anchor.
+    val liveSignInLink = liveAuthPrompt?.let {
+      "<a id=\"cp-live-signin\" class=\"cp-live-toggle cp-live-signin\" " +
+        "href=\"${WebEscaping.htmlEscape(it.loginHref)}\" " +
+        "data-github-repo=\"${WebEscaping.htmlEscape(it.repository)}\" " +
+        "title=\"Sign in with GitHub (${WebEscaping.htmlEscape(it.repository)}) " +
+        "to enable Live preview\">\n" +
+        "            <span class=\"cp-live-dot\" aria-hidden=\"true\"></span>\n" +
+        "            <span>Live preview — sign in</span>\n" +
+        "          </a>"
+    }
+    // Only swap in the sign-in link when auth is what's blocking the stream. A pure static bundle
+    // has no lane to unlock, so it keeps the honestly-disabled toggle — inviting a sign-in that
+    // would change nothing is worse than the greyed chip.
     val liveToggleHtml =
-      if (liveAuthPrompt == null) liveToggleButton
-      else "<span$liveToggleTitleAttr$liveAuthDataAttr>$liveToggleButton</span>"
+      if (liveAuthBlocksStream && liveSignInLink != null) liveSignInLink else liveToggleButton
     // Controls the in-browser Wasm app also honours — day/night (uiMode), font scale (density),
     // locale (layout direction): live whenever the server can render an override OR a Wasm app
     // backs

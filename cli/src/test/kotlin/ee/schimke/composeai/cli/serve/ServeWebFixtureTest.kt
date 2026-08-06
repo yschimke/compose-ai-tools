@@ -629,6 +629,25 @@ class ServeWebFixtureTest {
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
         wasmSameOrigin = true,
       )
+    // The signed-out view of a catalog whose live lane is behind GitHub auth — the state every
+    // anonymous visitor to a public box sees, and until now the only viewer state with no fixture
+    // at all. That gap is why a control that had been inert for its whole life (a `disabled` button
+    // beside a login URL no script ever read) could not be seen to be inert. Captured so the
+    // affordance is visually diffed on every future change to it.
+    val viewerSignIn =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("CardPreview") },
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = false,
+        hasLiveStream = true,
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        liveAuthPrompt =
+          ServeWeb.LiveAuthPrompt(
+            loginHref = "/auth/github/start?return=%2Fp%2FCardPreview",
+            repository = "yschimke/compose-ai-tools",
+          ),
+      )
     // A trusted catalog served LIVE (ServeCatalogLiveHost) whose preview declares author knobs:
     // snapshots stay baked (canApplyOverrides=false) but the carried daemon CAN re-render an
     // override on demand (canRenderOverrides=true), so the declared knob controls render ENABLED
@@ -1285,6 +1304,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-viewer.html").writeText(viewer)
       File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
       File(pagesDir, "serve-viewer-wasm-live.html").writeText(wasmViewerLive)
+      File(pagesDir, "serve-viewer-signin.html").writeText(viewerSignIn)
       File(pagesDir, "serve-viewer-catalog-knobs.html").writeText(viewerCatalogKnobs)
       File(pagesDir, "serve-viewer-themes.html").writeText(viewerThemes)
       File(pagesDir, "serve-viewer-focus.html").writeText(viewerFocus)
@@ -1359,6 +1379,7 @@ class ServeWebFixtureTest {
     }
     assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
     assertGolden(File(pagesDir, "serve-viewer-wasm-live.html"), wasmViewerLive)
+    assertGolden(File(pagesDir, "serve-viewer-signin.html"), viewerSignIn)
     assertGolden(File(pagesDir, "serve-viewer-catalog-knobs.html"), viewerCatalogKnobs)
     // The declared Remote Compose knobs render as their own "Remote Compose" control group, one
     // `.cp-rc-knob` per knob carrying its name + wire kind (a `color` swatch value + a `string`),
@@ -2417,7 +2438,7 @@ class ServeWebFixtureTest {
   }
 
   @Test
-  fun `viewer disables live preview with GitHub auth prompt when sign-in is required`() {
+  fun `viewer offers sign-in in place of the live toggle when auth is what blocks the lane`() {
     val card = previews.first { it.id.endsWith("CardPreview") }
     val protectedLive =
       ServeWeb.viewerPage(
@@ -2431,41 +2452,66 @@ class ServeWebFixtureTest {
           ),
       )
 
+    // The lane is one click away, so offer the click. Previously this rendered a `disabled` button
+    // whose only explanation was a `title` — invisible on touch, and never announced, since a
+    // disabled button is not focusable.
     assertTrue(
-      protectedLive.contains("id=\"cp-live-toggle\"") &&
+      protectedLive.contains("id=\"cp-live-signin\"") &&
         protectedLive.contains(
-          "id=\"cp-live-toggle\" class=\"cp-live-toggle\" aria-pressed=\"false\" disabled"
+          "href=\"/auth/github/start?return=%2Fp%2FCardPreview%3Ftoken%3Dabc\""
         ),
-      "GitHub-protected live preview renders the visible toggle disabled until sign-in",
+      "auth-blocked live preview offers a real sign-in link, not a dead control",
+    )
+    assertTrue(
+      protectedLive.contains("Live preview — sign in"),
+      "the reason is in the visible label, not only in a hover tooltip",
+    )
+    // The old markup put the login URL in `data-github-login` and no script ever read it, so the
+    // control did nothing when clicked. An anchor cannot regress that way — following it is the
+    // browser's job — but pin that the dead attribute is gone so it can't quietly come back.
+    assertFalse(
+      protectedLive.contains("data-github-login="),
+      "the login URL is the anchor's href, not an attribute nothing reads",
+    )
+    // Must NOT be the toggle: `updateLiveToggle()` drives that element through `.disabled` and
+    // `aria-pressed`, neither of which means anything on a link.
+    assertFalse(
+      protectedLive.contains("id=\"cp-live-toggle\""),
+      "the sign-in link replaces the toggle rather than impersonating it",
     )
     assertTrue(
       protectedLive.contains(
         "name=\"cp-mode\" value=\"live\" id=\"cp-live\" tabindex=\"-1\" disabled"
       ),
-      "GitHub-protected live preview disables the hidden live transport radio too",
+      "the hidden live transport radio stays disabled — sign-in is offered, not granted",
     )
+
+    // A bundle with no live lane at all keeps the honestly-disabled toggle: inviting a sign-in
+    // that would unlock nothing is worse than a greyed chip.
+    val noLane = ServeWeb.viewerPage(card, token, canApplyOverrides = false)
     assertTrue(
-      protectedLive.contains("title=\"Sign in with GitHub to enable Live preview.\""),
-      "disabled live preview explains the GitHub access requirement on hover",
-    )
-    assertTrue(
-      protectedLive.contains(
-        "data-github-login=\"/auth/github/start?return=%2Fp%2FCardPreview%3Ftoken%3Dabc\""
-      ),
-      "disabled live preview keeps the GitHub sign-in URL available to the page",
-    )
-    assertTrue(
-      assetText("viewer.js")
-        .contains(
-          "liveToggle.disabled = wasmBtn ? !(live && !live.disabled) : !liveTransportAvailable();"
-        ),
-      "hydration keeps the daemon Live preview button disabled when GitHub auth blocks live",
+      noLane.contains("id=\"cp-live-toggle\"") && !noLane.contains("cp-live-signin"),
+      "a session with nothing to unlock is not invited to sign in",
     )
 
     val openLive = ServeWeb.viewerPage(card, token, canApplyOverrides = true)
     assertTrue(
       openLive.contains("id=\"cp-live-toggle\" class=\"cp-live-toggle\" aria-pressed=\"false\">"),
-      "live preview remains enabled when no GitHub sign-in prompt is required",
+      "live preview remains an ordinary toggle when no GitHub sign-in prompt is required",
+    )
+
+    // The mode hint must not contradict the chip. The transport radio stays disabled while auth
+    // blocks the lane, so the old hint read "no live lane" directly beside an offer to sign in for
+    // one — the page asserting in the same breath that the thing is available and that it does not
+    // exist. Caught only once the fixture was captured WITH the stylesheet.
+    assertTrue(
+      assetText("viewer.js").contains("static snapshot — sign in for live"),
+      "an auth-blocked lane is reported as needing sign-in, not as absent",
+    )
+    assertTrue(
+      assetText("viewer.js")
+        .contains("var liveSignIn = document.getElementById(\"cp-live-signin\")"),
+      "the hint keys off the sign-in link, which is the only marker of the auth-blocked state",
     )
   }
 

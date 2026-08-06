@@ -454,6 +454,14 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-live-toggle:hover:not(:disabled) { background: var(--cp-surface-2); }
 .cp-live-toggle:disabled { opacity: 0.5; cursor: default; }
 .cp-live-toggle[aria-pressed="true"] { background: #e7f4ea; border-color: #b6e0c2; color: #1e7a34; }
+/* The sign-in affordance shown in place of the Live toggle when auth is the only thing blocking
+   the daemon lane. Deliberately NOT dimmed like `:disabled` — the lane is available, it just needs
+   one click, and a greyed chip says the opposite. Full contrast and a dashed keyline mark it as an
+   action to take rather than a state to read, so it can't be mistaken for the lit `aria-pressed`
+   green either. `<a>` inherits none of the button reset, hence the explicit text-decoration. */
+.cp-live-signin { border-style: dashed; text-decoration: none; color: var(--cp-fg); }
+.cp-live-signin:hover, .cp-live-signin:focus-visible { background: var(--cp-surface-2);
+  border-style: solid; text-decoration: none; }
 /* The idle half of a status light, so it stays literal beside its lit green — the pair reads as
    one indicator and must not drift apart with the palette. */
 .cp-live-dot { width: 9px; height: 9px; border-radius: 50%; background: #b9b9c6; flex: none; }

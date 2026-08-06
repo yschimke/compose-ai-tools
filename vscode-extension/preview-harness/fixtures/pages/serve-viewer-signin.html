@@ -3,7 +3,7 @@
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Profile screen — compose-preview</title>
+        <title>Card — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/e85e-686e7c2ff6cfbed8/serve.css">
         <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
@@ -23,20 +23,20 @@
 </header>
         <main class="cp-main">
               <p class="cp-breadcrumb"><a href="/?token=demo-token-fixture&session=compose-m3">Previews</a> / Component</p>
-      <h1 class="cp-head cp-preview-title">Profile screen</h1>
-      <p class="cp-preview-id" title="com.example.ProfileScreenPreview"><code>com.example.ProfileScreenPreview</code></p>
+      <h1 class="cp-head cp-preview-title">Card <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
+      <p class="cp-preview-id" title="com.example.CardPreview"><code>com.example.CardPreview</code></p>
 
 
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
-      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false">
+      <a id="cp-live-signin" class="cp-live-toggle cp-live-signin" href="/auth/github/start?return=%2Fp%2FCardPreview" data-github-repo="yschimke/compose-ai-tools" title="Sign in with GitHub (yschimke/compose-ai-tools) to enable Live preview">
             <span class="cp-live-dot" aria-hidden="true"></span>
-            <span id="cp-live-toggle-label">Live preview</span>
-          </button>
+            <span>Live preview — sign in</span>
+          </a>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
-<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1">
+<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
         </span>
       </div>
       <div class="cp-viewer-bar">
@@ -47,24 +47,21 @@
         </span>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
-      <div class="cp-viewer cp-controls-open" data-bg-theme="dark" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
+      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
 
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
             <div class="cp-group-body">
-                      <label>Theme
-          <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="true" data-fixed-theme="false">
-            <option value="light">Day (Default)</option>
-            <option value="dark" selected>Night (Default)</option>
-            <option value="theme:com.example.HighContrastThemeCatalog">High Contrast</option>
-<optgroup label="Brand"><option value="theme:com.example.BrandLightThemeCatalog">Brand Light</option>
-<option value="theme:com.example.BrandDarkThemeCatalog">Brand Dark</option></optgroup>
-          </select>
-        </label>
+              <label>Theme
+  <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" data-fixed-theme="false" disabled>
+    <option value="light" selected>Day (Default)</option>
+    <option value="dark">Night (Default)</option>
+  </select>
+</label>
               <label>Background
-                <select id="cp-background">
+                <select id="cp-background" disabled>
                   <option value="">(default)</option>
                   <option value="clear">Clear (crisp outline)</option>
                 </select>
@@ -74,22 +71,29 @@
           <details class="cp-group" data-cp-group="size">
             <summary>Size</summary>
             <div class="cp-group-body">
-              <label>Device size
-                <select id="cp-device">
-                  <option value="">(preview default)</option>
-                  <option value="id:pixel_5">Pixel 5 · compact phone (393 × 851 dp)</option>
-                  <option value="id:pixel_7">Pixel 7 · standard phone (411 × 914 dp)</option>
-                  <option value="id:pixel_fold">Pixel Fold · foldable (841 × 701 dp)</option>
-                  <option value="id:pixel_tablet">Pixel Tablet · tablet (1280 × 800 dp)</option>
-                </select>
-              </label>
-              <label>Orientation
-                <select id="cp-orientation">
-                  <option value="">(device default)</option>
-                  <option value="portrait">Portrait</option>
-                  <option value="landscape">Landscape</option>
-                </select>
-              </label>
+              <div class="cp-size">
+                <label>Size mode
+                  <select id="cp-sizeMode" disabled>
+                    <option value="">(default)</option>
+                    <option value="fixed">Fixed size</option>
+                    <option value="max">Max</option>
+                    <option value="min">Min</option>
+                    <option value="within">Within (min–max)</option>
+                  </select>
+                </label>
+                <div class="cp-size-row" id="cp-size-fixed" hidden>
+                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-min" hidden>
+                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-max" hidden>
+                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                </div>
+              </div>
             </div>
           </details>
 
@@ -97,7 +101,7 @@
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
               <label>Locale
-                <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off">
+                <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off" disabled>
                 <!-- A datalist, not a fixed <select>: the presets (pseudolocales, RTL, common
                      tags) drop down for quick picking, but any valid BCP-47 tag the server
                      accepts can still be typed in. -->
@@ -123,7 +127,7 @@
                 </datalist>
               </label>
               <label>Font scale: <span id="cp-fontScale-val">default</span>
-                <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
+                <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0" disabled>
               </label>
             </div>
           </details>
@@ -146,7 +150,7 @@
       <!-- Export remains below the workspace; renderer selection is kept beside the preview
            heading so it is visible before a tall stage. -->
       <div class="cp-below">
-
+        <div class="cp-note">Pre-rendered snapshot — overrides (size, locale, font scale) need the live server, not a published catalog. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
               <details class="cp-export cp-disclosure">
         <summary id="cp-export-head">Export &amp; direct links</summary>
         <div class="cp-links cp-disclosure-body">

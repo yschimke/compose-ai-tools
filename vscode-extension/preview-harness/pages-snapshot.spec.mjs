@@ -85,6 +85,11 @@ const STYLED_FIXTURES = new Set([
     // real stylesheet — captured bare it is a column of unstyled labels where a panel regression
     // moves nothing recognisable. Its `size-open` state below is what actually shows the menu.
     "serve-viewer-wear-screen",
+    // The signed-out live lane. Its whole claim is how the chip is PAINTED: full contrast with a
+    // dashed keyline reading as "an action to take", versus the 50%-opacity `:disabled` chip that
+    // read as "not available here". Captured bare it is an ordinary underlined link, so the styling
+    // that IS the change would move no baseline — the exact trap the entries above record.
+    "serve-viewer-signin",
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
