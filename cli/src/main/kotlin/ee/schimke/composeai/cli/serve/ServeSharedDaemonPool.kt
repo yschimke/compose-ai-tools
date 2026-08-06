@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -51,6 +52,12 @@ class ServeSharedDaemonPool(
   // many jobs it submitted. See [takePeakInFlight].
   private val inFlight = AtomicInteger(0)
   private val peakInFlight = AtomicInteger(0)
+  // Replicas opened but not yet rendered, and the longest first-render seen since it was last
+  // taken. A replica is opened lazily and its daemon session does not start until that first
+  // render, so the render carries a 34-68s cold start on an Android lane. See
+  // [takeColdStartMillis].
+  private val coldReplicas = mutableSetOf<ServeHost>() // guarded by [lock]
+  private val peakColdStartMillis = AtomicLong(0)
   private var closed = false
 
   init {
@@ -73,21 +80,58 @@ class ServeSharedDaemonPool(
    */
   fun takePeakInFlight(): Int = peakInFlight.getAndSet(inFlight.get())
 
+  /**
+   * The longest replica cold start since the last call, resetting the mark.
+   *
+   * A replica is opened lazily and its daemon session does not start until its first render, so
+   * that render carries the full cold start — 34-68s on an Android/Robolectric lane. Without this
+   * the caller charges it to per-entry render cost, which is precisely the conflation the
+   * warm/batch split exists to remove: only the PRIMARY's warm is visible to the caller, and a
+   * five-wide batch can be opening four cold replicas underneath it.
+   *
+   * The **longest**, not the sum: the cold starts overlap inside one batch, whose wall-clock is
+   * bounded by its slowest lane. Summing them would exceed the interval being attributed.
+   *
+   * A replica stays cold until a render actually enters its session — a `NotFound` (answered from
+   * the id set first) or a throw leaves it cold, so the cold start is still reported when whichever
+   * later render does start the daemon pays it.
+   */
+  fun takeColdStartMillis(): Long = peakColdStartMillis.getAndSet(0)
+
   fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     permits.acquire()
     var borrowed: ServeHost? = null
+    // An explicit flag, not a `coldStartFrom > 0` sentinel: [clock] is injectable and a test clock
+    // legitimately starts at 0, which would silently disable the measurement.
+    var cold = false
+    var coldStartFrom = 0L
+    var startedDaemon = false
     try {
       borrowed = lock.withLock {
         check(!closed) { "shared daemon pool is closed" }
-        available.removeFirstOrNull() ?: openSeatedReplica()
+        val host = available.removeFirstOrNull() ?: openSeatedReplica()
+        // Claimed under the lock so exactly one borrow times the cold start.
+        cold = coldReplicas.remove(host)
+        if (cold) coldStartFrom = clock()
+        host
       }
       peakInFlight.accumulateAndGet(inFlight.incrementAndGet(), ::maxOf)
-      return borrowed.render(previewId, overrides)
+      return borrowed.render(previewId, overrides).also {
+        // `ServeRenderHost.render` answers NotFound from its id set BEFORE touching its lazy
+        // session, so an id this replica doesn't carry leaves the daemon just as cold as it was.
+        // Consuming the marker there would hand the real cold start — paid by whichever later
+        // render does start the session — straight to `batchMillis`. A throw is the same case.
+        startedDaemon = it !is RenderOutcome.NotFound
+      }
     } finally {
+      if (cold && startedDaemon) {
+        peakColdStartMillis.accumulateAndGet(clock() - coldStartFrom, ::maxOf)
+      }
       borrowed?.let { host ->
         inFlight.decrementAndGet()
         lock.withLock {
           if (!closed) {
+            if (cold && !startedDaemon) coldReplicas += host
             available.addLast(host)
             replicaLastUsed[host] = clock()
             hostReturned.signalAll()
@@ -132,6 +176,8 @@ class ServeSharedDaemonPool(
         throw e
       }
     replicas += replica
+    // Not warm yet: its daemon session starts on the first render. [takeColdStartMillis].
+    coldReplicas += replica
     ticket?.let { seatTickets[replica] = it }
     return replica
   }
@@ -201,6 +247,7 @@ class ServeSharedDaemonPool(
       closed = true
       available.clear()
       replicaLastUsed.clear()
+      coldReplicas.clear()
       seatTickets.values.forEach { it.close() }
       seatTickets.clear()
       // Wake anyone parked in [openSeatedReplica]; the `closed` check turns their wait into the
