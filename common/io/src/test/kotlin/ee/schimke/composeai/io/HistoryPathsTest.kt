@@ -66,7 +66,29 @@ class HistoryPathsTest {
 
   @Test
   fun `module segment sanitises characters outside the safe set`() {
-    assertEquals("a-b/c-d", composeAiHistoryModuleSegment(File("/w"), File("/w/a b/c:d")))
+    // Each rewritten segment carries an 8-hex digest of its original text.
+    assertEquals(
+      "a-b-c8687a08/c-d-66c7bbe2",
+      composeAiHistoryModuleSegment(File("/w"), File("/w/a b/c:d")),
+    )
+  }
+
+  @Test
+  fun `module names that sanitise identically stay distinct`() {
+    // `ui components` and `ui-components` are different modules; without the digest suffix both
+    // flatten to `ui-components` and would share one history dir, mixing entries and prune state.
+    val spaced = composeAiHistoryModuleSegment(File("/w"), File("/w/ui components"))
+    val hyphenated = composeAiHistoryModuleSegment(File("/w"), File("/w/ui-components"))
+    assertEquals("ui-components-50bae342", spaced)
+    assertEquals("ui-components", hyphenated)
+    assertNotEquals(spaced, hyphenated)
+  }
+
+  @Test
+  fun `an already-safe segment is left plain`() {
+    // The digest is only paid by segments sanitising had to rewrite, so ordinary paths stay
+    // readable in `~/.cache/composeai/history/`.
+    assertEquals("auth", composeAiHistoryModuleSegment(File("/w"), File("/w/auth")))
   }
 
   @Test

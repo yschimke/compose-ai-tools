@@ -42,6 +42,26 @@ function sanitiseSegment(segment: string): string {
     return segment.replace(/[^A-Za-z0-9._-]/g, "-");
 }
 
+/**
+ * `sanitiseSegment`, plus an 8-hex digest of the original text when sanitising changed it.
+ *
+ * Distinct directory names must not land on the same segment: `ui components` and `ui-components`
+ * are different modules, and two non-ASCII names can flatten to the same run of hyphens. Sharing a
+ * history directory would mix their entries and prune state. Only rewritten segments pay the
+ * suffix, so ordinary paths stay readable.
+ */
+function sanitiseSegmentInjectively(segment: string): string {
+    const sanitised = sanitiseSegment(segment);
+    if (sanitised === segment) {
+        return sanitised;
+    }
+    const digest = createHash("sha256")
+        .update(segment, "utf8")
+        .digest("hex")
+        .slice(0, 8);
+    return `${sanitised}-${digest}`;
+}
+
 /** Absolute path with separators normalised to `/` and any trailing separator dropped. */
 function normalise(p: string): string {
     const abs = path.resolve(p).replace(/\\/g, "/");
@@ -87,7 +107,7 @@ export function historyModuleSegment(
         .slice(root.length + 1)
         .split("/")
         .filter((s) => s.length > 0)
-        .map(sanitiseSegment)
+        .map(sanitiseSegmentInjectively)
         .join("/");
     return segment.length === 0 ? "_root" : segment;
 }

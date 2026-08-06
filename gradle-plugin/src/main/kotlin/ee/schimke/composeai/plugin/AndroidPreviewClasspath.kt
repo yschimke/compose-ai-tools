@@ -540,8 +540,24 @@ internal fun composeAiHistoryModuleSegment(workspaceRoot: File, projectDir: File
     .removePrefix("$root/")
     .split('/')
     .filter { it.isNotEmpty() }
-    .joinToString("/") { sanitiseHistorySegment(it) }
+    .joinToString("/") { sanitiseHistorySegmentInjectively(it) }
     .ifEmpty { "_root" }
+}
+
+/**
+ * See `common/io`'s `sanitiseHistorySegmentInjectively`. Kept byte-identical to it: a segment that
+ * sanitising had to rewrite carries an 8-hex digest of its original text, so `ui components` and
+ * `ui-components` stay distinct modules.
+ */
+private fun sanitiseHistorySegmentInjectively(segment: String): String {
+  val sanitised = sanitiseHistorySegment(segment)
+  if (sanitised == segment) return sanitised
+  val digest =
+    java.security.MessageDigest.getInstance("SHA-256")
+      .digest(segment.toByteArray(Charsets.UTF_8))
+      .joinToString("") { "%02x".format(it) }
+      .take(8)
+  return "$sanitised-$digest"
 }
 
 /** ASCII-only on purpose — see `common/io`'s counterpart for why. */

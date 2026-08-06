@@ -62,10 +62,25 @@ describe("historyPaths", () => {
         });
 
         it("sanitises characters outside the safe set", () => {
+            // Each rewritten segment carries an 8-hex digest of its original text.
             assert.strictEqual(
                 historyModuleSegment("/w", "/w/a b/c:d"),
-                "a-b/c-d",
+                "a-b-c8687a08/c-d-66c7bbe2",
             );
+        });
+
+        it("keeps module names that sanitise identically distinct", () => {
+            // `ui components` and `ui-components` are different modules; without the digest
+            // suffix both flatten to `ui-components` and would share one history dir.
+            const spaced = historyModuleSegment("/w", "/w/ui components");
+            const hyphenated = historyModuleSegment("/w", "/w/ui-components");
+            assert.strictEqual(spaced, "ui-components-50bae342");
+            assert.strictEqual(hyphenated, "ui-components");
+            assert.notStrictEqual(spaced, hyphenated);
+        });
+
+        it("leaves an already-safe segment plain", () => {
+            assert.strictEqual(historyModuleSegment("/w", "/w/auth"), "auth");
         });
 
         it("keeps dots, underscores and hyphens", () => {

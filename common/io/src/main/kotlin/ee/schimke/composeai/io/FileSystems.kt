@@ -123,9 +123,15 @@ fun composeAiHistoryWorkspaceSlug(workspaceRoot: File): String {
 
 /**
  * The module's path relative to [workspaceRoot], `/`-joined and sanitised per segment — e.g.
- * `auth/composables`. The root project maps to `_root`, as does any module that doesn't sit under
- * the workspace root (a `projectDir` reassigned outside the tree by `settings.gradle.kts`), which
- * falls back to a hash of its own path so two such modules can't collide.
+ * `auth/composables`. The root project maps to `_root`. A module that doesn't sit under the
+ * workspace root (a `projectDir` reassigned outside the tree by `settings.gradle.kts`) falls back
+ * to a hash of its own path so two such modules can't collide.
+ *
+ * Sanitisation is lossy — `ui components` and `ui-components` both flatten to `ui-components` — so
+ * a segment that had to be rewritten carries a digest of its original text
+ * ([sanitiseHistorySegmentInjectively]). Two distinct modules in one workspace sharing a history
+ * directory would mix their entries and prune state, and let matching preview ids overwrite each
+ * other. Segments that need no rewriting (the overwhelming majority) stay plain and readable.
  */
 fun composeAiHistoryModuleSegment(workspaceRoot: File, projectDir: File): String {
   val root = workspaceRoot.absolutePath.replace('\\', '/').trimEnd('/')
@@ -139,8 +145,30 @@ fun composeAiHistoryModuleSegment(workspaceRoot: File, projectDir: File): String
     .removePrefix("$root/")
     .split('/')
     .filter { it.isNotEmpty() }
-    .joinToString("/") { sanitiseHistorySegment(it) }
+    .joinToString("/") { sanitiseHistorySegmentInjectively(it) }
     .ifEmpty { "_root" }
+}
+
+/**
+ * [sanitiseHistorySegment], plus an 8-hex digest of the original text when sanitising changed it.
+ *
+ * Distinct directory names must not land on the same segment: `ui components` and `ui-components`
+ * are different modules, and two non-ASCII names can flatten to the same run of hyphens. Only
+ * rewritten segments pay the suffix, so ordinary paths stay readable.
+ *
+ * Residual caveat: a segment literally named `ui-components-<those 8 hex chars>` would still
+ * collide with the suffixed form of `ui components`. That needs a deliberately crafted directory
+ * name and is not worth making every path unreadable to prevent.
+ */
+private fun sanitiseHistorySegmentInjectively(segment: String): String {
+  val sanitised = sanitiseHistorySegment(segment)
+  if (sanitised == segment) return sanitised
+  val digest =
+    java.security.MessageDigest.getInstance("SHA-256")
+      .digest(segment.toByteArray(Charsets.UTF_8))
+      .joinToString("") { "%02x".format(it) }
+      .take(8)
+  return "$sanitised-$digest"
 }
 
 /**
