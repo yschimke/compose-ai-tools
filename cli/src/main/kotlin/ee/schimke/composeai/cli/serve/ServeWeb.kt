@@ -4457,6 +4457,17 @@ object ServeWeb {
     // uiMode; every `theme:<provider>` option maps to themeProvider and deliberately clears uiMode,
     // because an app-declared theme already owns its day/night palette.
     val themeSelectorHtml = run {
+      // A theme specimen documents ONE named theme, so the app-theme options are withdrawn here
+      // exactly as the landing withholds its themed-render URL. Without this the annotation stopped
+      // working the moment the card was opened: the viewer received every declared theme and
+      // happily re-rendered the specimen under another one, contradicting its own caption.
+      //
+      // Only the app-theme (`theme:<provider>`) axis goes. The built-in Day/Night control stays —
+      // it maps to `uiMode`, which is how a light/dark PAIR of specimens is authored in the first
+      // place, and a card that carries a baked `light`/`dark` sibling must still be able to reach
+      // it. Withdrawing the options rather than disabling the whole control also keeps the rest of
+      // the selector (and its Day/Night defaults) live.
+      val declaredThemes = if (isThemeSpecimen(preview)) emptyList() else declaredThemes
       val themeDis =
         if (
           (!wearAlwaysDark && (overridesLive || wasmSrc != null)) ||

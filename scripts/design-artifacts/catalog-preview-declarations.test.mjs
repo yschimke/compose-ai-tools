@@ -99,6 +99,37 @@ test("leaves fixedTheme off an ordinary preview", () => {
   });
 });
 
+test("stamps fixedTheme onto a deferred (live-only) specimen", () => {
+  // A deferred record carries no image, so the component loop never sees it — and a live-only
+  // specimen has no baked pixels to fall back to, so missing the flag is worse here than anywhere.
+  const manifest = {
+    components: [],
+    deferred: [
+      { previewId: "themecatalog__Brand", componentId: "Theme/Brand" },
+      { previewId: "Primary_Light", componentId: "Button/Primary" },
+      { previewIds: ["themecatalog__Solo"], componentId: "Theme/Solo" },
+      { previewIds: ["A", "B"], componentId: "Ambiguous" },
+    ],
+  };
+  const bundle = {
+    previews: [
+      { id: "themecatalog__Brand", captures: [], fixedTheme: true },
+      { id: "themecatalog__Solo", captures: [], fixedTheme: true },
+      { id: "Primary_Light", captures: [{ focus: {} }] },
+      { id: "A", captures: [], fixedTheme: true },
+    ],
+    entries: {},
+  };
+
+  applyCatalogPreviewDeclarations(manifest, [bundle]);
+
+  assert.equal(manifest.deferred[0].fixedTheme, true);
+  assert.equal(manifest.deferred[1].fixedTheme, undefined, "an ordinary deferred card is untouched");
+  assert.equal(manifest.deferred[2].fixedTheme, true, "a single-entry previewIds resolves");
+  // Two ids is a guess between annotations, exactly as `Deferred.daemonId` refuses to make one.
+  assert.equal(manifest.deferred[3].fixedTheme, undefined);
+});
+
 test("ignores missing and malformed sidecars", () => {
   const bundle = {
     previews: [{ id: "Bare", captures: [] }, { id: "Broken", captures: [] }],

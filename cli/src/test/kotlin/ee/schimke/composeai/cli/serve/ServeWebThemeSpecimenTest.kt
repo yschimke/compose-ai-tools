@@ -151,6 +151,51 @@ class ServeWebThemeSpecimenTest {
     assertTrue(bases.any { it.contains("/render/contactrow-chat.png") })
   }
 
+  /**
+   * The landing withholding a specimen's themed-render URL is only half the surface. Opening the
+   * card at `/p/<id>` hands the viewer its own copy of the declared themes, and that selector
+   * re-renders through the same `themeProvider` override — so without this the annotation stopped
+   * working the moment a visitor clicked the card.
+   */
+  private fun viewer(preview: ServePreview) =
+    ServeWeb.viewerPage(
+      preview,
+      token = "t",
+      canApplyOverrides = true,
+      declaredThemes = themes,
+      siblings = listOf(preview),
+    )
+
+  @Test
+  fun `the viewer offers no app-theme options for a fixedTheme preview`() {
+    val html = viewer(ServePreview(id = "themecatalog__brand", label = "Brand", fixedTheme = true))
+    assertFalse(
+      html.contains("theme:com.example.BrandTheme"),
+      "the specimen's viewer must not offer a theme that would redraw it",
+    )
+    assertTrue(
+      html.contains("data-has-declared-themes=\"false\""),
+      "and the selector must agree it has none, so no script re-enables it",
+    )
+  }
+
+  @Test
+  fun `the viewer withholds them for a Themes-section specimen too`() {
+    // The section signal has to reach the viewer as well — it is the one meshcore-mobile uses.
+    val html =
+      viewer(ServePreview(id = "theme-meshcore-light", label = "Theme", section = "Themes"))
+    assertFalse(html.contains("theme:com.example.BrandTheme"))
+  }
+
+  @Test
+  fun `an ordinary preview's viewer keeps its theme options`() {
+    val html = viewer(ServePreview(id = "contactrow-chat", label = "Contact row"))
+    assertTrue(
+      html.contains("theme:com.example.BrandTheme"),
+      "the fix must not disable the viewer's Theme control everywhere",
+    )
+  }
+
   @Test
   fun `a catalog of only fixedTheme previews offers no declared-theme chips`() {
     // Same dead-control guard as the section-only case: the chip gate and the per-card URL must
