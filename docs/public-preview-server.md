@@ -215,6 +215,45 @@ fallback token.
 
 ![Catalog theme selector (dark)](images/serve-catalog-themes-dark.png)
 
+## Long-press a card for a live session, in place
+
+The Theme control above re-renders the grid's *pixels*. Sometimes what you want is the component
+itself — pressed, dragged, scrolled — and until now that meant opening the viewer and flipping its
+**Live preview** toggle. **Holding a card** on the catalog grid does it where you are: the card's
+preview starts streaming from the session's render daemon inside the card, and everything you do to
+it goes to the real composition.
+
+| Hover — the affordance | Held — a live session in the card |
+| --- | --- |
+| ![A catalog card showing the "hold for live" affordance](images/serve-catalog-live-hint.png) | ![The same card streaming from the daemon, outlined and badged "live"](images/serve-catalog-live-card.png) |
+
+What the gesture does, and what it deliberately doesn't:
+
+- **The card is the stage.** A `<canvas>` is mounted as an absolute overlay on the thumbnail's slot
+  (the same trick the viewer uses), seeded with the thumbnail's own pixels so there is no blank
+  flash while the socket comes up, and the daemon's frames paint over it. The card keeps its exact
+  geometry either way — a live frame whose dimensions differ from the baked thumbnail scales into
+  the same box rather than resizing the grid under you.
+- **Input reaches the composition.** Pointer presses, drags (multi-touch included) and wheel/rotary
+  scroll are forwarded as image-natural pixels over the same `/ws/<previewId>` lane the viewer's
+  Live toggle opens — so it is one protocol, one seat budget, one set of close codes, not a second
+  live implementation.
+- **One card at a time.** A live seat *is* a render daemon and a catalog is commonly 80+ cards, so
+  starting a session ends the previous one. `Escape`, a press anywhere off the card, or leaving the
+  page ends it too.
+- **It appears only where it would work.** A card takes the gesture when the session offers the
+  stream lane **and** that preview has a daemon twin behind it — the same two conditions the
+  viewer's Live toggle answers to. A baked-only catalog's cards are the plain links they always
+  were, with no affordance and no script loaded at all. On a box that gates live lanes behind
+  GitHub, the press answers with the sign-in rather than a socket that would close `1008`.
+- **A tap is still a tap.** The press has to be held past ~half a second, without drifting, before
+  it means "go live"; a tap opens the viewer, a drag scrolls, and a right-click is left alone.
+  `L` on a focused card is the keyboard equivalent, since a long press is a pointer gesture.
+
+Long-pressing under a selected app-declared theme keeps that theme: the socket carries the same
+`themeProvider` the grid is showing, so the live session opens on the palette on screen rather than
+snapping back to the catalog's baked one.
+
 ## The page wears the catalog's own palette
 
 The Theme selector above re-renders the *previews*. The **page around them** is themed from the same

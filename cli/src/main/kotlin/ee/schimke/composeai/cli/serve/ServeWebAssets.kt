@@ -18,6 +18,9 @@ internal object ServeWebAssets {
       "codemirror.css" to "text/css; charset=utf-8",
       "codemirror.js" to "text/javascript; charset=utf-8",
       "url-state.js" to "text/javascript; charset=utf-8",
+      // The grid's long-press live lane; loaded only by a catalog page whose session can actually
+      // stream (see [ServeWeb.catalogLiveScript]).
+      "catalog-live.js" to "text/javascript; charset=utf-8",
       "viewer.js" to "text/javascript; charset=utf-8",
       "viewer-groups.js" to "text/javascript; charset=utf-8",
       "viewer-drawers.js" to "text/javascript; charset=utf-8",

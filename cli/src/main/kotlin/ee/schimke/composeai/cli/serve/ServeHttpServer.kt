@@ -1328,6 +1328,20 @@ class ServeHttpServer(
           // a daemon-twinned card can actually re-render one, hence the per-preview predicate.
           declaredThemes = renderHost.declaredThemes,
           canRenderThemeFor = { id -> renderHost.canRenderOverridesFor(id) },
+          // Long-press a card to open a live daemon session inside it. Same two conditions the
+          // viewer's Live toggle answers to — the session offers the stream lane, and this preview
+          // has a daemon twin to stream — so a card only takes the gesture when the socket behind
+          // it would deliver real frames rather than replaying baked pixels.
+          canStreamLiveFor = { id ->
+            renderHost.hasLiveStream && renderHost.canRenderOverridesFor(id)
+          },
+          // …and when the box gates its live lanes on GitHub, the press answers with the sign-in
+          // rather than a socket that would close 1008.
+          liveSignInHref =
+            githubAuth
+              ?.takeIf { renderHost.hasLiveStream }
+              ?.takeUnless { it.isAuthenticated(call) }
+              ?.loginPath(call),
           themeRenderBurstCapacity = renderHost.themeRenderBurstCapacity,
           engagement = previewEngagement(selectedSessionId, renderHost.previews),
           systemViews = systemViews,

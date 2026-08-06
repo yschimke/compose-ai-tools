@@ -17,6 +17,7 @@ class ServeWebAssetsTest {
         "viewer-groups.js",
         "viewer-drawers.js",
         "format-compare.js",
+        "catalog-live.js",
       )) {
       val asset = assertNotNull(ServeWebAssets.load(name), "$name should be loadable")
       assertTrue(asset.bytes.isNotEmpty(), "$name should not be empty")
@@ -65,6 +66,7 @@ class ServeWebAssetsTest {
         "viewer-drawers.js",
         "backend-badge.js",
         "format-compare.js",
+        "catalog-live.js",
       )) {
       val resource =
         assertNotNull(
