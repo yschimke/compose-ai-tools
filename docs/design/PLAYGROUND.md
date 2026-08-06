@@ -627,6 +627,8 @@ resolve and a `manifest.backend` to pick the renderer.
 The two compose, so adding `--playground` to an existing deployment changes
 nothing about what it already served — it only adds entries after the default.
 
+![Playground editor with the runtime catalog selector — `compose-m3 (desktop)` chosen at request time, compiled and rendered](../images/serve-playground-catalog-selector-light.png)
+
 **A catalog is the whole compile target, not just a classpath.** Its bundle
 backend picks the renderer, so selecting it also selects the mode set: `desktop`
 → CMP; `android` → Android + Remote Compose. `PlaygroundCatalogTargets` intersects
