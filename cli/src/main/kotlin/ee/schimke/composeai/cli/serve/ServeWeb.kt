@@ -2327,15 +2327,32 @@ object ServeWeb {
      * `/api/1/compiler/catalogs` rather than making the visitor reload.
      */
     catalogs: List<PlaygroundCatalogInfo>,
+    /**
+     * True when `--playground` configured a runtime catalog selector on this host — independent of
+     * whether any catalog has loaded into it yet.
+     *
+     * Kept separate from `catalogs.size` on purpose. A host running `--playground` *plus* a pinned
+     * local bundle renders, during the startup window, a one-entry list holding only that pin — and
+     * deciding on the count alone would omit the control from that page, which the script can then
+     * never build, leaving the visitor pinned until they reload. What the control's presence tracks
+     * is the host's configuration, which does not change under it.
+     */
+    catalogSelectorEnabled: Boolean = false,
     unfurl: UnfurlMetadata? = null,
   ): String {
     val suffix = querySuffix(queryString(token, sessionId = null, isPublic = isPublic))
     val sample = WebEscaping.htmlEscape(PLAYGROUND_SAMPLE)
     // A host that pins its bundles and offers no runtime choice renders exactly the bar it always
-    // did — one Mode select — rather than a one-entry "Catalog" control that decides nothing. An
-    // EMPTY list is not that case: it means nothing has resolved *yet* (catalogs load in the
-    // background), so the control is rendered saying so and the script's refresh fills it in.
-    val showCatalogs = catalogs.isEmpty() || catalogs.size > 1 || catalogs.first().id.isNotEmpty()
+    // did — one Mode select — rather than a one-entry "Catalog" control that decides nothing.
+    // Everything else gets the control, including the two states where the list is momentarily
+    // uninteresting: empty (nothing has loaded yet) and pin-only under [catalogSelectorEnabled].
+    // Both fill in from the script's refresh, and the script can only fill in a control that
+    // exists.
+    val showCatalogs =
+      catalogSelectorEnabled ||
+        catalogs.isEmpty() ||
+        catalogs.size > 1 ||
+        catalogs.first().id.isNotEmpty()
     val catalogOptions =
       if (catalogs.isEmpty())
         """<option value="" disabled selected>No catalogs available yet…</option>"""
@@ -2494,8 +2511,17 @@ object ServeWeb {
         run.disabled = offered.length === 0;
       }
       // Catalogs are fetched in the BACKGROUND after the server starts, so a page opened during
-      // startup legitimately renders a short (or empty) list. Re-ask once on load rather than
-      // making the visitor guess that a reload would help.
+      // startup legitimately renders a short (or empty) list. Re-ask rather than making the visitor
+      // guess that a reload would help.
+      //
+      // ONE fetch is not enough: on a host with nothing pinned the editor commonly loads before the
+      // initial catalog loader has published anything, so the single reply is empty too and nothing
+      // would ever ask again — a permanently disabled Run on a host that came up fine seconds later.
+      // So poll while the answer is still empty, bounded (a host that genuinely serves no compilable
+      // catalog must not poll forever), and stop the moment something is offered.
+      var emptyPolls = 0;
+      var MAX_EMPTY_POLLS = 12;
+      var POLL_MS = 2500;
       function refreshCatalogs() {
         fetch("/api/1/compiler/catalogs" + suffix, { headers: { "Accept": "application/json" } })
           .then(function (r) { return r.ok ? r.json() : null; })
@@ -2527,10 +2553,18 @@ object ServeWeb {
             var empty = document.getElementById("pg-empty");
             if (empty) empty.hidden = catalogs.length > 0;
             syncModes();
+            if (!catalogs.length && ++emptyPolls < MAX_EMPTY_POLLS) {
+              window.setTimeout(refreshCatalogs, POLL_MS);
+            }
           })
           .catch(function () { /* the baked-in list still stands */ });
       }
-      if (catalog) catalog.addEventListener("change", syncModes);
+      if (catalog) {
+        catalog.addEventListener("change", syncModes);
+        // Opening the dropdown is the one moment a stale list actually costs the visitor something,
+        // and it's a cheap place to catch catalogs that finished loading after the poll gave up.
+        catalog.addEventListener("focus", refreshCatalogs);
+      }
       syncModes();
       // Unconditional, not just when there is a selector: a page opened before the host's own pinned
       // bundle finished resolving renders with no modes at all, and the refresh is what recovers it

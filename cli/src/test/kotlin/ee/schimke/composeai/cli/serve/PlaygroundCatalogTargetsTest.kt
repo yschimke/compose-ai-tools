@@ -169,6 +169,50 @@ class PlaygroundCatalogTargetsTest {
   }
 
   @Test
+  fun `a retry of a previously failed catalog still respects a spent budget`() {
+    // The supplier of a catalog whose FIRST resolve failed stays in the map, unresolved. If the cap
+    // asked "have we seen this system before" rather than "is the budget spent", that retry would
+    // sail past a full budget and resolve an N+1st catalog — a transient Maven miss would be all it
+    // took to break the bound a public host relies on.
+    var brokenResolvable = false
+    val log = mutableListOf<String>()
+    val t =
+      targets(
+        available = listOf("flaky" to "desktop", "a" to "desktop", "b" to "desktop"),
+        limit = 2,
+        suppliers = { system ->
+          // Reads the flag at RESOLVE time, not at construction, so the retry below genuinely could
+          // succeed — otherwise the test would pass with the cap removed.
+          if (system == "flaky")
+            PlaygroundClasspathSupplier(
+              source = PlaygroundBundleSource.ServedCatalog(system),
+              locateServedBundle = {
+                java.io.File(bundles, "$it.png").apply { writeText("bundle") }
+              },
+              resolve = { if (brokenResolvable) classpath(system) else null },
+              onLog = {},
+            )
+          else supplier(system)
+        },
+        log = log,
+      )
+
+    // First attempt fails and leaves an unresolved supplier behind.
+    assertNull(t.classpath("flaky", PlaygroundMode.CMP))
+    assertEquals(0, t.resolvedCount())
+    // Two other catalogs then spend the whole budget.
+    assertNotNull(t.classpath("a", PlaygroundMode.CMP))
+    assertNotNull(t.classpath("b", PlaygroundMode.CMP))
+    assertEquals(2, t.resolvedCount())
+
+    // …and now the retry would succeed on its own terms. It must still be refused.
+    brokenResolvable = true
+    assertNull(t.classpath("flaky", PlaygroundMode.CMP))
+    assertEquals(2, t.resolvedCount())
+    assertTrue(log.any { "budget spent" in it }, "expected a budget refusal: $log")
+  }
+
+  @Test
   fun `catalogs are offered in a stable order`() {
     val t =
       targets(

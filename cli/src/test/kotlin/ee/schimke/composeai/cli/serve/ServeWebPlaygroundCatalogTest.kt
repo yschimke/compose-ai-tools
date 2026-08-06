@@ -16,8 +16,13 @@ import kotlin.test.assertTrue
  */
 class ServeWebPlaygroundCatalogTest {
 
-  private fun page(catalogs: List<PlaygroundCatalogInfo>) =
-    ServeWeb.playgroundPage(token = "t", isPublic = false, catalogs = catalogs)
+  private fun page(catalogs: List<PlaygroundCatalogInfo>, catalogSelectorEnabled: Boolean = false) =
+    ServeWeb.playgroundPage(
+      token = "t",
+      isPublic = false,
+      catalogs = catalogs,
+      catalogSelectorEnabled = catalogSelectorEnabled,
+    )
 
   private val pinnedDefault =
     PlaygroundCatalogInfo(
@@ -100,6 +105,36 @@ class ServeWebPlaygroundCatalogTest {
     assertTrue(html.contains("""id="pg-empty""""))
     assertTrue(html.contains("fetched in the background"))
     assertTrue(html.contains("<strong>trusted</strong>"))
+  }
+
+  @Test
+  fun `a selector host renders the control even while only the pin has loaded`() {
+    // `--playground` plus a pinned LOCAL bundle: during the startup window the pin is the only
+    // entry
+    // this host can offer, because no served catalog has loaded yet. Deciding on the count alone
+    // would omit the control from this page — and the script can only repopulate a control that
+    // exists, so the visitor would stay pinned until they reloaded by hand.
+    val html = page(listOf(pinnedDefault), catalogSelectorEnabled = true)
+    assertTrue(
+      html.contains("""id="pg-catalog""""),
+      "the control tracks the host's configuration, not how many entries happen to have loaded",
+    )
+    // …and the same list WITHOUT the selector configured still renders the old bar.
+    assertFalse(page(listOf(pinnedDefault)).contains("""id="pg-catalog""""))
+  }
+
+  @Test
+  fun `the catalog list is re-asked until it stops coming back empty`() {
+    // One fetch on load is not enough on a host with nothing pinned: the editor routinely loads
+    // before the initial catalog loader has published anything, so the single reply is empty too
+    // and nothing would ever ask again — a permanently disabled Run on a host that came up fine.
+    val html = page(emptyList(), catalogSelectorEnabled = true)
+    assertTrue(html.contains("setTimeout(refreshCatalogs"), "an empty answer schedules another ask")
+    assertTrue(html.contains("MAX_EMPTY_POLLS"), "…and the polling is bounded, not forever")
+    assertTrue(
+      html.contains("""catalog.addEventListener("focus", refreshCatalogs)"""),
+      "opening the dropdown re-asks, for catalogs that landed after the poll gave up",
+    )
   }
 
   @Test

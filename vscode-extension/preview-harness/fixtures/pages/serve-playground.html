@@ -117,8 +117,17 @@ fun Greeting() {
     run.disabled = offered.length === 0;
   }
   // Catalogs are fetched in the BACKGROUND after the server starts, so a page opened during
-  // startup legitimately renders a short (or empty) list. Re-ask once on load rather than
-  // making the visitor guess that a reload would help.
+  // startup legitimately renders a short (or empty) list. Re-ask rather than making the visitor
+  // guess that a reload would help.
+  //
+  // ONE fetch is not enough: on a host with nothing pinned the editor commonly loads before the
+  // initial catalog loader has published anything, so the single reply is empty too and nothing
+  // would ever ask again — a permanently disabled Run on a host that came up fine seconds later.
+  // So poll while the answer is still empty, bounded (a host that genuinely serves no compilable
+  // catalog must not poll forever), and stop the moment something is offered.
+  var emptyPolls = 0;
+  var MAX_EMPTY_POLLS = 12;
+  var POLL_MS = 2500;
   function refreshCatalogs() {
     fetch("/api/1/compiler/catalogs" + suffix, { headers: { "Accept": "application/json" } })
       .then(function (r) { return r.ok ? r.json() : null; })
@@ -150,10 +159,18 @@ fun Greeting() {
         var empty = document.getElementById("pg-empty");
         if (empty) empty.hidden = catalogs.length > 0;
         syncModes();
+        if (!catalogs.length && ++emptyPolls < MAX_EMPTY_POLLS) {
+          window.setTimeout(refreshCatalogs, POLL_MS);
+        }
       })
       .catch(function () { /* the baked-in list still stands */ });
   }
-  if (catalog) catalog.addEventListener("change", syncModes);
+  if (catalog) {
+    catalog.addEventListener("change", syncModes);
+    // Opening the dropdown is the one moment a stale list actually costs the visitor something,
+    // and it's a cheap place to catch catalogs that finished loading after the poll gave up.
+    catalog.addEventListener("focus", refreshCatalogs);
+  }
   syncModes();
   // Unconditional, not just when there is a selector: a page opened before the host's own pinned
   // bundle finished resolving renders with no modes at all, and the refresh is what recovers it

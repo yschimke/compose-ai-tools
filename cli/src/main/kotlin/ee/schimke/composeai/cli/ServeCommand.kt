@@ -1390,7 +1390,9 @@ class ServeCommand(args: List<String>) : Command(args) {
                 androidSupplier?.classpath()?.takeIf { rcCapture != null }
             }
         },
-        catalogTargets = { catalogTargets?.targets().orEmpty() },
+        // Null, not an empty lambda, when the selector is off — the editor tells "no selector here"
+        // from "selector configured, nothing loaded yet" by exactly this.
+        catalogTargets = catalogTargets?.let { targets -> { targets.targets() } },
         compiler = compiler,
         discoverer = PlaygroundPreviewDiscoverer(),
         tokenStore = tokenStore,
