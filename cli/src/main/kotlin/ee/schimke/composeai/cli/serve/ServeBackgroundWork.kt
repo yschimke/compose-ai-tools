@@ -31,10 +31,10 @@ import java.util.concurrent.atomic.AtomicLong
  */
 class ServeBackgroundWork(
   /**
-   * Background renders admitted at once, server-wide. See [DEFAULT_MAX_CONCURRENT_RENDERS] for why
-   * this is no longer 1.
+   * Background renders admitted at once, server-wide. Defaults to the conservative single lane; a
+   * server that knows its seat budget passes [renderLaneFor] instead.
    */
-  maxConcurrentRenders: Int = DEFAULT_MAX_CONCURRENT_RENDERS,
+  maxConcurrentRenders: Int = CONSERVATIVE_MAX_CONCURRENT_RENDERS,
   private val clock: () -> Long = System::currentTimeMillis,
 ) {
   private val loadsInFlight = AtomicInteger()
@@ -118,30 +118,54 @@ class ServeBackgroundWork(
 
   companion object {
     /**
-     * Background renders admitted at once, server-wide.
+     * The historical lane: one background render server-wide. Still the right answer when nothing
+     * else bounds daemon count — see [renderLaneFor].
+     */
+    const val CONSERVATIVE_MAX_CONCURRENT_RENDERS: Int = 1
+
+    /** Widest lane [renderLaneFor] will derive on its own. Beyond this, ask for it explicitly. */
+    const val MAX_DERIVED_CONCURRENT_RENDERS: Int = 3
+
+    /**
+     * How many background renders this server admits at once, given its live-seat budget.
      *
-     * **This was 1, and one permit for every catalog on the box was the prefetcher's dominant
+     * **The lane was 1, and one permit shared by every catalog was the prefetcher's dominant
      * bottleneck.** Measured on the deployed server (0.19.41, 15 catalogs, no visitors) once the
-     * gate/permit split made it visible: **74.3%** of the optimizer's active time was spent waiting
-     * for this permit, against 10.1% at the idle gate and **6.3%** actually rendering. Fifteen
-     * optimizers queueing on one permit, and every batch collapsing to a single daemon as a result.
+     * gate/permit split made it visible: **74.3%** of the optimizer's active time spent waiting for
+     * this permit, against 10.1% at the idle gate and **6.3%** actually rendering. Every batch
+     * collapsed to a single daemon as a result.
      *
      * The 1 was chosen so "a foreground render is never queued behind more than one background
-     * one". That guarantee is worth less than it sounds and cost more than it saved: a background
-     * batch holds this permit only for its renders — the expensive part, a cold daemon warm of
-     * 34-68s, is awaited *outside* it — and a warm background render is sub-second, so the
-     * foreground now queues behind at most a few seconds instead of one.
+     * one". That is cheaper to relax than it sounds: a background batch holds the permit only for
+     * its renders — the expensive part, a cold daemon warm of 34-68s, is awaited *outside* it — and
+     * a warm background render is sub-second.
      *
-     * Sized to what the box can actually run concurrently rather than to a round number: the live
-     * seat budget is 8 with Android weight 2, and prefetch replicas are charged to the background
-     * remainder (leaving [LiveSeatLimiter.STREAM_RESERVE] for a visitor), so at most three heavy
-     * daemons can be rendering at once anyway. A larger cap would only queue inside the seat budget
-     * instead of here, moving the wait rather than removing it.
+     * **But widening it is only safe because something else bounds daemon count.** Each admitted
+     * catalog submits up to five parallel renders and each one the pool can't serve opens another
+     * daemon, so a lane of 3 is a licence for up to fifteen concurrent daemons. On the deployed box
+     * the seat budget refuses that long before memory does; with [LiveSeatLimiter.unbounded] seats
+     * — the CLI default, `--live-seats 0`, for a local dev box — **nothing does**, and the same
+     * widening that helps a public server would spawn fifteen JVMs on a laptop. So an unbounded
+     * budget keeps [CONSERVATIVE_MAX_CONCURRENT_RENDERS]; only a bounded one derives a wider lane,
+     * from the daemons it could actually afford to run concurrently.
      *
-     * `-Dcomposeai.serve.backgroundRenders=<n>` overrides it; a box with a different seat budget is
-     * the case that wants a different number.
+     * `-Dcomposeai.serve.backgroundRenders=<n>` overrides both, for a deployment that knows better
+     * than either rule.
      */
-    val DEFAULT_MAX_CONCURRENT_RENDERS: Int =
-      System.getProperty("composeai.serve.backgroundRenders")?.toIntOrNull()?.coerceAtLeast(1) ?: 3
+    fun renderLaneFor(seats: LiveSeatLimiter?): Int {
+      System.getProperty("composeai.serve.backgroundRenders")?.toIntOrNull()?.let {
+        return it.coerceAtLeast(1)
+      }
+      if (seats == null || seats.unbounded) return CONSERVATIVE_MAX_CONCURRENT_RENDERS
+      // What the budget can hold beyond the stream reserve, at the heaviest backend's weight —
+      // the same arithmetic the pool does when it decides whether it can afford a replica.
+      val affordable =
+        (seats.totalPermits - LiveSeatLimiter.STREAM_RESERVE) /
+          ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT
+      return affordable.coerceIn(
+        CONSERVATIVE_MAX_CONCURRENT_RENDERS,
+        MAX_DERIVED_CONCURRENT_RENDERS,
+      )
+    }
   }
 }

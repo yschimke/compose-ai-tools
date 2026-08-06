@@ -121,11 +121,29 @@ class ServeBackgroundWorkTest {
     }
   }
 
+  /**
+   * Codex review on #3399. Widening the lane is only safe because the seat budget refuses the
+   * daemons it licenses: a lane of 3, each catalog submitting up to five parallel renders, is up to
+   * fifteen concurrent daemons. On `--live-seats 0` — the CLI default for a local box — nothing
+   * refuses them, so the widening that helps a public server would spawn fifteen JVMs on a laptop.
+   */
   @Test
-  fun `the default admits more than one, since one permit per box starved the prefetcher`() {
-    assertTrue(
-      ServeBackgroundWork.DEFAULT_MAX_CONCURRENT_RENDERS > 1,
-      "15 catalogs queueing on a single permit was 74.3% of the optimizer's active time",
+  fun `the render lane widens only where a seat budget can refuse the daemons it licenses`() {
+    assertEquals(
+      1,
+      ServeBackgroundWork.renderLaneFor(LiveSeatLimiter(totalPermits = 0)),
+      "an unbounded budget bounds nothing, so the lane must stay conservative",
+    )
+    assertEquals(1, ServeBackgroundWork.renderLaneFor(null), "no budget at all is the same case")
+
+    // The deployed box: 8 permits, Android weight 2, stream reserve held back.
+    assertEquals(3, ServeBackgroundWork.renderLaneFor(LiveSeatLimiter(totalPermits = 8)))
+    // A budget that can only afford one heavy daemon beyond the reserve gets one lane, not three.
+    assertEquals(1, ServeBackgroundWork.renderLaneFor(LiveSeatLimiter(totalPermits = 4)))
+    // And the derivation is capped rather than growing without limit on a large box.
+    assertEquals(
+      ServeBackgroundWork.MAX_DERIVED_CONCURRENT_RENDERS,
+      ServeBackgroundWork.renderLaneFor(LiveSeatLimiter(totalPermits = 64)),
     )
   }
 
