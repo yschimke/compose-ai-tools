@@ -3,7 +3,9 @@ package ee.schimke.composeai.cli.serve
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CatalogThemeCacheTest {
   @Test
@@ -84,6 +86,65 @@ class CatalogThemeCacheTest {
     cache.markFailed("really-broken", "NotFoundException: ic_play.xml")
     assertEquals("NotFoundException: ic_play.xml", cache.failureReason("really-broken"))
     assertNull(cache.failureReason("never-seen"))
+  }
+
+  /**
+   * `Busy` means "ask again", and for a warming daemon that is right — but with no ceiling it is
+   * indistinguishable from "never". meshcore-mobile sat at `paused 288/372, failed: 0` across two
+   * server lifetimes on exactly that: 84 targets that answered `Busy`, were left unmarked, and so
+   * were never counted, never reported, and never given up on.
+   */
+  @Test
+  fun `a long run of background Busy latches with a readable reason`() {
+    val cache = CatalogThemeCache()
+
+    repeat(CatalogThemeCache.BUSY_LATCH - 1) {
+      assertEquals(false, cache.recordBackgroundBusy("k"), "a contended key must survive a run")
+      assertNull(cache.failureReason("k"))
+    }
+
+    assertEquals(true, cache.recordBackgroundBusy("k"))
+    val reason = cache.failureReason("k")
+    assertNotNull(reason, "a latched key must answer the request lane terminally")
+    assertTrue(reason.contains("busy or absent"), "the reason names the condition: $reason")
+  }
+
+  @Test
+  fun `Busy tolerance is far looser than the render-failure latch`() {
+    // Otherwise a daemon that is merely slow to warm would be reported as permanently broken.
+    assertTrue(CatalogThemeCache.BUSY_LATCH > CatalogThemeCache.FAILURE_LATCH)
+    val cache = CatalogThemeCache()
+    repeat(CatalogThemeCache.FAILURE_LATCH) { cache.recordBackgroundBusy("k") }
+    assertNull(cache.failureReason("k"), "a Busy run as long as FAILURE_LATCH is not yet terminal")
+  }
+
+  @Test
+  fun `a successful render clears the Busy run`() {
+    val cache = CatalogThemeCache()
+    repeat(CatalogThemeCache.BUSY_LATCH) { cache.recordBackgroundBusy("k") }
+    assertNotNull(cache.failureReason("k"))
+
+    cache.put("k", byteArrayOf(1, 2, 3))
+
+    assertNull(cache.failureReason("k"), "a key that eventually rendered is never penalised")
+    assertEquals(false, cache.recordBackgroundBusy("k"), "and the run restarts from zero")
+  }
+
+  @Test
+  fun `a latched Busy key is reported in the failed count and ends the pass degraded`() {
+    // The point of latching: /status names the stuck previews instead of showing `failed: 0`
+    // beside a `remaining` that never moves, and the state stops reading like ordinary throttling.
+    val cache = CatalogThemeCache()
+    cache.configureTargets(listOf("stuck", "fine"))
+    cache.put("fine", byteArrayOf(1))
+    repeat(CatalogThemeCache.BUSY_LATCH) { cache.recordBackgroundBusy("stuck") }
+
+    cache.markPassFinished(1_000)
+
+    val snapshot = cache.snapshot()
+    assertEquals(1, snapshot.failed)
+    assertEquals(1, snapshot.remaining)
+    assertEquals("degraded", snapshot.state)
   }
 
   /** A reason recorded before the latch closes must not make the key terminal on its own. */
