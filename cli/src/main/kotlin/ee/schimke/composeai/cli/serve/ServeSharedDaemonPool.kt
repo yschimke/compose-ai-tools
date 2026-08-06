@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import java.util.concurrent.Semaphore
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -44,11 +45,33 @@ class ServeSharedDaemonPool(
   // Wall-clock of the last render each replica finished, for [reapIdle]. The primary isn't tracked:
   // it belongs to the catalog host and this pool never closes it.
   private val replicaLastUsed = mutableMapOf<ServeHost, Long>()
+  // Concurrent borrows in flight, and the high-water mark since it was last taken. A borrowed host
+  // is out of `available`, so concurrent borrows IS the number of daemons rendering at once — which
+  // is what a caller means by "how wide did that batch actually run", and is not the same as how
+  // many jobs it submitted. See [takePeakInFlight].
+  private val inFlight = AtomicInteger(0)
+  private val peakInFlight = AtomicInteger(0)
   private var closed = false
 
   init {
     require(capacity >= 1) { "capacity must be >= 1, got $capacity" }
   }
+
+  /**
+   * Peak concurrent borrows since the last call, resetting the high-water mark.
+   *
+   * The measurement a batch needs: it submits N jobs, but when the seat budget affords no replica
+   * the pool queues them onto a host already in circulation rather than spawning one. N jobs can
+   * therefore be N threads taking turns on one daemon — indistinguishable from a genuinely N-wide
+   * batch if you count jobs. Read-and-reset rather than a plain gauge because the caller wants the
+   * peak *within its batch*, and sampling the instantaneous value almost never catches it.
+   *
+   * Pool-wide, not per-caller: a foreground leased render borrowing at the same time counts too. In
+   * the optimizer's case that is rare (it runs on an idle box, by construction) and errs toward
+   * reporting the batch as wider than it was — so a NARROW reading is trustworthy, which is the
+   * direction that matters here.
+   */
+  fun takePeakInFlight(): Int = peakInFlight.getAndSet(inFlight.get())
 
   fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     permits.acquire()
@@ -58,9 +81,11 @@ class ServeSharedDaemonPool(
         check(!closed) { "shared daemon pool is closed" }
         available.removeFirstOrNull() ?: openSeatedReplica()
       }
+      peakInFlight.accumulateAndGet(inFlight.incrementAndGet(), ::maxOf)
       return borrowed.render(previewId, overrides)
     } finally {
       borrowed?.let { host ->
+        inFlight.decrementAndGet()
         lock.withLock {
           if (!closed) {
             available.addLast(host)

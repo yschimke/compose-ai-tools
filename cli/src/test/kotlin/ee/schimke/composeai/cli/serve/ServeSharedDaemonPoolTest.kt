@@ -112,6 +112,70 @@ class ServeSharedDaemonPoolTest {
     assertEquals(false, primary.closed, "the composite owns the primary daemon")
   }
 
+  /**
+   * The optimizer reports its batch width from this number, and the whole point is that submitting
+   * five jobs does not mean five daemons ran. When the seat budget affords no replica the pool
+   * queues the jobs onto a host already in circulation — five threads taking turns on one daemon,
+   * which a count of jobs submitted would report as five wide. Reading the deployed box's
+   * `maxBatchWidth: 5` as "batching works" was exactly that mistake.
+   */
+  @Test
+  fun `peak in-flight counts daemons that rendered at once, not jobs submitted`() {
+    // Budget fully spent, so every job must share the primary — see the affordability test below.
+    val seats = LiveSeatLimiter(totalPermits = 1)
+    val held = requireNotNull(seats.acquire(1))
+    val opened = AtomicInteger()
+    val primary = InstantHost("primary")
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 5, liveSeats = seats) {
+        opened.incrementAndGet()
+        InstantHost("replica")
+      }
+    val executor = Executors.newFixedThreadPool(5)
+    try {
+      assertEquals(0, pool.takePeakInFlight(), "nothing borrowed yet")
+
+      (1..5)
+        .map { executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) } }
+        .forEach { assertTrue(it.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok) }
+
+      assertEquals(0, opened.get(), "precondition: the budget afforded no replica")
+      // Five jobs, one daemon. The old job-count reading would have said 5.
+      assertEquals(1, pool.takePeakInFlight(), "five jobs served by one daemon is width 1")
+      assertEquals(0, pool.takePeakInFlight(), "and the mark resets, so the next batch is its own")
+    } finally {
+      executor.shutdownNow()
+      pool.close()
+      held.close()
+    }
+  }
+
+  /** The other direction: when replicas ARE affordable, the peak sees them. */
+  @Test
+  fun `peak in-flight rises with genuinely concurrent renders`() {
+    val entered = CountDownLatch(3)
+    val release = CountDownLatch(1)
+    val primary = BlockingHost("primary", entered, release)
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 3) {
+        BlockingHost("replica", entered, release)
+      }
+    val executor = Executors.newFixedThreadPool(3)
+    try {
+      val results =
+        (1..3).map { executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) } }
+      assertTrue(entered.await(5, TimeUnit.SECONDS), "all three should be rendering at once")
+
+      release.countDown()
+      results.forEach { assertTrue(it.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok) }
+      assertEquals(3, pool.takePeakInFlight(), "three daemons really did render concurrently")
+    } finally {
+      release.countDown()
+      executor.shutdownNow()
+      pool.close()
+    }
+  }
+
   /** A trivially-completing host, for the tests that don't need to hold a render open. */
   private class InstantHost(private val name: String) : ServeHost {
     override val previews: List<ServePreview> = emptyList()

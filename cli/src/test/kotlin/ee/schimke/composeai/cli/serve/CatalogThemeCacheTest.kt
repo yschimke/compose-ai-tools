@@ -169,7 +169,8 @@ class CatalogThemeCacheTest {
     cache.recordTurnGranted()
     cache.recordGateWait(20_000) // the gate withheld the turn
     cache.recordPermitWait(10_000) // then it queued behind other catalogs for a permit
-    cache.recordBatch(width = 5, millis = 30_000)
+    cache.recordBatch(width = 5, millis = 24_000)
+    cache.recordWarm(6_000) // a cold daemon, paid once and producing nothing
     cache.recordProduced(5)
     cache.recordTurnYielded()
     repeat(5) { cache.put("k${it + 1}", byteArrayOf(1)) }
@@ -179,16 +180,18 @@ class CatalogThemeCacheTest {
     // 5 entries over 60s of ACTIVE time = 5/min; 5 remaining at that rate = 60s.
     assertEquals(5.0, s.entriesPerMinute)
     assertEquals(60L, s.etaSeconds)
-    // The split is the diagnostic: half the time rendering, half waiting — and the waiting half is
-    // itself split, because "the gate withheld my turn" and "I had my turn and lost the permit
-    // race" have opposite fixes and are indistinguishable in the total.
+    // The split is the diagnostic: half the time rendering, half waiting — and BOTH halves split
+    // again, because within each pair the two causes have opposite fixes and the sum cannot tell
+    // them apart. Cold-start cost vs per-entry render cost; gate withholding vs permit contention.
     assertEquals(30_000L, s.renderMillis)
+    assertEquals(24_000L, s.batchMillis)
+    assertEquals(6_000L, s.warmMillis)
     assertEquals(30_000L, s.waitingMillis)
     assertEquals(20_000L, s.gateWaitMillis)
     assertEquals(10_000L, s.permitWaitMillis)
     assertEquals(1, s.turnsGranted)
     assertEquals(1, s.turnsYielded)
-    // Width is what actually ran, so a batch collapsing to 1 is visible rather than assumed.
+    // Width is daemons that ran concurrently, so a batch collapsing onto one host is visible.
     assertEquals(5, s.lastBatchWidth)
     assertEquals(5, s.maxBatchWidth)
   }
@@ -222,6 +225,36 @@ class CatalogThemeCacheTest {
     assertEquals(0L, gateStarved.permitWaitMillis)
     assertEquals(0L, permitStarved.gateWaitMillis)
     assertEquals(90_000L, permitStarved.permitWaitMillis)
+  }
+
+  /**
+   * The companion to the wait split. Measured on the deployed box, catalogs reported 88–201s of
+   * `renderMillis` against a known warm p50 of 238–1111ms — which reads as a slow renderer until
+   * you notice a cold Android warm is 34–68s and each pass had only 3–4 turns. Back the warm out
+   * and the per-entry cost is sub-second. "Buy a faster renderer" and "stop paying for cold starts"
+   * are not the same project, and the total cannot tell you which one you have.
+   */
+  @Test
+  fun `a cold-start-dominated pass and a render-dominated pass are distinguishable`() {
+    fun snapshotOf(batch: Long, warm: Long) =
+      CatalogThemeCache()
+        .apply {
+          configureTargets(listOf("a"))
+          recordBatch(width = 5, millis = batch)
+          recordWarm(warm)
+        }
+        .snapshot()
+
+    val coldStarts = snapshotOf(batch = 10_000, warm = 110_000)
+    val slowRenders = snapshotOf(batch = 110_000, warm = 10_000)
+
+    // Identical on the old instrumentation …
+    assertEquals(coldStarts.renderMillis, slowRenders.renderMillis)
+    // … and opposite on the new.
+    assertEquals(110_000L, coldStarts.warmMillis)
+    assertEquals(10_000L, coldStarts.batchMillis)
+    assertEquals(10_000L, slowRenders.warmMillis)
+    assertEquals(110_000L, slowRenders.batchMillis)
   }
 
   @Test
