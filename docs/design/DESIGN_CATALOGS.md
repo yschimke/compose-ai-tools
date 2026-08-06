@@ -273,6 +273,60 @@ Feed the result through `@design-parity/catalog-export` to produce the importabl
 bundle, and commit it to the system's `design-artifacts/<system>` delivery
 branch.
 
+## Two lanes: what a click does
+
+Every catalog sticker is rendered on **two** surfaces, and they want opposite
+things from a pointer:
+
+| Lane | Signal | A click must |
+|---|---|---|
+| Baked snapshot / one-shot `/render` / the published sticker sheet | `LocalInspectionMode = true` | do **nothing** — a published PNG can't depend on whether something tapped it |
+| Held Live Compose session, and the in-browser wasm tier for `compose-m3` | `LocalInspectionMode = false` | visibly change the component |
+
+The split is a single `interactive` flag derived from that signal
+(`interactive = !LocalInspectionMode.current`), never a hard-coded constant —
+one sticker body serves both lanes. `:samples:design-catalog-m3-shared`'s
+`CatalogComponent(id, interactive)` takes it as a parameter (the wasm app passes
+`true` directly); the Wear sheet reads it through `catalogInteractive()` in
+`CatalogInteractive.kt`.
+
+**No sticker may ship a dead handler.** Components that carry state — switch,
+checkbox, radio, filter chip, slider, segmented button, text fields, Wear's
+`SwitchButton` / `CheckboxButton` — own it and mutate it on the interactive
+lane.
+
+Everything else takes the **click tally** as its default: `counted` /
+`wearCounted` / `countedRemote` append `(n)` to the label, `Filled` →
+`Filled (1)`. At `n == 0` the tally returns the bare label and a no-op handler,
+so the baked capture is byte-identical either way. Prefer it over a bespoke
+affordance — it reads the same across all three sheets, and it composes over a
+label that is itself bound (remote-m3's named-value button counts on top of its
+override rather than replacing it).
+
+Three kinds of exception, all deliberate:
+
+- **Disabled** stickers stay inert — unresponsiveness is the state they document.
+- Wear's `Layout/List` skeleton has empty slots by design, so there is nowhere
+  to put a count.
+- The **icon buttons** carry no label at all. They read as a favourite toggle
+  instead: Wear tints the glyph, remote-m3 tweens the container colour.
+
+`remote-m3` gets there differently, because a `RemoteDocument` is replayed by a
+player rather than recomposed. `hostAction(...)` — what every button on that
+sheet used to carry — posts a payload *out* of the document and changes nothing
+inside it, so the player had nothing to repaint. `countedRemote` instead pairs a
+`rememberMutableRemoteInt` with a `valueChange` action and a label expression
+conditional on that counter, so the click is resolved **inside** the document,
+with no host round-trip. `hostAction` remains the right tool when a component
+genuinely means "tell the host" rather than "change me", and stays in the file
+documented as such — but nothing in the catalog uses it any more.
+
+Guarded by `CatalogInteractivityTest` in the shared M3 module (desktop
+`runComposeUiTest`) and the Wear module (Robolectric + `createComposeRule`),
+each asserting **both** lanes, plus `InteractiveActionCaptureTest` on the remote
+sheet, which reads the encoded `.rc` sidecar because the counter branch is
+invisible in a static raster by construction.
+
 ## Wireframes
 
 Each component ships an **editable SVG wireframe** (`wireframes/<slug>.svg`,

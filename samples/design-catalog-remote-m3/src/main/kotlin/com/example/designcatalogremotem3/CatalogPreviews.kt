@@ -2,7 +2,9 @@
 
 package com.example.designcatalogremotem3
 
+import androidx.compose.remote.creation.compose.action.Action
 import androidx.compose.remote.creation.compose.action.hostAction
+import androidx.compose.remote.creation.compose.action.valueChange
 import androidx.compose.remote.creation.compose.layout.RemoteAlignment
 import androidx.compose.remote.creation.compose.layout.RemoteArrangement
 import androidx.compose.remote.creation.compose.layout.RemoteBox
@@ -20,8 +22,15 @@ import androidx.compose.remote.creation.compose.shaders.solidColor
 import androidx.compose.remote.creation.compose.shapes.RemoteCircleShape
 import androidx.compose.remote.creation.compose.shapes.RemoteRoundedCornerShape
 import androidx.compose.remote.creation.compose.state.RemoteColor
+import androidx.compose.remote.creation.compose.state.RemoteFloat
+import androidx.compose.remote.creation.compose.state.RemoteString
 import androidx.compose.remote.creation.compose.state.rb
 import androidx.compose.remote.creation.compose.state.rdp
+import androidx.compose.remote.creation.compose.state.rememberMutableRemoteFloat
+import androidx.compose.remote.creation.compose.state.rememberMutableRemoteInt
+import androidx.compose.remote.creation.compose.state.ri
+import androidx.compose.remote.creation.compose.state.selectIfGt
+import androidx.compose.remote.creation.compose.state.tween
 import ee.schimke.composeai.daemon.rememberOverridableRemoteColor
 import ee.schimke.composeai.daemon.rememberOverridableRemoteDp
 import ee.schimke.composeai.daemon.rememberOverridableRemoteFloat
@@ -47,6 +56,7 @@ import androidx.wear.compose.remote.material3.RemoteCircularProgressIndicator
 import androidx.wear.compose.remote.material3.RemoteCompactButton
 import androidx.wear.compose.remote.material3.RemoteIcon
 import androidx.wear.compose.remote.material3.RemoteIconButton
+import androidx.wear.compose.remote.material3.RemoteIconButtonDefaults
 import androidx.wear.compose.remote.material3.RemoteMaterialTheme
 import androidx.wear.compose.remote.material3.RemoteOutlinedCard
 import androidx.wear.compose.remote.material3.RemoteText
@@ -73,10 +83,57 @@ import androidx.wear.compose.remote.material3.buttonSizeModifier
 // sticker is the one Remote-only extra with no Wear M3 peer.
 // ---------------------------------------------------------------------------
 
-// A shared action used by every sample button — `hostAction(...)` is the Remote
-// Compose equivalent of `onClick = { ... }`. The two arguments are a remote string
-// payload and a remote-float handler id.
-private val testAction = hostAction("catalogAction".rs, 1.rf)
+// `hostAction(...)` — the Remote Compose way to signal the *host*: it posts a payload out of the
+// document and leaves the rendered document untouched. It used to be the `onClick` of every button
+// on this sheet, which is exactly why a click in the preview player never did anything visible —
+// nothing in the document changed, so there was nothing to repaint. Every clickable sticker now
+// uses [countedRemote] / [toggledRemote], which mutate document state so the player resolves the
+// click itself. Kept here, unused by the catalog, as the documented counterpart: reach for it when
+// a component genuinely means "tell the host", not "change me".
+@Suppress("unused") private val hostSignalAction = hostAction("catalogAction".rs, 1.rf)
+
+/**
+ * A click counter that lives **inside the RemoteDocument** — Remote Compose's answer to
+ * `remember { mutableStateOf(0) }`.
+ *
+ * Returns the label to draw and the [Action] to hand a component's `onClick`. The action is a
+ * [valueChange] that writes `clicks + 1` back into a [rememberMutableRemoteInt], so the player
+ * re-evaluates the label expression and repaints on its own — no host round-trip, which is exactly
+ * what `hostAction` could not do.
+ *
+ * The label is a document-level conditional: `clicks > 0` picks `"<base> (n)"`, otherwise plain
+ * [base]. A freshly-built document has `clicks == 0`, so the **baked catalog capture renders the
+ * bare label it always has** — the counter is only reachable once a player dispatches a real touch.
+ */
+@Composable
+private fun countedRemote(base: String): Pair<RemoteString, Action> = countedRemote(base.rs)
+
+/**
+ * [countedRemote] over a label that is itself a remote value — an overridable named string, say —
+ * so a sticker whose label is driven from outside still gets the default click tally rather than a
+ * bespoke affordance. The counter is appended to whatever the binding resolves to, so the override
+ * it demonstrates stays fully visible.
+ */
+@Composable
+private fun countedRemote(base: RemoteString): Pair<RemoteString, Action> {
+  val clicks = rememberMutableRemoteInt(0)
+  val label = selectIfGt(clicks, 0.ri, base + " (" + clicks.toRemoteString() + ")", base)
+  return label to valueChange(clicks, (clicks + 1).createReference())
+}
+
+/**
+ * The fallback for the one sticker with no label at all to count into: the icon button. Returns a
+ * 0→1 [RemoteFloat] and the [Action] that flips it, so the caller can [tween] a colour across it.
+ * Everything else on the sheet takes the default [countedRemote] tally.
+ *
+ * At rest the float is `0f`, and `tween(a, b, 0f)` is `a` — so the baked capture keeps the stock
+ * colours and only a live tap moves it.
+ */
+@Composable
+private fun toggledRemote(): Pair<RemoteFloat, Action> {
+  val on = rememberMutableRemoteFloat(0f)
+  return on to valueChange(on, (1f.rf - on).createReference())
+}
 
 // A simple five-point star used by the icon stickers. Remote Compose has no bundled
 // icon set and `RemoteIcon` takes an `ImageVector`, so the catalog carries one
@@ -115,11 +172,12 @@ private val starIcon: ImageVector =
 @CatalogRemoteModes
 @Composable
 fun FilledRemoteButton() = RemoteSticker {
+  val (label, onClick) = countedRemote("Filled")
   RemoteButton(
-    onClick = testAction,
+    onClick = onClick,
     modifier = RemoteModifier.buttonSizeModifier(),
     enabled = true.rb,
-    content = { RemoteText("Filled".rs) },
+    content = { RemoteText(label) },
   )
 }
 
@@ -138,8 +196,9 @@ fun FilledRemoteButton() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun OutlinedRemoteButton() = RemoteSticker {
+  val (label, onClick) = countedRemote("Outlined")
   RemoteButton(
-    onClick = testAction,
+    onClick = onClick,
     modifier = RemoteModifier.buttonSizeModifier(),
     colors =
       RemoteButtonDefaults.buttonColors(
@@ -148,20 +207,21 @@ fun OutlinedRemoteButton() = RemoteSticker {
       ),
     border = 2.rdp,
     borderColor = RemoteMaterialTheme.colorScheme.outline,
-    content = { RemoteText("Outlined".rs) },
+    content = { RemoteText(label) },
   )
 }
 
 @CatalogRemoteModes
 @Composable
 fun CustomShapeRemoteButton() = RemoteSticker {
+  // Same label as its `Button/Filled` parallel — only the corner shape differs, so the
+  // cross-system comparison isolates that one attribute.
+  val (label, onClick) = countedRemote("Filled")
   RemoteButton(
-    onClick = testAction,
+    onClick = onClick,
     modifier = RemoteModifier.buttonSizeModifier(),
     shape = RemoteRoundedCornerShape(4.rdp),
-    // Same label as its `Button/Filled` parallel — only the corner shape differs, so the
-    // cross-system comparison isolates that one attribute.
-    content = { RemoteText("Filled".rs) },
+    content = { RemoteText(label) },
   )
 }
 
@@ -175,9 +235,12 @@ fun CustomShapeRemoteButton() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun NamedLabelRemoteButton() = RemoteSticker {
-  val label = rememberOverridableRemoteString("label", "Filled")
+  // The counter composes over the override rather than replacing it: `countedRemote` takes the
+  // bound `RemoteString` itself, so the label still resolves from the named value and only picks up
+  // a `(n)` suffix once tapped. Both the override path and the click stay demonstrable.
+  val (label, onClick) = countedRemote(rememberOverridableRemoteString("label", "Filled"))
   RemoteButton(
-    onClick = testAction,
+    onClick = onClick,
     modifier = RemoteModifier.buttonSizeModifier(),
     content = { RemoteText(label) },
   )
@@ -188,7 +251,8 @@ fun NamedLabelRemoteButton() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun TextRemoteButton() = RemoteSticker {
-  RemoteTextButton(onClick = testAction, content = { RemoteText("Child".rs) })
+  val (label, onClick) = countedRemote("Child")
+  RemoteTextButton(onClick = onClick, content = { RemoteText(label) })
 }
 
 // A round icon button (`RemoteIconButton`) carrying a single `RemoteIcon`. Inside the
@@ -197,7 +261,19 @@ fun TextRemoteButton() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun IconRemoteButton() = RemoteSticker {
-  RemoteIconButton(onClick = testAction, content = { RemoteIcon(starIcon, "Favourite".rs) })
+  // No label to count into, so this one reads as a favourite toggle instead: the container colour
+  // tweens to the theme's primary across the in-document flag. At rest the flag is 0f and
+  // `tween(a, b, 0f)` is `a`, so the baked sticker keeps the stock icon-button colours.
+  val (on, onClick) = toggledRemote()
+  val stock = RemoteIconButtonDefaults.iconButtonColors()
+  RemoteIconButton(
+    onClick = onClick,
+    colors =
+      RemoteIconButtonDefaults.iconButtonColors(
+        containerColor = tween(stock.containerColor, RemoteMaterialTheme.colorScheme.primary, on)
+      ),
+    content = { RemoteIcon(starIcon, "Favourite".rs) },
+  )
 }
 
 // The compact, single-line button (`RemoteCompactButton`) — Wear M3 parallel:
@@ -205,7 +281,8 @@ fun IconRemoteButton() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun CompactRemoteButton() = RemoteSticker {
-  RemoteCompactButton(onClick = testAction, label = { RemoteText("Compact".rs) })
+  val (label, onClick) = countedRemote("Compact")
+  RemoteCompactButton(onClick = onClick, label = { RemoteText(label) })
 }
 
 // A pair of buttons laid out edge-to-edge by `RemoteButtonGroup`, each taking an equal
@@ -213,13 +290,12 @@ fun CompactRemoteButton() = RemoteSticker {
 @CatalogRemoteLarge
 @Composable
 fun ButtonGroupRemote() = RemoteSticker {
+  // Each half counts independently, so a live tap tells you which one it landed on.
+  val (yes, onYes) = countedRemote("Yes")
+  val (no, onNo) = countedRemote("No")
   RemoteButtonGroup {
-    RemoteButton(onClick = testAction, modifier = RemoteModifier.weight(1f.rf)) {
-      RemoteText("Yes".rs)
-    }
-    RemoteButton(onClick = testAction, modifier = RemoteModifier.weight(1f.rf)) {
-      RemoteText("No".rs)
-    }
+    RemoteButton(onClick = onYes, modifier = RemoteModifier.weight(1f.rf)) { RemoteText(yes) }
+    RemoteButton(onClick = onNo, modifier = RemoteModifier.weight(1f.rf)) { RemoteText(no) }
   }
 }
 
@@ -230,7 +306,8 @@ fun ButtonGroupRemote() = RemoteSticker {
 @CatalogRemoteLarge
 @Composable
 fun CardRemote() = RemoteSticker {
-  RemoteCard(onClick = testAction, content = { RemoteText("Card".rs) })
+  val (label, onClick) = countedRemote("Card")
+  RemoteCard(onClick = onClick, content = { RemoteText(label) })
 }
 
 @CatalogRemoteLarge
@@ -240,18 +317,20 @@ fun OutlinedCardRemote() = RemoteSticker {
   // filled `RemoteCard` (whose surface carries a light content colour), the outlined card's
   // transparent container leaves the default content colour invisible on the sticker canvas, so pin
   // the label to the theme's `onSurface` token — the same token the outlined button uses.
+  val (label, onClick) = countedRemote("Card")
   RemoteOutlinedCard(
-    onClick = testAction,
-    content = { RemoteText("Card".rs, color = RemoteMaterialTheme.colorScheme.onSurface) },
+    onClick = onClick,
+    content = { RemoteText(label, color = RemoteMaterialTheme.colorScheme.onSurface) },
   )
 }
 
 @CatalogRemoteLarge
 @Composable
 fun TitleCardRemote() = RemoteSticker {
+  val (title, onClick) = countedRemote("Morning run")
   RemoteTitleCard(
-    onClick = testAction,
-    title = { RemoteText("Morning run".rs) },
+    onClick = onClick,
+    title = { RemoteText(title) },
     subtitle = { RemoteText("5.2 km · 28 min".rs) },
   )
 }
@@ -259,10 +338,11 @@ fun TitleCardRemote() = RemoteSticker {
 @CatalogRemoteLarge
 @Composable
 fun AppCardRemote() = RemoteSticker {
+  val (title, onClick) = countedRemote("Morning run")
   RemoteAppCard(
-    onClick = testAction,
+    onClick = onClick,
     appName = { RemoteText("App".rs) },
-    title = { RemoteText("Morning run".rs) },
+    title = { RemoteText(title) },
     appImage = { RemoteIcon(starIcon, null, modifier = RemoteModifier.size(16.rdp)) },
     content = { RemoteText("5.2 km · 28 min".rs) },
   )
@@ -317,10 +397,11 @@ fun WatchScreenRemote() = RemoteSticker {
         horizontalAlignment = RemoteAlignment.CenterHorizontally,
       ) {
         RemoteText("10:10".rs, style = RemoteMaterialTheme.typography.labelMedium)
-        screenActivities.forEach { (title, subtitle) ->
+        screenActivities.forEach { (rowTitle, subtitle) ->
+          val (title, onClick) = countedRemote(rowTitle)
           RemoteTitleCard(
-            onClick = testAction,
-            title = { RemoteText(title.rs) },
+            onClick = onClick,
+            title = { RemoteText(title) },
             subtitle = { RemoteText(subtitle.rs) },
           )
         }

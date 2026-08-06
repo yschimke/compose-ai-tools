@@ -45,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -94,8 +95,16 @@ import org.jetbrains.compose.resources.stringResource
  * [interactive] is the **only** axis on which the two surfaces diverge:
  * * `false` (the desktop sticker sheet) reproduces the deterministic baked frame the published
  *   catalog has always shown — a static toggle/slider/progress value, so the render is stable.
- * * `true` (the in-browser tier) uses live, stateful widgets so a visitor can actually toggle a
- *   switch, drag a slider, and watch the indeterminate progress animate.
+ * * `true` (the in-browser tier, and the held Live Compose session) uses live, stateful widgets so
+ *   a visitor can actually toggle a switch, drag a slider, type into a text field, and watch the
+ *   indeterminate progress animate.
+ *
+ * **Every component responds to a click on the interactive surfaces.** The ones that carry state —
+ * switch, checkbox, radio, filter chip, slider, segmented button, text fields — own it and mutate
+ * it. The ones that don't (the button family, the FAB, the assist chip) route their click through
+ * [counted], which tallies it into the label, so a click is never a silent no-op. The two
+ * deliberate exceptions are the **disabled** button stickers: staying inert is the state they
+ * document.
  *
  * The pressed/focused button states seed a held interaction on **both** surfaces — the resting
  * state-layer is the design contract for that state, not an animation.
@@ -118,26 +127,46 @@ fun CatalogComponent(id: String, interactive: Boolean) {
     // Buttons — the five M3 emphasis levels, plus disabled. The label of each is an editable
     // `catalogOverrideString("label", …)` knob, so a daemon-backed render can retitle the button
     // from the `compose/overrides` surface; with no seed the author default renders unchanged.
-    "button-filled" ->
-      Button(onClick = {}) {
-        Text(catalogOverrideString("label", stringResource(Res.string.label_filled)))
-      }
-    "button-tonal" ->
-      FilledTonalButton(onClick = {}) {
-        Text(catalogOverrideString("label", stringResource(Res.string.label_tonal)))
-      }
-    "button-outlined" ->
-      OutlinedButton(onClick = {}) {
-        Text(catalogOverrideString("label", stringResource(Res.string.label_outlined)))
-      }
-    "button-elevated" ->
-      ElevatedButton(onClick = {}) {
-        Text(catalogOverrideString("label", stringResource(Res.string.label_elevated)))
-      }
-    "button-text" ->
-      TextButton(onClick = {}) {
-        Text(catalogOverrideString("label", stringResource(Res.string.label_text)))
-      }
+    //
+    // A plain button has no intrinsic state to show, so on the interactive surfaces its click is
+    // made visible by [counted]: the label picks up a click tally. Baked renders are unaffected —
+    // see [counted] for why the static frame is byte-identical.
+    "button-filled" -> {
+      val (label, onClick) =
+        counted(
+          catalogOverrideString("label", stringResource(Res.string.label_filled)),
+          interactive,
+        )
+      Button(onClick = onClick) { Text(label) }
+    }
+    "button-tonal" -> {
+      val (label, onClick) =
+        counted(catalogOverrideString("label", stringResource(Res.string.label_tonal)), interactive)
+      FilledTonalButton(onClick = onClick) { Text(label) }
+    }
+    "button-outlined" -> {
+      val (label, onClick) =
+        counted(
+          catalogOverrideString("label", stringResource(Res.string.label_outlined)),
+          interactive,
+        )
+      OutlinedButton(onClick = onClick) { Text(label) }
+    }
+    "button-elevated" -> {
+      val (label, onClick) =
+        counted(
+          catalogOverrideString("label", stringResource(Res.string.label_elevated)),
+          interactive,
+        )
+      ElevatedButton(onClick = onClick) { Text(label) }
+    }
+    "button-text" -> {
+      val (label, onClick) =
+        counted(catalogOverrideString("label", stringResource(Res.string.label_text)), interactive)
+      TextButton(onClick = onClick) { Text(label) }
+    }
+    // Deliberately NOT counted: a disabled button must stay inert on every surface — that
+    // unresponsiveness is the state this sticker documents.
     "button-filled-disabled" ->
       Button(onClick = {}, enabled = false) {
         Text(catalogOverrideString("label", stringResource(Res.string.label_disabled)))
@@ -154,8 +183,11 @@ fun CatalogComponent(id: String, interactive: Boolean) {
       val on = catalogOverrideBoolean("checked", true)
       if (interactive) StatefulSwitch(on) else Switch(checked = on, onCheckedChange = {})
     }
-    "radiobutton-selected" ->
-      RadioButton(selected = catalogOverrideBoolean("selected", true), onClick = {})
+    "radiobutton-selected" -> {
+      val selected = catalogOverrideBoolean("selected", true)
+      if (interactive) StatefulRadioButton(selected)
+      else RadioButton(selected = selected, onClick = {})
+    }
     "slider" ->
       Box(Modifier.width(220.dp)) {
         val value = catalogOverrideFloat("value", 0.5f)
@@ -167,11 +199,16 @@ fun CatalogComponent(id: String, interactive: Boolean) {
       if (interactive) StatefulFilterChip(selected, label)
       else FilterChip(selected = selected, onClick = {}, label = { Text(label) })
     }
-    "chip-assist" ->
-      AssistChip(
-        onClick = {},
-        label = { Text(catalogOverrideString("label", stringResource(Res.string.label_assist))) },
-      )
+    // An assist chip is an action, not a selection — like the plain buttons it carries no state of
+    // its own, so [counted] gives its click a visible result on the interactive surfaces.
+    "chip-assist" -> {
+      val (label, onClick) =
+        counted(
+          catalogOverrideString("label", stringResource(Res.string.label_assist)),
+          interactive,
+        )
+      AssistChip(onClick = onClick, label = { Text(label) })
+    }
 
     // Containment — cards and the FAB. Each card's body is wrapped in a `PreviewSlot("content")`
     // filling the fixed 160×80 box: a no-op in a normal render (draws the — now editable — label,
@@ -225,7 +262,10 @@ fun CatalogComponent(id: String, interactive: Boolean) {
           }
         }
       }
-    "fab" -> FloatingActionButton(onClick = {}) { Text(catalogOverrideString("label", "+")) }
+    "fab" -> {
+      val (label, onClick) = counted(catalogOverrideString("label", "+"), interactive)
+      FloatingActionButton(onClick = onClick) { Text(label) }
+    }
 
     // Communication — progress + badge. The baked sticker keeps the deterministic `0.6` frame; the
     // in-browser tier runs the indeterminate (animated) variant so it's visibly live.
@@ -242,40 +282,58 @@ fun CatalogComponent(id: String, interactive: Boolean) {
     }
     "badge" -> Badge { Text(catalogOverrideInt("count", 8).toString()) }
 
-    // Text fields — both the entered value and the floating label are editable knobs.
-    "textfield-filled" ->
-      TextField(
-        value = catalogOverrideString("value", stringResource(Res.string.label_filled)),
-        onValueChange = {},
-        label = { Text(catalogOverrideString("label", stringResource(Res.string.textfield_label))) },
-      )
-    "textfield-outlined" ->
-      OutlinedTextField(
-        value = catalogOverrideString("value", stringResource(Res.string.label_outlined)),
-        onValueChange = {},
-        label = { Text(catalogOverrideString("label", stringResource(Res.string.textfield_label))) },
-      )
+    // Text fields — both the entered value and the floating label are editable knobs. On the
+    // interactive surfaces the field owns its value, so a visitor can actually type into it; the
+    // baked frame keeps the seeded value with a no-op `onValueChange`.
+    "textfield-filled" -> {
+      val value = catalogOverrideString("value", stringResource(Res.string.label_filled))
+      val label = catalogOverrideString("label", stringResource(Res.string.textfield_label))
+      if (interactive) StatefulTextField(value, label)
+      else TextField(value = value, onValueChange = {}, label = { Text(label) })
+    }
+    "textfield-outlined" -> {
+      val value = catalogOverrideString("value", stringResource(Res.string.label_outlined))
+      val label = catalogOverrideString("label", stringResource(Res.string.textfield_label))
+      if (interactive) StatefulOutlinedTextField(value, label)
+      else OutlinedTextField(value = value, onValueChange = {}, label = { Text(label) })
+    }
 
-    // States — interaction (pressed / focused), disabled, and toggle off↔on.
-    "button-filled-pressed" ->
-      Button(onClick = {}, interactionSource = pressedSource()) {
-        Text(catalogOverrideString("label", stringResource(Res.string.label_pressed)))
-      }
-    "button-filled-focused" ->
-      Button(onClick = {}, interactionSource = focusedSource()) {
-        Text(catalogOverrideString("label", stringResource(Res.string.label_focused)))
-      }
+    // States — interaction (pressed / focused), disabled, and toggle off↔on. The held interaction
+    // source pins the state layer on both surfaces; the click itself still counts, so these stay
+    // responsive in a live session rather than reading as frozen images.
+    "button-filled-pressed" -> {
+      val (label, onClick) =
+        counted(
+          catalogOverrideString("label", stringResource(Res.string.label_pressed)),
+          interactive,
+        )
+      Button(onClick = onClick, interactionSource = pressedSource()) { Text(label) }
+    }
+    "button-filled-focused" -> {
+      val (label, onClick) =
+        counted(
+          catalogOverrideString("label", stringResource(Res.string.label_focused)),
+          interactive,
+        )
+      Button(onClick = onClick, interactionSource = focusedSource()) { Text(label) }
+    }
     // Content axis (not a state): the same Filled button with a leading icon + label, so the
     // catalog shows the icon-and-text configuration alongside the label-only default. The icon is
     // an inline `ImageVector` (a plus glyph) — this module deliberately carries no icon library,
     // and
     // `Icon` tints it with the button's content color regardless of the vector's own fill.
-    "button-filled-icon-label" ->
-      Button(onClick = {}) {
+    "button-filled-icon-label" -> {
+      val (label, onClick) =
+        counted(
+          catalogOverrideString("label", stringResource(Res.string.label_filled)),
+          interactive,
+        )
+      Button(onClick = onClick) {
         Icon(addGlyph, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
         Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-        Text(catalogOverrideString("label", stringResource(Res.string.label_filled)))
+        Text(label)
       }
+    }
     "button-outlined-disabled" ->
       OutlinedButton(onClick = {}, enabled = false) {
         Text(catalogOverrideString("label", stringResource(Res.string.label_disabled)))
@@ -294,8 +352,11 @@ fun CatalogComponent(id: String, interactive: Boolean) {
       if (interactive) StatefulFilterChip(selected, label)
       else FilterChip(selected = selected, onClick = {}, label = { Text(label) })
     }
-    "radiobutton-unselected" ->
-      RadioButton(selected = catalogOverrideBoolean("selected", false), onClick = {})
+    "radiobutton-unselected" -> {
+      val selected = catalogOverrideBoolean("selected", false)
+      if (interactive) StatefulRadioButton(selected)
+      else RadioButton(selected = selected, onClick = {})
+    }
     "segmentedbutton" -> SegmentedToggle(interactive)
 
     // Text options — maxLines + ellipsis overflow. The 128dp box reproduces the wrap/truncation
@@ -432,6 +493,49 @@ fun StatefulSlider() {
 fun StatefulFilterChip(initial: Boolean, label: String = "Filter") {
   var selected by remember { mutableStateOf(initial) }
   FilterChip(selected = selected, onClick = { selected = !selected }, label = { Text(label) })
+}
+
+/**
+ * A radio button that flips its own selection. A real radio is one of a group and can't be
+ * deselected by tapping it again — but a catalog sticker *is* the single control, and both of its
+ * states are what a viewer came to see, so here the tap toggles. The static sticker keeps the plain
+ * one-way [RadioButton] with its seeded `selected` knob.
+ */
+@Composable
+fun StatefulRadioButton(initial: Boolean) {
+  var selected by remember { mutableStateOf(initial) }
+  RadioButton(selected = selected, onClick = { selected = !selected })
+}
+
+@Composable
+fun StatefulTextField(initial: String, label: String) {
+  var value by remember { mutableStateOf(initial) }
+  TextField(value = value, onValueChange = { value = it }, label = { Text(label) })
+}
+
+@Composable
+fun StatefulOutlinedTextField(initial: String, label: String) {
+  var value by remember { mutableStateOf(initial) }
+  OutlinedTextField(value = value, onValueChange = { value = it }, label = { Text(label) })
+}
+
+/**
+ * Gives a stateless action component — a button, a FAB, an assist chip — something visible to do
+ * when clicked, by tallying clicks into its label: `Filled` → `Filled (1)` → `Filled (2)`.
+ *
+ * Returns the label to draw and the `onClick` to wire. When [interactive] is `false` (the baked
+ * sticker sheet and every one-shot `/render`) it returns [base] verbatim and a no-op handler, so
+ * the published capture is byte-identical to the one this catalog has always produced. The counter
+ * only ever moves on a surface where a real pointer is dispatching into a held composition.
+ *
+ * The `remember` is unconditional so the composition's slot table is the same shape on both
+ * surfaces — only the values read out of it differ.
+ */
+@Composable
+fun counted(base: String, interactive: Boolean): Pair<String, () -> Unit> {
+  var clicks by remember { mutableIntStateOf(0) }
+  if (!interactive) return base to {}
+  return (if (clicks == 0) base else "$base ($clicks)") to { clicks++ }
 }
 
 /**

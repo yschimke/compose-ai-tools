@@ -39,13 +39,14 @@ private const val WEAR_LARGE_ROUND = "id:wearos_large_round"
 @Composable
 fun CardScaling() =
   TlcScalingHost { spec ->
+    val (title, onClick) = wearCounted("Heart rate")
     Card(
-      onClick = {},
+      onClick = onClick,
       modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
       transformation = SurfaceTransformation(spec),
     ) {
       Column {
-        Text("Heart rate")
+        Text(title)
         Text("72 bpm")
       }
     }
@@ -75,9 +76,10 @@ fun CardScalingScrollGif() =
     val state = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
     TransformingLazyColumn(state = state, modifier = Modifier.fillMaxSize()) {
-      items(scrollGifItems) { (title, subtitle) ->
+      items(scrollGifItems) { (rowTitle, subtitle) ->
+        val (title, onClick) = wearCounted(rowTitle)
         TitleCard(
-          onClick = {},
+          onClick = onClick,
           title = { Text(title) },
           subtitle = { Text(subtitle) },
           modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),

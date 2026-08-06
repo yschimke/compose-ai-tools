@@ -100,4 +100,21 @@ dependencies {
   // `CardScalingPreview` shows genuine TLC item scaling (see `CardScalingPreview.kt`).
   implementation(project(":wear-preview-runtime"))
   debugImplementation("androidx.compose.ui:ui-tooling")
+
+  // `CatalogInteractivityTest` — a static render can prove what a sticker *looks* like but never
+  // that a tap does anything, and every handler on this sheet used to be a literal `{}`. These
+  // drive a real composition under Robolectric and dispatch real clicks, on both lanes: the
+  // interactive one (the feature) and the baked one (the guard on the published sticker sheet).
+  // Deps mirror `:runtimes:splash`'s Robolectric Compose suite, sourced from the same stable BOM
+  // the main source set compiles against so the test JVM resolves identical symbols.
+  testImplementation(libs.robolectric)
+  testImplementation(libs.junit)
+  testImplementation(libs.truth)
+  testImplementation(platform(libs.compose.bom.stable))
+  testImplementation("androidx.compose.ui:ui-test-junit4")
+  // `debugImplementation`, not `testImplementation`: `createComposeRule` launches a
+  // `ComponentActivity`, and this is an application module, so the activity has to be MERGED into
+  // the debug manifest Robolectric resolves against. On the test classpath alone the rule dies with
+  // "Unable to resolve activity for Intent … ComponentActivity".
+  debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

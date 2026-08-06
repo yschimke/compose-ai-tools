@@ -20,6 +20,7 @@ import androidx.wear.compose.material3.ButtonGroup
 import androidx.wear.compose.material3.CompactButton
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.IconButton
+import androidx.wear.compose.material3.LocalContentColor
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -73,34 +74,50 @@ import ee.schimke.composeai.preview.slots.PreviewSlot
 // instead of a duplicated `ButtonDisabled` wrapper — the render emits a `_VARIANT_disabled` capture
 // that folds under this sticker. `pressed` / `focused` stay separate functions below: they need a
 // seeded `InteractionSource`, which isn't a `previewOverride*` knob.
+// The button family carries no state of its own, so on the interactive lane each click is made
+// visible by [wearCounted] tallying into the label; the baked capture is unchanged. The `disabled`
+// variant is the deliberate exception — it stays inert, because that's the state it documents, and
+// `enabled = false` means the counter could never move anyway.
 @CatalogComponent(id = "Button/Filled", group = "Buttons")
 @CatalogWearModes
 @OverrideVariant(name = "disabled", booleans = ["enabled=false"])
 @Composable
 fun FilledButton() =
   WearSticker {
-    Button(onClick = {}, enabled = previewOverrideBoolean("enabled", true)) {
-      Text(previewOverrideString("label", stringResource(R.string.label_filled)))
-    }
+    val (label, onClick) =
+      wearCounted(previewOverrideString("label", stringResource(R.string.label_filled)))
+    Button(onClick = onClick, enabled = previewOverrideBoolean("enabled", true)) { Text(label) }
   }
 
 @CatalogComponent(id = "Button/Tonal", group = "Buttons")
 @CatalogWearModes
 @Composable
 fun FilledTonalButtonSticker() =
-  WearSticker { FilledTonalButton(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_tonal))) } }
+  WearSticker {
+    val (label, onClick) =
+      wearCounted(previewOverrideString("label", stringResource(R.string.label_tonal)))
+    FilledTonalButton(onClick = onClick) { Text(label) }
+  }
 
 @CatalogComponent(id = "Button/Outlined", group = "Buttons")
 @CatalogWearModes
 @Composable
 fun OutlinedButtonSticker() =
-  WearSticker { OutlinedButton(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_outlined))) } }
+  WearSticker {
+    val (label, onClick) =
+      wearCounted(previewOverrideString("label", stringResource(R.string.label_outlined)))
+    OutlinedButton(onClick = onClick) { Text(label) }
+  }
 
 @CatalogComponent(id = "Button/Child", group = "Buttons")
 @CatalogWearModes
 @Composable
 fun ChildButtonSticker() =
-  WearSticker { ChildButton(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_child))) } }
+  WearSticker {
+    val (label, onClick) =
+      wearCounted(previewOverrideString("label", stringResource(R.string.label_child)))
+    ChildButton(onClick = onClick) { Text(label) }
+  }
 
 // A workout history the EdgeButton sticker scrolls through. Long enough to
 // overflow the viewport by a few screens so, scrolled to the end, the list fills
@@ -147,12 +164,12 @@ fun EdgeButtonSticker() =
   FullScreenWear {
     val listState = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
+    val (edgeLabel, onEdgeClick) =
+      wearCounted(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
     ScreenScaffold(
       scrollState = listState,
       edgeButton = {
-        EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
-          Text(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
-        }
+        EdgeButton(onClick = onEdgeClick, buttonSize = EdgeButtonSize.Large) { Text(edgeLabel) }
       },
     ) { contentPadding ->
       TransformingLazyColumn(
@@ -169,9 +186,10 @@ fun EdgeButtonSticker() =
           }
         }
         items(edgeButtonHistory) { (titleRes, subtitle) ->
+          val (title, onClick) = wearCounted(stringResource(titleRes))
           TitleCard(
-            onClick = {},
-            title = { Text(stringResource(titleRes)) },
+            onClick = onClick,
+            title = { Text(title) },
             subtitle = { Text(subtitle) },
             modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
             transformation = SurfaceTransformation(spec),
@@ -224,9 +242,10 @@ fun ScalingListSticker() =
           }
         }
         items(scalingListItems) { (titleRes, subtitle) ->
+          val (title, onClick) = wearCounted(stringResource(titleRes))
           TitleCard(
-            onClick = {},
-            title = { Text(stringResource(titleRes)) },
+            onClick = onClick,
+            title = { Text(title) },
             subtitle = { Text(subtitle) },
             modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
             transformation = SurfaceTransformation(spec),
@@ -260,6 +279,9 @@ fun ScalingListSticker() =
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
 @Composable
+// The one sheet whose handlers stay literal `{}` on purpose. Every slot here is deliberately empty
+// — the whole point is the blank skeleton — so there is no label for a click tally to land in, and
+// wiring one would print a stray "(1)" into a slot whose emptiness is the specification.
 fun BlankListLayout() =
   FullScreenWear {
     val listState = rememberTransformingLazyColumnState()
@@ -342,9 +364,10 @@ fun TimeTextScaffoldTemplate() =
           }
         }
         items(templateListItems) { (titleRes, subtitle) ->
+          val (title, onClick) = wearCounted(stringResource(titleRes))
           TitleCard(
-            onClick = {},
-            title = { Text(stringResource(titleRes)) },
+            onClick = onClick,
+            title = { Text(title) },
             subtitle = { Text(subtitle) },
             modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
             transformation = SurfaceTransformation(spec),
@@ -401,12 +424,12 @@ fun EdgeButtonScaffoldTemplate() =
   WearScaffoldTemplate {
     val listState = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
+    val (edgeLabel, onEdgeClick) =
+      wearCounted(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
     ScreenScaffold(
       scrollState = listState,
       edgeButton = {
-        EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
-          Text(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
-        }
+        EdgeButton(onClick = onEdgeClick, buttonSize = EdgeButtonSize.Large) { Text(edgeLabel) }
       },
     ) { contentPadding ->
       TransformingLazyColumn(
@@ -423,9 +446,10 @@ fun EdgeButtonScaffoldTemplate() =
           }
         }
         items(edgeButtonHistory) { (titleRes, subtitle) ->
+          val (title, onClick) = wearCounted(stringResource(titleRes))
           TitleCard(
-            onClick = {},
-            title = { Text(stringResource(titleRes)) },
+            onClick = onClick,
+            title = { Text(title) },
             subtitle = { Text(subtitle) },
             modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
             transformation = SurfaceTransformation(spec),
@@ -452,9 +476,10 @@ fun EdgeButtonScaffoldTemplate() =
 @Composable
 fun SwitchButtonOn() =
   WearSticker {
+    val (checked, onCheckedChange) = wearChecked(previewOverrideBoolean("checked", true))
     SwitchButton(
-      checked = previewOverrideBoolean("checked", true),
-      onCheckedChange = {},
+      checked = checked,
+      onCheckedChange = onCheckedChange,
       label = { Text(previewOverrideString("label", stringResource(R.string.label_wifi))) },
     )
   }
@@ -471,9 +496,10 @@ fun SwitchButtonOn() =
 @Composable
 fun CheckboxButtonChecked() =
   WearSticker {
+    val (checked, onCheckedChange) = wearChecked(previewOverrideBoolean("checked", true))
     CheckboxButton(
-      checked = previewOverrideBoolean("checked", true),
-      onCheckedChange = {},
+      checked = checked,
+      onCheckedChange = onCheckedChange,
       label = { Text(previewOverrideString("label", stringResource(R.string.label_sync))) },
     )
   }
@@ -493,10 +519,12 @@ fun CheckboxButtonChecked() =
 @Composable
 fun CardSticker() =
   WearSticker {
-    Card(onClick = {}) {
-      PreviewSlot("content", Modifier.fillMaxWidth()) {
-        Text(previewOverrideString("label", stringResource(R.string.label_card)))
-      }
+    // A Wear card is a clickable surface (`onClick` is required, unlike M3's plain `Card`), so it
+    // gets the same click tally the buttons do rather than a dead handler.
+    val (label, onClick) =
+      wearCounted(previewOverrideString("label", stringResource(R.string.label_card)))
+    Card(onClick = onClick) {
+      PreviewSlot("content", Modifier.fillMaxWidth()) { Text(label) }
     }
   }
 
@@ -511,10 +539,10 @@ fun CardSticker() =
 @Composable
 fun OutlinedCardSticker() =
   WearSticker {
-    OutlinedCard(onClick = {}) {
-      PreviewSlot("content", Modifier.fillMaxWidth()) {
-        Text(previewOverrideString("label", stringResource(R.string.label_card)))
-      }
+    val (label, onClick) =
+      wearCounted(previewOverrideString("label", stringResource(R.string.label_card)))
+    OutlinedCard(onClick = onClick) {
+      PreviewSlot("content", Modifier.fillMaxWidth()) { Text(label) }
     }
   }
 
@@ -523,13 +551,11 @@ fun OutlinedCardSticker() =
 @Composable
 fun TitleCardSticker() =
   WearSticker {
+    val (title, onClick) =
+      wearCounted(previewOverrideString("title", stringResource(R.string.title_morning_run)))
     TitleCard(
-      onClick = {},
-      title = {
-        PreviewSlot("title", Modifier.fillMaxWidth()) {
-          Text(previewOverrideString("title", stringResource(R.string.title_morning_run)))
-        }
-      },
+      onClick = onClick,
+      title = { PreviewSlot("title", Modifier.fillMaxWidth()) { Text(title) } },
     ) {
       PreviewSlot("subtitle", Modifier.fillMaxWidth()) {
         Text(previewOverrideString("subtitle", "5.2 km · 28 min"))
@@ -642,9 +668,9 @@ private fun focusedSource(): MutableInteractionSource {
 @Composable
 fun ButtonPressed() =
   WearSticker {
-    Button(onClick = {}, interactionSource = pressedSource()) {
-      Text(previewOverrideString("label", stringResource(R.string.label_pressed)))
-    }
+    val (label, onClick) =
+      wearCounted(previewOverrideString("label", stringResource(R.string.label_pressed)))
+    Button(onClick = onClick, interactionSource = pressedSource()) { Text(label) }
   }
 
 @CatalogVariant(
@@ -656,9 +682,9 @@ fun ButtonPressed() =
 @Composable
 fun ButtonFocused() =
   WearSticker {
-    Button(onClick = {}, interactionSource = focusedSource()) {
-      Text(previewOverrideString("label", stringResource(R.string.label_focused)))
-    }
+    val (label, onClick) =
+      wearCounted(previewOverrideString("label", stringResource(R.string.label_focused)))
+    Button(onClick = onClick, interactionSource = focusedSource()) { Text(label) }
   }
 
 // (`ButtonDisabled`, `SwitchButtonOff`, `CheckboxButtonUnchecked` removed — those states now ride
@@ -703,14 +729,27 @@ private val catalogIcon: ImageVector =
 @CatalogWearModes
 @Composable
 fun IconButtonSticker() =
-  WearSticker { IconButton(onClick = {}) { Icon(catalogIcon, "Favourite") } }
+  WearSticker {
+    // No label to tally into, so the icon button's click toggles a "favourited" reading instead:
+    // the star fills with the theme's primary on the interactive lane. Off it, the icon renders in
+    // the stock content colour exactly as before.
+    val (favourite, onFavouriteChange) = wearChecked(false)
+    IconButton(onClick = { onFavouriteChange(!favourite) }) {
+      Icon(
+        catalogIcon,
+        "Favourite",
+        tint = if (favourite) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+      )
+    }
+  }
 
 @CatalogComponent(id = "CompactButton", group = "Buttons", caption = "Compact single-line button.")
 @CatalogWearModes
 @Composable
 fun CompactButtonSticker() =
   WearSticker {
-    CompactButton(onClick = {}, label = { Text(previewOverrideString("label", "Compact")) })
+    val (label, onClick) = wearCounted(previewOverrideString("label", "Compact"))
+    CompactButton(onClick = onClick, label = { Text(label) })
   }
 
 @CatalogComponent(
@@ -722,9 +761,12 @@ fun CompactButtonSticker() =
 @Composable
 fun ButtonGroupSticker() =
   WearSticker {
+    // Both members tally independently, so a live session can tell which half it hit.
+    val (yes, onYes) = wearCounted("Yes")
+    val (no, onNo) = wearCounted("No")
     ButtonGroup {
-      Button(onClick = {}, modifier = Modifier.weight(1f)) { Text("Yes") }
-      Button(onClick = {}, modifier = Modifier.weight(1f)) { Text("No") }
+      Button(onClick = onYes, modifier = Modifier.weight(1f)) { Text(yes) }
+      Button(onClick = onNo, modifier = Modifier.weight(1f)) { Text(no) }
     }
   }
 
@@ -737,10 +779,12 @@ fun ButtonGroupSticker() =
 @Composable
 fun AppCardSticker() =
   WearSticker {
+    val (title, onClick) =
+      wearCounted(previewOverrideString("title", stringResource(R.string.title_morning_run)))
     AppCard(
-      onClick = {},
+      onClick = onClick,
       appName = { Text("App") },
-      title = { Text(previewOverrideString("title", stringResource(R.string.title_morning_run))) },
+      title = { Text(title) },
       appImage = { Icon(catalogIcon, null, Modifier.size(16.dp)) },
     ) {
       Text("5.2 km · 28 min")
