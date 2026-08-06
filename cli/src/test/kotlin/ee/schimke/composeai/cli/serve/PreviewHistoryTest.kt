@@ -206,6 +206,50 @@ class PreviewHistoryTest {
   }
 
   @Test
+  fun `git log is asked not to quote non-ASCII paths`() {
+    val args = PreviewHistory.logArgs("compose-preview/main", "renders")
+
+    assertEquals(listOf("-c", "core.quotePath=false"), args.take(2), "must precede the subcommand")
+  }
+
+  /**
+   * The escaped form is exactly what `git log --raw` emitted for `renders/café/Foo—dash.png` with
+   * git's default `core.quotePath`, captured from a real repo — not hand-written.
+   */
+  @Test
+  fun `octal-escaped non-ASCII paths decode back to UTF-8`() {
+    val quoted = """"renders/caf\303\251/Foo\342\200\224dash.png""""
+
+    assertEquals("renders/café/Foo—dash.png", PreviewHistory.unquotePath(quoted))
+  }
+
+  @Test
+  fun `a quoted path still keys history under its real name`() {
+    // core.quotePath=false does not cover a path containing a quote or backslash, so the parser
+    // must decode rather than rely on the config alone.
+    val log = gitLog("publish" to listOf(""""renders/m/Say \"hi\".png"""" to a))
+
+    assertEquals(setOf("""renders/m/Say "hi".png"""), PreviewHistory.parseGitLog(log).keys)
+  }
+
+  @Test
+  fun `control-character and backslash escapes decode`() {
+    assertEquals("renders/m/a\tb.png", PreviewHistory.unquotePath(""""renders/m/a\tb.png""""))
+    assertEquals("""renders/m/a\b.png""", PreviewHistory.unquotePath(""""renders/m/a\\b.png""""))
+  }
+
+  @Test
+  fun `an unquoted path is passed through untouched`() {
+    val plain = "renders/samples:wear/Foo_Devices_-_Large Round.png"
+
+    assertEquals(
+      plain,
+      PreviewHistory.unquotePath(plain),
+      "no round-trip damage in the common case",
+    )
+  }
+
+  @Test
   fun `malformed lines are skipped rather than failing the whole history`() {
     val good = gitLog("publish" to listOf("renders/m/Foo.png" to a))
     val log = good + ":not-a-real-raw-line\n" + "\u0001truncated-header\n" + "stray text\n"

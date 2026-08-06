@@ -41,9 +41,18 @@ object PreviewHistory {
    * `%x01` prefixes a header line and `%x1f` separates its fields, because both are control
    * characters git will never emit inside a sha, an ISO date, or a path, while a commit *subject*
    * is free-form and could contain anything more printable.
+   *
+   * `-c core.quotePath=false` matters more than it looks: git's default is to C-quote and
+   * octal-escape any non-ASCII path, so a preview whose name carries an em-dash — which this repo
+   * really does produce, see the UTF-8 note in `design-artifacts-reusable.yml` — would key its
+   * history under `"renders/…Foo\342\200\224dash.png"` and never join back to the preview it
+   * belongs to. Turning quoting off is not sufficient on its own (see [unquotePath]), but it keeps
+   * the common case exact rather than round-tripping every path through an unescaper.
    */
   fun logArgs(ref: String, pathspec: String): List<String> =
     listOf(
+      "-c",
+      "core.quotePath=false",
       "log",
       "--format=%x01%H%x1f%aI%x1f%s",
       "--raw",
@@ -53,6 +62,59 @@ object PreviewHistory {
       "--",
       pathspec,
     )
+
+  /**
+   * Decode a git-quoted pathname back to its real bytes, or return [raw] unchanged when it isn't
+   * quoted.
+   *
+   * [logArgs] already asks git not to quote non-ASCII, but `core.quotePath=false` only covers that
+   * case: a path containing a double quote, a backslash, or a control character is still wrapped
+   * and escaped. Rather than leave a class of paths silently mis-keyed, decode the full C-style
+   * syntax — `\\`, `\"`, the `\a \b \f \n \r \t \v` singles, and `\nnn` octal bytes.
+   *
+   * Octal escapes are per **byte**, so they're accumulated into a byte buffer and decoded as UTF-8
+   * at the end; decoding them one-by-one as characters would mangle every multi-byte codepoint.
+   */
+  internal fun unquotePath(raw: String): String {
+    if (raw.length < 2 || !raw.startsWith('"') || !raw.endsWith('"')) return raw
+    val body = raw.substring(1, raw.length - 1)
+    val bytes = java.io.ByteArrayOutputStream(body.length)
+    var i = 0
+    while (i < body.length) {
+      val ch = body[i]
+      if (ch != '\\') {
+        bytes.write(ch.toString().toByteArray(Charsets.UTF_8))
+        i++
+        continue
+      }
+      i++
+      if (i >= body.length) break
+      when (val esc = body[i]) {
+        'a' -> bytes.write(0x07).also { i++ }
+        'b' -> bytes.write(0x08).also { i++ }
+        'f' -> bytes.write(0x0C).also { i++ }
+        'n' -> bytes.write(0x0A).also { i++ }
+        'r' -> bytes.write(0x0D).also { i++ }
+        't' -> bytes.write(0x09).also { i++ }
+        'v' -> bytes.write(0x0B).also { i++ }
+        '\\',
+        '"' -> bytes.write(esc.code).also { i++ }
+        in '0'..'7' -> {
+          var value = 0
+          var digits = 0
+          while (i < body.length && digits < 3 && body[i] in '0'..'7') {
+            value = value * 8 + (body[i] - '0')
+            i++
+            digits++
+          }
+          bytes.write(value and 0xFF)
+        }
+        // Unknown escape: keep the escaped character verbatim rather than dropping it.
+        else -> bytes.write(esc.toString().toByteArray(Charsets.UTF_8)).also { i++ }
+      }
+    }
+    return String(bytes.toByteArray(), Charsets.UTF_8)
+  }
 
   /** One commit on the delivery branch in which a given render had particular bytes. */
   data class Observation(
@@ -254,7 +316,7 @@ object PreviewHistory {
       val meta = line.substring(1, tab).split(' ').filter { it.isNotEmpty() }
       if (meta.size < 5) continue
       val blob = meta[3]
-      val path = line.substring(tab + 1)
+      val path = unquotePath(line.substring(tab + 1))
       byPath
         .getOrPut(path) { mutableListOf() }
         .add(
