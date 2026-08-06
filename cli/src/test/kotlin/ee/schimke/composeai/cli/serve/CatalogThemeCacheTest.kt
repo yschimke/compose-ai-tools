@@ -167,7 +167,8 @@ class CatalogThemeCacheTest {
     cache.configureTargets((1..10).map { "k$it" })
 
     cache.recordTurnGranted()
-    cache.recordWaiting(30_000) // half the active time spent waiting for a turn
+    cache.recordGateWait(20_000) // the gate withheld the turn
+    cache.recordPermitWait(10_000) // then it queued behind other catalogs for a permit
     cache.recordBatch(width = 5, millis = 30_000)
     cache.recordProduced(5)
     cache.recordTurnYielded()
@@ -178,14 +179,49 @@ class CatalogThemeCacheTest {
     // 5 entries over 60s of ACTIVE time = 5/min; 5 remaining at that rate = 60s.
     assertEquals(5.0, s.entriesPerMinute)
     assertEquals(60L, s.etaSeconds)
-    // The split is the diagnostic: half the time rendering, half waiting at the gate.
+    // The split is the diagnostic: half the time rendering, half waiting — and the waiting half is
+    // itself split, because "the gate withheld my turn" and "I had my turn and lost the permit
+    // race" have opposite fixes and are indistinguishable in the total.
     assertEquals(30_000L, s.renderMillis)
     assertEquals(30_000L, s.waitingMillis)
+    assertEquals(20_000L, s.gateWaitMillis)
+    assertEquals(10_000L, s.permitWaitMillis)
     assertEquals(1, s.turnsGranted)
     assertEquals(1, s.turnsYielded)
     // Width is what actually ran, so a batch collapsing to 1 is visible rather than assumed.
     assertEquals(5, s.lastBatchWidth)
     assertEquals(5, s.maxBatchWidth)
+  }
+
+  /**
+   * Measured on the deployed box: 14 catalogs all optimizing at once, every one reporting waiting
+   * at 3–6× its render time. The total said "not render-bound" and stopped there — it could not say
+   * whether the gate was withholding turns (loosen the quiet window) or the catalogs were starving
+   * each other for render permits (prefetch fewer at once). Those two shapes must read differently.
+   */
+  @Test
+  fun `a permit-starved pass and a gate-starved pass are distinguishable`() {
+    fun snapshotOf(gate: Long, permit: Long) =
+      CatalogThemeCache()
+        .apply {
+          configureTargets(listOf("a"))
+          recordGateWait(gate)
+          recordPermitWait(permit)
+          recordBatch(width = 1, millis = 10_000)
+        }
+        .snapshot()
+
+    val gateStarved = snapshotOf(gate = 90_000, permit = 0)
+    val permitStarved = snapshotOf(gate = 0, permit = 90_000)
+
+    // Identical on the old instrumentation …
+    assertEquals(gateStarved.waitingMillis, permitStarved.waitingMillis)
+    assertEquals(gateStarved.renderMillis, permitStarved.renderMillis)
+    // … and opposite on the new.
+    assertEquals(90_000L, gateStarved.gateWaitMillis)
+    assertEquals(0L, gateStarved.permitWaitMillis)
+    assertEquals(0L, permitStarved.gateWaitMillis)
+    assertEquals(90_000L, permitStarved.permitWaitMillis)
   }
 
   @Test
@@ -207,7 +243,7 @@ class CatalogThemeCacheTest {
   fun `foreground-filled entries do not inflate the prefetch rate`() {
     val cache = CatalogThemeCache()
     cache.configureTargets((1..10).map { "k$it" })
-    cache.recordWaiting(60_000)
+    cache.recordGateWait(60_000)
 
     // Five entries arrive from foreground requests; the optimizer produced none of them.
     repeat(5) { cache.put("k${it + 1}", byteArrayOf(1)) }
