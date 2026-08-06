@@ -2337,6 +2337,7 @@ object ServeWeb {
       navSuffix = suffix,
       body =
         """
+        <link rel="stylesheet" href="${assetHref("codemirror.css")}">
         <link rel="stylesheet" href="${assetHref("playground.css")}">
         <h1 class="cp-head">Playground</h1>
         <p class="cp-sub">Write a Compose snippet, compile it against the live catalog, and open a
@@ -2367,6 +2368,7 @@ object ServeWeb {
             </p>
           </div>
         </div>
+        ${scriptTag("codemirror.js")}
         <script>${playgroundScript(suffix)}</script>
         """
           .trimIndent(),
@@ -2395,10 +2397,44 @@ object ServeWeb {
       var openLink = document.getElementById("pg-open");
       var note = document.getElementById("pg-preview-note");
       var suffix = ${jsString(querySuffix)};
+      // CodeMirror over the textarea when the vendored bundle loaded, plain textarea when it
+      // didn't. Every read/write of the buffer goes through readSource/writeSource, so a failed
+      // asset fetch degrades to exactly the pre-editor behaviour instead of a dead page — the
+      // editor is a convenience, and the compile lane is the feature.
+      var editor = null;
+      if (window.CodeMirror) {
+        editor = window.CodeMirror.fromTextArea(source, {
+          mode: "text/x-kotlin",
+          lineNumbers: true,
+          // `fromTextArea` hides the original textarea, which takes its aria-label out of the
+          // accessibility tree with it. CodeMirror only names its own generated input through
+          // this option, so without it a screen reader announces an unlabelled edit box.
+          screenReaderLabel: "Kotlin source",
+          indentUnit: 4,
+          // Kotlin is space-indented; without this Tab inserts a literal tab that the compiler
+          // accepts but nobody wants pasted back into a file.
+          indentWithTabs: false,
+          matchBrackets: true,
+          viewportMargin: Infinity,
+        });
+        // Tab as INDENT, not focus-escape. A code box that swallows Tab is a keyboard trap, so
+        // Esc first moves focus out — the standard escape hatch (WCAG 2.1.2).
+        editor.setOption("extraKeys", {
+          Tab: function (cm) { cm.execCommand("indentMore"); },
+          "Shift-Tab": function (cm) { cm.execCommand("indentLess"); },
+          Esc: function (cm) { cm.getInputField().blur(); },
+          "Ctrl-Enter": function () { run.click(); },
+          "Cmd-Enter": function () { run.click(); },
+        });
+      }
+      function readSource() { return editor ? editor.getValue() : source.value; }
+      function writeSource(text) {
+        if (editor) editor.setValue(text); else source.value = text;
+      }
       // The snippet is a LIST of files compiled as one module, not one file: `files` holds every
       // buffer, `active` is the one the textarea is showing. A single-file snippet keeps exactly
       // the old shape, so nothing about the common case changes.
-      var files = [{ name: "Snippet.kt", text: source.value }];
+      var files = [{ name: "Snippet.kt", text: readSource() }];
       var active = 0;
       function uniqueName(name) {
         var taken = {}; files.forEach(function (f) { taken[f.name.toLowerCase()] = true; });
@@ -2427,21 +2463,21 @@ object ServeWeb {
         removeFile.hidden = files.length < 2;
       }
       addFile.addEventListener("click", function () {
-        files[active].text = source.value;
+        files[active].text = readSource();
         // Auto-named rather than prompted: Kotlin does not tie declarations to a file name, so the
         // name only ever shows up in diagnostics — not worth a modal dialog on every added file.
         var name = uniqueName("File" + (files.length + 1) + ".kt");
         files.push({ name: name, text: "" });
         active = files.length - 1;
-        source.value = "";
+        writeSource("");
         renderFiles();
-        source.focus();
+        if (editor) editor.focus(); else source.focus();
       });
       removeFile.addEventListener("click", function () {
         if (files.length < 2) return;
         files.splice(active, 1);
         active = Math.min(active, files.length - 1);
-        source.value = files[active].text;
+        writeSource(files[active].text);
         renderFiles();
       });
       renderFiles();
@@ -2461,9 +2497,9 @@ object ServeWeb {
       }
       function showFile(i) {
         if (i < 0 || i === active) return;
-        files[active].text = source.value;
+        files[active].text = readSource();
         active = i;
-        source.value = files[active].text;
+        writeSource(files[active].text);
         renderFiles();
       }
       function renderDiags(list) {
@@ -2495,7 +2531,7 @@ object ServeWeb {
         run.disabled = true;
         clearOut();
         setStatus("Compiling…", false);
-        files[active].text = source.value;
+        files[active].text = readSource();
         var body = JSON.stringify({ confType: mode.value, files: files });
         fetch("/api/1/compiler/run" + suffix, {
           method: "POST",

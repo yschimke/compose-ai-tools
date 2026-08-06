@@ -67,13 +67,41 @@ async function runAndAwaitTerminal(page) {
   return (await status.textContent())?.trim();
 }
 
+// The editor is CodeMirror when its bundle loaded and a plain <textarea> when it didn't (the
+// page degrades on purpose). Drive whichever is live rather than assuming: `fromTextArea`
+// hides `#pg-source`, so `fill()` on it would fail against the real page.
+async function setSource(page, text) {
+  await page.evaluate((value) => {
+    const cm = document.querySelector(".CodeMirror");
+    if (cm && cm.CodeMirror) {
+      cm.CodeMirror.setValue(value);
+      return;
+    }
+    const ta = document.getElementById("pg-source");
+    ta.value = value;
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+  }, text);
+}
+
+/**
+ * The visible editing surface — CodeMirror's wrapper, or the textarea when it's absent.
+ *
+ * Not a `.CodeMirror, #pg-source` locator with `.first()`: `fromTextArea` leaves the hidden
+ * textarea EARLIER in the DOM than the wrapper it inserts, so first-in-document-order picks the
+ * invisible one and a visibility assertion fails against a perfectly healthy editor.
+ */
+async function sourceLocator(page) {
+  const cm = page.locator(".CodeMirror");
+  return (await cm.count()) > 0 ? cm.first() : page.locator("#pg-source");
+}
+
 test("editor page serves its controls and the Android mode", async ({
   page,
 }) => {
   requirePlayground();
   await page.goto(`/playground${q}`, { waitUntil: "domcontentloaded" });
 
-  await expect(page.locator("#pg-source"), "source editor").toBeVisible();
+  await expect(await sourceLocator(page), "source editor").toBeVisible();
   await expect(page.locator("#pg-mode"), "mode selector").toBeVisible();
   await expect(page.locator("#pg-run"), "run button").toBeVisible();
 
@@ -133,8 +161,8 @@ test("a multi-file snippet compiles as one module and names the preview it drew"
   // cross-file reference is the whole point: the files reach ONE compile, so this only
   // resolves if the server staged both into the same module (#3017).
   await page.click("#pg-add-file");
-  await page.fill(
-    "#pg-source",
+  await setSource(
+    page,
     [
       "import androidx.compose.ui.graphics.Color",
       "",
@@ -147,8 +175,8 @@ test("a multi-file snippet compiles as one module and names the preview it drew"
   ).toHaveCount(2);
 
   await page.click('[data-pg-file="Snippet.kt"]');
-  await page.fill(
-    "#pg-source",
+  await setSource(
+    page,
     [
       "import androidx.compose.material3.Text",
       "import androidx.compose.runtime.Composable",
