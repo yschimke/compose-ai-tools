@@ -923,16 +923,21 @@ object ServeWeb {
    * override the card drew dark, in the default sans — pixels contradicting their own label. Every
    * card in a Themes tab has that property by construction.
    *
-   * Deliberately keyed on the section rather than the id: `theme-…` id prefixes are a catalog
-   * authoring convention, not a contract, whereas `section` is the authored statement of what the
-   * tab IS (`catalog.spec.json`'s `section: "Themes"`). Specimens that live outside such a tab need
-   * an explicit per-preview opt-out, which is a separate change.
+   * Two signals, either of which is enough:
+   * * the catalog **section** — deliberately keyed on that rather than the id, because `theme-…` id
+   *   prefixes are an authoring convention while `section` is the authored statement of what the
+   *   tab IS (`catalog.spec.json`'s `section: "Themes"`). It speaks for a whole tab at once.
+   * * the per-preview [ServePreview.fixedTheme] flag, from `@FixedTheme` on the function (or a
+   *   `@ThemeCatalog`-synthesised sheet). This is what a specimen living OUTSIDE a Themes tab says
+   *   for itself — an ungrouped bundle, a `Foundation` section that mixes swatches with components,
+   *   a plain `compose-preview serve` of one module, none of which have a section to speak for
+   *   them.
    *
    * This does NOT remove the theme chips: the rest of the catalog still re-renders, and a specimen
    * simply keeps its baked pixels — the same treatment a card with no daemon twin already gets.
    */
   private fun isThemeSpecimen(p: ServePreview): Boolean =
-    p.section?.equals(THEMES_SECTION, ignoreCase = true) == true
+    p.fixedTheme || p.section?.equals(THEMES_SECTION, ignoreCase = true) == true
 
   /** One sub-heading group inside a section tab: its [name] (null ⇒ ungrouped) and its cards. */
   private class LandingGroup(val name: String?) {

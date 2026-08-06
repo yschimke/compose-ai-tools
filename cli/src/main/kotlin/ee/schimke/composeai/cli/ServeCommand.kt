@@ -727,6 +727,7 @@ class ServeCommand(args: List<String>) : Command(args) {
             uiMode = it.params.uiMode,
             supportsFocus = focus,
             supportsGestures = gestures,
+            fixedTheme = it.fixedTheme,
           )
         }
     // The module's declared @ThemeCatalog themes — the Theme selector renders them so a preview can

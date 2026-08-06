@@ -891,6 +891,13 @@ data class PreviewInfo(
    * case) — the field is purely additive, so older manifests and non-catalog modules are unchanged.
    */
   val catalog: CatalogEntry? = null,
+  /**
+   * `@FixedTheme` — this preview's subject **is** a theme, so a preview host must not re-render it
+   * under a `themeProvider` override. `serve` already exempts a card whose catalog section is
+   * `"Themes"`; this is the per-preview override for a specimen that lives outside such a tab.
+   * False for every ordinary preview, so older manifests and unannotated modules are unchanged.
+   */
+  val fixedTheme: Boolean = false,
 )
 
 /**

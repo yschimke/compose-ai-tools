@@ -218,6 +218,9 @@ object PreviewDiscovery {
   // Wear one-handed-gesture hint capture — sibling annotation to @AmbientPreview, same FQN-match
   // policy. See `GestureHintPreview.kt`.
   private const val GESTURE_HINT_PREVIEW_FQN = "ee.schimke.composeai.preview.GestureHintPreview"
+  // "this preview's subject IS a theme — never re-render it under a themeProvider override". A
+  // marker with no parameters, matched by FQN like its siblings. See `FixedTheme.kt`.
+  private const val FIXED_THEME_FQN = "ee.schimke.composeai.preview.FixedTheme"
   private const val LAUNCHER_WIDGET_PREVIEW_FQN =
     "ee.schimke.composeai.preview.LauncherWidgetPreview"
   // `@OverrideVariant` — repeatable; emits one extra synthetic preview per variant with
@@ -1198,6 +1201,11 @@ object PreviewDiscovery {
             wrapperClassName = theme.className,
           ),
         captures = listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
+        // A `@ThemeCatalog` sheet renders ONE named theme as its subject — that is the whole point
+        // of the annotation. Re-rendering it under a different `themeProvider` would leave a sheet
+        // captioned with this theme's name drawing another theme's colours and type, so it is
+        // fixed by construction rather than needing `@FixedTheme` on every consumer's sheet.
+        fixedTheme = true,
       )
     }
   }
@@ -3156,6 +3164,11 @@ object PreviewDiscovery {
       captures = outputPlan.captures,
       dataProducts = outputPlan.dataProducts,
       targets = targets,
+      // Read off the METHOD rather than the `@Preview` annotation being expanded: a multi-preview
+      // fans one function out into several `PreviewInfo`s, and a theme specimen is fixed for every
+      // one of them. Reading it here also covers the built-in multi-preview expansion path, which
+      // never sees a real `@Preview` [AnnotationInfo].
+      fixedTheme = method.annotationInfo.any { it.name == FIXED_THEME_FQN },
     )
   }
 

@@ -74,6 +74,31 @@ test("stamps supplement-only image declarations by bridged daemon id", () => {
   });
 });
 
+test("carries @FixedTheme onto the catalog image on its own", () => {
+  // A theme specimen declares no knobs and detects no features, so `fixedTheme` has to be enough
+  // on its own to produce a declaration entry — otherwise the flag never reaches catalog.json and
+  // the specimen re-themes on the browse surface until its daemon happens to be opened.
+  const bundle = {
+    previews: [{ id: "themecatalog__Brand", captures: [], fixedTheme: true }],
+    entries: {},
+  };
+
+  assert.deepEqual(declarationsByPreviewId(bundle).get("themecatalog__Brand"), {
+    fixedTheme: true,
+  });
+});
+
+test("leaves fixedTheme off an ordinary preview", () => {
+  const bundle = {
+    previews: [{ id: "Primary_Light", captures: [{ focus: {} }] }],
+    entries: {},
+  };
+
+  assert.deepEqual(declarationsByPreviewId(bundle).get("Primary_Light"), {
+    supportsFocus: true,
+  });
+});
+
 test("ignores missing and malformed sidecars", () => {
   const bundle = {
     previews: [{ id: "Bare", captures: [] }, { id: "Broken", captures: [] }],
