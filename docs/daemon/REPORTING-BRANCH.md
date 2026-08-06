@@ -4,7 +4,7 @@ A long-lived git ref (default `refs/heads/preview/main`) that accumulates
 render **history** — images *and* data products — so users and agents can ask
 "what did this preview look like, and what were its a11y findings, an hour /
 a commit / a release ago?" It is the durable, pushable counterpart to the
-local [`.compose-preview-history/`](HISTORY.md) archive.
+local [filesystem history](HISTORY.md) archive.
 
 Part of the report-history epic (#1866); this document is sub-issue #1868. The
 writer that produces the branch is #1870; the per-file formats are the

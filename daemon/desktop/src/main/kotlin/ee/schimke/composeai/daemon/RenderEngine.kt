@@ -50,6 +50,7 @@ import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.render.extensions.provides
 import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.composeAiCacheDir
 import ee.schimke.composeai.preview.lottie.LottiePreview
 import java.io.File
 import java.util.Base64
@@ -105,13 +106,14 @@ class RenderEngine(
   /**
    * Directory under which PNG files are written. Defaults to the `composeai.render.outputDir`
    * system property (mirrors the Android side's contract); falls back to
-   * `${user.dir}/.compose-preview-history/daemon-renders/` so unit tests don't need to set the
-   * property.
+   * `<userCache>/composeai/history/daemon-renders/` so unit tests don't need to set the property.
+   * Deliberately NOT under `user.dir` — an unset property must not scatter PNGs through whatever
+   * directory the daemon happened to be launched from.
    */
   private val outputDir: File =
     File(
       System.getProperty(OUTPUT_DIR_PROP)
-        ?: "${System.getProperty("user.dir")}/.compose-preview-history/daemon-renders"
+        ?: composeAiCacheDir("history").resolve("daemon-renders").absolutePath
     ),
   private val dataDir: File = (outputDir.parentFile ?: outputDir).resolve("data"),
   private val previewContextCapture: PreviewContextCapture? = null,

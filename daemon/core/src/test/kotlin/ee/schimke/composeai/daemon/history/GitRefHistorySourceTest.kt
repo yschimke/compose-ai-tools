@@ -710,6 +710,32 @@ class GitRefHistorySourceTest {
   }
 
   @Test
+  fun clean_on_branch_ignores_a_legacy_history_dir_in_another_module() {
+    // #3407: the archive now defaults to the user cache, so `cacheDir.parent` is outside the repo
+    // and the relative-path check can't help. A pre-#3407 in-tree archive under ANOTHER module is
+    // still not the user's edit — only the name check keeps it from self-blocking curation.
+    onBranch("main")
+    // The module dir must be tracked, else `git status --porcelain` collapses the whole untracked
+    // subtree to `?? feature/` and never mentions the archive at all.
+    val moduleDir = repoRoot.resolve("feature/ui")
+    Files.createDirectories(moduleDir)
+    Files.writeString(moduleDir.resolve("Screen.kt"), "// source")
+    runOk("git", "-C", repoRoot.toString(), "add", "feature/ui/Screen.kt")
+    runOk("git", "-C", repoRoot.toString(), "commit", "-m", "add module")
+    val legacy = moduleDir.resolve(".compose-preview-history")
+    Files.createDirectories(legacy)
+    Files.writeString(legacy.resolve("20260430-100000-aaaaaaaa.png"), "fs-archive-render")
+    val src = source(SyncModeOf.WRITE_LOCAL, publishPolicy = PolicyOf.CLEAN_ON_BRANCH)
+    val e = entry("20260430-100000-aaaaaaaa", "com.example.A", "a".toByteArray())
+    assertEquals(WriteResult.WRITTEN, src.write(e, "a".toByteArray()))
+    assertEquals(
+      "a sibling module's history churn isn't dirty",
+      1,
+      src.list(HistoryFilter()).totalCount,
+    )
+  }
+
+  @Test
   fun clean_on_branch_skips_when_real_content_dirty_despite_history_artifacts() {
     // The flip side: history artifacts are ignored, but a real source edit alongside them still
     // marks the tree dirty and keeps the render off the branch.

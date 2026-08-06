@@ -529,7 +529,7 @@ class HistoryManager(
                 syncMode = gitRefSyncMode,
                 cacheDir =
                   historyDir?.let(GitRefHistorySource::defaultCacheDir)
-                    ?: repoRoot.resolve(".compose-preview-history").resolve(".git-ref-cache"),
+                    ?: GitRefHistorySource.defaultRepoCacheDir(repoRoot),
                 warnEmitter = warnEmitter,
                 debounceMs = gitRefDebounceMs,
                 publishPolicy = gitRefPublishPolicy,
@@ -550,7 +550,7 @@ class HistoryManager(
               syncMode = gitRefSyncMode,
               cacheDir =
                 historyDir?.let(GitRefHistorySource::defaultCacheDir)
-                  ?: repoRoot.resolve(".compose-preview-history").resolve(".git-ref-cache"),
+                  ?: GitRefHistorySource.defaultRepoCacheDir(repoRoot),
               warnEmitter = warnEmitter,
             )
           }

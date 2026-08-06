@@ -2,6 +2,8 @@ package ee.schimke.composeai.daemon.history
 
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
+import ee.schimke.composeai.io.LEGACY_HISTORY_DIRNAME
+import ee.schimke.composeai.io.composeAiGitRefCacheDir
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -72,8 +74,7 @@ class GitRefHistorySource(
   private val ref: String,
   private val syncMode: SyncMode = SyncMode.READ_ONLY,
   displayId: String = "git:$ref",
-  private val cacheDir: Path =
-    repoRoot.resolve(".compose-preview-history").resolve(".git-ref-cache"),
+  private val cacheDir: Path = defaultRepoCacheDir(repoRoot),
   private val gitExecutable: String = "git",
   private val warnEmitter: (String) -> Unit = { System.err.println(it) },
   /** Git remote pushed to under [SyncMode.WRITE_PUSH]. Defaults to `origin`. */
@@ -150,11 +151,10 @@ class GitRefHistorySource(
   }
 
   /**
-   * Fresh working-tree dirtiness, **ignoring the history system's own artifacts** — the local FS
-   * archive and the git-ref cache both live under the history dir ([cacheDir]'s parent), and
-   * `HistoryManager` writes the FS source before this one, so if that dir isn't gitignored its
-   * just-written files would make every render look dirty and self-block curation (#1923 review). A
-   * change anywhere else marks the tree dirty. Null when git can't be run.
+   * Fresh working-tree dirtiness, **ignoring the history system's own artifacts** —
+   * `HistoryManager` writes the FS source before this one, so if a history directory isn't
+   * gitignored its just-written files would make every render look dirty and self-block curation
+   * (#1923 review). A change anywhere else marks the tree dirty. Null when git can't be run.
    */
   private fun currentDirty(): Boolean? {
     val out = runGit("-c", "core.quotePath=false", "status", "--porcelain") ?: return null
@@ -164,12 +164,30 @@ class GitRefHistorySource(
       // Porcelain v1 line: two status chars + a space + the path (from index 3).
       if (line.length < 4) return@any false
       val path = line.substring(3)
-      historyDir == null || !(path == historyDir || path.startsWith("$historyDir/"))
+      !isHistoryArtifact(path, historyDir)
     }
   }
 
   /**
-   * The history dir (FS archive + git-ref cache) relative to [repoRoot]; null when not under it.
+   * Whether a `git status` path is history churn rather than a real source edit.
+   *
+   * Two independent checks, because since #3407 the archive normally lives *outside* the working
+   * tree (under the user cache) and [relativeHistoryDir] is then null:
+   * 1. under the configured history dir, when that happens to sit inside the repo — the case a
+   *    consumer creates by passing an in-repo `composeai.daemon.historyDir` explicitly;
+   * 2. any path with a `.compose-preview-history` segment — the pre-#3407 in-tree layout, which the
+   *    daemon still uses when such a directory already exists. Matching by name rather than by
+   *    configured path matters because the *other* modules' legacy archives are equally not the
+   *    user's edits, and only one module's history dir is configured on any given source.
+   */
+  private fun isHistoryArtifact(path: String, historyDir: String?): Boolean {
+    if (historyDir != null && (path == historyDir || path.startsWith("$historyDir/"))) return true
+    return path.split('/').any { it == LEGACY_HISTORY_DIRNAME }
+  }
+
+  /**
+   * The configured history dir (FS archive + git-ref cache) relative to [repoRoot]; null when it
+   * isn't under it — which is the normal case now that the archive defaults to the user cache.
    */
   private fun relativeHistoryDir(): String? {
     val historyRoot = cacheDir.parent ?: return null
@@ -1010,6 +1028,14 @@ class GitRefHistorySource(
       }
 
     fun defaultCacheDir(historyDir: Path): Path = historyDir.resolve(".git-ref-cache")
+
+    /**
+     * Cache location when no module history directory is configured. Keyed by repo under the
+     * user-level cache root — this used to be `<repoRoot>/.compose-preview-history/.git-ref-cache`,
+     * i.e. a bare git working area planted in the user's working tree.
+     */
+    fun defaultRepoCacheDir(repoRoot: Path): Path =
+      composeAiGitRefCacheDir(repoRoot.toFile()).toPath()
   }
 }
 

@@ -38,6 +38,7 @@ import ee.schimke.composeai.data.theme.ResolvedThemeTokens
 import ee.schimke.composeai.data.theme.ThemeConsumer
 import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.data.theme.TypographyToken
+import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
@@ -1776,7 +1777,8 @@ open class RobolectricHost(
   /**
    * Resolve the directory recordings live under. Mirrors [DesktopHost.recordingsRootDir]: defers to
    * `composeai.daemon.recordingsDir` when set; falls back to a sibling of the engine's output dir;
-   * final fallback to `${user.dir}/.compose-preview-history/daemon-recordings`.
+   * final fallback to `<userCache>/composeai/history/daemon-recordings` (never `user.dir` — an
+   * unconfigured daemon must not write into whatever directory it was launched from).
    */
   private fun recordingsRootDir(): File {
     val sysprop = System.getProperty(RECORDINGS_DIR_PROP)
@@ -1786,7 +1788,7 @@ open class RobolectricHost(
       if (engineOut != null && engineOut.isNotBlank()) {
         File(engineOut).parentFile ?: File(System.getProperty("user.dir") ?: ".")
       } else {
-        File("${System.getProperty("user.dir")}/.compose-preview-history")
+        composeAiCacheDir("history")
       }
     return File(parent, "daemon-recordings")
   }
@@ -2626,7 +2628,7 @@ open class RobolectricHost(
       val outputDir =
         java.io.File(
           System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
-            ?: "${System.getProperty("user.dir")}/.compose-preview-history/daemon-renders"
+            ?: composeAiCacheDir("history").resolve("daemon-renders").absolutePath
         )
       outputDir.mkdirs()
       val outputFile = java.io.File(outputDir, "${start.outputBaseName}.png")
