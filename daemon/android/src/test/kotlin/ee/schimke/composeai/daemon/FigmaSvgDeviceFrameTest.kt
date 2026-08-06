@@ -21,11 +21,6 @@ class FigmaSvgDeviceFrameTest {
 
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
 
-  private companion object {
-    /** Mirrors `FigmaSvgModel.DEFAULT_PADDING` — the transparent margin the export frames with. */
-    const val SVG_PADDING = 16
-  }
-
   @Test
   fun `device preview exports its rendered frame, not the spec fallback`() {
     val outputDir = tempFolder.newFolder("renders-figma-device-frame")
@@ -76,14 +71,11 @@ class FigmaSvgDeviceFrameTest {
       // 454², not the router's fixed 320² fallback.
       assertEquals("render must use the device frame", 454, image.width)
       assertEquals("render must use the device frame", 454, image.height)
-      // The export frames the tree in a transparent margin (FigmaSvgModel.DEFAULT_PADDING on each
-      // side); everything inside it is the rendered frame.
-      assertEquals("SVG canvas must frame the rendered width", image.width + 2 * SVG_PADDING, svgWidth)
-      assertEquals(
-        "SVG canvas must frame the rendered height",
-        image.height + 2 * SVG_PADDING,
-        svgHeight,
-      )
+      // The export's canvas IS the rendered frame — a device mask anchors it there with no margin,
+      // so the SVG and its paired PNG are the same box and the viewer's SVG toggle doesn't resize
+      // the stage or move the content.
+      assertEquals("SVG canvas must match the rendered width", image.width, svgWidth)
+      assertEquals("SVG canvas must match the rendered height", image.height, svgHeight)
     } finally {
       host.shutdown()
       System.clearProperty(RenderEngine.OUTPUT_DIR_PROP)

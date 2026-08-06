@@ -526,7 +526,9 @@ data class FigmaSvgModel(
      *   binding.
      * @param density px-per-dp of the captured frame, used to convert dp corner radii and sp font
      *   sizes into the px coordinate space the bounds live in.
-     * @param padding transparent margin around the extent.
+     * @param padding transparent margin around the extent. Applies only to the **frameless** path:
+     *   with [frameWidthPx]/[frameHeightPx] supplied the canvas is anchored to the captured frame
+     *   so it matches the paired PNG exactly, and a margin would offset it from that raster again.
      * @param rasterComponents opaque component name-fragments; empty (default) = vector-only.
      * @param captureCanvasDraws when true (hybrid mode — a frame PNG is available to crop), a node
      *   that paints via an imperative `drawBehind` / `drawWithContent` Canvas modifier (which the
@@ -658,7 +660,7 @@ data class FigmaSvgModel(
           Extent(frame.left, frame.top, frame.left + frameWidthPx, frame.top + frameHeightPx)
         else null
       // The canvas has to contain both the drawn content and the background crop.
-      val extent =
+      val drawnExtent =
         backgroundFrame?.let {
           Extent(
             minOf(contentExtent.minX, it.minX),
@@ -667,6 +669,40 @@ data class FigmaSvgModel(
             maxOf(contentExtent.maxY, it.maxY),
           )
         } ?: contentExtent
+      // **Raster parity.** When the captured frame's size is known, the exported canvas IS that
+      // frame: the SVG and its paired PNG are two renders of one capture, and a viewer that swaps
+      // between them (the `serve` viewer's SVG toggle) must not have the box change size or the
+      // content move. Shrink-wrapping to the drawn extent instead made the two disagree by however
+      // much dead space the composable's layout box carried — a `compose-m3` sticker's 16dp padding
+      // at density 2.625 is 42px a side, so its SVG came out 52px smaller in each dimension and
+      // shifted the component by up to 26px on the stage, while a `wear-m3` sticker (8dp at density
+      // 2.0 = exactly [DEFAULT_PADDING]) matched by pure coincidence. Union rather than replace, so
+      // the pathological "drawn entirely outside the frame" fallback above still keeps its content
+      // on the canvas. Frameless callers (the vector-only / synthetic path) keep the padded
+      // shrink-wrapped canvas — there is no raster for them to agree with.
+      // A device mask defines the frame just as firmly as a frame PNG does — nothing outside the
+      // circle/stadium is drawn — so a masked export anchors to the masked rect even when the
+      // caller passed no frame size. (The Android export is one such caller: its figma-svg
+      // extension runs in the capture phase, before the PNG is on disk, so `frameWidthPx` is null
+      // there. Without this a round Wear screen exported 32px larger than its own watch face.)
+      val maskedFrame =
+        if (clip != null || capsule != null)
+          Extent(frame.left, frame.top, frame.right, frame.bottom)
+        else null
+      val anchor = frameExtent ?: maskedFrame
+      val extent =
+        anchor?.let {
+          Extent(
+            minOf(drawnExtent.minX, it.minX),
+            minOf(drawnExtent.minY, it.minY),
+            maxOf(drawnExtent.maxX, it.maxX),
+            maxOf(drawnExtent.maxY, it.maxY),
+          )
+        } ?: drawnExtent
+      // The margin exists to keep a shrink-wrapped diagram off its own edge. A frame-anchored
+      // canvas is already the render's own bounds, so adding one would reintroduce the very offset
+      // this is here to remove.
+      val effectivePadding = if (anchor != null) 0 else padding
       // A preview that opted into a background paints it behind the whole tree as the bottom
       // layer. A device frame (round or capsule mask) paints it in the mask shape, so a Wear
       // device export reads as a solid face with light chrome legible while the corners outside
@@ -726,9 +762,9 @@ data class FigmaSvgModel(
         root = retainedRoot,
         minX = extent.minX,
         minY = extent.minY,
-        width = (extent.maxX - extent.minX) + padding * 2,
-        height = (extent.maxY - extent.minY) + padding * 2,
-        padding = padding,
+        width = (extent.maxX - extent.minX) + effectivePadding * 2,
+        height = (extent.maxY - extent.minY) + effectivePadding * 2,
+        padding = effectivePadding,
         rasterTargets = targets,
         roundClip = clip,
         capsuleClip = capsule,

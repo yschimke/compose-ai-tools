@@ -807,6 +807,21 @@
     var y = (stage.clientHeight - 16) / 2 - top;
     return x.toFixed(2) + "," + y.toFixed(2);
   }
+  // The stage's own backdrop, handed to the Wasm app so the sticker sits on the same thing it
+  // sits on in the snapshot. The app can't render a transparent surface, so it paints *something*
+  // behind the component either way: without this it always painted the checkerboard, which
+  // appeared out of nowhere the moment Wasm was enabled on the solid (default) stage. In the
+  // page's Transparent mode there is no solid colour to send — the app continues the checkerboard
+  // itself, positioned by `bgPhase`.
+  function wasmStageBg() {
+    if (document.documentElement.classList.contains("cp-bg-transparent")) return "checker";
+    var rgb = getComputedStyle(stage).backgroundColor || "";
+    var m = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!m) return "checker";
+    return "#" + [1, 2, 3].map(function (i) {
+      return ("0" + parseInt(m[i], 10).toString(16)).slice(-2);
+    }).join("");
+  }
   function wasmOverridePatch() {
     var parts = [];
     var uiMode = chosenUiMode();
@@ -815,6 +830,7 @@
     if (loc && loc.value) parts.push("localeTag=" + encodeURIComponent(loc.value));
     if (fontScaleTouched && fs) parts.push("fontScale=" + encodeURIComponent(fs.value));
     parts.push("bgPhase=" + encodeURIComponent(wasmBgPhase()));
+    parts.push("stageBg=" + encodeURIComponent(wasmStageBg()));
     // Author-declared knobs also apply in the browser: the wasm catalog seeds its
     // `catalogOverride*` from these `knob.<key>` params. Mirror query() — omit a knob still at
     // its `data-knob-initial` so an unedited knob reverts to the author default in the app.
@@ -1576,6 +1592,16 @@
         wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
       }
     });
+    // The page's Background/Transparent toggle (owned by the landing script, which flips
+    // `cp-bg-transparent` on <html>) changes what the stage paints — and the app mirrors that
+    // backdrop, so it has to hear about it. Watching the class beats reaching across to that
+    // script's click handler: the stage also changes with the render theme, and both land here.
+    if (typeof MutationObserver === "function") {
+      new MutationObserver(function () {
+        if (!wasmActive() || !wasmReady || !wasmFrame.contentWindow) return;
+        wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    }
   }
   if (fs) {
     fs.addEventListener("input", function () {
