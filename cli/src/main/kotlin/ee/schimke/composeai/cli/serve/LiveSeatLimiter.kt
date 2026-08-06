@@ -51,15 +51,34 @@ class LiveSeatLimiter(
 ) {
   // The reserve is held in its own semaphore rather than subtracted from a single one, so no
   // amount of general-lane demand can consume it. `acquire` never sees it at all.
-  private val reservedPermits: Int =
-    if (totalPermits > 0) perPreviewReserve.coerceIn(0, (totalPermits - 1).coerceAtLeast(0)) else 0
+  //
+  // Carved out ONLY down to [STREAM_RESERVE] — the heaviest single backend — so the general lane
+  // can always hold one at its true weight. Take more than that and the budget silently
+  // over-admits: on a `--live-seats 2` box a general lane of 1 would coerce an Android stream
+  // (weight 2) down to a single permit, and a per-preview daemon could then take the reserved one,
+  // putting three permits' worth of processes on a box budgeted for two. The whole point of the
+  // weighting is that it does not do that.
+  //
+  // So a box too small to afford the slice simply doesn't get one, and keeps its old behaviour
+  // exactly. That is the correct answer rather than a regression: a box that can barely run one
+  // Android daemon cannot run a second daemon of any kind, and the starvation this reserve fixes
+  // only arises where there are seats to be hoarded in the first place.
+  //
+  // Public because it is what `/status` must publish: [perPreviewReserve] is what was *asked for*,
+  // and reporting that would state a slice the limiter may not actually hold — on a small box it is
+  // clamped to nothing, and an oversized custom value would otherwise be reported as larger than
+  // the whole budget. A diagnostic added to make starvation visible must not itself be able to lie.
+  val perPreviewPermits: Int =
+    if (totalPermits > 0)
+      perPreviewReserve.coerceIn(0, (totalPermits - STREAM_RESERVE).coerceAtLeast(0))
+    else 0
   /**
    * Permits the general lane (streams, burst replicas) may draw on — the budget minus the slice.
    */
-  private val generalPermits: Int = (totalPermits - reservedPermits).coerceAtLeast(0)
+  private val generalPermits: Int = (totalPermits - perPreviewPermits).coerceAtLeast(0)
   private val semaphore: Semaphore? = if (totalPermits > 0) Semaphore(generalPermits) else null
   private val perPreviewSemaphore: Semaphore? =
-    if (reservedPermits > 0) Semaphore(reservedPermits) else null
+    if (perPreviewPermits > 0) Semaphore(perPreviewPermits) else null
 
   /** True when this limiter imposes no bound (`totalPermits <= 0`). */
   val unbounded: Boolean

@@ -90,10 +90,47 @@ class LiveSeatLimiterPerPreviewReserveTest {
   }
 
   @Test
-  fun `a reserve as large as the budget still leaves the general lane usable`() {
-    // Misconfiguration must degrade, not deadlock: something has to be able to serve a stream.
-    val limiter = LiveSeatLimiter(totalPermits = 2, perPreviewReserve = 9)
-    assertNotNull(limiter.acquire(1), "the general lane keeps at least one permit")
+  fun `a budget too small to afford the slice gets none, and cannot over-admit`() {
+    // The `--live-seats 2` case. A general lane of 1 would coerce an Android stream (weight 2) down
+    // to a single permit, and a per-preview daemon could then take the reserved one — three
+    // permits' worth of processes on a box budgeted for two, defeating the OOM protection that is
+    // the entire reason the budget is weighted. So a box this small keeps its old behaviour.
+    val limiter = LiveSeatLimiter(totalPermits = 2, perPreviewReserve = 1)
+    assertEquals(0, limiter.perPreviewPermits, "no slice is carved out of a budget this small")
+
+    val android = assertNotNull(limiter.acquire(ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT))
+    assertEquals(2, android.permits, "the heavy backend is charged its true weight, not clamped")
+    assertEquals(0, limiter.availablePermits(), "and it holds the whole box")
+    assertNull(limiter.acquireBackground(1), "nothing else may run alongside it")
+  }
+
+  @Test
+  fun `the slice never eats the headroom a heaviest-backend stream needs`() {
+    // The invariant that makes the clamp above safe: whenever a slice exists, the general lane can
+    // still hold ANDROID_LIVE_SEAT_WEIGHT at full weight, so `acquire` never under-charges.
+    for (total in 1..12) {
+      val limiter = LiveSeatLimiter(totalPermits = total, perPreviewReserve = 4)
+      val general = total - limiter.perPreviewPermits
+      if (limiter.perPreviewPermits > 0) {
+        assertTrue(
+          general >= ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT,
+          "budget $total left a general lane of $general, too small for the heaviest backend",
+        )
+      }
+      assertTrue(limiter.perPreviewPermits >= 0 && general >= 0)
+    }
+  }
+
+  @Test
+  fun `an oversized reserve is clamped, and status reports what is actually held`() {
+    // `/status` must publish the EFFECTIVE slice. Reporting the requested value would state a
+    // reserve the limiter does not hold — and a diagnostic added to make starvation visible must
+    // not itself be able to lie.
+    val limiter = LiveSeatLimiter(totalPermits = 8, perPreviewReserve = 99)
+    assertEquals(6, limiter.perPreviewPermits, "clamped to the budget minus the stream reserve")
+    assertEquals(99, limiter.perPreviewReserve, "the requested value is kept, but is not the truth")
+    assertEquals(6, limiter.perPreviewPermitsAvailable())
+    assertEquals(8, limiter.availablePermits())
   }
 
   @Test

@@ -2063,7 +2063,7 @@ class ServeHttpServer(
             liveSeatsTotal = if (liveSeats.unbounded) 0 else liveSeats.totalPermits,
             liveSeatsAvailable = if (liveSeats.unbounded) -1 else liveSeats.availablePermits(),
             liveSeatsUnbounded = liveSeats.unbounded,
-            perPreviewSeatsTotal = if (liveSeats.unbounded) 0 else liveSeats.perPreviewReserve,
+            perPreviewSeatsTotal = if (liveSeats.unbounded) 0 else liveSeats.perPreviewPermits,
             perPreviewSeatsAvailable =
               if (liveSeats.unbounded) -1 else liveSeats.perPreviewPermitsAvailable(),
             liveSeatRefusals = liveSeats.refusalCount(),
