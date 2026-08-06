@@ -1085,7 +1085,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     val androidBundle = playgroundAndroidBundlePath
     if (cmpBundle == null && androidBundle == null) return null
 
-    val sandbox = playgroundSandbox.getOrElse { e ->
+    val configuredSandbox = playgroundSandbox.getOrElse { e ->
       System.err.println("serve: ${e.message}. Playground disabled.")
       return null
     }
@@ -1095,11 +1095,16 @@ class ServeCommand(args: List<String>) : Command(args) {
     // only behind a sandbox that has *demonstrated* containment — the preflight runs a throwaway
     // JVM inside the configured jail and reports whether it can still reach the network, the host
     // filesystem, or host processes. A profile's claims are never enough on their own.
+    //
+    // Run for ANY active sandbox, not just a public one. Its containment verdict only *gates* the
+    // anonymous-public posture, but its can-this-jail-even-launch answer matters everywhere: a
+    // token-gated host whose `unshare` is forbidden by the kernel is just as silently broken, and
+    // that is what the fallback below repairs. One throwaway JVM at startup buys it.
     val probe =
-      if (public && sandbox.isActive) {
-        System.err.println("serve: playground sandbox preflight (${sandbox.describe()})…")
+      if (configuredSandbox.isActive) {
+        System.err.println("serve: playground sandbox preflight (${configuredSandbox.describe()})…")
         PlaygroundSandboxProbe.run(
-            sandbox = sandbox,
+            sandbox = configuredSandbox,
             javaHome = java.io.File(System.getProperty("java.home")),
             classpath =
               System.getProperty("java.class.path")
@@ -1114,7 +1119,9 @@ class ServeCommand(args: List<String>) : Command(args) {
     // operator reading it later doesn't have to find the startup log to tell "admitted because
     // collaborators only" from "admitted because contained".
     val admittedBy: String
-    when (val decision = PlaygroundPublicGate.decide(public, repoAccessGated, sandbox, probe)) {
+    when (
+      val decision = PlaygroundPublicGate.decide(public, repoAccessGated, configuredSandbox, probe)
+    ) {
       is PlaygroundPublicGate.Decision.Refuse -> {
         System.err.println("serve: ${decision.reason}")
         workRoot.deleteRecursively()
@@ -1125,6 +1132,44 @@ class ServeCommand(args: List<String>) : Command(args) {
         admittedBy = decision.detail
       }
     }
+    // A configured jail that CANNOT LAUNCH here would otherwise break the lane silently: the gate
+    // already admitted it (on repo access, or because the host is token-gated), `/playground`
+    // answers normally, and then every snippet JVM and every jailed compile fails to spawn behind
+    // an argv that returns EPERM. Drop the jail and keep the caps — `-Xmx`, the CPU cap,
+    // ExitOnOutOfMemoryError, the temp-dir confinement and the hard TTL all still apply, which is
+    // the half that actually protects the box's memory (see PlaygroundSandbox.droppingJail).
+    //
+    // Safe by construction for the contained posture: an anonymous --public host whose probe never
+    // ran is refused above, so this line is unreachable in the one case where the jail is what
+    // admitted the lane.
+    // …but NOT for a profile whose caps live in the argv being dropped. `systemd` and `strict`
+    // enforce MemoryMax/CPUQuota/TasksMax through the `systemd-run` prefix, so dropping it leaves
+    // only `-Xmx` (heap, not native memory) and `-XX:ActiveProcessorCount` (pool sizing, not a CPU
+    // quota) — and no pid cap at all. Running an operator who asked for enforceable caps under
+    // caps they cannot enforce is worse than not running: refuse, and say which knob to change.
+    if (probe != null && !probe.ran && configuredSandbox.profile.declaresResourceCaps) {
+      System.err.println(
+        "serve: playground sandbox '${configuredSandbox.profile.id}' could not launch on this " +
+          "host (${probe.detail}), and its CPU/memory/pid caps are enforced BY that command — " +
+          "dropping it would leave the snippet effectively uncapped, so the playground is " +
+          "disabled instead. Fix the jail (a container has no systemd to build a transient scope " +
+          "against), or pick a profile whose caps are JVM-level (bwrap, unshare)."
+      )
+      workRoot.deleteRecursively()
+      return null
+    }
+    val sandbox =
+      if (probe != null && !probe.ran) {
+        System.err.println(
+          "serve: WARNING playground sandbox '${configuredSandbox.profile.id}' could not launch on this " +
+            "host (${probe.detail}) — dropping the jail and keeping the JVM caps. Snippets run " +
+            "capped but UNCONTAINED; the lane is admitted by ${if (public) "repo-access gating" else "the access token"}, not by containment." +
+            (if (configuredSandbox.profile == PlaygroundSandbox.Profile.CUSTOM)
+              " Any caps that custom argv supplied are gone with it — only the JVM-level ones remain."
+            else "")
+        )
+        configuredSandbox.droppingJail()
+      } else configuredSandbox
     // A repo-access-gated lane is admitted without consulting the probe, so a broken jail would
     // otherwise pass unremarked — the operator asked for defence in depth and isn't getting it.
     // Say so; the lane still serves, because admission never rested on the jail here.
@@ -1328,11 +1373,12 @@ class ServeCommand(args: List<String>) : Command(args) {
         admittedBy = admittedBy,
         sandboxProfile = sandbox.profile.id,
         sandboxActive = sandbox.isActive,
+        jailDropped = sandbox.jailDropped,
         sandboxMemoryMb = sandbox.memoryMb,
         sandboxCpus = sandbox.cpus,
         sandboxTtlSeconds = sandbox.ttlSeconds,
         probe = probe,
-        compilerJailed = compiler !== inProcessCompiler,
+        compilerJailed = compiler !== inProcessCompiler && !sandbox.jailDropped,
         compileSlots = playgroundCompileSlots,
         modes = {
           listOfNotNull(

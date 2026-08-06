@@ -159,6 +159,62 @@ class PlaygroundSandboxTest {
   fun `the default ttl outlives a preview token so sessions end by expiry, not by the axe`() {
     assertTrue(PlaygroundSandbox.DEFAULT_TTL_SECONDS > PlaygroundTokenStore.DEFAULT_TTL_SECONDS)
   }
+
+  @Test
+  fun `dropping the jail removes the argv and keeps every cap`() {
+    // The recovery for a jail that cannot launch on this host. The argv is what fails to spawn, so
+    // it is the only thing that goes; the caps are the half that actually protects the box.
+    val dropped = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.UNSHARE).droppingJail()
+
+    assertEquals(emptyList(), dropped.command(paths), "no jail argv survives the drop")
+    assertTrue(dropped.isActive, "still active — otherwise the caps would go too")
+    assertTrue("-Xmx1152m" in dropped.jvmArgs(paths.workDir))
+    assertTrue(dropped.jvmArgs(paths.workDir).any { it.startsWith("-XX:ActiveProcessorCount=") })
+    assertTrue("-XX:+ExitOnOutOfMemoryError" in dropped.jvmArgs(paths.workDir))
+    assertEquals(
+      PlaygroundSandbox.DEFAULT_TTL_SECONDS,
+      dropped.ttlSeconds,
+      "the hard kill still arms",
+    )
+  }
+
+  @Test
+  fun `a dropped jail says so, so a log or status is never mistaken for containment`() {
+    val dropped = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.BWRAP).droppingJail()
+
+    assertTrue("jail dropped" in dropped.describe(), dropped.describe())
+    // The profile id is retained: what the operator ASKED for stays visible next to what happened.
+    assertTrue("bwrap" in dropped.describe(), dropped.describe())
+  }
+
+  @Test
+  fun `the profiles excluded from the drop are exactly those whose caps live in the argv`() {
+    // The discriminator ServeCommand refuses on. `systemd`/`strict` enforce MemoryMax, CPUQuota
+    // and TasksMax through the systemd-run prefix that command() emits, so dropping that argv
+    // drops the enforcement — heap and pool sizing are all that would remain. Pinning the set here
+    // means adding a future cgroup-backed profile can't silently inherit the caps-only fallback.
+    val capBacked =
+      PlaygroundSandbox.Profile.entries.filter { it.declaresResourceCaps }.map { it.id }.toSet()
+
+    assertEquals(setOf("systemd", "strict"), capBacked)
+
+    val strict = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.STRICT)
+    assertTrue(
+      strict.command(paths).any { it.startsWith("MemoryMax=") },
+      "the enforceable cap is in the argv, which is what makes dropping it unsafe",
+    )
+    assertTrue(
+      strict.jvmArgs(paths.workDir).none { it.startsWith("MemoryMax") },
+      "and jvmArgs cannot replace it",
+    )
+  }
+
+  @Test
+  fun `dropping is inert for every profile that had no argv anyway`() {
+    val none = PlaygroundSandbox.NONE.droppingJail()
+    assertEquals(emptyList(), none.command(paths))
+    assertFalse(none.isActive, "none stays none — there was nothing to drop")
+  }
 }
 
 /**
@@ -392,6 +448,39 @@ class PlaygroundPublicGateTest {
       )
 
     assertTrue("ANONYMOUS" in allow, allow)
+  }
+
+  @Test
+  fun `a jail that cannot launch is still refused when containment is the admission basis`() {
+    // The safety property the auto-fallback rests on. ServeCommand only drops a jail AFTER the
+    // gate has admitted the lane, so this refusal is what keeps the fallback from ever handing an
+    // anonymous --public host an uncontained playground: it never gets past `decide`.
+    val refusal =
+      assertRefused(
+        PlaygroundPublicGate.decide(
+          isPublic = true,
+          repoAccessGated = false,
+          sandbox = bwrap,
+          probe = PlaygroundSandboxProbe.Report(ran = false, detail = "bwrap: not found"),
+        )
+      )
+
+    assertTrue("bwrap: not found" in refusal, refusal)
+  }
+
+  @Test
+  fun `a repo-access-gated host with an unlaunchable jail is admitted, so it can fall back`() {
+    // The mirror of the case above: here the lane is admitted on WHO can reach it, so the dead
+    // jail is a degradation to report rather than a reason to refuse — which is exactly the state
+    // ServeCommand converts into a caps-only sandbox.
+    assertAllowed(
+      PlaygroundPublicGate.decide(
+        isPublic = true,
+        repoAccessGated = true,
+        sandbox = bwrap,
+        probe = PlaygroundSandboxProbe.Report(ran = false, detail = "bwrap: not found"),
+      )
+    )
   }
 
   private fun assertAllowed(decision: PlaygroundPublicGate.Decision): String {
