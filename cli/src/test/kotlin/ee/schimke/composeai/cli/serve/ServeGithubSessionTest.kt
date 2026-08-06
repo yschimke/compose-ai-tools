@@ -85,7 +85,7 @@ class ServeGithubSessionTest {
    */
   private val playground =
     PlaygroundCompileService(
-      catalogClasspath = { _ -> null },
+      catalogClasspath = { _, _ -> null },
       compiler = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() },
       discoverer = PlaygroundCompileService.PreviewDiscoverer { _, _ -> emptyList() },
       tokenStore = PlaygroundTokenStore(fileSystem = fs),

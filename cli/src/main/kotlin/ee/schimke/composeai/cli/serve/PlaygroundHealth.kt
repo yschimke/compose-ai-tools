@@ -58,6 +58,13 @@ data class PlaygroundHealth(
   val compileSlots: Int,
   /** One entry per wired mode, evaluated fresh on each read. */
   val modes: () -> List<Mode>,
+  /**
+   * The runtime catalog selector, or null when this host pins its bundles instead (`--playground`
+   * absent). Its own half-up state is a question operators ask: a selector that offers nothing
+   * because no catalog has loaded yet looks identical from outside to one whose catalogs all
+   * declare a backend this host cannot render.
+   */
+  val catalogSelector: (() -> CatalogSelector)? = null,
 ) {
   /**
    * A wired playground mode. "Wired" means configured with a bundle source *and* backed by an
@@ -75,5 +82,18 @@ data class PlaygroundHealth(
      * (not). [PlaygroundHealth]'s `admittedBy` plus the startup log distinguish them.
      */
     val resolved: Boolean,
+  )
+
+  /** The runtime catalog selector's state — what it currently offers, and what it has spent. */
+  data class CatalogSelector(
+    /** Catalogs offerable right now: loaded, with a backend this host can render. */
+    val offered: List<String>,
+    /**
+     * How many of those hold a resolved compile classpath. Each is an unpacked bundle held for the
+     * process's life, so this is the number that matters against [limit].
+     */
+    val resolved: Int,
+    /** `--playground-catalog-limit`. At [resolved] == [limit] a new catalog is refused. */
+    val limit: Int,
   )
 }

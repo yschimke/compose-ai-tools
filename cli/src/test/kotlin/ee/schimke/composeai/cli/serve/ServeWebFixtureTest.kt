@@ -1053,8 +1053,37 @@ class ServeWebFixtureTest {
     // The playground Stage-1 editor (`GET /playground`): the code box, mode selector, and result
     // pane. Always token-gated (the lane runs user code, refused under `--public`), so the fixture
     // renders the non-public form the server actually serves.
+    // Rendered with the runtime catalog selector populated (`--playground`), because that is the
+    // shape with the most moving parts — a pinned host renders the same page minus the Catalog
+    // control, which the `playgroundPage omits the catalog control…` test pins separately.
     val playground =
-      ServeWeb.playgroundPage(token, isPublic = false, modes = PlaygroundMode.entries.toList())
+      ServeWeb.playgroundPage(
+        token,
+        isPublic = false,
+        catalogs =
+          listOf(
+            PlaygroundCatalogInfo(
+              id = "",
+              label = "Server default",
+              modes = PlaygroundMode.entries.toList(),
+              resolved = true,
+            ),
+            PlaygroundCatalogInfo(
+              id = "compose-m3",
+              label = "compose-m3 (desktop)",
+              backend = "desktop",
+              modes = listOf(PlaygroundMode.CMP),
+              resolved = true,
+            ),
+            PlaygroundCatalogInfo(
+              id = "compose-wear",
+              label = "compose-wear (android)",
+              backend = "android",
+              modes = listOf(PlaygroundMode.ANDROID, PlaygroundMode.REMOTE_COMPOSE),
+              resolved = false,
+            ),
+          ),
+      )
     val docLottie =
       ServeWeb.docPage(
         ServeWeb.DocView(

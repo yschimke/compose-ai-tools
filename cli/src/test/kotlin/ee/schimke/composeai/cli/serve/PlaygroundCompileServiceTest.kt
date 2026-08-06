@@ -35,7 +35,7 @@ class PlaygroundCompileServiceTest {
     publish: (String, ByteArray, Boolean) -> String? = { _, _, _ -> null },
   ) =
     PlaygroundCompileService(
-      catalogClasspath = classpathFor,
+      catalogClasspath = { mode, _ -> classpathFor(mode) },
       compiler = PlaygroundCompileService.Compiler(compile),
       discoverer = PlaygroundCompileService.PreviewDiscoverer(discover),
       tokenStore = tokenStore,
@@ -49,7 +49,120 @@ class PlaygroundCompileServiceTest {
   private fun request(
     text: String = "@Preview @Composable fun P() {}",
     confType: String = "compose-cmp",
-  ) = PlaygroundRunRequest(files = listOf(PlaygroundFile("Snippet.kt", text)), confType = confType)
+    catalog: String = "",
+  ) =
+    PlaygroundRunRequest(
+      files = listOf(PlaygroundFile("Snippet.kt", text)),
+      confType = confType,
+      catalog = catalog,
+    )
+
+  @Test
+  fun `a request with no catalog asks for the host's pinned default`() {
+    val asked = mutableListOf<Pair<PlaygroundMode, String?>>()
+    val svc =
+      PlaygroundCompileService(
+        catalogClasspath = { mode, catalog ->
+          asked += mode to catalog
+          cmpClasspath
+        },
+        compiler = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() },
+        discoverer = PlaygroundCompileService.PreviewDiscoverer { _, _ -> listOf("x") },
+        tokenStore = tokenStore,
+        newWorkDir = { "/work/run".toPath() },
+        fileSystem = fs,
+      )
+
+    svc.run(request(), isSecurityChecked = true)
+    // Blank, whitespace and absent are all "the default" — a stock kotlin-playground frontend
+    // never sends the field at all.
+    svc.run(request(catalog = "   "), isSecurityChecked = true)
+    svc.run(request(catalog = "compose-m3"), isSecurityChecked = true)
+
+    assertEquals(
+      listOf(
+        PlaygroundMode.CMP to null,
+        PlaygroundMode.CMP to null,
+        PlaygroundMode.CMP to "compose-m3",
+      ),
+      asked,
+    )
+  }
+
+  @Test
+  fun `a named catalog the host cannot serve is refused, never served from the default`() {
+    val svc = service(classpathFor = { cmpClasspath })
+    val svcWithCatalogs =
+      PlaygroundCompileService(
+        // The default resolves fine; the named catalog does not. Falling back would report success
+        // for a design system nobody asked for.
+        catalogClasspath = { _, catalog -> if (catalog == null) cmpClasspath else null },
+        compiler = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() },
+        discoverer = PlaygroundCompileService.PreviewDiscoverer { _, _ -> listOf("x") },
+        tokenStore = tokenStore,
+        newWorkDir = { "/work/run".toPath() },
+        fileSystem = fs,
+      )
+
+    assertNotNull(svc.run(request(), isSecurityChecked = true).previewToken)
+    val resp = svcWithCatalogs.run(request(catalog = "nope"), isSecurityChecked = true)
+    assertNull(resp.previewToken)
+    assertEquals("catalog 'nope' cannot serve mode CMP on this host", resp.exception)
+  }
+
+  @Test
+  fun `catalogChoices lists the pinned default first, then every served catalog`() {
+    val svc =
+      PlaygroundCompileService(
+        catalogClasspath = { mode, catalog ->
+          if (catalog == null && mode == PlaygroundMode.CMP) cmpClasspath else null
+        },
+        compiler = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() },
+        discoverer = PlaygroundCompileService.PreviewDiscoverer { _, _ -> listOf("x") },
+        tokenStore = tokenStore,
+        newWorkDir = { "/work/run".toPath() },
+        fileSystem = fs,
+        catalogTargets = {
+          listOf(
+            PlaygroundCatalogTarget("m3", "desktop", listOf(PlaygroundMode.CMP), resolved = true),
+            PlaygroundCatalogTarget(
+              "wear",
+              "android",
+              listOf(PlaygroundMode.ANDROID),
+              resolved = false,
+            ),
+          )
+        },
+      )
+
+    val choices = svc.catalogChoices()
+    assertEquals(listOf("", "m3", "wear"), choices.map { it.id })
+    assertEquals(listOf(PlaygroundMode.CMP), choices[0].modes)
+    assertEquals("m3 (desktop)", choices[1].label)
+    assertEquals(listOf(PlaygroundMode.ANDROID), choices[2].modes)
+    assertEquals(listOf(true, true, false), choices.map { it.resolved })
+  }
+
+  @Test
+  fun `a host with nothing pinned offers only its served catalogs`() {
+    val svc =
+      PlaygroundCompileService(
+        catalogClasspath = { _, catalog -> if (catalog == "m3") cmpClasspath else null },
+        compiler = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() },
+        discoverer = PlaygroundCompileService.PreviewDiscoverer { _, _ -> listOf("x") },
+        tokenStore = tokenStore,
+        newWorkDir = { "/work/run".toPath() },
+        fileSystem = fs,
+        catalogTargets = {
+          listOf(
+            PlaygroundCatalogTarget("m3", "desktop", listOf(PlaygroundMode.CMP), resolved = true)
+          )
+        },
+      )
+
+    assertEquals(emptyList(), svc.availableModes)
+    assertEquals(listOf("m3"), svc.catalogChoices().map { it.id })
+  }
 
   @Test
   fun `a clean compile mints a token pointing at the discovered preview`() {
@@ -370,7 +483,7 @@ class PlaygroundCompileServiceTest {
   fun `a work-dir allocation failure returns the JSON contract, not a throw`() {
     val svc =
       PlaygroundCompileService(
-        catalogClasspath = { cmpClasspath },
+        catalogClasspath = { _, _ -> cmpClasspath },
         compiler = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() },
         discoverer = PlaygroundCompileService.PreviewDiscoverer { _, _ -> listOf("x") },
         tokenStore = tokenStore,

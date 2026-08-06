@@ -64,13 +64,51 @@ data class PlaygroundFile(val name: String, val text: String, val publicId: Stri
  * A Stage-1 run request. Mirrors the `kotlin-compiler-server` body so a stock frontend fits; [args]
  * is accepted and ignored (a preview has no argv), and the mode comes from [confType] via
  * [PlaygroundMode.fromConfType].
+ *
+ * [catalog] is ours, and additive: a stock frontend omits it and lands on the host's pinned
+ * `--playground-bundle` default exactly as before.
  */
 @Serializable
 data class PlaygroundRunRequest(
   val args: String = "",
   val files: List<PlaygroundFile> = emptyList(),
   val confType: String = "",
+  /**
+   * Which served catalog to compile against (`compose-m3`), chosen per request by the editor's
+   * catalog selector. Empty ⇒ the host's pinned default for [confType]'s mode. An unknown or
+   * unloaded id is a clean "not available" response, never a fallback to the default — silently
+   * compiling against a *different* design system than the one asked for would report success for
+   * the wrong thing.
+   */
+  val catalog: String = "",
 )
+
+/**
+ * One entry in the editor's catalog selector (`GET /api/{version}/compiler/catalogs`).
+ *
+ * [modes] is what makes this worth a round trip rather than a static page: a catalog's bundle
+ * backend decides its renderer, so selecting `compose-m3` (desktop) and selecting an Android
+ * catalog offer different mode sets. The client repopulates its mode control from the selected
+ * entry instead of offering modes the host would then refuse.
+ */
+@Serializable
+data class PlaygroundCatalogInfo(
+  /** The `catalog` value to send back on a run. Empty for the host's pinned default entry. */
+  val id: String,
+  /** What the selector shows. */
+  val label: String,
+  /** `desktop` | `android`, or empty for the pinned default (which spans whatever was pinned). */
+  val backend: String = "",
+  val modes: List<PlaygroundMode> = emptyList(),
+  /**
+   * True once this catalog's classpath is resolved — the first run against it pays for the unpack.
+   */
+  val resolved: Boolean = false,
+)
+
+/** `GET /api/{version}/compiler/catalogs`: what the editor's catalog selector may offer. */
+@Serializable
+data class PlaygroundCatalogsResponse(val catalogs: List<PlaygroundCatalogInfo> = emptyList())
 
 /** Severity of a compiler diagnostic, spelled the way the editor's highlight lane expects. */
 @Serializable

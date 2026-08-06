@@ -35,7 +35,7 @@ class PlaygroundRoutingTest {
 
   private val playground =
     PlaygroundCompileService(
-      catalogClasspath = { mode ->
+      catalogClasspath = { mode, _ ->
         if (mode == PlaygroundMode.CMP) {
           PlaygroundCompileService.Classpath("compose-m3", listOf("/cat/app.jar".toPath()))
         } else {

@@ -39,8 +39,13 @@ import okio.Path
  * *is* the resolved library jar. See `docs/design/PLAYGROUND.md` §8.
  */
 class PlaygroundCompileService(
-  /** Resolves the compile+render classpath for a mode; null ⇒ that mode isn't available here. */
-  private val catalogClasspath: (PlaygroundMode) -> Classpath?,
+  /**
+   * Resolves the compile+render classpath for a mode against an optionally **named catalog**; null
+   * ⇒ that pair isn't available here. A null catalog means the host's pinned `--playground-bundle`
+   * default for the mode; a non-null one is the runtime selector's choice among the served catalogs
+   * ([PlaygroundCatalogTargets]).
+   */
+  private val catalogClasspath: (PlaygroundMode, String?) -> Classpath?,
   private val compiler: Compiler,
   private val discoverer: PreviewDiscoverer,
   private val tokenStore: PlaygroundTokenStore,
@@ -66,12 +71,20 @@ class PlaygroundCompileService(
    * audit marker forwarded from [run], matching [ServeDocStore.add]. Defaults to no publisher.
    */
   private val publishRemoteDocument: (String, ByteArray, Boolean) -> String? = { _, _, _ -> null },
+  /**
+   * The served catalogs a request may name in [PlaygroundRunRequest.catalog]. Read fresh per call —
+   * catalogs load in the background after the lane is wired. Empty ⇒ this host pins its bundles and
+   * offers no runtime choice, which is the pre-selector behaviour.
+   */
+  private val catalogTargets: () -> List<PlaygroundCatalogTarget> = { emptyList() },
 ) {
 
   /**
-   * The modes this host can actually serve — the ones whose [catalogClasspath] resolved to a real
-   * classpath. Drives the editor's mode selector so it never offers a mode that would immediately
-   * answer "mode … is not available" (e.g. an Android-only host must not default to CMP).
+   * The modes this host can serve **on its pinned default** — the ones whose [catalogClasspath]
+   * resolved to a real classpath with no catalog named. Drives the editor's mode selector for the
+   * default entry so it never offers a mode that would immediately answer "mode … is not available"
+   * (e.g. an Android-only host must not default to CMP). A host started with `--playground` and no
+   * pinned bundle has none, and the editor's selector then starts on a served catalog instead.
    *
    * Computed per read, not captured once: a mode configured as a served catalog id
    * (`--playground-bundle compose-m3`, issue #3212) resolves on first use, because the catalog it
@@ -80,7 +93,41 @@ class PlaygroundCompileService(
    * read after the first resolve is a field access.
    */
   val availableModes: List<PlaygroundMode>
-    get() = PlaygroundMode.entries.filter { catalogClasspath(it) != null }
+    get() = PlaygroundMode.entries.filter { catalogClasspath(it, null) != null }
+
+  /**
+   * What the editor's catalog selector offers: the host's pinned default (when it has one) followed
+   * by every served catalog that can back a compile here.
+   *
+   * The **pinned** entry costs what [availableModes] costs — deciding whether a pinned bundle can
+   * serve a mode means resolving it, and the first caller pays the unpack. That is unchanged from
+   * how `GET /playground` has always rendered its mode list. The **served-catalog** entries are
+   * free: each reports its memoized resolution state rather than forcing a resolve, so listing
+   * twenty catalogs does not unpack twenty bundles.
+   */
+  fun catalogChoices(): List<PlaygroundCatalogInfo> {
+    val pinned = availableModes
+    val default =
+      if (pinned.isEmpty()) null
+      else
+        PlaygroundCatalogInfo(
+          id = "",
+          label = "Server default",
+          modes = pinned,
+          // The pinned bundle resolved — that is exactly what `availableModes` just proved.
+          resolved = true,
+        )
+    return listOfNotNull(default) +
+      catalogTargets().map {
+        PlaygroundCatalogInfo(
+          id = it.system,
+          label = "${it.system} (${it.backend})",
+          backend = it.backend,
+          modes = it.modes,
+          resolved = it.resolved,
+        )
+      }
+  }
 
   /**
    * The resolved classpath a snippet compiles and renders against. Backed in production by a
@@ -115,8 +162,13 @@ class PlaygroundCompileService(
     if (files.isEmpty()) return failure("no source files supplied")
 
     val mode = PlaygroundMode.fromConfType(request.confType)
+    val catalog = request.catalog.trim().takeIf { it.isNotEmpty() }
     val classpath =
-      catalogClasspath(mode) ?: return failure("mode ${mode.name} is not available on this host")
+      catalogClasspath(mode, catalog)
+        ?: return failure(
+          if (catalog == null) "mode ${mode.name} is not available on this host"
+          else "catalog '$catalog' cannot serve mode ${mode.name} on this host"
+        )
 
     var workDir: Path? = null
     return try {
