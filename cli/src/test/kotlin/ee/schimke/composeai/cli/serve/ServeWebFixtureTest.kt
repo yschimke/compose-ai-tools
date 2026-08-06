@@ -965,6 +965,22 @@ class ServeWebFixtureTest {
         // pages-snapshot.spec.mjs).
         presenceUrl = "/compose-m3/api/presence",
       )
+    // A live catalog: every card can be long-pressed to open a daemon session inside it. The
+    // committed HTML holds the affordance's static half (the header note + the emitted config);
+    // the gesture's two runtime states — the hover hint and a card actually streaming — are
+    // captured as FIXTURE_STATES in pages-snapshot.spec.mjs, driven by the real script.
+    val landingLive =
+      ServeWeb.landingPage(
+        "compose-m3",
+        themedPreviews,
+        token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        hasHomeIndex = true,
+        version = version,
+        canStreamLiveFor = { true },
+      )
     // A catalog whose components carry baked non-default states: the landing folds each to ONE card
     // (the default), the non-default states reachable via the viewer switcher.
     val landingStates =
@@ -1318,6 +1334,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-format-compare.html").writeText(formatComparison)
       File(pagesDir, "serve-reference-compare.html").writeText(referenceComparison)
       File(pagesDir, "serve-landing-declared-themes.html").writeText(landingDeclaredThemes)
+      File(pagesDir, "serve-landing-live.html").writeText(landingLive)
       File(pagesDir, "serve-landing-states.html").writeText(landingStates)
       File(pagesDir, "serve-landing-sections.html").writeText(landingSections)
       File(pagesDir, "serve-viewer-states.html").writeText(viewerStates)
@@ -1616,6 +1633,16 @@ class ServeWebFixtureTest {
       "expanded aliases fold state and props without selecting the compact comparison row",
     )
     assertGolden(File(pagesDir, "serve-landing-declared-themes.html"), landingDeclaredThemes)
+    assertGolden(File(pagesDir, "serve-landing-live.html"), landingLive)
+    // Long-press a card and its preview streams from the daemon in place. The page carries the
+    // gesture's configuration — each card's streamable ids, emitted in document order rather than
+    // read back off the DOM — plus the header note that says the lane exists at all.
+    assertTrue(
+      landingLive.contains("window.cpCatalogLive = {base:\"\",query:\"session=compose-m3\"") &&
+        landingLive.contains("cards:[{l:\"button-filled__ideal__default__light\"") &&
+        landingLive.contains("hold a card for a live session"),
+      "the live catalog page wires the long-press lane",
+    )
     // Issue #2881: the header control lists every CONFIGURED theme, not just Light/Dark — the baked
     // pair plus one chip per declared `@ThemeCatalog` theme, each carrying its provider FQN.
     assertTrue(
