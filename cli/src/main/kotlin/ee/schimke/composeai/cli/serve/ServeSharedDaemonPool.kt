@@ -26,12 +26,17 @@ class ServeSharedDaemonPool(
    * as it is open, so burst width is bounded by what the box can actually afford and not only by
    * [capacity], which is per catalog. Null keeps the historical unbudgeted behaviour.
    *
-   * Charged as **foreground** ([LiveSeatLimiter.acquire]), unlike the per-preview pool. A replica
-   * opens only when *leased* renders overlap — a visitor is sitting in front of the grid waiting
-   * for those pixels — so it is the same class of demand as a stream, not background residency. It
-   * is also short-lived: the burst ends, the replica goes idle, and [reapIdle] returns the seat.
-   * Making it compete for the background remainder instead capped a visitor's burst at whatever the
-   * prefetcher had left over, which is backwards.
+   * Charged as **foreground** ([LiveSeatLimiter.acquire]) for a visitor's burst: a replica opens
+   * when *leased* renders overlap — someone is sitting in front of the grid waiting for those
+   * pixels — so it is the same class of demand as a stream. It is also short-lived: the burst ends,
+   * the replica goes idle, and [reapIdle] returns the seat. Making it compete for the background
+   * remainder instead capped a visitor's burst at whatever the prefetcher had left over, which is
+   * backwards.
+   *
+   * The idle theme optimizer reaches this pool through the same leased path but satisfies neither
+   * premise — it is background residency and it does not end — so it passes `background = true` to
+   * [render] and its replicas take the background remainder instead. Never the per-preview slice:
+   * that is another lane's guarantee, not spare capacity.
    */
   private val liveSeats: LiveSeatLimiter? = null,
   private val seatWeight: () -> Int = { 1 },
@@ -58,6 +63,9 @@ class ServeSharedDaemonPool(
   // [takeColdStartMillis].
   private val coldReplicas = mutableSetOf<ServeHost>() // guarded by [lock]
   private val peakColdStartMillis = AtomicLong(0)
+  // Replicas whose seat was taken on the FOREGROUND budget, i.e. opened by a visitor's burst. A
+  // prefetch that reuses one must not quietly inherit that pricing — see [render].
+  private val foregroundSeated = mutableSetOf<ServeHost>() // guarded by [lock]
   private var closed = false
 
   init {
@@ -121,6 +129,8 @@ class ServeSharedDaemonPool(
     var cold = false
     var coldStartFrom = 0L
     var startedDaemon = false
+    // Whether this borrow may extend the replica's life — see the repricing block below.
+    var refreshLastUsed = true
     try {
       borrowed = lock.withLock {
         check(!closed) { "shared daemon pool is closed" }
@@ -128,6 +138,24 @@ class ServeSharedDaemonPool(
         // Claimed under the lock so exactly one borrow times the cold start.
         cold = coldReplicas.remove(host)
         if (cold) coldStartFrom = clock()
+        // Reprice a replica a VISITOR opened but a prefetch is now reusing. Opening it background
+        // is only half the job: a foreground burst leaves a foreground-priced replica behind, and
+        // a continuously running optimizer would then keep it alive — refreshing `replicaLastUsed`
+        // every batch so the idle sweep never closes it — while it sits inside the stream reserve.
+        // That is the production state this whole change exists to end, reached by another road.
+        if (background && liveSeats != null && host in foregroundSeated) {
+          val repriced = liveSeats.acquireBackground(seatWeight(), dedicatedSlice = false)
+          if (repriced != null) {
+            seatTickets.put(host, repriced)?.close()
+            foregroundSeated -= host
+          } else {
+            // No background headroom to move it to. Serve the render anyway — narrowing is this
+            // pool's contract and failing prefetch helps nobody — but do NOT extend its life, so
+            // the idle sweep can close it and hand the foreground seat back once the burst is
+            // over. The next batch reopens it priced correctly, or narrows.
+            refreshLastUsed = false
+          }
+        }
         host
       }
       peakInFlight.accumulateAndGet(inFlight.incrementAndGet(), ::maxOf)
@@ -148,7 +176,7 @@ class ServeSharedDaemonPool(
           if (!closed) {
             if (cold && !startedDaemon) coldReplicas += host
             available.addLast(host)
-            replicaLastUsed[host] = clock()
+            if (refreshLastUsed) replicaLastUsed[host] = clock()
             hostReturned.signalAll()
           }
         }
@@ -175,8 +203,10 @@ class ServeSharedDaemonPool(
       // onto a host already in circulation (below), so counting it would report throttled widening
       // as visitors turned away — and `liveSeatRefusals` is the evidence any budget change rests
       // on. (`acquireBackground` never counts a refusal for the same reason.)
+      // `dedicatedSlice = false`: this pool is background work but it is NOT per-preview work, and
+      // that slice is the one seat a supplement-only preview is guaranteed.
       ticket =
-        if (background) liveSeats.acquireBackground(seatWeight())
+        if (background) liveSeats.acquireBackground(seatWeight(), dedicatedSlice = false)
         else liveSeats.acquire(seatWeight(), countRefusal = false)
       if (ticket == null) {
         while (available.isEmpty() && !closed) hostReturned.await()
@@ -198,6 +228,7 @@ class ServeSharedDaemonPool(
     replicas += replica
     // Not warm yet: its daemon session starts on the first render. [takeColdStartMillis].
     coldReplicas += replica
+    if (!background && ticket != null) foregroundSeated += replica
     ticket?.let { seatTickets[replica] = it }
     return replica
   }
@@ -233,9 +264,16 @@ class ServeSharedDaemonPool(
         break
       }
       lock.withLock {
+        // Every per-host collection, or a closed host stays strongly reachable until the whole
+        // pool closes — and a pinned catalog repeats burst-to-idle indefinitely, so that is
+        // unbounded retention rather than a bounded wart. `coldReplicas` is on this list too: a
+        // replica reaped before its first render (opened, answered NotFound, went idle) never
+        // clears itself.
         available.remove(victim)
         replicas.remove(victim)
         replicaLastUsed.remove(victim)
+        coldReplicas.remove(victim)
+        foregroundSeated.remove(victim)
         seatTickets.remove(victim)?.close()
       }
       permits.release()
@@ -268,6 +306,7 @@ class ServeSharedDaemonPool(
       available.clear()
       replicaLastUsed.clear()
       coldReplicas.clear()
+      foregroundSeated.clear()
       seatTickets.values.forEach { it.close() }
       seatTickets.clear()
       // Wake anyone parked in [openSeatedReplica]; the `closed` check turns their wait into the
