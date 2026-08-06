@@ -63,6 +63,12 @@ already applies `com.android.application`, `com.android.library`, or
 script is passed to every Gradle invocation via `--init-script` and pulls
 the plugin from Maven Central.
 
+Nothing runs until you open the **Compose Preview** view. Activation alone
+never invokes Gradle, so a workspace you never preview is left untouched —
+no `build/compose-previews/` markers, no `.compose-preview-history/`. The
+first time the view opens, the extension runs `composePreviewApplied` once to
+map out which modules apply the plugin, and takes it from there.
+
 To opt in manually instead, add
 [`ee.schimke.composeai.preview`](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin)
 to the module whose previews you want to render:

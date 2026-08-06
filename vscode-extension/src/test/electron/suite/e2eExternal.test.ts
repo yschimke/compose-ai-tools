@@ -227,11 +227,11 @@ describeExternal(
             // via `alias(libs.plugins.composeai.preview)` — the literal
             // `id(...)` text-scan in `appliesPlugin` doesn't match catalog
             // aliases, so `resolveModule` stays null until Gradle writes
-            // `applied.json` for the module. The activation-time
-            // `bootstrapAppliedMarkers` call is fire-and-forget AND
-            // targets the original GradleService (the one `injectGradleApi`
-            // above replaced), so without an explicit await the warm below
-            // races the marker write and intermittently fails on cold
+            // `applied.json` for the module. The production bootstrap is
+            // lazy (it fires on first Compose Preview view open, not at
+            // activation) and is fire-and-forget when it does fire, so the
+            // test drives it explicitly and awaits it — otherwise the warm
+            // below races the marker write and intermittently fails on cold
             // workspaces. Regression for #1362.
             const tBootstrap = phaseStart();
             await api.triggerBootstrapAppliedMarkers();

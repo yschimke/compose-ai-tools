@@ -164,6 +164,13 @@ const DAEMON_BOOTSTRAP_PROGRESS_MS = 18_000;
 const DAEMON_SPAWN_PROGRESS_MS = 7_000;
 
 let gradleService: GradleService | null = null;
+/**
+ * Set once {@link ensureAppliedMarkersBootstrapped} has kicked off (or
+ * deliberately skipped) the one-shot `composePreviewApplied` run for this
+ * session. Guards the lazy bootstrap so a visibility cycle — hide/show the
+ * view, reload the webview — doesn't re-enter it.
+ */
+let appliedMarkersBootstrap: Promise<boolean> | null = null;
 let daemonGate: DaemonGate | null = null;
 let daemonScheduler: DaemonScheduler | null = null;
 /** Non-null only when `composePreview.daemon.continuousCompile` is set. */
@@ -501,6 +508,72 @@ export function resolveMode(gradleService: {
  */
 function inMinimalMode(): boolean {
     return daemonGate?.spawnsDaemons === false;
+}
+
+/**
+ * One-shot, lazy `composePreviewApplied` bootstrap — writes the authoritative
+ * `<module>/build/compose-previews/applied.json` markers that
+ * [GradleService.findPreviewModules] / [GradleService.resolveModule] prefer over
+ * the build-script text scan (which misses version-catalog aliases and
+ * convention plugins).
+ *
+ * **Why this is lazy.** It used to run unconditionally at activation, gated only
+ * by [GradleService.hasPotentialComposePreviewHost] — which is true for any
+ * workspace applying AGP or `org.jetbrains.compose`, i.e. essentially every
+ * Android project. Because the bundled auto-inject init script applies the
+ * preview plugin to every such module, that single activation-time run wrote
+ * `build/compose-previews/` into every module of a workspace that had never
+ * opted into Compose Preview at all — and once markers exist, `resolveModule`
+ * starts resolving, editor focus starts driving renders, and the daemon starts
+ * writing `.compose-preview-history/` next to the user's sources. Opening an
+ * unrelated Android project in VS Code left untracked directories behind
+ * (issue: "creates bin directories on unconfigured projects").
+ *
+ * Deferring to the first time the Compose Preview view actually resolves makes
+ * the whole pipeline opt-in by use: a workspace where the user never opens the
+ * view is never touched. For anyone who does open it, behaviour is unchanged —
+ * the markers land before the panel's first discover round-trip, exactly as
+ * they did when activation kicked this off.
+ *
+ * Idempotent and concurrency-safe: the in-flight promise is memoised, so
+ * repeated `webviewReady` messages (hide/show, webview reload) await the first
+ * run rather than starting a second. Resolves `true` when markers were actually
+ * (re)written — the caller's cue to re-send the module list — and `false` when
+ * the run was skipped or failed.
+ */
+async function ensureAppliedMarkersBootstrapped(): Promise<boolean> {
+    if (appliedMarkersBootstrap) {
+        return appliedMarkersBootstrap;
+    }
+    const service = gradleService;
+    if (!service) {
+        return false;
+    }
+    if (!service.hasPotentialComposePreviewHost()) {
+        logLine(
+            "[startup] no Android/Compose Gradle host detected; skipping composePreviewApplied bootstrap",
+        );
+        appliedMarkersBootstrap = Promise.resolve(false);
+        return false;
+    }
+    appliedMarkersBootstrap = (async () => {
+        logLine(
+            "[startup] preview view opened; running composePreviewApplied marker bootstrap",
+        );
+        // `bootstrapAppliedMarkers` swallows Gradle failures itself (the
+        // build-script scan is a usable fallback); only the typed JDK
+        // misconfigurations come back through the callback, and those get the
+        // same remediation notifications activation used to show.
+        await service.bootstrapAppliedMarkers((err) => {
+            if (err instanceof ClassVersionError) {
+                showClassVersionRemediation(err);
+            } else if (err instanceof JdkImageError) {
+                showJdkImageRemediation(err);
+            }
+        });
+        return true;
+    })();
+    return appliedMarkersBootstrap;
 }
 
 /**
@@ -2177,40 +2250,9 @@ export async function activate(
             },
         ),
     );
-    // Refresh applied-markers in the background so future module resolution can
-    // use the authoritative `applied.json` path. Doctor stays explicit via
-    // `composePreview.runDoctor`.
-    //
-    // The same bootstrap is the trigger for the post-sync mode re-evaluation:
-    // text-scan fallbacks miss version-catalog aliases / convention-plugin
-    // setups, AND the bundled auto-inject init script applies the plugin to
-    // Android/Compose hosts that never literally `id(...)` it themselves. In
-    // both cases the workspace can boot into minimal mode and only learn that
-    // the plugin *is* applied once Gradle writes its `applied.json` markers.
-    // When that happens (and the user hasn't pinned the setting), swap the
-    // backend in place — the daemon is spawned lazily, so re-wiring the gate
-    // and scheduler is enough; no window reload is needed. Re-wiring happens
-    // before the panel sees its first preview request, which keeps the swap
-    // invisible to the user in the typical case.
-    // `bootstrapAppliedMarkers` still runs so other parts of the system
-    // (panel chrome, plugin-detection caches) see the authoritative marker
-    // JSON Gradle writes. The post-sync mode re-evaluation that used to
-    // upgrade `"auto"` from `"minimal"` to `"full"` is gone: `composePreview.mode`
-    // is now a binary user pin (`"minimal"` | `"full"`), so the mode never
-    // changes mid-session except via a settings change + window reload.
-    if (gradleService.hasPotentialComposePreviewHost()) {
-        void gradleService.bootstrapAppliedMarkers((err) => {
-            if (err instanceof ClassVersionError) {
-                showClassVersionRemediation(err);
-            } else if (err instanceof JdkImageError) {
-                showJdkImageRemediation(err);
-            }
-        });
-    } else {
-        outputChannel.appendLine(
-            "[startup] no Android/Compose Gradle host detected; skipping composePreviewApplied bootstrap",
-        );
-    }
+    // NOTE: the `composePreviewApplied` marker bootstrap deliberately does NOT
+    // run here. See [ensureAppliedMarkersBootstrapped] — it is deferred to the
+    // first time the user actually opens the Compose Preview view.
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((event) => {
@@ -5711,6 +5753,46 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             // cache only — if there's nothing cached the panel stays empty
             // until the user clicks Refresh.
             sendModuleList();
+            // The view is open, so the user has opted into the pipeline for
+            // this workspace — this is the trigger for the one-shot
+            // `composePreviewApplied` marker bootstrap that used to fire at
+            // activation. Fire-and-forget: it resolves module paths for
+            // layouts the build-script scan can't see (catalog aliases,
+            // convention plugins, auto-inject), and re-sends the module list
+            // once Gradle has written the markers. The refresh sequence below
+            // is unaffected — it runs against whatever the scan already knows,
+            // and the post-bootstrap `refresh` re-runs it with the full set.
+            {
+                // Snapshot resolvability *before* the bootstrap so we can tell
+                // whether the markers taught us something the scan didn't know.
+                const preBootstrapScope = editorScope.file;
+                const resolvedBefore = Boolean(
+                    preBootstrapScope &&
+                    gradleService?.resolveModule(preBootstrapScope),
+                );
+                void ensureAppliedMarkersBootstrapped().then((bootstrapped) => {
+                    if (!bootstrapped) {
+                        return;
+                    }
+                    sendModuleList();
+                    // A re-render is only warranted when the scoped file
+                    // went from unresolvable to resolvable — the refresh
+                    // scheduled below bailed with "no-module" in that case
+                    // and nothing else will retry it. Minimal mode is
+                    // manual-only, so it never auto-renders here.
+                    const scopeFile = editorScope.file;
+                    if (
+                        resolvedBefore ||
+                        inMinimalMode() ||
+                        !scopeFile ||
+                        scopeFile !== preBootstrapScope ||
+                        !gradleService?.resolveModule(scopeFile)
+                    ) {
+                        return;
+                    }
+                    void refresh(false, scopeFile, "full");
+                });
+            }
             if (editorScope.file) {
                 if (inMinimalMode()) {
                     void preloadCachedPreviews(editorScope.file);
