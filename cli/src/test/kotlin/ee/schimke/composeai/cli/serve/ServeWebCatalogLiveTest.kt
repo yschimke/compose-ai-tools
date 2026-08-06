@@ -107,4 +107,35 @@ class ServeWebCatalogLiveTest {
       "one teardown path for Escape, an outside press, a close and pagehide",
     )
   }
+
+  @Test
+  fun `input is mapped against the frame's contained rect, not the element box`() {
+    // The canvas is `object-fit: contain`, so a frame whose aspect differs from the thumbnail slot
+    // is letterboxed inside it. Scaling against the bounding rect would offset every coordinate by
+    // the margin — a press would reach a different widget than the one under the finger.
+    val js = ServeWebAssets.load("catalog-live.js")!!.bytes.decodeToString()
+    assertTrue(
+      js.contains("Math.min(rect.width / canvas.width, rect.height / canvas.height)"),
+      "the contained scale factor is what maps a pointer to image pixels",
+    )
+    assertTrue(
+      js.contains("(rect.width - paintedW) / 2") && js.contains("(rect.height - paintedH) / 2"),
+      "and the frame's centring offset is subtracted",
+    )
+    assertTrue(
+      js.contains("if (x < 0 || y < 0 || x > canvas.width || y > canvas.height) return null;"),
+      "a press in the letterbox margin is no press, rather than one clamped onto the edge",
+    )
+  }
+
+  @Test
+  fun `the sign-in press follows the login rather than reporting a dead condition`() {
+    // The card is itself an <a>, so a nested sign-in link isn't available (as it is in the viewer)
+    // — the press follows the login instead, and the href is origin-checked before it's navigated
+    // to so a mis-set config can't become a `javascript:` navigation.
+    val js = ServeWebAssets.load("catalog-live.js")!!.bytes.decodeToString()
+    assertTrue(js.contains("var href = sameOriginHref(cfg.signInHref);"), js)
+    assertTrue(js.contains("if (href) location.href = href;"), js)
+    assertTrue(js.contains("u.origin === location.origin ? u.href : \"\""), "same-origin only")
+  }
 }

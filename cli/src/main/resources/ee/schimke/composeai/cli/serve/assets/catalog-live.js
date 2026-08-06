@@ -107,6 +107,19 @@
     im.src = "data:image/" + (codec || "png") + ";base64," + b64;
   }
 
+  // The config is server-emitted, but a navigation target is a sink either way: resolve it against
+  // our own origin and refuse anything that isn't same-origin http(s), so a mis-set value can never
+  // become a `javascript:` navigation. Same guard the viewer applies to its Wasm iframe src.
+  function sameOriginHref(value) {
+    var u;
+    try {
+      u = new URL(value, location.origin);
+    } catch (e) {
+      return "";
+    }
+    return u.origin === location.origin ? u.href : "";
+  }
+
   function socketUrl(previewId) {
     var proto = location.protocol === "https:" ? "wss:" : "ws:";
     var qs = cfg.query ? cfg.query + "&codec=webp" : "codec=webp";
@@ -127,10 +140,14 @@
   function startLive(card, entry) {
     var previewId = previewIdOf(card, entry);
     if (!previewId) return;
-    // Sign-in gates the daemon lane on a GitHub-authed box. Offering the press and then failing
-    // the socket would read as a broken feature, so say what it needs and where to go.
+    // Sign-in gates the daemon lane on a GitHub-authed box. The press is a deliberate request for
+    // the lane, so it FOLLOWS the login rather than reporting a condition the visitor can't act on
+    // — the same reason the viewer offers an anchor instead of a disabled chip. (A link can't be
+    // nested inside the card, which is itself an <a>, so the navigation is the affordance.)
     if (cfg.signInHref) {
-      announce(card, "Sign in with GitHub to start a live session.");
+      var href = sameOriginHref(cfg.signInHref);
+      if (href) location.href = href;
+      else announce(card, "Sign in with GitHub to start a live session.");
       return;
     }
     stopLive(null);
@@ -203,13 +220,26 @@
       if (active !== session || !ws || ws.readyState !== 1) return;
       ws.send(JSON.stringify(Object.assign({ type: "input" }, msg)));
     }
+    // Image-natural pixels under the pointer.
+    //
+    // The canvas is `object-fit: contain`, so a frame whose aspect differs from the thumbnail slot
+    // is LETTERBOXED inside the element: its painted rect is smaller than the bounding rect and
+    // centred in it. Scaling against the bounding rect would offset and compress every coordinate
+    // by the size of those margins — a press near the top of a tall card would reach a different
+    // widget than the one under the finger. So map against the contained rect, and treat a press
+    // in the margin (outside the frame) as no press at all rather than clamping it to an edge.
     function pixel(ev) {
       var rect = canvas.getBoundingClientRect();
-      if (!rect.width || !rect.height) return null;
-      return {
-        x: Math.round(((ev.clientX - rect.left) / rect.width) * canvas.width),
-        y: Math.round(((ev.clientY - rect.top) / rect.height) * canvas.height),
-      };
+      if (!rect.width || !rect.height || !canvas.width || !canvas.height) return null;
+      var scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+      var paintedW = canvas.width * scale;
+      var paintedH = canvas.height * scale;
+      var left = rect.left + (rect.width - paintedW) / 2;
+      var top = rect.top + (rect.height - paintedH) / 2;
+      var x = Math.round((ev.clientX - left) / scale);
+      var y = Math.round((ev.clientY - top) / scale);
+      if (x < 0 || y < 0 || x > canvas.width || y > canvas.height) return null;
+      return { x: x, y: y };
     }
     canvas.addEventListener("pointerdown", function (ev) {
       var p = pixel(ev);
