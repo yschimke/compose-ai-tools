@@ -454,9 +454,20 @@ class ServeCatalogLiveHost(
               backgroundWork.withRenderPermit {
                 val renderFrom = clock()
                 catalogThemeCache.recordPermitWait(renderFrom - permitWaitFrom)
-                // Clear the pool's high-water mark so the peak read below belongs to THIS batch.
+                // Clear the pool's high-water marks so the reads below belong to THIS batch.
                 sharedDaemonPool?.takePeakInFlight()
+                sharedDaemonPool?.takeColdStartMillis()
                 renderOptimizerBatch(batch).also {
+                  val elapsed = clock() - renderFrom
+                  // A replica's daemon starts on its FIRST render, so that render carries a full
+                  // cold start. Only the primary's warm is visible above (`awaitWarmCompletion`),
+                  // and a five-wide batch can be opening four cold replicas underneath it — which
+                  // would land 34-68s each in the per-entry bucket, exactly the conflation the
+                  // warm/batch split exists to remove. Capped at the interval it is taken from:
+                  // the pool reports the longest overlapping cold start, but a foreground borrow
+                  // could have started one before this batch began.
+                  val cold = (sharedDaemonPool?.takeColdStartMillis() ?: 0L).coerceIn(0L, elapsed)
+                  catalogThemeCache.recordWarm(cold)
                   // Width is the peak number of daemons that ran CONCURRENTLY, not the job count.
                   // A batch submits N jobs, but when the seat budget affords no replica the pool
                   // queues them onto a host already in circulation instead of spawning one — so N
@@ -464,7 +475,7 @@ class ServeCatalogLiveHost(
                   // as N-wide, which is exactly the collapse this number exists to expose.
                   catalogThemeCache.recordBatch(
                     sharedDaemonPool?.takePeakInFlight() ?: 1,
-                    clock() - renderFrom,
+                    elapsed - cold,
                   )
                 }
               } ?: return@execute
