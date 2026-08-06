@@ -1058,11 +1058,21 @@ class ServeCatalogLiveHostTest {
     assertEquals(1, live.renderCalls)
   }
 
+  /**
+   * The shared lane bounds the optimizers — it no longer serialises them.
+   *
+   * This asserted a peak of exactly 1 while the background cap was 1. That cap was measured on the
+   * deployed server as the prefetcher's dominant bottleneck: 15 catalogs queueing on one permit,
+   * 74.3% of the pass's active time spent waiting for it against 6.3% rendering. The invariant
+   * worth keeping is the ceiling, not the serialisation, so the cap is now passed explicitly and
+   * the assertion follows it.
+   */
   @Test
-  fun `catalog optimizers sharing one server render one at a time`() {
+  fun `catalog optimizers sharing one server never exceed the background lane`() {
     val inFlight = AtomicInteger()
     val peak = AtomicInteger()
-    val backgroundWork = ServeBackgroundWork()
+    val cap = 2
+    val backgroundWork = ServeBackgroundWork(maxConcurrentRenders = cap)
     fun host(tag: String): ServeCatalogLiveHost {
       val delegate =
         RecordingHost(
@@ -1097,7 +1107,10 @@ class ServeCatalogLiveHostTest {
     hosts.forEach { it.prewarm() }
     hosts.forEach { assertTrue(awaitOptimization(it).fullyOptimized) }
 
-    assertEquals(1, peak.get(), "the background lane holds at most one render server-wide")
+    assertTrue(
+      peak.get() in 1..cap,
+      "the background lane holds at most $cap renders server-wide, saw ${peak.get()}",
+    )
   }
 
   /**
