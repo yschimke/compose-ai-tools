@@ -590,10 +590,14 @@ class ServeCommand(args: List<String>) : Command(args) {
 
   /**
    * Server-wide admission for the catalogs' background theme optimization: it parks while any
-   * catalog is loading, and only one of them renders at a time. Shared by every catalog host this
-   * server opens — see [ServeBackgroundWork] for why both halves matter on a public box.
+   * catalog is loading, and bounds how many of them render at once. Shared by every catalog host
+   * this server opens — see [ServeBackgroundWork] for why both halves matter on a public box.
+   *
+   * The lane is derived from [liveSeatLimiter] because widening it is only safe where something
+   * else bounds daemon count: an unbounded budget (the CLI default) keeps the single lane.
    */
-  private val backgroundWork = ServeBackgroundWork()
+  private val backgroundWork =
+    ServeBackgroundWork(maxConcurrentRenders = ServeBackgroundWork.renderLaneFor(liveSeatLimiter))
 
   /**
    * In-browser CMP tier (`--wasm-dir <system>=<dir>[,<system>=<dir>…]`): map a design system to the
