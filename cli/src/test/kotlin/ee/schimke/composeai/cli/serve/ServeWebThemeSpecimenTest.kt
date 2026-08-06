@@ -180,6 +180,36 @@ class ServeWebThemeSpecimenTest {
   }
 
   @Test
+  fun `the viewer disables Day-Night for a specimen too, at runtime as well as in the markup`() {
+    // Day/Night is NOT a navigation control: it maps to a `uiMode` override, and
+    // `CatalogLiveRouting.overridesAffectRender` routes a uiMode differing from the id's baked
+    // `__light`/`__dark` segment to a fresh daemon render. Left enabled it either redraws a
+    // supposedly fixed sheet in the opposite mode, or reads "Night" over unchanged light pixels.
+    val html = viewer(ServePreview(id = "themecatalog__brand", label = "Brand", fixedTheme = true))
+    assertTrue(html.contains("data-fixed-theme=\"true\""))
+    assertTrue(
+      Regex("<select id=\"cp-theme\"[^>]* disabled>").containsMatchIn(html),
+      "the whole Theme control is disabled in the markup",
+    )
+    // The markup alone is not enough: viewer.js reassigns `themeChoice.disabled` from the lane
+    // flags on every state change, so it has to consult the same signal or it re-enables it.
+    val script =
+      ServeWebAssets.load("viewer.js")?.bytes?.decodeToString()
+        ?: error("viewer.js not on classpath")
+    assertTrue(
+      script.contains("data-fixed-theme"),
+      "viewer.js must gate on the flag, or its recompute undoes the server's disabled attribute",
+    )
+  }
+
+  @Test
+  fun `an ordinary preview's Theme control is not disabled`() {
+    val html = viewer(ServePreview(id = "contactrow-chat", label = "Contact row"))
+    assertTrue(html.contains("data-fixed-theme=\"false\""))
+    assertFalse(Regex("<select id=\"cp-theme\"[^>]* disabled>").containsMatchIn(html))
+  }
+
+  @Test
   fun `the viewer withholds them for a Themes-section specimen too`() {
     // The section signal has to reach the viewer as well — it is the one meshcore-mobile uses.
     val html =

@@ -1368,11 +1368,17 @@
     // select usable whenever at least one kind can work, and gate its individual option families.
     if (themeChoice) {
       var hasDeclaredThemes = themeChoice.getAttribute("data-has-declared-themes") === "true";
-      var canProviderTheme = hasDeclaredThemes && !onWasm && !onRc &&
+      // This preview's SUBJECT is a theme (@FixedTheme, or a Themes-section specimen). Both axes
+      // are off: `theme:<provider>` redraws it under another theme, and Day/Night is a `uiMode`
+      // override that re-renders it in the opposite mode rather than navigating to the baked
+      // sibling. Recomputed here rather than left to the server's `disabled` attribute, because
+      // this block reassigns `themeChoice.disabled` outright and would otherwise re-enable it.
+      var fixedTheme = themeChoice.getAttribute("data-fixed-theme") === "true";
+      var canProviderTheme = !fixedTheme && hasDeclaredThemes && !onWasm && !onRc &&
         (!staticSnapshot || canRenderOverrides);
       // Wear has no day/night axis, but Night (Default) must remain selectable when provider
       // themes are offered so the visitor can clear a chosen provider and return to the app.
-      var canDefaultTheme = !onRc &&
+      var canDefaultTheme = !fixedTheme && !onRc &&
         ((!alwaysDark && (canServerRender || !!wasmSrc)) || (alwaysDark && canProviderTheme));
       Array.prototype.forEach.call(themeChoice.options, function (option) {
         option.disabled = option.value.indexOf("theme:") === 0 ? !canProviderTheme : !canDefaultTheme;
