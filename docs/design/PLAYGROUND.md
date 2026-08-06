@@ -402,11 +402,20 @@ keeps every other cap** (`PlaygroundSandbox.droppingJail`). Snippets still run i
 a disposable child under `-Xmx`, the CPU cap, `ExitOnOutOfMemoryError`, the
 temp-dir confinement and the hard TTL — they are simply not contained.
 
-That is strictly better than either alternative. Keeping a jail that cannot
-launch preserves no isolation, because it never ran. Falling back to
-`Profile.NONE` would also discard the caps — and on a host with a large cgroup
-limit an uncapped snippet JVM sizes its default heap at a *quarter of that
-limit*, which is the more dangerous of the two failures.
+That is better than either alternative — *for a profile whose caps are
+JVM-level*. Keeping a jail that cannot launch preserves no isolation, because it
+never ran. Falling back to `Profile.NONE` would also discard the caps, and on a
+host with a large cgroup limit an uncapped snippet JVM sizes its default heap at
+a *quarter of that limit*, which is the more dangerous of the two failures.
+
+**`systemd` and `strict` are excluded, and refuse instead.** Their `MemoryMax` /
+`CPUQuota` / `TasksMax` come from the `systemd-run` prefix — the very argv being
+dropped — so degrading them would leave heap and JVM pool sizing with no
+native-memory bound, no CPU quota and no pid cap. An operator who asked for
+enforceable caps should not silently get unenforceable ones, so a cap-declaring
+profile that cannot launch disables the lane with a message naming the choice:
+fix the jail, or pick a profile (`bwrap`, `unshare`) whose caps are JVM-level
+anyway.
 
 It cannot rescue the posture where containment *is* the admission basis: an
 anonymous `--public` host whose probe did not run is refused by the gate before

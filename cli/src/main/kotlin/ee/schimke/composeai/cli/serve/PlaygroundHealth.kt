@@ -46,9 +46,12 @@ data class PlaygroundHealth(
    */
   val probe: PlaygroundSandboxProbe.Report?,
   /**
-   * True when snippet *compiles* run in a disposable jailed child. False means they run in the
-   * serve JVM — which is what an inactive sandbox gets you, and it also makes the compile-slot
-   * budget inert (`PlaygroundJailedCompiler.wrap` hands back the in-process compiler untouched).
+   * True when snippet *compiles* run in a disposable **jailed** child.
+   *
+   * False covers two different states, told apart by [jailDropped]: with it false the compiles run
+   * in the serve JVM (an inactive sandbox, which also makes the compile-slot budget inert, since
+   * `PlaygroundJailedCompiler.wrap` hands back the in-process compiler untouched); with it true
+   * they still run in a disposable, capped, slot-limited child — just not behind a jail.
    */
   val compilerJailed: Boolean,
   /** `--playground-compile-slots`; only meaningful when [compilerJailed]. */

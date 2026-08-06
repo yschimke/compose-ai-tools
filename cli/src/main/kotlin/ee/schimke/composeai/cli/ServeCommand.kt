@@ -1142,12 +1142,31 @@ class ServeCommand(args: List<String>) : Command(args) {
     // Safe by construction for the contained posture: an anonymous --public host whose probe never
     // ran is refused above, so this line is unreachable in the one case where the jail is what
     // admitted the lane.
+    // …but NOT for a profile whose caps live in the argv being dropped. `systemd` and `strict`
+    // enforce MemoryMax/CPUQuota/TasksMax through the `systemd-run` prefix, so dropping it leaves
+    // only `-Xmx` (heap, not native memory) and `-XX:ActiveProcessorCount` (pool sizing, not a CPU
+    // quota) — and no pid cap at all. Running an operator who asked for enforceable caps under
+    // caps they cannot enforce is worse than not running: refuse, and say which knob to change.
+    if (probe != null && !probe.ran && configuredSandbox.profile.declaresResourceCaps) {
+      System.err.println(
+        "serve: playground sandbox '${configuredSandbox.profile.id}' could not launch on this " +
+          "host (${probe.detail}), and its CPU/memory/pid caps are enforced BY that command — " +
+          "dropping it would leave the snippet effectively uncapped, so the playground is " +
+          "disabled instead. Fix the jail (a container has no systemd to build a transient scope " +
+          "against), or pick a profile whose caps are JVM-level (bwrap, unshare)."
+      )
+      workRoot.deleteRecursively()
+      return null
+    }
     val sandbox =
       if (probe != null && !probe.ran) {
         System.err.println(
           "serve: WARNING playground sandbox '${configuredSandbox.profile.id}' could not launch on this " +
             "host (${probe.detail}) — dropping the jail and keeping the JVM caps. Snippets run " +
-            "capped but UNCONTAINED; the lane is admitted by ${if (public) "repo-access gating" else "the access token"}, not by containment."
+            "capped but UNCONTAINED; the lane is admitted by ${if (public) "repo-access gating" else "the access token"}, not by containment." +
+            (if (configuredSandbox.profile == PlaygroundSandbox.Profile.CUSTOM)
+              " Any caps that custom argv supplied are gone with it — only the JVM-level ones remain."
+            else "")
         )
         configuredSandbox.droppingJail()
       } else configuredSandbox
@@ -1359,7 +1378,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         sandboxCpus = sandbox.cpus,
         sandboxTtlSeconds = sandbox.ttlSeconds,
         probe = probe,
-        compilerJailed = compiler !== inProcessCompiler,
+        compilerJailed = compiler !== inProcessCompiler && !sandbox.jailDropped,
         compileSlots = playgroundCompileSlots,
         modes = {
           listOfNotNull(

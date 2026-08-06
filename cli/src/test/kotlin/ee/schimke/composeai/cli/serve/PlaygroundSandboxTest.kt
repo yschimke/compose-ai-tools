@@ -188,6 +188,28 @@ class PlaygroundSandboxTest {
   }
 
   @Test
+  fun `the profiles excluded from the drop are exactly those whose caps live in the argv`() {
+    // The discriminator ServeCommand refuses on. `systemd`/`strict` enforce MemoryMax, CPUQuota
+    // and TasksMax through the systemd-run prefix that command() emits, so dropping that argv
+    // drops the enforcement — heap and pool sizing are all that would remain. Pinning the set here
+    // means adding a future cgroup-backed profile can't silently inherit the caps-only fallback.
+    val capBacked =
+      PlaygroundSandbox.Profile.entries.filter { it.declaresResourceCaps }.map { it.id }.toSet()
+
+    assertEquals(setOf("systemd", "strict"), capBacked)
+
+    val strict = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.STRICT)
+    assertTrue(
+      strict.command(paths).any { it.startsWith("MemoryMax=") },
+      "the enforceable cap is in the argv, which is what makes dropping it unsafe",
+    )
+    assertTrue(
+      strict.jvmArgs(paths.workDir).none { it.startsWith("MemoryMax") },
+      "and jvmArgs cannot replace it",
+    )
+  }
+
+  @Test
   fun `dropping is inert for every profile that had no argv anyway`() {
     val none = PlaygroundSandbox.NONE.droppingJail()
     assertEquals(emptyList(), none.command(paths))

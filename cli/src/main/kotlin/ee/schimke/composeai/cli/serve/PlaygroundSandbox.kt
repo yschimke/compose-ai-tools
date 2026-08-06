@@ -128,12 +128,20 @@ data class PlaygroundSandbox(
    * failure surfaces to a user as a compile that never produces an image, and to an operator as
    * nothing at all.
    *
-   * Dropping the jail is strictly better than both alternatives. Against *keeping* it: a jail that
-   * cannot launch contains nothing, so there is no isolation to lose. Against *disabling the
-   * sandbox entirely* ([Profile.NONE]): that would also discard `-Xmx`, the CPU cap,
-   * `ExitOnOutOfMemoryError`, the temp-dir confinement and the hard TTL — and on a host with a
-   * large cgroup limit an uncapped snippet JVM sizes its default heap at a quarter of that limit,
-   * which is the more dangerous failure of the two.
+   * Dropping the jail is better than both alternatives *for a profile whose caps are JVM-level*.
+   * Against *keeping* it: a jail that cannot launch contains nothing, so there is no isolation to
+   * lose. Against *disabling the sandbox entirely* ([Profile.NONE]): that would also discard
+   * `-Xmx`, the CPU cap, `ExitOnOutOfMemoryError`, the temp-dir confinement and the hard TTL — and
+   * on a host with a large cgroup limit an uncapped snippet JVM sizes its default heap at a quarter
+   * of that limit, which is the more dangerous failure of the two.
+   *
+   * **Not for [Profile.SYSTEMD] or [Profile.STRICT].** Their `MemoryMax` / `CPUQuota` / `TasksMax`
+   * are enforced by the `systemd-run` prefix that [command] emits, so dropping the argv drops the
+   * enforcement with it, leaving only heap and JVM pool sizing — no native-memory bound, no CPU
+   * quota, no pid cap. `ServeCommand` therefore refuses the lane outright for any profile with
+   * [Profile.declaresResourceCaps] rather than calling this. A [Profile.CUSTOM] argv may also have
+   * supplied caps we cannot see; it is dropped anyway (the alternative is a lane that cannot run at
+   * all) and the startup warning says so.
    *
    * Deliberately **not** reachable when containment is what admitted the lane: an anonymous
    * `--public` host whose probe never ran is refused outright by [PlaygroundPublicGate], so the
