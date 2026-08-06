@@ -215,6 +215,42 @@ fields the upstream frontend ignores and ours surfaces: `image` (first-frame
 > mode-specific UI matter. The contract is cheap enough to keep the door open;
 > the decision of *which* editor ships is deferred and does not block Stage 1.
 
+### 4.1 The editor — **CodeMirror 5, ours, vendored**
+
+That deferred decision is now made: we ship **our own page with CodeMirror 5**,
+not the stock `kotlin-playground` component. The REST contract above stays
+implemented, so a stock frontend remains possible — but it is not what serves.
+
+**CodeMirror 5 rather than 6** for a build reason, not a preference: the serve
+assets are plain files served out of the CLI jar, and there is no JS bundler
+anywhere in that build. CM6 is ESM-only and must be bundled; CM5 is a drop-in
+`<script>`. Kotlin highlighting rides CodeMirror's existing `clike` mode
+(`text/x-kotlin`), so no extra grammar ships.
+
+**Vendored, not CDN-loaded.** This is a public preview server and the playground
+is its code-running surface; an external script would add a third-party
+dependency to exactly that surface and disclose visitors to its origin. The
+asset pipeline content-hashes and immutably caches, so a local copy costs one
+cold fetch per release — 429 KB of source, 114 KB on the wire once the host's
+text lanes are gzipped, and only on `/playground`, never on the catalog pages.
+
+The editor **degrades to the plain textarea** when the bundle doesn't load: every
+buffer read/write goes through `readSource()`/`writeSource()`, so a failed asset
+fetch costs highlighting, not the ability to compile.
+
+Two keyboard details are deliberate. `Tab` **indents** rather than moving focus —
+but a code box that swallows `Tab` is a keyboard trap, so `Esc` blurs first, the
+standard escape hatch (WCAG 2.1.2). `Ctrl`/`Cmd`+`Enter` runs.
+
+![Playground editor — a compiled snippet with its first frame and live-preview link](../images/serve-playground-editor-light.png)
+
+![Playground editor (dark) — a failed compile with file-qualified diagnostics](../images/serve-playground-editor-dark.png)
+
+Still **not** offered: completion. `/api/{version}/compiler/complete` stays the
+deferred stub of §4 — BTA compiles, it does not analyse, and real completion
+needs a stateful Kotlin analysis session per user, which is a different cost
+model from the disposable-child-per-snippet property the rest of the lane keeps.
+
 ---
 
 ## 5. The preview-token capability
