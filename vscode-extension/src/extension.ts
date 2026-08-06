@@ -529,15 +529,26 @@ function inMinimalMode(): boolean {
  * unrelated Android project in VS Code left untracked directories behind
  * (issue: "creates bin directories on unconfigured projects").
  *
- * Deferring to the first time the Compose Preview view actually resolves makes
- * the whole pipeline opt-in by use: a workspace where the user never opens the
- * view is never touched. For anyone who does open it, behaviour is unchanged —
- * the markers land before the panel's first discover round-trip, exactly as
- * they did when activation kicked this off.
+ * Deferring this to an explicit opt-in — the Compose Preview view resolving, or
+ * a `Refresh Previews` / `Render All Previews` command — makes the pipeline
+ * opt-in by use. For anyone who does open the view, behaviour is unchanged: the
+ * markers land before the panel's first discover round-trip, exactly as they
+ * did when activation kicked this off.
+ *
+ * **Scope of the guarantee.** This makes an *unconfigured* workspace inert, not
+ * every workspace. `runActivationRefresh` still fires on the activation timer,
+ * and it renders whenever `resolveModule` succeeds — which it does for a module
+ * that literally declares the plugin, or one carrying `applied.json` markers
+ * from a previous session. That's intended: both are workspaces the user has
+ * already configured or already previewed, and pre-warming them is the point of
+ * the activation refresh. What changed is that a workspace which has done
+ * neither can no longer be pulled into that state by activation alone, because
+ * nothing writes the markers that would make `resolveModule` start succeeding.
  *
  * Idempotent and concurrency-safe: the in-flight promise is memoised, so
- * repeated `webviewReady` messages (hide/show, webview reload) await the first
- * run rather than starting a second. Resolves `true` when markers were actually
+ * repeated `webviewReady` messages (hide/show, webview reload) and a
+ * palette-driven refresh racing the first view open all await the same run
+ * rather than starting a second. Resolves `true` when markers were actually
  * (re)written — the caller's cue to re-send the module list — and `false` when
  * the run was skipped or failed.
  */
@@ -1882,11 +1893,23 @@ export async function activate(
         ),
     );
     context.subscriptions.push(
-        vscode.commands.registerCommand("composePreview.refresh", () =>
-            refresh(true, editorScope.file ?? undefined),
-        ),
-        vscode.commands.registerCommand("composePreview.renderAll", () =>
-            refresh(true, editorScope.file ?? undefined),
+        // Both commands await the marker bootstrap first. Running one from the
+        // palette is an explicit opt-in just like opening the view, and on a
+        // cold project that applies the plugin via a version-catalog alias or a
+        // convention plugin the build-script text scan can't see it — so
+        // without the markers `refresh` resolves no module and silently does
+        // nothing. Awaiting also serialises against an in-flight view-open
+        // bootstrap (the promise is memoised) rather than racing it.
+        vscode.commands.registerCommand("composePreview.refresh", async () => {
+            await ensureAppliedMarkersBootstrapped();
+            return refresh(true, editorScope.file ?? undefined);
+        }),
+        vscode.commands.registerCommand(
+            "composePreview.renderAll",
+            async () => {
+                await ensureAppliedMarkersBootstrapped();
+                return refresh(true, editorScope.file ?? undefined);
+            },
         ),
         // Dev affordance: load a committed SpatialScene fixture into the
         // panel's 3D view, standing in for the (not-yet-built) `:renderer-xr`
