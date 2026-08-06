@@ -553,17 +553,19 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/out"
-          git init -q
-          git checkout -q -b "design-artifacts/$SYSTEM"
-          # Generated delivery branch — attributed to the repo owner, not a bot
-          # (mirrors the release job's human-authorship rule).
-          git config user.name 'Yuri Schimke'
-          git config user.email 'yuri@schimke.ee'
-          git add -A
-          git commit -q -m "chore(design-artifacts): regenerate $SYSTEM catalog ($(date -u +%F))"
-          git push --force \
-            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            "HEAD:refs/heads/design-artifacts/$SYSTEM"
+          # Append on top of the existing tip rather than force-pushing an orphan,
+          # so the delivery branch keeps a per-regeneration history you can diff
+          # (`git log design-artifacts/$SYSTEM -- images/…`). Snapshots dedupe by
+          # content, so an unchanged render costs nothing; SKIP_IF_UNCHANGED drops
+          # the commit entirely when the whole tree is byte-identical.
+          TARGET_BRANCH="design-artifacts/$SYSTEM" \
+          REPO="$GITHUB_REPOSITORY" \
+          GITHUB_TOKEN_INLINE="$GH_TOKEN" \
+          MSG="chore(design-artifacts): regenerate $SYSTEM catalog ($(date -u +%F), ${GITHUB_SHA::8})" \
+          SKIP_IF_UNCHANGED=1 \
+          COMMIT_USER_NAME='Yuri Schimke' \
+          COMMIT_USER_EMAIL='yuri@schimke.ee' \
+            bash "$GITHUB_WORKSPACE/.github/actions/apply/lib/push-branch.sh"
 
   # ───────────────────────────────────────────────────────────────────────────
   # wear-m3 / remote-m3 delegate to the shared reusable workflow (same one

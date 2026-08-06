@@ -395,7 +395,7 @@ For a **published catalog**, the manifest is generated — you don't hand-write 
 [`emit-design-references.mjs`](../scripts/design-artifacts/emit-design-references.mjs) over the
 calling repo's [`design-map.json`](https://github.com/yschimke/design-parity) — design-parity's
 correspondence file, which most adopters already keep — and writes `references/` into the bundle
-just before it is force-pushed to `design-artifacts/<system>`.
+just before it is published to `design-artifacts/<system>`.
 
 The join is by **`@Preview` function name**: a design-map entry's code handle
 (`ui/ChatBodyPreviews.kt#ContactChatDarkPreview`) names the same function that `catalog.spec.json`

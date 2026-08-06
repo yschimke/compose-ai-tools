@@ -824,12 +824,15 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/out"
-          git init -q
-          git checkout -q -b "design-artifacts/${SYSTEM}"
-          git config user.name '${{ inputs.commit-user-name }}'
-          git config user.email '${{ inputs.commit-user-email }}'
-          git add -A
-          git commit -q -m "chore(design-artifacts): regenerate ${SYSTEM} catalog ($(date -u +%F))"
-          git push --force \
-            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            "HEAD:refs/heads/design-artifacts/${SYSTEM}"
+          # Append on top of the existing tip rather than force-pushing an orphan,
+          # so the delivery branch keeps a per-regeneration history you can diff.
+          # Snapshots dedupe by content, so unchanged renders cost nothing;
+          # SKIP_IF_UNCHANGED drops the commit when the tree is byte-identical.
+          TARGET_BRANCH="design-artifacts/${SYSTEM}" \
+          REPO="$GITHUB_REPOSITORY" \
+          GITHUB_TOKEN_INLINE="$GH_TOKEN" \
+          MSG="chore(design-artifacts): regenerate ${SYSTEM} catalog ($(date -u +%F), ${GITHUB_SHA::8})" \
+          SKIP_IF_UNCHANGED=1 \
+          COMMIT_USER_NAME='${{ inputs.commit-user-name }}' \
+          COMMIT_USER_EMAIL='${{ inputs.commit-user-email }}' \
+            bash "$GITHUB_WORKSPACE/compose-ai-tools/.github/actions/apply/lib/push-branch.sh"

@@ -93,8 +93,8 @@ a renderer change needs to reach the delivery branches before Monday.
 
 Each run renders the catalog module with `compose-preview bundle pack --with-semantics`, runs the
 `@design-parity/catalog-export` driver
-(`scripts/generate-design-catalog.mjs`), and force-pushes the importable bundle
-to a clean **`design-artifacts/<system>`** branch — `design-artifacts/compose-m3`,
+(`scripts/generate-design-catalog.mjs`), and publishes the importable bundle
+to a **`design-artifacts/<system>`** branch — `design-artifacts/compose-m3`,
 `design-artifacts/wear-m3`, … — that a designer pulls into Figma / Stitch /
 Claude Design. The branch holds only the generated bundle (`catalog.json`,
 `tokens.dtcg.json`, `figma-variables.json`, `images/` PNGs, and `figma/` — the
@@ -119,6 +119,38 @@ server reads it back and paints that system's own pages in its own colours —
 see [the catalog palette](../public-preview-server.md#the-page-wears-the-catalogs-own-palette).
 Publishing a catalog with a new brand colour therefore re-themes its pages too,
 with nothing to change on the server.
+
+### Delivery-branch history
+
+Each publish **appends a commit on top of the branch tip** rather than
+force-pushing a fresh orphan, so `design-artifacts/<system>` carries a
+per-regeneration history — the same shape `compose-preview/main` has always had,
+and via the same helper
+([`push-branch.sh`](../../.github/actions/apply/lib/push-branch.sh)). That makes
+the branch answerable to ordinary git questions:
+
+```bash
+git fetch origin design-artifacts/compose-m3
+git log --oneline origin/design-artifacts/compose-m3
+# when did this sticker last change, and against which source commit?
+git log --oneline origin/design-artifacts/compose-m3 -- images/button-filled/
+```
+
+Each commit subject names the render date **and the short `main` SHA the bundle
+was rendered from** (`chore(design-artifacts): regenerate compose-m3 catalog
+(2026-08-06, 1a2b3c4d)`), so a sticker that moved can be traced back to the
+source change that moved it.
+
+A run whose output tree is byte-identical to the tip pushes **nothing**
+(`SKIP_IF_UNCHANGED=1`), so the weekly cron doesn't accumulate empty commits —
+a commit on these branches always means the rendered output actually changed.
+
+The storage cost is modest despite each commit being a full ~60 MB snapshot,
+because unchanged PNGs are the same blob and git stores them once.
+`compose-preview/main` is the worked example: 770 commits of a ~69 MB tree
+occupy ~84 MB of packed objects in total. If a branch ever does need resetting,
+a manual force-push still works — nothing in the pipeline depends on the history
+being contiguous.
 
 ## Publishing from another repo (reusable workflow)
 

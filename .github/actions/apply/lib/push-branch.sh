@@ -14,6 +14,8 @@
 #   SHA_OUTPUT_FILE      — path (absolute) to write the pushed commit
 #                          SHA to. Empty = don't write.
 #   MAX_ATTEMPTS         — push race retry budget. Default 5.
+#   COMMIT_USER_NAME     — committer name. Default "github-actions[bot]".
+#   COMMIT_USER_EMAIL    — committer email. Default the bot's noreply.
 #
 # Exits 0 on success / skip, non-zero on push failure.
 set -euo pipefail
@@ -25,10 +27,12 @@ set -euo pipefail
 SKIP_IF_UNCHANGED="${SKIP_IF_UNCHANGED:-0}"
 SHA_OUTPUT_FILE="${SHA_OUTPUT_FILE:-}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-5}"
+COMMIT_USER_NAME="${COMMIT_USER_NAME:-github-actions[bot]}"
+COMMIT_USER_EMAIL="${COMMIT_USER_EMAIL:-41898282+github-actions[bot]@users.noreply.github.com}"
 
 git init -q
-git config user.name "github-actions[bot]"
-git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+git config user.name "$COMMIT_USER_NAME"
+git config user.email "$COMMIT_USER_EMAIL"
 git remote add origin \
   "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
 

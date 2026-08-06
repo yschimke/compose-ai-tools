@@ -147,7 +147,7 @@ These rules also live in [CLAUDE.md](../CLAUDE.md#pr-workflow-must-follow); deta
   - When everything is green, reply with the green status. That IS the deliverable.
 - **Stop on request.** "Stop watching", "unsubscribe", "leave it alone" — call `unsubscribe_pr_activity` for that PR and stop pushing.
 - **Don't auto-merge.** Opening, tracking, and fix-up commits are automatic; merging is the user's call. Don't enable auto-merge unless the user explicitly asks.
-- **Regenerate the delivery branches after each merged change set.** `design-artifacts.yml` renders the catalogs and force-pushes the importable bundles to `design-artifacts/<system>`; those branches go stale the moment a catalog (`samples/design-catalog-*`), the renderer, or the export driver changes. After such a change merges to `main`, dispatch the workflow (`actions_run_trigger` → `run_workflow` on `design-artifacts.yml`, ref `main`) and confirm the run succeeded, so the published stickers don't lag `main`.
+- **Regenerate the delivery branches after each merged change set.** `design-artifacts.yml` renders the catalogs and publishes the importable bundles to `design-artifacts/<system>` (appended on top of the branch tip, so each regeneration is a diffable commit — see [Delivery-branch history](design/DESIGN_CATALOGS.md#delivery-branch-history)); those branches go stale the moment a catalog (`samples/design-catalog-*`), the renderer, or the export driver changes. After such a change merges to `main`, dispatch the workflow (`actions_run_trigger` → `run_workflow` on `design-artifacts.yml`, ref `main`) and confirm the run succeeded, so the published stickers don't lag `main`.
 
 ## VS Code panel UI changes
 
