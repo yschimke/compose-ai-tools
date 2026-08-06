@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -35,6 +37,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * small static file a viewer fetches rather than a live source API. If the two ever converge, this
  * is the file to fold in.
  */
+@OptIn(ExperimentalSerializationApi::class)
 object PreviewHistoryManifest {
 
   /**
@@ -47,7 +50,16 @@ object PreviewHistoryManifest {
 
   @Serializable
   data class Manifest(
-    @SerialName("formatVersion") val formatVersion: String = FORMAT_VERSION,
+    /**
+     * [EncodeDefault] is load-bearing, not decoration: [JSON] sets `encodeDefaults = false` so the
+     * redundant fields below stay off the wire, and without this the version discriminator would be
+     * dropped by exactly the same rule — leaving every published manifest with nothing for a viewer
+     * to version-check against. Kept as a *default* rather than a required parameter so a manifest
+     * that somehow lacks it still decodes.
+     */
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
+    @SerialName("formatVersion")
+    val formatVersion: String = FORMAT_VERSION,
     /**
      * Delivery-branch commit this was computed from. A viewer can compare it against the branch tip
      * to tell whether the manifest is current; it is expected to lag by exactly the commit that

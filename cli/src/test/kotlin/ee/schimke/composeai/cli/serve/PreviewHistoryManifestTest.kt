@@ -212,6 +212,47 @@ class PreviewHistoryManifestTest {
   }
 
   @Test
+  fun `the format version is always written to the wire`() {
+    // Regression: formatVersion is a defaulted field and the encoder sets encodeDefaults = false
+    // to keep redundant fields off the wire, which silently dropped the one discriminator a viewer
+    // needs to reject an incompatible manifest. A round-trip assertion cannot catch this — decode
+    // restores the default — so this asserts on the encoded text.
+    val log = gitLog("publish" to listOf("renders/samples:wear/Foo_Large_Round.png" to a))
+
+    val encoded =
+      PreviewHistoryManifest.encode(
+        PreviewHistoryManifest.build(
+          timelines(log),
+          PreviewHistoryManifest.renderPathsToPreviewIds(baselines),
+          generatedFrom = "tip",
+        )
+      )
+
+    assertTrue(
+      encoded.contains("\"formatVersion\": \"${PreviewHistoryManifest.FORMAT_VERSION}\""),
+      "published manifests must carry the discriminator; got:\n${encoded.take(200)}",
+    )
+  }
+
+  @Test
+  fun `a manifest missing the format version still decodes`() {
+    // It is always written now, but keeping it a defaulted field means an older or hand-edited
+    // file is still readable rather than a hard parse failure.
+    val text =
+      """
+      {
+        "generatedFrom": "tip",
+        "previews": {}
+      }
+      """
+        .trimIndent()
+
+    val decoded = assertNotNull(PreviewHistoryManifest.decode(text))
+
+    assertEquals(PreviewHistoryManifest.FORMAT_VERSION, decoded.formatVersion)
+  }
+
+  @Test
   fun `the encoded manifest round-trips`() {
     val log =
       gitLog("publish from 1a2b3c4d" to listOf("renders/samples:wear/Foo_Large_Round.png" to a))
