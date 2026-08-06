@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.19.40](https://github.com/yschimke/compose-ai-tools/compare/v0.19.39...v0.19.40) (2026-08-06)
+
+
+### Features
+
+* **serve:** add @FixedTheme so a theme specimen opts out anywhere ([#3381](https://github.com/yschimke/compose-ai-tools/issues/3381)) ([692ff38](https://github.com/yschimke/compose-ai-tools/commit/692ff381cce6b9c97739ba158d7342accb06a3a7))
+
+
+### Bug Fixes
+
+* **serve:** re-enter the theme prefetch, and give Busy a ceiling ([#3382](https://github.com/yschimke/compose-ai-tools/issues/3382)) ([17dd843](https://github.com/yschimke/compose-ai-tools/commit/17dd843a39a8e2890d8645cf0419fbeaf35d4c3d))
+
 ## [0.19.39](https://github.com/yschimke/compose-ai-tools/compare/v0.19.38...v0.19.39) (2026-08-05)
 
 
