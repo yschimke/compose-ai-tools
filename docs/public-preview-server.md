@@ -223,9 +223,9 @@ itself — pressed, dragged, scrolled — and until now that meant opening the v
 preview starts streaming from the session's render daemon inside the card, and everything you do to
 it goes to the real composition.
 
-| Hover — the affordance | Held — a live session in the card |
-| --- | --- |
-| ![A catalog card showing the "hold for live" affordance](images/serve-catalog-live-hint.png) | ![The same card streaming from the daemon, outlined and badged "live"](images/serve-catalog-live-card.png) |
+| Before — baked thumbnails only | Hover — the affordance | Held — a live session in the card |
+| --- | --- | --- |
+| ![A catalog grid of baked thumbnails](images/serve-catalog-live-before.png) | ![A catalog card showing the "hold for live" affordance](images/serve-catalog-live-hint.png) | ![The same card streaming from the daemon, outlined and badged "live"](images/serve-catalog-live-card.png) |
 
 What the gesture does, and what it deliberately doesn't:
 
