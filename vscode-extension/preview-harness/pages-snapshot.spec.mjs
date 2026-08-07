@@ -126,7 +126,25 @@ const FIXTURE_STATES = [
         suffix: "multifile",
         apply: async (page) => {
             await page.click("#pg-add-file");
-            await page.fill("#pg-source", "val Brand = 0xFF6750A4");
+            // `#pg-source` is the *backing* textarea. When the vendored CodeMirror bundle loads it
+            // replaces the textarea with its own surface and sets `display: none` on the original,
+            // so `page.fill("#pg-source", …)` waits forever on a hidden element. That used to pass
+            // only because the harness served no assets, i.e. the scenario was exercising the
+            // bundle-absent fallback rather than the page a user sees. Drive whichever is actually
+            // live — the playground supports both states by design (see playground.css).
+            await page.evaluate((src) => {
+                const ta = document.getElementById("pg-source");
+                if (!ta) return;
+                const wrapper = ta.nextElementSibling;
+                const cm = wrapper && wrapper.CodeMirror;
+                if (cm) {
+                    cm.setValue(src);
+                    cm.save(); // mirror back into the textarea the page reads on submit
+                } else {
+                    ta.value = src;
+                    ta.dispatchEvent(new Event("input", { bubbles: true }));
+                }
+            }, "val Brand = 0xFF6750A4");
         },
     },
     {
