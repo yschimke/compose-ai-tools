@@ -205,6 +205,35 @@ await player.loadFromArrayBuffer(rcBytes);
 player.getRemoteContext().setNamedFloatOverride('progress', 0.15);
 player.repaint();
 ```
+- **Measure pass: a component rendered at a size it was never asked for**
+  (`operations/layout/LayoutComponent.ts`, `operations/layout/managers/LayoutManager.ts`,
+  `.../RowLayout.ts`, `.../ColumnLayout.ts`). Three related divergences from Compose's measure
+  semantics, all silent — the document parses, no opcode is unknown, nothing warns:
+
+  - `LayoutComponent.preferExactSize` kept the **last** fixed size modifier when a component
+    carried two. The chain is emitted outermost-first and a widget appends its own default behind
+    the caller's (`RemoteIcon(modifier = size(48.dp))` writes 48 then the built-in 24), so every
+    icon rendered at 24 dp regardless of the request. Compose resolves `size(48).size(24)` to 48 —
+    the outer call fixes the constraints and the inner is coerced into them — so the **first** fixed
+    modifier now wins. Fixed-over-`FILL`/`WRAP` precedence is unchanged.
+  - `LayoutManager.measure` forwarded the container's own `minWidth`/`minHeight` to its children.
+    A min constraint bounds *that* component — a weighted row cell is handed min == max so it fills
+    its slot — so passing it down made every child at least as large as the parent: a `size(20)`
+    icon and a wrapped label both came out full-cell and overlapped their neighbours. It also kept
+    `ColumnLayout.computeSize` from shrinking, since that loop reduces the child *max* per child:
+    with a fixed min the second child was measured min > max (143.8 > 0). Children now get a zero
+    minimum, which is what the scroll path in the same function already passed.
+  - `RowLayout`/`ColumnLayout.internalLayoutMeasure` re-measured a weighted child with its **cross**
+    axis pinned to the size from an earlier pass (`cm.getH(), cm.getH()`), taken while the available
+    space was still being decremented per child — so every cell after the first carried an
+    under-measured height and starved its own children to fit. Only the main axis is decided by the
+    weight; the cross axis is now free, matching the weighted branch of `computeWrapSize` in the
+    same files.
+
+  Measured over the captured `remote-m3` documents (`scripts/design-artifacts/rc-compare.mjs`, JS
+  player lane): mean mismatch against the AndroidX bake **1.32% → 0.96%** across 27 documents with
+  no document regressing, `IconRemote` 5.83% → 0.00%, `ButtonGroupRemote` 2.84% → 0.14%. Guarded by
+  `scripts/design-artifacts/rc-size-modifier.test.mjs` against the committed bundle.
 
 ## Validation
 

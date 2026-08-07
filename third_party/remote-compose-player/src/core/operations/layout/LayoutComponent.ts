@@ -95,14 +95,21 @@ export class LayoutComponent extends Component {
     /** Choose which of two competing width/height modifiers a component keeps.
      *  An EXACT / EXACT_DP fixed-size constraint takes precedence over a FILL/WRAP
      *  (Compose composes `size().fillMaxSize()` so the fixed size wins); otherwise
-     *  the later modifier wins, preserving the previous last-writer behaviour. */
+     *  the later modifier wins, preserving the previous last-writer behaviour.
+     *
+     *  When *both* are fixed the earlier one wins, because the modifier chain is emitted
+     *  outermost-first and Compose resolves `size(48).size(24)` to 48 — the outer call fixes the
+     *  constraints and the inner one is coerced into them. A widget that appends its own default
+     *  size behind the caller's is the common case (`RemoteIcon(modifier = size(48.dp))` carries a
+     *  24 dp default), so last-wins silently rendered every such icon at the default rather than
+     *  the size the document asked for. */
     private static preferExactSize(
         current: WidthModifier | HeightModifier | null,
         next: WidthModifier | HeightModifier,
     ): WidthModifier | HeightModifier {
         const isExact = (t: number): boolean =>
             t === WidthModifier.EXACT || t === WidthModifier.EXACT_DP;
-        if (current && isExact(current.getType()) && !isExact(next.getType())) {
+        if (current && isExact(current.getType())) {
             return current;
         }
         return next;

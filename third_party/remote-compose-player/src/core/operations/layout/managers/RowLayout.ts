@@ -213,7 +213,13 @@ export class RowLayout extends LayoutManager {
                     if (wIn.getMax() >= 0) childWidth = Math.min(wIn.getMax() * dp, childWidth);
                 }
                 cm.setW(childWidth);
-                child.measure(context, childWidth, childWidth, cm.getH(), cm.getH(), measure);
+                // Cross axis stays free (0 .. selfHeight), matching the weighted branch of
+                // `computeWrapSize` above. Pinning it to `cm.getH()` re-imposed the height from an
+                // earlier pass — one taken while `computeSizeForComponents` was still shrinking the
+                // available width per child — so every cell after the first carried an
+                // under-measured height and then starved its own children to fit it. Only the main
+                // axis is decided by the weight.
+                child.measure(context, childWidth, childWidth, 0, selfHeight, measure);
             }
         }
 
