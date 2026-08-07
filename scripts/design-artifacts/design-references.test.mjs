@@ -6,6 +6,8 @@ import {
   derivationMismatches,
   functionNameOf,
   imagesByPreviewFunction,
+  imagesByPreviewId,
+  sanitizeBundleEntryId,
   planDesignReferences,
   referenceId,
   referenceManifest,
@@ -442,4 +444,209 @@ test("planDesignReferences warns when the entry's previewId matches no published
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /ContactRowChatPreview_Typo/);
   assert.match(warnings[0], /ContactRowChatPreview_Light/);
+});
+
+// --- Annotation-led catalogs (no `spec.groups`) ------------------------------------------------
+//
+// The inventory lives in `@CatalogComponent` / `@CatalogVariant` annotations and `catalog.spec.json`
+// carries only cover-sheet fields, so the function-name index has nothing to walk. Before the
+// previewId fallback, every entry in such a repo warned "matches no published sticker" and the
+// delivery branch published no `references/` at all — a silent, total loss of the PNG ↔ Design lane.
+
+const ANNOTATION_SPEC = {
+  system: "m3-catalog",
+  title: "Material 3 Design Kit",
+  modes: ["light", "dark"],
+};
+
+const ANNOTATION_CATALOG = {
+  components: [
+    {
+      componentId: "Button/Filled",
+      images: [
+        {
+          variant: "ideal",
+          path: "images/button-filled/ideal__default__light.png",
+          state: "default",
+          theme: "light",
+          width: 300,
+          height: 210,
+          previewId: "ee.m3catalog.sections.ButtonsKt.FilledButton_Light",
+        },
+        {
+          variant: "ideal",
+          path: "images/button-filled/ideal__default__dark.png",
+          state: "default",
+          theme: "dark",
+          width: 300,
+          height: 210,
+          previewId: "ee.m3catalog.sections.ButtonsKt.FilledButton_Dark",
+        },
+      ],
+    },
+  ],
+};
+
+test("planDesignReferences joins on previewId when the spec declares no groups", () => {
+  const designMap = {
+    components: [
+      {
+        code: "catalog/src/main/kotlin/ee/m3catalog/sections/Buttons.kt#FilledButton",
+        source: "figma",
+        ref: "figma:abc/57994:2227",
+        previewId: "ee.m3catalog.sections.ButtonsKt.FilledButton_Light",
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({
+    designMap,
+    spec: ANNOTATION_SPEC,
+    catalog: ANNOTATION_CATALOG,
+  });
+
+  assert.deepEqual(warnings, []);
+  // Exactly the light sticker: the previewId join selects one image, so the dark twin is not
+  // published against a light design.
+  assert.equal(records.length, 1);
+  assert.equal(records[0].raster.width, 300);
+  assert.match(records[0].label, /^Button\/Filled — figma$/);
+});
+
+test("planDesignReferences still warns when no published image carries the entry's previewId", () => {
+  const designMap = {
+    components: [
+      {
+        code: "catalog/src/main/kotlin/ee/m3catalog/sections/Buttons.kt#GhostButton",
+        source: "figma",
+        ref: "figma:abc/1:2",
+        previewId: "ee.m3catalog.sections.ButtonsKt.GhostButton_Light",
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({
+    designMap,
+    spec: ANNOTATION_SPEC,
+    catalog: ANNOTATION_CATALOG,
+  });
+
+  assert.deepEqual(records, []);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /matches no published sticker/);
+});
+
+test("imagesByPreviewId indexes every image that carries a previewId", () => {
+  const { exact } = imagesByPreviewId(ANNOTATION_CATALOG);
+  assert.deepEqual(
+    [...exact.keys()].sort(),
+    [
+      "ee.m3catalog.sections.ButtonsKt.FilledButton_Dark",
+      "ee.m3catalog.sections.ButtonsKt.FilledButton_Light",
+    ],
+  );
+  // Images with no previewId (the `--extra-renders` fold-in) are simply absent rather than keyed
+  // under undefined, which would collide every one of them onto a single bucket.
+  assert.equal(imagesByPreviewId({ components: [{ images: [{ path: "a.png" }] }] }).exact.size, 0);
+});
+
+// --- The two id namespaces ---------------------------------------------------------------------
+//
+// A design-map entry records the RAW discovery id; a catalog image's previewId is the SANITISED
+// in-bundle form. Comparing them verbatim drops every entry whose `@Preview(name = …)` contains a
+// space — which is why a catalog using only "Light"/"Dark" never notices.
+
+const SANITISED_CATALOG = {
+  components: [
+    {
+      componentId: "Home/SmallRound",
+      images: [
+        {
+          variant: "ideal",
+          path: "images/home-smallround/ideal__default__light.png",
+          state: "default",
+          width: 192,
+          height: 192,
+          // What the bundle manifest carries: spaces replaced with underscores.
+          previewId: "ee.app.ui.HomeKt.HomeListViewPreview_Devices_-_Small_Round",
+        },
+      ],
+    },
+  ],
+};
+
+test("sanitizeBundleEntryId mirrors the Kotlin transform and is idempotent", () => {
+  assert.equal(sanitizeBundleEntryId("Foo_A B"), "Foo_A_B");
+  assert.equal(sanitizeBundleEntryId("com.example.FooKt.Bar_Font scale 1.5x"),
+    "com.example.FooKt.Bar_Font_scale_1.5x");
+  assert.equal(sanitizeBundleEntryId("Foo_wearos-small-round"), "Foo_wearos-small-round");
+  assert.equal(sanitizeBundleEntryId(sanitizeBundleEntryId("Foo_A B")), sanitizeBundleEntryId("Foo_A B"));
+});
+
+test("planDesignReferences joins a raw previewId to its sanitised catalog twin", () => {
+  const designMap = {
+    components: [
+      {
+        code: "app/src/main/kotlin/ui/Home.kt#HomeListViewPreview",
+        source: "figma",
+        ref: "figma:abc/73:6",
+        // The RAW id, as discovery emits it and design-map records it.
+        previewId: "ee.app.ui.HomeKt.HomeListViewPreview_Devices - Small Round",
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({
+    designMap,
+    spec: ANNOTATION_SPEC,
+    catalog: SANITISED_CATALOG,
+  });
+
+  assert.deepEqual(warnings, []);
+  assert.equal(records.length, 1);
+  assert.match(records[0].label, /^Home\/SmallRound — figma$/);
+});
+
+test("planDesignReferences refuses to guess when a sanitised id matches several stickers", () => {
+  // `uniqueBundleEntryId`'s collision case: two distinct raw ids that sanitise to the same string.
+  // The design-map id below matches NEITHER exactly, and sanitises to a form both share — so the
+  // raw id can no longer say which was meant. A coin-flip reference is worse than none.
+  const collidingCatalog = {
+    components: [
+      {
+        componentId: "Home/Round",
+        images: [
+          { path: "a.png", width: 1, height: 1, previewId: "ee.HomeKt.P_A B" },
+          { path: "b.png", width: 1, height: 1, previewId: "ee.HomeKt.P_A/B" },
+        ],
+      },
+    ],
+  };
+
+  const ambiguous = planDesignReferences({
+    designMap: {
+      components: [
+        { code: "a.kt#P", source: "figma", ref: "figma:abc/1:1", previewId: "ee.HomeKt.P_A+B" },
+      ],
+    },
+    spec: ANNOTATION_SPEC,
+    catalog: collidingCatalog,
+  });
+  assert.deepEqual(ambiguous.records, []);
+  assert.equal(ambiguous.warnings.length, 1);
+  assert.match(ambiguous.warnings[0], /matches no published sticker/);
+
+  // An id that DOES hit one of them exactly still resolves, so the refusal is scoped to genuine
+  // ambiguity rather than to any catalog that happens to contain a collision.
+  const exact = planDesignReferences({
+    designMap: {
+      components: [
+        { code: "a.kt#P", source: "figma", ref: "figma:abc/1:1", previewId: "ee.HomeKt.P_A B" },
+      ],
+    },
+    spec: ANNOTATION_SPEC,
+    catalog: collidingCatalog,
+  });
+  assert.deepEqual(exact.warnings, []);
+  assert.equal(exact.records.length, 1);
 });
