@@ -11,6 +11,24 @@
       "maxMismatchPct": 1.5,
       "classification": "backend",
       "reason": "Reviewed baked/CMP/diff images show matching bounds, corner radii, and text placement; at density 2.625 the residual 1.25% is limited to subpixel rounded-edge and glyph coverage."
+    },
+    {
+      "id": "com.example.designcatalogremotem3.CatalogPreviewsKt.TypefaceSpecimenRemote_width_320dp_height_240dp_dpi_320",
+      "maxMismatchPct": 1.4,
+      "classification": "backend",
+      "reason": "Reviewed baked/CMP/diff images (docs/design/evidence/rc-remote-m3-variable-axes/): both lanes resolve all four named families to the same faces — Orbitron, Lobster Two, Space Grotesk, JetBrains Mono are each themselves on both sides, at the same baselines and advances — and the 1.08% diff is a pure outline halo, glyph edges only, with no displacement and no substituted face. This preview carries no font-variation axes; it is the WatchScreenRemote class of Skia-vs-Android coverage residual, reading high only because four lines of 22sp display text on an empty 640x480 are almost all edge."
+    },
+    {
+      "id": "com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWeightRemote_width_320dp_height_240dp_dpi_320",
+      "maxMismatchPct": 2.3,
+      "classification": "reference-lane-gap",
+      "reason": "Not a wasm fault: the reference draws this flat. Reviewed baked/CMP/diff images (docs/design/evidence/rc-remote-m3-variable-axes/) show the baked PNG — the AOSP view player, RemoteOverridablePreview defaults to RemoteComposePlayerKind.VIEW — painting wght 100/400/700/1000 in one weight, because its CoreText renderer does not route a style-carried font-variation axis into the paint's variation settings, while the wasm player instances Roboto Flex at each. Reproduced locally at 1.82%, matching run 31209547232. Retire this entry when the AOSP side applies CoreText axes; see docs/design/RC_PLAYER_TYPEFACES.md and #3469."
+    },
+    {
+      "id": "com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWidthRemote_width_320dp_height_240dp_dpi_320",
+      "maxMismatchPct": 3.3,
+      "classification": "reference-lane-gap",
+      "reason": "The same reference-lane gap as VariableWeightRemote, on the wdth axis: the reviewed diff shows the AOSP view player painting wdth 25/100/151 at one set width and the wasm player instancing Roboto Flex at each, so every glyph of every line is displaced. Reproduced locally at 2.80%, matching run 31209547232. Wider than the wght entry because a width ramp moves whole glyph runs rather than thickening stems in place. Retire it with the same upstream fix; see docs/design/RC_PLAYER_TYPEFACES.md and #3469."
     }
   ]
 }

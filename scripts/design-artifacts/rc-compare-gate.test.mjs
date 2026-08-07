@@ -37,6 +37,36 @@ test("pixel parity uses a strict default and only reviewed per-preview exception
   assert.match(gate.failures[1].note, /without a reviewed tolerance/);
 });
 
+test("a tolerance whose preview improved past the strict default is not stale", () => {
+  // `improved` is the shape that used to fail the whole lane: it carries a reviewed tolerance and
+  // now measures *under* the strict 1% default, which is the tolerance working, not rotting.
+  // `vanished` is real rot — nothing measured it at all — and has to stay a failure.
+  const rows = [
+    { id: "improved", cmpWasmRendered: true, cmpWasmMismatchPct: 0.98 },
+    { id: "still-over", cmpWasmRendered: true, cmpWasmMismatchPct: 1.2 },
+  ];
+  const tolerances = new Map([
+    ["improved", { maxMismatchPct: 1.5, classification: "backend", reason: "subpixel edges" }],
+    ["still-over", { maxMismatchPct: 1.4, classification: "backend", reason: "glyph coverage" }],
+    ["vanished", { maxMismatchPct: 2, classification: "backend", reason: "renamed away" }],
+  ]);
+
+  const gate = applyCmpWasmPixelTolerances(
+    evaluateCmpWasmGate(rows.map((row) => row.id), rows),
+    rows,
+    tolerances,
+  );
+
+  assert.deepEqual(gate.failures, [
+    { id: "pixels-vanished", note: "reviewed tolerance is stale or unmeasured" },
+  ]);
+  assert.deepEqual(
+    gate.obsoletePixelTolerances.map((entry) => [entry.id, entry.actualPct]),
+    [["improved", 0.98]],
+  );
+  assert.deepEqual(gate.pixelTolerances.map((entry) => entry.id), ["still-over"]);
+});
+
 test("cold and warm first-frame budgets fail on the slowest measured render", () => {
   const rows = [
     { id: "cold", cmpWasmRendered: true, cmpWasmStartup: "cold", cmpWasmFirstFrameMs: 9001 },

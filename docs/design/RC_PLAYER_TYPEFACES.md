@@ -133,6 +133,23 @@ bundle's axes used to be parsed and skipped; they now reach the canvas. Two halv
   lanes that instance the file directly. Every other axis — `opsz`, `GRAD`, a custom one — has no
   canvas expression at all and is dropped. This is a platform ceiling, not a decode gap.
 
+  **The ceiling is escapable, and measured.** `ctx.fontStretch` is the only *canvas* expression of
+  `wdth`, but it is not the only way to get an exact axis onto a canvas: CSS Fonts 4's
+  `font-variation-settings` is also a `@font-face` **descriptor**, and Chromium honours it both in a
+  stylesheet rule and as the `variationSettings` member of the `FontFace` constructor. Registering
+  the same source under an alias family whose descriptor pins the axes gives a face that needs no
+  canvas-side expression at all — it *is* the instance — and covers every axis, `opsz` and `GRAD`
+  included. Measured on the real Roboto Flex variable face at 32px, `"Hamburg · wdth 25"`: DOM ground
+  truth (`font-variation-settings:"wdth" 25`) advances **243.73px**, today's `ultra-condensed`
+  quantisation **253.11px** (3.8% wide, and every outline differs), and an alias `FontFace` carrying
+  `variationSettings: '"wdth" 25'` **243.73px** — exact, on attached and detached canvases alike (the
+  layer canvases the player draws into are detached, which rules out the simpler trick of setting
+  `style.fontVariationSettings` on the canvas element: that works, and only while the element is in
+  a document). `wght` needs none of this; it is already exact through the shorthand, verified against
+  the same ground truth at 100/200/400/700/900/1000 with the enumerated and range stylesheets both
+  registered, the way the player registers them. Not implemented — recorded here because "platform
+  ceiling" overstated it, and because the fix is a registration, not a canvas feature request.
+
 ### CMP Wasm — this repo's player, client-side
 
 `RcComposePlayer` takes a `fontFamilies: Map<String, RcFontFaces>` and the wasm app loads it from a
@@ -158,6 +175,35 @@ carry the axes too: Compose's font cache keys on it, so two instances of one fil
 are the same cached typeface and a `wght` ramp would draw every line at the first weight it saw.
 Canvas text ops (`DrawText…`, paint-bundle axes) still map only `wght`/`ital`/`slnt`, and the support
 report says so (`font axis wdth is not implemented`) rather than dropping them silently.
+
+**That support is why the lane fails `remote-m3`'s strict pixel gate, and the gate's reference is
+the side without it.** The gate scores each wasm render against the catalog's **baked** PNG, and the
+baked PNG comes from `RemoteOverridablePreview`, whose player defaults to
+`RemoteComposePlayerKind.VIEW` — the AOSP view player, i.e. the **Java** row of the matrix above. The
+two rows disagree in exactly one place, and `VariableWeightRemote` / `VariableWidthRemote` are made
+of nothing else: both carry their axes as `CoreText` style properties, the wasm player instances
+Roboto Flex at them, and the AOSP CoreText renderer does not route them into the paint's variation
+settings — so the *reference* draws four identical weights and three identical widths while the lane
+under test draws the ramps. The lane under test is the one applying the axes.
+
+The baked/wasm/diff images are in
+[`evidence/rc-remote-m3-variable-axes/`](evidence/rc-remote-m3-variable-axes/README.md), reproduced
+from this repo — `composePreviewRenderAll` for the baked side, `wasmPlayerDist` for the other, each
+`.rc` sidecar scored against the baked PNG beside it — at **1.08% / 1.82% / 2.80%**, the same three
+numbers run 31209547232 reported, to two decimals. No catalog bundle is involved, so it is a
+practical local check rather than a re-run of the job.
+
+The third preview in that group is **not** part of this. `TypefaceSpecimenRemote` carries no axes,
+both lanes resolve all four named families to the same faces, and its 1.08% diff is a pure outline
+halo — glyph edges, no displacement, no substituted face. It is the `WatchScreenRemote` class of
+residual, reading high only because four lines of 22sp display text on an empty 640×480 are almost
+all edge. Three failures on one lane looked like one cause and were two.
+
+Closing the axis pair means routing `CoreText` axes into the paint's variation settings on the AOSP
+side (upstream plumbing — the connector's `RcGoogleFontTypefaceResolver.FontInstance` already
+implements `applyVariationSettings`, nothing calls it for a style-carried axis); until that lands the
+two previews cannot be pixel-equal, and a reviewed tolerance for them is a statement about the
+reference, not about the wasm player. Tracked in #3469.
 
 There is no network fetch for a `google:` name — the prefix is stripped and looked up in the same
 manifest. And unlike every other lane, an unsatisfiable family is **fatal rather than substituted**:
