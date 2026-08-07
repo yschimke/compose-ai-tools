@@ -1,0 +1,205 @@
+package ee.schimke.composeai.cli
+
+import ee.schimke.composeai.cli.serve.PreviewHistoryManifest
+import java.io.File
+import kotlin.io.path.createTempDirectory
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+class HistoryManifestCommandTest {
+
+  /** Stands in for `exitProcess` so a refuse-to-publish path fails the test, not the JVM. */
+  private class CommandExit(val code: Int) : RuntimeException("exit $code")
+
+  private val baselines =
+    """
+    {
+      "samples:wear/com.example.PreviewsKt.Foo_Large Round": {
+        "module": "samples:wear",
+        "renderBasename": "Foo_Large_Round.png"
+      }
+    }
+    """
+      .trimIndent()
+
+  /** A throwaway git repo shaped like a delivery branch, so the command's git calls are real. */
+  private fun deliveryRepo(vararg commits: Pair<String, String>): File {
+    val dir = createTempDirectory("history-manifest-test").toFile()
+    fun git(vararg args: String) {
+      val p = ProcessBuilder(listOf("git") + args).directory(dir).redirectErrorStream(true).start()
+      check(p.waitFor() == 0) { "git ${args.joinToString(" ")} failed" }
+    }
+    git("init", "--quiet", "--initial-branch", "main")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test")
+    File(dir, "baselines.json").writeText(baselines)
+    File(dir, "renders/samples:wear").mkdirs()
+    commits.forEach { (subject, bytes) ->
+      File(dir, "renders/samples:wear/Foo_Large_Round.png").writeText(bytes)
+      git("add", "-A")
+      git("commit", "--quiet", "-m", subject)
+    }
+    return dir
+  }
+
+  private fun run(repo: File, vararg extra: String): Pair<List<String>, List<String>> {
+    val out = mutableListOf<String>()
+    val err = mutableListOf<String>()
+    HistoryManifestCommand(
+        args = listOf("--repo", repo.path, "--branch", "main") + extra,
+        workingDir = repo,
+        stdout = { out += it },
+        stderr = { err += it },
+        exit = { throw CommandExit(it) },
+      )
+      .run()
+    return out to err
+  }
+
+  @Test
+  fun `writes a manifest joined against the branch's own baselines`() {
+    val repo = deliveryRepo("Update preview baselines from 27ea28c1" to "v1")
+    val output = File(repo, "history.json")
+
+    val (out, err) = run(repo, "--output", output.path)
+
+    assertTrue(err.isEmpty(), "unexpected stderr: $err")
+    val manifest = assertNotNull(PreviewHistoryManifest.decode(output.readText()))
+    val entry = manifest.previews.getValue("samples:wear/com.example.PreviewsKt.Foo_Large Round")
+    assertEquals("renders/samples:wear/Foo_Large_Round.png", entry.path)
+    assertEquals("27ea28c1", entry.versions.single().sourceSha)
+    assertContains(out.joinToString("\n"), "1 previews")
+  }
+
+  @Test
+  fun `generatedFrom is the resolved sha, not the ref name`() {
+    // A viewer compares this against the branch tip to tell whether the manifest is stale; a ref
+    // name would always look current.
+    val repo = deliveryRepo("publish" to "v1")
+    val output = File(repo, "history.json")
+
+    run(repo, "--output", output.path)
+
+    val manifest = assertNotNull(PreviewHistoryManifest.decode(output.readText()))
+    assertTrue(manifest.generatedFrom.matches(Regex("[0-9a-f]{40}")), manifest.generatedFrom)
+  }
+
+  @Test
+  fun `successive publishes become successive versions, newest first`() {
+    // End-to-end over real `git log` output rather than a synthetic log: collapse semantics are
+    // pinned by PreviewHistoryTest / PreviewHistoryManifestTest, so what this covers is that the
+    // command drives real git correctly and orders the result the way a viewer expects.
+    val repo = deliveryRepo("Update preview baselines from aaaaaaaa" to "v1")
+    File(repo, "renders/samples:wear/Foo_Large_Round.png").writeText("v2")
+    ProcessBuilder("git", "add", "-A").directory(repo).start().waitFor()
+    ProcessBuilder("git", "commit", "--quiet", "-m", "Update preview baselines from bbbbbbbb")
+      .directory(repo)
+      .start()
+      .waitFor()
+    val output = File(repo, "history.json")
+
+    run(repo, "--output", output.path)
+
+    val entry =
+      assertNotNull(PreviewHistoryManifest.decode(output.readText())).previews.values.single()
+    assertEquals(2, entry.versions.size)
+    assertEquals(2, entry.observations)
+    assertEquals(
+      listOf("bbbbbbbb", "aaaaaaaa"),
+      entry.versions.map { it.sourceSha },
+      "newest publish first",
+    )
+  }
+
+  @Test
+  fun `an explicit baselines file overrides the branch copy`() {
+    val repo = deliveryRepo("publish" to "v1")
+    val override = File(repo, "other-baselines.json")
+    override.writeText(
+      """{"renamed/id": {"module": "samples:wear", "renderBasename": "Foo_Large_Round.png"}}"""
+    )
+    val output = File(repo, "history.json")
+
+    run(repo, "--output", output.path, "--baselines", override.path)
+
+    val manifest = assertNotNull(PreviewHistoryManifest.decode(output.readText()))
+    assertEquals(setOf("renamed/id"), manifest.previews.keys)
+  }
+
+  @Test
+  fun `a missing explicit baselines file is an error, not an empty manifest`() {
+    val repo = deliveryRepo("publish" to "v1")
+    val output = File(repo, "history.json")
+
+    val error =
+      runCatching { run(repo, "--output", output.path, "--baselines", "/nope/missing.json") }
+        .exceptionOrNull()
+
+    assertEquals(1, assertIs<CommandExit>(error).code)
+    assertFalse(output.exists(), "must not write a manifest it could not join")
+  }
+
+  @Test
+  fun `baselines with no usable entries refuses to write`() {
+    // Writing an empty manifest here would publish a file that reads as "this branch has no
+    // history at all", which is worse than failing the publish step.
+    val repo = deliveryRepo("publish" to "v1")
+    val empty = File(repo, "empty.json")
+    empty.writeText("{}")
+    val output = File(repo, "history.json")
+
+    val error =
+      runCatching { run(repo, "--output", output.path, "--baselines", empty.path) }
+        .exceptionOrNull()
+
+    assertEquals(1, assertIs<CommandExit>(error).code)
+    assertFalse(output.exists())
+  }
+
+  @Test
+  fun `--help prints usage and names the sibling command it is not`() {
+    val out = mutableListOf<String>()
+    HistoryManifestCommand(
+        args = listOf("--help"),
+        stdout = { out += it },
+        stderr = {},
+        exit = { throw CommandExit(it) },
+      )
+      .run()
+
+    val text = out.joinToString("\n")
+    assertContains(text, "history-manifest")
+    assertContains(text, "compose-preview history", ignoreCase = false)
+  }
+
+  @Test
+  fun `the summary reports dropped render paths rather than staying silent`() {
+    // Renders for deleted or renamed previews are dropped by design; silence would read as full
+    // coverage.
+    val repo = deliveryRepo("publish" to "v1")
+    File(repo, "renders/samples:wear/Orphaned.png").writeText("x")
+    ProcessBuilder("git", "add", "-A").directory(repo).start().waitFor()
+    ProcessBuilder("git", "commit", "--quiet", "-m", "add orphan").directory(repo).start().waitFor()
+    val output = File(repo, "history.json")
+
+    val (out, _) = run(repo, "--output", output.path)
+
+    assertContains(out.joinToString("\n"), "1 unmatched render paths dropped")
+  }
+
+  @Test
+  fun `--quiet writes the file without a summary`() {
+    val repo = deliveryRepo("publish" to "v1")
+    val output = File(repo, "history.json")
+
+    val (out, _) = run(repo, "--output", output.path, "--quiet")
+
+    assertTrue(out.isEmpty(), "expected no stdout, got: $out")
+    assertTrue(output.isFile)
+  }
+}

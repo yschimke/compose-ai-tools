@@ -19,6 +19,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "a11y" to { a -> A11yCommand(a).run() },
     "diff-semantics" to { a -> SemanticsDiffCommand(a).run() },
     "history" to { a -> HistoryCommand(a).run() },
+    "history-manifest" to { a -> HistoryManifestCommand(a).run() },
     "extensions" to { a -> ExtensionsCommand(a).run() },
     "profile" to { a -> ProfileCommand(a).run() },
     "doctor" to { a -> DoctorCommand(a).run() },

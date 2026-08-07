@@ -25,7 +25,18 @@ internal object CliRouter {
    */
   val GROUPS: Map<String, List<String>> =
     linkedMapOf(
-      "inspect" to listOf("a11y", "diff-semantics", "devices", "extensions", "history", "profile"),
+      "inspect" to
+        listOf(
+          "a11y",
+          "diff-semantics",
+          "devices",
+          "extensions",
+          "history",
+          // Sits next to `history` on purpose: different branch, different shape (see
+          // HistoryManifestCommand). Adjacency plus distinct names beats hiding it elsewhere.
+          "history-manifest",
+          "profile",
+        ),
       "capture" to listOf("render-matrix", "record", "bundle"),
       "share" to listOf("serve", "share-preview"),
       "setup" to listOf("update", "init-script"),
