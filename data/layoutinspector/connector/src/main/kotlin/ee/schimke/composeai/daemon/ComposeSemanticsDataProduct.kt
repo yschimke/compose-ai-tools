@@ -1670,7 +1670,13 @@ internal object ComposeLayoutInspector {
       val paths = ArrayList<LayoutInspectorVectorPath>()
       if (!collect(root, paths) || paths.isEmpty()) return null
       val painted = if (tint != null) paths.map { it.recoloured(tint) } else paths
-      return LayoutInspectorVectorGraphic(vw, vh, painted)
+      // `VectorPainter.name` writes straight through to the `VectorComponent`, and the Material
+      // icon generator bakes `"Filled.Menu"` & co. in there — the only signal that separates a
+      // stock Material icon from an app's own artwork (see `MaterialIconRef`). Best-effort like
+      // everything else here: an unreadable name just leaves the graphic unannotated.
+      val name =
+        runCatching { field(vector, "name") as? String }.getOrNull()?.takeIf { it.isNotBlank() }
+      return LayoutInspectorVectorGraphic(vw, vh, painted, vectorName = name)
     }
 
     private sealed interface TintResult

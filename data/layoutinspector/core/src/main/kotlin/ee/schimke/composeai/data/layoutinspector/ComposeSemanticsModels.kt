@@ -125,7 +125,13 @@ object LayoutInspectorProduct {
   // v14 (#3254): `tokens` may carry `shapePath` — see the `compose/semantics` v13 note; both
   // products mirror the same `ModifierTokenResolver` projection. Additive — older entries decode
   // with `shapePath = null`.
-  const val SCHEMA_VERSION: Int = 14
+  // v15: a `vectorGraphic` may carry `vectorName` — the `ImageVector`'s own name, read off the live
+  // `VectorComponent` at capture (`"Filled.Menu"`, `"AutoMirrored.Outlined.ArrowBack"`, or whatever
+  // an app passed its own builder). It is the only signal that separates a stock Material icon from
+  // an app's artwork — the geometry can't — and it is what lets the figma-svg export annotate an
+  // icon with its canonical fonts.google.com identity ([MaterialIconRef]). Additive — older entries
+  // decode with `vectorName = null`, which exports exactly as before.
+  const val SCHEMA_VERSION: Int = 15
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -798,6 +804,18 @@ data class LayoutInspectorVectorGraphic(
    * so the layer has to raster instead of emitting the untinted icon (issue #2852).
    */
   val fromDrawCapture: Boolean = false,
+  /**
+   * The `ImageVector`'s own name, when the capture reflected one off a `VectorPainter` —
+   * `"Filled.Menu"`, `"AutoMirrored.Outlined.ArrowBack"`, or whatever an app passed to its own
+   * `ImageVector.Builder`. Null for a draw-capture ([fromDrawCapture]) and for a vector whose name
+   * couldn't be read.
+   *
+   * The geometry alone can't tell a stock Material icon from an app's own artwork; this name can,
+   * which is what lets the figma-svg export annotate an icon with its canonical fonts.google.com
+   * identity ([MaterialIconRef]). Carried raw — the *interpretation* lives in `MaterialIconRef`, so
+   * a name this repo doesn't recognise today stays available to a later reader.
+   */
+  val vectorName: String? = null,
 )
 
 /**
