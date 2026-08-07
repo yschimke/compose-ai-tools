@@ -131,14 +131,40 @@ export function applyCmpWasmPerformanceBudgets(gate, rows, coldBudgetMs, warmBud
   return gate;
 }
 
-/** Enforce 1% by default, with reviewed per-preview ceilings for classified backend variance. */
+/**
+ * Enforce 1% by default, with reviewed per-preview ceilings for classified backend variance.
+ *
+ * An entry is *stale* when its preview produced no comparable measurement at all — the id was
+ * renamed, the preview was dropped from the catalog, the render failed, the reference baked blank.
+ * That is config rot and stays a failure: a ceiling nothing is measured against is a claim nobody
+ * is checking.
+ *
+ * An entry whose preview **improved to inside the strict default** is a different thing, and it is
+ * the case this used to get wrong. `seen` was only filled from rows above 1%, so a preview that got
+ * *better* fell out of the loop before its tolerance was marked used and then failed the lane as
+ * "stale or unmeasured" — the gate reporting an improvement as rot, on a row that passes the strict
+ * default on its own. Marking the tolerance seen for every measured row fixes that; the entry is
+ * reported as `withinStrictDefault` so it is visible and can be retired deliberately, rather than
+ * turning the lane red the moment a backend difference closes.
+ */
 export function applyCmpWasmPixelTolerances(gate, rows, tolerances = new Map()) {
   gate.pixelTolerances = [];
+  gate.obsoletePixelTolerances = [];
   const seen = new Set();
   for (const row of rows) {
-    if (!row.cmpWasmRendered || row.referenceBlank || row.cmpWasmMismatchPct <= 1) continue;
+    if (!row.cmpWasmRendered || row.referenceBlank) continue;
     const tolerance = tolerances.get(row.id);
     if (tolerance) seen.add(row.id);
+    if (row.cmpWasmMismatchPct <= 1) {
+      if (tolerance) {
+        gate.obsoletePixelTolerances.push({
+          id: row.id,
+          actualPct: row.cmpWasmMismatchPct,
+          ...tolerance,
+        });
+      }
+      continue;
+    }
     if (!tolerance) {
       gate.failures.push({
         id: `pixels-${row.id}`,
@@ -185,6 +211,14 @@ export function formatCmpWasmGate(gate) {
     lines.push(
       `- pixel parity: strict 1% default; ${gate.pixelTolerances.length} reviewed ` +
         `per-preview tolerance(s) applied`,
+    );
+  }
+  // Said out loud rather than left to be noticed: an entry the lane no longer needs is one a human
+  // can retire, and printing the measurement is what makes that call reviewable.
+  for (const entry of gate.obsoletePixelTolerances ?? []) {
+    lines.push(
+      `- ${entry.id}: reviewed tolerance no longer needed — measured ` +
+        `${entry.actualPct.toFixed(2)}%, inside the strict 1% default`,
     );
   }
   return lines.join("\n");
