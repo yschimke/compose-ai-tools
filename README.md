@@ -298,6 +298,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-playground-android-catalog/dark](renders/serve-playground-android-catalog.dark.png) |
 | `light` | ![serve-playground-android-catalog/light](renders/serve-playground-android-catalog.light.png) |
 
+## serve-playground-multi-preview
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-playground-multi-preview/dark](renders/serve-playground-multi-preview.dark.png) |
+| `light` | ![serve-playground-multi-preview/light](renders/serve-playground-multi-preview.light.png) |
+
 ## serve-playground-multifile
 
 | Theme | Capture |

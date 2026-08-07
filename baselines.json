@@ -493,6 +493,18 @@
       "sha256": "80a038b90487628abdc9eb065217d164e3db3df66880483161bd19a80531cbc3",
       "size": 29781
     },
+    "serve-playground-multi-preview.dark.png": {
+      "fixture": "serve-playground-multi-preview",
+      "theme": "dark",
+      "sha256": "6c1e1f9d271b3fc7563aa1642321bb1e55f9a04dd18e51bcdb9870cc9d969236",
+      "size": 46697
+    },
+    "serve-playground-multi-preview.light.png": {
+      "fixture": "serve-playground-multi-preview",
+      "theme": "light",
+      "sha256": "6c1e1f9d271b3fc7563aa1642321bb1e55f9a04dd18e51bcdb9870cc9d969236",
+      "size": 46697
+    },
     "serve-playground-multifile.dark.png": {
       "fixture": "serve-playground-multifile",
       "theme": "dark",
