@@ -34,10 +34,15 @@ const DIST = path.resolve(
 const FIXTURE = path.join(HERE, "fixtures", "watch-screen-round-clip.rc");
 const VIEWPORT = { width: 227, height: 227 };
 const DENSITY = 2;
-// The default tail is 1,500 ms. Assert well under it so a slow machine cannot fail the test, but
-// far enough above the ~600 ms a tail-free render takes that the two cannot be confused.
+// The default tail is 1,500 ms. A *lower* bound on the default render is safe on any machine — a
+// slow one only overshoots it, and nothing but a missing tail can undershoot.
 const MIN_DEFAULT_MS = 1_200;
-const MAX_TAIL_FREE_MS = 1_000;
+// The tail-free render is checked against a default one from the same context rather than against a
+// wall-clock ceiling. Its elapsed time is a whole navigation, Wasm startup, font load and three
+// frames — all machine-speed — so an absolute deadline would fail a slow-but-correct runner while
+// the production lane happily allows 5,000 ms. The *difference* between the two is the tail and
+// nothing else, so it survives a runner that runs everything at half speed.
+const MIN_TAIL_SAVING_MS = 1_000;
 const REQUIRE = process.env.RC_CMP_WASM_REQUIRE === "1";
 
 let chromium;
@@ -151,9 +156,11 @@ test("handoffDelayMs=0 drops the tail without changing a pixel", async (t) => {
     const settled = await render(page, "");
     return { fast, settled };
   });
+  const saved = settled.elapsed - fast.elapsed;
   assert.ok(
-    fast.elapsed < MAX_TAIL_FREE_MS,
-    `handoffDelayMs=0 still took ${fast.elapsed.toFixed(0)} ms — the parameter is not applied`,
+    saved > MIN_TAIL_SAVING_MS,
+    `handoffDelayMs=0 took ${fast.elapsed.toFixed(0)} ms against ${settled.elapsed.toFixed(0)} ms ` +
+      `with the tail — only ${saved.toFixed(0)} ms apart, so the parameter is not being applied`,
   );
   assert.ok(
     fast.png.equals(settled.png),
