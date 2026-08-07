@@ -254,9 +254,51 @@ class ServeHttpServer(
    * forge. That is exactly one hop's worth of trust; behind two proxies this names the inner one.
    */
   private val trustForwardedFor: Boolean = false,
+  /**
+   * Reads a preview's Kotlin off GitHub so `/playground?from=…` can open it — the "try this preview
+   * in the playground" handoff. Null disables the handoff (and its links); the playground itself is
+   * unaffected. Injected rather than built here so tests never reach the network.
+   */
+  private val playgroundSourceFetch: ((String) -> ByteArray?)? = null,
   /** Aggregate view counts; pass a file-backed store to keep them across server restarts. */
   private val engagementStore: ServeEngagementStore = ServeEngagementStore(),
 ) {
+
+  /**
+   * Resolves `/playground?from=<system>/<previewId>` to that preview's source. Built here rather
+   * than injected because the lookup is this server's own registry: the request names a system and
+   * a preview id, and everything that forms the fetch URL comes from the catalog metadata behind
+   * them. Null when no fetcher was supplied, or the lane isn't wired at all.
+   */
+  private val playgroundSeeds: PlaygroundSeedResolver? =
+    playgroundSourceFetch
+      ?.takeIf { playgroundService != null }
+      ?.let { fetch ->
+        PlaygroundSeedResolver(
+          locate = { system, previewId ->
+            // peekHost, not lease: this is a metadata read, and leasing would stand a daemon up
+            // just to answer where a file lives.
+            val bundleHost = sessions.peekHost(system)?.let { catalogBundleHost(it) }
+            val source = bundleHost?.catalogSource
+            val sourceFile =
+              bundleHost
+                ?.previews
+                ?.firstOrNull { it.id == previewId }
+                ?.sourceFile
+                ?.takeIf { it.isNotBlank() }
+            if (source != null && sourceFile != null)
+              PlaygroundSeedResolver.Location(
+                repo = source.repo,
+                ref = source.ref,
+                module = source.module,
+                sourceFile = sourceFile,
+              )
+            else null
+          },
+          fetch = fetch,
+          onLog = { System.err.println("serve: playground seed: $it") },
+        )
+      }
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
 
@@ -1007,6 +1049,21 @@ class ServeHttpServer(
     if (rejectBadToken()) return
     if (rejectMissingGithubAuth()) return
     if (rejectMissingGithubRepoAccess()) return
+    // `?from=<system>/<previewId>` — the handoff from a viewer page: open that preview's own Kotlin
+    // in the editor with its catalog preselected. `?catalog=<system>` is the lighter half from a
+    // catalog landing: preselect the design system, keep the starter sample. Both resolve entirely
+    // through this server's own registry, so a request never names a URL the host then fetches.
+    //
+    // A seed that can't be resolved is not an error page: the playground still works, so it opens
+    // on
+    // the sample. The startup log carries the reason.
+    val seed =
+      call.request.queryParameters["from"]?.let { raw ->
+        val system = raw.substringBefore('/')
+        val previewId = raw.substringAfter('/', "")
+        if (system.isBlank() || previewId.isBlank()) null
+        else playgroundSeeds?.seed(system, previewId)
+      }
     markGeneration("static-page", pageCacheControl())
     call.respondText(
       ServeWeb.playgroundPage(
@@ -1014,6 +1071,8 @@ class ServeHttpServer(
         isPublic = isPublic,
         catalogs = service.catalogChoices(),
         catalogSelectorEnabled = service.catalogSelectorEnabled,
+        seed = seed,
+        preselectCatalog = call.request.queryParameters["catalog"],
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
       ),
       ContentType.Text.Html,
@@ -1377,6 +1436,10 @@ class ServeHttpServer(
           provenance = catalogBundleHost(renderHost)?.provenance,
           refreshUrl =
             if (catalogRefresh != null) "$basePath/refresh${requestQuerySuffix()}" else null,
+          // "try in playground" — opens the editor with this design system preselected, so a
+          // snippet compiles against the catalog you were just browsing. Omitted on a host with no
+          // lane; the per-preview handoff is the viewer's `playgroundHref`.
+          playgroundHref = playgroundLinkForCatalog(selectedSessionId),
           // Crop each card's thumbnail to the component's figma-svg content box (cheap baked
           // reads),
           // so a Wear sticker shows the component, not the empty watch canvas around it.
@@ -1809,6 +1872,36 @@ class ServeHttpServer(
   private fun unlistedCatalogs(): List<String> =
     catalogLoads?.snapshot()?.filterNot { it.config.listed }?.map { it.config.system }
       ?: appCatalogSessions
+
+  /**
+   * `/playground?from=<system>/<previewId>` for a preview, or null when this host would not honour
+   * it — no playground lane, no source fetcher, or a preview whose catalog never recorded a source
+   * path. Checked here rather than left to the target page so a dead link is never rendered.
+   *
+   * Carries the access token like every other link this server builds, so the handoff survives on a
+   * token-gated host.
+   */
+  private fun RoutingContext.playgroundLinkFor(
+    system: String,
+    previewId: String,
+    sourceFile: String?,
+  ): String? {
+    if (playgroundService == null || playgroundSeeds == null) return null
+    if (sourceFile.isNullOrBlank()) return null
+    val from = WebEscaping.urlEncodeSegment(system) + "/" + WebEscaping.urlEncodeSegment(previewId)
+    val token = if (isPublic) "" else "&token=" + WebEscaping.urlEncodeSegment(token)
+    return "/playground?from=$from$token"
+  }
+
+  /**
+   * `/playground?catalog=<system>` for a catalog landing — the lighter half of the same handoff:
+   * preselect this design system, keep the starter snippet. Null when there is no lane to open.
+   */
+  private fun RoutingContext.playgroundLinkForCatalog(system: String): String? {
+    if (playgroundService == null) return null
+    val token = if (isPublic) "" else "&token=" + WebEscaping.urlEncodeSegment(token)
+    return "/playground?catalog=${WebEscaping.urlEncodeSegment(system)}$token"
+  }
 
   private fun catalogBundleHost(host: ServeHost): ServeBundleHost? =
     when (host) {
@@ -2920,6 +3013,10 @@ class ServeHttpServer(
           // design reference for it. Resolved from data the catalog already carries — nothing is
           // fetched from Figma, here or anywhere else in serve.
           figmaSpec = ServeFigmaSpec.of(renderHost.designReferencesFor(preview.id)),
+          // "open in playground" — offered only when this host has the lane AND this preview
+          // records a source path, so the link never lands on a page that opens the generic
+          // sample and quietly ignores what was asked for.
+          playgroundHref = playgroundLinkFor(sessionId, preview.id, preview.sourceFile),
           liveAuthPrompt = liveAuthPrompt,
           catalogTitle = catalogBundleHost(renderHost)?.title,
           // The same heartbeat the grid sends. The viewer needs it at least as much: it is where a

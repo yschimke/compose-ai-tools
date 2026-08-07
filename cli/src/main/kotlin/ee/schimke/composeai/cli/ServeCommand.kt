@@ -26,6 +26,7 @@ import ee.schimke.composeai.cli.serve.PlaygroundRcCaptureService
 import ee.schimke.composeai.cli.serve.PlaygroundRedeemService
 import ee.schimke.composeai.cli.serve.PlaygroundSandbox
 import ee.schimke.composeai.cli.serve.PlaygroundSandboxProbe
+import ee.schimke.composeai.cli.serve.PlaygroundSeedResolver
 import ee.schimke.composeai.cli.serve.PlaygroundTokenStore
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBackgroundWork
@@ -2013,6 +2014,11 @@ class ServeCommand(args: List<String>) : Command(args) {
         playgroundRedeem = playgroundLane?.redeem,
         githubAuth = githubAuth,
         playgroundRateLimiter = playgroundLane?.let { buildPlaygroundRateLimiter() },
+        // Lets `/playground?from=<system>/<previewId>` open a served preview's own Kotlin. Only
+        // wired alongside the lane — with no playground there is nothing to open it in, and the
+        // viewer then renders no link rather than one that leads nowhere.
+        playgroundSourceFetch =
+          playgroundLane?.let { { url: String -> PlaygroundSeedResolver.httpFetch(url) } },
         trustForwardedFor = trustForwardedFor,
         engagementStore = ServeEngagementStore(engagementFile),
       )
