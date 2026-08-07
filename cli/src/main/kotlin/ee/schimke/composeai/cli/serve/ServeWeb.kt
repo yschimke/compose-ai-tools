@@ -5534,9 +5534,19 @@ object ServeWeb {
         val bool = kind == "bool"
         val initial =
           if (bool) (if (value == "true" || value == "1") "true" else "false") else value
+        // …and `data-knob-default` is the AUTHOR default, which for a seeded variant is not the
+        // same thing. A `@OverrideVariant` preview opens on `current` (`enabled=false`) while its
+        // author default is `true`, and the Wasm tier — unlike the PNG lane — has no baked artifact
+        // carrying that seed: it mounts the live component and has to be told. So the Wasm patch
+        // compares against this rather than against `initial`, or a variant would mount as its
+        // primary (see `wasmOverridePatch`).
+        val authorDefault = WebEscaping.htmlEscape(overrideValueText(d.default))
+        val defaultAttr =
+          if (bool) (if (authorDefault == "true" || authorDefault == "1") "true" else "false")
+          else authorDefault
         val attrs =
           "class=\"cp-knob\" data-knob-key=\"$wireKey\" data-knob-kind=\"$kind\" " +
-            "data-knob-initial=\"$initial\""
+            "data-knob-initial=\"$initial\" data-knob-default=\"$defaultAttr\""
         if (bool) {
           val checked = if (value == "true" || value == "1") " checked" else ""
           "<label class=\"cp-live-row\"><input type=\"checkbox\" $attrs$checked$dis> $label</label>"

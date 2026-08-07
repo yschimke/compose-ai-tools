@@ -23,6 +23,20 @@ import kotlin.math.sin
  * - **Named theme colours ride along**: when a fill resolves to a theme role, the role name is
  *   emitted in a `<title>` and a `data-token` attribute, so the paired `figma-variables.json` (and
  *   a future live-variable import) can bind the fill to a variable instead of a raw literal.
+ * - **Stock Material icons name themselves.** An `Icon` painting an `androidx.compose.material
+ *   .icons.Icons.*` vector carries its canonical
+ *   [fonts.google.com/icons](https://fonts.google.com/icons) identity on its layer —
+ *   `data-material-icon="account_circle"`, its style, and the CDN URL of that exact drawing — and
+ *   its geometry is hoisted into a shared `<defs>` entry that every placement `<use>`s. So an icon
+ *   row collapses to one definition, and a design tool can swap the layer for the real library
+ *   component instead of inheriting a nameless blob of paths.
+ *
+ *   The definition holds the **captured** paths, not a fetched asset: the export never reaches the
+ *   network, and the reference is an *annotation* over the geometry Compose actually drew. (They
+ *   are the same artwork — `Icons.Filled.Menu`'s path data is byte-identical to
+ *   `materialicons/menu/…/24px.svg` — which is exactly why annotating is enough. See
+ *   [MaterialIconRef] for why this points at legacy Material Icons rather than Material Symbols.)
+ *   Opt out with `Options.materialIconRefs = false` to inline every icon's paths as before.
  *
  * Pure and deterministic: model in, SVG string out — no graphics toolkit, no IO — so it lives on
  * the render-subprocess-safe core classpath next to [SemanticsWireframeSvg].
@@ -42,6 +56,12 @@ object FigmaLayeredSvg {
      * via [resolveFamily]/[embedFamily] rather than collapsing to this default.
      */
     val defaultFontFamily: String = "sans-serif",
+    /**
+     * Emit stock Material icons as a shared `<defs>` definition plus a `<use>` reference, annotated
+     * with their canonical fonts.google.com identity ([MaterialIconRef]). Set false to inline every
+     * icon's paths as before — the escape hatch for a consumer that can't resolve `<use>`.
+     */
+    val materialIconRefs: Boolean = true,
   )
 
   /**
@@ -61,12 +81,18 @@ object FigmaLayeredSvg {
   ): String {
     val sb = StringBuilder()
     val rootFamily = if (fontFaces.isNotEmpty()) options.defaultFontFamily else "sans-serif"
+    // Stock Material icons become one shared def each, referenced by `<use>` at every placement and
+    // annotated with their fonts.google.com identity — see [materialIconDefs]. Resolved before the
+    // header because the `xlink:href` those references carry needs the namespace declared on it.
+    val iconIds = if (options.materialIconRefs) materialIconDefs(model.root) else emptyMap()
+    val xlinkNs = if (iconIds.isEmpty()) "" else """xmlns:xlink="http://www.w3.org/1999/xlink" """
     // `text-rendering="geometricPrecision"` turns off the browser's glyph grid-fitting/hinting so
     // every `<text>` rasterises at its exact subpixel metrics — matching how the Skiko render (and
     // Figma itself) place glyphs, instead of the default `auto` hinting that snaps edges to pixel
     // boundaries and leaves a constant ~2-3% edge diff against the render on text-heavy previews.
     sb.append(
-      """<svg xmlns="http://www.w3.org/2000/svg" width="${model.width}" height="${model.height}" """ +
+      """<svg xmlns="http://www.w3.org/2000/svg" $xlinkNs""" +
+        """width="${model.width}" height="${model.height}" """ +
         """viewBox="0 0 ${model.width} ${model.height}" text-rendering="geometricPrecision" """ +
         """font-family="${escapeAttr(rootFamily)}">"""
     )
@@ -79,6 +105,7 @@ object FigmaLayeredSvg {
     // Brush fills/strokes captured off the modifier chain, as real gradient defs (issue #2852).
     val gradientSeq = gradientSeq(model.root)
     sb.append(gradientDefs(model.root, gradientSeq))
+    sb.append(materialIconDefsSvg(model.root, iconIds))
     // A round Wear device screen masks the whole tree to the inscribed circle (Roborazzi's device
     // crop), so the square full-frame background doesn't paint the corners the render leaves clear.
     // A *tall* Wear scroll frame masks to a vertical stadium (capsule) instead — the circle would
@@ -147,7 +174,15 @@ object FigmaLayeredSvg {
         }
       if (shape != null) sb.append("  ").append(shape).append('\n')
     }
-    renderLayer(model.root, sb, options, familyOverrides, depth = 1, gradientSeq = gradientSeq)
+    renderLayer(
+      model.root,
+      sb,
+      options,
+      familyOverrides,
+      depth = 1,
+      gradientSeq = gradientSeq,
+      iconIds = iconIds,
+    )
     sb.append("</g>\n")
     sb.append("</svg>\n")
     return sb.toString()
@@ -180,6 +215,9 @@ object FigmaLayeredSvg {
     gradientSeq: Map<FigmaSvgLayer, Int> = emptyMap(),
     // Monotonic counter for `Modifier.clip` `<clipPath>` ids, threaded so every mask is unique.
     clipSeq: IntArray = intArrayOf(0),
+    // `<defs>` ids for the Material icons in this tree, assigned once so every `<use href>`
+    // resolves. Empty when icon refs are off — then every icon inlines its own paths.
+    iconIds: Map<MaterialIconKey, String> = emptyMap(),
   ) {
     val indent = "  ".repeat(depth)
     // An opaque layer is a leaf `<image>` — the background-free raster stands in for a subtree the
@@ -196,7 +234,7 @@ object FigmaLayeredSvg {
     // transform that maps the vector's own viewport onto the layer's placed box — the vector
     // alternative to the `<image>` leaf above. Also a leaf: an icon's art has no editable subtree.
     if (layer.vector != null) {
-      sb.append(vectorGroup(layer, layer.vector, indent, inheritedOpacity)).append('\n')
+      sb.append(vectorGroup(layer, layer.vector, indent, inheritedOpacity, iconIds)).append('\n')
       return
     }
     val tokenName = layer.fill?.tokenName ?: layer.stroke?.tokenName
@@ -290,6 +328,7 @@ object FigmaLayeredSvg {
         gradientSeq = gradientSeq,
         clipSeq = clipSeq,
         clipId = clipId,
+        iconIds = iconIds,
       )
     } else {
       if (layer.paintsShape()) {
@@ -318,6 +357,7 @@ object FigmaLayeredSvg {
           gradientSeq = gradientSeq,
           clipSeq = clipSeq,
           clipId = clipId,
+          iconIds = iconIds,
         )
         sb.append(indent).append("  </g>\n")
       } else {
@@ -333,6 +373,7 @@ object FigmaLayeredSvg {
           gradientSeq = gradientSeq,
           clipSeq = clipSeq,
           clipId = clipId,
+          iconIds = iconIds,
         )
       }
     }
@@ -357,6 +398,7 @@ object FigmaLayeredSvg {
     gradientSeq: Map<FigmaSvgLayer, Int>,
     clipSeq: IntArray,
     clipId: String?,
+    iconIds: Map<MaterialIconKey, String>,
   ) {
     if (layer.children.isEmpty()) return
     val wrap = clipId != null
@@ -374,6 +416,7 @@ object FigmaLayeredSvg {
         curveSeq = curveSeq,
         gradientSeq = gradientSeq,
         clipSeq = clipSeq,
+        iconIds = iconIds,
       )
     }
     if (wrap) sb.append(wrapIndent).append("</g>\n")
@@ -464,6 +507,70 @@ object FigmaLayeredSvg {
    * and paint one of the layers with the other's colours. The same monotonic-counter shape
    * `curveSeq` already uses for curved-text path ids (Codex #2395).
    */
+  /**
+   * What makes two drawings of a Material icon *the same definition*: its canonical identity, its
+   * viewport, and the exact painted paths.
+   *
+   * Paint is part of the key on purpose. The alternative — one colourless def tinted per instance
+   * via `currentColor` — dedupes harder but leans on inherited-paint resolution that SVG consumers
+   * implement unevenly; keying on the painted geometry keeps every `<use>` a literal stand-in for
+   * the paths it replaced. A screen's icon row in one content colour still collapses to a single
+   * def, which is the case that actually repeats.
+   */
+  private data class MaterialIconKey(
+    val ref: MaterialIconRef,
+    val viewportWidth: Float,
+    val viewportHeight: Float,
+    val paths: List<FigmaSvgVectorPath>,
+  )
+
+  private fun materialIconKey(vec: FigmaSvgVector): MaterialIconKey? =
+    vec.materialIcon?.let { MaterialIconKey(it, vec.viewportWidth, vec.viewportHeight, vec.paths) }
+
+  /**
+   * A `<defs>` id per distinct Material icon in the tree, in document order.
+   *
+   * The id spells the icon out — `material-icon-materialiconsoutlined-account_circle` — so the
+   * reference is legible in the raw SVG and in a design tool's layer list, with a `-2`, `-3`, …
+   * suffix only when the same icon appears in more than one paint.
+   */
+  private fun materialIconDefs(root: FigmaSvgLayer): Map<MaterialIconKey, String> {
+    val ids = LinkedHashMap<MaterialIconKey, String>()
+    val perIcon = HashMap<String, Int>()
+    fun visit(layer: FigmaSvgLayer) {
+      layer.vector?.let(::materialIconKey)?.let { key ->
+        ids.getOrPut(key) {
+          val base = "material-icon-${key.ref.style.cdnFamily}-${key.ref.name}"
+          val n = perIcon.merge(base, 1, Int::plus)!!
+          if (n == 1) base else "$base-$n"
+        }
+      }
+      layer.children.forEach(::visit)
+    }
+    visit(root)
+    return ids
+  }
+
+  /**
+   * Every distinct Material icon as a reusable `<g>` def holding its captured paths.
+   *
+   * A `<g>` rather than a `<symbol>`: a `<use>` of a symbol re-maps the symbol's `viewBox` onto the
+   * *use element's* width/height (defaulting to the whole viewport), while a `<g>` instantiates in
+   * the current user space — which is exactly what the icon's placement group already establishes.
+   */
+  private fun materialIconDefsSvg(root: FigmaSvgLayer, ids: Map<MaterialIconKey, String>): String {
+    if (ids.isEmpty()) return ""
+    val sb = StringBuilder()
+    sb.append("<defs>\n")
+    for ((key, id) in ids) {
+      sb.append("""  <g id="$id">""").append('\n')
+      for (p in key.paths) sb.append("    ").append(vectorPath(p)).append('\n')
+      sb.append("  </g>\n")
+    }
+    sb.append("</defs>\n")
+    return sb.toString()
+  }
+
   private fun gradientSeq(root: FigmaSvgLayer): Map<FigmaSvgLayer, Int> {
     val seq = IdentityHashMap<FigmaSvgLayer, Int>()
     fun visit(layer: FigmaSvgLayer) {
@@ -595,6 +702,7 @@ object FigmaLayeredSvg {
     vec: FigmaSvgVector,
     indent: String,
     inheritedOpacity: Double,
+    iconIds: Map<MaterialIconKey, String> = emptyMap(),
   ): String {
     val layoutWidth = vec.layoutWidth.takeIf { it > 0 }?.toDouble() ?: layer.width.toDouble()
     val layoutHeight = vec.layoutHeight.takeIf { it > 0 }?.toDouble() ?: layer.height.toDouble()
@@ -665,9 +773,24 @@ object FigmaLayeredSvg {
     val x = layer.left + (layer.width - fittedWidth) / 2.0
     val y = layer.top + (layer.height - fittedHeight) / 2.0
     val sb = StringBuilder()
+    // A stock Material icon names itself on its own layer: the canonical fonts.google.com icon
+    // name, its style, and the CDN URL of that exact drawing. The geometry below is still the one
+    // Compose painted — this is an identity a design tool can act on (swap the layer for the real
+    // library component), never a substitution the export made on its own.
+    val iconId = materialIconKey(vec)?.let { iconIds[it] }
+    // Annotated exactly when referenced, so `Options.materialIconRefs = false` is a single switch
+    // back to the pre-feature output rather than a half-off state.
+    val iconRef = iconId?.let { vec.materialIcon }
+    val iconAttrs =
+      if (iconRef == null) ""
+      else
+        """ data-material-icon="${escapeAttr(iconRef.name)}"""" +
+          """ data-material-icon-style="${escapeAttr(iconRef.style.composeName)}"""" +
+          """ data-material-icon-url="${escapeAttr(iconRef.url)}"""" +
+          if (iconRef.autoMirrored) """ data-material-icon-auto-mirrored="true"""" else ""
     sb
       .append(
-        """$indent<g id="${escapeAttr(layer.name)}"${opacityAttr(inheritedOpacity * layer.opacity)}>"""
+        """$indent<g id="${escapeAttr(layer.name)}"$iconAttrs${opacityAttr(inheritedOpacity * layer.opacity)}>"""
       )
       .append('\n')
     sb
@@ -675,7 +798,17 @@ object FigmaLayeredSvg {
         """$indent  <g transform="translate(${fmt(x)} ${fmt(y)}) scale(${fmt(scaleX)} ${fmt(scaleY)})"${opacityAttr(layer.contentOpacity)}>"""
       )
       .append('\n')
-    for (p in vec.paths) sb.append(indent).append("    ").append(vectorPath(p)).append('\n')
+    if (iconId != null) {
+      // `xlink:href` alongside `href` because SVG 1.1 consumers (some design-tool importers) never
+      // learned the SVG 2 attribute, and a `<use>` that doesn't resolve draws nothing at all.
+      sb
+        .append(indent)
+        .append("    ")
+        .append("""<use href="#$iconId" xlink:href="#$iconId"/>""")
+        .append('\n')
+    } else {
+      for (p in vec.paths) sb.append(indent).append("    ").append(vectorPath(p)).append('\n')
+    }
     sb.append("$indent  </g>\n")
     sb.append("$indent</g>")
     return sb.toString()

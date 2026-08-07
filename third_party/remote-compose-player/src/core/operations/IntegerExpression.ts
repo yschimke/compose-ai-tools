@@ -54,15 +54,30 @@ export class IntegerExpression extends Operation implements VariableSupport {
         context.loadInteger(this.mId, result);
     }
 
+    /**
+     * Evaluates the RPN program. [exp] is the *resolved* array (`mPreCalcValues`), where every id
+     * slot already holds its variable's value.
+     *
+     * A set mask bit does NOT mean "operator" — per {@link isId} it means "not a literal", which is
+     * an **id** when the *declared* value is below {@link OFFSET} and an operator otherwise. So the
+     * operator test has to read `mValues`, the array as it was written: in `exp` an id slot holds
+     * arbitrary variable data that may collide with the operator range, and (worse) a resolved id
+     * would be run as whatever opcode its value happened to encode.
+     *
+     * Reading the mask alone made every variable reference a bogus operator: a two-variable
+     * comparison like `IFELSE(a, b, sub(x, y))` popped operands that were never pushed, underflowed
+     * the stack, and returned 0 regardless of input — which silently picked element 0 out of every
+     * `TEXT_LOOKUP`/`TEXT_LOOKUP_INT` list.
+     */
     private evaluate(mask: number, exp: Int32Array): number {
         const stack = new Int32Array(128);
         let sp = -1;
         const OFFSET = IntegerExpression.OFFSET;
         for (let i = 0; i < exp.length; i++) {
             const v = exp[i];
-            if (((1 << i) & mask) !== 0) {
+            if (((1 << i) & mask) !== 0 && this.mValues[i] >= OFFSET) {
                 // Operator
-                const op = v - OFFSET;
+                const op = this.mValues[i] - OFFSET;
                 switch (op) {
                     case 1: stack[sp - 1] = (stack[sp - 1] + stack[sp]) | 0; sp--; break; // ADD
                     case 2: stack[sp - 1] = (stack[sp - 1] - stack[sp]) | 0; sp--; break; // SUB

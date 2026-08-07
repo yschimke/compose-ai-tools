@@ -21,6 +21,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -901,6 +905,37 @@ fun ScrolledLazyColumnPreview() {
         items((1..30).toList()) { index ->
           Text(text = "Row $index", modifier = Modifier.fillMaxWidth().padding(4.dp))
         }
+      }
+    }
+  }
+}
+
+/**
+ * A row of stock `Icons.*` vectors in three styles, plus an `AutoMirrored` one — the fixture behind
+ * [MaterialIconRefE2ETest].
+ *
+ * The point is the *whole* chain, which no model-level test reaches: `Icon` builds a
+ * `VectorPainter`, the capture reflects the live `VectorComponent` (including its `name`), and the
+ * `compose/figma-svg` export turns `"Filled.Menu"` into a `data-material-icon="menu"` reference. A
+ * synthetic payload can't prove the reflection still finds the name on the Compose version in use;
+ * this can.
+ *
+ * Two of the icons are the same drawing in the same tint, so the shared-definition path is
+ * exercised too.
+ */
+@Composable
+fun MaterialIconRowPreview() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Surface {
+      Row(
+        modifier = Modifier.fillMaxSize().padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Icon(Icons.Filled.Menu, contentDescription = "menu")
+        Icon(Icons.Filled.Menu, contentDescription = "menu again")
+        Icon(Icons.Outlined.AccountCircle, contentDescription = "account")
+        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "back")
       }
     }
   }

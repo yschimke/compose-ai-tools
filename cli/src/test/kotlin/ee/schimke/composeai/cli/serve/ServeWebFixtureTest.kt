@@ -3365,6 +3365,7 @@ class ServeWebFixtureTest {
     assertTrue(
       catalogKnobs.contains(
         "data-knob-key=\"label\" data-knob-kind=\"string\" data-knob-initial=\"Filled\" " +
+          "data-knob-default=\"Filled\" " +
           "value=\"Filled\">"
       ),
       "declared knobs are enabled on an override-renderable session",
@@ -3441,6 +3442,7 @@ class ServeWebFixtureTest {
     assertTrue(
       staticKnobs.contains(
         "data-knob-key=\"label\" data-knob-kind=\"string\" data-knob-initial=\"Filled\" " +
+          "data-knob-default=\"Filled\" " +
           "value=\"Filled\" disabled"
       ),
       "a plain static bundle leaves declared knobs disabled",
@@ -3470,6 +3472,7 @@ class ServeWebFixtureTest {
     assertTrue(
       wasmKnobs.contains(
         "data-knob-key=\"label\" data-knob-kind=\"string\" data-knob-initial=\"Filled\" " +
+          "data-knob-default=\"Filled\" " +
           "value=\"Filled\">"
       ),
       "a wasm-backed published catalog enables the declared knob controls (no trailing disabled)",

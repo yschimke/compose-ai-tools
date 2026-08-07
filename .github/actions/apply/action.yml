@@ -874,6 +874,12 @@ runs:
         # via `git log --raw` and never opens a render, so no PNG content is needed.
         rm -rf _history_repo
         git init -q _history_repo
+        # commit-tree refuses to run without a committer identity, and a freshly `git init`ed repo
+        # has none — the render push never hit this because push-branch.sh sets its own. Without it
+        # the manifest generates fine and then the commit dies with exit 128, so the branch still
+        # advances with renders and only history.json is silently lost.
+        git -C _history_repo config user.name "github-actions[bot]"
+        git -C _history_repo config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git -C _history_repo remote add origin \
           "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
         if ! git -C _history_repo fetch --quiet --filter=blob:none origin "$BASELINE_BRANCH"; then
