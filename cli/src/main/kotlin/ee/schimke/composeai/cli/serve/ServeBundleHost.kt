@@ -551,7 +551,10 @@ class ServeBundleHost(
     // Crops resolve relative to the SVG's own dir: `<slug>.figma-raster/` next to the slug vector,
     // `<variant>.figma-raster/` next to a per-variant one.
     val dir = svgFile.parent ?: return SvgOutcome.NotFound
-    return SvgOutcome.Ok(inlineFigmaRasters(fileSystem, dir, svg).encodeToByteArray())
+    return SvgOutcome.Ok(
+      inlineFigmaRasters(fileSystem, dir, svg).encodeToByteArray(),
+      RenderOutcome.Generation.BAKED,
+    )
   }
 
   /**
@@ -574,7 +577,10 @@ class ServeBundleHost(
       svgFile.parent?.toFile()?.relativeToOrNull(catalogRoot)?.invariantSeparatorsPath
         ?: return renderSvg(previewId, overrides)
     val base = "https://raw.githubusercontent.com/${prov.repo}/${prov.branch}/$relDir"
-    return SvgOutcome.Ok(linkFigmaRasters(svg, base).encodeToByteArray())
+    return SvgOutcome.Ok(
+      linkFigmaRasters(svg, base).encodeToByteArray(),
+      RenderOutcome.Generation.BAKED,
+    )
   }
 
   /**

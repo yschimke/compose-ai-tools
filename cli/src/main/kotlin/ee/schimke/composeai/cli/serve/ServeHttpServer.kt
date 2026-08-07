@@ -2821,8 +2821,18 @@ class ServeHttpServer(
         call.response.headers.append(HttpHeaders.RetryAfter, "2")
         call.respondText("render busy; retry shortly", status = HttpStatusCode.ServiceUnavailable)
       }
-      is RenderOutcome.Ok ->
-        call.respondText(StorybookCompat.iframePage(storyId, outcome.png), ContentType.Text.Html)
+      is RenderOutcome.Ok -> {
+        // A story's args ride the same override params, and this lane is consumed by exactly the
+        // tools #3449 is about — BackstopJS / reg-suit style PNG-diffing across arg values. Baked
+        // pixels here would read as "this arg changes nothing".
+        val dropped = droppedOverridesFor(outcome.generation, previewId, overrides)
+        if (dropped.isNotEmpty() && !acceptsBakedFallback()) {
+          refuseDroppedOverrides(renderHost, previewId, dropped)
+        } else {
+          markDroppedOverrides(dropped)
+          call.respondText(StorybookCompat.iframePage(storyId, outcome.png), ContentType.Text.Html)
+        }
+      }
       RenderOutcome.NotFound -> call.respondText("no such story", status = HttpStatusCode.NotFound)
       is RenderOutcome.Failed ->
         call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
@@ -2861,8 +2871,18 @@ class ServeHttpServer(
           status = HttpStatusCode.ServiceUnavailable,
         )
       }
-      is SvgOutcome.Ok ->
-        call.respondText(StorybookCompat.iframeSvgPage(storyId, outcome.svg), ContentType.Text.Html)
+      is SvgOutcome.Ok -> {
+        val dropped = droppedOverridesFor(outcome.generation, previewId, overrides)
+        if (dropped.isNotEmpty() && !acceptsBakedFallback()) {
+          refuseDroppedOverrides(renderHost, previewId, dropped)
+        } else {
+          markDroppedOverrides(dropped)
+          call.respondText(
+            StorybookCompat.iframeSvgPage(storyId, outcome.svg),
+            ContentType.Text.Html,
+          )
+        }
+      }
       SvgOutcome.NotFound ->
         call.respondText(
           "svg unavailable for this story (no daemon-backed SVG export)",
@@ -3336,14 +3356,16 @@ class ServeHttpServer(
               // Baked pixels answering an override-bearing request are pixels that do NOT reflect
               // the override — byte-identical to the un-overridden snapshot, under a 200 (#3449).
               // Every other generation is a real render keyed by these overrides.
-              val dropped =
-                if (outcome.generation == RenderOutcome.Generation.BAKED) {
-                  CatalogLiveRouting.droppedOverrideNames(previewId, overrides)
-                } else {
-                  emptyList()
-                }
+              val dropped = droppedOverridesFor(outcome.generation, previewId, overrides)
               if (dropped.isNotEmpty()) {
-                respondDroppedOverrides(renderHost, previewId, outcome, dropped)
+                respondDroppedOverrides(
+                  renderHost,
+                  previewId,
+                  dropped,
+                  outcome.png,
+                  ContentType.Image.PNG,
+                  outcome.generation,
+                )
               } else {
                 markGeneration(
                   outcome.generation.wire,
@@ -3371,22 +3393,40 @@ class ServeHttpServer(
   }
 
   /**
-   * Answer a render whose **validated overrides were not applied** — the pixels in [outcome] are
-   * the preview's baked snapshot, produced without a renderer, while the request asked for
-   * [dropped].
+   * The validated overrides a [generation] artifact for [previewId] does **not** reflect — empty
+   * unless the bytes came straight off a published bundle ([RenderOutcome.Generation.BAKED] — no
+   * renderer was involved in this request). Every other generation is a real render keyed by these
+   * overrides, cache hit or not.
+   */
+  private fun droppedOverridesFor(
+    generation: RenderOutcome.Generation,
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): List<String> =
+    if (generation == RenderOutcome.Generation.BAKED) {
+      CatalogLiveRouting.droppedOverrideNames(previewId, overrides)
+    } else {
+      emptyList()
+    }
+
+  /**
+   * Answer a render whose **validated overrides were not applied** — [bytes] are the preview's
+   * baked artifact, produced without a renderer, while the request asked for [dropped]. Shared by
+   * the PNG and SVG lanes so the two can't drift: a vector read off the delivery branch ignores a
+   * `fontScale` exactly as thoroughly as a baked PNG does.
    *
-   * The old behaviour was `200 image/png` with those bytes, which is a wrong answer delivered
-   * confidently: the response is indistinguishable from a render where the override genuinely
-   * changed nothing, so a diff bot, a parity check, or an agent iterating on a theme concludes "no
-   * visual difference" for pixels that were never rendered (#3449). Every override kind now agrees
-   * here — `fontScale`, `uiMode`, and `themeProvider` alike — rather than one path 503ing while the
+   * The old behaviour was `200` with those bytes, which is a wrong answer delivered confidently:
+   * the response is indistinguishable from a render where the override genuinely changed nothing,
+   * so a diff bot, a parity check, or an agent iterating on a theme concludes "no visual
+   * difference" for an artifact that was never rendered (#3449). Every override kind agrees here —
+   * `fontScale`, `uiMode`, and `themeProvider` alike — rather than one path 503ing while the
    * commoner ones quietly returned the snapshot.
    *
    * Three outcomes, all naming the dropped params in [DROPPED_OVERRIDES_HEADER] so even a `curl -I`
    * can tell:
    * - `?fallback=baked` — the caller explicitly accepted the snapshot (the viewer asks for this
    *   when it would rather show published pixels than a broken image). 200, plus
-   *   `X-Compose-Preview-Render: baked-fallback`, since the pixels carry no signal of their own.
+   *   `X-Compose-Preview-Render: baked-fallback`, since the bytes carry no signal of their own.
    * - the preview HAS a live lane, just not right now (daemon down, cold, no free seat) — 503 +
    *   `Retry-After`, matching what a pure `themeProvider` request already returned in this state.
    * - the preview has NO live lane at all (a static/untrusted catalog, an unmapped Android-only
@@ -3395,16 +3435,43 @@ class ServeHttpServer(
   private suspend fun RoutingContext.respondDroppedOverrides(
     renderHost: ServeHost,
     previewId: String,
-    outcome: RenderOutcome.Ok,
+    dropped: List<String>,
+    bytes: ByteArray,
+    contentType: ContentType,
+    generation: RenderOutcome.Generation,
+  ) {
+    if (acceptsBakedFallback()) {
+      markDroppedOverrides(dropped)
+      markGeneration(generation.wire, DYNAMIC_RESOURCE_CACHE_CONTROL)
+      call.respondBytes(bytes, contentType)
+      return
+    }
+    refuseDroppedOverrides(renderHost, previewId, dropped)
+  }
+
+  /** Whether the caller passed `?fallback=baked` — an explicit "serve the snapshot anyway". */
+  private fun RoutingContext.acceptsBakedFallback(): Boolean =
+    call.request.queryParameters[FALLBACK_PARAM]?.lowercase() == FALLBACK_BAKED
+
+  /**
+   * Name the un-applied overrides on a response that carries the baked artifact regardless — the
+   * accepted `?fallback=baked`, and the Storybook isolation pages, whose consumers asked for an
+   * HTML wrapper this server has no refusal shape for beyond a status. A no-op when nothing was
+   * dropped, so an honest render carries no stray header.
+   */
+  private fun RoutingContext.markDroppedOverrides(dropped: List<String>) {
+    if (dropped.isEmpty()) return
+    call.response.headers.append(DROPPED_OVERRIDES_HEADER, dropped.joinToString(","))
+    call.response.headers.append(RENDER_HEADER, RENDER_BAKED_FALLBACK)
+  }
+
+  /** The refusal half of [respondDroppedOverrides]: 503 when a live lane exists, else 409. */
+  private suspend fun RoutingContext.refuseDroppedOverrides(
+    renderHost: ServeHost,
+    previewId: String,
     dropped: List<String>,
   ) {
     call.response.headers.append(DROPPED_OVERRIDES_HEADER, dropped.joinToString(","))
-    if (call.request.queryParameters[FALLBACK_PARAM]?.lowercase() == FALLBACK_BAKED) {
-      call.response.headers.append(RENDER_HEADER, RENDER_BAKED_FALLBACK)
-      markGeneration(outcome.generation.wire, DYNAMIC_RESOURCE_CACHE_CONTROL)
-      call.respondBytes(outcome.png, ContentType.Image.PNG)
-      return
-    }
     val params = dropped.joinToString(", ")
     if (renderHost.canRenderOverridesFor(previewId)) {
       call.response.headers.append(HttpHeaders.RetryAfter, "2")
@@ -3551,7 +3618,25 @@ class ServeHttpServer(
         val svg =
           if (webMode) webModeSvg(outcome.svg.toString(Charsets.UTF_8)).toByteArray(Charsets.UTF_8)
           else outcome.svg
-        call.respondBytes(svg, ContentType.parse(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG))
+        val contentType = ContentType.parse(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG)
+        // The vector lane drops overrides exactly like the PNG one: a `figma/<slug>.svg` read off
+        // the delivery branch was drawn at the preview's discovery-time axes, so serving it for a
+        // `?fontScale=2.0` export is the same silent wrong answer (#3449). `?scroll=long` is
+        // daemon-only (a bundle has no full-page vector), so it never lands here baked.
+        val dropped = droppedOverridesFor(outcome.generation, previewId, overrides)
+        if (dropped.isNotEmpty()) {
+          respondDroppedOverrides(
+            renderHost,
+            previewId,
+            dropped,
+            svg,
+            contentType,
+            outcome.generation,
+          )
+        } else {
+          markGeneration(outcome.generation.wire)
+          call.respondBytes(svg, contentType)
+        }
       }
       SvgOutcome.NotFound -> call.respondText("no such preview", status = HttpStatusCode.NotFound)
       is SvgOutcome.Failed ->

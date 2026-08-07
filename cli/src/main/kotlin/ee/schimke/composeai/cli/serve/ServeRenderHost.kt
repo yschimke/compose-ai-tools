@@ -247,7 +247,16 @@ sealed interface RenderOutcome {
 
 /** Result of a figma-svg render request — the SVG counterpart of [RenderOutcome]. */
 sealed interface SvgOutcome {
-  data class Ok(val svg: ByteArray) : SvgOutcome
+  data class Ok(
+    val svg: ByteArray,
+    /**
+     * How these bytes were produced, exposed on HTTP responses for remote diagnosis — the same
+     * ladder [RenderOutcome.Ok] reports. [RenderOutcome.Generation.BAKED] means the vector was read
+     * from a published bundle with no renderer involved, which is what lets the HTTP layer notice
+     * that an override-bearing request was answered with pixels (well, paths) that ignore it.
+     */
+    val generation: RenderOutcome.Generation = RenderOutcome.Generation.DAEMON,
+  ) : SvgOutcome
 
   /** No such preview id, or this host can't produce SVG (a static bundle has no daemon). */
   data object NotFound : SvgOutcome
@@ -811,12 +820,12 @@ internal constructor(
 
     val key = ServeOverrides.cacheKey(previewId, overrides)
     svgCache.get(key)?.let {
-      return SvgOutcome.Ok(it)
+      return SvgOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
     }
 
     return renderLock.withLock {
       svgCache.get(key)?.let {
-        return@withLock SvgOutcome.Ok(it)
+        return@withLock SvgOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
       }
 
       // Force a fresh render of these overrides so the shared per-preview SVG file on disk is
@@ -885,12 +894,12 @@ internal constructor(
 
     val key = ServeOverrides.cacheKey(previewId, overrides)
     scrollSvgCache.get(key)?.let {
-      return SvgOutcome.Ok(it)
+      return SvgOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
     }
 
     return renderLock.withLock {
       scrollSvgCache.get(key)?.let {
-        return@withLock SvgOutcome.Ok(it)
+        return@withLock SvgOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
       }
 
       // Force a fresh full-page render at these overrides (the shared per-preview file may hold a
