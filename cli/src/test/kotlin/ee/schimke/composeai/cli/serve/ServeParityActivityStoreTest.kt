@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import java.io.File
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -255,10 +256,38 @@ class ServeParityActivityStoreTest {
     assertEquals(1, loaded.figma?.versions?.size)
     // The comment resolved to the preview it specifies, which is what makes the page a parity view.
     assertEquals(
-      listOf("sections.SwitchesKt.SwitchOn_Light"),
+      listOf("switch-on__ideal__default__light"),
       loaded.figma?.comments?.single()?.previewIds,
     )
     assertEquals(MappingGap.Kind.UNMAPPED_DESIGN_NODE, loaded.gaps.single().kind)
+
+    // **The namespace check.** The emitter and the server key previews in two different alphabets:
+    // a design map names the raw *discovery* id (`sections.ButtonsKt.FilledButton_Light`) while the
+    // serve host keys a preview by the route-safe id derived from its image path. The feed must
+    // carry the latter — emitting the former loses every inbound link on the page silently, since
+    // `ServeParityDashboard` just filters unknown ids out and renders a row with no target. So
+    // assert the *shape*, not only the value: a discovery id here is a bug even if it parses.
+    val eventPreviewIds =
+      loaded.code!!.events.flatMap { it.previewIds } +
+        loaded.figma!!.comments.flatMap { it.previewIds }
+    assertTrue(eventPreviewIds.isNotEmpty(), "the fixture must exercise the join")
+    for (id in eventPreviewIds) {
+      assertFalse(
+        id.contains('.'),
+        "expected a route-safe serve id, got what looks like a discovery id: $id",
+      )
+    }
+    // …and they are ids a dashboard built over that catalog would actually match.
+    val dashboard =
+      ServeParityDashboard.build(
+        previews = eventPreviewIds.distinct().map { ServePreview(it, it) },
+        hasReference = { false },
+        activity = loaded,
+      )
+    assertTrue(
+      dashboard.feed.any { it.previewIds.isNotEmpty() },
+      "the published feed must produce inbound links against a catalog serving those ids",
+    )
     // …and every outbound link the page will build from it resolves.
     assertNotNull(
       ServeParityActivityStore.commitUrl(loaded.code?.repo, loaded.code!!.events.single().sha)

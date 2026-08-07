@@ -12,7 +12,7 @@
         "at": "2026-08-05T10:00:00+00:00",
         "author": "yschimke",
         "previewIds": [
-          "sections.ButtonsKt.FilledButton_Light"
+          "button-filled__ideal__default__light"
         ],
         "components": [
           "Button/Filled"
@@ -41,7 +41,7 @@
         "resolved": false,
         "nodeId": "51592:4768",
         "previewIds": [
-          "sections.SwitchesKt.SwitchOn_Light"
+          "switch-on__ideal__default__light"
         ],
         "components": [
           "Switch/On"

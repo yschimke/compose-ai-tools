@@ -32,6 +32,8 @@
  * `emit-parity-activity.mjs`, which drives this.
  */
 
+import { sanitizeBundleEntryId, servePreviewId } from "./design-references.mjs";
+
 /** The `schema` token `ServeParityActivityStore` requires; anything else is ignored wholesale. */
 export const ACTIVITY_SCHEMA = "compose-preview-activity/v1";
 
@@ -78,16 +80,71 @@ function figmaRefsOf(entry) {
 }
 
 /**
+ * `discovery previewId -> route-safe serve id`, for every image the catalog published.
+ *
+ * **This is the join the feed's inbound links live or die on, and the two sides are written in
+ * different alphabets.** A design map names the *discovery* id the daemon keys renders on
+ * (`sections.ButtonsKt.FilledButton_Light`); the serve host keys a preview by the *route-safe* id
+ * derived from the image path (`button-filled__ideal__default__light` — `ServeCatalogStore
+ * .previewIdFor`, restated as [servePreviewId]). `ServeParityDashboard` filters every event's
+ * preview ids against the live route ids, so emitting discovery ids means every row silently loses
+ * its link to the comparison — the page degrades to two changelogs, which is the one thing it
+ * exists not to be.
+ *
+ * Keyed by both the exact and the [sanitizeBundleEntryId] projection for the same reason
+ * `imagesByPreviewId` is: the design map carries the RAW discovery id while a catalog image carries
+ * the sanitised in-bundle form, so a `@Preview(name = "Small Round")` is `…_Small Round` on one
+ * side and `…_Small_Round` on the other. Catalogs whose names need no sanitising match either way,
+ * which is exactly why this gap survives casual testing.
+ */
+export function catalogRouteIds(catalog) {
+  const exact = new Map();
+  const sanitised = new Map();
+  for (const component of catalog?.components ?? []) {
+    for (const image of component?.images ?? []) {
+      if (typeof image?.previewId !== "string" || image.previewId === "") continue;
+      if (typeof image?.path !== "string" || image.path === "") continue;
+      const routeId = servePreviewId(image.path);
+      if (!exact.has(image.previewId)) exact.set(image.previewId, routeId);
+      const key = sanitizeBundleEntryId(image.previewId);
+      if (!sanitised.has(key)) sanitised.set(key, routeId);
+    }
+  }
+  return { exact, sanitised };
+}
+
+/**
+ * A `discoveryId -> routeId` resolver over [catalogRouteIds], returning null for an id the catalog
+ * doesn't publish. Null rather than the input: emitting an unresolved id would put a preview id the
+ * server cannot match into the feed, which is the bug this exists to prevent.
+ */
+export function routeIdResolver(catalog) {
+  const { exact, sanitised } = catalogRouteIds(catalog);
+  return (discoveryId) =>
+    exact.get(discoveryId) ?? sanitised.get(sanitizeBundleEntryId(String(discoveryId ?? ""))) ?? null;
+}
+
+/**
  * Index a design map for both join directions:
  *
  * - `byPath`: source file path → `{ previewIds, components }` — for the code lane.
  * - `byNode`: Figma node id (in BOTH `73:6` and `73-6` spellings, because the API returns one and
  *   the design map writes the other) → `{ previewIds, components }` — for the design lane.
  *
- * `components` are catalog component ids when [componentIdFor] can resolve one for a preview id,
- * else the design-map handle's `#Member`. Display-only; the server prefers its own live spelling.
+ * The recorded `previewIds` are **route ids** once [routeIdFor] is supplied — the namespace the
+ * serve host keys previews by, and the only one its inbound links resolve in (see
+ * [catalogRouteIds]). An entry [routeIdFor] cannot resolve contributes no preview id rather than an
+ * unmatchable one. The default identity resolver is for tests that work in one namespace; the
+ * driver always passes a real one.
+ *
+ * `components` are catalog component ids when [componentIdFor] can resolve one for a *discovery*
+ * id, else the design-map handle's `#Member`. Display-only; the server prefers its own live
+ * spelling.
  */
-export function indexDesignMap(designMap, componentIdFor = () => null) {
+export function indexDesignMap(
+  designMap,
+  { componentIdFor = () => null, routeIdFor = (id) => id } = {},
+) {
   const byPath = new Map();
   const byNode = new Map();
 
@@ -100,9 +157,10 @@ export function indexDesignMap(designMap, componentIdFor = () => null) {
   };
 
   for (const entry of designMap?.components ?? []) {
-    const previewIds = previewIdsOf(entry);
+    const discoveryIds = previewIdsOf(entry);
     const member = String(entry?.code ?? "").split("#")[1] ?? null;
-    const component = previewIds.map((id) => componentIdFor(id)).find(Boolean) ?? member;
+    const component = discoveryIds.map((id) => componentIdFor(id)).find(Boolean) ?? member;
+    const previewIds = discoveryIds.map((id) => routeIdFor(id)).filter(Boolean);
     record(byPath, pathOf(entry?.code), previewIds, component);
     for (const { nodeId } of figmaRefsOf(entry)) {
       record(byNode, nodeId, previewIds, component);
@@ -224,6 +282,7 @@ export function mappingGaps({
   publishedReferenceNodeIds = [],
   droppedReferences = [],
   figmaComponents = [],
+  referenceManifest = null,
 } = {}) {
   const gaps = [];
   const live = new Set(catalogPreviewIds);
@@ -249,6 +308,41 @@ export function mappingGaps({
       ...(dropped?.ref ? { ref: dropped.ref } : {}),
       ...(dropped?.previewId ? { previewId: dropped.previewId } : {}),
     });
+  }
+
+  // The same gap, *derived* rather than reported. The reference step drops an entry it can't
+  // rasterize with a `::warning::` and moves on, and those warnings are gone by the time this runs
+  // — so relying on a caller to hand them over would leave `unrendered-reference` a documented kind
+  // nothing ever emits. The published manifest is the durable evidence: it records the design-map
+  // `code` handle of every reference that made it (`emit-design-references.mjs` puts it in
+  // `source.attributes.code`), so a mapped entry that is missing from it is precisely one that
+  // didn't rasterize.
+  //
+  // Scoped to entries whose preview the catalog DOES publish — an entry mapping to nothing at all
+  // is a different finding, and one the dangling-mapping check above already reports. Skipped
+  // entirely when no manifest was passed, because "no manifest" and "an empty manifest" are
+  // different claims and only the second means every reference failed.
+  if (referenceManifest) {
+    const published = new Set(
+      (referenceManifest.references ?? [])
+        .map((r) => r?.source?.attributes?.code)
+        .filter((code) => typeof code === "string"),
+    );
+    for (const entry of designMap?.components ?? []) {
+      if (typeof entry?.code !== "string" || published.has(entry.code)) continue;
+      if (figmaRefsOf(entry).length === 0) continue;
+      const previewIds = previewIdsOf(entry);
+      if (previewIds.length === 0 || previewIds.some((id) => !live.has(id))) continue;
+      gaps.push({
+        kind: GAP_KINDS.UNRENDERED_REFERENCE,
+        detail:
+          "Mapped to a Figma node, but no reference raster was published for it — the render " +
+          "step could not produce one, so nothing can score this preview against its spec.",
+        code: entry.code,
+        ...(typeof entry.ref === "string" ? { ref: entry.ref } : {}),
+        previewId: previewIds[0],
+      });
+    }
   }
 
   // A published component the map never names. Compared in both node-id spellings for the same

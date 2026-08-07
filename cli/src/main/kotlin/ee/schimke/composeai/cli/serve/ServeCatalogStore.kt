@@ -463,6 +463,7 @@ class ServeCatalogStore(
     val manifestReferences = fetchDesignReferences(base)
     writeDesignReferences(manifestReferences + catalog.references, base, staging)
     writeAnnotations(base, staging)
+    writeParityActivity(base, staging)
 
     // The staged catalog is usable — atomically replace the live dir with it. The delete + rename
     // is near-instant (same filesystem), so the window where `dir` is absent is microseconds, not
@@ -1231,6 +1232,36 @@ class ServeCatalogStore(
     dir.mkdirs()
     File(dir, ServeAnnotationStore.INDEX_FILE)
       .writeText(json.encodeToString(AnnotationManifest.serializer(), manifest))
+  }
+
+  /**
+   * Stage the published design-parity activity feed, if the catalog has one.
+   *
+   * Same reason [writeAnnotations] exists, and the same shape: a served catalog is a fresh staging
+   * directory assembled from explicitly fetched parts, so a file nobody copies is invisible to
+   * [ServeBundleHost] however faithfully the producer published it. Without this the `/parity` view
+   * would fall back to coverage-only on every *published* catalog — which is every catalog the
+   * feature is actually for — and the code/Figma feed would only ever appear for a local bundle.
+   *
+   * No assets to fetch: the feed is one self-contained JSON document, so staging is a straight copy
+   * of the manifest. It is validated here before it is written rather than only on read, so a
+   * malformed feed never reaches the staging tree at all.
+   *
+   * Fail-soft like the rest of the staging path: no feed, an unfetchable one, or one that doesn't
+   * survive validation simply serves the catalog without the activity lane.
+   */
+  private fun writeParityActivity(base: String, staging: File) {
+    val bytes =
+      runCatching { fetchCatalogAsset("$base${ParityActivity.DIRECTORY}/${ParityActivity.FILE}") }
+        .getOrNull() ?: return
+    val activity =
+      runCatching { json.decodeFromString(ParityActivity.serializer(), bytes.decodeToString()) }
+        .getOrNull()
+        ?.let { ServeParityActivityStore.sanitize(it) } ?: return
+    val dir = File(staging, ParityActivity.DIRECTORY)
+    dir.mkdirs()
+    File(dir, ParityActivity.FILE)
+      .writeText(json.encodeToString(ParityActivity.serializer(), activity))
   }
 
   private fun writeDesignReferences(
