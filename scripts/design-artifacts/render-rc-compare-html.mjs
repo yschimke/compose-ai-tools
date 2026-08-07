@@ -586,12 +586,15 @@ function clientScript(threshold) {
     token++;
     const ref = select.value;
     document.body.dataset.reference = ref;
+    // Unconditionally, *before* re-observing: observe() on an already-observed target is a no-op, so
+    // switching straight from one reference to another would leave every on-screen row blank until it
+    // scrolled out and back. Disconnecting first makes the re-observe queue a fresh initial callback.
+    observer.disconnect();
     for (const row of rows) {
       clear(row);
       pending.delete(row);
     }
     if (ref === "none") {
-      observer.disconnect();
       status.textContent = "";
       return;
     }

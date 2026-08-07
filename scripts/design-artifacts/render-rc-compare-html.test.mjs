@@ -181,6 +181,25 @@ test("nothing is diffed by default: no diff images, no score chips, picker on 'n
   assert.match(html, /<option value="none" selected>/);
 });
 
+/**
+ * Switching straight from one reference to another (baked → cmp-jvm, no reload, no scrolling) used
+ * to leave every on-screen row blank: `observe()` on an already-observed target is a no-op, so the
+ * rows that were still visible never got a second callback and nothing rescored them. The observer
+ * has to be disconnected *before* the re-observe, not only on the way through `none`.
+ */
+test("changing reference re-arms the observer, so visible rows rescore without scrolling", () => {
+  const apply = renderRcCompareHtml(model).match(/function apply\(\)\s*\{[\s\S]*?\n  \}/);
+  assert.ok(apply, "the page must inline its apply() handler");
+  const disconnect = apply[0].indexOf("observer.disconnect()");
+  const observe = apply[0].indexOf("observer.observe(row)");
+  assert.ok(disconnect > -1, "apply() must disconnect the observer");
+  assert.ok(observe > -1, "apply() must re-observe the rows");
+  assert.ok(disconnect < observe, "the disconnect must precede the re-observe, not follow it");
+  // And it must not be gated on the `none` branch, which is what made the bug reference-to-reference
+  // only: everything before the early return runs for every reference.
+  assert.ok(disconnect < apply[0].indexOf('if (ref === "none")'));
+});
+
 test("the reference picker offers every lane the run produced, and only those", () => {
   assert.deepEqual(referenceOptions(renderRcCompareHtml(model)), ["none", "baked", "js"]);
   assert.deepEqual(referenceOptions(renderRcCompareHtml(withEmbedded(model))), [
