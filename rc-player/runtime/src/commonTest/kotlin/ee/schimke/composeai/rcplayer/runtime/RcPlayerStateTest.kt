@@ -61,6 +61,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RcPlayerStateTest {
@@ -833,6 +834,40 @@ class RcPlayerStateTest {
     assertEquals("Compose", state.text(4))
     assertEquals(7f, state.resolve(RcFloatWord(0x7fc00000 or 5)))
     assertEquals("REMOTE COMPOSE", state.text(6))
+  }
+
+  @Test
+  fun replaysLayoutContentDataOperationsAfterEveryFrameReset() {
+    // The shape WatchScreenRemote uses: a card title chosen at render time out of an id list, with
+    // the index computed by an integer expression sitting in the same LayoutComponentContent.
+    val state =
+      RcPlayerState(
+        RcDocument(
+          RcHeader(RcVersion(0, 1, 0)),
+          listOf(
+            RcTextData(66, "Morning run (0)"),
+            RcTextData(67, "Morning run"),
+            RcIdList(2097194, listOf(66, 67)),
+          ),
+        )
+      )
+    val operations =
+      listOf<RcLinkedNode>(
+        RcLinkedNode.Operation(RcIntegerExpression(69, 0, listOf(1))),
+        RcLinkedNode.Operation(RcTextLookupInt(70, 2097194, 69)),
+      )
+
+    // beginFrame resets derived text, so a single application at load would not survive a frame.
+    state.beginFrame()
+    assertNull(state.text(70))
+
+    state.applyContentStateOperations(operations)
+    assertEquals("Morning run", state.text(70))
+
+    state.beginFrame()
+    assertNull(state.text(70))
+    state.applyContentStateOperations(operations)
+    assertEquals("Morning run", state.text(70))
   }
 
   @Test
