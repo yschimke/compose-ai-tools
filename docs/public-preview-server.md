@@ -587,6 +587,16 @@ doesn't recognize. Publishing the discovery id would therefore be *silent*: the 
 every row just loses its link to the comparison, and the feed degrades into the pair of unrelated
 changelogs it exists not to be.
 
+That translation is deliberately **incomplete rather than approximate**. A catalog image carries the
+*sanitized* in-bundle id (`sanitizeBundleEntryId`), so an exact match is tried first and a sanitized
+one second — but sanitizing is lossy, and `assignBundleEntryIds` in the plugin resolves collisions by
+letting the first claimant keep the base form and suffixing the rest. Where two previews share a
+sanitized key the raw→route direction genuinely isn't invertible from the catalog, so that key
+resolves to *nothing*. Reproducing the plugin's suffix assignment in JavaScript would be a third
+restatement of a Kotlin derivation with nothing checking it, and its failure mode is a link that
+quietly points at the wrong component — worse than no link, because a reader who lands on the wrong
+comparison has no way to tell.
+
 `gaps[].kind` is one of `dangling-mapping` (the map names a preview the catalog no longer
 publishes), `unrendered-reference` (a mapped node whose raster couldn't be published), or
 `unmapped-design-node` (a component in the design file nothing maps to). An unknown kind is dropped

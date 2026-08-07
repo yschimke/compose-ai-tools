@@ -96,10 +96,28 @@ function figmaRefsOf(entry) {
  * the sanitised in-bundle form, so a `@Preview(name = "Small Round")` is `…_Small Round` on one
  * side and `…_Small_Round` on the other. Catalogs whose names need no sanitising match either way,
  * which is exactly why this gap survives casual testing.
+ *
+ * ## Ambiguous sanitised keys are dropped, not guessed
+ *
+ * Sanitising is lossy, so two distinct previews can land on one key (`"A B"` and `"A/B"` both
+ * become `A_B`). `assignBundleEntryIds` in the plugin resolves that by letting the first claimant
+ * keep the base form and suffixing the rest `_1`, `_2`, … — meaning the raw→sanitised direction is
+ * genuinely *not* invertible from the catalog alone.
+ *
+ * Two ways out, and the cheap-looking one is wrong: reproducing the plugin's suffix assignment here
+ * would restate a *third* Kotlin derivation in JavaScript, with nothing checking the restatement —
+ * and if it drifted, the failure would be a link that quietly points at the wrong component. A
+ * misdirected link is worse than an absent one: absent, the reader knows to go look; misdirected,
+ * they compare the wrong pair and trust the answer.
+ *
+ * So an ambiguous key resolves to **nothing**. The affected rows keep their text and lose only
+ * their inbound link, exactly as they do for a preview the catalog dropped.
  */
 export function catalogRouteIds(catalog) {
   const exact = new Map();
   const sanitised = new Map();
+  /** Sanitised keys claimed by more than one image — see the ambiguity note above. */
+  const ambiguous = new Set();
   for (const component of catalog?.components ?? []) {
     for (const image of component?.images ?? []) {
       if (typeof image?.previewId !== "string" || image.previewId === "") continue;
@@ -107,21 +125,32 @@ export function catalogRouteIds(catalog) {
       const routeId = servePreviewId(image.path);
       if (!exact.has(image.previewId)) exact.set(image.previewId, routeId);
       const key = sanitizeBundleEntryId(image.previewId);
-      if (!sanitised.has(key)) sanitised.set(key, routeId);
+      const claimed = sanitised.get(key);
+      // Only a *different* route is a collision: one preview rendered into several catalog images
+      // legitimately repeats its own id, and that is not ambiguity.
+      if (claimed !== undefined && claimed !== routeId) ambiguous.add(key);
+      else if (claimed === undefined) sanitised.set(key, routeId);
     }
   }
-  return { exact, sanitised };
+  for (const key of ambiguous) sanitised.delete(key);
+  return { exact, sanitised, ambiguous };
 }
 
 /**
  * A `discoveryId -> routeId` resolver over [catalogRouteIds], returning null for an id the catalog
- * doesn't publish. Null rather than the input: emitting an unresolved id would put a preview id the
- * server cannot match into the feed, which is the bug this exists to prevent.
+ * doesn't publish — or one whose sanitised form is ambiguous. Null rather than the input, and null
+ * rather than a guess: emitting an id the server can't match loses a link, while emitting the wrong
+ * one sends the reader to the wrong comparison. Both are bugs; only the second is silent.
+ *
+ * The exact map is consulted first, so an id needing no sanitising is never affected by a collision
+ * elsewhere in the catalog.
  */
 export function routeIdResolver(catalog) {
   const { exact, sanitised } = catalogRouteIds(catalog);
   return (discoveryId) =>
-    exact.get(discoveryId) ?? sanitised.get(sanitizeBundleEntryId(String(discoveryId ?? ""))) ?? null;
+    exact.get(discoveryId) ??
+    sanitised.get(sanitizeBundleEntryId(String(discoveryId ?? ""))) ??
+    null;
 }
 
 /**
@@ -275,6 +304,14 @@ export function figmaVersionEventsFrom(payload) {
  * - a design-map entry naming a preview id the published catalog doesn't contain (**dangling**);
  * - a mapped Figma node whose reference raster failed to publish (**unrendered**);
  * - a component published in the Figma file that nothing maps to (**unmapped design node**).
+ *
+ * **`catalogPreviewIds` and the design map's ids are compared through [sanitizeBundleEntryId], not
+ * verbatim.** A design map carries the RAW discovery id while a catalog image carries the sanitised
+ * in-bundle form, so `pkg.FooKt.Bar_Small Round` and `pkg.FooKt.Bar_Small_Round` are the same
+ * preview written two ways. Comparing them literally reports a perfectly healthy mapping as
+ * dangling *and* suppresses the unrendered-reference check for it — one false finding and one
+ * missed one, from the same mismatch. Sanitising is idempotent, so normalising both sides is safe
+ * whichever form a caller happens to pass.
  */
 export function mappingGaps({
   designMap,
@@ -285,11 +322,14 @@ export function mappingGaps({
   referenceManifest = null,
 } = {}) {
   const gaps = [];
-  const live = new Set(catalogPreviewIds);
+  const live = new Set(catalogPreviewIds.map((id) => sanitizeBundleEntryId(String(id ?? ""))));
+  const isPublished = (id) => live.has(sanitizeBundleEntryId(String(id ?? "")));
 
   for (const entry of designMap?.components ?? []) {
     const previewIds = previewIdsOf(entry);
-    const missing = previewIds.filter((id) => !live.has(id));
+    // Reported verbatim as the design map spells it — the normalisation is for *comparison*; a
+    // reader fixing the map needs to see the id they actually wrote.
+    const missing = previewIds.filter((id) => !isPublished(id));
     if (missing.length > 0 && previewIds.length > 0) {
       gaps.push({
         kind: GAP_KINDS.DANGLING_MAPPING,
@@ -332,7 +372,7 @@ export function mappingGaps({
       if (typeof entry?.code !== "string" || published.has(entry.code)) continue;
       if (figmaRefsOf(entry).length === 0) continue;
       const previewIds = previewIdsOf(entry);
-      if (previewIds.length === 0 || previewIds.some((id) => !live.has(id))) continue;
+      if (previewIds.length === 0 || previewIds.some((id) => !isPublished(id))) continue;
       gaps.push({
         kind: GAP_KINDS.UNRENDERED_REFERENCE,
         detail:

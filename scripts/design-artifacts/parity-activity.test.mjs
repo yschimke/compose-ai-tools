@@ -135,6 +135,61 @@ test("catalogRouteIds maps a discovery id onto the route id the server keys prev
   assert.equal(resolve("sections.GoneKt.Removed"), null);
 });
 
+test("an ambiguous sanitised key resolves to nothing rather than the wrong preview", () => {
+  // `"A B"` and `"A/B"` both sanitise to `A_B`; the plugin's `assignBundleEntryIds` keeps the base
+  // for the first claimant and suffixes the rest, so raw→sanitised is not invertible here. Guessing
+  // would point a commit at the wrong component's comparison — silently, and confidently.
+  const collided = {
+    components: [
+      {
+        componentId: "Foo",
+        images: [
+          { path: "images/foo-a/ideal__default__light.png", previewId: "pkg.FooKt.Bar_A_B" },
+          { path: "images/foo-b/ideal__default__light.png", previewId: "pkg.FooKt.Bar_A_B_1" },
+        ],
+      },
+    ],
+  };
+  const { ambiguous } = catalogRouteIds(collided);
+  assert.deepEqual([...ambiguous], []);
+
+  // The real collision: two images whose previewIds sanitise to one key.
+  const real = {
+    components: [
+      {
+        componentId: "Foo",
+        images: [
+          { path: "images/foo-a/ideal__default__light.png", previewId: "pkg.FooKt.Bar_A B" },
+          { path: "images/foo-b/ideal__default__light.png", previewId: "pkg.FooKt.Bar_A/B" },
+        ],
+      },
+    ],
+  };
+  const resolve = routeIdResolver(real);
+  // Each id still resolves EXACTLY — the exact map is consulted first, so a collision elsewhere
+  // never degrades an id that needs no sanitising.
+  assert.equal(resolve("pkg.FooKt.Bar_A B"), "foo-a__ideal__default__light");
+  assert.equal(resolve("pkg.FooKt.Bar_A/B"), "foo-b__ideal__default__light");
+  // …but a third spelling that only reaches them through the lossy key gets nothing, not a guess.
+  assert.equal(resolve("pkg.FooKt.Bar_A\tB"), null);
+  assert.deepEqual([...catalogRouteIds(real).ambiguous], ["pkg.FooKt.Bar_A_B"]);
+});
+
+test("one preview rendered into several images is not a collision", () => {
+  const resolve = routeIdResolver({
+    components: [
+      {
+        componentId: "Foo",
+        images: [
+          { path: "images/foo/ideal__default__light.png", previewId: "pkg.FooKt.Bar" },
+          { path: "images/foo/ideal__default__light.png", previewId: "pkg.FooKt.Bar" },
+        ],
+      },
+    ],
+  });
+  assert.equal(resolve("pkg.FooKt.Bar"), "foo__ideal__default__light");
+});
+
 test("events carry ROUTE ids, not the discovery ids the design map names", () => {
   const index = indexDesignMap(designMap, { routeIdFor: routeIdResolver(catalog) });
   const events = codeEventsFrom(
@@ -366,6 +421,38 @@ test("mappingGaps derives an unrendered reference from the published manifest", 
         "catalog/src/main/kotlin/sections/Switches.kt#SwitchOn",
       ],
     ],
+  );
+});
+
+test("a sanitised catalog id is not mistaken for a dangling mapping", () => {
+  // The design map writes the RAW discovery id; the catalog carries the sanitised in-bundle form.
+  // Comparing them literally reports a healthy mapping as dangling AND suppresses the
+  // unrendered-reference check for it — one false finding and one missed one, same mismatch.
+  const spaced = {
+    components: [
+      {
+        code: "ui/Foo.kt#Bar",
+        ref: "figma:abc/1:2",
+        previewId: "pkg.FooKt.Bar_Small Round",
+      },
+    ],
+  };
+
+  assert.deepEqual(
+    mappingGaps({ designMap: spaced, catalogPreviewIds: ["pkg.FooKt.Bar_Small_Round"] }),
+    [],
+    "the same preview written two ways is not a dangling mapping",
+  );
+
+  // …and with the reference manifest proving the raster failed, the RIGHT finding now surfaces.
+  const gaps = mappingGaps({
+    designMap: spaced,
+    catalogPreviewIds: ["pkg.FooKt.Bar_Small_Round"],
+    referenceManifest: { references: [] },
+  });
+  assert.deepEqual(
+    gaps.map((g) => g.kind),
+    [GAP_KINDS.UNRENDERED_REFERENCE],
   );
 });
 
