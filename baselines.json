@@ -376,14 +376,14 @@
     "serve-landing-path.dark.png": {
       "fixture": "serve-landing-path",
       "theme": "dark",
-      "sha256": "9ea0a703175f118d103eb16f2d2f347ddd1dca52937457abbf1f0d9e889f44ff",
-      "size": 57361
+      "sha256": "cf86d01b78c3f642277d580651c72c779d7375feb8a7bfbd7ec71b738d92085a",
+      "size": 58809
     },
     "serve-landing-path.light.png": {
       "fixture": "serve-landing-path",
       "theme": "light",
-      "sha256": "8795c8601f1912d23748020a4c854f2515cbb33ae394b98f4204acd4633271af",
-      "size": 56706
+      "sha256": "995c8c4c7fe268119eed0076611ace8cf66a3c3e620743f0d86d8932acd440d2",
+      "size": 58107
     },
     "serve-landing-public-card-hover.dark.png": {
       "fixture": "serve-landing-public-card-hover",
@@ -480,6 +480,18 @@
       "theme": "light",
       "sha256": "a96fb937d26d2d3fc0977f91bca6364e961f60d66326b76213b1272b19481f87",
       "size": 17784
+    },
+    "serve-parity.dark.png": {
+      "fixture": "serve-parity",
+      "theme": "dark",
+      "sha256": "1fdfbbc149908d99f1964a608c9490a7b3f53051efde2d74effe821b8c9559c1",
+      "size": 181217
+    },
+    "serve-parity.light.png": {
+      "fixture": "serve-parity",
+      "theme": "light",
+      "sha256": "86fbb57566102e757adc7cf554bd9c745f24233a79352f6d4aca813855bf3599",
+      "size": 178666
     },
     "serve-playground-android-catalog.dark.png": {
       "fixture": "serve-playground-android-catalog",

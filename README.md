@@ -284,6 +284,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-notfound/dark](renders/serve-notfound.dark.png) |
 | `light` | ![serve-notfound/light](renders/serve-notfound.light.png) |
 
+## serve-parity
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-parity/dark](renders/serve-parity.dark.png) |
+| `light` | ![serve-parity/light](renders/serve-parity.light.png) |
+
 ## serve-playground
 
 | Theme | Capture |
