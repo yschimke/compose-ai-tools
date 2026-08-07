@@ -9,6 +9,15 @@ import { PaintBundle } from '../../paint/PaintBundle';
 import { isNaNBits, idFromBits, intBitsToFloat, isVariableBits } from '../../Utils';
 import { Visibility } from '../Component';
 
+/**
+ * What the measure pass needs from a min/max constraint, regardless of which op it
+ * arrived as (WidthIn/HeightIn 231/232, or DimensionConstraints 243).
+ */
+export interface DimensionConstraint {
+    getMin(): number;
+    getMax(): number;
+}
+
 // ── MODIFIER_WIDTH (16): INT type, FLOAT value ───────────────────────
 export class WidthModifier extends Operation implements VariableSupport {
     static readonly OP_CODE = 16;
@@ -30,6 +39,10 @@ export class WidthModifier extends Operation implements VariableSupport {
     }
     getType(): number { return this.mType; }
     getValue(): number { return this.mOutValue; }
+    /** True when a fill fraction was supplied. A bare fill encodes NaN, which
+     *  getValue() reports as 0 — so the raw bits are the only way to tell
+     *  "fill half" from "fill completely". */
+    hasFraction(): boolean { return !isNaNBits(this.mValueBits); }
     registerListening(context: RemoteContext): void {
         if ((this.mType === WidthModifier.EXACT || this.mType === WidthModifier.EXACT_DP) && isNaNBits(this.mValueBits)) {
             context.listensTo(idFromBits(this.mValueBits), this);
@@ -71,6 +84,10 @@ export class HeightModifier extends Operation implements VariableSupport {
     }
     getType(): number { return this.mType; }
     getValue(): number { return this.mOutValue; }
+    /** True when a fill fraction was supplied. A bare fill encodes NaN, which
+     *  getValue() reports as 0 — so the raw bits are the only way to tell
+     *  "fill half" from "fill completely". */
+    hasFraction(): boolean { return !isNaNBits(this.mValueBits); }
     registerListening(context: RemoteContext): void {
         if ((this.mType === HeightModifier.EXACT || this.mType === HeightModifier.EXACT_DP) && isNaNBits(this.mValueBits)) {
             context.listensTo(idFromBits(this.mValueBits), this);
@@ -729,6 +746,20 @@ export class VisibilityModifier extends Operation {
             this.updateVariables(context);
         }
     }
+    /**
+     * Re-resolve the visibility every layout pass, matching
+     * ComponentVisibilityOperation.evaluateInLayout in the reference.
+     *
+     * `apply` only runs when the op is dirty, which never happens for a visibility id
+     * that nothing writes — so the component stayed VISIBLE while the reference
+     * resolved the same id to GONE. A document using visibility to switch between
+     * mutually exclusive branches therefore drew *both* of them.
+     */
+    evaluateInLayout(context: RemoteContext): boolean {
+        const before = this.mVisibility;
+        this.updateVariables(context);
+        return before !== this.mVisibility;
+    }
     deepToString(indent: string): string { return `${indent}VisibilityModifier(${this.mVisibilityId})`; }
     static read(buffer: WireBuffer, operations: Operation[]): void {
         operations.push(new VisibilityModifier(buffer.readInt()));
@@ -1051,5 +1082,66 @@ export class AlignByModifier extends Operation {
     deepToString(indent: string): string { return `${indent}AlignByModifier`; }
     static read(buffer: WireBuffer, operations: Operation[]): void {
         operations.push(new AlignByModifier(buffer.readFloat(), buffer.readInt()));
+    }
+}
+
+// ── ACCESSIBILITY_SEMANTICS (250) ─────────────────────────────────────
+// Java source: core/semantics/CoreSemantics.java
+//   INT contentDescriptionId, BYTE role, INT textId, INT stateDescriptionId,
+//   BYTE mode, BOOLEAN enabled, BOOLEAN clickable
+//
+// Purely accessibility metadata: it describes the component to a screen reader and
+// contributes nothing to the painted frame, so `apply` and painting are no-ops. It
+// still has to be *read*, because the buffer has no length prefixes — an unknown
+// opcode costs the remainder of the document, not just this operation.
+export class AccessibilitySemantics extends Operation {
+    static readonly OP_CODE = 250;
+
+    mContentDescriptionId: number;
+    mRole: number;
+    mTextId: number;
+    mStateDescriptionId: number;
+    mMode: number;
+    mEnabled: boolean;
+    mClickable: boolean;
+
+    constructor(contentDescriptionId: number, role: number, textId: number,
+                stateDescriptionId: number, mode: number,
+                enabled: boolean, clickable: boolean) {
+        super();
+        this.mContentDescriptionId = contentDescriptionId;
+        this.mRole = role;
+        this.mTextId = textId;
+        this.mStateDescriptionId = stateDescriptionId;
+        this.mMode = mode;
+        this.mEnabled = enabled;
+        this.mClickable = clickable;
+    }
+
+    getContentDescriptionId(): number { return this.mContentDescriptionId; }
+
+    write(_buffer: WireBuffer): void { /* stub */ }
+    apply(_context: RemoteContext): void { /* accessibility only — nothing to paint */ }
+    deepToString(indent: string): string {
+        return `${indent}AccessibilitySemantics(contentDescriptionId=`
+            + `${this.mContentDescriptionId}, role=${this.mRole}, enabled=${this.mEnabled}`
+            + `, clickable=${this.mClickable})`;
+    }
+
+    static read(buffer: WireBuffer, operations: Operation[]): void {
+        // declareId() where the Java side declares, so macro expansion can uniqueify.
+        const contentDescriptionId = (buffer as any).declareId
+            ? (buffer as any).declareId() : buffer.readInt();
+        const role = buffer.readByte();
+        const textId = (buffer as any).declareId
+            ? (buffer as any).declareId() : buffer.readInt();
+        const stateDescriptionId = (buffer as any).declareId
+            ? (buffer as any).declareId() : buffer.readInt();
+        const mode = buffer.readByte();
+        const enabled = buffer.readBoolean();
+        const clickable = buffer.readBoolean();
+        operations.push(new AccessibilitySemantics(
+            contentDescriptionId, role, textId, stateDescriptionId,
+            mode, enabled, clickable));
     }
 }

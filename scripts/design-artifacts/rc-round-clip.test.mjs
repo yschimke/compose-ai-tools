@@ -64,9 +64,15 @@ after(async () => {
   await browser?.close();
 });
 
+// The five strings the fixture paints, in document order: the time, then each card's title and
+// value. Asserted as whole strings because the failure this guards against is *re-wrapping*, which
+// splits a title across two `fillText` calls rather than dropping it.
+const EXPECTED_TEXT = ["10:10", "Morning run", "5.2 km", "Heart rate", "72 bpm"];
+
 /**
- * Plays the fixture and reports what landed on the canvas: the share of pixels with any alpha, and
- * the distinct colour count (a blank canvas has exactly one — nothing was drawn).
+ * Plays the fixture and reports what landed on the canvas: the share of pixels with any alpha, the
+ * distinct colour count (a blank canvas has exactly one — nothing was drawn), and every text draw
+ * the paint issued.
  */
 async function play() {
   const page = await browser.newContext({ deviceScaleFactor: 1 }).then((c) => c.newPage());
@@ -90,7 +96,20 @@ async function play() {
       await player.loadFromArrayBuffer(bytes.buffer);
       player.repaint();
       await player.fontsReady();
-      player.repaint();
+      // Record the text draws of the *final* paint only. Fonts land asynchronously, so the first
+      // paint can measure against a fallback face and wrap differently for reasons that are not a
+      // layout bug; the repaint below is the one whose output the pixels come from.
+      const texts = [];
+      const originalFillText = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (t, x, y, ...rest) {
+        texts.push({ text: String(t), x, y });
+        return originalFillText.call(this, t, x, y, ...rest);
+      };
+      try {
+        player.repaint();
+      } finally {
+        CanvasRenderingContext2D.prototype.fillText = originalFillText;
+      }
       const data = canvas.getContext("2d").getImageData(0, 0, w, h).data;
       const colours = new Set();
       let painted = 0;
@@ -99,7 +118,7 @@ async function play() {
         colours.add((data[i] << 24) | (data[i + 1] << 16) | (data[i + 2] << 8) | data[i + 3]);
       }
       canvas.remove();
-      return { coveragePct: (100 * painted) / (w * h), colours: colours.size };
+      return { coveragePct: (100 * painted) / (w * h), colours: colours.size, texts };
     },
     { b64: fs.readFileSync(FIXTURE).toString("base64"), w: WIDTH, h: HEIGHT },
   );
@@ -122,5 +141,36 @@ test("a circle-clipped component paints its content instead of clipping it all a
     coveragePct > MIN_COVERAGE_PCT,
     `only ${coveragePct.toFixed(2)}% of the canvas was painted, expected more than ` +
       `${MIN_COVERAGE_PCT}% — the round clip is swallowing the component's content`,
+  );
+});
+
+/**
+ * The coverage check above is deliberately coarse, and coarse is not enough for text: the two card
+ * titles are a few thousand pixels on a 454x454 canvas, so losing both of them moves coverage by
+ * about 0.001% — well inside the margin that guards against font drift. A weighted child measured
+ * at zero width did exactly that. Its text re-wrapped one word per line and each line was then
+ * centred about a zero-width box, landing at a negative x outside the component; the canvas still
+ * scored 78.8% covered and the document still parsed with no warning.
+ *
+ * So assert on the draws themselves. The strings catch the re-wrap (a wrapped title arrives as two
+ * `fillText` calls, never as one), and the non-negative x catches the centring: both are properties
+ * of a correct layout, not of a particular font's metrics, so this stays stable where a pixel
+ * comparison of glyphs would not.
+ */
+test("text is laid out in its component, not re-wrapped and centred outside it", async (t) => {
+  if (skip) return t.skip(skip);
+  const { texts } = await play();
+  assert.deepEqual(
+    texts.map((d) => d.text),
+    EXPECTED_TEXT,
+    "each string must paint as one line — extra entries mean a component measured too narrow and " +
+      "the text re-wrapped inside it",
+  );
+  const outside = texts.filter((d) => d.x < 0 || d.y < 0);
+  assert.deepEqual(
+    outside,
+    [],
+    "text was drawn at a negative offset from its component, which is what centring inside a " +
+      "zero-width box looks like",
   );
 });

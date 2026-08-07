@@ -12,6 +12,11 @@ export class IntegerExpression extends Operation implements VariableSupport {
     private mMask: number;
     private mValues: Int32Array;
     private mPreCalcValues: Int32Array | null = null;
+    /** mMask with the id bit cleared for every entry already resolved to a
+     *  literal — the reference's mPreMask. Evaluating with the original mask
+     *  makes the evaluator treat a resolved value as an id and look it up
+     *  again, so `copy variable 1898` returned getInteger(1) = 0 instead of 1. */
+    private mPreMask = 0;
     private mVar: number[] = [0, 0, 0];
 
     private static readonly OFFSET = 0x10000;
@@ -39,8 +44,10 @@ export class IntegerExpression extends Operation implements VariableSupport {
         if (!this.mPreCalcValues || this.mPreCalcValues.length !== this.mValues.length) {
             this.mPreCalcValues = new Int32Array(this.mValues.length);
         }
+        this.mPreMask = this.mMask;
         for (let i = 0; i < this.mValues.length; i++) {
             if (this.isId(this.mMask, i, this.mValues[i])) {
+                this.mPreMask &= ~(0x1 << i);
                 this.mPreCalcValues[i] = context.getInteger(this.mValues[i]);
             } else {
                 this.mPreCalcValues[i] = this.mValues[i];
@@ -49,8 +56,15 @@ export class IntegerExpression extends Operation implements VariableSupport {
     }
 
     apply(context: RemoteContext): void {
+        // Refresh the inputs before evaluating, as the reference does
+        // (IntegerExpression.apply calls updateVariables first). Relying on the dirty
+        // listener alone leaves mPreCalcValues holding whatever was there when this op
+        // was last marked dirty — so an expression that simply copies another variable
+        // evaluated to 0 while its input already read 1, and every value derived from
+        // it stayed wrong for the life of the document.
+        this.updateVariables(context);
         const vals = this.mPreCalcValues || this.mValues;
-        const result = this.evaluate(this.mMask, vals);
+        const result = this.evaluate(this.mPreMask, vals);
         context.loadInteger(this.mId, result);
     }
 

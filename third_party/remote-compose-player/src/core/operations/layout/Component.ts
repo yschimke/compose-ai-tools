@@ -105,10 +105,15 @@ export class Component extends PaintOperation implements Container {
         return true;
     }
     isGone(): boolean { return Visibility.isGone(this.mVisibility); }
+    getVisibility(): number { return this.mVisibility; }
 
     setVisibility(v: number): void {
+        if (v === this.mVisibility) return;
         this.mVisibility = v;
         this.invalidateMeasure();
+        // A child becoming GONE changes the *parent's* layout, so the parent has to
+        // re-measure too — matching Component.setVisibility in the reference.
+        if (this.mParent) this.mParent.invalidateMeasure();
     }
 
     inflate(): void {
