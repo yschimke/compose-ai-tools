@@ -90,6 +90,11 @@ const STYLED_FIXTURES = new Set([
     // read as "not available here". Captured bare it is an ordinary underlined link, so the styling
     // that IS the change would move no baseline — the exact trap the entries above record.
     "serve-viewer-signin",
+    // The grid's long-press live lane. Both halves of its claim are styling: the "hold for live"
+    // affordance that appears under a pointer, and the canvas overlay + accent chip a streaming
+    // card wears. Captured bare there is no overlay at all — the script never loads — so the whole
+    // feature would move no baseline.
+    "serve-landing-live",
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
@@ -99,6 +104,7 @@ const SERVE_ASSETS = [
     ["viewer-drawers.js", "text/javascript"],
     ["backend-badge.js", "text/javascript"],
     ["format-compare.js", "text/javascript"],
+    ["catalog-live.js", "text/javascript"],
 ];
 
 // Runtime *states* of a page fixture that the committed HTML can't express on its own, captured as
@@ -286,6 +292,78 @@ const FIXTURE_STATES = [
             });
             await page.getByRole("button", { name: "Brand Dark" }).click();
             await page.waitForSelector(".cp-reloading");
+        },
+    },
+    {
+        // The long-press affordance. It exists only under a pointer — deliberately, so a grid of
+        // 80 cards doesn't grow 80 permanent badges — which makes it invisible to an end-state
+        // screenshot and exactly the kind of thing that reaches production unreviewed.
+        fixture: "serve-landing-live",
+        suffix: "live-hint",
+        apply: async (page) => {
+            await page.addStyleTag({
+                content: "*, *::before, *::after { transition-duration: 0ms !important; }",
+            });
+            await page.hover(".cp-grid .cp-card");
+        },
+    },
+    {
+        // A card actually streaming: the daemon's frames paint into a canvas overlaid on the
+        // thumbnail's slot, the card takes an accent outline, and the hint becomes a "live"
+        // readout. There is no daemon in the harness, so the socket is stubbed — everything else
+        // (the press timing, the overlay, the chip) is the real `catalog-live.js` doing its job.
+        fixture: "serve-landing-live",
+        suffix: "live-card",
+        apply: async (page) => {
+            await page.addStyleTag({
+                content: "*, *::before, *::after { transition-duration: 0ms !important; }",
+            });
+            await page.evaluate(() => {
+                // A stand-in frame: what the daemon would push, drawn locally so the shot is
+                // deterministic and needs no render backend.
+                const frame = document.createElement("canvas");
+                frame.width = 320;
+                frame.height = 130;
+                const ctx = frame.getContext("2d");
+                ctx.fillStyle = "#eef0ff";
+                ctx.fillRect(0, 0, 320, 130);
+                ctx.fillStyle = "#4b4bc8";
+                ctx.beginPath();
+                ctx.roundRect(60, 40, 200, 52, 26);
+                ctx.fill();
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "600 20px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("Pressed", 160, 73);
+                const dataBase64 = frame.toDataURL("image/png").split(",")[1];
+                window.WebSocket = class {
+                    constructor() {
+                        this.readyState = 1;
+                        setTimeout(() => {
+                            if (this.onmessage) {
+                                this.onmessage({
+                                    data: JSON.stringify({
+                                        type: "frame",
+                                        codec: "png",
+                                        dataBase64,
+                                    }),
+                                });
+                            }
+                        }, 0);
+                    }
+                    send() {}
+                    close() {}
+                };
+            });
+            const card = page.locator(".cp-grid .cp-card").first();
+            const box = await card.boundingBox();
+            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
+            await page.mouse.down();
+            await page.waitForSelector(".cp-card-live");
+            await page.mouse.up();
+            await page.waitForFunction(
+                () => document.querySelector(".cp-live-chip")?.textContent === "live",
+            );
         },
     },
     {

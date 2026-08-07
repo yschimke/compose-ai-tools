@@ -3542,6 +3542,47 @@ object ServeWeb {
     return previews.sortedWith(compareBy({ score(it) }, { it.id })).first().id
   }
 
+  /**
+   * How long a press has to be held on a catalog card before it means "start a live session here"
+   * rather than "open this preview". Long enough not to fire on a tap or the start of a scroll,
+   * short enough to feel like a press rather than a wait — the same ~half-second Android's own
+   * long-press uses.
+   */
+  const val LONG_PRESS_HOLD_MS: Int = 500
+
+  /**
+   * The grid's **long-press live lane**: hold a card and its preview starts streaming from the
+   * session's render daemon in place, inside the card, instead of navigating to the viewer.
+   *
+   * This emits the browser side's configuration and loads [ServeWebAssets] `catalog-live.js`. The
+   * per-card preview ids ride in a **server-emitted object literal**, in the grid's document order,
+   * rather than being read back off `data-` attributes — the same rule the themed-render URLs
+   * follow, so no id this page turns into a socket URL originates as DOM text. Each entry carries
+   * the card's light and dark ids (identical for a single-variant card, empty for one the session
+   * can't stream), so a card swapped to its dark render goes live on what is actually on screen.
+   *
+   * Empty — no config, no script tag — when no card can stream, which is every static bundle and
+   * every baked-only catalog. Those pages are byte-for-byte what they always were.
+   */
+  private fun catalogLiveScript(
+    basePath: String,
+    query: String,
+    cards: List<Pair<String, String>>,
+    signInHref: String?,
+  ): String {
+    if (cards.none { (light, dark) -> light.isNotEmpty() || dark.isNotEmpty() }) return ""
+    val entries =
+      cards.joinToString(",") { (light, dark) ->
+        "{l:${WebEscaping.jsString(light)},d:${WebEscaping.jsString(dark)}}"
+      }
+    val config =
+      "window.cpCatalogLive = {base:${WebEscaping.jsString(basePath)}," +
+        "query:${WebEscaping.jsString(query)}," +
+        "signInHref:${WebEscaping.jsString(signInHref.orEmpty())}," +
+        "holdMs:$LONG_PRESS_HOLD_MS,cards:[$entries]};"
+    return "\n<script>$config</script>\n${scriptTag("catalog-live.js")}"
+  }
+
   /** Landing page: the module's preview list, each card linking to its viewer. */
   fun landingPage(
     moduleLabel: String,
@@ -3650,6 +3691,21 @@ object ServeWeb {
      * missing or zero entries render no badge.
      */
     engagement: Map<String, PreviewEngagement> = emptyMap(),
+    /**
+     * Whether a given preview can be streamed live from the grid — the session offers the daemon
+     * stream ([ServeHost.hasLiveStream]) **and** this preview has a daemon twin behind it
+     * ([ServeHost.canRenderOverridesFor]). A card that passes gains the long-press live lane (see
+     * [catalogLiveScript]); one that doesn't stays an ordinary link, because its socket would only
+     * ever replay baked pixels. Defaults to `{ false }`: a static bundle offers no in-grid lane.
+     */
+    canStreamLiveFor: (String) -> Boolean = { false },
+    /**
+     * GitHub sign-in URL when the box gates its live lanes behind auth and this visitor isn't
+     * signed in. Non-null keeps the long-press affordance (the lane exists, it just isn't theirs
+     * yet) and answers the press with the reason instead of opening a socket that would close
+     * 1008. Null (the default) ⇒ no auth in the way.
+     */
+    liveSignInHref: String? = null,
     /** Aggregate visits to this app/design-system landing page. */
     systemViews: Long = 0,
     /** Absolute page + representative preview URLs for Open Graph/Twitter link previews. */
@@ -3912,6 +3968,26 @@ object ServeWeb {
           presenceUrl,
         )}</script>"
       else ""
+    // The long-press live lane, in the SAME document order as the cards above (and as
+    // [themeBaseJs]) — a card's entry is its light/dark pair of ids, or a pair of empty strings
+    // when this session can't stream it.
+    val liveScript =
+      catalogLiveScript(
+        basePath = basePath,
+        query = linkQuery(token, sessionId, basePath, isPublic),
+        cards =
+          orderedCards.map { card ->
+            fun streamable(p: ServePreview) = if (canStreamLiveFor(p.id)) p.id else ""
+            if (card.swappable) streamable(card.light!!) to streamable(card.dark!!)
+            else streamable(card.default).let { it to it }
+          },
+        signInHref = liveSignInHref,
+      )
+    // Discoverability for the gesture: the per-card affordance only appears on hover, so the
+    // header says once that the lane exists. Shown exactly when a card can actually take it.
+    val liveNote =
+      if (liveScript.isEmpty()) ""
+      else " · <span class=\"cp-live-note\">hold a card for a live session</span>"
     val formatLink =
       if (hasFormatComparison)
         " · <a class=\"cp-format-link\" href=\"$basePath/compare$q\">compare formats</a>"
@@ -3927,10 +4003,10 @@ object ServeWeb {
         """
         $back<h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
         $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} ·
-          <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink</p>
+          <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink$liveNote</p>
         <div class="cp-catalog-tools">
         $themeToggle$searchBox</div>
-        $tabBar$gridBlock$emptyState$filterScript$about
+        $tabBar$gridBlock$emptyState$filterScript$liveScript$about
         """
           .trimIndent(),
     )

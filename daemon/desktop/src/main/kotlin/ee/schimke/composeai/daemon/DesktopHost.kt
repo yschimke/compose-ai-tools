@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
+import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
@@ -502,8 +503,8 @@ open class DesktopHost(
     val engineOut = System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
     val parent =
       if (engineOut != null && engineOut.isNotBlank()) File(engineOut).parentFile
-      else File("${System.getProperty("user.dir")}/.compose-preview-history")
-    return File(parent ?: File(System.getProperty("user.dir")), "daemon-recordings")
+      else composeAiCacheDir("history")
+    return File(parent ?: composeAiCacheDir("history"), "daemon-recordings")
   }
 
   /**

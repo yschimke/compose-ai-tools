@@ -97,7 +97,7 @@ for the classpath but not the rest):
     "composeai.daemon.previewsJsonPath": "/abs/path/to/previews.json",
     "composeai.harness.previewsManifest": "/abs/path/to/previews.json",
     "composeai.render.outputDir": "/abs/path/to/build/compose-previews/renders",
-    "composeai.daemon.historyDir": "/abs/path/to/.compose-preview-history",
+    "composeai.daemon.historyDir": "/abs/path/to/history-archive",
     "composeai.daemon.userClassDirs": "/abs/path/to/<your-module-classes/>",
     "composeai.daemon.idleTimeoutMs": "5000"
   },
@@ -161,7 +161,7 @@ The minimum set the daemon reads at boot:
 | `composeai.daemon.previewsJsonPath` | Path to `previews.json`. The daemon seeds its preview index from this on startup. |
 | `composeai.harness.previewsManifest` | Same path. Legacy alias still read by the harness path. |
 | `composeai.render.outputDir` | Where rendered PNGs land. The daemon writes here; you read from here. |
-| `composeai.daemon.historyDir` | Where per-render archives go. Pick any dir; defaults under `.compose-preview-history/`. |
+| `composeai.daemon.historyDir` | Where per-render archives go. Pick any dir; defaults under `$XDG_CACHE_HOME/composeai/history/`, never inside the project tree ([HISTORY.md](daemon/HISTORY.md)). |
 | `composeai.daemon.userClassDirs` | `:`-separated list of directories holding user `.class` files. Used by classloader hot-swap on `fileChanged` notifications. |
 | `composeai.daemon.idleTimeoutMs` | Idle exit timeout. `5000` is the gradle plugin's default. |
 

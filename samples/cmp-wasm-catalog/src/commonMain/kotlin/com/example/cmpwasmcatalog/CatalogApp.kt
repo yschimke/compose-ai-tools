@@ -63,12 +63,12 @@ import com.example.designcatalogm3.shared.parseCatalogFontFamilies
  * `interactive = true` so a visitor can toggle switches, drag sliders and watch progress animate.
  *
  * **Snapshot parity is the contract.** The baked catalog PNG is `CatalogSticker` — a wrap-content
- * `Surface` holding the component behind 16dp padding — cropped to its bounds. This app reproduces
- * exactly that sticker (same dp geometry, same `Surface` default colour) on a **transparent**
+ * **transparent** `Surface` holding the component behind 16dp padding — cropped to its bounds. This
+ * app reproduces exactly that sticker (same dp geometry, same transparent surface) on a transparent
  * viewport, and contain-fit scales it to the frame. The embedding viewer sizes the iframe to the
  * snapshot `<img>`'s rendered box, so the same-aspect sticker fills it edge-to-edge and the
- * snapshot→Wasm switch doesn't move a pixel. [showBackground] = false drops the sticker's surface
- * fill (transparent iframe ⇒ the viewer's checkerboard shows through), leaving just the component.
+ * snapshot→Wasm switch doesn't move a pixel — and, since the sticker paints no fill of its own,
+ * doesn't add a panel the snapshot never had either.
  *
  * [onFirstFrame] fires once, after the sticker has been measured, fit-scaled, and drawn — the
  * embedding viewer keeps the snapshot on-stage until this signal so enabling Wasm never flashes.
@@ -76,8 +76,9 @@ import com.example.designcatalogm3.shared.parseCatalogFontFamilies
  * The area *around* the sticker can't be truly transparent — the compose-web surface paints an
  * opaque base — so the app paints the serve stage's own checkerboard there instead ([checkerPhase]
  * is the stage pattern's tile origin in this frame's CSS-px coordinates, supplied by the viewer),
- * making the canvas visually continue the page behind it. That's also what makes [showBackground] =
- * false read as "component on the checkerboard".
+ * making the canvas visually continue the page behind it. With the sticker itself transparent, that
+ * checkerboard is what shows through behind the component — exactly what the baked PNG looks like
+ * on the same stage.
  */
 @Composable
 fun CatalogApp(
@@ -85,8 +86,13 @@ fun CatalogApp(
   dark: Boolean = false,
   fontScale: Float = 1f,
   rtl: Boolean = false,
-  showBackground: Boolean = true,
   checkerPhase: Offset = Offset.Zero,
+  /**
+   * The viewer's resolved solid stage colour (`stageBg=#rrggbb`), painted behind the transparent
+   * sticker so the swap doesn't change what the component sits on. Null ⇒ the page is in its
+   * transparent/checkerboard mode and the app continues that pattern instead.
+   */
+  stageColor: Color? = null,
   /**
    * Typeface for the whole M3 type scale — the URL-loaded Roboto that matches what the Android
    * renderer baked into the snapshots. Null ⇒ the CMP bundled default (fetch failed/timed out).
@@ -162,7 +168,7 @@ fun CatalogApp(
         Box(
           modifier =
             Modifier.fillMaxSize()
-              .stageCheckerboard(isSystemInDarkTheme(), checkerPhase)
+              .stageBackdrop(stageColor, isSystemInDarkTheme(), checkerPhase)
               .onGloballyPositioned { frame = it.size },
           contentAlignment = Alignment.Center,
         ) {
@@ -179,13 +185,13 @@ fun CatalogApp(
               Modifier.onGloballyPositioned { content = it.size }
                 .graphicsLayer(scaleX = scale, scaleY = scale)
           ) {
-            // The sticker itself — a 1:1 port of the shared `CatalogSticker` (Surface at its
-            // default
-            // colour + 16dp padding), so the box the snapshot baked is the box we draw.
-            Surface(
-              color = if (showBackground) MaterialTheme.colorScheme.surface else Color.Transparent,
-              contentColor = MaterialTheme.colorScheme.onSurface,
-            ) {
+            // The sticker itself — a 1:1 port of the shared `CatalogSticker`: a TRANSPARENT
+            // Surface + 16dp padding, so the box the snapshot baked is the box we draw. The
+            // colour is deliberately not `colorScheme.surface`: the desktop `CatalogStickerFrame`
+            // renders component stickers on `Color.Transparent` so each reads as a silhouette on
+            // the viewer's backing, and painting a surface fill here put a solid `#FFFBFF` panel
+            // behind the component the moment the viewer handed the render to this tier.
+            Surface(color = Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface) {
               Box(Modifier.padding(16.dp)) { CatalogComponent(id, interactive = true) }
             }
           }
@@ -257,6 +263,21 @@ internal fun resolveCatalogFont(
  * this frame's coordinates (CSS px), so the drawn cells line up exactly with the page's cells
  * outside the iframe.
  */
+/**
+ * The stage backdrop the embedding viewer is showing behind the snapshot, painted here so the
+ * transparent sticker sits on the same thing it sits on in the PNG lane. [stageColor] is the
+ * viewer's resolved solid stage (`#fff` for a light preview, `#1d1d20` for a dark one); null means
+ * the page is in its transparent/checkerboard mode, so we continue that pattern instead.
+ *
+ * This has to track the page: the app's own surface can't be truly transparent, so *something* is
+ * painted here either way, and painting the wrong one is a visible background change on the
+ * snapshot⇄Wasm swap — a checkerboard appearing behind a component the snapshot showed on flat
+ * white.
+ */
+private fun Modifier.stageBackdrop(stageColor: Color?, dark: Boolean, phase: Offset): Modifier =
+  if (stageColor != null) drawBehind { drawRect(color = stageColor) }
+  else stageCheckerboard(dark, phase)
+
 private fun Modifier.stageCheckerboard(dark: Boolean, phase: Offset): Modifier = drawBehind {
   val even = if (dark) Color(0xFF1D1D20) else Color(0xFFFFFFFF)
   val odd = if (dark) Color(0xFF26262B) else Color(0xFFF4F4F6)

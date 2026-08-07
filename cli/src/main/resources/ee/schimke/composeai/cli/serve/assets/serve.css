@@ -330,6 +330,44 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-card.cp-reloading .cp-imgwrap::after,
   .cp-viewer[data-reloading="true"] .cp-stage::after { animation-duration: 1.5s; }
 }
+/* --- Long-press live: a daemon session started from the grid, in the card.
+   The canvas is mounted as an absolute overlay on the thumbnail's slot (the img stays in flow
+   with visibility:hidden), so the card keeps its exact geometry whether it is showing baked
+   pixels or a live frame — a stream whose dimensions differ from the thumbnail scales into the
+   same box instead of resizing the grid under the visitor. */
+.cp-card-canvas { position: absolute; left: 12px; top: 12px; right: 12px; bottom: 12px;
+  width: calc(100% - 24px); height: calc(100% - 24px); object-fit: contain; z-index: 2;
+  touch-action: none; cursor: default; }
+.cp-card.cp-card-live { outline: 2px solid var(--cp-accent); outline-offset: 1px; }
+/* The card is a link, and the press that goes live must not also read as a text selection or a
+   drag of the thumbnail. */
+.cp-card-livable { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.cp-card-livable img { -webkit-user-drag: none; }
+.cp-card.cp-card-pressing { transform: scale(0.985); }
+/* The affordance. Invisible until the card is hovered or focused — a grid of 80 cards must not
+   grow 80 permanent badges — and always visible once the card is actually live, where it is the
+   readout ("connecting…" / "live") rather than an invitation. */
+.cp-live-hint, .cp-live-chip {
+  position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 3;
+  padding: 2px 8px; border-radius: 999px; font-size: 0.62rem; font-weight: 600;
+  letter-spacing: 0.02em; background: rgba(20, 20, 22, 0.72); color: #fff; pointer-events: none;
+  white-space: nowrap;
+}
+.cp-live-hint { opacity: 0; transition: opacity 0.15s ease; }
+.cp-card-livable:hover .cp-live-hint, .cp-card-livable:focus-visible .cp-live-hint { opacity: 1; }
+.cp-card.cp-card-live .cp-live-hint { display: none; }
+.cp-live-chip { background: var(--cp-accent); }
+.cp-live-note { color: var(--cp-fg-muted); }
+.cp-live-error {
+  position: absolute; left: 50%; top: 50%; z-index: 4; transform: translate(-50%, -50%);
+  max-width: calc(100% - 24px); padding: 5px 9px; border-radius: 6px;
+  background: rgba(126, 24, 24, 0.92); color: #fff; font-size: 0.7rem; font-weight: 600;
+  line-height: 1.2; text-align: center; pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-live-hint { transition-duration: 0.01ms; }
+  .cp-card.cp-card-pressing { transform: none; }
+}
 .cp-card.cp-theme-render-error .cp-imgwrap img { opacity: 0.55; }
 .cp-theme-error {
   position: absolute; left: 50%; top: 50%; z-index: 2; transform: translate(-50%, -50%);

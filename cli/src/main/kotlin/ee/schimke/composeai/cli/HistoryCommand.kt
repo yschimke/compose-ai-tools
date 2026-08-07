@@ -12,7 +12,10 @@ import ee.schimke.composeai.daemon.history.LocalFsHistorySource
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
 import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
+import ee.schimke.composeai.io.LEGACY_HISTORY_DIRNAME
+import ee.schimke.composeai.io.composeAiHistoryDir
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Base64
 import kotlin.system.exitProcess
@@ -390,8 +393,8 @@ class HistoryCommand(private val args: List<String>) {
 
   /**
    * Opens the history source: `--ref <fullRef>` reads the reporting branch (git), else the local
-   * `.compose-preview-history/`. Returns null (after reporting "no history") only for the local
-   * case when the dir is absent, so callers can short-circuit.
+   * archive under the user cache (see [defaultHistoryDir]). Returns null (after reporting "no
+   * history") only for the local case when the dir is absent, so callers can short-circuit.
    */
   private fun openSource(json: Boolean): HistorySource? {
     val ref = args.flagValue("--ref")
@@ -399,7 +402,7 @@ class HistoryCommand(private val args: List<String>) {
     if (ref != null) {
       return GitRefHistorySource(repoRoot = cwd, ref = ref)
     }
-    val dir = args.flagValue("--history-dir")?.let { Paths.get(it) } ?: cwd.resolve(HISTORY_DIRNAME)
+    val dir = args.flagValue("--history-dir")?.let { Paths.get(it) } ?: defaultHistoryDir(cwd)
     if (!Files.isDirectory(dir)) {
       if (json) {
         println(
@@ -476,7 +479,8 @@ class HistoryCommand(private val args: List<String>) {
         help                 Show this help message
 
       Source:
-        --history-dir <dir>  History dir (default: <cwd>/$HISTORY_DIRNAME)
+        --history-dir <dir>  History dir (default: the cwd module's archive under the user cache,
+                             or ./$HISTORY_DIRNAME when that legacy directory still exists)
         --ref <fullRef>      Read the reporting branch instead, e.g. refs/heads/preview/main
 
       list options:
@@ -504,7 +508,36 @@ class HistoryCommand(private val args: List<String>) {
 
   internal companion object {
     const val HISTORY_SCHEMA = "compose-preview-history/v1"
-    const val HISTORY_DIRNAME = ".compose-preview-history"
+    const val HISTORY_DIRNAME = LEGACY_HISTORY_DIRNAME
+
+    /**
+     * The history archive for the module rooted at [cwd], matching what the daemon writes:
+     * `<cache>/history/<workspaceSlug>/<moduleRel>` (see `common/io`'s `composeAiHistoryDir`), or
+     * the legacy `<cwd>/.compose-preview-history` when that directory still exists.
+     *
+     * The workspace root is found by walking up for a `settings.gradle[.kts]` — the same anchor
+     * Gradle uses for `project.rootDir`, which is what the plugin hands the daemon. A cwd with no
+     * settings file above it (running outside a Gradle build) is treated as its own root, which
+     * matches the single-module case and keeps the command usable standalone.
+     */
+    internal fun defaultHistoryDir(cwd: Path): Path =
+      composeAiHistoryDir(workspaceRootOf(cwd).toFile(), cwd.toFile()).toPath()
+
+    /** Nearest ancestor of [start] (inclusive) holding a `settings.gradle[.kts]`, else [start]. */
+    internal fun workspaceRootOf(start: Path): Path {
+      var dir: Path? = start.toAbsolutePath().normalize()
+      while (dir != null) {
+        if (
+          Files.isRegularFile(dir.resolve("settings.gradle.kts")) ||
+            Files.isRegularFile(dir.resolve("settings.gradle"))
+        ) {
+          return dir
+        }
+        dir = dir.parent
+      }
+      return start.toAbsolutePath().normalize()
+    }
+
     private const val DEFAULT_LIMIT = 50
 
     /** Flags that take a value, so a space-separated value isn't mistaken for an operand. */

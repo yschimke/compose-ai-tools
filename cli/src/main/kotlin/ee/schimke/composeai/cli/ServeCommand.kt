@@ -50,6 +50,7 @@ import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
 import ee.schimke.composeai.cli.serve.ServeModuleRef
 import ee.schimke.composeai.cli.serve.ServePerPreviewDaemonPool
 import ee.schimke.composeai.cli.serve.ServePreview
+import ee.schimke.composeai.cli.serve.ServeRateLimiter
 import ee.schimke.composeai.cli.serve.ServeRenderHost
 import ee.schimke.composeai.cli.serve.ServeRevisionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionFactory
@@ -335,6 +336,38 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val playgroundCatalogLimit: Int =
     args.flagValue("--playground-catalog-limit")?.toIntOrNull()?.takeIf { it > 0 }
       ?: PlaygroundCatalogTargets.DEFAULT_LIMIT
+
+  /**
+   * `--playground-rate-limit <n>`: compiles per minute **per caller** (0 disables the limiter).
+   *
+   * Every other playground bound — compile slots, the compile timeout, the body cap, live seats,
+   * the token store — is a whole-host one (issue #3214). None of them stops two callers from
+   * holding every slot with back-to-back 180-second compiles while everyone else is told the
+   * playground is busy. This is the fair-sharing half.
+   */
+  private val playgroundRateLimit: Int =
+    args.flagValue("--playground-rate-limit")?.toIntOrNull()?.takeIf { it >= 0 }
+      ?: DEFAULT_PLAYGROUND_RATE_LIMIT
+
+  /**
+   * `--playground-caller-concurrency <n>`: compiles one caller may hold at once. Default 1, which
+   * is the knob that answers the complaint directly — with the host's `--playground-compile-slots`
+   * at its default 2, one caller cannot hold both.
+   */
+  private val playgroundCallerConcurrency: Int =
+    args.flagValue("--playground-caller-concurrency")?.toIntOrNull()?.takeIf { it > 0 } ?: 1
+
+  /**
+   * `--trust-forwarded-for`: rate-limit an anonymous caller by the **last** `X-Forwarded-For` entry
+   * rather than the socket peer.
+   *
+   * Opt-in, because the header is client-supplied: on a directly-exposed host trusting it would let
+   * a caller mint a fresh identity per request and walk straight past the limit. Set it only when
+   * this server sits behind a reverse proxy you control that *appends* the peer address it saw
+   * (nginx's `$proxy_add_x_forwarded_for`) — that appended last entry is the one a client can't
+   * forge. Without it, every caller behind the proxy shares one bucket.
+   */
+  private val trustForwardedFor: Boolean = "--trust-forwarded-for" in args
 
   /**
    * `--playground-sandbox <profile>`: the **per-session sandbox** every playground snippet JVM runs
@@ -1536,6 +1569,34 @@ class ServeCommand(args: List<String>) : Command(args) {
     return PlaygroundLane(compile = service, redeem = redeem, health = health)
   }
 
+  /**
+   * The per-caller compile budget, or null when `--playground-rate-limit 0` turned it off.
+   *
+   * Only the **compile** lane is metered, not `/pg/` redemption: a redemption is only reachable
+   * with a token a compile just minted, so limiting compiles transitively limits it — and
+   * redemption already answers to the live-seat budget, the token store's cap, and the token TTL.
+   * Metering it twice would refuse a caller the preview they already paid for.
+   */
+  private fun buildPlaygroundRateLimiter(): ServeRateLimiter? {
+    if (playgroundRateLimit <= 0) {
+      System.err.println(
+        "serve: WARNING playground compile lane is UNMETERED (--playground-rate-limit 0). Its " +
+          "remaining bounds are all whole-host ones, so one caller can hold every compile slot."
+      )
+      return null
+    }
+    System.err.println(
+      "serve: playground compile budget — $playgroundRateLimit/min per caller, " +
+        "$playgroundCallerConcurrency concurrent" +
+        (if (trustForwardedFor) ", keyed by the last X-Forwarded-For entry when anonymous" else "")
+    )
+    return ServeRateLimiter(
+      permitsPerWindow = playgroundRateLimit,
+      windowSeconds = 60,
+      maxConcurrent = playgroundCallerConcurrency,
+    )
+  }
+
   /** The playground's Stage-1 compile lane + Stage-2 redeem lane, sharing one token store. */
   private class PlaygroundLane(
     val compile: PlaygroundCompileService,
@@ -1951,6 +2012,8 @@ class ServeCommand(args: List<String>) : Command(args) {
         playgroundHealth = playgroundLane?.health,
         playgroundRedeem = playgroundLane?.redeem,
         githubAuth = githubAuth,
+        playgroundRateLimiter = playgroundLane?.let { buildPlaygroundRateLimiter() },
+        trustForwardedFor = trustForwardedFor,
         engagementStore = ServeEngagementStore(engagementFile),
       )
     if (trustAdmin != null) {
@@ -3098,5 +3161,13 @@ class ServeCommand(args: List<String>) : Command(args) {
      * — cheap enough to poll every watched catalog at this cadence indefinitely.
      */
     const val DEFAULT_CATALOG_REFRESH_SECONDS = 600L
+
+    /**
+     * Compiles per minute per caller. Sized for a person using the editor, not for a script: a
+     * deliberate Run every six seconds sustained is already brisk, and the bucket lets a burst of
+     * ten through back-to-back before it starts pacing. Raise it for a busy shared host; 0 turns
+     * the limiter off entirely.
+     */
+    const val DEFAULT_PLAYGROUND_RATE_LIMIT = 10
   }
 }

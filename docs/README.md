@@ -25,6 +25,7 @@ else.
 
 - [RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md) — renderer/consumer AndroidX alignment (consult before bumping versions).
 - [SDK_COMPATIBILITY.md](SDK_COMPATIBILITY.md) — JDK × Android SDK support matrix.
+- [RENDER_LANE_PARITY.md](RENDER_LANE_PARITY.md) — measured snapshot / live / Wasm / SVG parity for the `compose-m3` + `wear-m3` catalogs.
 - [DATA_PRODUCTS.md](DATA_PRODUCTS.md) — the two senses of "data product" and the single-producer model.
 - [DEVICE_FRAMES.md](DEVICE_FRAMES.md) · [LOTTIE_PREVIEWS.md](LOTTIE_PREVIEWS.md) · [notifications.md](notifications.md) — shipped feature guides.
 - [APP_TOURS.md](APP_TOURS.md) — app-level previews: real activities (hero image), intents, scripted multi-step tours.

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.tooling.observe
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -38,6 +39,7 @@ import ee.schimke.composeai.data.theme.ResolvedThemeTokens
 import ee.schimke.composeai.data.theme.ThemeConsumer
 import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.data.theme.TypographyToken
+import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
@@ -1514,6 +1516,10 @@ open class RobolectricHost(
         // those previews never satisfy. Without it the start reply errors and live mode blanks the
         // preview (the tile-preview-goes-blank bug).
         kind = spec.kind,
+        // AS-parity wrap, same as the one-shot path: a wrap-content preview must stream at its own
+        // measured size, not at the sandbox window's. See `InteractiveCommand.Start.wrapWidth`.
+        wrapWidth = spec.wrapWidth,
+        wrapHeight = spec.wrapHeight,
       )
     )
     if (!replyLatch.await(INTERACTIVE_START_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
@@ -1776,7 +1782,8 @@ open class RobolectricHost(
   /**
    * Resolve the directory recordings live under. Mirrors [DesktopHost.recordingsRootDir]: defers to
    * `composeai.daemon.recordingsDir` when set; falls back to a sibling of the engine's output dir;
-   * final fallback to `${user.dir}/.compose-preview-history/daemon-recordings`.
+   * final fallback to `<userCache>/composeai/history/daemon-recordings` (never `user.dir` — an
+   * unconfigured daemon must not write into whatever directory it was launched from).
    */
   private fun recordingsRootDir(): File {
     val sysprop = System.getProperty(RECORDINGS_DIR_PROP)
@@ -1786,7 +1793,7 @@ open class RobolectricHost(
       if (engineOut != null && engineOut.isNotBlank()) {
         File(engineOut).parentFile ?: File(System.getProperty("user.dir") ?: ".")
       } else {
-        File("${System.getProperty("user.dir")}/.compose-preview-history")
+        composeAiCacheDir("history")
       }
     return File(parent, "daemon-recordings")
   }
@@ -2626,7 +2633,7 @@ open class RobolectricHost(
       val outputDir =
         java.io.File(
           System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
-            ?: "${System.getProperty("user.dir")}/.compose-preview-history/daemon-renders"
+            ?: composeAiCacheDir("history").resolve("daemon-renders").absolutePath
         )
       outputDir.mkdirs()
       val outputFile = java.io.File(outputDir, "${start.outputBaseName}.png")
@@ -2714,6 +2721,11 @@ open class RobolectricHost(
             // traversal order. Null = no focus yet (a `next` enters at the first stop, `previous`
             // at the last). Held-session scoped so it resets cleanly between recordings.
             val a11yFocusCursor = AtomicReference<String?>(null)
+            // The held composition's measured intrinsic size on wrapped axes, written by the
+            // wrap-measure modifier below and read by every `InteractiveCommand.Render` to crop
+            // that frame back to the preview's own size. Re-measured on each recomposition, so a
+            // live edit that changes the composable's size is reflected on the next frame.
+            val heldMeasuredContent = intArrayOf(0, 0)
             setupTrace.section("compose:setContent") {
               rule.setContent {
                 androidx.compose.runtime.key(reloadCounter.intValue) {
@@ -2810,6 +2822,42 @@ open class RobolectricHost(
                           // `widthDp` / `heightDp` are the held session's resolved canvas
                           // dimensions
                           // (computed above for the qualifier string), reused here verbatim.
+                          //
+                          // AS-parity wrap, mirroring `RenderEngine.render`'s content box: on a
+                          // wrapped axis measure the preview against a relaxed (min = 0) sandbox
+                          // constraint and size the box to its intrinsic size, recording that size
+                          // so each streamed frame can be cropped back to it. Fixed axes stay tight
+                          // so `fillMax*` / lazy content keep a finite viewport. It has to sit
+                          // *inside* the extension pipeline, exactly where the one-shot path puts
+                          // it — an `AroundComposable` extension may fill the window, and measuring
+                          // outside it reports the sandbox rather than the preview. Without this
+                          // wrap the held composition filled the window and every streamed frame
+                          // was the sandbox device: a wear component sticker arrived as the whole
+                          //454×454 watch face while its own snapshot was wrap-sized.
+                          androidx.compose.foundation.layout.Box(
+                            modifier =
+                              if (start.wrapWidth || start.wrapHeight) {
+                                androidx.compose.ui.Modifier.layout { measurable, constraints ->
+                                  val wrapped =
+                                    androidx.compose.ui.unit.Constraints(
+                                      minWidth = if (start.wrapWidth) 0 else constraints.maxWidth,
+                                      maxWidth = constraints.maxWidth,
+                                      minHeight =
+                                        if (start.wrapHeight) 0 else constraints.maxHeight,
+                                      maxHeight = constraints.maxHeight,
+                                    )
+                                  val placeable = measurable.measure(wrapped)
+                                  heldMeasuredContent[0] = placeable.width
+                                  heldMeasuredContent[1] = placeable.height
+                                  layout(placeable.width, placeable.height) {
+                                    placeable.place(0, 0)
+                                  }
+                                }
+                              } else {
+                                androidx.compose.ui.Modifier.fillMaxSize()
+                              },
+                            propagateMinConstraints = true,
+                          ) {
                           if (isTile) {
                             ee.schimke.composeai.renderer.TilePreviewComposable(
                               className = start.previewClassName,
@@ -2845,6 +2893,7 @@ open class RobolectricHost(
                               themeProviderFqn = start.themeProviderFqn,
                               previewArgs = previewArgs,
                             )
+                          }
                           }
                         }
                       }
@@ -2915,6 +2964,17 @@ open class RobolectricHost(
                         rule
                           .onRoot()
                           .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
+                        // Same crop the one-shot path applies (`RenderEngine.render`), so a
+                        // wrap-content preview streams at its own size instead of the sandbox
+                        // window's — the snapshot⇄live swap in the viewer then keeps the frame
+                        // box, and the content in it, exactly where the snapshot had them.
+                        WrappedFrameCrop.cropTopLeft(
+                          file = outputFile,
+                          wrapWidth = start.wrapWidth,
+                          wrapHeight = start.wrapHeight,
+                          measuredWidth = heldMeasuredContent[0],
+                          measuredHeight = heldMeasuredContent[1],
+                        )
                       }
                       dataDir?.let(renderTrace::write)
                       val cl = Thread.currentThread().contextClassLoader

@@ -53,6 +53,7 @@ import ee.schimke.composeai.data.render.extensions.provides
 import ee.schimke.composeai.data.theme.NodeThemeFacts
 import ee.schimke.composeai.data.theme.ThemeConsumerAttribution
 import ee.schimke.composeai.data.theme.ThemePayload
+import ee.schimke.composeai.io.composeAiCacheDir
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.CoilLoadDiagnostics
 import ee.schimke.composeai.renderer.CoilPreviewSupport
@@ -126,13 +127,14 @@ class RenderEngine(
   /**
    * Directory under which PNG files are written. Defaults to the `composeai.render.outputDir`
    * system property (mirrors `:renderer-android`'s contract); falls back to
-   * `${user.dir}/.compose-preview-history/daemon-renders/` so unit tests don't need to set the
-   * property.
+   * `<userCache>/composeai/history/daemon-renders/` so unit tests don't need to set the property.
+   * Deliberately NOT under `user.dir` — an unset property must not scatter PNGs through whatever
+   * directory the daemon happened to be launched from.
    */
   private val outputDir: File =
     File(
       System.getProperty(OUTPUT_DIR_PROP)
-        ?: "${System.getProperty("user.dir")}/.compose-preview-history/daemon-renders"
+        ?: composeAiCacheDir("history").resolve("daemon-renders").absolutePath
     ),
   /**
    * D2 — root of the per-preview data-product output tree
@@ -681,7 +683,7 @@ class RenderEngine(
                 window = dialogWindow,
               )
             } else if (spec.wrapWidth || spec.wrapHeight) {
-              cropWrappedPngTopLeft(
+              WrappedFrameCrop.cropTopLeft(
                 file = outputFile,
                 wrapWidth = spec.wrapWidth,
                 wrapHeight = spec.wrapHeight,
@@ -1807,32 +1809,6 @@ class RenderEngine(
   private fun pxToDp(px: Int, density: Float): Int {
     if (density <= 0f) return px
     return (px / density).toInt().coerceAtLeast(1)
-  }
-
-  /**
-   * Crops [file] in-place to the measured intrinsic size on wrapped axes (content is placed at the
-   * top-left of the sandbox window). The non-wrapped axis keeps its captured pixel extent; a wrapped
-   * axis whose measured size wasn't recorded (`<= 0`) or already fills the window is left unchanged
-   * (`fillMax*` composables). Uses `javax.imageio` on the JVM side — `captureRoboImage` has already
-   * written a standard PNG — so no Robolectric `Bitmap` shadow is needed. Mirrors the standalone
-   * renderer's `cropPngTopLeft` and the desktop daemon's `cropToMeasured`.
-   */
-  private fun cropWrappedPngTopLeft(
-    file: File,
-    wrapWidth: Boolean,
-    wrapHeight: Boolean,
-    measuredWidth: Int,
-    measuredHeight: Int,
-  ) {
-    if (!file.exists()) return
-    val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return
-    val cropW =
-      if (wrapWidth && measuredWidth in 1 until original.width) measuredWidth else original.width
-    val cropH =
-      if (wrapHeight && measuredHeight in 1 until original.height) measuredHeight else original.height
-    if (cropW >= original.width && cropH >= original.height) return
-    val cropped = original.getSubimage(0, 0, cropW, cropH)
-    runCatching { javax.imageio.ImageIO.write(cropped, "PNG", file) }
   }
 
   private fun resizeFixedAxesPng(file: File, targetWidth: Int?, targetHeight: Int?) {

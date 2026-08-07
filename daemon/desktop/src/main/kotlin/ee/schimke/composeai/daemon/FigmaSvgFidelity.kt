@@ -36,12 +36,14 @@ import org.jetbrains.skia.EncodedImageFormat
  * score isn't mistaken for a text-inclusive one.
  *
  * ### Alignment
- * The export adds [FigmaSvgModel.DEFAULT_PADDING] (16px) of transparent margin and draws the tree
- * under a `translate(tx, ty)` (`tx = padding - minX`). The render PNG is padding-free with content
- * at `(0,0)`. So we rasterise the SVG at its native `viewBox` size (1 unit = 1px, because the model
- * already converted dp→px at the render density), then place the SVG's content-space origin at the
- * aligned origin by drawing it offset by `(-tx, -ty)` onto a render-sized canvas. `tx`/`ty` are
- * read from the emitted SVG so a non-root-origin extent aligns correctly too.
+ * The export draws the tree under a `translate(tx, ty)` (`tx = padding - minX`). A frame-anchored
+ * export — the usual case here, since a render always knows its frame — carries no padding and is
+ * already the PNG's own box, so `tx`/`ty` are 0; a frameless export shrink-wraps with
+ * [FigmaSvgModel.DEFAULT_PADDING] (16px) of transparent margin instead. The render PNG is
+ * padding-free with content at `(0,0)` either way. So we rasterise the SVG at its native `viewBox`
+ * size (1 unit = 1px, because the model already converted dp→px at the render density), then place
+ * the SVG's content-space origin at the aligned origin by drawing it offset by `(-tx, -ty)` onto a
+ * render-sized canvas. `tx`/`ty` are read from the emitted SVG, so both shapes align.
  */
 object FigmaSvgFidelity {
 

@@ -704,3 +704,60 @@ live snippet JVMs and swapping them mid-flight needs generation-scoped unpack
 dirs and a retirement policy. A long-running host keeps compiling against the ABI
 it first resolved; restart to pick up a newer one. Issue #3212 splits that half
 out explicitly.
+
+### 8.5 Sharing the compile lane — **a per-caller budget, not just capacity**
+
+Everything above bounds *simultaneous resource use across the host*: compile
+slots, the 180 s compile timeout, the 256 KB body cap, live seats, the token
+store's size and TTL. None of it is a per-caller budget, so two clients issuing
+back-to-back long compiles hold every slot indefinitely and everyone else is told
+the playground is busy (issue #3214).
+
+`ServeRateLimiter` adds the missing half: a token bucket for the request *rate*
+plus a counter for *concurrent* work, keyed per caller.
+
+| Bound | Default | Flag |
+|---|---|---|
+| Compiles per minute, per caller | 10 | `--playground-rate-limit` (0 = off) |
+| Concurrent compiles, per caller | 1 | `--playground-caller-concurrency` |
+
+Four decisions worth recording:
+
+**The key is the GitHub login where there is one**, the client address otherwise,
+and the two spaces are prefixed (`gh:` / `ip:`) so they can never collide. A login
+survives a changed address and is the identity the repo-access gate already
+admitted on; on a repo-access-gated host it is what *every* compile carries, which
+is why the address path matters mainly for token-gated and local hosts.
+
+**Anonymous callers behind a proxy share one bucket** unless `--trust-forwarded-for`
+is set, and that flag is opt-in on purpose: `X-Forwarded-For` is client-supplied,
+so trusting it on a directly-exposed host would let a caller mint a fresh identity
+per request. When it *is* set the limiter reads the **last** entry — the one a
+single reverse proxy appended from the peer address it saw — not the first, which
+the client controls. Exactly one hop's worth of trust.
+
+**The check runs after the gates and before the body read.** A throttled caller
+costs the host a 429 and nothing else: no 256 KB of buffered upload, no compile
+slot, no work dir, no token. The refusal rides the ordinary run-response shape
+(`exception`) with a `Retry-After`, so the editor surfaces it as a status line
+rather than an unparseable body.
+
+**Only the compile lane is metered, not `/pg/` redemption.** A redemption is
+reachable only with a token a compile just minted, so limiting compiles limits it
+transitively — and it already answers to the live-seat budget, the token store's
+cap, and the token TTL. Metering it again would refuse a caller the preview they
+already paid for.
+
+The key space is bounded (`DEFAULT_MAX_KEYS`, 4096) because a public host is keyed
+partly by an address the attacker chooses. Admitting a new key first sweeps every
+entry indistinguishable from a fresh one — nothing in flight, bucket fully
+refilled — which costs its caller nothing to lose; only if that frees nothing is
+the new key refused, which under a key-space spray is the honest answer and the
+alternative is memory growth the attacker picks. `/status.json` reports
+`playground.rateLimit.{activeCallers,trackedCallers}`; the latter pinned near its
+cap is the signature of a spray rather than of an audience.
+
+Item 1 of #3214 — auth as a hard prerequisite on a public box — is already
+satisfied by §6.2's gate, which refuses an anonymous *and* uncontained lane
+outright. The `/docs` upload lane has the same shape of gap and can reuse
+`ServeRateLimiter` as-is.

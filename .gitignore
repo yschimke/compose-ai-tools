@@ -61,6 +61,8 @@ site/Gemfile.lock
 site/vendor/
 
 # Daemon preview-history archive — written by the daemon's `HistoryManager` when running
-# (sysprop `composeai.daemon.historyDir`). Each module gets its own archive at
-# `<moduleDir>/.compose-preview-history/`. Ignore at any depth.
+# (sysprop `composeai.daemon.historyDir`). Since #3407 the default lives OUTSIDE the working
+# tree, under `$XDG_CACHE_HOME/composeai/history/` — nothing new lands here. The pattern stays
+# for checkouts that still carry a pre-#3407 `<moduleDir>/.compose-preview-history/`, which the
+# daemon keeps using when present. Ignore at any depth.
 .compose-preview-history/
