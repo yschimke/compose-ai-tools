@@ -15,7 +15,14 @@
 // used to be three byte-identical versions of this server.
 
 import { fileURLToPath } from "node:url";
-import { dirname, resolve, relative, normalize, sep } from "node:path";
+import {
+    dirname,
+    resolve,
+    relative,
+    normalize,
+    sep,
+    isAbsolute,
+} from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 
@@ -60,14 +67,24 @@ export function startServer(root, port = 0) {
                 const assetMatch = /^assets\/serve\/[^/]+\/([^/]+)$/.exec(rel);
                 if (assetMatch) {
                     const name = assetMatch[1];
-                    // Basename only: the pattern already excludes `/`, and this rejects `..` so a
-                    // fixture cannot reach outside the assets dir.
-                    if (name.includes("..")) {
+                    const assetPath = resolve(SERVE_ASSETS_DIR, name);
+                    // Check the RESOLVED path, not the shape of the input. Rejecting `..` and `/`
+                    // only covers the escapes you thought of: on Windows `%5C` decodes to `\`,
+                    // which the pattern above happily accepts, and `resolve()` then treats
+                    // `C:\Users\…` as absolute and silently leaves this directory. Asking whether
+                    // the result is still inside SERVE_ASSETS_DIR is platform-independent and does
+                    // not depend on enumerating attack shapes — the same containment test the
+                    // static handler below already uses.
+                    const within = relative(SERVE_ASSETS_DIR, assetPath);
+                    if (
+                        within.startsWith("..") ||
+                        within === "" ||
+                        isAbsolute(within)
+                    ) {
                         res.writeHead(403);
                         res.end("forbidden");
                         return;
                     }
-                    const assetPath = resolve(SERVE_ASSETS_DIR, name);
                     try {
                         const body = await readFile(assetPath);
                         const ext = name.slice(name.lastIndexOf("."));
