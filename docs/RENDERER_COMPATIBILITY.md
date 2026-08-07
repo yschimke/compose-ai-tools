@@ -47,6 +47,28 @@ The VS Code extension surfaces the same findings in the Problems panel (via
      `org.jetbrains.compose.*` `-desktop` / `-jvmstubs` requests to the matching
      `-android` coordinate; `compose-preview doctor` reports the same skew for
      the consumer's own test tasks.
+  5. Compose Multiplatform exclusion on the Android render graph (same file).
+     Mechanism #1 makes the *renderer's own* Compose `compileOnly`, but its
+     **transitives** bypassed that: `:data-render-compose` does
+     `api(libs.jetbrains.compose.{runtime,ui})` at the repo's
+     `compose-multiplatform` version and every `data-*` connector re-exports it,
+     so `renderer-android` dragged `org.jetbrains.compose.ui:ui` onto the graph.
+     Those Android variants are **dependency-only** (no files) and pin
+     `androidx.compose.*`, which then won conflict resolution against the
+     consumer's Compose — while AGP still built the unit-test resource APK from
+     the consumer's own graph. The mismatch surfaces as
+     `NoSuchFieldError: androidx.compose.ui.R$id ... androidx_compose_ui_view_compose_view_context`
+     at `onAttachedToWindow`, failing **every** preview in the module. The
+     render graph therefore excludes the six alias families outright: they
+     contribute no classes on Android, so only the version pressure goes.
+     Symmetric by construction — the consumer's Compose wins whether it is older
+     or newer than ours — and it protects consumers of already-published
+     artifacts, since the rule lives in the plugin rather than in our POMs.
+
+     **This is the invariant to preserve: nothing we publish may raise a
+     consumer's `androidx.compose.*` version on the Android render path.**
+     Bumping `compose-multiplatform` for the *desktop* renderer must stay
+     invisible to Android consumers.
 
 ## Desktop (Compose Multiplatform) renderer
 

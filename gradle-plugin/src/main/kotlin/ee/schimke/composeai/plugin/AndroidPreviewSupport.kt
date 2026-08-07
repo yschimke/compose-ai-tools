@@ -180,6 +180,27 @@ internal object AndroidPreviewSupport {
       "org.jetbrains.compose.ui" to "ui-tooling-preview",
     )
 
+  /**
+   * The Compose Multiplatform module families whose **Android** variants are pure redirectors:
+   * `androidApiElements-published` / `androidRuntimeElements-published` carry no files at all and
+   * exist only to depend on the matching `androidx.compose.*` artifact. Verified against
+   * `org.jetbrains.compose.ui:ui:1.11.1`, whose Android variants list `files: []` and a single
+   * `androidx.compose.ui:ui` dependency.
+   *
+   * Deliberately an explicit list rather than an `org.jetbrains.compose.` prefix:
+   * `org.jetbrains.compose.components` (e.g. `components-resources`) *does* ship Android classes,
+   * so excluding it by prefix would strip real code off the render classpath.
+   */
+  private val COMPOSE_MULTIPLATFORM_ANDROID_ALIAS_GROUPS =
+    listOf(
+      "org.jetbrains.compose.animation",
+      "org.jetbrains.compose.foundation",
+      "org.jetbrains.compose.material",
+      "org.jetbrains.compose.material3",
+      "org.jetbrains.compose.runtime",
+      "org.jetbrains.compose.ui",
+    )
+
   internal fun kmpAndroidSiblingName(group: String, name: String): String? {
     if (!group.startsWith("androidx.") && !group.startsWith("org.jetbrains.compose.")) {
       return null
@@ -240,8 +261,46 @@ internal object AndroidPreviewSupport {
    * render graph settles it. Note this is a *split-family* conflict, the same shape as
    * `org.bouncycastle:bcprov`/`bcutil`/`bcpkix` — Gradle can only align coordinates it knows are
    * the same module, so families published under several names need an explicit rule.
+   *
+   * Rule 3 — keep OUR OWN Compose off the consumer's Android render graph. `renderer-android`
+   * declares Compose `compileOnly` (mitigation #1 in `docs/RENDERER_COMPATIBILITY.md`) precisely so
+   * the consumer's versions win at runtime and the classes match the resource APK AGP built from
+   * the consumer's own graph. Its **transitives** bypassed that: `:data-render-compose` does
+   * `api(libs.jetbrains.compose.runtime)` / `api(libs.jetbrains.compose.ui)` at the repo's
+   * `compose-multiplatform` version, and every `data-*` connector re-exports it via
+   * `api(project(":data-render-compose"))`, so `renderer-android` dragged
+   * `org.jetbrains.compose.ui:ui` onto the render graph. That module's Android variant pins
+   * `androidx.compose.ui:ui`, which then won conflict resolution against the consumer's own Compose
+   * — silently upgrading it. The consumer's merged unit-test resource APK is still built from *its*
+   * graph, so the newer Compose bytecode looked up an `R.id` the older resources never declared:
+   * ```
+   * NoSuchFieldError: Class androidx.compose.ui.R$id does not have member field
+   *   'int androidx_compose_ui_view_compose_view_context'
+   *     at ComposeView_androidKt.getComposeViewContext(ComposeView.android.kt:762)
+   * ```
+   *
+   * Every preview in the module fails, at `onAttachedToWindow`, before any user code runs
+   * (issue #3447 fallout — `wear-os-samples/ComposeStarter` on Compose 1.10.6 against a repo pinned
+   * to CMP 1.11.1, which resolves `androidx.compose.ui:ui:1.11.2`).
+   *
+   * Excluding costs nothing: those Android variants are **dependency-only** (no files), so they
+   * contribute no classes to an Android classpath — the `androidx.compose.*` artifacts the consumer
+   * already has provide every class our modules were compiled against. Dropping them removes only
+   * the version pressure.
+   *
+   * This is symmetric, which is the point: the consumer's Compose wins whether it is **older** than
+   * ours (the case above) or **newer** (a consumer on 1.12 is not dragged back to our floor). It
+   * also fixes consumers of already-published artifacts, since the rule lives in the plugin rather
+   * than in the POMs. Scoped to the Android render graph only — the desktop renderer genuinely
+   * needs Compose Multiplatform and is aligned by a different mechanism
+   * (`alignDesktopToolWithConsumerGraph`).
    */
   internal fun applyRenderGraphResolutionRules(configuration: Configuration) {
+    // Rule 3 — keep OUR OWN Compose off the consumer's Android render graph. See
+    // [COMPOSE_MULTIPLATFORM_ANDROID_ALIAS_GROUPS] and the kdoc above for the full rationale.
+    COMPOSE_MULTIPLATFORM_ANDROID_ALIAS_GROUPS.forEach { group ->
+      configuration.exclude(mapOf("group" to group))
+    }
     configuration.resolutionStrategy.eachDependency {
       val req = requested
       val targetName = kmpAndroidSiblingName(req.group, req.name)
