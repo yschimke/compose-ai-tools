@@ -576,6 +576,18 @@ class ServeWebFixtureTest {
         githubAuth =
           ServeWeb.GitHubAuthStatus(loginHref = "/auth/github/start?return=%2F", login = "yschimke"),
       )
+    // The render-history timeline: a viewer served from a delivery branch, so it carries the
+    // history.json URL + repo that `viewer-history.js` needs. Registered as its own page fixture so
+    // the harness captures the strip on every future change, rather than only when someone
+    // remembers to screenshot it.
+    val viewerHistory =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        token,
+        historyManifestUrl =
+          ServeUrls.historyManifestUrl("yschimke/compose-ai-tools", "compose-preview/main"),
+        historyRepo = "yschimke/compose-ai-tools",
+      )
     val viewer =
       ServeWeb.viewerPage(
         previews
@@ -1325,6 +1337,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-landing-public.html").writeText(landingPublic)
       File(pagesDir, "serve-home-index.html").writeText(homeIndex)
       File(pagesDir, "serve-viewer.html").writeText(viewer)
+      File(pagesDir, "serve-viewer-history.html").writeText(viewerHistory)
       File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
       File(pagesDir, "serve-viewer-wasm-live.html").writeText(wasmViewerLive)
       File(pagesDir, "serve-viewer-signin.html").writeText(viewerSignIn)
@@ -1403,6 +1416,7 @@ class ServeWebFixtureTest {
     }
     assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
     assertGolden(File(pagesDir, "serve-viewer-wasm-live.html"), wasmViewerLive)
+    assertGolden(File(pagesDir, "serve-viewer-history.html"), viewerHistory)
     assertGolden(File(pagesDir, "serve-viewer-signin.html"), viewerSignIn)
     assertGolden(File(pagesDir, "serve-viewer-catalog-knobs.html"), viewerCatalogKnobs)
     // The declared Remote Compose knobs render as their own "Remote Compose" control group, one

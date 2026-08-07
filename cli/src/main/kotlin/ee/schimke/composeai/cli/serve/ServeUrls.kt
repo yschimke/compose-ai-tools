@@ -141,6 +141,41 @@ object ServeUrls {
   }
 
   /**
+   * `history.json` on a delivery branch — the precomputed render timeline the viewer reads instead
+   * of walking git. Null when there is no delivery provenance (an uploaded bundle, a local
+   * project), which is also the signal for the viewer to leave the timeline out entirely.
+   */
+  fun historyManifestUrl(repo: String?, branch: String?): String? {
+    val r = repo?.trim()?.trim('/')?.takeIf { it.isNotEmpty() && it.count { c -> c == '/' } == 1 }
+    val b = branch?.trim()?.trim('/')?.takeIf { it.isNotEmpty() }
+    if (r == null || b == null) return null
+    val encodedBranch = b.split('/').joinToString("/") { WebEscaping.urlEncodeSegment(it) }
+    return "https://raw.githubusercontent.com/$r/$encodedBranch/${PreviewHistoryManifest.FILE_NAME}"
+  }
+
+  /**
+   * A render as it existed at [commit] — `raw.githubusercontent.com/<repo>/<sha>/<path>`.
+   *
+   * This is what makes a timeline viewable at all. The delivery branch only carries the *current*
+   * bytes at its tip, but the raw host serves any commit, so pairing the manifest's per-version
+   * `commit` with its `path` addresses every historical render directly — no server round-trip and
+   * nothing to unpack. Verified against real published renders: two versions of the same preview
+   * fetch as different bytes.
+   *
+   * [commit] must be a full or abbreviated hex sha, not a ref: the manifest records shas, and
+   * refusing anything else keeps a malformed manifest from steering fetches at an attacker-chosen
+   * branch. [path] is likewise rejected unless it stays inside the renders tree.
+   */
+  fun historicalRenderUrl(repo: String?, commit: String?, path: String?): String? {
+    val r = repo?.trim()?.trim('/')?.takeIf { it.isNotEmpty() && it.count { c -> c == '/' } == 1 }
+    val c = commit?.trim()?.takeIf { it.matches(Regex("[0-9a-fA-F]{7,40}")) }
+    val p = path?.trim()?.takeIf { it.startsWith("renders/") && !it.contains("..") }
+    if (r == null || c == null || p == null) return null
+    val encoded = p.split('/').joinToString("/") { WebEscaping.urlEncodeSegment(it) }
+    return "https://raw.githubusercontent.com/$r/$c/$encoded"
+  }
+
+  /**
    * Constant-time token comparison — avoids leaking how many leading characters matched via timing.
    * Both sides are compared as UTF-8 bytes; length mismatches short-circuit safely inside
    * [MessageDigest.isEqual] (which is itself constant-time for equal-length inputs).

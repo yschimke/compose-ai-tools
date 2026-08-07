@@ -622,4 +622,51 @@ class ServeWebTest {
       )
     assertFalse(html.contains("class=\"cp-source\""), "no source link when no href is supplied")
   }
+
+  @Test
+  fun `the viewer carries history attributes when the catalog has delivery provenance`() {
+    val html =
+      ServeWeb.viewerPage(
+        checkbox[0],
+        token = "t",
+        basePath = "/compose-m3",
+        historyManifestUrl =
+          ServeUrls.historyManifestUrl("yschimke/compose-ai-tools", "compose-preview/main"),
+        historyRepo = "yschimke/compose-ai-tools",
+      )
+
+    assertTrue(
+      html.contains(
+        "data-history-url=\"https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/history.json\""
+      ),
+      "viewer must tell the client where the manifest lives",
+    )
+    assertTrue(html.contains("data-history-repo=\"yschimke/compose-ai-tools\""))
+    assertTrue(html.contains("viewer-history.js"), "the timeline script is loaded")
+  }
+
+  @Test
+  fun `the viewer omits history attributes without delivery provenance`() {
+    // An uploaded bundle or local project has no branch to read history from. Emitting the
+    // attributes anyway would ship a timeline that can only fail to load.
+    val html = ServeWeb.viewerPage(checkbox[0], token = "t", basePath = "/compose-m3")
+
+    assertFalse(html.contains("data-history-url"))
+    assertFalse(html.contains("data-history-repo"))
+  }
+
+  @Test
+  fun `a half-configured history is omitted rather than half-rendered`() {
+    // A timeline the visitor cannot click through to an old render is worse than no timeline.
+    val html =
+      ServeWeb.viewerPage(
+        checkbox[0],
+        token = "t",
+        basePath = "/compose-m3",
+        historyManifestUrl = "https://raw.githubusercontent.com/o/r/b/history.json",
+        historyRepo = null,
+      )
+
+    assertFalse(html.contains("data-history-url"))
+  }
 }

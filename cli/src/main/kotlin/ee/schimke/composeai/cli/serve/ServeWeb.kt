@@ -4593,6 +4593,18 @@ object ServeWeb {
      * daemon are taken. Empty (the default) omits the heartbeat.
      */
     presenceUrl: String = "",
+    /**
+     * `history.json` on the delivery branch, or null when there is no delivery provenance (an
+     * uploaded bundle, a local project). Null omits the timeline entirely rather than shipping a
+     * control that can only fail — see [ServeUrls.historyManifestUrl].
+     */
+    historyManifestUrl: String? = null,
+    /**
+     * `owner/repo` of the delivery branch, used to address a historical render by commit sha.
+     * Paired with [historyManifestUrl]: both or neither, since a timeline you cannot click through
+     * to is not worth drawing.
+     */
+    historyRepo: String? = null,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -5097,6 +5109,13 @@ object ServeWeb {
       listOf(liveToggleHtml, wasmToggleBtn, rcBackendSelector, svgFmtToggle, svgMatch)
         .filter { it.isNotBlank() }
         .joinToString("\n")
+    // Both or neither: a timeline the visitor cannot click through to an old render is worse than
+    // no timeline, so a missing repo suppresses the whole feature rather than half of it.
+    val historyAttrs =
+      if (!historyManifestUrl.isNullOrBlank() && !historyRepo.isNullOrBlank()) {
+        " data-history-url=\"${WebEscaping.htmlEscape(historyManifestUrl)}\"" +
+          " data-history-repo=\"${WebEscaping.htmlEscape(historyRepo)}\""
+      } else ""
     val modeInputs =
       listOf(
           "<input type=\"radio\" name=\"cp-mode\" value=\"png\" id=\"cp-mode-png\" tabindex=\"-1\" checked>",
@@ -5130,7 +5149,7 @@ object ServeWeb {
         </span>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
-      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr>
+      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
@@ -5201,6 +5220,7 @@ object ServeWeb {
       ${scriptTag("url-state.js")}
       ${scriptTag("viewer-groups.js")}
       ${scriptTag("viewer-drawers.js")}
+      ${scriptTag("viewer-history.js")}
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
       ${if (hasSvgExport) "${scriptTag("format-compare.js")}\n      " else ""}${scriptTag("viewer.js")}
       ${scriptTag("backend-badge.js")}

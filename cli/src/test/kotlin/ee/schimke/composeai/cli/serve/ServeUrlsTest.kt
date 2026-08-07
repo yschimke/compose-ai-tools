@@ -137,4 +137,61 @@ class ServeUrlsTest {
     assertEquals(null, ServeUrls.githubBlobUrl("o/r", "main", "mod", "   "))
     assertEquals(null, ServeUrls.githubBlobUrl("", "main", "mod", "src/A.kt"))
   }
+
+  @Test
+  fun `history manifest url points at the delivery branch copy`() {
+    assertEquals(
+      "https://raw.githubusercontent.com/o/r/compose-preview/main/history.json",
+      ServeUrls.historyManifestUrl("o/r", "compose-preview/main"),
+    )
+  }
+
+  @Test
+  fun `history manifest url is null without delivery provenance`() {
+    // Null is the viewer's signal to leave the timeline out entirely, so an uploaded bundle or a
+    // local project must not produce a URL.
+    assertEquals(null, ServeUrls.historyManifestUrl(null, "main"))
+    assertEquals(null, ServeUrls.historyManifestUrl("o/r", null))
+    assertEquals(null, ServeUrls.historyManifestUrl("", "main"))
+    assertEquals(null, ServeUrls.historyManifestUrl("not-a-repo", "main"))
+  }
+
+  @Test
+  fun `historical render url addresses a commit, not the branch tip`() {
+    // The branch tip only has the current bytes; the raw host serves any commit, which is what
+    // makes an old version viewable.
+    assertEquals(
+      "https://raw.githubusercontent.com/o/r/df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80/renders/m/A.png",
+      ServeUrls.historicalRenderUrl(
+        "o/r",
+        "df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80",
+        "renders/m/A.png",
+      ),
+    )
+  }
+
+  @Test
+  fun `historical render url encodes path segments`() {
+    // Module ids carry colons and labels carry spaces; both must survive as one path segment.
+    assertEquals(
+      "https://raw.githubusercontent.com/o/r/abc1234/renders/samples%3Awear/Foo_Large%20Round.png",
+      ServeUrls.historicalRenderUrl("o/r", "abc1234", "renders/samples:wear/Foo_Large Round.png"),
+    )
+  }
+
+  @Test
+  fun `historical render url rejects a ref where a sha is required`() {
+    // The manifest records shas. Accepting a ref would let a malformed or hostile manifest steer
+    // fetches at an attacker-chosen branch.
+    assertEquals(null, ServeUrls.historicalRenderUrl("o/r", "main", "renders/m/A.png"))
+    assertEquals(null, ServeUrls.historicalRenderUrl("o/r", "../../etc", "renders/m/A.png"))
+    assertEquals(null, ServeUrls.historicalRenderUrl("o/r", "", "renders/m/A.png"))
+  }
+
+  @Test
+  fun `historical render url rejects paths outside the renders tree`() {
+    assertEquals(null, ServeUrls.historicalRenderUrl("o/r", "abc1234", "baselines.json"))
+    assertEquals(null, ServeUrls.historicalRenderUrl("o/r", "abc1234", "renders/../secrets"))
+    assertEquals(null, ServeUrls.historicalRenderUrl("o/r", "abc1234", null))
+  }
 }
