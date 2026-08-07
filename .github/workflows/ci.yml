@@ -344,6 +344,42 @@ jobs:
             rc-player/**/build/test-results/**
           retention-days: 7
 
+  # The CMP/Wasm player's first-frame timing, which is a browser-scheduling property and so cannot be
+  # asserted anywhere the player is not actually loaded in Chromium. Separate from the driver's
+  # `node --test` job because it needs a built `wasmPlayerDist` that job has no Gradle to produce —
+  # left there the test would self-skip forever, which is exactly the "nothing ran them" hole the
+  # driver job comment describes. Ubuntu, not the macOS player job: frame pacing is per-platform, and
+  # ubuntu is where the design-artifacts render lane measures the budgets this guards.
+  rc-cmp-wasm-frame-pacing:
+    name: CMP/Wasm Frame Pacing
+    needs: changes
+    if: ${{ needs.changes.outputs.rc_player_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Build the Wasm player distribution
+        run: ./gradlew :rc-player-wasm:wasmPlayerDist
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Install driver dependencies
+        working-directory: scripts/design-artifacts
+        run: npm ci
+      - name: Install Chromium
+        working-directory: scripts/design-artifacts
+        run: npx playwright install --with-deps chromium
+      # `RC_CMP_WASM_REQUIRE` turns the test's self-skips into failures. Without it a missing
+      # distribution, a missing playwright, or a browser that will not launch all leave this job
+      # green having asserted nothing — which is the hole this job exists to close.
+      - name: Run the frame-pacing guard
+        working-directory: scripts/design-artifacts
+        env:
+          RC_CMP_WASM_REQUIRE: "1"
+        run: node --test rc-cmp-wasm-frame-pacing.test.mjs
+
   functional-tests:
     name: Plugin Functional Tests
     needs: changes

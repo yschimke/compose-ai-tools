@@ -43,6 +43,8 @@
       "cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/viewer.js",
       "cli/src/test/kotlin/ee/schimke/composeai/cli/serve/**",
       "scripts/design-artifacts/rc-compare*",
+      "scripts/design-artifacts/rc-chromium*",
+      "scripts/design-artifacts/rc-cmp-wasm-*",
       ".github/workflows/design-artifacts-reusable.yml"
     ],
     "module_unit_tests": [

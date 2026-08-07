@@ -43,6 +43,32 @@ data class ServeDegradation(val code: String, val detail: String) {
     const val DEFERRED_NOT_SERVED = "deferred-not-served"
 
     /**
+     * The session HAD a working live lane and the server has since **switched it off**: its render
+     * circuit breaker tripped (a linkage/classpath fault that can never succeed on retry, or a
+     * sustained failure rate), so live renders are refused with the underlying reason rather than
+     * retried. Distinct from [LIVEBUNDLE_UNAVAILABLE], which is a daemon that never came up.
+     */
+    const val RENDER_LANE_BROKEN = "render-lane-broken"
+
+    /**
+     * The live render lane was disabled by its circuit breaker; [reason] is the breaker's text and
+     * [fatal] marks a linkage fault (needs a fixed bundle, not a retry). See
+     * [RenderCircuitBreaker].
+     */
+    fun renderLaneBroken(reason: String, fatal: Boolean): ServeDegradation =
+      ServeDegradation(
+        RENDER_LANE_BROKEN,
+        if (fatal) {
+          "This catalog's live render lane is disabled: it hit a non-recoverable error that no " +
+            "retry can clear, so device, theme and knob controls serve baked PNG snapshots until " +
+            "the catalog is republished. $reason"
+        } else {
+          "This catalog's live render lane is disabled after a sustained run of render failures — " +
+            "it serves baked PNG snapshots and retries periodically. $reason"
+        },
+      )
+
+    /**
      * [count] live-only previews hidden because this session has no live lane. Paired with
      * whichever reason explains the missing live lane (no live bundle / unverified / bundle
      * unavailable).

@@ -165,6 +165,16 @@ interface ServeHost : AutoCloseable {
   fun renderPerfStats(): RenderPerfSnapshot? = null
 
   /**
+   * This lane's open render breaker, or null while it is rendering normally (the healthy case, and
+   * the default for a host with no live lane to break). A non-null value means the host has
+   * **stopped attempting renders** — a linkage fault it can never recover from, or a sustained
+   * failure rate — and is answering requests with [RenderBreakerSnapshot.reason] instead. Callers
+   * that schedule background render work must consult it and stand down: feeding a broken renderer
+   * is what burned 275s of render gate and a ~7h ETA in issue #3448.
+   */
+  fun renderBreaker(): RenderBreakerSnapshot? = null
+
+  /**
    * Bounded child-daemon pools owned by this host, surfaced on `/status.json` so production
    * monitors can distinguish "one catalog daemon is up" from "a catalog daemon plus N per-preview
    * daemons are resident". Empty for ordinary hosts.

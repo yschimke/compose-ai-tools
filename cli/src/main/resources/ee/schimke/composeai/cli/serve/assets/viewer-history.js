@@ -30,33 +30,57 @@
   var bar = document.querySelector(".cp-viewer-bar");
   if (!previewId || !bar) return;
   // `repo` is DOM text and is interpolated into every link's href below. Linking out rather than
-  // swapping the stage moved that sink from `img.src` to `a.href` — it did not remove it — so
-  // constrain the value to the only shape a GitHub `owner/name` can take before it can reach a URL.
-  // A value that does not match cannot be made safe by escaping, so the strip is simply not drawn.
-  if (repo && !/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(repo)) return;
-  // The same treatment for the local template, and for the same reason: it reaches an href. One
-  // anchored pattern rather than a series of charAt/indexOf checks, because the whole shape is
-  // known — this server emits it — and because a pattern that describes the *entire* accepted
-  // string is what makes the guard legible to a reader and to CodeQL alike (piecemeal checks are
-  // neither):
-  //   `/` not followed by `/`   — site-relative only. The character class excludes `:`, so no
-  //                                `javascript:` URL can match, and the lookahead is what stops a
-  //                                protocol-relative `//host/…` — which the class alone would
-  //                                happily accept, since it has to allow `/` as a separator;
-  //   `{blob}.png`               — the placeholder is mandatory (a template without one would
-  //                                point every version at the same render) and the extension is
-  //                                fixed;
-  //   an optional query          — the session token, whose base64url alphabet plus `&`/`=`/`%` is
-  //                                all this allows.
-  // Nothing matching this can carry an HTML meta-character into the href. A value that does not
-  // match cannot be made safe by escaping, so the strip is not drawn at all.
-  var BLOB_URL = /^\/(?!\/)[A-Za-z0-9._~%/-]*\{blob\}\.png(\?[A-Za-z0-9._~%&=-]*)?$/;
-  if (blobUrl && !BLOB_URL.test(blobUrl)) return;
-  if (!repo && !blobUrl) return;
+  // swapping the stage moved that sink from `img.src` to `a.href` — it did not remove it.
+  //
+  // Validating in place is not enough, and this is the part three earlier attempts got wrong: a
+  // guard that inspects a string and hands the *same* string onward leaves the DOM value reaching
+  // the href verbatim, which is the flow `js/xss-through-dom` reports (source
+  // `getAttribute("data-history-repo")` at this line, sink `link.href` below). So match, then
+  // rebuild from the captured segments and encode each one — the same treatment `path` already
+  // gets in `renderUrlAt`, which is why `path` has never appeared in that flow. What reaches the
+  // href is constructed here; nothing is passed through.
+  //
+  // The pattern admits only the shape a GitHub `owner/name` can take, and every character it
+  // admits is URI-unreserved, so the encoding is a no-op on real values — identical bytes on the
+  // wire, and a value that cannot be made safe by escaping simply doesn't draw the strip.
+  var repoPath = null;
+  if (repo) {
+    var repoParts = /^([A-Za-z0-9][A-Za-z0-9._-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)$/.exec(repo);
+    if (!repoParts) return;
+    repoPath = encodeURIComponent(repoParts[1]) + "/" + encodeURIComponent(repoParts[2]);
+  }
   // Whether the strip describes renders this page is *not* showing. In project mode the stage comes
   // from the working tree while the timeline comes from the published baselines, so the newest
   // entry is the last publish rather than "what you are looking at".
   var local = !repo && !!blobUrl;
+  // The local template gets the identical treatment, because it is the identical flow: DOM text
+  // reaching an href. Matched, then rebuilt from its captured parts — the `{blob}` placeholder is
+  // never substituted into the passed-through string, it is dropped and the URL reassembled around
+  // the version's own sha. The pattern's leading `\/(?!\/)` keeps it site-relative (the character
+  // class must admit `/` as a separator, so the lookahead is what rejects a protocol-relative
+  // `//host/…`), and no `:` is admitted anywhere, so no `javascript:` URL can match.
+  var blobBase = null;
+  var blobQuery = "";
+  if (local) {
+    var blobParts =
+      /^(\/(?!\/)[A-Za-z0-9._~%/-]*)\{blob\}(\.png)(\?[A-Za-z0-9._~%&=-]*)?$/.exec(blobUrl);
+    if (!blobParts) return;
+    // Path segments and query words are re-encoded individually, leaving the `/`, `?`, `&` and `=`
+    // structure intact. Decoded first so a segment the server already percent-encoded round-trips
+    // to the same bytes instead of double-encoding (`%3A` → `:` → `%3A`, not `%253A`).
+    blobBase = blobParts[1].split("/").map(reencode).join("/");
+    blobQuery = (blobParts[3] || "").replace(/[^?&=]+/g, reencode);
+  }
+
+  /** Percent-encode one URL word, idempotent for one that already is. */
+  function reencode(word) {
+    try {
+      return encodeURIComponent(decodeURIComponent(word));
+    } catch (e) {
+      // A stray `%` isn't a valid escape and decodeURIComponent throws on it; encode as literal.
+      return encodeURIComponent(word);
+    }
+  }
 
   // Mirrors ServeUrls.historicalRenderUrl, and rejects the same inputs for the same reason: the
   // manifest records shas, so accepting a ref would let a malformed manifest point the viewer at an
@@ -67,14 +91,14 @@
     // decides both how an entry is addressed and how it is labelled.
     if (local) {
       if (!/^[0-9a-f]{40}$/.test(version.blob || "")) return null;
-      return blobUrl.replace("{blob}", version.blob);
+      return blobBase + version.blob + ".png" + blobQuery;
     }
     var commit = version.commit;
     if (!/^[0-9a-fA-F]{7,40}$/.test(commit || "")) return null;
     if (!path || path.indexOf("renders/") !== 0 || path.indexOf("..") !== -1) return null;
     return (
       "https://raw.githubusercontent.com/" +
-      repo +
+      repoPath +
       "/" +
       commit +
       "/" +
