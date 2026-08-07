@@ -564,6 +564,22 @@ The remote-m3 replacement corpus is guarded in CI, not recorded as a one-off man
   distribution is 22,756,717 bytes. Source maps and development-only formatters are not shipped.
 - The strict comparison lane caps cold and warm navigation-to-painted-ready time at 10,000 ms and
   5,000 ms respectively. The reviewed 24-document run measured 2,361 ms cold and 2,003 ms warm.
+  Those numbers only hold with the compositor's frame cap lifted (`--disable-frame-rate-limit`, in
+  [`rc-chromium.mjs`](../../scripts/design-artifacts/rc-chromium.mjs)): Chromium paces
+  `requestAnimationFrame` at roughly 1 fps for a page whose CSS viewport is a few dozen pixels
+  tall, and the player waits three frames before posting `ready`. Without the flag the 76 dp-tall
+  `remote-m3` widget previews took ~6,150 ms against the ~2,040 ms of the 124 dp-tall preview
+  beside them — a *warm* row over the warm budget, which read as a startup-cost problem and was
+  not one ([#3445](https://github.com/yschimke/compose-ai-tools/issues/3445)).
+  [`rc-cmp-wasm-frame-pacing.test.mjs`](../../scripts/design-artifacts/rc-cmp-wasm-frame-pacing.test.mjs)
+  holds the short viewport to the tall one; it skips unless `wasmPlayerDist` is built.
+- `cold` and `warm` are properties of a **browser context**, and the lane keys one context per
+  preview density (Playwright binds `deviceScaleFactor` at context creation, and the player reads
+  its density from `devicePixelRatio`). A catalog spanning two densities therefore reports two cold
+  rows, the second partway through the run — measured at ~0.3 s over a warm render, against the
+  ~1.5 s the player itself waits before reporting readiness. Each row records its
+  `cmpWasmDensity`, `cmpWasmViewport`, and `cmpWasmContextRender` in `rc-compare-summary.json`, so
+  a slow row can be attributed rather than guessed at.
 - The live viewer forwards typed named overrides, reloads after knob changes, validates same-origin
   host messages, and surfaces host/named actions as inert `CustomEvent` payloads. Decode, support,
   and resource failures remain bounded inside the iframe instead of replacing the catalog page.
