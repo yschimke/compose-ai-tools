@@ -1,3 +1,5 @@
+import { findPreview } from "./preview-id-alias.mjs";
+
 /**
  * Apply a catalog spec's named breakpoints to candidate images.
  *
@@ -19,14 +21,15 @@
  * @param {Array<{previewId?: string, componentId: string, images?: Array<object>}>} candidates
  * @param {Array<{id: string, params?: object, captures?: Array<{params?: object}>}>} previews
  * @param {Array<{size: string, widthDp?: number, device?: string}> | undefined} breakpoints
+ * @param {Map<string, string>} [aliases] raw preview id → bundle-entry id (see preview-id-alias.mjs)
  * @returns {number} number of images assigned a declared breakpoint name
  */
-export function applySpecBreakpoints(candidates, previews, breakpoints) {
+export function applySpecBreakpoints(candidates, previews, breakpoints, aliases) {
   const sizeOf = breakpointMatcher(breakpoints);
   if (!sizeOf) return 0;
 
   let applied = 0;
-  for (const { image, params } of eachCandidateImage(candidates, previews)) {
+  for (const { image, params } of eachCandidateImage(candidates, previews, aliases)) {
     const size = sizeOf(params);
     if (size === undefined) continue;
     image.size = size;
@@ -127,10 +130,17 @@ function* eachCaptureParams(preview) {
 }
 
 /** Each candidate image paired with the effective params of the capture that produced it. */
-function* eachCandidateImage(candidates, previews) {
+function* eachCandidateImage(candidates, previews, aliases) {
   const previewById = new Map((previews ?? []).map((preview) => [preview.id, preview]));
   for (const candidate of candidates ?? []) {
-    const preview = previewById.get(candidate.previewId ?? candidate.componentId);
+    // Candidates carry the RAW discovery id; `previews.json` lists the sanitised bundle-entry id.
+    // Matching on one spelling alone drops every preview whose `@Preview(name = …)` contains a
+    // space — see preview-id-alias.mjs.
+    const preview = findPreview(
+      previewById,
+      candidate.previewId ?? candidate.componentId,
+      aliases,
+    );
     if (!preview) continue;
     for (let index = 0; index < (candidate.images ?? []).length; index += 1) {
       yield { image: candidate.images[index], params: captureParams(preview, index) };

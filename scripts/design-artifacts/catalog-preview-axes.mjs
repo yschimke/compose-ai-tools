@@ -1,3 +1,5 @@
+import { findPreview } from "./preview-id-alias.mjs";
+
 /**
  * Preserve preview parameters that the candidate reader does not currently expose as catalog
  * image axes, then remove duplicate renders produced by overlapping multi-preview annotations.
@@ -16,16 +18,23 @@
  *
  * @param {Array<{previewId?: string, componentId: string, functionName?: string, images?: Array<object>}>} candidates
  * @param {Array<{id: string, params?: object, captures?: Array<{params?: object}>}>} previews
+ * @param {Map<string, string>} [aliases] raw preview id → bundle-entry id (see preview-id-alias.mjs)
  * @returns {{fontScales: number, duplicates: number}} applied axis and duplicate counts
  */
-export function applyCatalogPreviewAxes(candidates, previews) {
+export function applyCatalogPreviewAxes(candidates, previews, aliases) {
   const previewById = new Map(previews.map((preview) => [preview.id, preview]));
   const seenByFunction = new Map();
   let fontScales = 0;
   let duplicates = 0;
 
   for (const candidate of candidates) {
-    const preview = previewById.get(candidate.previewId ?? candidate.componentId);
+    // Raw discovery id vs sanitised bundle-entry id — see preview-id-alias.mjs. Without this the
+    // fontScale axis and the duplicate collapse silently skip every space-named preview.
+    const preview = findPreview(
+      previewById,
+      candidate.previewId ?? candidate.componentId,
+      aliases,
+    );
     if (!preview) continue;
     const captures =
       Array.isArray(preview.captures) && preview.captures.length > 0

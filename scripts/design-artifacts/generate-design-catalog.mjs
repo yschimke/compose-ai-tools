@@ -123,6 +123,7 @@ import {
   undeclaredBreakpointDevices,
 } from "./catalog-breakpoints.mjs";
 import { applyCatalogPreviewAxes } from "./catalog-preview-axes.mjs";
+import { previewIdAliases } from "./preview-id-alias.mjs";
 import { selectComponentImages, selectOf } from "./catalog-select.mjs";
 import { applyCatalogPreviewDeclarations } from "./catalog-preview-declarations.mjs";
 
@@ -220,7 +221,11 @@ async function loadCandidates(path, breakpoints) {
   // the exact small-round/default-font duplicate emitted when Wear stacks its device + font-scale
   // multi-previews. Synthetic state tagging above intentionally runs first so equal display params
   // never collapse distinct override states.
-  applyCatalogPreviewAxes(candidates, candidateBundle.previews);
+  // `bundle pack` stores entries + both manifests under a sanitised id while the candidate reader
+  // hands back the raw discovery id, so every preview whose `@Preview(name = …)` contains a space
+  // needs the manifest's raw→sanitised mapping to be found at all (see preview-id-alias.mjs).
+  const previewAliases = previewIdAliases(bundle.manifest);
+  applyCatalogPreviewAxes(candidates, candidateBundle.previews, previewAliases);
   // The published candidate reader classifies every numeric width with Material
   // window classes. Give this catalog's declared names precedence so domain
   // breakpoints such as Wear's 192 dp `smallRound` and 227 dp `largeRound` remain
@@ -229,6 +234,7 @@ async function loadCandidates(path, breakpoints) {
     candidates,
     candidateBundle.previews,
     breakpoints,
+    previewAliases,
   );
   // A `@Preview(device = …)` the breakpoints don't name leaves its render on the generic width
   // class, where it is indistinguishable from the sibling expansion that DID match — the collapse
