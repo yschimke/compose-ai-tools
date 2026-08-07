@@ -157,17 +157,65 @@ export function imagesByPreviewFunction(spec, catalog) {
  * `previewId` is the better key anyway: it is what the export already stamps on every catalog
  * image, and what a design-map entry already carries to disambiguate light from dark. Joining on it
  * is exact, where the function-name join needs the spec to say which function owns which sticker.
+ *
+ * ### Two id namespaces
+ *
+ * The two sides are NOT written in the same alphabet, and comparing them verbatim silently drops
+ * references. A design-map entry records the **raw discovery id** — the one the daemon keys renders
+ * on — while a catalog image's `previewId` comes from the bundle manifest, which carries the
+ * **sanitised in-bundle form** (`BundleCommand.kt`: "The manifest's previewIds carry the sanitised
+ * in-bundle form; the daemon keys renders on the RAW discovery id"). Anything outside
+ * `[A-Za-z0-9._-]` becomes `_`, so a `@Preview(name = "Small Round")` is `…_Small Round` in the
+ * design-map and `…_Small_Round` in the catalog.
+ *
+ * So the index is keyed by BOTH forms. An exact hit wins; otherwise the entry's id is sanitised and
+ * matched against the same projection. Catalogs whose preview names need no sanitising (`Light` /
+ * `Dark`) are unaffected either way — which is exactly why this gap survives casual testing.
  */
 export function imagesByPreviewId(catalog) {
-  const index = new Map();
+  const exact = new Map();
+  const sanitised = new Map();
   for (const component of catalog?.components ?? []) {
     for (const image of component?.images ?? []) {
       if (typeof image?.previewId !== "string" || image.previewId === "") continue;
-      if (!index.has(image.previewId)) index.set(image.previewId, []);
-      index.get(image.previewId).push({ componentId: component.componentId, image });
+      const match = { componentId: component.componentId, image };
+      if (!exact.has(image.previewId)) exact.set(image.previewId, []);
+      exact.get(image.previewId).push(match);
+
+      const key = sanitizeBundleEntryId(image.previewId);
+      if (!sanitised.has(key)) sanitised.set(key, []);
+      sanitised.get(key).push(match);
     }
   }
-  return index;
+  return { exact, sanitised };
+}
+
+/**
+ * Mirrors `sanitizeBundleEntryId` in `gradle-plugin/.../BundlePreviewTask.kt`, the transform that
+ * turns a raw discovery id into its in-bundle entry name. Kept character-identical to that regex:
+ * a divergence here reintroduces exactly the silent-drop bug this exists to close.
+ *
+ * Note it is idempotent — sanitising an already-sanitised id is a no-op — which is what lets the
+ * lookup below sanitise both sides without caring which form it started from.
+ */
+export function sanitizeBundleEntryId(id) {
+  return String(id).replace(/[^A-Za-z0-9._-]/g, "_");
+}
+
+/**
+ * Resolve a design-map entry's `previewId` against the catalog, across both id namespaces.
+ *
+ * Returns `[]` when nothing matches, and also when the sanitised form matches SEVERAL images. That
+ * second case is `uniqueBundleEntryId`'s collision suffix: two distinct raw ids that sanitise the
+ * same are disambiguated in-bundle (`Foo_A_B`, `Foo_A_B-2`), and the raw id alone can no longer say
+ * which one it meant. Publishing a reference against a coin-flip is worse than publishing none, so
+ * the caller warns instead.
+ */
+function matchesForPreviewId({ exact, sanitised }, previewId) {
+  const direct = exact.get(previewId);
+  if (direct && direct.length > 0) return direct;
+  const viaSanitised = sanitised.get(sanitizeBundleEntryId(previewId)) ?? [];
+  return viaSanitised.length === 1 ? viaSanitised : [];
 }
 
 /**
@@ -262,8 +310,8 @@ export function planDesignReferences({ designMap, spec, catalog }) {
     let allMatches = index.get(fn);
     let joinedOnPreviewId = false;
     if ((!allMatches || allMatches.length === 0) && typeof entry?.previewId === "string") {
-      allMatches = byPreviewId.get(entry.previewId);
-      joinedOnPreviewId = Boolean(allMatches && allMatches.length > 0);
+      allMatches = matchesForPreviewId(byPreviewId, entry.previewId);
+      joinedOnPreviewId = allMatches.length > 0;
     }
     if (!allMatches || allMatches.length === 0) {
       warnings.push(
