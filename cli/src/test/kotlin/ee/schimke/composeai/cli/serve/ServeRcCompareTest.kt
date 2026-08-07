@@ -160,6 +160,20 @@ class ServeRcCompareTest {
   }
 
   @Test
+  fun `a settled catalog with no comparison is not pending`(@TempDir dir: File) {
+    // "The lane hasn't finished" and "this catalog publishes none" both show the older in-browser
+    // lane, but only the first makes the page's shape provisional — and only that one must stay out
+    // of caches, or the pre-manifest page is pinned at the edge after the lanes land.
+    val store = ServeRcCompareStore.load(dir)
+    assertTrue(store.pending())
+    val index = File(dir, "${ServeRcCompare.DIRECTORY}/${ServeRcCompare.INDEX_FILE}")
+    index.parentFile.mkdirs()
+    index.writeText(Json.encodeToString(RcCompareManifest.serializer(), ServeRcCompare.NONE))
+    assertFalse(store.pending())
+    assertNull(store.manifest(), "an empty manifest is a settled absence, not a view")
+  }
+
+  @Test
   fun `a summary with no rows, or one nothing matches, yields no view`() {
     assertNull(ServeRcCompare.parseSummary("""{"rows":[]}""".encodeToByteArray()))
     assertNull(ServeRcCompare.parseSummary("not json".encodeToByteArray()))

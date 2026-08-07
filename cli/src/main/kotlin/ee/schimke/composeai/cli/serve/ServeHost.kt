@@ -343,6 +343,18 @@ interface ServeHost : AutoCloseable {
   fun rcCompareImage(name: String): ByteArray? = null
 
   /**
+   * True while the published comparison may still be arriving — the catalog's background staging
+   * lane has not reported an outcome yet, so [rcCompare] returning null does not yet mean "this
+   * catalog has none".
+   *
+   * The compare page reads this to decide whether it may be cached. Its shape (player wall vs the
+   * in-browser lane) is decided by [rcCompare], and a short-lived edge cache would otherwise pin
+   * the pre-manifest shape for minutes after the lanes had landed. False everywhere else: a host
+   * with no staging lane is never provisional.
+   */
+  fun rcComparePending(): Boolean = false
+
+  /**
    * The pixel size and density a **cmp-jvm** render of [previewId] should use — matched to the
    * baked View-player capture so the desktop-player PNG lands at the same size the viewer shows the
    * other lanes at. Null when this host cannot supply one (no captured doc, or size metadata

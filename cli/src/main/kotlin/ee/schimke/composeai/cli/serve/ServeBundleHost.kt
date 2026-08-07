@@ -146,6 +146,8 @@ class ServeBundleHost(
 
   override fun rcCompareImage(name: String): ByteArray? = rcCompare.image(name)
 
+  override fun rcComparePending(): Boolean = rcCompare.pending()
+
   // Read once at load, like the reference manifest: the feed is a published snapshot, so re-reading
   // it per request would buy nothing (a refresh reloads the whole catalog and rebuilds this host).
   private val parityActivity = ServeParityActivityStore.load(bundleDir, fileSystem)

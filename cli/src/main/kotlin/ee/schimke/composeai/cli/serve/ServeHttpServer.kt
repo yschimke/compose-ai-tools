@@ -1631,7 +1631,13 @@ class ServeHttpServer(
         respondNotFoundHtml("This session has no native formats or design references to compare.")
         return@withLeasedSession
       }
-      markGeneration("static-page", pageCacheControl())
+      // Uncacheable while the published player comparison is still staging: the page's shape
+      // depends on a manifest that lands asynchronously, and a short edge cache would otherwise
+      // serve the pre-manifest shape for minutes after the lanes were ready.
+      markGeneration(
+        "static-page",
+        if (renderHost.rcComparePending()) DYNAMIC_RESOURCE_CACHE_CONTROL else pageCacheControl(),
+      )
       call.respondText(
         ServeWeb.comparisonPage(
           moduleLabel = renderHost.label,

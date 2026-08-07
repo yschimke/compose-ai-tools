@@ -121,6 +121,15 @@ internal object ServeRcCompare {
   const val DIRECTORY = "rc-compare"
   const val INDEX_FILE = "index.json"
 
+  /**
+   * The manifest a catalog with nothing to show writes anyway — no lanes, no rows.
+   *
+   * It is the *settled* marker: it says the background lane ran and this catalog has no published
+   * comparison, which is a different state from "the lane hasn't finished yet". Only the second one
+   * makes the compare page's shape provisional, and only that one must stay out of caches.
+   */
+  val NONE = RcCompareManifest()
+
   /** The published summary, branch-relative — the source this whole view is derived from. */
   const val SUMMARY_FILE = "rc-compare-summary.json"
 
@@ -385,10 +394,23 @@ data class RcSummaryRow(
 class ServeRcCompareStore
 private constructor(private val root: Path, private val fileSystem: FileSystem) {
 
-  @Volatile private var loaded: RcCompareManifest? = null
+  @Volatile private var settled: RcCompareManifest? = null
 
-  fun manifest(): RcCompareManifest? {
-    loaded?.let {
+  fun manifest(): RcCompareManifest? = read()?.takeIf { it.rows.isNotEmpty() }
+
+  /**
+   * True while the background staging lane has yet to write anything — so this catalog's compare
+   * page is showing a shape that may still change.
+   *
+   * The page is assembled from published metadata and is normally short-cached at the edge, which
+   * would pin the pre-manifest shape in place for minutes after the lanes landed. A pending
+   * catalog's page is served uncacheable instead; once the lane settles (with a comparison or with
+   * [ServeRcCompare.NONE]) the page is stable and caches like every other one.
+   */
+  fun pending(): Boolean = read() == null
+
+  private fun read(): RcCompareManifest? {
+    settled?.let {
       return it
     }
     val path = root / ServeRcCompare.DIRECTORY / ServeRcCompare.INDEX_FILE
@@ -398,8 +420,8 @@ private constructor(private val root: Path, private val fileSystem: FileSystem) 
           JSON.decodeFromString<RcCompareManifest>(fileSystem.read(path) { readUtf8() })
         }
         .getOrNull()
-        ?.takeIf { it.schema == RcCompareManifest.SCHEMA && it.rows.isNotEmpty() } ?: return null
-    loaded = manifest
+        ?.takeIf { it.schema == RcCompareManifest.SCHEMA } ?: return null
+    settled = manifest
     return manifest
   }
 

@@ -1244,10 +1244,24 @@ class ServeCatalogStore(
     dir: File,
     stillWanted: () -> Boolean,
   ) {
+    // Every terminal outcome writes the manifest, including "this catalog publishes none"
+    // ([ServeRcCompare.NONE]). It is what tells the compare page the lane has SETTLED: until it
+    // lands the page's shape is provisional and must not be edge-cached, and a catalog with nothing
+    // to show would otherwise stay "pending" for the life of the host. See
+    // [ServeRcCompareStore.pending].
+    fun settle(manifest: RcCompareManifest) {
+      if (!stillWanted()) return
+      val root = File(dir, ServeRcCompare.DIRECTORY)
+      root.mkdirs()
+      File(root, ServeRcCompare.INDEX_FILE)
+        .writeText(json.encodeToString(RcCompareManifest.serializer(), manifest))
+    }
+
     val summaryBytes =
-      runCatching { fetchCatalogAsset(base + ServeRcCompare.SUMMARY_FILE) }.getOrNull() ?: return
-    val summary = ServeRcCompare.parseSummary(summaryBytes) ?: return
-    val plan = ServeRcCompare.plan(summary, alias) ?: return
+      runCatching { fetchCatalogAsset(base + ServeRcCompare.SUMMARY_FILE) }.getOrNull()
+        ?: return settle(ServeRcCompare.NONE)
+    val summary = ServeRcCompare.parseSummary(summaryBytes) ?: return settle(ServeRcCompare.NONE)
+    val plan = ServeRcCompare.plan(summary, alias) ?: return settle(ServeRcCompare.NONE)
     if (!stillWanted()) return
 
     val root = File(dir, ServeRcCompare.DIRECTORY)
@@ -1262,10 +1276,7 @@ class ServeCatalogStore(
     val fetched = fetchCatalogAssetsToFiles(fetchPlan, stillWanted)
     if (!stillWanted()) return
     val staged = plan.assets.filterKeys { (base + it) in fetched }.values.toSet()
-    val manifest = ServeRcCompare.retainStaged(plan.manifest, staged) ?: return
-    root.mkdirs()
-    File(root, ServeRcCompare.INDEX_FILE)
-      .writeText(json.encodeToString(RcCompareManifest.serializer(), manifest))
+    settle(ServeRcCompare.retainStaged(plan.manifest, staged) ?: ServeRcCompare.NONE)
   }
 
   /**

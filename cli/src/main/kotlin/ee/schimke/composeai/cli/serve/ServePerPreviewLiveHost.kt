@@ -104,6 +104,8 @@ class ServePerPreviewLiveHost(
 
   override fun rcCompareImage(name: String): ByteArray? = baked.rcCompareImage(name)
 
+  override fun rcComparePending(): Boolean = baked.rcComparePending()
+
   /**
    * The baked host's live-only (deferred) ids — listed previews with no PNG behind them, published
    * for on-demand render. Their requests always route to a per-preview daemon: there is no baked
