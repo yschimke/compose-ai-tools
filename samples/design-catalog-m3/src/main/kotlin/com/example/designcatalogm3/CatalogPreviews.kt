@@ -64,9 +64,12 @@ import org.jetbrains.compose.resources.stringResource
 @CatalogComponent(
   id = "Button/Filled",
   group = "Buttons",
-  caption = "Highest emphasis; the primary action.",
+  caption =
+    "Highest emphasis; the primary action; the disabled state folds in as an " +
+      "@OverrideVariant (enabled = false).",
 )
 @CatalogModes
+@OverrideVariant(name = "disabled", booleans = ["enabled=false"])
 @Composable
 fun FilledButton() = Sticker("button-filled")
 
@@ -81,6 +84,7 @@ fun FilledTonalButtonSticker() = Sticker("button-tonal")
   caption = "Medium emphasis on a busy surface.",
 )
 @CatalogModes
+@OverrideVariant(name = "disabled", booleans = ["enabled=false"])
 @Composable
 fun OutlinedButtonSticker() = Sticker("button-outlined")
 
@@ -293,11 +297,6 @@ fun FilledButtonPressed() = Sticker("button-filled-pressed")
 @Composable
 fun FilledButtonFocused() = Sticker("button-filled-focused")
 
-@CatalogVariant(of = "Button/Filled", state = "disabled", caption = "Disabled state.")
-@CatalogModes
-@Composable
-fun FilledButtonDisabled() = Sticker("button-filled-disabled")
-
 @CatalogVariant(
   of = "Button/Filled",
   props = ["content=icon+label"],
@@ -306,11 +305,6 @@ fun FilledButtonDisabled() = Sticker("button-filled-disabled")
 @CatalogModes
 @Composable
 fun FilledButtonIconLabel() = Sticker("button-filled-icon-label")
-
-@CatalogVariant(of = "Button/Outlined", state = "disabled", caption = "Disabled state.")
-@CatalogModes
-@Composable
-fun OutlinedButtonDisabled() = Sticker("button-outlined-disabled")
 
 // (`SwitchOff`, `CheckboxUnchecked`, `FilterChipUnselected`, `RadioUnselected` removed — those
 // states now ride their primary selection control via `@OverrideVariant`, seeding the shared
@@ -346,30 +340,10 @@ fun SegmentedToggle() = Sticker("segmentedbutton")
 // in
 //     lockstep at 2.0 (large-text / dynamic-type).
 
-// Button — filled.
-@CatalogVariant(
-  of = "Button/Filled",
-  props = ["locale=ar-XB"],
-  caption =
-    "i18n axis: the ar-XB bidi pseudolocale — flips the button to RTL layout so mirroring bugs " +
-      "surface (desktop CMP pseudolocalises layout direction, not text).",
-)
-@Preview(name = "Light", locale = "ar-XB", group = "modes")
-@Preview(name = "Dark", locale = "ar-XB", uiMode = 32, group = "modes")
-@Composable
-fun FilledButtonPseudo() = Sticker("button-filled")
-
-@CatalogVariant(
-  of = "Button/Filled",
-  props = ["direction=rtl"],
-  caption = "i18n axis: forced RTL layout direction (LocalLayoutDirection = Rtl).",
-)
-@CatalogModes
-@Composable
-fun FilledButtonRtl() =
-  CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-    Sticker("button-filled")
-  }
+// The filled button carries only the fontScale axis: a centred label has nothing to mirror, so its
+// pseudolocale and forced-RTL captures were pixel-identical to the plain one (three previews, one
+// result). The switch row below keeps both — RTL genuinely mirrors its thumb, so the axis shows
+// something there.
 
 @CatalogVariant(
   of = "Button/Filled",
