@@ -48,9 +48,15 @@ tasks.register<Sync>("wasmPlayerDist") {
     )
   )
   into(layout.buildDirectory.dir("wasmDist"))
+  // Ratchet, not a target: it exists to make an unintended size jump fail the build, so it should
+  // only move when the growth is understood. Raised from 23_000_000 for the Compose Multiplatform
+  // 1.10.3 -> 1.11.1 bump (#3447), which took the measured distribution to 23_236_608 bytes — about
+  // +237 KB, ~1%. Nearly all of it is `skiko.wasm`: that bump crosses skiko 0.9.37.4 -> 0.144.6, a
+  // large Skia jump (it is the release that added `org.jetbrains.skia.PathBuilder`), so a bigger
+  // binary is expected rather than a leak. The value keeps roughly the same slack the old one did.
   inputs.property(
     "maximumDistributionBytes",
-    providers.gradleProperty("rcPlayerWasmMaxBytes").orElse("23000000"),
+    providers.gradleProperty("rcPlayerWasmMaxBytes").orElse("23500000"),
   )
   doLast {
     val maximumBytes = inputs.properties.getValue("maximumDistributionBytes").toString().toLong()

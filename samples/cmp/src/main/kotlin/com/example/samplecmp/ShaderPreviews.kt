@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.asComposeShader
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -72,7 +73,7 @@ private fun gradientBlobBrush(widthPx: Float, heightPx: Float): Brush {
   val effect = remember { RuntimeEffect.makeForShader(GRADIENT_BLOB_SKSL) }
   val builder = remember(effect) { RuntimeShaderBuilder(effect) }
   builder.uniform("iResolution", widthPx, heightPx)
-  return ShaderBrush(builder.makeShader())
+  return ShaderBrush(builder.makeShader().asComposeShader())
 }
 
 /**
@@ -154,6 +155,6 @@ fun RuntimeShaderAnimatedBlobPreview() {
     modifier =
       Modifier.size(sizeDp)
         .clip(androidx.compose.ui.graphics.RectangleShape)
-        .background(ShaderBrush(builder.makeShader()))
+        .background(ShaderBrush(builder.makeShader().asComposeShader()))
   )
 }

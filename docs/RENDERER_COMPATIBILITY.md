@@ -47,12 +47,34 @@ The VS Code extension surfaces the same findings in the Problems panel (via
      `org.jetbrains.compose.*` `-desktop` / `-jvmstubs` requests to the matching
      `-android` coordinate; `compose-preview doctor` reports the same skew for
      the consumer's own test tasks.
+  5. Compose Multiplatform exclusion on the Android render graph (same file).
+     Mechanism #1 makes the *renderer's own* Compose `compileOnly`, but its
+     **transitives** bypassed that: `:data-render-compose` does
+     `api(libs.jetbrains.compose.{runtime,ui})` at the repo's
+     `compose-multiplatform` version and every `data-*` connector re-exports it,
+     so `renderer-android` dragged `org.jetbrains.compose.ui:ui` onto the graph.
+     Those Android variants are **dependency-only** (no files) and pin
+     `androidx.compose.*`, which then won conflict resolution against the
+     consumer's Compose — while AGP still built the unit-test resource APK from
+     the consumer's own graph. The mismatch surfaces as
+     `NoSuchFieldError: androidx.compose.ui.R$id ... androidx_compose_ui_view_compose_view_context`
+     at `onAttachedToWindow`, failing **every** preview in the module. The
+     render graph therefore excludes the six alias families outright: they
+     contribute no classes on Android, so only the version pressure goes.
+     Symmetric by construction — the consumer's Compose wins whether it is older
+     or newer than ours — and it protects consumers of already-published
+     artifacts, since the rule lives in the plugin rather than in our POMs.
+
+     **This is the invariant to preserve: nothing we publish may raise a
+     consumer's `androidx.compose.*` version on the Android render path.**
+     Bumping `compose-multiplatform` for the *desktop* renderer must stay
+     invisible to Android consumers.
 
 ## Desktop (Compose Multiplatform) renderer
 
 The desktop backend has the mirror-image hazard. `renderer-desktop` (and
 `daemon-desktop`) bundle their own JetBrains Compose + Skiko, pinned to the
-repo's `compose-multiplatform` (currently 1.10.3). A consumer module tracks
+repo's `compose-multiplatform` (currently 1.11.1). A consumer module tracks
 *its own* Compose Multiplatform version, which can be newer. The plugin builds
 the render subprocess classpath from two configurations — the renderer tool
 config (`composePreviewRenderer` / `composePreviewDesktopDaemon`) and the
@@ -70,13 +92,95 @@ JVM/Kotlin platform attributes, so the two resolve in **one** graph. Gradle's
 conflict resolution then picks a single coherent max version of Skiko (and the
 rest of the JetBrains Compose stack) — the consumer's, whose bindings and
 native library agree. The renderer's own code is compiled against the pinned
-floor (1.10.3) but runs against whatever coherent version the consumer pulls;
+floor (1.11.1) but runs against whatever coherent version the consumer pulls;
 because Skiko/Compose minor bumps are additive at the API surface the renderer
 uses, the consumer's newer stack satisfies it. This is scoped to genuinely
 JVM/desktop consumer classpaths — a pure-Android KMP fallback
 (`androidRuntimeClasspath`) is left alone (no `androidJvm` renderer variant
 exists, and that classpath can't feed the JVM renderer anyway). Covered by
 `DesktopRendererGraphAlignmentFunctionalTest`.
+
+### The serve host is a version FLOOR for every catalog it renders live
+
+The graph-alignment mitigation above works because Gradle resolves one graph and
+picks a coherent max version. **A published bundle rendered by `compose-preview
+serve` has no such resolution step**, and that is the failure mode of issue
+#3447.
+
+The rule it implies:
+
+> The serve host's `compose-multiplatform` must be **>= the newest
+> `compose-multiplatform` of any catalog served from it.**
+
+A catalog that upgrades *ahead* of the host breaks its own live lane, and it
+does so in the worst possible way — **silently, at regeneration time**, with no
+build failure anywhere. Baked PNGs keep serving, so the catalog looks healthy
+until someone requests an override; only then does every live render 503.
+
+What #3447 looked like concretely:
+
+| | compose-multiplatform | skiko |
+|---|---|---|
+| serve host (compose-ai-tools) | 1.10.3 | 0.9.37.4 |
+| `m3-catalog` | 1.11.1 | **0.144.6** |
+
+`org.jetbrains.skia.PathBuilder` is new in the 1.11 line. The bundle's newer
+`org.jetbrains.skia.*` bindings paired with the host sidecar's older `libskiko`,
+whose native exports no `PathBuilder_*` symbol at all, so every render touching
+a path — which for Material 3 is nearly all of them — died with:
+
+```
+UnsatisfiedLinkError: 'long org.jetbrains.skia.PathBuilderKt.PathBuilder_nMakeFromPath(long)'
+```
+
+3794 of 3990 renders (95%) on the largest published catalog.
+
+Note this is **not** a hole in `ServeBundleDaemon.shouldPrecedeDaemonSidecar` —
+that rule already promotes `org.jetbrains.skiko` alongside `org.jetbrains.compose`
+precisely so bindings and native move together. Promotion can only reorder what
+the bundle actually carries; it cannot conjure a newer native than the host has
+ever shipped. **The fix is releasing the host, not editing the classpath rules.**
+
+#### What the host bump means for consumers still on an older CMP
+
+Raising this repo's floor is not free for consumers, because `renderer-desktop` declares Compose with
+`implementation`, **not** `compileOnly` — the mirror of Android's mitigation #1 above. The desktop
+renderer therefore *carries* its Compose and Skiko into the consumer's graph, so moving the repo to
+1.11.1 pushes skiko 0.144.6 at every desktop consumer, including those still on 1.10.3
+(skiko 0.9.37.4).
+
+That is the same skew as #3447 with the sides swapped, so it was worth measuring rather than
+assuming. Measured, for a consumer on CMP 1.10.3 against a renderer carrying 1.11.1, the tool
+classpath resolves to:
+
+```
+skiko-awt-0.144.6.jar
+skiko-awt-runtime-linux-x64-0.144.6.jar
+```
+
+One version, and bindings and native agree — the consumer's 0.9.37.4 is upgraded away rather than
+landing beside it. The graph fold plus Gradle's max-version resolution carries the older consumer up
+coherently, so **an ordinary desktop consumer below 1.11 keeps working.** Covered by
+`DesktopRendererGraphAlignmentFunctionalTest` — which now pins **both** skew directions, not just
+the renderer-older one it was originally written for.
+
+Two caveats that the resolution test cannot speak to:
+
+- Such a consumer's **previews now render on Compose 1.11.1 while their app ships 1.10.3.** Nothing
+  breaks, but preview and app are no longer the same Compose — worth knowing when a render disagrees
+  with the running app.
+- A consumer that **hard-pins** Compose below 1.11 (`resolutionStrategy.force`, a strict constraint,
+  or a platform holding the 1.10 line) defeats max-version resolution. The renderer's 1.11.1-compiled
+  bytecode would then meet a 1.10.3 runtime — the inverse mismatch. Unpinning, or pinning at 1.11+,
+  is the fix.
+
+Two practical consequences:
+
+1. **Bumping `compose-multiplatform` in this repo is a serve-host release
+   concern.** Cutting a release that does *not* move it ships the identical
+   skiko and fixes nothing — the host must be re-released *and redeployed*.
+2. **A catalog's CMP bump is a cross-repo change.** Land the host bump, release,
+   and redeploy *before* the catalog regenerates against a newer line.
 
 ## Known findings that still warrant a note
 

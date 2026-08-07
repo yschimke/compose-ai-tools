@@ -30,7 +30,15 @@ class DesktopRendererGraphAlignmentFunctionalTest {
 
   @get:Rule val tempDir = TemporaryFolder()
 
-  private fun createTestProject(): File {
+  /**
+   * [rendererSeed] stands in for whatever Compose/Skiko the published `renderer-desktop` carries;
+   * [consumerCompose] is the Compose Multiplatform plugin version the consumer applies. Varying the
+   * two independently is what lets one harness cover both skew directions.
+   */
+  private fun createTestProject(
+    rendererSeed: String = "org.jetbrains.compose.material3:material3:1.7.3",
+    consumerCompose: String = "1.10.3",
+  ): File {
     val projectDir = tempDir.root
 
     File(projectDir, "settings.gradle.kts")
@@ -62,7 +70,7 @@ class DesktopRendererGraphAlignmentFunctionalTest {
         plugins {
             kotlin("jvm") version "2.2.21"
             kotlin("plugin.compose") version "2.2.21"
-            id("org.jetbrains.compose") version "1.10.3"
+            id("org.jetbrains.compose") version "$consumerCompose"
             id("ee.schimke.composeai.preview")
         }
         dependencies {
@@ -77,7 +85,7 @@ class DesktopRendererGraphAlignmentFunctionalTest {
         // resolve this older version on its own.
         configurations.maybeCreate("composePreviewRenderer")
         dependencies {
-            "composePreviewRenderer"("org.jetbrains.compose.material3:material3:1.7.3")
+            "composePreviewRenderer"("$rendererSeed")
         }
         java {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
@@ -151,5 +159,80 @@ class DesktopRendererGraphAlignmentFunctionalTest {
     val material3Jars = jars.filter { it.startsWith("material3-") && it.endsWith(".jar") }
     assertThat(material3Jars).hasSize(1)
     assertThat(material3Jars.single()).doesNotContain("1.7.3")
+  }
+
+  /**
+   * The MIRROR of the test above, and the direction the CMP 1.11.1 bump creates (issue #3447): the
+   * renderer is now pinned *newer* than an existing consumer, rather than older.
+   *
+   * This matters because `renderers/desktop/build.gradle.kts` declares Compose with
+   * `implementation`, not `compileOnly` — unlike `renderer-android`, the desktop renderer *carries*
+   * its Compose and Skiko into the consumer's graph. So raising the repo's `compose-multiplatform`
+   * floor to 1.11.1 pushes skiko 0.144.6 at every desktop consumer, including the ones still on
+   * 1.10.3 (skiko 0.9.37.4). Those two Skikos are not interchangeable — 0.144.6 introduced
+   * `org.jetbrains.skia.PathBuilder`, whose native symbols 0.9.37.4 does not export at all.
+   *
+   * The property that keeps such a consumer working is the same fold as above: both Skikos must
+   * collapse to ONE version rather than landing side by side. If they ever split, the older native
+   * pairs with the newer bindings and every path-touching render dies with `UnsatisfiedLinkError` —
+   * the exact production failure #3447 reported, just reached from the other side.
+   *
+   * Without this case the bump would have shipped with only the older-renderer direction covered.
+   */
+  @Test
+  fun `a consumer older than the renderer still folds to one coherent Skiko`() {
+    // Consumer on the previous floor (1.10.3 -> skiko 0.9.37.4); renderer carrying what the repo
+    // now pins (CMP 1.11.1 -> skiko 0.144.6), mirroring `renderer-desktop`'s own `implementation`.
+    val projectDir =
+      createTestProject(
+        rendererSeed = "org.jetbrains.compose.ui:ui-desktop:1.11.1",
+        consumerCompose = "1.10.3",
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("dumpRendererClasspath", "-q", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    val jars =
+      result.output
+        .lineSequence()
+        .filter { it.startsWith("RENDERER_JAR ") }
+        .map { it.removePrefix("RENDERER_JAR ").trim() }
+        .toList()
+
+    assertThat(jars).isNotEmpty()
+
+    // Guard against a vacuous pass: every assertion below is over a *set of Skiko versions*, and
+    // "at most one" / "none equals the old version" are both trivially true of an empty set. If the
+    // seed ever stops dragging Skiko onto the tool classpath this test would silently stop testing
+    // anything, so require the artifacts to actually be there first.
+    assertThat(jars.filter { it.startsWith("skiko-awt") }).isNotEmpty()
+
+    // The safety property: bindings and native are one version, so there is no split-Skiko render
+    // classpath regardless of which side is newer.
+    val skikoRuntimeVersions =
+      jars
+        .filter { it.startsWith("skiko-awt-runtime") }
+        .map { it.substringAfterLast('-').removeSuffix(".jar") }
+        .toSet()
+    assertThat(skikoRuntimeVersions.size).isAtMost(1)
+
+    val skikoAwtVersions =
+      jars
+        .filter { it.startsWith("skiko-awt-") && !it.startsWith("skiko-awt-runtime") }
+        .map { it.substringAfterLast('-').removeSuffix(".jar") }
+        .toSet()
+    assertThat(skikoAwtVersions.size).isAtMost(1)
+
+    // And the bindings the renderer was COMPILED against must be the ones that win. Gradle resolves
+    // to the max version, so the renderer's newer Skiko carries the older consumer up rather than
+    // the consumer dragging the renderer down to a native that lacks `PathBuilder_*`.
+    if (skikoAwtVersions.isNotEmpty() && skikoRuntimeVersions.isNotEmpty()) {
+      assertThat(skikoAwtVersions.single()).isEqualTo(skikoRuntimeVersions.single())
+    }
+    (skikoAwtVersions + skikoRuntimeVersions).forEach { assertThat(it).isNotEqualTo("0.9.37.4") }
   }
 }

@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.asComposeShader
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -66,7 +67,7 @@ private fun shaderBrush(sksl: String, widthPx: Float, heightPx: Float, time: Flo
   val builder = RuntimeShaderBuilder(effect)
   builder.uniform("iResolution", widthPx, heightPx)
   builder.uniform("iTime", time)
-  return ShaderBrush(builder.makeShader())
+  return ShaderBrush(builder.makeShader().asComposeShader())
 }
 
 @Composable
@@ -102,7 +103,9 @@ private fun AnimatedShaderCard(sksl: String) {
   val builder = remember(effect) { RuntimeShaderBuilder(effect) }
   builder.uniform("iResolution", px, px)
   builder.uniform("iTime", time)
-  Box(modifier = Modifier.size(sizeDp).background(ShaderBrush(builder.makeShader())))
+  Box(
+    modifier = Modifier.size(sizeDp).background(ShaderBrush(builder.makeShader().asComposeShader()))
+  )
 }
 
 // ---------------------------------------------------------------------------------------------
