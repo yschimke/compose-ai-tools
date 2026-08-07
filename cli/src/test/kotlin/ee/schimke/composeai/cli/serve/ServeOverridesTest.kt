@@ -352,9 +352,49 @@ class ServeOverridesTest {
   }
 
   @Test
-  fun `blank knob key or value is ignored`() {
-    val o = ok(mapOf("knob." to "string:x", "knob.label" to ""))
-    assertNull(o.namedOverrides)
+  fun `a blank knob key is ignored`() {
+    assertNull(ok(mapOf("knob." to "string:x")).namedOverrides)
+  }
+
+  @Test
+  fun `an empty value is a real seed for a string knob`() {
+    // `knob.label=` is an EDIT, not a missing param: clearing a label is something a viewer must be
+    // able to express, and an `@OverrideVariant` can seed one deliberately (`strings = ["label="]`,
+    // which discovery preserves). Dropping it rendered the author default instead — the seeded
+    // variant's whole point inverted, and on the Wasm tier there is no baked artifact to mask it.
+    assertEquals(
+      PreviewOverrideValue.StringValue(""),
+      ok(mapOf("knob.label" to "")).namedOverrides!!["label"],
+      "an undeclared knob types as a string, so its empty value is kept",
+    )
+    val declared = ServeOverrides.parse(mapOf("knob.label" to ""), mapOf("label" to "string"))
+    assertEquals(
+      PreviewOverrideValue.StringValue(""),
+      (declared as OverrideParse.Ok).overrides.namedOverrides!!["label"],
+    )
+    // Whitespace is a string too — `isBlank` would have swallowed a single-space label.
+    assertEquals(
+      PreviewOverrideValue.StringValue(" "),
+      ok(mapOf("knob.label" to " ")).namedOverrides!!["label"],
+    )
+    // An explicit legacy prefix with nothing after it is the same empty string.
+    assertEquals(
+      PreviewOverrideValue.StringValue(""),
+      ok(mapOf("knob.label" to "string:")).namedOverrides!!["label"],
+    )
+  }
+
+  @Test
+  fun `an empty value is skipped for a knob that cannot parse one`() {
+    // An emptied number/colour field has nothing to seed. Skipped rather than Invalid: the viewer
+    // itself builds these URLs, and a 400 on a half-typed field would break the page it came from.
+    val kinds = mapOf("count" to "int", "weight" to "float", "tint" to "color", "on" to "bool")
+    val parsed =
+      ServeOverrides.parse(
+        mapOf("knob.count" to "", "knob.weight" to "", "knob.tint" to "", "knob.on" to ""),
+        kinds,
+      )
+    assertNull((parsed as OverrideParse.Ok).overrides.namedOverrides)
   }
 
   @Test

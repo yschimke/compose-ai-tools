@@ -117,6 +117,12 @@ object ServeOverrides {
    * preview's declared knobs from these, so editing one re-renders the composable (only on a
    * daemon-backed session — a static bundle / the Wasm tier ignore them). Dynamic keys, so not
    * listed in [SUPPORTED_KEYS].
+   *
+   * **`knob.<key>=` with no value is a value, for a string knob.** Clearing a label is an edit a
+   * viewer has to be able to express, and an `@OverrideVariant` can seed one deliberately (`strings
+   * = ["label="]`, which discovery preserves). For any other kind there is nothing to parse out of
+   * it, so it is skipped rather than rejected — the viewer builds these URLs itself and a
+   * half-typed number field must not 400 the page it came from.
    */
   const val KNOB_PREFIX = "knob."
 
@@ -483,7 +489,7 @@ object ServeOverrides {
     for ((rawKey, raw) in params) {
       if (!rawKey.startsWith(KNOB_PREFIX)) continue
       val wireKey = rawKey.removePrefix(KNOB_PREFIX)
-      if (wireKey.isBlank() || raw.isBlank()) continue
+      if (wireKey.isBlank()) continue
       // Type the value. A bare value takes its type from the preview's declaration (default
       // string). A legacy `<kind>:<value>` prefix is honoured ONLY when the knob is undeclared or
       // the prefix matches its declared kind — otherwise a declared *string* knob could never hold
@@ -495,6 +501,16 @@ object ServeOverrides {
       val explicitKind = prefix?.takeIf { declaredKind == null || it == declaredKind }
       val kind = explicitKind ?: declaredKind ?: "string"
       val value = if (explicitKind != null) raw.substring(sep + 1) else raw
+      // `knob.label=` — an EMPTY value. For a string knob that is a real value, not a missing one:
+      // clearing a label is an edit a viewer must be able to express, and an `@OverrideVariant` may
+      // seed one deliberately (`strings = ["label="]`). Dropping it (as a blanket blank-skip did)
+      // silently rendered the author default instead — the seeded variant's whole point inverted.
+      // Whitespace is likewise a real string, so this tests isEmpty rather than isBlank.
+      //
+      // For every other kind there is nothing to parse out of "", and a viewer legitimately
+      // produces it (an emptied number input). That stays a skipped no-op rather than a hard
+      // Invalid, which would 400 a URL the viewer itself built.
+      if (value.isEmpty() && kind != "string") continue
       namedOverrides[wireKey] =
         when (kind) {
           "string" -> PreviewOverrideValue.StringValue(value)
