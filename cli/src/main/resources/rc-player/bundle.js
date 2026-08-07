@@ -8319,14 +8319,29 @@ var RC = (() => {
       const result = this.evaluate(this.mMask, vals);
       context.loadInteger(this.mId, result);
     }
+    /**
+     * Evaluates the RPN program. [exp] is the *resolved* array (`mPreCalcValues`), where every id
+     * slot already holds its variable's value.
+     *
+     * A set mask bit does NOT mean "operator" — per {@link isId} it means "not a literal", which is
+     * an **id** when the *declared* value is below {@link OFFSET} and an operator otherwise. So the
+     * operator test has to read `mValues`, the array as it was written: in `exp` an id slot holds
+     * arbitrary variable data that may collide with the operator range, and (worse) a resolved id
+     * would be run as whatever opcode its value happened to encode.
+     *
+     * Reading the mask alone made every variable reference a bogus operator: a two-variable
+     * comparison like `IFELSE(a, b, sub(x, y))` popped operands that were never pushed, underflowed
+     * the stack, and returned 0 regardless of input — which silently picked element 0 out of every
+     * `TEXT_LOOKUP`/`TEXT_LOOKUP_INT` list.
+     */
     evaluate(mask, exp) {
       const stack = new Int32Array(128);
       let sp = -1;
       const OFFSET3 = _IntegerExpression.OFFSET;
       for (let i = 0; i < exp.length; i++) {
         const v = exp[i];
-        if ((1 << i & mask) !== 0) {
-          const op = v - OFFSET3;
+        if ((1 << i & mask) !== 0 && this.mValues[i] >= OFFSET3) {
+          const op = this.mValues[i] - OFFSET3;
           switch (op) {
             case 1:
               stack[sp - 1] = stack[sp - 1] + stack[sp] | 0;
@@ -12557,6 +12572,46 @@ ${inner}`;
   _TextLookup.OP_CODE = 151;
   var TextLookup = _TextLookup;
 
+  // src/core/operations/TextLookupInt.ts
+  var _TextLookupInt = class _TextLookupInt extends Operation {
+    constructor(textId, dataSetId, indexId) {
+      super();
+      this.mOutIndex = 0;
+      this.mTextId = textId;
+      this.mDataSetId = dataSetId;
+      this.mIndexId = indexId;
+    }
+    write(_buffer) {
+    }
+    registerListening(context) {
+      context.listensTo(this.mIndexId, this);
+    }
+    updateVariables(context) {
+      this.mOutIndex = context.getInteger(this.mIndexId);
+    }
+    apply(context) {
+      this.mOutIndex = context.getInteger(this.mIndexId);
+      const id = context.getCollectionsAccess().getId(this.mDataSetId, Math.trunc(this.mOutIndex));
+      if (id >= 0) {
+        const text = context.getText(id);
+        if (text !== null) {
+          context.loadText(this.mTextId, text);
+        }
+      }
+    }
+    deepToString(indent) {
+      return `${indent}TextLookupInt(textId=${this.mTextId}, dataSet=${this.mDataSetId}, indexId=${this.mIndexId})`;
+    }
+    static read(buffer, operations) {
+      const textId = buffer.readInt();
+      const dataSetId = buffer.readInt();
+      const indexId = buffer.readInt();
+      operations.push(new _TextLookupInt(textId, dataSetId, indexId));
+    }
+  };
+  _TextLookupInt.OP_CODE = 153;
+  var TextLookupInt = _TextLookupInt;
+
   // src/core/operations/ColorTheme.ts
   var _ColorTheme = class _ColorTheme extends Operation {
     constructor(id, colorGroupId, lightModeIndex, darkModeIndex, lightModeFallback, darkModeFallback) {
@@ -15351,6 +15406,7 @@ ${inner}`;
       m.set(MatrixExpression.OP_CODE, MatrixExpression.read);
       m.set(PathExpression.OP_CODE, PathExpression.read);
       m.set(TextLookup.OP_CODE, TextLookup.read);
+      m.set(TextLookupInt.OP_CODE, TextLookupInt.read);
       m.set(ColorTheme.OP_CODE, ColorTheme.read);
       m.set(ColorAttribute.OP_CODE, ColorAttribute.read);
       m.set(TextLayout.OP_CODE, TextLayout.read);
