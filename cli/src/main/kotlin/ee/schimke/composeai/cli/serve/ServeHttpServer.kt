@@ -3036,6 +3036,14 @@ class ServeHttpServer(
           // visitor settles on one preview and reads, making no further requests, and where the
           // theme and knob actions that want a warm daemon are actually taken.
           presenceUrl = "$basePath/api/presence${requestQuerySuffix()}",
+          // Delivery-branch provenance is what makes a timeline possible: it names the repo and
+          // branch carrying history.json, and the same repo addresses each historical render by
+          // commit. A plain uploaded bundle has none, so both stay null and the strip is omitted.
+          historyManifestUrl =
+            catalogBundleHost(renderHost)?.provenance?.let {
+              ServeUrls.historyManifestUrl(it.repo, it.branch)
+            },
+          historyRepo = catalogBundleHost(renderHost)?.provenance?.repo,
         ),
         ContentType.Text.Html,
       )

@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Focus ring — compose-preview</title>
-        <link rel="stylesheet" href="/assets/serve/f1d0-3637de839ad504d8/serve.css">
+        <link rel="stylesheet" href="/assets/serve/f915-76485e7dab55e192/serve.css">
         <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
@@ -47,6 +47,7 @@
         </span>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
+
       <div class="cp-viewer cp-controls-open" data-preview-id="com.example.FocusRingPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
 
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Focus ring"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
@@ -181,6 +182,7 @@
       <script src="/assets/serve/e8c-acead748488355b1/url-state.js"></script>
       <script src="/assets/serve/22e-68c7d41937f0dccd/viewer-groups.js"></script>
       <script src="/assets/serve/c0f-86b66f86ed745fcf/viewer-drawers.js"></script>
+      <script src="/assets/serve/1ca2-bcd0ecc1a362acbb/viewer-history.js"></script>
       <script>(function () {
   var el = document.getElementById("cp-theme");
   if (!el) return;

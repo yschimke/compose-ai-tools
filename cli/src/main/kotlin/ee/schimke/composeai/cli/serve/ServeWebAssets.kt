@@ -24,6 +24,7 @@ internal object ServeWebAssets {
       "viewer.js" to "text/javascript; charset=utf-8",
       "viewer-groups.js" to "text/javascript; charset=utf-8",
       "viewer-drawers.js" to "text/javascript; charset=utf-8",
+      "viewer-history.js" to "text/javascript; charset=utf-8",
       "backend-badge.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
     )

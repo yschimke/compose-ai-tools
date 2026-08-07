@@ -622,4 +622,91 @@ class ServeWebTest {
       )
     assertFalse(html.contains("class=\"cp-source\""), "no source link when no href is supplied")
   }
+
+  @Test
+  fun `the viewer carries history attributes when the catalog has delivery provenance`() {
+    val html =
+      ServeWeb.viewerPage(
+        checkbox[0],
+        token = "t",
+        basePath = "/compose-m3",
+        historyManifestUrl =
+          ServeUrls.historyManifestUrl("yschimke/compose-ai-tools", "compose-preview/main"),
+        historyRepo = "yschimke/compose-ai-tools",
+      )
+
+    assertTrue(
+      html.contains(
+        "data-history-url=\"https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/history.json\""
+      ),
+      "viewer must tell the client where the manifest lives",
+    )
+    assertTrue(html.contains("data-history-repo=\"yschimke/compose-ai-tools\""))
+    assertTrue(html.contains("viewer-history.js"), "the timeline script is loaded")
+  }
+
+  @Test
+  fun `the viewer omits history attributes without delivery provenance`() {
+    // An uploaded bundle or local project has no branch to read history from. Emitting the
+    // attributes anyway would ship a timeline that can only fail to load.
+    val html = ServeWeb.viewerPage(checkbox[0], token = "t", basePath = "/compose-m3")
+
+    assertFalse(html.contains("data-history-url"))
+    assertFalse(html.contains("data-history-repo"))
+  }
+
+  @Test
+  fun `a half-configured history is omitted rather than half-rendered`() {
+    // A timeline the visitor cannot click through to an old render is worse than no timeline.
+    val html =
+      ServeWeb.viewerPage(
+        checkbox[0],
+        token = "t",
+        basePath = "/compose-m3",
+        historyManifestUrl = "https://raw.githubusercontent.com/o/r/b/history.json",
+        historyRepo = null,
+      )
+
+    assertFalse(html.contains("data-history-url"))
+  }
+
+  @Test
+  fun `an inline history payload is embedded for offline rendering`() {
+    val html =
+      ServeWeb.viewerPage(
+        checkbox[0],
+        token = "t",
+        basePath = "/compose-m3",
+        historyRepo = "o/r",
+        historyInlineJson = """{"previews":{}}""",
+      )
+
+    assertTrue(html.contains("<script type=\"application/json\" id=\"cp-history-data\">"))
+    assertTrue(html.contains("""{"previews":{}}"""))
+  }
+
+  @Test
+  fun `an inline payload cannot close the script element early`() {
+    // The only sequence that can break out of <script> is `</`. A payload carrying it verbatim
+    // would end the element and spill the rest into the document as markup.
+    val html =
+      ServeWeb.viewerPage(
+        checkbox[0],
+        token = "t",
+        basePath = "/compose-m3",
+        historyRepo = "o/r",
+        historyInlineJson = """{"x":"</script><img src=x onerror=alert(1)>"}""",
+      )
+
+    assertFalse(html.contains("</script><img"), "raw </script> must not survive into the page")
+    assertTrue(html.contains("<\\/script>"), "it is escaped, not dropped")
+  }
+
+  @Test
+  fun `no inline payload emits no data element`() {
+    val html =
+      ServeWeb.viewerPage(checkbox[0], token = "t", basePath = "/compose-m3", historyRepo = "o/r")
+
+    assertFalse(html.contains("cp-history-data"))
+  }
 }
