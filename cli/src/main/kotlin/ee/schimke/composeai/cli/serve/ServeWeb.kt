@@ -4976,12 +4976,16 @@ object ServeWeb {
         """
         .trimIndent()
     }
-    // Live-only overlay toggles (accessibility / touch visualization). The daemon composites these
-    // onto the held session's frames, so they mean nothing on a baked PNG — offered only when a
-    // Live
-    // Compose stream is available, and disabled until that mode is active (the mode-transition JS
-    // flips them). Omitted entirely when no stream backs the session, rather than left permanently
-    // dead. `cp-overlay` marks them for the JS collector + enable/disable sync.
+    // Live overlay toggles (accessibility / touch visualization). The daemon composites these onto
+    // the held session's frames, so they mean nothing on a baked PNG — offered only when a Live
+    // Compose stream is available, and omitted entirely otherwise rather than left permanently
+    // dead. Rendered **enabled**: a visitor who ticks one while the viewer is still on the static
+    // snapshot is asking to see the overlay, so the JS switches into Live Compose for them (the
+    // ticked toggle rides in on the stream's initial overrides) instead of presenting a dead
+    // control that first demands a click on "Live preview". They carry `$liveDis` — the same gate
+    // as the live transport radio — so the one case where they really are dead (the stream exists
+    // but is behind sign-in) stays greyed out in the server-rendered markup, matching what
+    // `syncOverlayToggles()` reconciles to. `cp-overlay` marks them for the JS collector + sync.
     val overlaysHtml =
       if (hasLiveStream)
         """
@@ -4990,8 +4994,8 @@ object ServeWeb {
           <div class="cp-group-body">
             <div class="cp-overlays">
               <div class="cp-overlays-head">Overlays (Live Compose)</div>
-              <label class="cp-live-row"><input class="cp-overlay" id="cp-talkBack" type="checkbox" disabled> Accessibility (TalkBack)</label>
-              <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox" disabled> Show touches</label>
+              <label class="cp-live-row"><input class="cp-overlay" id="cp-talkBack" type="checkbox"$liveDis> Accessibility (TalkBack)</label>
+              <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox"$liveDis> Show touches</label>
             </div>
           </div>
         </details>

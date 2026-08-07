@@ -220,13 +220,14 @@
       if (val === "") return;
       o["rc." + name] = kind + ":" + val;
     });
-    // Live-only overlay toggles (talkBack / touchOverlay). Their id is "cp-<key>", so the daemon
-    // key is the id minus the prefix. Sent as an explicit true/false so unchecking clears the
-    // overlay on the next setOverrides (which replaces the whole map). Disabled ⇒ not live ⇒
-    // skipped, so they never leak onto a snapshot.
+    // Overlay toggles (talkBack / touchOverlay). Their id is "cp-<key>", so the daemon key is the
+    // id minus the prefix. Only a CHECKED overlay is sent: every consumer re-parses this whole map
+    // (the live lane restarts `stream/start` with it, the snapshot lane re-renders from it), so an
+    // absent key already means "off" — and omitting the false ones keeps `&talkBack=false` out of
+    // every snapshot/export URL now that these toggles are enabled outside the live lane.
     document.querySelectorAll(".cp-overlay").forEach(function (el) {
-      if (el.disabled) return;
-      o[el.id.replace(/^cp-/, "")] = el.checked ? "true" : "false";
+      if (el.disabled || !el.checked) return;
+      o[el.id.replace(/^cp-/, "")] = "true";
     });
     // App-declared theme (themeProvider = provider FQN). Only when a theme is picked and the
     // control is live; "(default)" (empty) leaves the daemon on the preview's own wrapper.
@@ -1361,12 +1362,15 @@
       refreshSnapshot();
     });
   }
-  // The live-only overlay toggles (talkBack / touchOverlay) are meaningful only while the daemon
-  // holds the composition, so they're enabled iff the live stream is the active mode and greyed
-  // out otherwise. Called on every mode transition.
+  // The overlay toggles (talkBack / touchOverlay) are rendered by the daemon, so they're enabled
+  // whenever the daemon lane is REACHABLE — not only while it's the active mode. Ticking one from
+  // the static snapshot switches into Live Compose (see onOverlayChanged), which is what the
+  // visitor meant; greying them out until "Live preview" was clicked made the group look broken.
+  // They stay disabled only when the lane genuinely can't be entered (the transport radio is
+  // disabled — e.g. the stream is behind sign-in). Called on every mode transition.
   var overlayToggles = document.querySelectorAll(".cp-overlay");
   function syncOverlayToggles() {
-    var on = !!(live && live.checked);
+    var on = !!(live && !live.disabled);
     Array.prototype.forEach.call(overlayToggles, function (el) { el.disabled = !on; });
   }
   // Enable/disable the display controls to match what the active session can actually render.
@@ -1664,14 +1668,25 @@
       if (el) el.addEventListener("input", onControlsChanged);
     });
   }
-  // Overlay toggles are live-only: they push a fresh setOverrides through the open stream and do
-  // nothing otherwise. They get their own handler rather than onControlsChanged so a toggle mid
-  // connect (ws not yet readyState 1) can't fall through to the snapshot / wasm-auto-enable
-  // branches — an overlay never applies to a baked PNG or the in-browser tier.
+  // Overlay toggles are daemon-rendered: on the live lane they push a fresh setOverrides through
+  // the open stream; off it, ticking one ENTERS the live lane rather than doing nothing — the
+  // ticked box is already part of openStream()'s initial overrides, so the overlay is on in the
+  // first frame. They get their own handler rather than onControlsChanged so a toggle mid connect
+  // (ws not yet readyState 1) can't fall through to the snapshot / wasm-auto-enable branches — an
+  // overlay never applies to a baked PNG or the in-browser tier.
   function onOverlayChanged() {
-    if (live.checked && ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+    if (live && live.checked) {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+      }
+      return;
     }
+    // Not on the daemon lane yet. Only a *check* starts it: unticking an already-off overlay from
+    // the snapshot lane shouldn't drag the visitor into Live Compose.
+    if (anyOverlayChecked() && live && !live.disabled) setMode("live");
+  }
+  function anyOverlayChecked() {
+    return Array.prototype.some.call(overlayToggles, function (el) { return el.checked; });
   }
   Array.prototype.forEach.call(overlayToggles, function (el) {
     el.addEventListener("change", onOverlayChanged);
@@ -1817,6 +1832,12 @@
       var el = document.getElementById("cp-" + f);
       if (el) el.checked = q.get(f) !== null;
     });
+    // Overlays ride the URL now that they're collected outside the live lane, so a shared
+    // `?talkBack=true&mode=live` link opens with the box already ticked (and Back restores it).
+    // Only `true` is ever written, so presence-with-that-value is the whole state.
+    document.querySelectorAll(".cp-overlay").forEach(function (el) {
+      el.checked = q.get(el.id.replace(/^cp-/, "")) === "true";
+    });
     var sizeModeEl = document.getElementById("cp-sizeMode");
     if (sizeModeEl) {
       sizeModeEl.value = q.get("sizeMode") || "";
@@ -1881,6 +1902,7 @@
   // Reconcile the control enabled-state + the toggle's initial look with the session's
   // capabilities (matches the server-rendered markup; keeps them in sync after hydration).
   syncServerControls();
+  syncOverlayToggles();
   updateLiveToggle();
   refreshSnapshot();
   // A bookmarked `?mode=live` / `wasm` / `rc` opens in that lane — but only once the initial

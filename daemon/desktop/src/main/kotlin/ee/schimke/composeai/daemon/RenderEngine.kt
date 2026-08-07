@@ -677,8 +677,20 @@ class RenderEngine(
             "Failed to encode image to PNG for ${state.spec.className}.${state.spec.functionName}"
           )
       }
-    val pngBytes =
+    val clippedBytes =
       if (state.spec.isRoundComposePreview()) applyRoundClip(pngData.bytes) else pngData.bytes
+    // `overrides.talkBack` composites the TalkBack focus overlay onto the captured frame. Applied
+    // here — the single encode every non-recording desktop capture funnels through — so the
+    // override means the same thing on a one-shot `/render` snapshot and on the *live* lane, whose
+    // frames come from a held interactive session ([DesktopInteractiveSession.render] → this
+    // function). It used to be composited only in `DesktopRecordingSession.frameBytes`, so the
+    // serve viewer's "Accessibility (TalkBack)" toggle reached the daemon and then painted nothing:
+    // `stream/start` is layered on an interactive session, not a recording. Recordings keep their
+    // own per-frame path (they walk the focus stops over time) and never call renderOnce, so the
+    // overlay is never applied twice.
+    val pngBytes =
+      if (state.spec.overrides?.talkBack == true) talkBackOverlaid(state, clippedBytes)
+      else clippedBytes
 
     state.outputFile.parentFile?.mkdirs()
     trace.section("render:writePng") {
@@ -891,6 +903,31 @@ class RenderEngine(
       lower.contains("isround=true") ||
       lower.contains("shape=round")
   }
+
+  /**
+   * Composite the TalkBack focus overlay onto [pngBytes] — the still-frame twin of
+   * `DesktopRecordingSession.talkBackFrameBytes`. A still has no timeline to walk, so it pins the
+   * **first** focus stop (what TalkBack lands on when the screen gains focus); the traversal
+   * numbers drawn on every stop carry the rest of the order. Returns [pngBytes] unchanged when the
+   * scene exposes no semantics owner, has no focus stops, or the overlay fails — an overlay is a
+   * visualization and must never strand the render it decorates.
+   */
+  @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+  private fun talkBackOverlaid(state: SceneState, pngBytes: ByteArray): ByteArray =
+    try {
+      val root = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode
+      if (root == null) pngBytes
+      else {
+        val nodes = DesktopAccessibilityNodeExtractor.extractNodes(root)
+        DesktopTalkBackFocusOverlay.overlayPngBytes(pngBytes, nodes, focusedStop = 0) ?: pngBytes
+      }
+    } catch (t: Throwable) {
+      System.err.println(
+        "RenderEngine: talkBack overlay failed for ${state.spec.outputBaseName}: " +
+          "${t.javaClass.simpleName}: ${t.message}"
+      )
+      pngBytes
+    }
 
   private fun applyRoundClip(sourceBytes: ByteArray): ByteArray {
     val source =
