@@ -760,14 +760,14 @@
     "serve-wear-scroll-long-capsule.dark.png": {
       "fixture": "serve-wear-scroll-long-capsule",
       "theme": "dark",
-      "sha256": "ff048b22e9f3af78d27fc12a433c5f7434b0052f089368d78cc5fffec511e7f6",
-      "size": 81684
+      "sha256": "dff50b43317c7458bb03f9a8e540e9113a36d3917a27b79da3dae1c64941ef4d",
+      "size": 81396
     },
     "serve-wear-scroll-long-capsule.light.png": {
       "fixture": "serve-wear-scroll-long-capsule",
       "theme": "light",
-      "sha256": "ff048b22e9f3af78d27fc12a433c5f7434b0052f089368d78cc5fffec511e7f6",
-      "size": 81684
+      "sha256": "dff50b43317c7458bb03f9a8e540e9113a36d3917a27b79da3dae1c64941ef4d",
+      "size": 81396
     },
     "spatial-semantics.dark.png": {
       "fixture": "spatial-semantics",
