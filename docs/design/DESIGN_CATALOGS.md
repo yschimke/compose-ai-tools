@@ -547,8 +547,106 @@ default 600) for exactly that reason.
 It scales with the number of previews, so a catalog that fans one component out over a variant
 matrix outgrows the default well before it outgrows the job — `m3-catalog` crossed it going from 193
 previews to 287, which is one component family gaining its size and shape axes. Raise the input
-rather than thinning coverage; the other lever is the render priority below, which trades baked
-pixels for a live path.
+rather than thinning coverage; the other levers are the render priority below (which trades baked
+pixels for a live path) and `render-shards` (which divides the work across jobs).
+
+### Sharding the render across parallel jobs (`render-shards`)
+
+Raising `render-timeout` buys one more step and then stops. The render cost is close to linear —
+measured over four `m3-catalog` runs on `main`:
+
+| Commit | Previews | Render step | Job total |
+| --- | --- | --- | --- |
+| `d354560` | 287 | 13.6 min | 17.2 min |
+| `323e4a2` | 519 | 22.5 min | 24.0 min |
+| `5edc70a` | 607 | 26.7 min | 29.6 min |
+| `f35c2e5` | 689 | 27.2 min | 28.9 min |
+
+which fits `render_minutes ≈ 3.7 + 2.15s × previews`. At ~1500 previews that is ~58 min, past a
+40-minute `render-timeout`; at ~2400 it passes the 90-minute job timeout, and no number you can put
+in `render-timeout` helps.
+
+`render-shards: N` splits the primary render across N jobs:
+
+```
+        ┌── shard 1: bundle pack, partition 1 ──┐
+ matrix ┼── shard 2: bundle pack, partition 2 ──┼── merge ── generate ── publish
+        └── shard N: …                          ┘
+```
+
+**Only the marginal 2.15 s divides.** The ~3.7 min of Gradle configure + compile is paid by every
+shard in full, which is what caps the useful count:
+
+| Previews | N=1 | N=4 | N=6 | N=8 |
+| --- | --- | --- | --- | --- |
+| 689 | 29.4 | 15.8 | 13.7 | 12.7 |
+| 1000 | 40.5 | 18.6 | 15.6 | 14.1 |
+| 1500 | 58.4 | 23.0 | 18.6 | 16.3 |
+| 2500 | 94.3 | 32.0 | 24.5 | 20.8 |
+
+(per-shard `1 min setup + 3.7 min compile + ~0.9 min discovery + 2.15s × previews/N`, plus a ~4 min
+merge/generate job). **4–6 is the range.** 6→8 at 1500 previews saves 2.3 min for two more runners;
+anyone reaching for 16 is buying compile time, not throughput. Sharding does not need to be perfect
+— it turns the worst case from impossible into ~25 min.
+
+**How a shard renders only its share.** `bundle pack --exclude-preview-id` leaves the excluded
+previews *listed in the bundle*, just without a baked PNG — the same mechanism render-priority
+deferral relies on. So each shard emits a structurally identical bundle (same `previews.json`, same
+manifest, same re-render classpath) differing only in which `previews/<id>.*` slots are filled.
+
+**How they come back together.** `compose-preview bundle merge <base> <shard>… -o <out>` unions the
+per-preview artifacts: the raster, its `.semantics.json` / `.layout.json` / `.fonts.json` /
+`.figma.svg` / `.catalog.json` sidecars, the nested `figma-raster/` crops, `ir/<id>.rc` and
+`extensions/<id>.json`. Everything else — manifests, cover, `classes/app.jar`, `libs/`, `android/` —
+is inherited from the base shard, which is why **`publish-live-bundle` needs no designated shard**:
+every shard packs the same module at the same commit, so the classpath is identical in all of them.
+
+`bundle repack` is the wrong tool here and it is worth saying why, because it looks right: repack
+swaps re-renders into slots the target *already has*, and only handles `previews/<id>.png` +
+`previews/<id>.figma.svg`. Against a shard base every other shard's previews would report "no
+matching baked slot" and be skipped, and any that did land would arrive without their semantics
+sidecar — which the completeness gate fails.
+
+**Partitioning.** Each shard derives its own partition from its own `compose-preview list --json`,
+so there is no serial discover-then-fan-out prefix (that prefix would cost the same full compile
+each shard pays anyway). It is deterministic — sort the discovered ids, then round-robin — and
+[`shard-preview-ids.mjs`](../../scripts/design-artifacts/shard-preview-ids.mjs) owns the three
+decisions:
+
+- **by preview id, never by function name** — one function expands to a 30-cell matrix while its
+  neighbour expands to two, and the slowest shard sets the wall clock;
+- **round-robin over the sorted list, not contiguous blocks** — ids sort by group, so blocks would
+  cluster the template-heavy groups into one shard;
+- **whatever the render will not produce is removed before partitioning, then re-applied in every
+  shard** — the ids `modePriority` defers, and the ids the pre-flight's positive function-name filter
+  drops (an entry-level `priority: "deferred"`). Both are exclusions, so the naive union would let
+  them compete with the partition for slots; worse, a shard whose whole share happened to be
+  filtered-out ids would report work to do and then exclude every id the name filter kept, and
+  `composePreviewRender` refuses a selection that renders nothing. The levers compose — reach for
+  deferral first, since it makes the work smaller, and let sharding divide what remains.
+
+Because the shards each plan independently, the merge step cross-checks their uploaded plans
+(`shard-preview-ids.mjs --verify`) before unioning: same discovered **set** (compared by digest, not
+by count — two runners that saw `["a"]` and `["b"]` are disjoint with a union of the right size),
+pairwise disjoint, and a complete cover. A disagreement would otherwise surface as a
+completeness-gate failure naming a component, with nothing pointing at the shards.
+
+**The CLI has to be new enough.** The merge runs last, after every shard has spent its twenty
+minutes, so a CLI predating `bundle merge` would fail the run having burned the whole fan-out — and
+that is the *default* configuration's failure mode, since `cli-source: released` +
+`cli-version: catalog` pins the CLI to the applied plugin version. So the matrix job probes
+`compose-preview bundle help` for the subcommand before anything expensive starts, and fails with
+the pin to raise. (The probe is skipped for `cli-source: build`, where the CLI is built from the same
+`driver-ref` checkout the merge step builds from.)
+
+Two things it does not shard: the **extra module** (`extra-module`) renders in the generate job as
+before — it is a supplement, small by construction — and a `@PreviewParameter` provider's **rows**,
+which travel whole with their parent id. The latter is the most likely source of a straggler shard;
+bin-packing from recorded per-preview times is worth building only once one shows up.
+
+The cost is the shard bundles moving through the artifact store — a bundle carrying `classes/` +
+`libs/` is hundreds of MB, uploaded once and downloaded once per shard. They upload with
+`compression-level: 0` (a bundle is already a zip) and `retention-days: 1`.
 
 ### Render priority: deferring the long tail to the live server
 

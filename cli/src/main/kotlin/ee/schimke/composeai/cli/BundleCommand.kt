@@ -76,6 +76,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       "externalize" -> ExternalizeSubcommand(subArgs).run()
       "render" -> RenderSubcommand(subArgs).run()
       "repack" -> RepackSubcommand(subArgs).run()
+      "merge" -> MergeSubcommand(subArgs).run()
       "keygen" -> KeygenSubcommand(subArgs).run()
       "sign" -> SignSubcommand(subArgs).run()
       "verify" -> VerifySubcommand(subArgs).run()
@@ -112,6 +113,7 @@ class BundleCommand(args: List<String>) : Command(args) {
         compose-preview bundle externalize <bundle.png | URL> --res-out <dir> [-o <file.png>] [--ext ttf,otf,woff,woff2] [--json]
         compose-preview bundle render  <bundle.png | URL> [-o <dir>] [--knob k=v …] [--res <pool>] [--svg]  (re-render previews; --knob re-themes, --svg also exports vectors)
         compose-preview bundle repack  <bundle.png | URL> --renders <dir> -o <out.png>  (swap baked previews for re-rendered PNGs + figma.svg)
+        compose-preview bundle merge   <base.png | URL> <shard.png | URL>… -o <out.png>  (union the previews of bundles packed from disjoint render selections)
         compose-preview bundle keygen  [-o <key.pem>] [--key-id <id>]  (mint an Ed25519 signing keypair)
         compose-preview bundle sign    <bundle.png> --key <private-key> --key-id <id> [--producer <name>]
         compose-preview bundle verify  <bundle.png | URL> [--trust <store.json>] [--origin <repo@branch>]
@@ -1144,6 +1146,143 @@ internal fun repackRethemedPreviews(source: File, rendersDir: File, outFile: Fil
   source.copyTo(outFile, overwrite = true)
   injectRawZipEntries(outFile, entries)
   return RepackOutcome(png, svg, unmatched)
+}
+
+/**
+ * `bundle merge <base.png> <shard.png>… -o <out.png>` — union the per-preview artifacts of several
+ * bundles that were packed from the SAME module and commit but with disjoint render selections,
+ * into one bundle carrying every shard's pixels.
+ *
+ * This is the merge step of a sharded CI render: N jobs each run `bundle pack --exclude-preview-id
+ * <everything-not-mine>`, so each emits a structurally identical bundle whose `previews.json` lists
+ * every preview and whose `previews/` directory holds only its own partition. Merging them yields
+ * exactly the bundle one serial render would have produced.
+ *
+ * Deliberately NOT `bundle repack`: repack swaps re-renders into slots the target already has and
+ * only handles `previews/<id>.png` + `previews/<id>.figma.svg`, so a shard's previews would every
+ * one of them be "unmatched" (the base has no slot) and its `.semantics.json` sidecar would be
+ * dropped — which the design-catalog completeness gate fails on.
+ */
+private class MergeSubcommand(private val args: List<String>) {
+  private val verbose: Boolean = "--verbose" in args || "-v" in args
+
+  fun run() {
+    val inputs = CliFlags.positionals(args)
+    val out = args.flagValue("--output") ?: args.flagValue("-o")
+    if (inputs.size < 2 || out == null) {
+      System.err.println(
+        "Usage: compose-preview bundle merge <base.png | URL> <shard.png | URL>… -o <out.png>"
+      )
+      exitProcess(64)
+    }
+    val files =
+      try {
+        inputs.map { BundleSource.resolveToFile(it) }
+      } catch (e: IllegalArgumentException) {
+        System.err.println(e.message)
+        exitProcess(1)
+      }
+    val outFile = File(out).absoluteFile
+    val outcome =
+      try {
+        mergeShardBundles(files.first(), files.drop(1), outFile)
+      } catch (e: IllegalArgumentException) {
+        System.err.println("bundle merge: ${e.message}")
+        exitProcess(1)
+      }
+    println(
+      "merged ${outcome.previews} preview(s) from ${files.size - 1} shard(s) " +
+        "(${outcome.entries} entries) → ${outFile.path}"
+    )
+    if (outcome.overlapping.isNotEmpty()) {
+      // Disjoint partitions are the contract; an overlap means the partition and the exclusion list
+      // disagree, which costs render time twice and silently picks a winner. Say so.
+      System.err.println(
+        "  ${outcome.overlapping.size} preview(s) were baked by more than one shard — " +
+          "the base's copy wins; the partition is not disjoint"
+      )
+      if (verbose) outcome.overlapping.forEach { System.err.println("    overlap $it") }
+    }
+  }
+}
+
+/**
+ * Result of [mergeShardBundles]: how many preview ids gained a baked raster from a shard
+ * ([previews]), how many zip [entries] were copied in total (rasters plus every sidecar), and the
+ * ids more than one bundle had baked ([overlapping] — the base's copy wins).
+ */
+internal data class MergeOutcome(val previews: Int, val entries: Int, val overlapping: List<String>)
+
+/**
+ * Zip-entry prefixes that hold PER-PREVIEW render output, and are therefore what a shard
+ * contributes. Everything else — `bundle.json`, `previews.json`, `classes/app.jar`, `libs/`,
+ * `android/`, the leading PNG cover — is identical across shards by construction (same module, same
+ * commit, same classpath; only the render selection differs) and is taken from the base verbatim.
+ * That is also the answer to "does the live classpath survive the merge": it is never merged, it is
+ * inherited, so `publish-live-bundle` needs no designated shard.
+ */
+private val MERGEABLE_SHARD_PREFIXES = listOf("$BUNDLE_PREVIEWS_DIR/", "ir/", "extensions/")
+
+/**
+ * Core of `bundle merge`: write [outFile] as a copy of [base] with every per-preview artifact the
+ * [shards] carry and [base] lacks added to its zip — the baked `previews/<id>.png`, its
+ * `.semantics.json` / `.layout.json` / `.fonts.json` / `.figma.svg` / `.catalog.json` /
+ * `.overrides.json` sidecars, the nested `previews/<id>.figma-raster/…` crops, the `ir/<id>.rc`
+ * documents and the `extensions/<id>.json` data reports.
+ *
+ * Base-wins on collision, and earlier shards win over later ones, so the result is deterministic in
+ * the order the shards are passed. Throws [IllegalArgumentException] if any input is not a bundle.
+ *
+ * Streams each shard's zip and retains only the entries it contributes, so the shared re-render
+ * payload (`classes/app.jar` + `libs/`, hundreds of MB and identical in every shard) is read past
+ * rather than held: peak memory is the base bundle plus the merged preview artifacts, not the sum
+ * of the shards.
+ */
+internal fun mergeShardBundles(base: File, shards: List<File>, outFile: File): MergeOutcome {
+  val baseNames = zipEntryNames(BundleReader.extractZipBytes(base)).toSet()
+  val add = LinkedHashMap<String, ByteArray>()
+  val overlapping = LinkedHashSet<String>()
+  for (shard in shards) {
+    ZipInputStream(ByteArrayInputStream(BundleReader.extractZipBytes(shard))).use { zin ->
+      while (true) {
+        val entry = zin.nextEntry ?: break
+        val name = entry.name
+        if (entry.isDirectory || MERGEABLE_SHARD_PREFIXES.none { name.startsWith(it) }) {
+          zin.closeEntry()
+          continue
+        }
+        if (name in baseNames || name in add) {
+          bakedPreviewId(name)?.let(overlapping::add)
+        } else {
+          add[name] = zin.readBytes()
+        }
+        zin.closeEntry()
+      }
+    }
+  }
+  outFile.parentFile?.mkdirs()
+  // The base IS the merged bundle plus the other shards' pixels: same manifests, same classpath,
+  // same cover. Copy it whole, then inject what the shards rendered.
+  base.copyTo(outFile, overwrite = true)
+  injectRawZipEntries(outFile, add)
+  return MergeOutcome(
+    previews = add.keys.count { bakedPreviewId(it) != null },
+    entries = add.size,
+    overlapping = overlapping.toList(),
+  )
+}
+
+/**
+ * The preview id [name] is the top-level baked raster of (`previews/<id>.png`), or null for any
+ * other entry — a sidecar, a nested `figma-raster` crop, an `ir/` document. Used to count and to
+ * report overlap in whole previews rather than in zip entries, which is what a partition is
+ * expressed in.
+ */
+private fun bakedPreviewId(name: String): String? {
+  if (!name.startsWith("$BUNDLE_PREVIEWS_DIR/") || !name.endsWith(".png")) return null
+  val rest = name.removePrefix("$BUNDLE_PREVIEWS_DIR/")
+  if ('/' in rest) return null
+  return rest.removeSuffix(".png")
 }
 
 /** The file (non-directory) entry names in [zip], in iteration order. */
