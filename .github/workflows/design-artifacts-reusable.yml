@@ -217,6 +217,20 @@ on:
         required: false
         type: number
         default: 60
+      render-timeout:
+        description: >
+          Seconds `bundle pack` may spend rendering, per module. This is the INNER timeout on the
+          render itself, not the job timeout above — a catalog can sit well inside `timeout-minutes`
+          and still be killed here, and the failure reads as a bare "Build timed out after 600s"
+          well before the publish step it never reached.
+
+          Scales with the number of previews, so a catalog that fans a component out over a variant
+          matrix outgrows the default long before it outgrows the job. Raise it rather than thinning
+          coverage; the alternative lever is spec-side render priority (`priority: "deferred"` /
+          `modePriority`), which needs a live path.
+        required: false
+        type: number
+        default: 600
     secrets:
       buildfetch_ro_token:
         description: 'Optional read-only BuildFetch Gradle remote-cache token, to pull cached task outputs instead of building cold.'
@@ -459,7 +473,8 @@ jobs:
           exclude=(); if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS"); fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics --progress \
-            "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" --timeout 600
+            "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
+            --timeout ${{ inputs.render-timeout }}
 
       - name: Render extra module
         if: ${{ inputs.extra-module != '' }}
@@ -469,7 +484,8 @@ jobs:
           run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
           run compose-preview bundle pack --module "${{ inputs.extra-module }}" --with-semantics --progress \
-            "${embed[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" --timeout 600
+            "${embed[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" \
+            --timeout ${{ inputs.render-timeout }}
 
       # Save the font cache even when a render step FAILED. A cold-cache run that downloaded
       # some faces before a later one failed to resolve must persist what it got, so the
