@@ -3338,13 +3338,28 @@ class ServeWebFixtureTest {
       liveCatalogWasm.contains("id=\"cp-sizeMode\" disabled"),
       "server-render-only sizing stays disabled on a live catalog's static snapshot",
     )
-    // A live-stream session offers the overlay toggles (talkBack / touch), rendered disabled until
-    // the Live Compose mode is actually entered (the mode-transition JS flips them on).
+    // A live-stream session offers the overlay toggles (talkBack / touch) ENABLED, even though the
+    // viewer opens on the static snapshot: ticking one switches into Live Compose (viewer.js'
+    // onOverlayChanged) rather than sitting dead until "Live preview" is clicked first.
     assertTrue(
       liveCatalogWasm.contains("cp-overlays") &&
-        liveCatalogWasm.contains("id=\"cp-talkBack\" type=\"checkbox\" disabled") &&
-        liveCatalogWasm.contains("id=\"cp-touchOverlay\" type=\"checkbox\" disabled"),
-      "live stream offers the overlay toggles, disabled until Live Compose is active",
+        liveCatalogWasm.contains("id=\"cp-talkBack\" type=\"checkbox\">") &&
+        liveCatalogWasm.contains("id=\"cp-touchOverlay\" type=\"checkbox\">"),
+      "live stream offers the overlay toggles enabled from the static lane",
+    )
+    assertTrue(
+      assetText("viewer.js")
+        .contains("if (anyOverlayChecked() && live && !live.disabled) setMode(\"live\");"),
+      "checking an overlay off the live lane enters Live Compose",
+    )
+    // Overlays are URL-owned state, not live-socket-only state: collected by `overrides()` (the map
+    // `query()` serializes) and listed in URL_STATE_PARAMS, so a ticked box rides the page URL, the
+    // export links and the stream's connect query. Collected only in `liveOverrides()` it would
+    // reach the daemon and nowhere else — unshareable, unrestorable by Back, and applied a frame
+    // late via the onopen replay instead of arriving with `stream/start`.
+    assertTrue(
+      assetText("viewer.js").contains("\"gestures\", \"talkBack\", \"touchOverlay\","),
+      "overlays are URL-owned params",
     )
     // The stream replays the full liveOverrides() on open so an overlay checked while the socket
     // was
