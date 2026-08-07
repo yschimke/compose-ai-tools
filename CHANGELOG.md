@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.19.43](https://github.com/yschimke/compose-ai-tools/compare/v0.19.42...v0.19.43) (2026-08-07)
+
+
+### Features
+
+* **ci:** publish history.json from the baseline pipeline ([#3415](https://github.com/yschimke/compose-ai-tools/issues/3415)) ([25ceebe](https://github.com/yschimke/compose-ai-tools/commit/25ceebe5b6d7d16e67abdf00d9f5b45cb11f841b))
+* **deploy:** serve the m3-catalog design system on preview.coo.ee ([#3414](https://github.com/yschimke/compose-ai-tools/issues/3414)) ([ef2b5f9](https://github.com/yschimke/compose-ai-tools/commit/ef2b5f913eec21b7f61b64b278d93141082b90c4))
+* **design-artifacts:** make the render timeout an input ([#3421](https://github.com/yschimke/compose-ai-tools/issues/3421)) ([3317ec8](https://github.com/yschimke/compose-ai-tools/commit/3317ec81f74c4ffbb6a7ff02200a12108b665a7a))
+* **figma-svg:** export Material icons as named fonts.google.com references ([#3429](https://github.com/yschimke/compose-ai-tools/issues/3429)) ([cd33240](https://github.com/yschimke/compose-ai-tools/commit/cd332409fc30b1cfe11f6c3752358a1f83cb242b))
+* **figma-svg:** request the export background per preview, in four modes ([#3411](https://github.com/yschimke/compose-ai-tools/issues/3411)) ([50bc405](https://github.com/yschimke/compose-ai-tools/commit/50bc405defddf0a2d75b6afcbc48afb6c4bae8f2))
+* **playground:** navigate every preview a snippet declares, and its knobs ([#3431](https://github.com/yschimke/compose-ai-tools/issues/3431)) ([10dda6c](https://github.com/yschimke/compose-ai-tools/commit/10dda6c65416bf3d8e5af1223e643b5c40a0894a))
+* **rc-compare:** show every player, diff against a chosen one, none by default ([#3416](https://github.com/yschimke/compose-ai-tools/issues/3416)) ([ff327f8](https://github.com/yschimke/compose-ai-tools/commit/ff327f849decf137bd22a3d61a9e185753c2a980))
+* **serve:** give the playground compile lane a per-caller budget ([#3404](https://github.com/yschimke/compose-ai-tools/issues/3404)) ([005a535](https://github.com/yschimke/compose-ai-tools/commit/005a535de48f51ec3172eda4516c5947370560e7))
+* **serve:** open a served preview's source in the playground ([#3418](https://github.com/yschimke/compose-ai-tools/issues/3418)) ([fe062ba](https://github.com/yschimke/compose-ai-tools/commit/fe062ba23285fce3586d728518542075f7f3b042))
+
+
+### Bug Fixes
+
+* **catalog:** make the sticker helper visible to a playground snippet ([#3426](https://github.com/yschimke/compose-ai-tools/issues/3426)) ([6e81de2](https://github.com/yschimke/compose-ai-tools/commit/6e81de234032bf6c711acd67bab06169d647fb52))
+* **ci:** give the history commit a committer identity ([#3433](https://github.com/yschimke/compose-ai-tools/issues/3433)) ([4d9894f](https://github.com/yschimke/compose-ai-tools/commit/4d9894f6017a9512623f5ebf2bd49719e78d2c24))
+* **ci:** publish history.json on branches that do not have one yet ([#3424](https://github.com/yschimke/compose-ai-tools/issues/3424)) ([5ae59ef](https://github.com/yschimke/compose-ai-tools/commit/5ae59ef2e0cd4a952115a8f30245c95374c0248a))
+* **ci:** stop the baseline push from dropping history.json ([#3417](https://github.com/yschimke/compose-ai-tools/issues/3417)) ([e5f6695](https://github.com/yschimke/compose-ai-tools/commit/e5f66959464be0720efdaa6759159b39fa3d704d))
+* **design-artifacts:** publish design references for annotation-led catalogs ([#3420](https://github.com/yschimke/compose-ai-tools/issues/3420)) ([72e5832](https://github.com/yschimke/compose-ai-tools/commit/72e5832aa9233c7f80d438a5ba9ca27027256baa))
+* **rc-player:** implement TEXT_LOOKUP_INT and fix integer-expression ids ([#3427](https://github.com/yschimke/compose-ai-tools/issues/3427)) ([57ff1b2](https://github.com/yschimke/compose-ai-tools/commit/57ff1b2dde9c2844d516997f94c1b87d9f8d2a96))
+* **serve:** keep the playground seed fresh, off the event loop, and honest ([#3419](https://github.com/yschimke/compose-ai-tools/issues/3419)) ([6e4d709](https://github.com/yschimke/compose-ai-tools/commit/6e4d70994888912578025c0c03d9753c9f445502))
+* **serve:** score design references on their content box, not their canvas ([#3413](https://github.com/yschimke/compose-ai-tools/issues/3413)) ([bb73297](https://github.com/yschimke/compose-ai-tools/commit/bb73297a682d5597b5f8abd6dab911356e13315d))
+* **serve:** seed a variant's knob into the Wasm tier ([#3428](https://github.com/yschimke/compose-ai-tools/issues/3428)) ([baf74ef](https://github.com/yschimke/compose-ai-tools/commit/baf74efeda9ded36621b4173a3ea67ae3983d5a1))
+
 ## [0.19.42](https://github.com/yschimke/compose-ai-tools/compare/v0.19.41...v0.19.42) (2026-08-07)
 
 
