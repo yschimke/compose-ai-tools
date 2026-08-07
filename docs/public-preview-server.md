@@ -486,6 +486,25 @@ and selecting it scores each mock against the sticker it is mapped to:
 
 ![PNG ↔ Design reference lane on the meshcore-mobile catalog](images/serve-references-compare.png)
 
+## Remote Compose players (`/<system>/compare?format=rc`)
+
+A catalog that ships Remote Compose documents gets a **Remote Compose players** lane on the same
+compare page: one column per player — the baked PNG, the vendored TypeScript `RcdPlayer`, AndroidX's
+Compose-embedded `RcPlayer`, the Compose Desktop / Skiko player, the CMP/Wasm player — showing every
+player's render of the same document, with nothing diffed until you pick a column as the reference.
+Picking the **baked PNG** replays the offline run's exact `pixelmatch` diffs; picking a *player*
+diffs in the browser, which is the only way to ask "how far is cmp-wasm from cmp-jvm?".
+
+Nothing is rendered in the visitor's browser to build it. The columns are the renders the offline
+`rc-compare` pipeline already published on the catalog's delivery branch alongside
+`rc-compare-summary.json` — the same data `rc-compare.html` is built from — which the catalog store
+stages on its background fetch lane, re-keyed from daemon preview ids onto the served catalog ids
+and served back at `/<system>/rc-compare/<lane>/<slot>.png`. A catalog that publishes no summary
+keeps the older in-browser lane (baked PNG ↔ the JS player, rendered live), and one that ships no
+`ir/` documents at all shows no Remote Compose lane.
+
+![Every Remote Compose player side by side](design/evidence/serve-rc-player-wall/serve-rc-players-default.png)
+
 ## The design-parity view (`/<system>/parity`)
 
 A catalog landing links **design parity** beside "compare formats". That page answers one question

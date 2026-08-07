@@ -1,0 +1,214 @@
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>remote-m3 — format comparison</title>
+        <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+      </head>
+      <body>
+        <header class="cp-site-header">
+  <a class="cp-site-brand" href="/" aria-label="compose-preview home">
+    <span class="cp-site-mark" aria-hidden="true">◇</span>
+    <span>compose-preview</span>
+  </a>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <a href="/">Catalogs</a>
+    <a href="/status">Status</a>
+    <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+  </nav>
+</header>
+        <main class="cp-main">
+                <div id="cp-compare" data-default-format="rc" data-default-theme="light" data-theme-key="cp-theme:remote-m3" data-has-svg="0" data-has-rc="1" data-has-reference="0" data-rc-lanes="1">
+          <p class="cp-breadcrumb"><a href="/?session=remote-m3">remote-m3</a> / Compare formats</p>
+          <h1 class="cp-head">Format comparison <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/remote-m3">✓ trusted</span></h1>
+          <p class="cp-sub"><span class="cp-sub-formats">PNG, SVG and Remote Compose fidelity · scores use structural similarity on a fixed backdrop</span><span class="cp-sub-rc">Every Remote Compose player side by side · pixel diffs from the published parity run</span></p>
+          <div class="cp-compare-controls">
+            <span class="cp-theme" role="group" aria-label="Comparison format"><button type="button" class="cp-theme-btn" data-compare-format="rc" aria-pressed="true">Remote Compose players</button></span>
+            <span class="cp-compare-theme-controls">
+  <span class="cp-compare-control-label">Theme</span>
+  <span class="cp-theme" role="group" aria-label="Comparison theme">
+    <button type="button" class="cp-theme-btn" data-compare-theme="light" aria-pressed="true">Light</button>
+    <button type="button" class="cp-theme-btn" data-compare-theme="dark" aria-pressed="false">Dark</button>
+  </span>
+</span>
+          </div>
+          <div class="cp-searchbar cp-compare-searchbar">
+            <input id="cp-compare-search" class="cp-search" type="search" placeholder="Filter comparisons…" aria-label="Filter comparisons">
+            <span id="cp-compare-count" class="cp-count" role="status"></span>
+          </div>
+          <div id="cp-compare-formats"><p class="cp-empty">No previews in this session carry a comparable format.</p></div>
+                <section id="cp-rc-lanes" hidden>
+        <p class="cp-sub">Pick a column and every other column grows a pixel diff and a mismatch chip.
+          The baked PNG replays the build-time <code>pixelmatch</code> diffs; a player diffs in your browser,
+          which is how you compare two players directly.</p>
+        <div class="cp-compare-controls">
+          <span class="cp-compare-control-label">Diff against</span>
+          <span class="cp-theme" role="group" aria-label="Diff reference"><button type="button" class="cp-theme-btn" data-rc-ref="none" aria-pressed="true">nothing</button><button type="button" class="cp-theme-btn" data-rc-ref="baked" aria-pressed="false">baked</button><button type="button" class="cp-theme-btn" data-rc-ref="js" aria-pressed="false">js</button><button type="button" class="cp-theme-btn" data-rc-ref="embedded" aria-pressed="false">embedded</button><button type="button" class="cp-theme-btn" data-rc-ref="cmp-jvm" aria-pressed="false">cmp-jvm</button><button type="button" class="cp-theme-btn" data-rc-ref="cmp-wasm" aria-pressed="false">cmp-wasm</button></span>
+          <span id="cp-rc-status" class="cp-rc-status" role="status"></span>
+        </div>
+        <div class="cp-compare-table-wrap">
+          <table class="cp-compare-table cp-rc-table">
+            <thead><tr><th>Preview</th><th>baked PNG</th><th>RC · JS player</th><th>RC · embedded player</th><th>RC · cmp-jvm player</th><th>RC · cmp-wasm player</th></tr></thead>
+            <tbody>
+        <tr class="cp-rc-row" data-row="0" data-hay="button-filled button-filled__ideal__default__light button-filled__ideal__default__dark"
+          data-preview-ids="button-filled__ideal__default__light button-filled__ideal__default__dark">
+          <th scope="row">
+            <a href="/p/button-filled__ideal__default__light?session=remote-m3">button-filled</a>
+            <div class="cp-rc-dims">400×400</div>
+            
+            <div class="cp-rc-scores" data-scores></div>
+          </th><td><figure class="cp-rc-cell" data-lane="baked">
+  <figcaption>baked PNG<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/baked/0.png?session=remote-m3" alt="button-filled — baked PNG">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="js">
+  <figcaption>RC · JS player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/js/0.png?session=remote-m3" alt="button-filled — RC · JS player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="embedded">
+  <figcaption>RC · embedded player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/embedded/0.png?session=remote-m3" alt="button-filled — RC · embedded player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="cmp-jvm">
+  <figcaption>RC · cmp-jvm player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/cmp-jvm/0.png?session=remote-m3" alt="button-filled — RC · cmp-jvm player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="cmp-wasm">
+  <figcaption>RC · cmp-wasm player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/cmp-wasm/0.png?session=remote-m3" alt="button-filled — RC · cmp-wasm player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td>
+        </tr>
+        <tr class="cp-rc-row" data-row="1" data-hay="switch-on switch-on__ideal__default__light switch-on__ideal__default__dark"
+          data-preview-ids="switch-on__ideal__default__light switch-on__ideal__default__dark">
+          <th scope="row">
+            <a href="/p/switch-on__ideal__default__light?session=remote-m3">switch-on</a>
+            <div class="cp-rc-dims">400×400</div>
+            
+            <div class="cp-rc-scores" data-scores></div>
+          </th><td><figure class="cp-rc-cell" data-lane="baked">
+  <figcaption>baked PNG<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/baked/2.png?session=remote-m3" alt="switch-on — baked PNG">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="js">
+  <figcaption>RC · JS player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/js/2.png?session=remote-m3" alt="switch-on — RC · JS player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="embedded">
+  <figcaption>RC · embedded player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/embedded/2.png?session=remote-m3" alt="switch-on — RC · embedded player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="cmp-jvm">
+  <figcaption>RC · cmp-jvm player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/cmp-jvm/2.png?session=remote-m3" alt="switch-on — RC · cmp-jvm player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="cmp-wasm">
+  <figcaption>RC · cmp-wasm player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/cmp-wasm/2.png?session=remote-m3" alt="switch-on — RC · cmp-wasm player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td>
+        </tr>
+        <tr class="cp-rc-row" data-row="2" data-hay="button-filled button-filled__ideal__default__light button-filled__ideal__default__dark"
+          data-preview-ids="button-filled__ideal__default__light button-filled__ideal__default__dark">
+          <th scope="row">
+            <a href="/p/button-filled__ideal__default__dark?session=remote-m3">button-filled</a>
+            <div class="cp-rc-dims">400×400</div>
+            
+            <div class="cp-rc-scores" data-scores></div>
+          </th><td><figure class="cp-rc-cell" data-lane="baked">
+  <figcaption>baked PNG<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/baked/1.png?session=remote-m3" alt="button-filled — baked PNG">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="js">
+  <figcaption>RC · JS player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/js/1.png?session=remote-m3" alt="button-filled — RC · JS player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="embedded">
+  <figcaption>RC · embedded player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/embedded/1.png?session=remote-m3" alt="button-filled — RC · embedded player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="cmp-jvm">
+  <figcaption>RC · cmp-jvm player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/cmp-jvm/1.png?session=remote-m3" alt="button-filled — RC · cmp-jvm player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="cmp-wasm">
+  <figcaption>RC · cmp-wasm player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <div class="cp-rc-missing">Document is not renderable by the CMP player: CoreText requires DataFont</div>
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td>
+        </tr>
+        <tr class="cp-rc-row" data-row="3" data-hay="switch-on switch-on__ideal__default__light switch-on__ideal__default__dark"
+          data-preview-ids="switch-on__ideal__default__light switch-on__ideal__default__dark">
+          <th scope="row">
+            <a href="/p/switch-on__ideal__default__dark?session=remote-m3">switch-on</a>
+            <div class="cp-rc-dims">400×400</div>
+            
+            <div class="cp-rc-scores" data-scores></div>
+          </th><td><figure class="cp-rc-cell" data-lane="baked">
+  <figcaption>baked PNG<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/baked/3.png?session=remote-m3" alt="switch-on — baked PNG">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="js">
+  <figcaption>RC · JS player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/js/3.png?session=remote-m3" alt="switch-on — RC · JS player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="embedded">
+  <figcaption>RC · embedded player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/embedded/3.png?session=remote-m3" alt="switch-on — RC · embedded player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="cmp-jvm">
+  <figcaption>RC · cmp-jvm player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/cmp-jvm/3.png?session=remote-m3" alt="switch-on — RC · cmp-jvm player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="cmp-wasm">
+  <figcaption>RC · cmp-wasm player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/cmp-wasm/3.png?session=remote-m3" alt="switch-on — RC · cmp-wasm player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td>
+        </tr>
+        <tr class="cp-rc-row" data-row="4" data-hay="badge badge"
+          data-preview-ids="badge">
+          <th scope="row">
+            <a href="/p/badge?session=remote-m3">badge</a>
+            <div class="cp-rc-dims">400×400</div>
+            
+            <div class="cp-rc-scores" data-scores></div>
+          </th><td><figure class="cp-rc-cell" data-lane="baked">
+  <figcaption>baked PNG<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/baked/4.png?session=remote-m3" alt="badge — baked PNG">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="js">
+  <figcaption>RC · JS player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/js/4.png?session=remote-m3" alt="badge — RC · JS player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="embedded">
+  <figcaption>RC · embedded player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/embedded/4.png?session=remote-m3" alt="badge — RC · embedded player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="cmp-jvm">
+  <figcaption>RC · cmp-jvm player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/cmp-jvm/4.png?session=remote-m3" alt="badge — RC · cmp-jvm player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td><td><figure class="cp-rc-cell" data-lane="cmp-wasm">
+  <figcaption>RC · cmp-wasm player<span class="cp-rc-refbadge">reference</span></figcaption>
+  <img loading="lazy" src="/rc-compare/cmp-wasm/4.png?session=remote-m3" alt="badge — RC · cmp-wasm player">
+  <div class="cp-rc-diffslot" hidden></div>
+</figure></td>
+        </tr>
+            </tbody>
+          </table>
+        </div>
+        <p id="cp-rc-empty" class="cp-empty" hidden>No comparisons match this filter.</p>
+        <script type="application/json" id="cp-rc-model">{"threshold":0.1,"lanes":[{"id":"baked","label":"baked PNG","short":"baked"},{"id":"js","label":"RC · JS player","short":"js"},{"id":"embedded","label":"RC · embedded player","short":"embedded"},{"id":"cmp-jvm","label":"RC · cmp-jvm player","short":"cmp-jvm"},{"id":"cmp-wasm","label":"RC · cmp-wasm player","short":"cmp-wasm"}],"rows":[{"label":"button-filled","referenceBlank":false,"lanes":{"baked":{"rendered":true,"render":"/rc-compare/baked/0.png?session=remote-m3","diff":"","mismatchPct":null,"mismatchPx":null,"note":""},"js":{"rendered":true,"render":"/rc-compare/js/0.png?session=remote-m3","diff":"/rc-compare/js-diff/0.png?session=remote-m3","mismatchPct":2.97,"mismatchPx":9116,"note":""},"embedded":{"rendered":true,"render":"/rc-compare/embedded/0.png?session=remote-m3","diff":"/rc-compare/embedded-diff/0.png?session=remote-m3","mismatchPct":0.03,"mismatchPx":24,"note":""},"cmp-jvm":{"rendered":true,"render":"/rc-compare/cmp-jvm/0.png?session=remote-m3","diff":"/rc-compare/cmp-jvm-diff/0.png?session=remote-m3","mismatchPct":1.09,"mismatchPx":5151,"note":""},"cmp-wasm":{"rendered":true,"render":"/rc-compare/cmp-wasm/0.png?session=remote-m3","diff":"/rc-compare/cmp-wasm-diff/0.png?session=remote-m3","mismatchPct":3.4,"mismatchPx":12040,"note":""}}},{"label":"switch-on","referenceBlank":false,"lanes":{"baked":{"rendered":true,"render":"/rc-compare/baked/2.png?session=remote-m3","diff":"","mismatchPct":null,"mismatchPx":null,"note":""},"js":{"rendered":true,"render":"/rc-compare/js/2.png?session=remote-m3","diff":"/rc-compare/js-diff/2.png?session=remote-m3","mismatchPct":2.17,"mismatchPx":7316,"note":""},"embedded":{"rendered":true,"render":"/rc-compare/embedded/2.png?session=remote-m3","diff":"/rc-compare/embedded-diff/2.png?session=remote-m3","mismatchPct":0.05,"mismatchPx":26,"note":""},"cmp-jvm":{"rendered":true,"render":"/rc-compare/cmp-jvm/2.png?session=remote-m3","diff":"/rc-compare/cmp-jvm-diff/2.png?session=remote-m3","mismatchPct":1.4900000000000002,"mismatchPx":5231,"note":""},"cmp-wasm":{"rendered":true,"render":"/rc-compare/cmp-wasm/2.png?session=remote-m3","diff":"/rc-compare/cmp-wasm-diff/2.png?session=remote-m3","mismatchPct":2.8,"mismatchPx":10240,"note":""}}},{"label":"button-filled","referenceBlank":false,"lanes":{"baked":{"rendered":true,"render":"/rc-compare/baked/1.png?session=remote-m3","diff":"","mismatchPct":null,"mismatchPx":null,"note":""},"js":{"rendered":true,"render":"/rc-compare/js/1.png?session=remote-m3","diff":"/rc-compare/js-diff/1.png?session=remote-m3","mismatchPct":2.5700000000000003,"mismatchPx":8216,"note":""},"embedded":{"rendered":true,"render":"/rc-compare/embedded/1.png?session=remote-m3","diff":"/rc-compare/embedded-diff/1.png?session=remote-m3","mismatchPct":0.04,"mismatchPx":25,"note":""},"cmp-jvm":{"rendered":true,"render":"/rc-compare/cmp-jvm/1.png?session=remote-m3","diff":"/rc-compare/cmp-jvm-diff/1.png?session=remote-m3","mismatchPct":1.29,"mismatchPx":5191,"note":""},"cmp-wasm":{"rendered":false,"render":"","diff":"","mismatchPct":null,"mismatchPx":null,"note":"Document is not renderable by the CMP player: CoreText requires DataFont"}}},{"label":"switch-on","referenceBlank":false,"lanes":{"baked":{"rendered":true,"render":"/rc-compare/baked/3.png?session=remote-m3","diff":"","mismatchPct":null,"mismatchPx":null,"note":""},"js":{"rendered":true,"render":"/rc-compare/js/3.png?session=remote-m3","diff":"/rc-compare/js-diff/3.png?session=remote-m3","mismatchPct":1.77,"mismatchPx":6416,"note":""},"embedded":{"rendered":true,"render":"/rc-compare/embedded/3.png?session=remote-m3","diff":"/rc-compare/embedded-diff/3.png?session=remote-m3","mismatchPct":0.06,"mismatchPx":27,"note":""},"cmp-jvm":{"rendered":true,"render":"/rc-compare/cmp-jvm/3.png?session=remote-m3","diff":"/rc-compare/cmp-jvm-diff/3.png?session=remote-m3","mismatchPct":1.6900000000000002,"mismatchPx":5271,"note":""},"cmp-wasm":{"rendered":true,"render":"/rc-compare/cmp-wasm/3.png?session=remote-m3","diff":"/rc-compare/cmp-wasm-diff/3.png?session=remote-m3","mismatchPct":2.5,"mismatchPx":9340,"note":""}}},{"label":"badge","referenceBlank":false,"lanes":{"baked":{"rendered":true,"render":"/rc-compare/baked/4.png?session=remote-m3","diff":"","mismatchPct":null,"mismatchPx":null,"note":""},"js":{"rendered":true,"render":"/rc-compare/js/4.png?session=remote-m3","diff":"/rc-compare/js-diff/4.png?session=remote-m3","mismatchPct":1.37,"mismatchPx":5516,"note":""},"embedded":{"rendered":true,"render":"/rc-compare/embedded/4.png?session=remote-m3","diff":"/rc-compare/embedded-diff/4.png?session=remote-m3","mismatchPct":0.07,"mismatchPx":28,"note":""},"cmp-jvm":{"rendered":true,"render":"/rc-compare/cmp-jvm/4.png?session=remote-m3","diff":"/rc-compare/cmp-jvm-diff/4.png?session=remote-m3","mismatchPct":1.8900000000000001,"mismatchPx":5311,"note":""},"cmp-wasm":{"rendered":true,"render":"/rc-compare/cmp-wasm/4.png?session=remote-m3","diff":"/rc-compare/cmp-wasm-diff/4.png?session=remote-m3","mismatchPct":2.2,"mismatchPx":8440,"note":""}}}]}</script>
+      </section>
+        </div>
+        <script src="/assets/serve/fixture/url-state.js"></script>
+        <script src="/assets/serve/fixture/rc-lanes.js"></script>
+        <script src="/assets/serve/fixture/format-compare.js"></script>
+        </main>
+      </body>
+    </html>

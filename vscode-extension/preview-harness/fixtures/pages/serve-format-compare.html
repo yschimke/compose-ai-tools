@@ -25,20 +25,22 @@
                 <div id="cp-compare" data-default-format="svg" data-default-theme="light" data-theme-key="cp-theme:compose-m3" data-has-svg="1" data-has-rc="1" data-has-reference="1">
           <p class="cp-breadcrumb"><a href="/?session=compose-m3">compose-m3</a> / Compare formats</p>
           <h1 class="cp-head">Format comparison <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
-          <p class="cp-sub">PNG, SVG and Remote Compose fidelity · scores use structural similarity on a fixed backdrop</p>
+          <p class="cp-sub"><span class="cp-sub-formats">PNG, SVG and Remote Compose fidelity · scores use structural similarity on a fixed backdrop</span></p>
           <div class="cp-compare-controls">
             <span class="cp-theme" role="group" aria-label="Comparison format"><button type="button" class="cp-theme-btn" data-compare-format="svg" aria-pressed="true">PNG ↔ SVG</button><button type="button" class="cp-theme-btn" data-compare-format="rc" aria-pressed="false">PNG ↔ Remote Compose</button><button type="button" class="cp-theme-btn" data-compare-format="reference" aria-pressed="false">PNG ↔ Design reference</button></span>
-            <span class="cp-compare-control-label">Theme</span>
-<span class="cp-theme" role="group" aria-label="Comparison theme">
-  <button type="button" class="cp-theme-btn" data-compare-theme="light" aria-pressed="true">Light</button>
-  <button type="button" class="cp-theme-btn" data-compare-theme="dark" aria-pressed="false">Dark</button>
+            <span class="cp-compare-theme-controls">
+  <span class="cp-compare-control-label">Theme</span>
+  <span class="cp-theme" role="group" aria-label="Comparison theme">
+    <button type="button" class="cp-theme-btn" data-compare-theme="light" aria-pressed="true">Light</button>
+    <button type="button" class="cp-theme-btn" data-compare-theme="dark" aria-pressed="false">Dark</button>
+  </span>
 </span>
           </div>
           <div class="cp-searchbar cp-compare-searchbar">
             <input id="cp-compare-search" class="cp-search" type="search" placeholder="Filter comparisons…" aria-label="Filter comparisons">
             <span id="cp-compare-count" class="cp-count" role="status"></span>
           </div>
-                  <div class="cp-compare-table-wrap">
+          <div id="cp-compare-formats">        <div class="cp-compare-table-wrap">
           <table class="cp-compare-table">
             <thead><tr><th>Preview</th><th>Rendered PNG</th><th class="cp-compare-target-head">SVG</th><th>Match</th></tr></thead>
             <tbody><tr class="cp-compare-row" data-label="button-filled"
@@ -57,9 +59,11 @@
 </tr></tbody>
           </table>
         </div>
-        <p id="cp-compare-empty" class="cp-empty" hidden>No comparisons match this filter.</p>
+        <p id="cp-compare-empty" class="cp-empty" hidden>No comparisons match this filter.</p></div>
+          
         </div>
         <script src="/assets/serve/fixture/url-state.js"></script>
+        
         <script src="/assets/serve/fixture/format-compare.js"></script>
         </main>
       </body>

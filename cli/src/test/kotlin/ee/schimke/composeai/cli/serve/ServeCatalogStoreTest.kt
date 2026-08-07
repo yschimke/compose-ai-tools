@@ -1122,7 +1122,10 @@ class ServeCatalogStoreTest {
       """
         .trimIndent()
     val perPreviewBytes = byteArrayOf(9, 8, 7)
-    val requested = mutableListOf<String>()
+    // Thread-safe: a catalog load also kicks off background fetch lanes (vectors, the published
+    // rc-compare), so this recorder is written from those threads while the assertions below read
+    // it. A plain ArrayList fails the reads with a ConcurrentModificationException.
+    val requested = java.util.concurrent.CopyOnWriteArrayList<String>()
     val fetch: (String) -> ByteArray? = { url ->
       requested += url
       when {

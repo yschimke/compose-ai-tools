@@ -622,7 +622,14 @@
   var formatButtons = root.querySelectorAll("[data-compare-format]");
   var themeButtons = root.querySelectorAll("[data-compare-theme]");
   var rows = Array.prototype.slice.call(root.querySelectorAll(".cp-compare-row"));
-  var body = root.querySelector("tbody");
+  var body = root.querySelector("#cp-compare-formats tbody");
+  // The published Remote Compose player wall (rc-lanes.js), when this catalog has one. It replaces
+  // the client-rendered `rc` lane wholesale: it shows every player rather than the one that runs in
+  // a browser, and it replays renders the delivery branch already carries instead of decoding a
+  // document per preview here.
+  var lanesPane = document.getElementById("cp-rc-lanes");
+  var formatsPane = document.getElementById("cp-compare-formats");
+  function lanesActive() { return !!lanesPane && format === "rc"; }
   var count = document.getElementById("cp-compare-count");
   var search = document.getElementById("cp-compare-search");
   var empty = document.getElementById("cp-compare-empty");
@@ -796,6 +803,10 @@
   }
 
   function applySearch() {
+    if (lanesActive()) {
+      if (window.cpRcLanes) window.cpRcLanes.filter(search.value);
+      return;
+    }
     var query = (search.value || "").trim().toLowerCase();
     var preview = (new URLSearchParams(location.search).get("preview") || "").toLowerCase();
     var visible = 0;
@@ -806,8 +817,8 @@
       row.hidden = !(hasFormat && matchesQuery && matchesPreview);
       if (!row.hidden) visible++;
     });
-    count.textContent = visible + (visible === 1 ? " comparison" : " comparisons");
-    empty.hidden = visible !== 0;
+    if (count) count.textContent = visible + (visible === 1 ? " comparison" : " comparisons");
+    if (empty) empty.hidden = visible !== 0;
   }
 
   function run() {
@@ -816,6 +827,16 @@
     setPressed(themeButtons, "data-compare-theme", theme);
     root.setAttribute("data-format", format);
     root.setAttribute("data-theme", theme);
+    // The lane wall is its own view: it owns its rows, its reference picker and its diffs, and it
+    // needs none of the per-row scoring below (every number it shows was computed offline). Hand it
+    // the filter and stop — leaving the client-rendered table running behind it would decode a
+    // document per preview for a table nobody can see.
+    if (lanesPane) lanesPane.hidden = !lanesActive();
+    if (formatsPane) formatsPane.hidden = lanesActive();
+    if (lanesActive()) {
+      applySearch();
+      return;
+    }
     rows.forEach(function (row) { row.removeAttribute("data-score"); });
     applySearch();
     var visible = rows.filter(function (row) { return !row.hidden; });

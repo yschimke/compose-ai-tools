@@ -187,6 +187,65 @@ class ServeWebFixtureTest {
       ServePreview("badge", "Badge"),
     )
 
+  /**
+   * A published `rc-compare` manifest over [previews] — the shape [ServeCatalogStore] stages from a
+   * catalog's delivery branch, hand-built here so the golden pins the *page*, not a fetch.
+   *
+   * Deliberately uneven, because the uneven cases are what the wall exists to show: the JS player
+   * scores worse than the two Compose players (it is a separate implementation), and cmp-wasm
+   * refuses one document outright, so the fixture captures a rendered column, a scored column and a
+   * "player could not decode this" column side by side.
+   */
+  private fun rcCompareFixture(previews: List<ServePreview>): RcCompareManifest {
+    val lanes =
+      listOf(
+        RcCompareLane("baked", "baked PNG", "baked"),
+        RcCompareLane("js", "RC · JS player", "js"),
+        RcCompareLane("embedded", "RC · embedded player", "embedded"),
+        RcCompareLane("cmp-jvm", "RC · cmp-jvm player", "cmp-jvm"),
+        RcCompareLane("cmp-wasm", "RC · cmp-wasm player", "cmp-wasm"),
+      )
+    fun cell(lane: String, slot: Int, pct: Double?, px: Long?, note: String = "") =
+      if (pct == null && note.isNotEmpty()) RcCompareCell(rendered = false, note = note)
+      else
+        RcCompareCell(
+          rendered = true,
+          render = "$lane/$slot.png",
+          diff = if (lane == "baked") "" else "$lane-diff/$slot.png",
+          mismatchPct = pct,
+          mismatchPx = px,
+        )
+    return RcCompareManifest(
+      lanes = lanes,
+      rows =
+        previews.mapIndexed { slot, preview ->
+          val wasmRefuses = slot == 1
+          RcCompareRow(
+            previewId = preview.id,
+            width = 400,
+            height = 400,
+            lanes =
+              mapOf(
+                "baked" to cell("baked", slot, null, null),
+                "js" to cell("js", slot, 2.97 - slot * 0.4, 9116L - slot * 900),
+                "embedded" to cell("embedded", slot, 0.03 + slot * 0.01, 24L + slot),
+                "cmp-jvm" to cell("cmp-jvm", slot, 1.09 + slot * 0.2, 5151L + slot * 40),
+                "cmp-wasm" to
+                  if (wasmRefuses)
+                    cell(
+                      "cmp-wasm",
+                      slot,
+                      null,
+                      null,
+                      "Document is not renderable by the CMP player: CoreText requires DataFont",
+                    )
+                  else cell("cmp-wasm", slot, 3.4 - slot * 0.3, 12040L - slot * 900),
+              ),
+          )
+        },
+    )
+  }
+
   // A catalog whose components carry baked non-default STATES (checkbox checked/unchecked, radio
   // selected/unselected), each in light + dark, tagged via the `state`/`theme` metadata the
   // `previews/variants.json` manifest carries. The landing folds each component to ONE (default)
@@ -930,6 +989,19 @@ class ServeWebFixtureTest {
           else emptyList()
         },
       )
+    // The Remote Compose PLAYER WALL: the same compare page in `?format=rc`, backed by a catalog's
+    // published `rc-compare` manifest instead of by an in-browser render. Only the rc format is
+    // advertised, so the page opens straight onto the wall — which is what the fixture is for.
+    val rcLanesComparison =
+      ServeWeb.comparisonPage(
+        "remote-m3",
+        themedPreviews,
+        token,
+        sessionId = "remote-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
+        isPublic = true,
+        rcCompare = rcCompareFixture(themedPreviews),
+      )
     val comparisonReferences =
       listOf(
         DesignReference(
@@ -1505,6 +1577,7 @@ class ServeWebFixtureTest {
         "serve-landing-catalog-palette.html" to landingCatalogPalette,
         "serve-viewer-catalog-palette.html" to viewerCatalogPalette,
         "serve-format-compare.html" to formatComparison,
+        "serve-rc-lanes.html" to rcLanesComparison,
         "serve-reference-compare.html" to referenceComparison,
         "serve-parity.html" to parity,
         "serve-landing-declared-themes.html" to landingDeclaredThemes,
@@ -1705,6 +1778,60 @@ class ServeWebFixtureTest {
         formatComparison.contains("data-compare-theme=\"light\"") &&
         formatComparison.contains("data-compare-theme=\"dark\""),
       "the comparison page exposes only its available formats and its baked theme pair",
+    )
+    // The player wall's load-bearing claims, asserted rather than left to the pixel diff.
+    assertTrue(
+      rcLanesComparison.contains("id=\"cp-rc-lanes\"") &&
+        rcLanesComparison.contains("data-rc-lanes=\"1\"") &&
+        rcLanesComparison.contains(">Remote Compose players</button>") &&
+        rcLanesComparison.contains(ServeWebAssets.href("rc-lanes.js")),
+      "a catalog with a published rc-compare manifest gets the player wall, not the in-browser lane",
+    )
+    assertEquals(
+      listOf(
+        "baked PNG",
+        "RC · JS player",
+        "RC · embedded player",
+        "RC · cmp-jvm player",
+        "RC · cmp-wasm player",
+      ),
+      Regex("<th>([^<]+)</th>")
+        .findAll(rcLanesComparison.substringAfter("cp-rc-table").substringBefore("</thead>"))
+        .map { it.groupValues[1] }
+        .toList()
+        .drop(1),
+      "every player the run covered is its own column, in the published order",
+    )
+    assertEquals(
+      listOf("none", "baked", "js", "embedded", "cmp-jvm", "cmp-wasm"),
+      Regex("data-rc-ref=\"([^\"]+)\"")
+        .findAll(rcLanesComparison)
+        .map { it.groupValues[1] }
+        .toList(),
+      "every column — including the baked reference — can itself be picked as the diff reference",
+    )
+    // Worst-match first on the **worst-scoring player**, not on any one lane — which is the point:
+    // the second preview reorders ahead of the third on its cmp-wasm score even though its JS score
+    // is better, so a preview only one player gets wrong still surfaces.
+    assertEquals(
+      listOf(
+          "button-filled__ideal__default__light",
+          "switch-on__ideal__default__light",
+          "button-filled__ideal__default__dark",
+          "switch-on__ideal__default__dark",
+          "badge",
+        )
+        .map { "/p/$it" },
+      Regex("<a href=\"(/p/[^\"?]+)")
+        .findAll(rcLanesComparison.substringAfter("cp-rc-table"))
+        .map { it.groupValues[1] }
+        .toList(),
+      "rows sort worst-match-first on the worst-scoring player",
+    )
+    assertTrue(
+      rcLanesComparison.contains("/rc-compare/js/0.png?session=remote-m3") &&
+        rcLanesComparison.contains("cp-rc-missing\">Document is not renderable by the CMP player"),
+      "a rendered lane shows its published PNG; a lane that refused the document shows its reason",
     )
     val escapedComparison =
       ServeWeb.comparisonPage(

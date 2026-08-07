@@ -777,6 +777,11 @@ class ServeHttpServer(
         get("/reference/{name}") { handleDesignReferenceAsset(sessionInPath = false) }
         get("/{system}/reference/{name}") { handleDesignReferenceAsset(sessionInPath = true) }
 
+        // The published Remote Compose player renders + build-time diffs the compare page replays
+        // (see [ServeRcCompare]). Content-addressed by lane and slot, never by a published id.
+        get("/rc-compare/{lane}/{name}") { handleRcCompareAsset(sessionInPath = false) }
+        get("/{system}/rc-compare/{lane}/{name}") { handleRcCompareAsset(sessionInPath = true) }
+
         // The design-parity dashboard. `?format=json` mirrors the `/status` convention; `.json` is
         // the canonical machine path a CI check polls.
         get("/parity") { handleParity(sessionInPath = false, json = false) }
@@ -1612,17 +1617,27 @@ class ServeHttpServer(
       sessionId,
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
+      // The published player comparison is itself a comparable format: a catalog can carry it even
+      // where the per-preview `.rc` sidecars didn't make it into the served staging dir.
+      val rcCompare = renderHost.rcCompare()
       val comparable =
-        renderHost.previews.any { preview ->
-          renderHost.hasSvgExportFor(preview.id) ||
-            renderHost.hasRemoteComposeDoc(preview.id) ||
-            renderHost.designReferencesFor(preview.id).isNotEmpty()
-        }
+        rcCompare != null ||
+          renderHost.previews.any { preview ->
+            renderHost.hasSvgExportFor(preview.id) ||
+              renderHost.hasRemoteComposeDoc(preview.id) ||
+              renderHost.designReferencesFor(preview.id).isNotEmpty()
+          }
       if (!comparable) {
         respondNotFoundHtml("This session has no native formats or design references to compare.")
         return@withLeasedSession
       }
-      markGeneration("static-page", pageCacheControl())
+      // Uncacheable while the published player comparison is still staging: the page's shape
+      // depends on a manifest that lands asynchronously, and a short edge cache would otherwise
+      // serve the pre-manifest shape for minutes after the lanes were ready.
+      markGeneration(
+        "static-page",
+        if (renderHost.rcComparePending()) DYNAMIC_RESOURCE_CACHE_CONTROL else pageCacheControl(),
+      )
       call.respondText(
         ServeWeb.comparisonPage(
           moduleLabel = renderHost.label,
@@ -1637,6 +1652,7 @@ class ServeHttpServer(
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           hasSvgFor = renderHost::hasSvgExportFor,
           hasRemoteComposeFor = renderHost::hasRemoteComposeDoc,
+          rcCompare = rcCompare,
           referencesFor = renderHost::designReferencesFor,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           displayTitle = catalogBundleHost(renderHost)?.title,
@@ -1729,6 +1745,27 @@ class ServeHttpServer(
         call.respond(HttpStatusCode.NotFound)
       } else {
         markGeneration("design-reference", "private, max-age=300")
+        call.respondBytes(bytes, ContentType.Image.PNG)
+      }
+    }
+  }
+
+  /**
+   * One staged rc-compare lane image — a player's published render of an `ir/<id>.rc` document, or
+   * the build-time pixel diff of it against the baked PNG. Immutable for the life of a catalog
+   * generation (a refresh restages them), so it caches like the baked PNGs do.
+   */
+  private suspend fun RoutingContext.handleRcCompareAsset(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val sessionId = selectedSessionId(sessionInPath)
+    val name = "${call.parameters["lane"].orEmpty()}/${call.parameters["name"].orEmpty()}"
+    withLeasedSession(sessionId, onMissing = { call.respond(HttpStatusCode.NotFound) }) { renderHost
+      ->
+      val bytes = renderHost.rcCompareImage(name)
+      if (bytes == null) {
+        call.respond(HttpStatusCode.NotFound)
+      } else {
+        markGeneration("rc-compare", "private, max-age=300")
         call.respondBytes(bytes, ContentType.Image.PNG)
       }
     }
