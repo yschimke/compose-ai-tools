@@ -382,6 +382,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-gestures/dark](renders/serve-viewer-gestures.dark.png) |
 | `light` | ![serve-viewer-gestures/light](renders/serve-viewer-gestures.light.png) |
 
+## serve-viewer-history
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-history/dark](renders/serve-viewer-history.dark.png) |
+| `light` | ![serve-viewer-history/light](renders/serve-viewer-history.light.png) |
+
 ## serve-viewer-nav-collapsed
 
 | Theme | Capture |
