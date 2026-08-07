@@ -13,6 +13,13 @@
   // Smallest share of its canvas a content box may cover before cropping to it stops being
   // trustworthy — see `normalisedBoxes`.
   var MIN_BOX_COVERAGE = 0.05;
+  // The backing colours `@Preview(showBackground = true)` resolves to — white for a day uiMode and
+  // Material 3's dark surface (#1C1B1F) for a night one, mirroring `PreviewBackground` on the
+  // server. An opaque capture whose corner is one of these is sitting on a scaffold sheet; any
+  // other corner colour is artwork reaching the edge. See `contentBox`.
+  var SCAFFOLD_SHEETS = [[255, 255, 255], [28, 27, 31]];
+  // Slack for PNG round-tripping and the detection downscale's resampling of an edge pixel.
+  var SHEET_TOLERANCE = 6;
 
   function loadImage(src) {
     return new Promise(function (resolve, reject) {
@@ -210,6 +217,21 @@
     return { width: image.naturalWidth || image.width, height: image.naturalHeight || image.height };
   }
 
+  /** Whether an opaque corner colour is one of the sheets `showBackground` paints. */
+  function isScaffoldSheet(rgb) {
+    for (var i = 0; i < SCAFFOLD_SHEETS.length; i++) {
+      var sheet = SCAFFOLD_SHEETS[i];
+      if (
+        Math.abs(rgb[0] - sheet[0]) <= SHEET_TOLERANCE &&
+        Math.abs(rgb[1] - sheet[1]) <= SHEET_TOLERANCE &&
+        Math.abs(rgb[2] - sheet[2]) <= SHEET_TOLERANCE
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * The rectangle an image actually draws in, in source pixels.
    *
@@ -219,10 +241,24 @@
    * artboard. Scoring those against each other measures the scaffold, not the component: the whole
    * image is translated and rescaled relative to its partner, which SSIM reads as total mismatch.
    *
-   * Detection uses alpha where the image has any, and otherwise the corner colour, which is what an
-   * opaque `showBackground` capture presents. Sampling is done on a downscale: a crop rectangle
-   * needs to be roughly right, not exact, and a full-resolution scan of a 1078x2399 device shot per
-   * row is real time on the client.
+   * Detection uses alpha where the image has any: a transparent pixel is unambiguously not artwork.
+   *
+   * An opaque image is the hard case, because "a uniform border around an interior region" is the
+   * *same picture* whether the border is a scaffold sheet with a card inset on it or a card that
+   * bleeds to the artboard edge with text inset on it. Guessing from the corner pixel gets the
+   * second one exactly backwards — it strips the component's own surface and boxes only its text,
+   * so a tightly-cropped card reference gets stretched against a whole-card render and the pair
+   * reads as a total mismatch. The denser the card, the worse the score.
+   *
+   * So an opaque image's backdrop is not guessed. It is trusted only when the corner is a sheet the
+   * preview renderer actually paints — `showBackground` resolves to exactly white or Material 3's
+   * dark surface, per `PreviewBackground` — and any other corner colour means the pixels there
+   * could be the artwork, so the whole image is the content box. That errs toward comparing too
+   * much, which costs a little of the scaffold correction on a preview with a custom
+   * `backgroundColor`, rather than toward silently comparing the wrong region.
+   *
+   * Sampling is done on a downscale: a crop rectangle needs to be roughly right, not exact, and a
+   * full-resolution scan of a 1078x2399 device shot per row is real time on the client.
    */
   function contentBox(image) {
     var dimensions = imageDimensions(image);
@@ -251,6 +287,11 @@
       }
     }
     var backdrop = [data[0], data[1], data[2]];
+    // An opaque corner is only a backdrop if it is a sheet the renderer paints; otherwise it is
+    // artwork reaching the edge, and there is nothing here to strip.
+    if (!transparent && !isScaffoldSheet(backdrop)) {
+      return { x: 0, y: 0, width: dimensions.width, height: dimensions.height };
+    }
     var minX = width;
     var minY = height;
     var maxX = -1;

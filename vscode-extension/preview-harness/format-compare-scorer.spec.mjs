@@ -91,12 +91,23 @@ async function scorePairs(page) {
             c.fill();
         });
 
+        // An OPAQUE reference cropped tight to a card, so the card's own fill reaches (0, 0) — the
+        // usual shape of a design-tool export. Its corner is artwork, not a backdrop. Denser cards
+        // used to score worse, because boxing "everything that isn't the corner colour" reduces to
+        // the text bounding box and then stretches that against the whole card in the preview.
+        const opaqueBledCard = make(400, 240, (c, w, h) => {
+            c.fillStyle = "#e8f1ee";
+            c.fillRect(0, 0, w, h);
+            card(c, 0, 0, w, h);
+        });
+
         const score = window.ComposePreviewCompare.scoreImageUrls;
         return {
             scaffolded: await score(bleedReference, scaffoldedPreview),
             identical: await score(bleedReference, bleedReference),
             nearEmpty: await score(emptyReference, emptyPreview),
             unrelated: await score(bleedReference, unrelatedPreview),
+            opaqueBled: await score(opaqueBledCard, scaffoldedPreview),
         };
     });
 }
@@ -120,6 +131,17 @@ test.describe("format-compare · design reference scorer", () => {
         expect(nearEmpty.percent).toBeGreaterThan(90);
         // The framing difference is real and still reported, just kept out of the match score.
         expect(nearEmpty.geometry).toBeGreaterThan(50);
+    });
+
+    test("an opaque reference whose artwork reaches the corner is not stripped", async ({
+        page,
+    }) => {
+        const { opaqueBled } = await scorePairs(page);
+        // "A uniform border around an interior region" is the same picture whether the border is a
+        // scaffold sheet or a card bleeding to the artboard edge, so an opaque corner is only taken
+        // as a backdrop when it is a sheet `showBackground` actually paints. Treating this card's
+        // own fill as the backdrop boxed only its text and scored the pair at 8%.
+        expect(opaqueBled.percent).toBeGreaterThan(85);
     });
 
     test("unrelated content still reads as a mismatch", async ({ page }) => {
