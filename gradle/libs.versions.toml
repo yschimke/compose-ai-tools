@@ -303,6 +303,10 @@ compose-material3 = { module = "androidx.compose.material3:material3" }
 # `compose-material3-catalog` version note). Overrides the stable BOM's 1.4.0 for
 # `:samples:design-catalog-m3` only.
 compose-material3-catalog = { module = "androidx.compose.material3:material3", version.ref = "compose-material3-catalog" }
+# Stock `Icons.*` vectors, for the fixture preview that proves the figma-svg export recovers a
+# Material icon's canonical fonts.google.com identity off the live `VectorPainter`. Versioned by
+# `compose-bom-compat`.
+compose-material-icons-core = { module = "androidx.compose.material:material-icons-core" }
 compose-foundation = { module = "androidx.compose.foundation:foundation" }
 compose-runtime = { module = "androidx.compose.runtime:runtime" }
 compose-runtime-tracing = { module = "androidx.compose.runtime:runtime-tracing" }

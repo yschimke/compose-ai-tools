@@ -248,6 +248,7 @@ dependencies {
   "testFixturesImplementation"(libs.compose.runtime)
   "testFixturesImplementation"(libs.compose.foundation)
   "testFixturesImplementation"(libs.compose.material3)
+  "testFixturesImplementation"(libs.compose.material.icons.core)
   "testFixturesImplementation"(libs.compose.ui)
   // `ThemedTintedSquare` carries a real `@PreviewParameter(SquareTintProvider::class)` so
   // `previewParameterPreviewRendersFirstProviderValue` exercises the exact annotation shape a

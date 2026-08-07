@@ -166,6 +166,14 @@ data class FigmaSvgVector(
    * the emitter scales them. See [FigmaLayeredSvg]'s vector placement.
    */
   val fromDrawCapture: Boolean = false,
+  /**
+   * The stock Material icon this vector is, when the capture's `ImageVector` name identified one
+   * ([MaterialIconRef.parse]). Null for app artwork, a draw capture, or an unrecognised name.
+   *
+   * Purely an *identity*: the emitted geometry is [paths] either way. See [FigmaLayeredSvg] for
+   * what the export does with it.
+   */
+  val materialIcon: MaterialIconRef? = null,
   val paths: List<FigmaSvgVectorPath>,
 )
 
@@ -833,6 +841,9 @@ data class FigmaSvgModel(
           scaleX = scaleX,
           scaleY = scaleY,
           fromDrawCapture = fromDrawCapture,
+          // A draw capture is imperative chrome (a slider groove, a progress arc), never an
+          // `ImageVector` — so it can't be a Material icon whatever its name says.
+          materialIcon = if (fromDrawCapture) null else MaterialIconRef.parse(vectorName),
           paths = emittable,
         )
     }
