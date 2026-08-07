@@ -1241,9 +1241,12 @@ class FigmaLayeredSvgTest {
     assertEquals(192, model.roundClip!!.cx)
     assertEquals(192, model.roundClip.cy)
     assertEquals(192, model.roundClip.r)
-    // Extent is the 384 frame (+ padding on both sides), NOT the 520-tall off-screen content.
-    assertEquals(384 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
-    assertEquals(384 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
+    // Extent is exactly the 384 frame — NOT the 520-tall off-screen content, and not the frame
+    // plus a margin: the mask defines the watch face, so the canvas is the same box the render
+    // cropped its PNG to.
+    assertEquals(384, model.width)
+    assertEquals(384, model.height)
+    assertEquals("a mask-anchored canvas carries no margin", 0, model.padding)
     val svg = FigmaLayeredSvg.render(model)
     assertTrue("emits a clipPath circle", svg.contains("""<clipPath id="deviceRound"><circle"""))
     assertTrue(
@@ -1288,9 +1291,10 @@ class FigmaLayeredSvgTest {
     assertEquals(192, model.capsuleClip.rx)
     // The plain round clip must NOT also be set — they are mutually exclusive.
     assertNull("capsule and round clip are mutually exclusive", model.roundClip)
-    // Extent is the tall frame (+ padding on both sides).
-    assertEquals(384 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
-    assertEquals(900 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
+    // Extent is exactly the tall frame the stadium masks — no margin around it.
+    assertEquals(384, model.width)
+    assertEquals(900, model.height)
+    assertEquals(0, model.padding)
     val svg = FigmaLayeredSvg.render(model)
     assertTrue(
       "emits a rounded-rect clipPath",
@@ -2449,9 +2453,11 @@ class FigmaLayeredSvgTest {
     assertEquals("background fills the full crop height", 0, rect.y)
     assertEquals(263, rect.width)
     assertEquals(26, rect.height)
-    // The canvas must contain the full background crop, not shrink-wrap to the thin divider.
-    assertEquals(263 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
-    assertEquals(26 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
+    // The canvas must contain the full background crop, not shrink-wrap to the thin divider — and
+    // with the frame size known it IS the crop, so the SVG matches its paired PNG exactly.
+    assertEquals(263, model.width)
+    assertEquals(26, model.height)
+    assertEquals("a frame-anchored canvas carries no margin", 0, model.padding)
     val svg = FigmaLayeredSvg.render(model)
     assertWellFormedXml(svg)
     assertTrue(
@@ -2545,9 +2551,89 @@ class FigmaLayeredSvgTest {
     assertEquals(0, rect.y)
     assertEquals(100, rect.width)
     assertEquals(26, rect.height)
-    // And the canvas is that frame (extent + padding on each side).
-    assertEquals(100 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
-    assertEquals(26 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
+    // And the canvas is that frame exactly — no margin — so the SVG and the PNG the render wrote
+    // are the same box.
+    assertEquals(100, model.width)
+    assertEquals(26, model.height)
+  }
+
+  /**
+   * Raster parity: a sticker whose drawn content sits inside a larger captured frame (the usual
+   * shape — a `compose-m3` component sticker draws a capsule inside 16dp of padding and a touch
+   * target) exports at the **frame's** size with the content at its frame coordinates, so the
+   * `serve` viewer's SVG toggle swaps two boxes that are the same size and keeps the component
+   * where the snapshot put it. Before this the canvas shrink-wrapped to the drawn extent plus a
+   * fixed 16px margin, which is smaller than the frame by however much padding the sticker carried.
+   */
+  @Test
+  fun aKnownFrameSizeAnchorsTheCanvasToTheFrameRatherThanShrinkWrappingTheContent() {
+    // A 300×210 frame whose only drawn layer is a 216×105 capsule inset at (42, 53).
+    val layout =
+      layoutNode(
+        "Root",
+        0,
+        0,
+        300,
+        210,
+        children =
+          listOf(
+            layoutNode(
+              "Button",
+              42,
+              53,
+              258,
+              158,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(layout),
+        frameWidthPx = 300,
+        frameHeightPx = 210,
+      )
+    assertEquals("canvas width is the captured frame", 300, model.width)
+    assertEquals("canvas height is the captured frame", 210, model.height)
+    assertEquals(0, model.padding)
+    assertEquals("no shift: frame coordinates are canvas coordinates", 0, model.tx)
+    assertEquals(0, model.ty)
+    val svg = FigmaLayeredSvg.render(model)
+    assertWellFormedXml(svg)
+    assertTrue(svg.contains("""width="300" height="210" viewBox="0 0 300 210""""))
+    // The capsule keeps the coordinates the render drew it at.
+    assertTrue(svg.contains("""x="42" y="53" width="216" height="105""""))
+  }
+
+  /**
+   * The frameless (vector-only / synthetic) path has no raster to agree with, so it keeps the
+   * padded shrink-wrapped canvas.
+   */
+  @Test
+  fun withNoFrameSizeTheCanvasStillShrinkWrapsWithItsMargin() {
+    val layout =
+      layoutNode(
+        "Root",
+        0,
+        0,
+        300,
+        210,
+        children =
+          listOf(
+            layoutNode(
+              "Button",
+              42,
+              53,
+              258,
+              158,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+            )
+          ),
+      )
+    val model = FigmaSvgModel.from(layout = LayoutInspectorPayload(layout))
+    assertEquals(216 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
+    assertEquals(105 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
+    assertEquals(FigmaSvgModel.DEFAULT_PADDING, model.padding)
   }
 
   @Test

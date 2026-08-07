@@ -448,6 +448,20 @@ sealed interface InteractiveCommand {
      * other `spec.*` fields above.
      */
     val kind: String? = null,
+    /**
+     * `RenderSpec.wrapWidth` / `wrapHeight` — whether the preview sizes itself to its content on
+     * that axis rather than filling the sandbox window. The held loop applies the same AS-parity
+     * wrap measure the one-shot path does and crops each streamed frame to the measured size, so
+     * live frames arrive at the preview's own size rather than the sandbox's.
+     *
+     * Without this, every wrap-content preview streamed at the full window: a `wear-m3` component
+     * sticker that bakes 165×136 arrived as the 454×454 round watch face, which the viewer then
+     * contain-fit inside the snapshot's box — so enabling Live shrank the component to as little as
+     * 0.35× and re-centred it. Threaded as primitives for the same do-not-acquire bridge reason as
+     * the other `spec.*` fields above.
+     */
+    val wrapWidth: Boolean = false,
+    val wrapHeight: Boolean = false,
   ) : InteractiveCommand
 
   /**

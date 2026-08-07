@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -78,12 +79,16 @@ fun main() {
     // Clamp to the viewer slider's range so a crafted query can't blow up layout.
     val fontScale = params["fontScale"]?.toFloatOrNull()?.coerceIn(0.5f, 2.0f) ?: 1f
     val rtl = isRtlLocale(params["localeTag"])
-    // `background=off` drops the sticker's surface fill so just the component shows on the
-    // stage-matching checkerboard the app paints behind it (see CatalogApp — the surface can't be
-    // truly transparent). `bgPhase=<x>,<y>` is the embedding viewer's stage-pattern tile origin in
-    // this frame's CSS-px coordinates, so that checkerboard continues the page's cells exactly.
-    val showBackground = params["background"] !in setOf("off", "false", "none", "transparent")
+    // No `background` handling: the baked sticker's surface is transparent in every catalog
+    // variant (see `CatalogStickerFrame`), so this tier draws it transparent unconditionally and
+    // `background=off` has nothing left to drop. `bgPhase=<x>,<y>` is the embedding viewer's
+    // stage-pattern tile origin in this frame's CSS-px coordinates, so the checkerboard the app
+    // paints behind the sticker continues the page's cells exactly.
     val checkerPhase = parsePhase(params["bgPhase"])
+    // The viewer's resolved stage colour, so the transparent sticker sits on the same backdrop the
+    // snapshot does. Absent (or unparseable) ⇒ the page is on its checkerboard, which the app
+    // continues itself.
+    val stageColor = parseStageColor(params["stageBg"])
     // Author-declared editable knobs ride as `knob.<key>=<value>` params (the viewer pushes the
     // changed ones); strip the prefix and provide them to the shared catalog's `catalogOverride*`
     // lookups. Absent ⇒ empty map ⇒ every knob renders its author default (baked-parity).
@@ -94,8 +99,8 @@ fun main() {
         dark,
         fontScale,
         rtl,
-        showBackground,
         checkerPhase,
+        stageColor,
         loaded.family,
         loaded.generics,
         loaded.named,
@@ -352,6 +357,17 @@ private suspend fun fetchText(url: String): String = suspendCancellableCoroutine
 }
 
 private fun consoleWarn(message: String): Unit = js("console.warn(message)")
+
+/**
+ * Parse the viewer's `stageBg=#rrggbb` — the solid stage colour it resolved for this preview. Null
+ * for anything else (absent, `checker` when the page is in transparent mode, or a malformed value),
+ * which leaves the app on its own checkerboard.
+ */
+internal fun parseStageColor(raw: String?): Color? {
+  val hex = raw?.trim()?.removePrefix("#")?.takeIf { it.length == 6 } ?: return null
+  val rgb = hex.toLongOrNull(16) ?: return null
+  return Color(0xFF000000L or rgb)
+}
 
 /** Parse the viewer's `bgPhase=<x>,<y>` (CSS px, possibly fractional/negative). */
 internal fun parsePhase(raw: String?): Offset {

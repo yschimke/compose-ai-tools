@@ -118,10 +118,11 @@ class FigmaSvgShowBackgroundBoundsRenderTest {
       "the divider is a hairline, so the background is not shrink-wrapped to it:\n$svg",
       Regex("""<rect[^>]*\bheight="1"[^>]*fill="#FFFFFF"""").containsMatchIn(svg),
     )
-    // The canvas is sized to the full crop (+ the 16px export padding on each side), not the ~1px
-    // divider extent.
+    // The canvas IS the full crop — not the ~1px divider extent, and not the crop plus a margin:
+    // with the frame size known the export anchors to it, so the SVG and its paired PNG are the
+    // same box.
     val canvasHeight = Regex("""<svg[^>]*\bheight="(\d+)"""").find(svg)?.groupValues?.get(1)?.toInt()
-    assertEquals("canvas height covers the full crop", 26 + 16 * 2, canvasHeight)
+    assertEquals("canvas height is the full crop", 26, canvasHeight)
   }
 
   private class ExportResult(val svg: String, val frame: File)
