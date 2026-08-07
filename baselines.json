@@ -208,14 +208,14 @@
     "serve-format-compare.dark.png": {
       "fixture": "serve-format-compare",
       "theme": "dark",
-      "sha256": "dd2b5243fa8889e30a1d30c627496afa9df8077bee1993419b40348677c6242d",
-      "size": 53826
+      "sha256": "8d186392cd0ebabbfa5df5e6c3c47f5cfc9d656d1052af40aa20bd1c2f170fbf",
+      "size": 53918
     },
     "serve-format-compare.light.png": {
       "fixture": "serve-format-compare",
       "theme": "light",
-      "sha256": "3224fdfb7e7d576a5d4e32f1c3891cd53d1031f77acd1f6e782c4e0ff25f498c",
-      "size": 53435
+      "sha256": "a2a449deded83ebeb08fa44093b45dabd4d7901bd58400e882c6fb9bae574764",
+      "size": 53543
     },
     "serve-home-index-card-hover.dark.png": {
       "fixture": "serve-home-index-card-hover",
@@ -540,6 +540,30 @@
       "theme": "light",
       "sha256": "2ae03f6da865147665802c7d6b9a6051110f6f723df306d12d9e8228a65ebfe5",
       "size": 58399
+    },
+    "serve-rc-lanes-diff-baked.dark.png": {
+      "fixture": "serve-rc-lanes-diff-baked",
+      "theme": "dark",
+      "sha256": "0e21e803bbf9dcfcd3111ece2fa0be949a88e95d354a02b2f92c8c3168779fd1",
+      "size": 168364
+    },
+    "serve-rc-lanes-diff-baked.light.png": {
+      "fixture": "serve-rc-lanes-diff-baked",
+      "theme": "light",
+      "sha256": "7fedbea153c9e69e1c340e0b37440bbc922a6112a92fc8d8c780df027a3dd9d4",
+      "size": 167737
+    },
+    "serve-rc-lanes.dark.png": {
+      "fixture": "serve-rc-lanes",
+      "theme": "dark",
+      "sha256": "f37fb6b360bf3dec69487a56722dd9684a26a70db8ea49e30f9f59a99d07f251",
+      "size": 101838
+    },
+    "serve-rc-lanes.light.png": {
+      "fixture": "serve-rc-lanes",
+      "theme": "light",
+      "sha256": "e3090173cd7a1441626b4cfc4a51b10dc45bef25ebaa0f59c44dac11bd2e3ae6",
+      "size": 100949
     },
     "serve-reference-compare-annotated.dark.png": {
       "fixture": "serve-reference-compare-annotated",

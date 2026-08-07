@@ -319,6 +319,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-playground-multifile/dark](renders/serve-playground-multifile.dark.png) |
 | `light` | ![serve-playground-multifile/light](renders/serve-playground-multifile.light.png) |
 
+## serve-rc-lanes
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-rc-lanes/dark](renders/serve-rc-lanes.dark.png) |
+| `light` | ![serve-rc-lanes/light](renders/serve-rc-lanes.light.png) |
+
+## serve-rc-lanes-diff-baked
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-rc-lanes-diff-baked/dark](renders/serve-rc-lanes-diff-baked.dark.png) |
+| `light` | ![serve-rc-lanes-diff-baked/light](renders/serve-rc-lanes-diff-baked.light.png) |
+
 ## serve-reference-compare
 
 | Theme | Capture |
