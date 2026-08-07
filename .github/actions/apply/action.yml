@@ -841,12 +841,13 @@ runs:
       run: |
         set -euo pipefail
         stage=_baselines
-        # Nothing pushed (no staged renders, or the tree was unchanged) means the branch log is
-        # unchanged too, so any manifest we'd write would be byte-identical to the published one.
-        if [ ! -s "$GITHUB_WORKSPACE/_baseline_pushed_sha" ]; then
-          echo "history manifest: no baseline push this run, skipping."
-          exit 0
-        fi
+        # Deliberately NOT gated on a render push having happened. That gate assumed a current
+        # manifest already exists, so "no push" implies "nothing to regenerate" — which is false on
+        # a branch that has no history.json yet. Since an unchanged render set correctly skips its
+        # push, the manifest could then never be created: the first publish would wait for a render
+        # to change, which is exactly the deadlock the branch was sitting in. Running every baseline
+        # run costs a metadata-only fetch (~1s) and the second push's SKIP_IF_UNCHANGED no-ops when
+        # the regenerated manifest matches what is already published.
         if [ ! -f "$stage/baselines.json" ]; then
           echo "history manifest: no staged baselines.json, skipping."
           exit 0
