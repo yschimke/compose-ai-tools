@@ -119,6 +119,39 @@ precisely so bindings and native move together. Promotion can only reorder what
 the bundle actually carries; it cannot conjure a newer native than the host has
 ever shipped. **The fix is releasing the host, not editing the classpath rules.**
 
+#### What the host bump means for consumers still on an older CMP
+
+Raising this repo's floor is not free for consumers, because `renderer-desktop` declares Compose with
+`implementation`, **not** `compileOnly` — the mirror of Android's mitigation #1 above. The desktop
+renderer therefore *carries* its Compose and Skiko into the consumer's graph, so moving the repo to
+1.11.1 pushes skiko 0.144.6 at every desktop consumer, including those still on 1.10.3
+(skiko 0.9.37.4).
+
+That is the same skew as #3447 with the sides swapped, so it was worth measuring rather than
+assuming. Measured, for a consumer on CMP 1.10.3 against a renderer carrying 1.11.1, the tool
+classpath resolves to:
+
+```
+skiko-awt-0.144.6.jar
+skiko-awt-runtime-linux-x64-0.144.6.jar
+```
+
+One version, and bindings and native agree — the consumer's 0.9.37.4 is upgraded away rather than
+landing beside it. The graph fold plus Gradle's max-version resolution carries the older consumer up
+coherently, so **an ordinary desktop consumer below 1.11 keeps working.** Covered by
+`DesktopRendererGraphAlignmentFunctionalTest` — which now pins **both** skew directions, not just
+the renderer-older one it was originally written for.
+
+Two caveats that the resolution test cannot speak to:
+
+- Such a consumer's **previews now render on Compose 1.11.1 while their app ships 1.10.3.** Nothing
+  breaks, but preview and app are no longer the same Compose — worth knowing when a render disagrees
+  with the running app.
+- A consumer that **hard-pins** Compose below 1.11 (`resolutionStrategy.force`, a strict constraint,
+  or a platform holding the 1.10 line) defeats max-version resolution. The renderer's 1.11.1-compiled
+  bytecode would then meet a 1.10.3 runtime — the inverse mismatch. Unpinning, or pinning at 1.11+,
+  is the fix.
+
 Two practical consequences:
 
 1. **Bumping `compose-multiplatform` in this repo is a serve-host release
