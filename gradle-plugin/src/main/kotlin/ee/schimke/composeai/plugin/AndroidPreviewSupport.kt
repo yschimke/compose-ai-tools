@@ -11,6 +11,8 @@ import ee.schimke.composeai.discovery.*
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.Dependency
+import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
 import org.gradle.api.provider.Property
@@ -201,6 +203,36 @@ internal object AndroidPreviewSupport {
       "org.jetbrains.compose.ui",
     )
 
+  /**
+   * Adds one of OUR OWN dependencies to an Android render configuration, carrying Rule 3's
+   * exclusions on that dependency alone.
+   *
+   * Rule 3 exists to stop the renderer's transitives pinning the consumer's Compose (see
+   * [applyRenderGraphResolutionRules]). Attaching the excludes here rather than to the
+   * configuration is what keeps it a rule about *our* subtree: the render configuration
+   * `extendsFrom` the consumer's unit-test classpath, so a config-wide exclude would also strip a
+   * CMP consumer's own `org.jetbrains.compose.material3` — the redirector that is its only route to
+   * `androidx.compose.material3`.
+   *
+   * Applied to every dependency the plugin contributes, not just the Compose-carrying ones: the
+   * excludes are inert on a subtree that has no `org.jetbrains.compose.*` in it, and a uniform rule
+   * cannot be defeated by a future connector quietly gaining an `api(…)` edge to one.
+   */
+  internal fun addRenderGraphDependency(
+    project: Project,
+    configurationName: String,
+    notation: Any,
+  ): Dependency {
+    val dependency = if (notation is Dependency) notation else project.dependencies.create(notation)
+    if (dependency is ModuleDependency) {
+      COMPOSE_MULTIPLATFORM_ANDROID_ALIAS_GROUPS.forEach { group ->
+        dependency.exclude(mapOf("group" to group))
+      }
+    }
+    project.dependencies.add(configurationName, dependency)
+    return dependency
+  }
+
   internal fun kmpAndroidSiblingName(group: String, name: String): String? {
     if (!group.startsWith("androidx.") && !group.startsWith("org.jetbrains.compose.")) {
       return null
@@ -283,10 +315,32 @@ internal object AndroidPreviewSupport {
    * (issue #3447 fallout — `wear-os-samples/ComposeStarter` on Compose 1.10.6 against a repo pinned
    * to CMP 1.11.1, which resolves `androidx.compose.ui:ui:1.11.2`).
    *
-   * Excluding costs nothing: those Android variants are **dependency-only** (no files), so they
-   * contribute no classes to an Android classpath — the `androidx.compose.*` artifacts the consumer
-   * already has provide every class our modules were compiled against. Dropping them removes only
-   * the version pressure.
+   * Excluding costs nothing *for our own dependencies*: those Android variants are
+   * **dependency-only** (no files), so they contribute no classes to an Android classpath — the
+   * `androidx.compose.*` artifacts provide every class our modules were compiled against. Dropping
+   * them from our subtree removes only the version pressure.
+   *
+   * It matters **where** the exclusion is attached. This started life as a configuration-wide
+   * `configuration.exclude(group = …)`, which is not the same rule: the render configuration
+   * `extendsFrom` the consumer's unit-test classpath, so a config-wide exclude strips the
+   * CONSUMER's `org.jetbrains.compose.*` dependencies too. That is invisible for an Android
+   * consumer declaring `androidx.compose.*` directly, and fatal for a pure Compose Multiplatform
+   * consumer whose only path to those classes IS the redirector —
+   * `implementation(compose.material3)` resolves `org.jetbrains.compose.material3:material3`, and
+   * excluding it takes `androidx.compose.material3` with it. Every preview then dies in the
+   * renderer's own `CaptureMaterialTheme`, before user code runs:
+   * ```
+   * NoClassDefFoundError: androidx/compose/material3/ColorScheme
+   *     at ee.schimke.composeai.daemon.RenderEngine…evaluate$lambda$1$0$2(RenderEngine.kt:442)
+   * ```
+   *
+   * (issue #3483 — `yschimke/cadence`, a CMP consumer, lost all 41 previews on 0.19.45; the mixed
+   * `yschimke/meshcore-mobile` lost the 38 whose modules take material3 from the same redirector.)
+   *
+   * So the exclusion is attached to the dependencies WE add, via [addRenderGraphDependency], and
+   * never to the configuration. Our transitive `org.jetbrains.compose.ui:ui` is still dropped —
+   * which is all Rule 3 ever needed — while the consumer's identical coordinate survives on its own
+   * merit.
    *
    * This is symmetric, which is the point: the consumer's Compose wins whether it is **older** than
    * ours (the case above) or **newer** (a consumer on 1.12 is not dragged back to our floor). It
@@ -296,11 +350,6 @@ internal object AndroidPreviewSupport {
    * (`alignDesktopToolWithConsumerGraph`).
    */
   internal fun applyRenderGraphResolutionRules(configuration: Configuration) {
-    // Rule 3 — keep OUR OWN Compose off the consumer's Android render graph. See
-    // [COMPOSE_MULTIPLATFORM_ANDROID_ALIAS_GROUPS] and the kdoc above for the full rationale.
-    COMPOSE_MULTIPLATFORM_ANDROID_ALIAS_GROUPS.forEach { group ->
-      configuration.exclude(mapOf("group" to group))
-    }
     configuration.resolutionStrategy.eachDependency {
       val req = requested
       val targetName = kmpAndroidSiblingName(req.group, req.name)
@@ -1509,7 +1558,8 @@ internal object AndroidPreviewSupport {
 
     if (useLocalRenderer) {
       try {
-        project.dependencies.add(
+        addRenderGraphDependency(
+          project,
           rendererConfig.name,
           project.dependencies.project(mapOf("path" to ":renderer-android")),
         )
@@ -1517,7 +1567,8 @@ internal object AndroidPreviewSupport {
         project.logger.debug("compose-ai-tools: :renderer-android project not found, skipping", e)
       }
     } else {
-      project.dependencies.add(
+      addRenderGraphDependency(
+        project,
         rendererConfig.name,
         "ee.schimke.composeai:renderer-android:${PluginVersion.value}",
       )
@@ -1542,14 +1593,16 @@ internal object AndroidPreviewSupport {
     if (xrPreviewsEnabled) {
       if (useLocalRenderer) {
         try {
-          project.dependencies.add(
+          addRenderGraphDependency(
+            project,
             rendererConfig.name,
             project.dependencies.project(mapOf("path" to ":renderer-xr")),
           )
           // `XrSubspaceRenderer` calls the connector's `ComposeSemanticsDataProducer.buildPayload`
           // to project each panel's 2D semantics into the `compose/spatial-semantics` tree; it's
           // `compileOnly` on `:renderer-xr`, so put it on the render runtime classpath here.
-          project.dependencies.add(
+          addRenderGraphDependency(
+            project,
             rendererConfig.name,
             project.dependencies.project(mapOf("path" to ":data-layoutinspector-connector")),
           )
@@ -1557,24 +1610,29 @@ internal object AndroidPreviewSupport {
           project.logger.debug("compose-ai-tools: :renderer-xr project not found, skipping", e)
         }
       } else {
-        project.dependencies.add(
+        addRenderGraphDependency(
+          project,
           rendererConfig.name,
           "ee.schimke.composeai:renderer-xr:${PluginVersion.value}",
         )
-        project.dependencies.add(
+        addRenderGraphDependency(
+          project,
           rendererConfig.name,
           "ee.schimke.composeai:data-layoutinspector-connector:${PluginVersion.value}",
         )
       }
-      project.dependencies.add(
+      addRenderGraphDependency(
+        project,
         rendererConfig.name,
         "androidx.xr.runtime:runtime-testing:${XrFakeVersions.runtimeTesting}",
       )
-      project.dependencies.add(
+      addRenderGraphDependency(
+        project,
         rendererConfig.name,
         "androidx.xr.scenecore:scenecore-testing:${XrFakeVersions.scenecoreTesting}",
       )
-      project.dependencies.add(
+      addRenderGraphDependency(
+        project,
         rendererConfig.name,
         "androidx.xr.compose:compose-testing:${XrFakeVersions.compose}",
       )
@@ -1583,7 +1641,8 @@ internal object AndroidPreviewSupport {
       // a
       // viewer head pose into it; the `FakePerceptionRuntimeFactory` ServiceLoader registration
       // ships in `:renderer-xr`'s main resources, alongside the scene/rendering fakes.
-      project.dependencies.add(
+      addRenderGraphDependency(
+        project,
         rendererConfig.name,
         "androidx.xr.arcore:arcore-testing:${XrFakeVersions.arcoreTesting}",
       )
@@ -1624,7 +1683,8 @@ internal object AndroidPreviewSupport {
 
     if (useLocalDaemonRenderer) {
       try {
-        project.dependencies.add(
+        addRenderGraphDependency(
+          project,
           daemonRendererConfig.name,
           project.dependencies.project(mapOf("path" to ":daemon:android")),
         )
@@ -1636,7 +1696,8 @@ internal object AndroidPreviewSupport {
       // PR #373's daemon-* publishing roll-out. Without this dependency the launch descriptor
       // would have no `DaemonMain` class on its classpath and the spawned JVM would die with
       // `ClassNotFoundException: ee.schimke.composeai.daemon.DaemonMain`.
-      project.dependencies.add(
+      addRenderGraphDependency(
+        project,
         daemonRendererConfig.name,
         "ee.schimke.composeai:daemon-android:${PluginVersion.value}",
       )
