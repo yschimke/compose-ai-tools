@@ -88,6 +88,54 @@ class ServeRenderHostTest {
   }
 
   @Test
+  fun `a fatal linkage failure trips the breaker instead of being retried forever`() {
+    // Issue #3448: an UnsatisfiedLinkError — a JVM linkage failure that cannot succeed on retry,
+    // ever, for any input — was retried 3794 times in ~14 minutes. The daemon must be asked once.
+    val linkage =
+      "UnsatisfiedLinkError: 'long org.jetbrains.skia.PathBuilderKt.PathBuilder_nMakeFromPath(long)'"
+    lateinit var session: FakeRenderSession
+    session =
+      FakeRenderSession(
+        newRenderRoot(),
+        renderHook = { _, _ -> session.emitFailed(previewId, linkage) },
+      )
+    host(session).use { h ->
+      assertTrue(h.hasLiveStream, "a healthy host advertises its live lane")
+      assertTrue(h.degradations.isEmpty())
+
+      val first = h.render(previewId, PreviewOverrides())
+      assertTrue(first is RenderOutcome.Failed, "expected Failed, got $first")
+
+      // Every subsequent render is answered from the breaker without touching the daemon.
+      repeat(20) { i ->
+        val outcome = h.render(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+        assertTrue(outcome is RenderOutcome.Failed, "render $i: expected Failed, got $outcome")
+        assertTrue(
+          outcome.reason.contains("UnsatisfiedLinkError"),
+          "the caller must be told the real fault, not 'busy; retry shortly': ${outcome.reason}",
+        )
+      }
+      assertEquals(1, session.renderCount.get(), "the daemon must be asked exactly once")
+
+      // The lane stops advertising itself as live, publishes why, and latches every preview so the
+      // HTTP layer answers terminally instead of sending the browser round the retry loop.
+      assertFalse(h.hasLiveStream, "a broken lane must stop advertising live")
+      val degradation = h.degradations.single()
+      assertEquals(ServeDegradation.RENDER_LANE_BROKEN, degradation.code)
+      assertTrue(degradation.detail.contains("UnsatisfiedLinkError"))
+      assertNotNull(h.renderFailureLatch(previewId, PreviewOverrides()))
+
+      val breaker = assertNotNull(h.renderBreaker())
+      assertTrue(breaker.fatal)
+      assertEquals(20, breaker.shortCircuitedRenders)
+      val stats = assertNotNull(h.renderPerfStats())
+      assertEquals(20, stats.shortCircuited, "refused renders are counted apart from failures")
+      assertEquals(1, stats.failed, "the short-circuits must not inflate the failure count")
+      assertNotNull(stats.breaker)
+    }
+  }
+
+  @Test
   fun `different overrides each render`() {
     val session = FakeRenderSession(newRenderRoot())
     host(session).use { h ->
