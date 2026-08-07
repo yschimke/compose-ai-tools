@@ -83,6 +83,19 @@ class HistoryManifestCommand(
       exit(1)
     }
 
+    // Resolve the ref up front. PreviewHistory.read returns an empty map when git exits non-zero,
+    // so a typo'd or unfetched ref is otherwise indistinguishable from "no history" — and since
+    // the publish step overwrites history.json with whatever this writes, that would silently
+    // replace a good manifest with an empty one.
+    val generatedFrom =
+      resolveSha(repoDir, branch)
+        ?: run {
+          stderr(
+            "compose-preview history-manifest: '$branch' is not a ref this repository can resolve."
+          )
+          exit(1)
+        }
+
     val timelines =
       try {
         PreviewHistory.read(repoDir, branch, RENDERS_DIR)
@@ -93,7 +106,17 @@ class HistoryManifestCommand(
         exit(1)
       }
 
-    val generatedFrom = resolveSha(repoDir, branch) ?: branch
+    // A resolvable ref with baselines entries but no render history means the log read failed or
+    // the pathspec matched nothing — never a legitimately empty branch. Refuse rather than publish
+    // a manifest asserting this branch has no history.
+    if (timelines.isEmpty()) {
+      stderr(
+        "compose-preview history-manifest: '$branch' resolved but yielded no render history " +
+          "under '$RENDERS_DIR/', while baselines.json lists ${pathToPreviewId.size} previews; " +
+          "refusing to write an empty manifest."
+      )
+      exit(1)
+    }
     val manifest = PreviewHistoryManifest.build(timelines, pathToPreviewId, generatedFrom)
 
     output.absoluteFile.parentFile?.mkdirs()

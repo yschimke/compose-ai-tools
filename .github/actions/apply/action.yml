@@ -852,6 +852,21 @@ runs:
           exit 0
         fi
 
+        # The CLI may be absent (`cli-version: none`) or predate this subcommand — `cli-version:
+        # auto`, the default, installs the release matching the consumer's pinned plugin, which
+        # will not know `history-manifest` until one ships. Probe for the capability instead of
+        # parsing versions, and skip rather than fail: the renders are already pushed by this
+        # point, so failing here would break an otherwise good baseline run. The branch keeps the
+        # manifest it already had (carried forward in compose.sh), just not refreshed this run.
+        if ! command -v compose-preview >/dev/null 2>&1; then
+          echo "::notice::history manifest: no compose-preview on PATH (cli-version: none?); skipping history.json."
+          exit 0
+        fi
+        if ! compose-preview inspect history-manifest --help >/dev/null 2>&1; then
+          echo "::notice::history manifest: installed CLI has no 'inspect history-manifest'; skipping history.json. Upgrade the CLI to publish render history."
+          exit 0
+        fi
+
         # The staging repo was fetched --depth=1, and a shallow log would silently truncate every
         # timeline. Fetch the branch's history into a scratch repo instead. --filter=blob:none is
         # exact rather than merely cheap here: the extractor reads blob SHAs out of tree objects

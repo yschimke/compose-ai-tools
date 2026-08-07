@@ -162,6 +162,67 @@ class HistoryManifestCommandTest {
   }
 
   @Test
+  fun `an unresolvable ref is an error, not an empty manifest`() {
+    // PreviewHistory.read returns an empty map when git exits non-zero, so without an up-front ref
+    // check a typo'd or unfetched ref looks exactly like "this branch has no history" — and the
+    // publish step would then overwrite a good history.json with an empty one.
+    val repo = deliveryRepo("publish" to "v1")
+    val output = File(repo, "history.json")
+
+    val error =
+      runCatching {
+          HistoryManifestCommand(
+              args =
+                listOf("--repo", repo.path, "--branch", "no-such-ref", "--output", output.path),
+              workingDir = repo,
+              stdout = {},
+              stderr = {},
+              exit = { throw CommandExit(it) },
+            )
+            .run()
+        }
+        .exceptionOrNull()
+
+    assertEquals(1, assertIs<CommandExit>(error).code)
+    assertFalse(output.exists(), "must not overwrite a published manifest with an empty one")
+  }
+
+  @Test
+  fun `a resolvable ref with no render history refuses rather than emptying the manifest`() {
+    // Baselines list previews but the log shows no renders: the read failed or the pathspec found
+    // nothing. Either way it is never a legitimately empty branch.
+    val repo = createTempDirectory("history-manifest-empty").toFile()
+    fun git(vararg a: String) {
+      ProcessBuilder(listOf("git") + a).directory(repo).redirectErrorStream(true).start().waitFor()
+    }
+    git("init", "--quiet", "--initial-branch", "main")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test")
+    File(repo, "baselines.json").writeText(baselines)
+    git("add", "-A")
+    git("commit", "--quiet", "-m", "baselines only, no renders")
+    val output = File(repo, "history.json")
+
+    val err = mutableListOf<String>()
+    val error =
+      runCatching {
+          HistoryManifestCommand(
+              args = listOf("--repo", repo.path, "--branch", "main", "--output", output.path),
+              workingDir = repo,
+              stdout = {},
+              stderr = { err += it },
+              exit = { throw CommandExit(it) },
+            )
+            .run()
+        }
+        .exceptionOrNull()
+
+    assertEquals(1, assertIs<CommandExit>(error).code)
+    assertFalse(output.exists())
+    assertContains(err.joinToString("\n"), "refusing to write an empty manifest")
+  }
+
+  @Test
   fun `--help prints usage and names the sibling command it is not`() {
     val out = mutableListOf<String>()
     HistoryManifestCommand(
