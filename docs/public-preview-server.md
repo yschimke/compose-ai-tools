@@ -550,7 +550,7 @@ produced nothing is omitted rather than published empty.
       "subject": "fix(button): tighten the filled button's label padding",
       "at": "2026-08-05T10:00:00+00:00",
       "author": "yschimke",
-      "previewIds": ["sections.ButtonsKt.FilledButton_Light"],
+      "previewIds": ["button-filled__ideal__default__light"],
       "components": ["Button/Filled"]
     }]
   },
@@ -565,7 +565,7 @@ produced nothing is omitted rather than published empty.
       "author": "Dana",
       "resolved": false,
       "nodeId": "51592:4768",
-      "previewIds": ["sections.SwitchesKt.SwitchOn_Light"],
+      "previewIds": ["switch-on__ideal__default__light"],
       "components": ["Switch/On"]
     }]
   },
@@ -577,6 +577,25 @@ produced nothing is omitted rather than published empty.
   }]
 }
 ```
+
+**`previewIds` are route-safe serve ids, not discovery ids.** A design map names the raw discovery
+id the daemon keys renders on (`sections.ButtonsKt.FilledButton_Light`), while the server keys a
+preview by the id derived from its image path (`ServeCatalogStore.previewIdFor`). The emitter
+translates through the published `catalog.json` — which carries both — before writing an event,
+because the server filters every event's ids against the live catalog and simply drops the ones it
+doesn't recognize. Publishing the discovery id would therefore be *silent*: the page still renders,
+every row just loses its link to the comparison, and the feed degrades into the pair of unrelated
+changelogs it exists not to be.
+
+That translation is deliberately **incomplete rather than approximate**. A catalog image carries the
+*sanitized* in-bundle id (`sanitizeBundleEntryId`), so an exact match is tried first and a sanitized
+one second — but sanitizing is lossy, and `assignBundleEntryIds` in the plugin resolves collisions by
+letting the first claimant keep the base form and suffixing the rest. Where two previews share a
+sanitized key the raw→route direction genuinely isn't invertible from the catalog, so that key
+resolves to *nothing*. Reproducing the plugin's suffix assignment in JavaScript would be a third
+restatement of a Kotlin derivation with nothing checking it, and its failure mode is a link that
+quietly points at the wrong component — worse than no link, because a reader who lands on the wrong
+comparison has no way to tell.
 
 `gaps[].kind` is one of `dangling-mapping` (the map names a preview the catalog no longer
 publishes), `unrendered-reference` (a mapped node whose raster couldn't be published), or
@@ -610,7 +629,17 @@ after the references step so the catalog is final. It reads:
   that join is what turns "a designer commented" into a link to a comparison. Replies are dropped
   (a thread's openers are the signal) and only a display name is published, never an email.
 - **gaps** — computed against the published `catalog.json` and, with a token, the file's component
-  list.
+  list. `unrendered-reference` is *derived* rather than reported: the reference step's warnings are
+  gone by the time this runs, so the emitter instead reads the `references/index.json` it just
+  wrote — which records each reference's design-map `code` handle — and reports a mapped entry
+  missing from it. Only with a token, since without one that step skips `figma:` entries by design
+  and "missing" would mean "never tried".
+
+The staging side matters as much as the producing side: a served catalog is a fresh tree assembled
+from explicitly fetched parts, so `ServeCatalogStore` copies `parity/activity.json` into it
+(validating first) exactly as it does the reference and annotation manifests. A file nobody stages
+is invisible to the host however faithfully it was published — and the failure is silent, because
+the page falls back to coverage-only rather than erroring.
 
 Fail-soft throughout, like the reference step: no token ⇒ the code lane and the gaps still publish,
 which is the normal state for a fork or a PR run. A repo with no history, no design map and no token

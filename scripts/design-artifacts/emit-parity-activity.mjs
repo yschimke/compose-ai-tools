@@ -49,7 +49,9 @@ import {
   indexDesignMap,
   mappingGaps,
   parseGitLog,
+  routeIdResolver,
 } from "./parity-activity.mjs";
+import { REFERENCES_DIR, derivationMismatches } from "./design-references.mjs";
 
 function arg(name, def = undefined) {
   const i = process.argv.indexOf(`--${name}`);
@@ -119,7 +121,21 @@ for (const component of catalog?.components ?? []) {
   }
 }
 
-const index = indexDesignMap(designMap, (id) => componentIdByPreviewId.get(id) ?? null);
+// The derivation `routeIdResolver` depends on is a restatement of a Kotlin function, and the
+// catalog export records enough to check it. The reference step already hard-fails on a mismatch;
+// warn here rather than failing twice, since a wrong derivation costs this feed its links but not
+// the catalog its render.
+const drift = derivationMismatches(catalog);
+if (drift.length > 0) {
+  warn(`serve preview-id derivation no longer matches the catalog export. First: ${drift[0]}`);
+}
+
+const index = indexDesignMap(designMap, {
+  componentIdFor: (id) => componentIdByPreviewId.get(id) ?? null,
+  // Events must carry ROUTE ids: `ServeParityDashboard` filters them against the live catalog's
+  // `ServePreview.id`, so a discovery id would drop every inbound link on the page.
+  routeIdFor: routeIdResolver(catalog),
+});
 
 // ---------------------------------------------------------------------------- code lane
 
@@ -247,10 +263,34 @@ figmaVersions = figmaVersions.filter((v) => withinWindow(v.at));
 
 // ---------------------------------------------------------------------------- gaps + write
 
+/**
+ * The reference manifest the step before this one just wrote, or null when it wrote none.
+ *
+ * Only consulted when a token was available: without one, `emit-design-references.mjs` skips every
+ * `figma:` entry by design, so "missing from the manifest" would mean "we never tried" rather than
+ * "the render failed" — and reporting a gap per mapped component on every fork/PR run would bury
+ * the real findings under noise.
+ */
+const referenceManifest = (() => {
+  if (!FIGMA_TOKEN) return null;
+  const manifestPath = path.join(OUT, REFERENCES_DIR, "index.json");
+  if (!fs.existsSync(manifestPath)) return null;
+  return runCatchingJson(manifestPath);
+})();
+
+function runCatchingJson(file) {
+  try {
+    return readJson(file);
+  } catch {
+    return null;
+  }
+}
+
 const gaps = mappingGaps({
   designMap,
   catalogPreviewIds: [...publishedPreviewIds],
   figmaComponents,
+  referenceManifest,
 });
 
 const activity = buildActivity({
