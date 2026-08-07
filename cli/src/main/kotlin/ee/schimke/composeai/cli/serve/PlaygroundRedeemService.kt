@@ -68,9 +68,18 @@ class PlaygroundRedeemService(
    */
   private val lock = Any()
 
-  /** Redeem [id] into (or back onto) its live session. Idempotent within the token's TTL. */
-  fun redeem(id: String): Outcome {
-    val previewId = (tokenStore.get(id) ?: return Outcome.NotFound).snippet.previewId
+  /**
+   * Redeem [id] into (or back onto) its live session. Idempotent within the token's TTL.
+   *
+   * [preview] opens the session on a specific `@Preview` instead of the snippet's first — the
+   * editor offers one link per discovered preview, and the redeemed session lists them all. It is
+   * validated against the snippet's own set rather than trusted: an id the snippet never declared
+   * would resolve to a viewer route the daemon cannot serve, so an unknown one falls back to the
+   * first exactly as if it had been omitted.
+   */
+  fun redeem(id: String, preview: String? = null): Outcome {
+    val snippet = (tokenStore.get(id) ?: return Outcome.NotFound).snippet
+    val previewId = preview?.takeIf { it in snippet.previewIds } ?: snippet.previewId
     synchronized(lock) {
       if (id in registered) return Outcome.Live(id, previewId)
       // Re-check under the lock: the token may have expired/been evicted between the get above and

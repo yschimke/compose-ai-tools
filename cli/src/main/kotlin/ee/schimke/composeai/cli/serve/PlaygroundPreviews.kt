@@ -5,11 +5,11 @@ import ee.schimke.composeai.cli.PreviewManifest
 import kotlinx.serialization.json.Json
 
 /**
- * Shared synthesis of a one-preview `previews.json` for a compiled playground snippet — the
- * manifest a bundle-less daemon renders against. Both the Remote Compose capture
+ * Shared synthesis of a `previews.json` for a compiled playground snippet — the manifest a
+ * bundle-less daemon renders against. Both the Remote Compose capture
  * ([PlaygroundRcCaptureService]) and the Android first-frame render
  * ([PlaygroundAndroidRenderService]) stand a daemon over the snippet's own classes and need the
- * identical single-entry manifest, so the synthesis lives here rather than in either service.
+ * identical manifest, so the synthesis lives here rather than in either service.
  */
 internal object PlaygroundPreviews {
 
@@ -19,24 +19,27 @@ internal object PlaygroundPreviews {
   }
 
   /**
-   * A one-preview `previews.json` the daemon can render: the snippet's discovered id split back
-   * into its `className` + `functionName` (the id is `"$className.$functionName"`, per
-   * [PlaygroundPreviewDiscoverer]).
+   * A `previews.json` the daemon can render: each discovered id split back into its `className` +
+   * `functionName` (the id is `"$className.$functionName"`, per [PlaygroundPreviewDiscoverer]),
+   * ordered as the snippet declared them so entry 0 is the one the still frame drew.
    */
-  fun singlePreviewManifestJson(snippet: PlaygroundTokenStore.PlaygroundSnippet): String {
-    val id = snippet.previewId
+  fun previewManifestJson(snippet: PlaygroundTokenStore.PlaygroundSnippet): String {
     val manifest =
       PreviewManifest(
         module = snippet.moduleName,
         variant = "",
+        // EVERY preview the snippet declared, not just the one the still frame drew. The daemon
+        // resolves a streamed preview by looking it up here, so an id absent from this list is one
+        // the live session can never show — which is what limited a redeemed snippet to a single
+        // preview no matter how many it compiled.
         previews =
-          listOf(
+          snippet.previewIds.map { id ->
             PreviewInfo(
               id = id,
               functionName = id.substringAfterLast('.'),
               className = id.substringBeforeLast('.'),
             )
-          ),
+          },
       )
     return json.encodeToString(PreviewManifest.serializer(), manifest)
   }

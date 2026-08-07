@@ -1133,7 +1133,11 @@ class ServeHttpServer(
       respondNotFoundHtml(gone)
       return
     }
-    when (val outcome = redeem.redeem(id)) {
+    // `?preview=<id>` opens the session on a specific one of the snippet's previews. Read from the
+    // QUERY, not the path, so it can't collide with the access token the path already dodges; the
+    // service validates it against the snippet's own set and falls back to the first.
+    val preview = call.request.queryParameters["preview"]?.takeIf { it.isNotBlank() }
+    when (val outcome = redeem.redeem(id, preview)) {
       PlaygroundRedeemService.Outcome.NotFound -> respondNotFoundHtml(gone)
       PlaygroundRedeemService.Outcome.Unavailable ->
         respondNotFoundHtml("Live preview isn't available on this host.")

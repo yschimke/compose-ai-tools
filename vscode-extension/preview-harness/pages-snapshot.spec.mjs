@@ -146,6 +146,39 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The multi-preview result list. A snippet routinely declares several `@Preview`s; the
+        // still frame draws one and the rest are reachable through `?preview=<id>` on the same
+        // redeemed session. That list only exists after a successful Run, so the committed HTML
+        // can never show it — stubbing the compile response is the only way to diff it. The links
+        // and their labels are built by the page's own JS from the response; this supplies only
+        // the JSON the real server would have sent.
+        fixture: "serve-playground",
+        suffix: "multi-preview",
+        apply: async (page) => {
+            await page.route("**/api/1/compiler/run*", (route) =>
+                route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify({
+                        diagnostics: [],
+                        previewToken: "pg_fixture",
+                        previewUrl: "/pg/pg_fixture",
+                        previewId: "com.example.SnippetKt.Greeting",
+                        previews: [
+                            "com.example.SnippetKt.Greeting",
+                            "com.example.SnippetKt.GreetingDark",
+                            "com.example.BrandKt.BrandSwatches",
+                        ],
+                    }),
+                }),
+            );
+            await page.click("#pg-run");
+            await page.waitForFunction(
+                () => document.getElementById("pg-previews")?.hidden === false,
+            );
+        },
+    },
+    {
         // Card hover. A hover state exists only under a pointer, so it is invisible to an ordinary
         // end-state screenshot — and it is the front door's main affordance: the tile lifts, takes
         // an accent rim and a top-edge wipe, and eases its artwork rather than underlining four
