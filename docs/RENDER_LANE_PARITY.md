@@ -215,6 +215,18 @@ default now, and when a background *is* wanted it is asked for per preview throu
 plugin) sets a daemon-wide default for consumers who want every preview to carry one; `true` and
 `false` still work as the pre-modes aliases for `device` and `none`.
 
+`TimeTextScaffoldTemplate_Large_Round` from `:samples:design-catalog-wear-m3`,
+packed four times with `bundle pack --with-semantics` under each mode, on a
+checkerboard so transparency is visible — the monospace line under each panel is
+the layer that mode emitted:
+
+![The four figma-svg background modes on a Wear round preview](../renders/lane-parity/figma-svg-background-modes.png)
+
+`NONE` and `DEVICE` look nearly identical, which is the argument for the default:
+this screen's own root already paints black, so the injected face landed on top
+of an identical one the tree drew itself. `CONTENT_SHAPE`'s pill is occluded by
+the card's own fill the same way. Only `FULL_BLEED` changes what you see.
+
 The export's product is editable layers, and an injected fill is the opposite: an opaque shape
 spanning the whole canvas that a designer has to find and delete before the import works anywhere
 but the surface it was baked for. It was also usually invisible. The `compose-m3-android`
