@@ -23,11 +23,14 @@ class PlaygroundSeedResolverTest {
       sourceFile = "src/main/kotlin/buttons/FilledButton.kt",
     )
 
+  private var now = 0L
+
   private fun resolver(
     locate: (String, String) -> PlaygroundSeedResolver.Location? = { _, _ -> m3 },
     body: (String) -> ByteArray? = { "@Preview @Composable fun P() {}".toByteArray() },
     maxBytes: Int = PlaygroundSeedResolver.DEFAULT_MAX_BYTES,
     maxEntries: Int = PlaygroundSeedResolver.DEFAULT_MAX_ENTRIES,
+    ttlSeconds: Long = PlaygroundSeedResolver.DEFAULT_TTL_SECONDS,
   ) =
     PlaygroundSeedResolver(
       locate = locate,
@@ -37,6 +40,8 @@ class PlaygroundSeedResolverTest {
       },
       maxBytes = maxBytes,
       maxEntries = maxEntries,
+      ttlSeconds = ttlSeconds,
+      clock = { now },
       onLog = { log += it },
     )
 
@@ -138,6 +143,64 @@ class PlaygroundSeedResolverTest {
       ),
       fetched,
     )
+  }
+
+  @Test
+  fun `a refreshed catalog misses the cache instead of serving the old source`() {
+    // The staleness this closes: a catalog refreshed, retired, or republished under the same system
+    // id would otherwise keep serving what it pointed at on first read — the viewer showing the new
+    // catalog while the handoff opens the old file, for the life of the process.
+    var ref = "v1"
+    val r = resolver(locate = { _, _ -> m3.copy(ref = ref) })
+    assertNotNull(r.seed("compose-m3", "p"))
+    assertNotNull(r.seed("compose-m3", "p"))
+    assertEquals(1, fetched.size, "unchanged metadata still caches")
+
+    ref = "v2"
+    assertNotNull(r.seed("compose-m3", "p"))
+    assertEquals(2, fetched.size, "a moved ref must re-read")
+    assertTrue(fetched.last().contains("/v2/"), fetched.last())
+  }
+
+  @Test
+  fun `a cached seed expires, because a branch ref is stable while its file is not`() {
+    val r = resolver(ttlSeconds = 60)
+    assertNotNull(r.seed("compose-m3", "p"))
+    now += 59_000
+    assertNotNull(r.seed("compose-m3", "p"))
+    assertEquals(1, fetched.size, "still fresh")
+    now += 2_000
+    assertNotNull(r.seed("compose-m3", "p"))
+    assertEquals(2, fetched.size, "past the TTL it is re-read")
+  }
+
+  @Test
+  fun `a full cache reclaims expired entries rather than wedging at the cap`() {
+    val r = resolver(maxEntries = 2, ttlSeconds = 60)
+    r.seed("compose-m3", "a")
+    r.seed("compose-m3", "b")
+    now += 61_000
+    // Both entries are stale now, so a third caller reclaims their space instead of being served
+    // uncached forever.
+    r.seed("compose-m3", "c")
+    fetched.clear()
+    r.seed("compose-m3", "c")
+    assertEquals(emptyList(), fetched, "the newest entry was actually cached")
+  }
+
+  @Test
+  fun `locations that would join to the same string are still distinct keys`() {
+    // Every field in the key is a repository path component, and paths may contain whatever
+    // separator a joined string would use: `("a", "b c.kt")` and `("a b", "c.kt")` concatenate
+    // identically. A catalog moving between those two must still miss the cache.
+    var where = m3.copy(module = "a", sourceFile = "b c.kt")
+    val r = resolver(locate = { _, _ -> where })
+    assertNotNull(r.seed("s", "p"))
+    where = m3.copy(module = "a b", sourceFile = "c.kt")
+    assertNotNull(r.seed("s", "p"))
+    assertEquals(2, fetched.size, "the second location must be fetched, not served from cache")
+    assertTrue(fetched[0].endsWith("/a/b%20c.kt"), fetched[0])
+    assertTrue(fetched[1].endsWith("/a%20b/c.kt"), fetched[1])
   }
 
   @Test

@@ -1062,7 +1062,10 @@ class ServeHttpServer(
         val system = raw.substringBefore('/')
         val previewId = raw.substringAfter('/', "")
         if (system.isBlank() || previewId.isBlank()) null
-        else playgroundSeeds?.seed(system, previewId)
+        // On the IO dispatcher: an uncached seed is a synchronous GitHub GET with 10 s connect +
+        // 10 s read, and running that on the routing dispatcher lets a handful of concurrent
+        // handoffs during GitHub latency stall every other route on this host.
+        else withContext(Dispatchers.IO) { playgroundSeeds?.seed(system, previewId) }
       }
     markGeneration("static-page", pageCacheControl())
     call.respondText(
@@ -1882,12 +1885,18 @@ class ServeHttpServer(
    * token-gated host.
    */
   private fun RoutingContext.playgroundLinkFor(
+    host: ServeHost,
     system: String,
     previewId: String,
     sourceFile: String?,
   ): String? {
     if (playgroundService == null || playgroundSeeds == null) return null
     if (sourceFile.isNullOrBlank()) return null
+    // The SAME condition the resolver applies, not a proxy for it. A plain daemon session or an
+    // uploaded bundle can carry a `sourceFile` from its own `previews.json` while having no catalog
+    // source to resolve it against — the resolver then returns null and the click lands on the
+    // generic sample, which is precisely the dead affordance this link is supposed to never be.
+    if (catalogBundleHost(host)?.catalogSource == null) return null
     val from = WebEscaping.urlEncodeSegment(system) + "/" + WebEscaping.urlEncodeSegment(previewId)
     val token = if (isPublic) "" else "&token=" + WebEscaping.urlEncodeSegment(token)
     return "/playground?from=$from$token"
@@ -3016,7 +3025,7 @@ class ServeHttpServer(
           // "open in playground" — offered only when this host has the lane AND this preview
           // records a source path, so the link never lands on a page that opens the generic
           // sample and quietly ignores what was asked for.
-          playgroundHref = playgroundLinkFor(sessionId, preview.id, preview.sourceFile),
+          playgroundHref = playgroundLinkFor(renderHost, sessionId, preview.id, preview.sourceFile),
           liveAuthPrompt = liveAuthPrompt,
           catalogTitle = catalogBundleHost(renderHost)?.title,
           // The same heartbeat the grid sends. The viewer needs it at least as much: it is where a
