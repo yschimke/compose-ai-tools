@@ -12,9 +12,10 @@
  * any page change is one command away.
  *
  * The fixture deliberately covers the cases that make the page's rules visible at a glance: a close
- * match, a badly diverging one (both players, scored independently), a document only one player
+ * match, a badly diverging one (every player, scored independently), a document only some players
  * could decode, and a **blank baked reference** — the row that must read `no reference` rather than
- * a perfect score.
+ * a perfect score. It carries **every** player lane, so the page's default all-players wall and its
+ * `Diff against` picker (which only lists lanes the run produced) are both exercised.
  *
  * Usage:
  *   node rc-compare-fixture.mjs --out <dir>      # writes <dir>/rc-compare.html + fixture images
@@ -48,6 +49,8 @@ const LANES = [
   "rc-embedded-diff",
   "rc-embedded-jvm",
   "rc-embedded-jvm-diff",
+  "rc-cmp-wasm",
+  "rc-cmp-wasm-diff",
 ];
 for (const d of LANES) fs.mkdirSync(path.join(OUT, d), { recursive: true });
 
@@ -93,6 +96,8 @@ write("rc-embedded/Close.png", card(BLUE));
 write("rc-embedded-diff/Close.png", black);
 write("rc-embedded-jvm/Close.png", card(BLUE));
 write("rc-embedded-jvm-diff/Close.png", black);
+write("rc-cmp-wasm/Close.png", card(BLUE));
+write("rc-cmp-wasm-diff/Close.png", black);
 // far off in all lanes, worse in JS
 write("rc-baked/Diverging.png", card(RED));
 write("rc/Diverging.png", card(GREY));
@@ -101,12 +106,16 @@ write("rc-embedded/Diverging.png", card(GREY));
 write("rc-embedded-diff/Diverging.png", flagged);
 write("rc-embedded-jvm/Diverging.png", card(GREY));
 write("rc-embedded-jvm-diff/Diverging.png", flagged);
+write("rc-cmp-wasm/Diverging.png", card(GREY));
+write("rc-cmp-wasm-diff/Diverging.png", flagged);
 // only the embedded players decoded it
 write("rc-baked/JsUndecodable.png", card(RED));
 write("rc-embedded/JsUndecodable.png", card(RED));
 write("rc-embedded-diff/JsUndecodable.png", black);
 write("rc-embedded-jvm/JsUndecodable.png", card(RED));
 write("rc-embedded-jvm-diff/JsUndecodable.png", black);
+write("rc-cmp-wasm/JsUndecodable.png", card(RED));
+write("rc-cmp-wasm-diff/JsUndecodable.png", black);
 // blank baked reference: every lane is bare neutral, so every diff is empty — the false-perfect case
 write("rc-baked/BlankReference.png", bare);
 write("rc/BlankReference.png", bare);
@@ -115,8 +124,13 @@ write("rc-embedded/BlankReference.png", bare);
 write("rc-embedded-diff/BlankReference.png", black);
 write("rc-embedded-jvm/BlankReference.png", bare);
 write("rc-embedded-jvm-diff/BlankReference.png", black);
+write("rc-cmp-wasm/BlankReference.png", bare);
+write("rc-cmp-wasm-diff/BlankReference.png", black);
 
-const lanes = (id, { js = true, embedded = true, embeddedJvm = true } = {}) => ({
+const lanes = (
+  id,
+  { js = true, embedded = true, embeddedJvm = true, cmpWasm = true } = {},
+) => ({
   baked: `rc-baked/${id}.png`,
   rc: js ? `rc/${id}.png` : "",
   diff: js ? `rc-diff/${id}.png` : "",
@@ -124,6 +138,8 @@ const lanes = (id, { js = true, embedded = true, embeddedJvm = true } = {}) => (
   embeddedDiff: embedded ? `rc-embedded-diff/${id}.png` : "",
   embeddedJvm: embeddedJvm ? `rc-embedded-jvm/${id}.png` : "",
   embeddedJvmDiff: embeddedJvm ? `rc-embedded-jvm-diff/${id}.png` : "",
+  cmpWasm: cmpWasm ? `rc-cmp-wasm/${id}.png` : "",
+  cmpWasmDiff: cmpWasm ? `rc-cmp-wasm-diff/${id}.png` : "",
 });
 
 const rows = [
@@ -142,6 +158,9 @@ const rows = [
     embeddedJvmRendered: true,
     embeddedJvmMismatchPct: 0.9,
     embeddedJvmMismatchPx: 2480,
+    cmpWasmRendered: true,
+    cmpWasmMismatchPct: 1.4,
+    cmpWasmMismatchPx: 3858,
     ...lanes("Close"),
   },
   {
@@ -159,6 +178,9 @@ const rows = [
     embeddedJvmRendered: true,
     embeddedJvmMismatchPct: 39.8,
     embeddedJvmMismatchPx: 109629,
+    cmpWasmRendered: true,
+    cmpWasmMismatchPct: 40.2,
+    cmpWasmMismatchPx: 110731,
     ...lanes("Diverging"),
   },
   {
@@ -177,6 +199,9 @@ const rows = [
     embeddedJvmRendered: true,
     embeddedJvmMismatchPct: 7.4,
     embeddedJvmMismatchPx: 20396,
+    cmpWasmRendered: true,
+    cmpWasmMismatchPct: 7.9,
+    cmpWasmMismatchPx: 21774,
     ...lanes("JsUndecodable", { js: false }),
   },
   {
@@ -196,6 +221,9 @@ const rows = [
     embeddedJvmRendered: true,
     embeddedJvmMismatchPct: null,
     embeddedJvmMismatchPx: null,
+    cmpWasmRendered: true,
+    cmpWasmMismatchPct: null,
+    cmpWasmMismatchPx: null,
     ...lanes("BlankReference"),
   },
 ];
