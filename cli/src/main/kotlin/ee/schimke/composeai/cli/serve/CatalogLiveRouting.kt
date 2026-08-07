@@ -50,17 +50,15 @@ internal object CatalogLiveRouting {
   /**
    * Whether [o] would change pixels vs the preview's baked sticker, so the render must go to the
    * daemon rather than replay the baked PNG. The baked variant already encodes its **theme** (the
-   * `…__light` / `…__dark` id segment) and every other axis at its discovery-time default, so a
-   * bare `uiMode` that matches the variant is a no-op and stays baked (keeping browsing instant);
-   * anything else — a font scale, device, locale, orientation, a named knob, a feature override
-   * (gestures / focus / keyboard / …) — needs a re-render. Uses data-class equality against a
-   * defaults instance so a newly added override field is covered without touching this predicate.
+   * `…__light` / `…__dark` id segment) and every other axis at its discovery-time default, so the
+   * overrides that merely restate what it already shows ([withoutBakedNoOps]) stay baked (keeping
+   * browsing instant); anything else — a font scale, device, locale, orientation, a named knob, a
+   * feature override (gestures / focus / keyboard / …) — needs a re-render. Uses data-class
+   * equality against a defaults instance so a newly added override field is covered without
+   * touching this predicate.
    */
-  fun overridesAffectRender(previewId: String, o: PreviewOverrides): Boolean {
-    // A uiMode matching the baked variant is a no-op; drop it, then any remaining set field
-    // (including a *differing* uiMode) means a re-render is required.
-    return if (uiModeIsNoOp(previewId, o)) o.copy(uiMode = null) != PreviewOverrides() else true
-  }
+  fun overridesAffectRender(previewId: String, o: PreviewOverrides): Boolean =
+    withoutBakedNoOps(previewId, o) != PreviewOverrides()
 
   /**
    * The overrides in [o] that the **baked** PNG for [previewId] does not reflect, named as the
@@ -82,36 +80,37 @@ internal object CatalogLiveRouting {
    * reports, as the catch-all `overrides`.
    */
   fun droppedOverrideNames(previewId: String, o: PreviewOverrides): List<String> {
-    if (!overridesAffectRender(previewId, o)) return emptyList()
+    // Name from the no-op-free copy, not the raw request: an override that merely restates the
+    // baked pixels was honoured, so naming it would refuse a request the snapshot answers truly.
+    val dropped = withoutBakedNoOps(previewId, o)
+    if (dropped == PreviewOverrides()) return emptyList()
     val names = mutableListOf<String>()
     fun add(name: String, value: Any?) {
       if (value != null) names += name
     }
-    add("widthPx", o.widthPx)
-    add("heightPx", o.heightPx)
-    add("minWidthPx", o.minWidthPx)
-    add("minHeightPx", o.minHeightPx)
-    add("maxWidthPx", o.maxWidthPx)
-    add("maxHeightPx", o.maxHeightPx)
-    add("density", o.density)
-    add("localeTag", o.localeTag)
-    add("fontScale", o.fontScale)
-    // Only a uiMode differing from the baked variant's own theme was dropped; a matching one is
-    // already what these pixels show.
-    if (!uiModeIsNoOp(previewId, o)) names += "uiMode"
-    add("orientation", o.orientation)
-    add("device", o.device)
-    add("inspectionMode", o.inspectionMode)
-    add("slotMode", o.slotMode)
-    add("placeholderActive", o.placeholderActive)
-    add("talkBack", o.talkBack)
-    add("touchOverlay", o.touchOverlay)
-    add("themeProvider", o.themeProvider)
-    add("focus", o.focus)
-    add("gestures", o.gestures)
-    add("clearBackground", o.clearBackground)
-    o.namedOverrides?.keys?.sorted()?.forEach { names += "${ServeOverrides.KNOB_PREFIX}$it" }
-    o.remoteCompose?.let { rc ->
+    add("widthPx", dropped.widthPx)
+    add("heightPx", dropped.heightPx)
+    add("minWidthPx", dropped.minWidthPx)
+    add("minHeightPx", dropped.minHeightPx)
+    add("maxWidthPx", dropped.maxWidthPx)
+    add("maxHeightPx", dropped.maxHeightPx)
+    add("density", dropped.density)
+    add("localeTag", dropped.localeTag)
+    add("fontScale", dropped.fontScale)
+    add("uiMode", dropped.uiMode)
+    add("orientation", dropped.orientation)
+    add("device", dropped.device)
+    add("inspectionMode", dropped.inspectionMode)
+    add("slotMode", dropped.slotMode)
+    add("placeholderActive", dropped.placeholderActive)
+    add("talkBack", dropped.talkBack)
+    add("touchOverlay", dropped.touchOverlay)
+    add("themeProvider", dropped.themeProvider)
+    add("focus", dropped.focus)
+    add("gestures", dropped.gestures)
+    add("clearBackground", dropped.clearBackground)
+    dropped.namedOverrides?.keys?.sorted()?.forEach { names += "${ServeOverrides.KNOB_PREFIX}$it" }
+    dropped.remoteCompose?.let { rc ->
       add("rcProfile", rc.profile)
       add("rcPlayer", rc.player)
       rc.namedValues.keys.sorted().forEach { names += "${ServeOverrides.RC_NAMED_PREFIX}$it" }
@@ -120,22 +119,27 @@ internal object CatalogLiveRouting {
   }
 
   /**
-   * Whether [o]'s `uiMode` (if any) already matches the baked variant's own theme, making it a
-   * no-op the baked PNG satisfies.
-   *
-   * The theme is the LAST `light`/`dark` id segment (past the component slug) — matching
-   * `ServeUrls.wasmAppSrc` / `ServeWeb.cardTheme`. Scanning for `dark` first would misread a
-   * non-theme segment named `dark` in an otherwise-light variant, wrongly treating `uiMode=dark` as
-   * a no-op and dropping the override.
+   * [o] with the fields the baked PNG **already satisfies** cleared, so what remains is exactly
+   * what a baked answer would fail to honour. Two of them:
+   * - a `uiMode` matching the variant's own theme. That theme is the LAST `light`/`dark` id segment
+   *   (past the component slug) — matching `ServeUrls.wasmAppSrc` / `ServeWeb.cardTheme`. Scanning
+   *   for `dark` first would misread a non-theme segment named `dark` in an otherwise-light
+   *   variant, wrongly treating `uiMode=dark` as a no-op and dropping the override.
+   * - `clearBackground = false` (the `background=default` / `show` / `on` spellings). That asks to
+   *   *preserve* the preview's authored background, which is what the baked render drew — so it is
+   *   satisfied, not dropped. Only `true` ("crisp outline", strip the background) needs a
+   *   re-render.
    */
-  private fun uiModeIsNoOp(previewId: String, o: PreviewOverrides): Boolean {
-    if (o.uiMode == null) return true
+  private fun withoutBakedNoOps(previewId: String, o: PreviewOverrides): PreviewOverrides {
     val bakedTheme =
       when (previewId.split("__").drop(1).lastOrNull { it == "light" || it == "dark" }) {
         "dark" -> UiMode.DARK
         "light" -> UiMode.LIGHT
         else -> null
       }
-    return o.uiMode == bakedTheme
+    return o.copy(
+      uiMode = o.uiMode?.takeIf { it != bakedTheme },
+      clearBackground = o.clearBackground?.takeIf { it },
+    )
   }
 }

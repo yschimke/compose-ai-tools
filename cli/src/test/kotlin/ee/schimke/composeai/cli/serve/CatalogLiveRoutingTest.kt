@@ -9,6 +9,7 @@ import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -35,6 +36,22 @@ class CatalogLiveRoutingTest {
     assertEquals(
       listOf("uiMode"),
       CatalogLiveRouting.droppedOverrideNames(lightId, PreviewOverrides(uiMode = UiMode.DARK)),
+    )
+  }
+
+  /**
+   * `background=default` / `show` / `on` (and the raw `clearBackground=false`) ask to *preserve*
+   * the preview's authored background — which is what the baked render drew. So it is honoured by
+   * the snapshot, not dropped, and must not be refused. Only `clear` needs a re-render.
+   */
+  @Test
+  fun `an explicit default background is satisfied by the baked pixels`() {
+    val keepBackground = PreviewOverrides(clearBackground = false)
+    assertEquals(emptyList(), CatalogLiveRouting.droppedOverrideNames(lightId, keepBackground))
+    assertFalse(CatalogLiveRouting.overridesAffectRender(lightId, keepBackground))
+    assertEquals(
+      listOf("clearBackground"),
+      CatalogLiveRouting.droppedOverrideNames(lightId, PreviewOverrides(clearBackground = true)),
     )
   }
 
