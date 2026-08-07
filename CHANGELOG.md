@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.19.45](https://github.com/yschimke/compose-ai-tools/compare/v0.19.44...v0.19.45) (2026-08-07)
+
+
+### Features
+
+* **serve:** add a design-parity view to the catalog ([#3470](https://github.com/yschimke/compose-ai-tools/issues/3470)) ([036697a](https://github.com/yschimke/compose-ai-tools/commit/036697a58672fae9a67e99cc2982882e540d6ca5))
+* **serve:** show every Remote Compose player side by side on the compare page ([#3475](https://github.com/yschimke/compose-ai-tools/issues/3475)) ([c968eb9](https://github.com/yschimke/compose-ai-tools/commit/c968eb95909cb0a5308bb1bd64e0c9b4f7c67139))
+* **serve:** show the render-history timeline in project mode from local git ([#3456](https://github.com/yschimke/compose-ai-tools/issues/3456)) ([0f82fd1](https://github.com/yschimke/compose-ai-tools/commit/0f82fd1cc15843271d844efed4442efbf906aa6e))
+
+
+### Bug Fixes
+
+* **actions:** upload the .error.json sidecars with the render report ([#3471](https://github.com/yschimke/compose-ai-tools/issues/3471)) ([e89c3f5](https://github.com/yschimke/compose-ai-tools/commit/e89c3f5f7a9b1278cc4d97e1f188da2e6145913c))
+* **deps:** bump Compose Multiplatform to 1.11.1 so serve can render 1.11 catalogs ([#3462](https://github.com/yschimke/compose-ai-tools/issues/3462)) ([28af866](https://github.com/yschimke/compose-ai-tools/commit/28af866a45ab8d30d67cf771eba8ae09bb9ba48d))
+* **design-artifacts:** match candidates to previews across both id spellings ([#3463](https://github.com/yschimke/compose-ai-tools/issues/3463)) ([2fd0ca5](https://github.com/yschimke/compose-ai-tools/commit/2fd0ca5f1d559d4210a4d693e62266dd66642376))
+* **design-artifacts:** unblock the remote-m3 CMP/Wasm parity gate ([#3476](https://github.com/yschimke/compose-ai-tools/issues/3476)) ([cdbc522](https://github.com/yschimke/compose-ai-tools/commit/cdbc522348c02dd8c78060ee4bff1f26420294af))
+* **rc-compare:** uncap the compositor frame rate so short viewports are not scored as slow ([#3459](https://github.com/yschimke/compose-ai-tools/issues/3459)) ([f2117df](https://github.com/yschimke/compose-ai-tools/commit/f2117dfc3b33803c43847ef564bf0e6837e547bd))
+* **rc-player:** honour the size a component was asked for in the JS player ([#3474](https://github.com/yschimke/compose-ai-tools/issues/3474)) ([a48145f](https://github.com/yschimke/compose-ai-tools/commit/a48145f62d18a189c88a23f5dc3e3cede37b7fc9))
+* **rc-player:** refresh the vendored player to 53e19e93 and keep weighted children measurable ([#3465](https://github.com/yschimke/compose-ai-tools/issues/3465)) ([ba67e0e](https://github.com/yschimke/compose-ai-tools/commit/ba67e0e87971a6325a9bd7094ce9e05d52acd419))
+* **rc-player:** render text published by lookup operations on the CMP/Wasm lane ([#3461](https://github.com/yschimke/compose-ai-tools/issues/3461)) ([4bc692f](https://github.com/yschimke/compose-ai-tools/commit/4bc692ff87d68a9207cb00a64a35aa9979a11538))
+* **rc-player:** resolve the default font family and honour requested weight ([#3468](https://github.com/yschimke/compose-ai-tools/issues/3468)) ([907b93e](https://github.com/yschimke/compose-ai-tools/commit/907b93ef5c5bddf05af35091caa5e564c358d9da))
+* **serve:** construct the history repo path instead of passing DOM text through ([#3454](https://github.com/yschimke/compose-ai-tools/issues/3454)) ([58f8486](https://github.com/yschimke/compose-ai-tools/commit/58f84860e9effc42cfe103ce93b45873c9cce1fd))
+* **serve:** make the parity feed actually reach a published catalog ([#3472](https://github.com/yschimke/compose-ai-tools/issues/3472)) ([69d2602](https://github.com/yschimke/compose-ai-tools/commit/69d2602ad2295c1f9cb9644627d1398c225935e2))
+* **serve:** make the viewer's overlay toggles usable and actually render ([#3464](https://github.com/yschimke/compose-ai-tools/issues/3464)) ([662187f](https://github.com/yschimke/compose-ai-tools/commit/662187fb2460e2734706d251f69961f175d308c4))
+* **serve:** refuse a dropped override on the vector and Storybook lanes too ([#3467](https://github.com/yschimke/compose-ai-tools/issues/3467)) ([14f3a60](https://github.com/yschimke/compose-ai-tools/commit/14f3a60338e139bf17b6c5a220086b9c78a0868d))
+* **serve:** refuse a render whose validated overrides can't be applied ([#3460](https://github.com/yschimke/compose-ai-tools/issues/3460)) ([ca67bc7](https://github.com/yschimke/compose-ai-tools/commit/ca67bc70f06a5f96d5d0143f492e51d17ec8ad8c))
+* **serve:** trip a circuit breaker on fatal render failures instead of retrying forever ([#3455](https://github.com/yschimke/compose-ai-tools/issues/3455)) ([77daf59](https://github.com/yschimke/compose-ai-tools/commit/77daf59d98ecc37fb5cfb33d62abffc9111baf42))
+
+
+### Performance Improvements
+
+* **rc-compare:** let the parity lane skip the player's snapshot-handoff tail ([#3466](https://github.com/yschimke/compose-ai-tools/issues/3466)) ([e95d2b5](https://github.com/yschimke/compose-ai-tools/commit/e95d2b5f005298d6059c6945cd940d1f7398f143))
+
 ## [0.19.44](https://github.com/yschimke/compose-ai-tools/compare/v0.19.43...v0.19.44) (2026-08-07)
 
 
