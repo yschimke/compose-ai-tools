@@ -74,6 +74,7 @@ import { MatrixConstant } from './operations/MatrixConstant';
 import { MatrixVectorMath } from './operations/MatrixVectorMath';
 import { TextTransform } from './operations/TextTransform';
 import { TextLookup } from './operations/TextLookup';
+import { TextLookupInt } from './operations/TextLookupInt';
 import { ColorTheme } from './operations/ColorTheme';
 import { ColorAttribute } from './operations/ColorAttribute';
 import { DataMapLookup } from './operations/DataMapLookup';
@@ -239,6 +240,7 @@ export class Operations {
         m.set(MatrixExpression.OP_CODE, MatrixExpression.read);
         m.set(PathExpression.OP_CODE, PathExpression.read);
         m.set(TextLookup.OP_CODE, TextLookup.read);
+        m.set(TextLookupInt.OP_CODE, TextLookupInt.read);
         m.set(ColorTheme.OP_CODE, ColorTheme.read);
         m.set(ColorAttribute.OP_CODE, ColorAttribute.read);
         m.set(TextLayout.OP_CODE, TextLayout.read);
