@@ -73,4 +73,24 @@ test("uploads a local bundle and opens the returned preview URL", async ({ reque
   expect(render.status(), "uploaded preview render").toBe(200);
   expect(render.headers()["content-type"] ?? "").toContain("image/png");
   expect((await render.body()).length, "uploaded preview PNG bytes").toBeGreaterThan(0);
+
+  // #3449: an uploaded bundle is baked-only, so a validated override can never be
+  // applied — and serving the un-overridden snapshot under a 200 would be
+  // byte-identical to the render above, i.e. a wrong answer a caller cannot detect.
+  // It must refuse, naming the param; `fallback=baked` is the explicit opt back in.
+  const sep = linkedViewer.search ? "&" : "?";
+  const dropped = await request.get(
+    `/render/${encodeURIComponent(previewId)}.png${linkedViewer.search}${sep}fontScale=2.0`,
+  );
+  expect(dropped.status(), "an override a baked-only session can't apply").toBe(409);
+  expect(dropped.headers()["x-compose-preview-dropped-overrides"]).toBe("fontScale");
+
+  const fallback = await request.get(
+    `/render/${encodeURIComponent(previewId)}.png${linkedViewer.search}` +
+      `${sep}fontScale=2.0&fallback=baked`,
+  );
+  expect(fallback.status(), "explicit baked fallback").toBe(200);
+  expect(fallback.headers()["x-compose-preview-render"]).toBe("baked-fallback");
+  expect(fallback.headers()["x-compose-preview-dropped-overrides"]).toBe("fontScale");
+  expect(Buffer.compare(await fallback.body(), await render.body()), "same baked pixels").toBe(0);
 });

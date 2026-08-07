@@ -3277,19 +3277,32 @@ class ServeHttpServer(
               )
             }
             is RenderOutcome.Ok -> {
-              markGeneration(
-                outcome.generation.wire,
-                if (
-                  outcome.generation == RenderOutcome.Generation.BAKED &&
-                    overrideParams.isEmpty() &&
-                    isPublic
-                ) {
-                  STATIC_RESOURCE_CACHE_CONTROL
+              // Baked pixels answering an override-bearing request are pixels that do NOT reflect
+              // the override — byte-identical to the un-overridden snapshot, under a 200 (#3449).
+              // Every other generation is a real render keyed by these overrides.
+              val dropped =
+                if (outcome.generation == RenderOutcome.Generation.BAKED) {
+                  CatalogLiveRouting.droppedOverrideNames(previewId, overrides)
                 } else {
-                  DYNAMIC_RESOURCE_CACHE_CONTROL
-                },
-              )
-              call.respondBytes(outcome.png, ContentType.Image.PNG)
+                  emptyList()
+                }
+              if (dropped.isNotEmpty()) {
+                respondDroppedOverrides(renderHost, previewId, outcome, dropped)
+              } else {
+                markGeneration(
+                  outcome.generation.wire,
+                  if (
+                    outcome.generation == RenderOutcome.Generation.BAKED &&
+                      overrideParams.isEmpty() &&
+                      isPublic
+                  ) {
+                    STATIC_RESOURCE_CACHE_CONTROL
+                  } else {
+                    DYNAMIC_RESOURCE_CACHE_CONTROL
+                  },
+                )
+                call.respondBytes(outcome.png, ContentType.Image.PNG)
+              }
             }
             RenderOutcome.NotFound ->
               call.respondText("no such preview", status = HttpStatusCode.NotFound)
@@ -3298,6 +3311,60 @@ class ServeHttpServer(
           }
         }
       }
+    }
+  }
+
+  /**
+   * Answer a render whose **validated overrides were not applied** — the pixels in [outcome] are
+   * the preview's baked snapshot, produced without a renderer, while the request asked for
+   * [dropped].
+   *
+   * The old behaviour was `200 image/png` with those bytes, which is a wrong answer delivered
+   * confidently: the response is indistinguishable from a render where the override genuinely
+   * changed nothing, so a diff bot, a parity check, or an agent iterating on a theme concludes "no
+   * visual difference" for pixels that were never rendered (#3449). Every override kind now agrees
+   * here — `fontScale`, `uiMode`, and `themeProvider` alike — rather than one path 503ing while the
+   * commoner ones quietly returned the snapshot.
+   *
+   * Three outcomes, all naming the dropped params in [DROPPED_OVERRIDES_HEADER] so even a `curl -I`
+   * can tell:
+   * - `?fallback=baked` — the caller explicitly accepted the snapshot (the viewer asks for this
+   *   when it would rather show published pixels than a broken image). 200, plus
+   *   `X-Compose-Preview-Render: baked-fallback`, since the pixels carry no signal of their own.
+   * - the preview HAS a live lane, just not right now (daemon down, cold, no free seat) — 503 +
+   *   `Retry-After`, matching what a pure `themeProvider` request already returned in this state.
+   * - the preview has NO live lane at all (a static/untrusted catalog, an unmapped Android-only
+   *   variant) — 409: retrying can't help, and the viewer already treats 409 as terminal.
+   */
+  private suspend fun RoutingContext.respondDroppedOverrides(
+    renderHost: ServeHost,
+    previewId: String,
+    outcome: RenderOutcome.Ok,
+    dropped: List<String>,
+  ) {
+    call.response.headers.append(DROPPED_OVERRIDES_HEADER, dropped.joinToString(","))
+    if (call.request.queryParameters[FALLBACK_PARAM]?.lowercase() == FALLBACK_BAKED) {
+      call.response.headers.append(RENDER_HEADER, RENDER_BAKED_FALLBACK)
+      markGeneration(outcome.generation.wire, DYNAMIC_RESOURCE_CACHE_CONTROL)
+      call.respondBytes(outcome.png, ContentType.Image.PNG)
+      return
+    }
+    val params = dropped.joinToString(", ")
+    if (renderHost.canRenderOverridesFor(previewId)) {
+      call.response.headers.append(HttpHeaders.RetryAfter, "2")
+      call.respondText(
+        "override not applied: $params — this preview's live render lane is unavailable; " +
+          "retry shortly, or add &$FALLBACK_PARAM=$FALLBACK_BAKED to accept the baked snapshot " +
+          "(which ignores the override)",
+        status = HttpStatusCode.ServiceUnavailable,
+      )
+    } else {
+      call.respondText(
+        "override not applied: $params — this preview has no live render lane, so only its baked " +
+          "snapshot can be served; add &$FALLBACK_PARAM=$FALLBACK_BAKED to accept it (which " +
+          "ignores the override)",
+        status = HttpStatusCode.Conflict,
+      )
     }
   }
 
@@ -3655,6 +3722,33 @@ class ServeHttpServer(
     private const val MAX_ADMIN_BODY_BYTES = 64L * 1024
 
     const val GENERATION_HEADER: String = "X-Compose-Preview-Generation"
+
+    /**
+     * How a `/render` response relates to what was asked for, when that needs saying at all. Only
+     * value today: [RENDER_BAKED_FALLBACK] — the caller asked for an override, accepted a baked
+     * snapshot via `?fallback=baked`, and these pixels do not reflect it. Absent on an ordinary
+     * render (see [GENERATION_HEADER] for how the pixels were produced).
+     */
+    const val RENDER_HEADER: String = "X-Compose-Preview-Render"
+
+    /** [RENDER_HEADER] value: baked pixels standing in for a render that could not be made. */
+    const val RENDER_BAKED_FALLBACK: String = "baked-fallback"
+
+    /**
+     * Comma-separated names of the validated override params a `/render` response does NOT reflect
+     * (`fontScale,uiMode`, `knob.label`, …). Present on the refusals *and* on an accepted
+     * `?fallback=baked` 200, because the pixels themselves carry no signal.
+     */
+    const val DROPPED_OVERRIDES_HEADER: String = "X-Compose-Preview-Dropped-Overrides"
+
+    /**
+     * `?fallback=baked` — opt in to the un-overridden snapshot instead of a refusal when the live
+     * render lane can't honour the request. Not an override param (never reaches
+     * [ServeOverrides.parse]).
+     */
+    const val FALLBACK_PARAM: String = "fallback"
+
+    const val FALLBACK_BAKED: String = "baked"
     private const val DEFAULT_PORT_RANGE = 32
 
     /** Short edge/browser caching for HTML assembled entirely from published catalog metadata. */

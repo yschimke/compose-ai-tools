@@ -327,6 +327,16 @@
     }
     return qs;
   }
+  // Called once the snapshot request has SETTLED, whichever way it went — pixels decoded, or a
+  // failure that leaves the stage without them. The bookmarked-mode bootstrap waits on this: it
+  // used to wait on the <img>'s own load/error, which a failed render never fires (no src is ever
+  // assigned), so a deep link into an interactive lane sat on the snapshot for the full 8s timeout.
+  // A refusal is a settled snapshot too, and one the Wasm/live lane may well be able to honour.
+  var onSnapshotSettled = null;
+  function snapshotSettled() {
+    var fn = onSnapshotSettled;
+    if (fn) { onSnapshotSettled = null; fn(); }
+  }
   function refreshSnapshot() {
     status.textContent = "rendering…";
     var gen = ++snapshotGen;
@@ -342,7 +352,21 @@
     // frame visible until the replacement has decoded.
     fetch(url, { credentials: "same-origin" })
       .then(function (response) {
-        if (!response.ok) throw new Error("render " + response.status);
+        if (!response.ok) {
+          // The server refused to answer an override it could not apply, rather than handing back
+          // the un-overridden snapshot under a 200 (#3449). Name the params it dropped: "render
+          // failed" would read as a broken preview, when in fact the preview is fine and the live
+          // lane isn't.
+          var dropped = response.headers.get("X-Compose-Preview-Dropped-Overrides");
+          if (dropped) {
+            var e = new Error("dropped overrides");
+            e.cpDropped = dropped;
+            // 409 is terminal: this preview has no live lane, so retrying never helps.
+            e.cpTerminal = response.status === 409;
+            throw e;
+          }
+          throw new Error("render " + response.status);
+        }
         return response.blob();
       })
       .then(function (blob) {
@@ -372,14 +396,24 @@
           setSnapshotLoading(false);
           showModeError((requestedExt === ".svg" ? "SVG" : "PNG") +
             " render failed for this preview.");
+          snapshotSettled();
         };
         next.src = objectUrl;
       })
-      .catch(function () {
+      .catch(function (e) {
         if (gen !== snapshotGen) return;
         setSnapshotLoading(false);
+        if (e && e.cpDropped) {
+          showModeError("Not rendered with " + e.cpDropped.split(",").join(", ") + " — " +
+            (e.cpTerminal
+              ? "this preview can only be served as its published snapshot."
+              : "the live render is unavailable right now; retry shortly."));
+          snapshotSettled();
+          return;
+        }
         showModeError((requestedExt === ".svg" ? "SVG" : "PNG") +
           " render failed for this preview.");
+        snapshotSettled();
       });
     refreshLinks();
   }
@@ -1917,6 +1951,11 @@
     }
     img.addEventListener("load", enterBookmarkedMode);
     img.addEventListener("error", enterBookmarkedMode);
+    // A snapshot that FAILS assigns no src, so neither <img> event fires. Settling on the request
+    // itself (see snapshotSettled) enters the bookmarked lane immediately instead of after the
+    // timeout below — which matters for a link like `?mode=wasm&fontScale=2.0` on a baked-only
+    // session: the snapshot is refused (#3449), but the in-browser Wasm lane can apply the override.
+    onSnapshotSettled = enterBookmarkedMode;
     setTimeout(enterBookmarkedMode, 8000);
   })();
 })();
