@@ -1919,8 +1919,8 @@
       "findings": [],
       "functionName": "AppScaffoldTemplate",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.AppScaffoldTemplate_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogTemplatesKt.AppScaffoldTemplate_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogTemplates.kt",
       "variant": "pixel_8"
     },
     {
@@ -1929,8 +1929,8 @@
       "findings": [],
       "functionName": "AssistChipSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.AssistChipSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogSelectionKt.AssistChipSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
       "variant": ""
     },
     {
@@ -1939,8 +1939,8 @@
       "findings": [],
       "functionName": "BadgeSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.BadgeSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.BadgeSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogCommunication.kt",
       "variant": ""
     },
     {
@@ -1949,8 +1949,8 @@
       "findings": [],
       "functionName": "CheckboxChecked",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.CheckboxChecked_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogSelectionKt.CheckboxChecked_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
       "variant": ""
     },
     {
@@ -1959,8 +1959,8 @@
       "findings": [],
       "functionName": "CircularProgressSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.CircularProgressSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.CircularProgressSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogCommunication.kt",
       "variant": ""
     },
     {
@@ -1969,8 +1969,8 @@
       "findings": [],
       "functionName": "ElevatedButtonSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.ElevatedButtonSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogButtonsKt.ElevatedButtonSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
       "variant": ""
     },
     {
@@ -1979,8 +1979,8 @@
       "findings": [],
       "functionName": "ElevatedCardSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.ElevatedCardSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogContainmentKt.ElevatedCardSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
     {
@@ -1989,8 +1989,8 @@
       "findings": [],
       "functionName": "FabSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FabSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogContainmentKt.FabSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
     {
@@ -1999,18 +1999,8 @@
       "findings": [],
       "functionName": "FilledButton",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButton_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "FilledButtonDisabled_Dark.a11y.png",
-      "cleanBasename": "FilledButtonDisabled_Dark.png",
-      "findings": [],
-      "functionName": "FilledButtonDisabled",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonDisabled_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledButton_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
       "variant": ""
     },
     {
@@ -2019,8 +2009,8 @@
       "findings": [],
       "functionName": "FilledButtonFocused",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonFocused_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonFocused_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt",
       "variant": ""
     },
     {
@@ -2029,8 +2019,8 @@
       "findings": [],
       "functionName": "FilledButtonIconLabel",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonIconLabel_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonIconLabel_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt",
       "variant": ""
     },
     {
@@ -2039,8 +2029,8 @@
       "findings": [],
       "functionName": "FilledButtonLargeFont",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonLargeFont_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogI18nKt.FilledButtonLargeFont_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt",
       "variant": ""
     },
     {
@@ -2049,28 +2039,8 @@
       "findings": [],
       "functionName": "FilledButtonPressed",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPressed_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "FilledButtonPseudo_Dark.a11y.png",
-      "cleanBasename": "FilledButtonPseudo_Dark.png",
-      "findings": [],
-      "functionName": "FilledButtonPseudo",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPseudo_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "FilledButtonRtl_Dark.a11y.png",
-      "cleanBasename": "FilledButtonRtl_Dark.png",
-      "findings": [],
-      "functionName": "FilledButtonRtl",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonRtl_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonPressed_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt",
       "variant": ""
     },
     {
@@ -2079,8 +2049,8 @@
       "findings": [],
       "functionName": "FilledCardSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledCardSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogContainmentKt.FilledCardSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
     {
@@ -2089,8 +2059,8 @@
       "findings": [],
       "functionName": "FilledTonalButtonSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilledTonalButtonSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledTonalButtonSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
       "variant": ""
     },
     {
@@ -2099,8 +2069,8 @@
       "findings": [],
       "functionName": "FilterChipSelected",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilterChipSelected_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogSelectionKt.FilterChipSelected_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
       "variant": ""
     },
     {
@@ -2109,18 +2079,8 @@
       "findings": [],
       "functionName": "LinearProgressSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.LinearProgressSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "OutlinedButtonDisabled_Dark.a11y.png",
-      "cleanBasename": "OutlinedButtonDisabled_Dark.png",
-      "findings": [],
-      "functionName": "OutlinedButtonDisabled",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.OutlinedButtonDisabled_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.LinearProgressSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogCommunication.kt",
       "variant": ""
     },
     {
@@ -2129,8 +2089,8 @@
       "findings": [],
       "functionName": "OutlinedButtonSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.OutlinedButtonSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogButtonsKt.OutlinedButtonSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
       "variant": ""
     },
     {
@@ -2139,8 +2099,8 @@
       "findings": [],
       "functionName": "OutlinedCardSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.OutlinedCardSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogContainmentKt.OutlinedCardSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
     {
@@ -2149,8 +2109,8 @@
       "findings": [],
       "functionName": "OutlinedTextFieldSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.OutlinedTextFieldSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogTextFieldsKt.OutlinedTextFieldSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogTextFields.kt",
       "variant": ""
     },
     {
@@ -2159,8 +2119,8 @@
       "findings": [],
       "functionName": "RadioSelected",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.RadioSelected_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogSelectionKt.RadioSelected_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
       "variant": ""
     },
     {
@@ -2169,8 +2129,8 @@
       "findings": [],
       "functionName": "SegmentedToggle",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SegmentedToggle_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogStatesKt.SegmentedToggle_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt",
       "variant": ""
     },
     {
@@ -2179,8 +2139,8 @@
       "findings": [],
       "functionName": "SliderMid",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SliderMid_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SliderMid_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
       "variant": ""
     },
     {
@@ -2189,8 +2149,8 @@
       "findings": [],
       "functionName": "SlottedCardSlotsSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSlotsSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSlotsSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
     {
@@ -2199,8 +2159,8 @@
       "findings": [],
       "functionName": "SlottedCardSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
     {
@@ -2209,8 +2169,8 @@
       "findings": [],
       "functionName": "SwitchOn",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SwitchOn_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
       "variant": ""
     },
     {
@@ -2219,8 +2179,8 @@
       "findings": [],
       "functionName": "SwitchOnLargeFont",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnLargeFont_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnLargeFont_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt",
       "variant": ""
     },
     {
@@ -2229,8 +2189,8 @@
       "findings": [],
       "functionName": "SwitchOnPseudo",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnPseudo_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnPseudo_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt",
       "variant": ""
     },
     {
@@ -2239,8 +2199,8 @@
       "findings": [],
       "functionName": "SwitchOnRtl",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnRtl_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnRtl_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt",
       "variant": ""
     },
     {
@@ -2249,8 +2209,8 @@
       "findings": [],
       "functionName": "TextBrandedSpecimen",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextBrandedSpecimen_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogTextKt.TextBrandedSpecimen_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogText.kt",
       "variant": ""
     },
     {
@@ -2259,8 +2219,8 @@
       "findings": [],
       "functionName": "TextButtonSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextButtonSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogButtonsKt.TextButtonSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
       "variant": ""
     },
     {
@@ -2269,8 +2229,8 @@
       "findings": [],
       "functionName": "TextFieldSticker",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextFieldSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogTextFieldsKt.TextFieldSticker_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogTextFields.kt",
       "variant": ""
     },
     {
@@ -2279,8 +2239,8 @@
       "findings": [],
       "functionName": "TextMaxLinesTruncated",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextMaxLinesTruncated_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogTextKt.TextMaxLinesTruncated_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogText.kt",
       "variant": ""
     },
     {
@@ -2289,8 +2249,8 @@
       "findings": [],
       "functionName": "TextMonospaceSpecimen",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextMonospaceSpecimen_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogTextKt.TextMonospaceSpecimen_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogText.kt",
       "variant": ""
     },
     {
@@ -2299,8 +2259,8 @@
       "findings": [],
       "functionName": "TextSerifSpecimen",
       "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.TextSerifSpecimen_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
+      "previewId": "com.example.designcatalogm3.CatalogTextKt.TextSerifSpecimen_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogText.kt",
       "variant": ""
     },
     {

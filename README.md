@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 307 preview(s) across 20 module(s) · 46 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 303 preview(s) across 20 module(s) · 46 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1087,12 +1087,6 @@ _No findings._
 
 _No findings._
 
-### `FilledButtonDisabled`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledButtonDisabled_Dark.a11y.png" width="400" />
-
-_No findings._
-
 ### `FilledButtonFocused`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledButtonFocused_Dark.a11y.png" width="400" />
@@ -1117,18 +1111,6 @@ _No findings._
 
 _No findings._
 
-### `FilledButtonPseudo`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledButtonPseudo_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `FilledButtonRtl`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledButtonRtl_Dark.a11y.png" width="400" />
-
-_No findings._
-
 ### `FilledCardSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilledCardSticker_Dark.a11y.png" width="400" />
@@ -1150,12 +1132,6 @@ _No findings._
 ### `LinearProgressSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/LinearProgressSticker_Dark.png" width="400" />
-
-_No findings._
-
-### `OutlinedButtonDisabled`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/OutlinedButtonDisabled_Dark.a11y.png" width="400" />
 
 _No findings._
 
