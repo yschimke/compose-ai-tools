@@ -76,6 +76,18 @@ export function resolvePreviewId(id, aliases) {
 /**
  * Look a preview up by either spelling of its id.
  *
+ * A **declared alias wins over an exact match**, which looks backwards until you take the collision
+ * case seriously. `assignBundleEntryIds` can bundle raw `Foo_A B` as `Foo_A_B` and raw `Foo_A_B` as
+ * `Foo_A_B_1`. The second candidate's raw id is then *also* an exact key for the first candidate's
+ * preview, so trying the exact lookup first hands it the wrong preview's params — silently, and
+ * with every symptom this module was written to remove (a wrong breakpoint, a wrong font scale, a
+ * render deduplicated against something it isn't).
+ *
+ * The alias is authoritative wherever it exists because candidates carry raw ids and the map is
+ * built from the manifest's own raw→bundled pairing. Ids needing no sanitising are deliberately not
+ * recorded, so the exact lookup still handles them — and a bundle whose manifests already use one
+ * spelling has no aliases at all and resolves entirely by exact match.
+ *
  * @param {Map<string, object>} previewById keyed by the ids `previews.json` carries
  * @param {string | undefined} id
  * @param {Map<string, string> | undefined} aliases
@@ -83,9 +95,10 @@ export function resolvePreviewId(id, aliases) {
  */
 export function findPreview(previewById, id, aliases) {
   if (typeof id !== "string") return undefined;
-  return (
-    previewById.get(id) ??
-    previewById.get(resolvePreviewId(id, aliases)) ??
-    previewById.get(sanitizeBundleEntryId(id))
-  );
+  const aliased = aliases?.get(id);
+  if (aliased !== undefined) {
+    const byAlias = previewById.get(aliased);
+    if (byAlias !== undefined) return byAlias;
+  }
+  return previewById.get(id) ?? previewById.get(sanitizeBundleEntryId(id));
 }

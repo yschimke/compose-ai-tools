@@ -58,6 +58,28 @@ test("the alias wins over re-deriving the sanitised form, so collision suffixes 
   assert.equal(resolvePreviewId("Foo_A_B", aliases), "Foo_A_B_1");
 });
 
+test("a declared alias beats an exact match that belongs to a colliding sibling", () => {
+  // raw "Foo_A B" bundles as Foo_A_B; raw "Foo_A_B" is then disambiguated to Foo_A_B_1. The second
+  // candidate's RAW id is also an exact key for the FIRST candidate's preview, so an exact-first
+  // lookup hands it the wrong preview's params — the wrong breakpoint, silently.
+  const previews = [
+    { id: "Foo_A_B", params: { device: "id:wearos_small_round" } },
+    { id: "Foo_A_B_1", params: { device: "id:wearos_large_round" } },
+  ];
+  const byId = new Map(previews.map((p) => [p.id, p]));
+  const aliases = previewIdAliases({
+    previewIds: ["Foo_A_B", "Foo_A_B_1"],
+    rawPreviewIds: ["Foo_A B", "Foo_A_B"],
+  });
+
+  assert.equal(findPreview(byId, "Foo_A B", aliases)?.id, "Foo_A_B");
+  assert.equal(
+    findPreview(byId, "Foo_A_B", aliases)?.id,
+    "Foo_A_B_1",
+    "the alias must win over the exact key that belongs to the sibling",
+  );
+});
+
 test("findPreview matches either spelling of the id", () => {
   const previews = [
     { id: "com.example.FooKt.Bar_Small_Round", params: { device: "id:wearos_small_round" } },
