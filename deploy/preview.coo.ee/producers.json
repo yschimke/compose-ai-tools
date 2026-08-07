@@ -6,6 +6,10 @@
       "branch": "design-artifacts/*"
     },
     {
+      "repo": "yschimke/m3-catalog",
+      "branch": "design-artifacts/*"
+    },
+    {
       "repo": "yschimke/meshcore-mobile",
       "branch": "design-artifacts/*"
     },
