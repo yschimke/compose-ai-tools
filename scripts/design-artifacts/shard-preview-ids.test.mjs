@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import {
   parseIdList,
   partitionPreviewIds,
+  previewNameMatches,
+  renderableDigest,
   shardRenderPlan,
   verifyShardPlans,
 } from "./shard-preview-ids.mjs";
@@ -120,13 +122,16 @@ test("parseIdList reads both the comma form and a newline-separated file", () =>
 });
 
 /** The plan records the shards upload, as `shardRenderPlan` would have produced them. */
-const plansFor = (previews, shards, deferred = []) =>
-  shardRenderPlan(previews.map(preview), shards, deferred).shards.map((s) => ({
+const plansFor = (previews, shards, deferred = []) => {
+  const plan = shardRenderPlan(previews.map(preview), shards, deferred);
+  return plan.shards.map((s) => ({
     index: s.index,
     total: shards,
-    renderable: previews.length - deferred.length,
+    renderable: plan.renderable,
+    digest: plan.digest,
     previews: s.previews,
   }));
+};
 
 test("verifyShardPlans accepts a disjoint cover of the discovered set", () => {
   const { ok, problems } = verifyShardPlans(plansFor(["a", "b", "c", "d"], 2));
@@ -182,4 +187,103 @@ test("verifyShardPlans is satisfied by the plans a deferring catalog produces", 
   // cover check must not expect them back.
   const plans = plansFor(["a_Light", "a_Dark", "b_Light", "b_Dark"], 2, ["a_Dark", "b_Dark"]);
   assert.ok(verifyShardPlans(plans).ok, JSON.stringify(plans));
+});
+
+// --- the pre-flight's positive function-name filter -----------------------------------------
+
+test("previewNameMatches ports the renderer's plain equality-or-substring rule", () => {
+  assert.ok(previewNameMatches([], "Anything"), "an empty filter keeps everything");
+  assert.ok(previewNameMatches(["FilledButtonPreview"], "FilledButtonPreview"));
+  assert.ok(previewNameMatches(["FilledButton"], "FilledButtonPreview"), "substring matches");
+  assert.equal(previewNameMatches(["OutlinedButton"], "FilledButtonPreview"), false);
+  assert.ok(previewNameMatches([" FilledButton ", ""], "FilledButtonPreview"), "trims and skips blanks");
+});
+
+test("previewNameMatches matches the package-qualified name too", () => {
+  const cls = "com.example.ui.ButtonsKt";
+  assert.ok(previewNameMatches(["com.example.ui.FilledButtonPreview"], "FilledButtonPreview", cls));
+  assert.ok(previewNameMatches(["com.example.ui"], "FilledButtonPreview", cls), "package substring");
+  assert.equal(previewNameMatches(["com.other.ui.FilledButtonPreview"], "FilledButtonPreview", cls), false);
+});
+
+test("previewNameMatches anchors a glob instead of substring-matching it", () => {
+  assert.ok(previewNameMatches(["Filled*Preview"], "FilledButtonPreview"));
+  assert.ok(previewNameMatches(["*ButtonPreview"], "FilledButtonPreview"));
+  assert.equal(previewNameMatches(["Filled*"], "OutlinedFilledButtonPreview"), false, "anchored");
+  assert.ok(previewNameMatches(["FilledButtonPreview?"], "FilledButtonPreview2"));
+  // A dot in an FQN glob is a literal, not "any char".
+  assert.equal(previewNameMatches(["com.example.*"], "comXexample.Foo", ""), false);
+});
+
+test("the render filter drops non-required functions BEFORE the partition is drawn", () => {
+  // Without this, a shard could be handed a share made entirely of deferred-function ids: it would
+  // report work to do, exclude every id the name filter kept, and the render would refuse a
+  // selection that produces nothing.
+  const previews = [
+    { id: "Keep_Light", functionName: "KeepPreview" },
+    { id: "Keep_Dark", functionName: "KeepPreview" },
+    { id: "Drop_Light", functionName: "DropPreview" },
+    { id: "Drop_Dark", functionName: "DropPreview" },
+  ];
+  const plan = shardRenderPlan(previews, 2, [], ["KeepPreview"]);
+
+  assert.equal(plan.renderable, 2);
+  assert.equal(plan.filteredOut, 2);
+  assert.deepEqual(plan.shards.flatMap((s) => s.previews).sort(), ["Keep_Dark", "Keep_Light"]);
+  for (const shard of plan.shards) {
+    assert.equal(shard.exclude.some((id) => id.startsWith("Drop_")), false,
+      "a filtered-out id needs no exclusion — the name filter already drops it");
+  }
+});
+
+test("a filter that would leave a shard empty clamps the shard count instead of failing it", () => {
+  const previews = [
+    { id: "Keep_Light", functionName: "KeepPreview" },
+    ...Array.from({ length: 10 }, (_, i) => ({ id: `Drop${i}`, functionName: "DropPreview" })),
+  ];
+  const plan = shardRenderPlan(previews, 6, [], ["KeepPreview"]);
+  assert.equal(plan.total, 1, "one renderable preview means one real shard");
+  assert.deepEqual(plan.shards[0].previews, ["Keep_Light"]);
+  assert.deepEqual(plan.shards[0].exclude, [], "nothing left to exclude");
+});
+
+test("the render filter and modePriority deferral compose", () => {
+  const previews = [
+    { id: "Keep_Light", functionName: "KeepPreview" },
+    { id: "Keep_Dark", functionName: "KeepPreview" },
+    { id: "Drop_Light", functionName: "DropPreview" },
+  ];
+  const plan = shardRenderPlan(previews, 2, ["Keep_Dark"], ["KeepPreview"]);
+  assert.equal(plan.renderable, 1);
+  assert.deepEqual(plan.shards[0].previews, ["Keep_Light"]);
+  assert.deepEqual(plan.shards[0].exclude, ["Keep_Dark"]);
+});
+
+// --- discovered-set agreement, not just cardinality -----------------------------------------
+
+test("renderableDigest is order-independent and set-sensitive", () => {
+  assert.equal(renderableDigest(["a", "b"]), renderableDigest(["b", "a"]));
+  assert.notEqual(renderableDigest(["a", "b"]), renderableDigest(["a", "c"]));
+});
+
+test("verifyShardPlans catches same-sized but DIFFERENT discovered sets", () => {
+  // The count check passes here — two plans, `renderable: 2`, partitions ["a"] and ["d"], disjoint,
+  // union of size two. Only the digest sees that the runners discovered different worlds.
+  const plans = [
+    { index: 1, total: 2, renderable: 2, digest: renderableDigest(["a", "b"]), previews: ["a"] },
+    { index: 2, total: 2, renderable: 2, digest: renderableDigest(["c", "d"]), previews: ["d"] },
+  ];
+  const { ok, problems } = verifyShardPlans(plans);
+  assert.equal(ok, false);
+  assert.match(problems.join("\n"), /different preview SETS/);
+});
+
+test("verifyShardPlans rejects plans with no digest at all", () => {
+  const plans = [
+    { index: 1, total: 2, renderable: 2, previews: ["a"] },
+    { index: 2, total: 2, renderable: 2, previews: ["b"] },
+  ];
+  const { ok, problems } = verifyShardPlans(plans);
+  assert.equal(ok, false);
+  assert.match(problems.join("\n"), /no renderable digest/);
 });

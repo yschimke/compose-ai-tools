@@ -283,11 +283,13 @@ jobs:
     name: ${{ inputs.system }} · plan
     if: ${{ inputs.render-shards > 1 }}
     runs-on: ${{ inputs.runs-on }}
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
-      # No checkout, no toolchain: this is `[1, 2, …, N]` and nothing else. The real partition is
+      # No checkout, no Gradle: this is `[1, 2, …, N]` and nothing else. The real partition is
       # computed inside each shard from its own discovery, which is what keeps the fan-out free of a
       # serial "discover once, then start the shards" prefix — that prefix would cost a full Gradle
       # configure + compile (~3.7 min) before any shard began, which is the same fixed cost each
@@ -299,6 +301,54 @@ jobs:
         run: |
           set -euo pipefail
           echo "matrix=[$(seq -s, 1 "$SHARDS")]" >> "$GITHUB_OUTPUT"
+
+      # The merge runs LAST, after every shard has spent its ~20 minutes — so a CLI that predates
+      # `bundle merge` would fail with "Unknown bundle subcommand" having burned the whole fan-out.
+      # That is not a hypothetical: the documented default is `cli-source: released`, and
+      # `cli-version: catalog` pins the CLI to the applied plugin version, which for any catalog that
+      # has not bumped its pin is a release older than this feature. So probe it here, once, before
+      # anything expensive starts.
+      #
+      # Only for the released path. `cli-source: build` builds the CLI from the `driver-ref`
+      # checkout, which is the same checkout the merge step builds from, so a probe would mean
+      # building it twice; a `driver-ref` old enough to lack the subcommand is a compose-ai-tools
+      # internal misconfiguration, not a consumer-facing pin.
+      - name: Set up JDK 21
+        if: ${{ inputs.cli-source == 'released' }}
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # `cli-version: catalog` reads the pin out of the caller's version catalog, so the checkout is
+      # needed for the install action to resolve it.
+      - name: Check out the calling repo
+        if: ${{ inputs.cli-source == 'released' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Install compose-preview CLI
+        if: ${{ inputs.cli-source == 'released' }}
+        uses: yschimke/compose-ai-tools/.github/actions/install@main
+        with:
+          version: ${{ inputs.cli-version }}
+          catalog-key: ${{ inputs.catalog-key }}
+          catalog-path: ${{ inputs.catalog-path }}
+          github-token: ${{ github.token }}
+
+      - name: Check the CLI can merge shard renders
+        if: ${{ inputs.cli-source == 'released' }}
+        run: |
+          set -euo pipefail
+          version="$(compose-preview --version | head -1)"
+          if compose-preview bundle help 2>&1 | grep -q 'bundle merge'; then
+            echo "✓ $version supports 'bundle merge'."
+            exit 0
+          fi
+          echo "::error title=CLI too old for render-shards::${version} has no 'compose-preview bundle merge', which the sharded render needs to reassemble the shard bundles. Raise cli-version (or, with cli-version: catalog, the ${{ inputs.catalog-key }} pin in ${{ inputs.catalog-path }}) to a release that carries it, or set render-shards: 1."
+          exit 1
 
   render-shard:
     name: ${{ inputs.system }} · shard ${{ matrix.shard }}/${{ inputs.render-shards }}
@@ -467,11 +517,20 @@ jobs:
           if [ -s "$GITHUB_WORKSPACE/mode-filter.txt" ]; then
             exclude_file=(--exclude-file "$GITHUB_WORKSPACE/mode-filter.txt")
           fi
+          # The render below also applies the pre-flight's positive function-name filter, so the
+          # partition must see the same preview set it will. Partitioning the unfiltered discovery
+          # output would let a shard's whole share be ids of wholly-deferred functions: it would
+          # report work to do, then exclude every id the name filter kept, and the render refuses a
+          # selection that produces nothing.
+          filter_file=()
+          if [ -s "$GITHUB_WORKSPACE/render-filter.txt" ]; then
+            filter_file=(--render-filter-file "$GITHUB_WORKSPACE/render-filter.txt")
+          fi
           previews=$(node compose-ai-tools/scripts/design-artifacts/shard-preview-ids.mjs \
             --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
             --shards "${{ inputs.render-shards }}" \
             --index "${{ matrix.shard }}" \
-            "${exclude_file[@]}" \
+            "${exclude_file[@]}" "${filter_file[@]}" \
             --out "$GITHUB_WORKSPACE/shard-exclude.txt" \
             --plan-out "$GITHUB_WORKSPACE/shard-plan.json")
           echo "previews=$previews" >> "$GITHUB_OUTPUT"

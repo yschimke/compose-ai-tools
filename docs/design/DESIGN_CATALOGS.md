@@ -617,14 +617,27 @@ decisions:
   neighbour expands to two, and the slowest shard sets the wall clock;
 - **round-robin over the sorted list, not contiguous blocks** — ids sort by group, so blocks would
   cluster the template-heavy groups into one shard;
-- **deferred ids are removed before partitioning, then re-excluded in every shard** — so a
-  `modePriority` deferral shrinks the work the shards divide instead of competing with the partition
-  for slots. The two levers compose; reach for deferral first, since it makes the work smaller.
+- **whatever the render will not produce is removed before partitioning, then re-applied in every
+  shard** — the ids `modePriority` defers, and the ids the pre-flight's positive function-name filter
+  drops (an entry-level `priority: "deferred"`). Both are exclusions, so the naive union would let
+  them compete with the partition for slots; worse, a shard whose whole share happened to be
+  filtered-out ids would report work to do and then exclude every id the name filter kept, and
+  `composePreviewRender` refuses a selection that renders nothing. The levers compose — reach for
+  deferral first, since it makes the work smaller, and let sharding divide what remains.
 
 Because the shards each plan independently, the merge step cross-checks their uploaded plans
-(`shard-preview-ids.mjs --verify`) before unioning: same discovered set, pairwise disjoint, and a
-complete cover. A disagreement would otherwise surface as a completeness-gate failure naming a
-component, with nothing pointing at the shards.
+(`shard-preview-ids.mjs --verify`) before unioning: same discovered **set** (compared by digest, not
+by count — two runners that saw `["a"]` and `["b"]` are disjoint with a union of the right size),
+pairwise disjoint, and a complete cover. A disagreement would otherwise surface as a
+completeness-gate failure naming a component, with nothing pointing at the shards.
+
+**The CLI has to be new enough.** The merge runs last, after every shard has spent its twenty
+minutes, so a CLI predating `bundle merge` would fail the run having burned the whole fan-out — and
+that is the *default* configuration's failure mode, since `cli-source: released` +
+`cli-version: catalog` pins the CLI to the applied plugin version. So the matrix job probes
+`compose-preview bundle help` for the subcommand before anything expensive starts, and fails with
+the pin to raise. (The probe is skipped for `cli-source: build`, where the CLI is built from the same
+`driver-ref` checkout the merge step builds from.)
 
 Two things it does not shard: the **extra module** (`extra-module`) renders in the generate job as
 before — it is a supplement, small by construction — and a `@PreviewParameter` provider's **rows**,

@@ -41,8 +41,58 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { parseArgs } from "node:util";
 import { previewsFromJson } from "./deferred-preview-ids.mjs";
+
+/**
+ * Port of the renderer's `PreviewNameFilter.matches` — the `--preview` / `-PcomposePreview.filter`
+ * selector — so the partition can see the same preview set the render will.
+ *
+ * The pre-flight emits a positive **function-name** filter when a spec defers a whole entry
+ * (`renderFilterPatterns`), and the shard render passes it as `ORG_GRADLE_PROJECT_composePreview.filter`.
+ * Partitioning the *unfiltered* discovery output against that would be a live bug, not a rounding
+ * error: a shard whose share happened to be all deferred-function ids would report work to do, then
+ * exclude every id the name filter kept — and `composePreviewRender` rejects a selection that
+ * renders nothing.
+ *
+ * Semantics, matched deliberately rather than approximated (both directions are wrong: too
+ * permissive re-opens the empty-render bug, too strict silently drops a sticker from every shard):
+ *  - a pattern containing `*` or `?` is anchored and full-matched as a glob;
+ *  - a pattern without them matches on equality **or substring**;
+ *  - either candidate name counts — the simple function name or `<package>.<functionName>`;
+ *  - matching is case-sensitive, any pattern keeps the preview, and an empty list keeps everything.
+ */
+export function previewNameMatches(patterns, functionName, className = "") {
+  const cleaned = (patterns ?? []).map((p) => String(p).trim()).filter((p) => p.length > 0);
+  if (cleaned.length === 0) return true;
+  const simple = String(functionName ?? "");
+  const pkg = String(className ?? "").includes(".")
+    ? String(className).slice(0, String(className).lastIndexOf("."))
+    : "";
+  const fq = pkg.length > 0 ? `${pkg}.${simple}` : simple;
+  return cleaned.some((pattern) => {
+    if (pattern.includes("*") || pattern.includes("?")) {
+      const regex = new RegExp(
+        `^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`,
+      );
+      return regex.test(simple) || regex.test(fq);
+    }
+    return (
+      simple === pattern || fq === pattern || simple.includes(pattern) || fq.includes(pattern)
+    );
+  });
+}
+
+/**
+ * A stable fingerprint of the renderable id set, carried in every shard's plan so the merge can
+ * check that the shards discovered the *same* previews rather than merely the same NUMBER of them.
+ * Two runners that saw `["a"]` and `["d"]` are disjoint with a union of size two, which a count
+ * comparison calls agreement and a digest comparison does not.
+ */
+export function renderableDigest(ids) {
+  return createHash("sha256").update([...(ids ?? [])].sort().join("\n")).digest("hex").slice(0, 16);
+}
 
 /**
  * Round-robin [ids] (sorted, de-duplicated) into [shards] partitions.
@@ -71,17 +121,30 @@ export function partitionPreviewIds(ids, shards) {
  * The full render plan for a sharded run: what each shard renders, and the `--exclude-preview-id`
  * list that makes it render only that.
  *
- * @param {Array<{id: string}>} previews discovered previews (from `compose-preview list --json`).
+ * Three things are removed from the partition before it is drawn, each for the same reason — a
+ * shard must never be handed a share that the render will not actually produce:
+ *  - ids of functions the **name filter** drops (an entry-level `priority: "deferred"`);
+ *  - ids `modePriority` **defers**;
+ * and both are then excluded in *every* shard, so the two levers compose instead of competing.
+ *
+ * @param {Array<{id: string, functionName?: string, className?: string}>} previews discovered
+ *   previews (from `compose-preview list --json`).
  * @param {number} shards requested shard count.
  * @param {string[]} deferred ids already excluded by `modePriority` — dropped from the partition and
  *   re-added to every shard's exclusion list.
+ * @param {string[]} renderFilter the pre-flight's positive function-name patterns
+ *   (`renderFilterPatterns`); empty ⇒ every discovered preview renders.
  * @returns {{shards: Array<{index: number, previews: string[], exclude: string[]}>, total: number,
- *   renderable: number, deferred: string[]}} `index` is 1-based (it is what a human reads in the
- *   Actions matrix); `total` is the effective shard count after clamping.
+ *   renderable: number, digest: string, deferred: string[], filteredOut: number}} `index` is
+ *   1-based (it is what a human reads in the Actions matrix); `total` is the effective shard count
+ *   after clamping.
  */
-export function shardRenderPlan(previews, shards, deferred = []) {
+export function shardRenderPlan(previews, shards, deferred = [], renderFilter = []) {
   const deferredSet = new Set(deferred ?? []);
-  const all = (previews ?? [])
+  const selected = (previews ?? []).filter((p) =>
+    previewNameMatches(renderFilter, p?.functionName ?? p?.id, p?.className),
+  );
+  const all = selected
     .map((p) => p?.id)
     .filter((id) => typeof id === "string" && id.length > 0);
   const renderable = [...new Set(all)].filter((id) => !deferredSet.has(id)).sort();
@@ -100,6 +163,8 @@ export function shardRenderPlan(previews, shards, deferred = []) {
     }),
     total: partitions.length,
     renderable: renderable.length,
+    digest: renderableDigest(renderable),
+    filteredOut: new Set((previews ?? []).map((p) => p?.id)).size - new Set(all).size,
     deferred: [...deferredSet].sort(),
   };
 }
@@ -123,12 +188,15 @@ export function parseIdList(text) {
  * a component, with no hint that the shards saw different worlds.
  *
  * Checks, in the order they'd bite:
- *  - every shard saw the same renderable set size and planned the same shard count;
+ *  - every shard planned the same shard count, and discovered the **same id set** — compared by
+ *    `digest`, not by count, because two runners that saw `["a"]` and `["b"]` are disjoint with a
+ *    union of the right size, which a count comparison happily calls agreement;
  *  - the partitions are pairwise disjoint (an overlap is wasted render time, and `bundle merge`
  *    would silently pick a winner);
  *  - the partitions cover the whole renderable set (a gap is a missing sticker).
  *
- * @param {Array<{index: number, total: number, renderable: number, previews: string[]}>} plans
+ * @param {Array<{index: number, total: number, renderable: number, digest?: string,
+ *   previews: string[]}>} plans
  * @returns {{ok: boolean, problems: string[]}} `problems` is empty iff the merge is safe.
  */
 export function verifyShardPlans(plans) {
@@ -145,6 +213,17 @@ export function verifyShardPlans(plans) {
     problems.push(
       `shards discovered different numbers of renderable previews: ${[...renderables].join(", ")}`,
     );
+  }
+  // The set, not just its size. Same count with different members is the failure a count check
+  // cannot see, and it is the one that would corrupt the merge quietly: the base's manifest expects
+  // an id nothing baked, while an unrelated artifact rides in from another shard.
+  const digests = new Set(list.map((p) => p?.digest).filter((d) => typeof d === "string"));
+  if (digests.size > 1) {
+    problems.push(
+      `shards discovered different preview SETS (renderable digests ${[...digests].join(", ")})`,
+    );
+  } else if (digests.size === 0) {
+    problems.push("shard plans carry no renderable digest — they predate the set comparison");
   }
   if (list.length !== (list[0]?.total ?? list.length)) {
     problems.push(`expected ${list[0]?.total} shard plan(s), got ${list.length}`);
@@ -174,7 +253,8 @@ export function verifyShardPlans(plans) {
 //
 // Plan ONE shard, run inside that shard's own render job:
 //   node shard-preview-ids.mjs --previews discovered.json --shards 6 --index 2 \
-//     [--exclude-file mode-filter.txt] --out exclude.txt --plan-out shard-plan.json
+//     [--exclude-file mode-filter.txt] [--render-filter-file render-filter.txt] \
+//     --out exclude.txt --plan-out shard-plan.json
 // Writes the comma-separated `--exclude-preview-id` list this shard passes to `bundle pack`, and a
 // small plan record for the merge-side cross-check. Prints the number of previews this shard renders
 // — 0 means "there was nothing left for you", which a caller should treat as "skip the render", not
@@ -192,6 +272,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       shards: { type: "string" },
       index: { type: "string" },
       "exclude-file": { type: "string" },
+      "render-filter-file": { type: "string" },
       out: { type: "string" },
       "plan-out": { type: "string" },
       verify: { type: "boolean", default: false },
@@ -220,7 +301,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (!values.previews || !values.shards || !values.index || !values.out) {
       console.error(
         "usage: shard-preview-ids.mjs --previews <list.json> --shards <n> --index <k> " +
-          "--out <exclude.txt> [--plan-out <plan.json>] [--exclude-file <ids.txt>]\n" +
+          "--out <exclude.txt> [--plan-out <plan.json>] [--exclude-file <ids.txt>] " +
+          "[--render-filter-file <patterns.txt>]\n" +
           "       shard-preview-ids.mjs --verify <plan.json>…",
       );
       process.exit(2);
@@ -229,9 +311,21 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const deferred = values["exclude-file"]
       ? parseIdList(readFileSync(values["exclude-file"], "utf8"))
       : [];
+    // The pre-flight's positive function-name filter, when a spec defers a whole entry. The render
+    // applies it too, so the partition has to see the same set or a shard can end up with a share
+    // the render will not produce.
+    const renderFilter = values["render-filter-file"]
+      ? parseIdList(readFileSync(values["render-filter-file"], "utf8"))
+      : [];
     const requested = Number(values.shards);
     const index = Number(values.index);
-    const plan = shardRenderPlan(previews, requested, deferred);
+    const plan = shardRenderPlan(previews, requested, deferred, renderFilter);
+    if (plan.filteredOut > 0 && index === 1) {
+      console.error(
+        `shard-preview-ids: the render filter drops ${plan.filteredOut} discovered preview(s) ` +
+          `before partitioning (${renderFilter.length} pattern(s)).`,
+      );
+    }
     const mine = plan.shards.find((s) => s.index === index);
 
     if (plan.total < requested && index === 1) {
@@ -248,7 +342,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       if (values["plan-out"]) {
         writeFileSync(
           values["plan-out"],
-          `${JSON.stringify({ index, total: plan.total, renderable: plan.renderable, previews: [] }, null, 2)}\n`,
+          `${JSON.stringify({ index, total: plan.total, renderable: plan.renderable, digest: plan.digest, previews: [] }, null, 2)}\n`,
         );
       }
       console.error(`shard-preview-ids: shard ${index} of ${plan.total} has no previews to render.`);
@@ -258,7 +352,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       if (values["plan-out"]) {
         writeFileSync(
           values["plan-out"],
-          `${JSON.stringify({ index, total: plan.total, renderable: plan.renderable, previews: mine.previews }, null, 2)}\n`,
+          `${JSON.stringify({ index, total: plan.total, renderable: plan.renderable, digest: plan.digest, previews: mine.previews }, null, 2)}\n`,
         );
       }
       console.error(
