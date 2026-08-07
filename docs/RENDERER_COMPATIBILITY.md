@@ -52,7 +52,7 @@ The VS Code extension surfaces the same findings in the Problems panel (via
 
 The desktop backend has the mirror-image hazard. `renderer-desktop` (and
 `daemon-desktop`) bundle their own JetBrains Compose + Skiko, pinned to the
-repo's `compose-multiplatform` (currently 1.10.3). A consumer module tracks
+repo's `compose-multiplatform` (currently 1.11.1). A consumer module tracks
 *its own* Compose Multiplatform version, which can be newer. The plugin builds
 the render subprocess classpath from two configurations — the renderer tool
 config (`composePreviewRenderer` / `composePreviewDesktopDaemon`) and the
@@ -70,7 +70,7 @@ JVM/Kotlin platform attributes, so the two resolve in **one** graph. Gradle's
 conflict resolution then picks a single coherent max version of Skiko (and the
 rest of the JetBrains Compose stack) — the consumer's, whose bindings and
 native library agree. The renderer's own code is compiled against the pinned
-floor (1.10.3) but runs against whatever coherent version the consumer pulls;
+floor (1.11.1) but runs against whatever coherent version the consumer pulls;
 because Skiko/Compose minor bumps are additive at the API surface the renderer
 uses, the consumer's newer stack satisfies it. This is scoped to genuinely
 JVM/desktop consumer classpaths — a pure-Android KMP fallback

@@ -133,11 +133,16 @@ multiple `@Preview`s at different `progress` values to review keyframes. Worked 
 
 ### Compottie version pin
 
-Pinned to **2.1.0** in [`gradle/libs.versions.toml`](../gradle/libs.versions.toml): it is built
-against JetBrains Compose foundation **1.10.1** (same minor as our `compose-multiplatform = 1.10.3`).
-2.2.x jumps to foundation 1.11.0, which would drag a *newer* Compose onto the renderer classpath —
-the failure direction [`RENDERER_COMPATIBILITY.md`](RENDERER_COMPATIBILITY.md) warns about. Bump only
-in lockstep with `compose-multiplatform`.
+Pinned to **2.2.4** in [`gradle/libs.versions.toml`](../gradle/libs.versions.toml): it is built
+against JetBrains Compose foundation **1.11.0**, the same minor as our
+`compose-multiplatform = 1.11.1`.
+
+The pin exists to keep Compottie from dragging a Compose *newer* than the renderer's onto the render
+classpath — the failure direction [`RENDERER_COMPATIBILITY.md`](RENDERER_COMPATIBILITY.md) warns
+about, and the one that took the m3-catalog live lane down in #3447. So this must move **in lockstep
+with `compose-multiplatform`, never ahead of it**: on the old 1.10.3 floor it was held at 2.1.0
+(foundation 1.10.1) for exactly this reason, and it advanced to 2.2.x only when the repo moved to the
+1.11 line.
 
 ## Follow-ups
 
