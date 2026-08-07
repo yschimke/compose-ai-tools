@@ -1099,6 +1099,37 @@ available from the carried documents.
 > slugs once per process and renders those families in Roboto — non-fatal, but visibly different from
 > the PNG.
 
+### When an override can't be applied, the render is refused — not quietly baked
+
+Every fallback above (`livebundle-unavailable`, an untrusted catalog, a missing Android runtime, an
+unmapped sticker, no free live seat, a daemon that is simply down) leaves `serve` holding baked
+pixels for a request that asked for something else. Those pixels are **byte-identical to the
+un-overridden snapshot**, so a `200 image/png` there is a wrong answer delivered confidently: a diff
+bot, a parity check, or an agent iterating on a theme reads "no visual difference" and concludes the
+override had no effect on the UI, when in fact it was never rendered ([#3449]).
+
+So `GET /render/{id}.png` refuses instead, and every override kind agrees — `fontScale`, `uiMode`,
+`themeProvider`, `device`, `knob.<key>`, `rc.<name>`:
+
+| state | response |
+|---|---|
+| no override, or one the baked variant already satisfies (`uiMode=light` on a `…__light` id) | `200 image/png`, `X-Compose-Preview-Generation: baked` |
+| the override was applied | `200 image/png`, `X-Compose-Preview-Generation: daemon` (or `daemon-cache` / `catalog-cache`) |
+| the preview **has** a live lane, but it can't serve right now (daemon down/cold, no free seat) | `503` + `Retry-After: 2` |
+| the preview has **no** live lane at all (static or untrusted catalog, unmapped variant) | `409` — retrying can't help |
+| `&fallback=baked` on the request | `200 image/png` + `X-Compose-Preview-Render: baked-fallback` |
+
+All four override-carrying responses carry **`X-Compose-Preview-Dropped-Overrides`** — a
+comma-separated list of exactly the params the returned pixels do not reflect (`fontScale,uiMode`,
+`knob.label`, …), so even a `curl -I` can tell. An unrecognised param is not an override and is
+still ignored silently (a cache-buster must not 409 a page).
+
+`&fallback=baked` is the opt-in for callers that would rather show the published snapshot than
+nothing — but it is marked unmissably in the headers, because the pixels themselves carry no signal.
+A malformed override value is still a `400` at parse time, as before; this is about *valid* ones.
+
+[#3449]: https://github.com/yschimke/compose-ai-tools/issues/3449
+
 ### Bounding the live tier — `--live-seats` / `SERVE_LIVE_SEATS`
 
 Each live (daemon-backed) stream holds a JVM Compose render session, so on a constrained box a burst

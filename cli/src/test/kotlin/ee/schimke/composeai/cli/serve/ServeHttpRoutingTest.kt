@@ -81,6 +81,34 @@ class ServeHttpRoutingTest {
       override fun close() {}
     }
 
+  /**
+   * A session whose live lane exists but cannot serve right now — the daemon is down / cold / out
+   * of seats — so an override-bearing render falls back to the catalog's baked PNG. Exactly the
+   * state #3449 was reported in: the pixels are published bytes that ignore the override.
+   */
+  private val liveDownHost =
+    object : ServeHost {
+      override val previews = listOf(ServePreview(previewId, previewId))
+      override val label = "live-down"
+      override val canRenderOverrides = true
+
+      override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+        RenderOutcome.Ok(png(), RenderOutcome.Generation.BAKED)
+
+      override fun subscribeStream(
+        previewId: String,
+        overrides: PreviewOverrides,
+        codec: StreamCodec?,
+        maxFps: Int?,
+        onUnavailable: ((String) -> Unit)?,
+        onFrame: (StreamFrameParams) -> Unit,
+      ): StreamHandle? = null
+
+      override fun activeStreamCount(): Int = 0
+
+      override fun close() {}
+    }
+
   private fun png(): ByteArray =
     ByteArrayOutputStream()
       .also { ImageIO.write(BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", it) }
@@ -199,6 +227,7 @@ class ServeHttpRoutingTest {
       pinned = true,
     )
     registry.register("burst", host = burstHost, pinned = true)
+    registry.register("live-down", host = liveDownHost, pinned = true)
     ServeHttpServer(
         host = "127.0.0.1",
         requestedPort = 0,
@@ -226,6 +255,14 @@ class ServeHttpRoutingTest {
     val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
     client.newCall(req).execute().use { r ->
       return r.code to (r.body?.string() ?: "")
+    }
+  }
+
+  /** [get], keeping the response headers — the baked-fallback signals ride there. */
+  private fun getFull(path: String): Triple<Int, String, okhttp3.Headers> {
+    val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
+    client.newCall(req).execute().use { r ->
+      return Triple(r.code, r.body?.string() ?: "", r.headers)
     }
   }
 
@@ -290,6 +327,60 @@ class ServeHttpRoutingTest {
     assertEquals(200, renderCode)
     assertEquals(1, leasedBurstHostRenders.get())
     assertEquals(0, ordinaryBurstHostRenders.get())
+  }
+
+  /**
+   * #3449: a validated override that could not be applied must not come back as `200 image/png`
+   * carrying the un-overridden snapshot — those pixels are byte-identical to the override-free
+   * render, so the caller reads "this override changes nothing" for a render that never happened.
+   */
+  @Test
+  fun `an override a static session cannot apply is refused, not answered with baked pixels`() {
+    val (plainCode, plainBody, plainHeaders) = getFull("/default-mod/render/$previewId.png")
+    assertEquals(200, plainCode)
+    assertTrue(plainBody.isNotEmpty(), "the un-overridden request still serves baked pixels")
+    assertEquals("baked", plainHeaders[ServeHttpServer.GENERATION_HEADER])
+    assertEquals(null, plainHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+
+    // 409, not 503: a static bundle has no live lane at all, so retrying can never help.
+    val (code, body, headers) = getFull("/default-mod/render/$previewId.png?fontScale=2.0")
+    assertEquals(409, code)
+    assertEquals("fontScale", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+    assertTrue(body.contains("override not applied: fontScale"), "body names the param: $body")
+  }
+
+  @Test
+  fun `every override kind agrees — uiMode and knobs are refused like fontScale`() {
+    assertEquals(409, get("/default-mod/render/$previewId.png?uiMode=dark").first)
+    val (_, _, knobHeaders) =
+      getFull("/compose-m3/render/$previewId.png?knob.label=Hi&fontScale=1.5")
+    assertEquals("fontScale,knob.label", knobHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+    // An unrecognised param is not an override, so it still serves the snapshot (unchanged).
+    assertEquals(200, get("/default-mod/render/$previewId.png?zzzBogusParam=1").first)
+  }
+
+  @Test
+  fun `a live lane that is merely unavailable answers 503 with a retry hint`() {
+    val (code, body, headers) = getFull("/live-down/render/$previewId.png?fontScale=2.0")
+    assertEquals(503, code)
+    assertEquals("2", headers["Retry-After"])
+    assertEquals("fontScale", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+    assertTrue(body.contains("retry shortly"), "body offers a retry: $body")
+  }
+
+  @Test
+  fun `fallback=baked opts back into the snapshot, marked unmissably`() {
+    val (code, body, headers) =
+      getFull("/live-down/render/$previewId.png?fontScale=2.0&fallback=baked")
+    assertEquals(200, code)
+    assertTrue(body.isNotEmpty(), "the snapshot is served")
+    assertEquals(
+      ServeHttpServer.RENDER_BAKED_FALLBACK,
+      headers[ServeHttpServer.RENDER_HEADER],
+      "the response says the pixels are a fallback",
+    )
+    assertEquals("fontScale", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+    assertEquals("no-store", headers["Cache-Control"])
   }
 
   @Test
@@ -690,13 +781,17 @@ class ServeHttpRoutingTest {
 
   @Test
   fun `variant render remains non cacheable`() {
+    // This fixture is a static bundle, so it can only return baked bytes. Since #3449 that is a
+    // refusal unless the caller opts into the snapshot — and the opted-in response, being a variant
+    // request, must still never poison the cache for another query.
     val req =
       Request.Builder()
-        .url("http://127.0.0.1:${server.port}/compose-m3/render/$previewId.png?fontScale=1.5")
+        .url(
+          "http://127.0.0.1:${server.port}/compose-m3/render/$previewId.png" +
+            "?fontScale=1.5&fallback=baked"
+        )
         .build()
     client.newCall(req).execute().use { response ->
-      // This fixture is a static bundle, so it can only return baked bytes; the variant-bearing
-      // request is nevertheless dynamic and must never poison the cache for another query.
       assertEquals("baked", response.header(ServeHttpServer.GENERATION_HEADER))
       assertEquals("no-store", response.header("Cache-Control"))
     }

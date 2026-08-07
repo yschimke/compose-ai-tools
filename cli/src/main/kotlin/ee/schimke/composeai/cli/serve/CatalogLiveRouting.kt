@@ -57,19 +57,85 @@ internal object CatalogLiveRouting {
    * defaults instance so a newly added override field is covered without touching this predicate.
    */
   fun overridesAffectRender(previewId: String, o: PreviewOverrides): Boolean {
-    // The theme is the LAST `light`/`dark` id segment (past the component slug) — matching
-    // `ServeUrls.wasmAppSrc` / `ServeWeb.cardTheme`. Scanning for `dark` first would misread a
-    // non-theme segment named `dark` in an otherwise-light variant, wrongly treating `uiMode=dark`
-    // as a no-op and dropping the override.
+    // A uiMode matching the baked variant is a no-op; drop it, then any remaining set field
+    // (including a *differing* uiMode) means a re-render is required.
+    return if (uiModeIsNoOp(previewId, o)) o.copy(uiMode = null) != PreviewOverrides() else true
+  }
+
+  /**
+   * The overrides in [o] that the **baked** PNG for [previewId] does not reflect, named as the
+   * caller spelled them in the query string (`fontScale`, `knob.label`, `rc.stopColor`, …). Empty
+   * exactly when [overridesAffectRender] is false — i.e. when the baked pixels are a truthful
+   * answer to the request.
+   *
+   * This is what makes a baked fallback *legible* (#3449). Serving the snapshot for a request that
+   * asked for `?fontScale=2.0` produces pixels that are byte-identical to the un-overridden render,
+   * so nothing in the response body distinguishes "the override had no visual effect" from "the
+   * override was never applied" — a caller comparing renders across override values reads the first
+   * and concludes wrongly. The HTTP layer turns a non-empty list into a refusal (or, when the
+   * caller opted into the snapshot, into response headers naming exactly these params).
+   *
+   * [overridesAffectRender] stays the authority on *whether* anything was dropped — it compares
+   * against a defaults instance, so a newly added override field is covered without touching this
+   * function. The per-field names below are the human detail on top; a field that affects the
+   * render but isn't named here (one only the WebSocket lanes can set, or one added later) still
+   * reports, as the catch-all `overrides`.
+   */
+  fun droppedOverrideNames(previewId: String, o: PreviewOverrides): List<String> {
+    if (!overridesAffectRender(previewId, o)) return emptyList()
+    val names = mutableListOf<String>()
+    fun add(name: String, value: Any?) {
+      if (value != null) names += name
+    }
+    add("widthPx", o.widthPx)
+    add("heightPx", o.heightPx)
+    add("minWidthPx", o.minWidthPx)
+    add("minHeightPx", o.minHeightPx)
+    add("maxWidthPx", o.maxWidthPx)
+    add("maxHeightPx", o.maxHeightPx)
+    add("density", o.density)
+    add("localeTag", o.localeTag)
+    add("fontScale", o.fontScale)
+    // Only a uiMode differing from the baked variant's own theme was dropped; a matching one is
+    // already what these pixels show.
+    if (!uiModeIsNoOp(previewId, o)) names += "uiMode"
+    add("orientation", o.orientation)
+    add("device", o.device)
+    add("inspectionMode", o.inspectionMode)
+    add("slotMode", o.slotMode)
+    add("placeholderActive", o.placeholderActive)
+    add("talkBack", o.talkBack)
+    add("touchOverlay", o.touchOverlay)
+    add("themeProvider", o.themeProvider)
+    add("focus", o.focus)
+    add("gestures", o.gestures)
+    add("clearBackground", o.clearBackground)
+    o.namedOverrides?.keys?.sorted()?.forEach { names += "${ServeOverrides.KNOB_PREFIX}$it" }
+    o.remoteCompose?.let { rc ->
+      add("rcProfile", rc.profile)
+      add("rcPlayer", rc.player)
+      rc.namedValues.keys.sorted().forEach { names += "${ServeOverrides.RC_NAMED_PREFIX}$it" }
+    }
+    return names.ifEmpty { listOf("overrides") }
+  }
+
+  /**
+   * Whether [o]'s `uiMode` (if any) already matches the baked variant's own theme, making it a
+   * no-op the baked PNG satisfies.
+   *
+   * The theme is the LAST `light`/`dark` id segment (past the component slug) — matching
+   * `ServeUrls.wasmAppSrc` / `ServeWeb.cardTheme`. Scanning for `dark` first would misread a
+   * non-theme segment named `dark` in an otherwise-light variant, wrongly treating `uiMode=dark` as
+   * a no-op and dropping the override.
+   */
+  private fun uiModeIsNoOp(previewId: String, o: PreviewOverrides): Boolean {
+    if (o.uiMode == null) return true
     val bakedTheme =
       when (previewId.split("__").drop(1).lastOrNull { it == "light" || it == "dark" }) {
         "dark" -> UiMode.DARK
         "light" -> UiMode.LIGHT
         else -> null
       }
-    // A uiMode matching the baked variant is a no-op; drop it, then any remaining set field
-    // (including a *differing* uiMode) means a re-render is required.
-    val uiModeIsNoOp = o.uiMode == null || o.uiMode == bakedTheme
-    return if (uiModeIsNoOp) o.copy(uiMode = null) != PreviewOverrides() else true
+    return o.uiMode == bakedTheme
   }
 }
