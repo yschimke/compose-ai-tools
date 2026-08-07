@@ -1,6 +1,10 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.cli.PreviewManifest
+import ee.schimke.composeai.daemon.protocol.DataFetchResult
+import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
+import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -30,12 +34,15 @@ class PlaygroundAndroidRenderServiceTest {
     tmpDirs.forEach { it.deleteRecursively() }
   }
 
-  private fun snippet(previewId: String = "com.example.SnippetKt.AndroidPreview") =
+  private fun snippet(
+    previewId: String = "com.example.SnippetKt.AndroidPreview",
+    workDir: String = "/work",
+  ) =
     PlaygroundTokenStore.PlaygroundSnippet(
       mode = PlaygroundMode.ANDROID,
-      workDir = "/work".toPath(),
-      classesDir = "/work/classes".toPath(),
-      classpath = listOf("/catalog/app.jar".toPath(), "/work/classes".toPath()),
+      workDir = workDir.toPath(),
+      classesDir = "$workDir/classes".toPath(),
+      classpath = listOf("/catalog/app.jar".toPath(), "$workDir/classes".toPath()),
       moduleName = "playground-android",
       previewId = previewId,
     )
@@ -69,6 +76,103 @@ class PlaygroundAndroidRenderServiceTest {
     assertEquals("com.example.SnippetKt.AndroidPreview", preview.id)
     assertEquals("com.example.SnippetKt", preview.className)
     assertEquals("AndroidPreview", preview.functionName)
+  }
+
+  @Test
+  fun `the knobs the preview declared are persisted as the snippet's override sidecar`() {
+    val work = tmp()
+    val fake =
+      FakeRenderSession(
+        renderRoot = tmp(),
+        fetchDataHook = { previewId, kind ->
+          if (kind != PlaygroundAndroidRenderService.OVERRIDES_KIND) null
+          else
+            DataFetchResult(
+              kind = kind,
+              schemaVersion = 1,
+              payload =
+                json.encodeToJsonElement(
+                  PreviewOverridesPayload.serializer(),
+                  PreviewOverridesPayload(
+                    declarations =
+                      listOf(
+                        PreviewOverrideDeclaration(
+                          key = "label",
+                          type = "string",
+                          default = PreviewOverrideValue.StringValue(previewId),
+                        )
+                      )
+                  ),
+                ),
+            )
+        },
+      )
+    val svc =
+      PlaygroundAndroidRenderService(openSession = { _, _, _, _ -> fake }, newWorkDir = { tmp() })
+
+    val id = "com.example.SnippetKt.AndroidPreview"
+    assertTrue(svc.render(snippet(id, workDir = work.absolutePath)) != null)
+
+    // The connector has to be armed before the render — the declarations are collected during it.
+    assertTrue(
+      PlaygroundAndroidRenderService.OVERRIDES_EXTENSION_ID in fake.enabledExtensionIds,
+      "the named-override connector is enabled before rendering",
+    )
+    // The sidecar lands in the SNIPPET's work dir (not this service's throwaway one), under the
+    // exact name ServeBundleDaemon.readPreviews folds into ServePreview.overrides — which is what
+    // gives a redeemed /pg/ session the viewer's live knob drawer.
+    val sidecar = File(work, "previews/$id.overrides.json")
+    assertTrue(sidecar.isFile, "the declarations are persisted for the redeemed live session")
+    val payload = json.decodeFromString(PreviewOverridesPayload.serializer(), sidecar.readText())
+    assertEquals(listOf("label"), payload.declarations.map { it.key })
+  }
+
+  @Test
+  fun `a preview that declared no knobs writes no sidecar`() {
+    val work = tmp()
+    val fake =
+      FakeRenderSession(
+        renderRoot = tmp(),
+        fetchDataHook = { _, kind ->
+          if (kind != PlaygroundAndroidRenderService.OVERRIDES_KIND) null
+          else
+            DataFetchResult(
+              kind = kind,
+              schemaVersion = 1,
+              payload =
+                json.encodeToJsonElement(
+                  PreviewOverridesPayload.serializer(),
+                  PreviewOverridesPayload(),
+                ),
+            )
+        },
+      )
+    val svc =
+      PlaygroundAndroidRenderService(openSession = { _, _, _, _ -> fake }, newWorkDir = { tmp() })
+
+    assertTrue(svc.render(snippet(workDir = work.absolutePath)) != null)
+    // An empty payload is the common case; writing it would leave a file that parses to nothing.
+    assertTrue(File(work, "previews").listFiles().isNullOrEmpty(), "no empty sidecar is written")
+  }
+
+  @Test
+  fun `a backend without the override connector still renders its first frame`() {
+    val work = tmp()
+    val fake =
+      FakeRenderSession(
+        renderRoot = tmp(),
+        unknownExtensionIds = setOf(PlaygroundAndroidRenderService.OVERRIDES_EXTENSION_ID),
+      )
+    val svc =
+      PlaygroundAndroidRenderService(openSession = { _, _, _, _ -> fake }, newWorkDir = { tmp() })
+
+    // The knob drain is strictly additive: a daemon that doesn't carry `data/overrides` must still
+    // produce the still image the Stage-1 response shows.
+    assertEquals(
+      "png:null:null:null",
+      svc.render(snippet(workDir = work.absolutePath))?.decodeToString(),
+    )
+    assertTrue(File(work, "previews").listFiles().isNullOrEmpty())
   }
 
   @Test

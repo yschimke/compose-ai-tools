@@ -243,6 +243,10 @@ class PlaygroundCompileService(
         classpath = renderClasspath,
         moduleName = classpath.moduleName,
         previewId = previews.first(),
+        // Carry them ALL: the still frame draws the first, but the redeemed live session lists
+        // every one so the viewer can navigate between them (a multi-file snippet routinely
+        // declares several, and until now the rest were compiled and then unreachable).
+        previewIds = previews,
       )
 
     if (mode == PlaygroundMode.REMOTE_COMPOSE) {

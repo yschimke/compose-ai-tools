@@ -882,6 +882,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   border-radius: 6px;
   background: var(--cp-surface, #fff);
   color: inherit;
+  text-decoration: none;
   font: inherit;
   font-size: 0.78rem;
   line-height: 1.25;
@@ -891,7 +892,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-history-item:hover {
   border-color: var(--cp-accent, #0969da);
 }
-.cp-history-item[aria-pressed="true"] {
+.cp-history-item[data-current] {
   border-color: var(--cp-accent, #0969da);
   box-shadow: inset 0 0 0 1px var(--cp-accent, #0969da);
 }
@@ -906,9 +907,4 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-history-span {
   color: var(--cp-muted, #656d76);
   font-size: 0.72rem;
-}
-/* Viewing an older render is a mode, not a preference — make it obvious the stage is not current. */
-.cp-viewer[data-history-viewing] .cp-stage {
-  outline: 2px dashed var(--cp-accent, #0969da);
-  outline-offset: -2px;
 }

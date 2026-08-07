@@ -57,7 +57,8 @@ class PlaygroundRedeemServiceTest {
 
   @AfterTest fun close() = runCatching { registry.close() }.let {}
 
-  private fun mint(previewId: String = "com.example.SnippetKt.Preview") =
+  /** Mints a snippet declaring [previewIds]; the first is the one the still frame drew. */
+  private fun mint(previewIds: List<String> = listOf("com.example.SnippetKt.Preview")) =
     store.add(
       PlaygroundTokenStore.PlaygroundSnippet(
         mode = PlaygroundMode.CMP,
@@ -65,7 +66,8 @@ class PlaygroundRedeemServiceTest {
         classesDir = "/w/snippet/classes".toPath(),
         classpath = listOf("/w/snippet/classes".toPath()),
         moduleName = "playground-cmp",
-        previewId = previewId,
+        previewId = previewIds.first(),
+        previewIds = previewIds,
       ),
       isSecurityChecked = true,
     )
@@ -91,6 +93,33 @@ class PlaygroundRedeemServiceTest {
     // A second redeem within the TTL rides the standing session — no re-materialize.
     assertEquals(first, service.redeem(token.id))
     assertEquals(1, materializeCount, "re-redeem reuses the session rather than re-materializing")
+  }
+
+  @Test
+  fun `a declared preview opens the session on that preview`() {
+    val token = mint(listOf("com.example.SnippetKt.First", "com.example.SnippetKt.Second"))
+    // Same session either way — only which preview the viewer lands on differs, which is exactly
+    // what makes "navigate to them all" a redirect target rather than a second compile.
+    assertEquals(
+      PlaygroundRedeemService.Outcome.Live(token.id, "com.example.SnippetKt.Second"),
+      service.redeem(token.id, "com.example.SnippetKt.Second"),
+    )
+    assertEquals(
+      PlaygroundRedeemService.Outcome.Live(token.id, "com.example.SnippetKt.First"),
+      service.redeem(token.id, "com.example.SnippetKt.First"),
+    )
+    assertEquals(1, materializeCount, "picking a preview rides the standing session")
+  }
+
+  @Test
+  fun `a preview the snippet never declared falls back to the first`() {
+    val token = mint(listOf("com.example.SnippetKt.First", "com.example.SnippetKt.Second"))
+    // An id off the snippet's own list would address a viewer route the daemon can't serve, so it
+    // is not trusted from the query string — it degrades to the default rather than 404-ing.
+    assertEquals(
+      PlaygroundRedeemService.Outcome.Live(token.id, "com.example.SnippetKt.First"),
+      service.redeem(token.id, "com.example.OtherKt.Elsewhere"),
+    )
   }
 
   @Test

@@ -8,6 +8,8 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -37,7 +39,7 @@ fun interface PlaygroundAndroidSessionOpener {
  *
  * The flow is the render half of [PlaygroundRcCaptureService]'s open → render → await → fetch
  * shape, over a bundle-less daemon standing on the snippet's own compiled classes:
- * 1. synthesize a one-preview `previews.json` from the snippet's discovered `@Preview` id
+ * 1. synthesize a `previews.json` from the snippet's discovered `@Preview` ids
  *    ([PlaygroundPreviews]);
  * 2. [openSession] over the snippet's `classesDir` + full compile classpath (the production opener
  *    is [SubprocessRenderSessions.openBundleDaemon] with the Android backend —
@@ -70,7 +72,7 @@ class PlaygroundAndroidRenderService(
     return try {
       val previewsJson =
         File(workDir, "previews.json").apply {
-          writeText(PlaygroundPreviews.singlePreviewManifestJson(snippet))
+          writeText(PlaygroundPreviews.previewManifestJson(snippet))
         }
       // The playground's classpath entries are already absolute okio paths; File(toString()) is the
       // safe bridge to the java.io.File the render-session API takes.
@@ -78,7 +80,17 @@ class PlaygroundAndroidRenderService(
       val userClasspath = snippet.classpath.map { File(it.toString()).absolutePath }
       val session = openSession.open(classesDir, previewsJson, workDir, userClasspath)
       try {
-        renderFirstFrame(session, snippet.previewId)
+        // Enable the named-override connector BEFORE the render: like the Remote Compose capture,
+        // its data product is registered inactive, and the declarations are collected during the
+        // render it isn't active for. Best-effort — a backend without the connector still renders a
+        // first frame, it just yields no knobs.
+        val knobsArmed =
+          runCatching { session.enableExtensions(listOf(OVERRIDES_EXTENSION_ID)) }
+            .getOrNull()
+            ?.let { OVERRIDES_EXTENSION_ID !in it.unknown } == true
+        val png = renderFirstFrame(session, snippet.previewId)
+        if (png != null && knobsArmed) drainOverrideDeclarations(session, snippet)
+        png
       } finally {
         runCatching { session.close() }
       }
@@ -127,9 +139,58 @@ class PlaygroundAndroidRenderService(
     }
   }
 
+  /**
+   * Persist the knobs the snippet's `@Preview` declared during the still render
+   * (`compose/overrides` — the `previewOverride*` / `catalogOverride*` surface) into the
+   * **snippet's own** work dir as `previews/<id>.overrides.json`.
+   *
+   * That is exactly the sidecar a bundle carries and [ServeBundleDaemon.readPreviews] folds into
+   * [ServePreview.overrides], so a redeemed `/pg/` session gets the viewer's live knob drawer for
+   * free — the same controls a published catalog's preview has. Without it a snippet's dynamic
+   * overrides were declared, seeded, and then invisible: the live session advertised no knobs at
+   * all, so the only way to see another variant was to edit the source and recompile.
+   *
+   * This service's own [workDir] is a throwaway that's deleted with the render, hence writing into
+   * `snippet.workDir` — the dir the token owns and redemption later materializes from.
+   *
+   * Entirely best-effort: any miss (no declarations, an unreadable payload, an unwritable dir)
+   * leaves the session exactly as it was before, with no knobs. Covers the rendered preview only —
+   * the snippet's other previews declare their knobs on renders that haven't happened yet.
+   */
+  private fun drainOverrideDeclarations(
+    session: RenderSession,
+    snippet: PlaygroundTokenStore.PlaygroundSnippet,
+  ) {
+    runCatching {
+      val payload =
+        session.fetchData(snippet.previewId, OVERRIDES_KIND).payload?.jsonObject ?: return
+      // An empty declaration list is the common case (a preview with no knobs); writing it would
+      // just leave a useless file for readOverrideSidecar to parse into nothing.
+      if (payload["declarations"]?.jsonArray?.isEmpty() != false) return
+      val previewsDir = File(snippet.workDir.toString(), "previews").apply { mkdirs() }
+      File(previewsDir, "${snippet.previewId}$OVERRIDES_SIDECAR_SUFFIX")
+        .writeText(payload.toString())
+    }
+  }
+
   companion object {
     /** Cold Android/Robolectric renders take tens of seconds; budget generously. */
     val DEFAULT_RENDER_BUDGET: Duration = 180.seconds
     val DEFAULT_ACK_TIMEOUT: Duration = 30.seconds
+
+    /**
+     * The daemon's named-override connector **id** (`DaemonMain`'s `tryAdd("data/overrides")`) —
+     * distinct from the data-product **kind** below. `extensions/enable` resolves by id.
+     */
+    const val OVERRIDES_EXTENSION_ID: String = "data/overrides"
+
+    /** The data-product kind carrying the declared knobs. */
+    const val OVERRIDES_KIND: String = "compose/overrides"
+
+    /**
+     * Sidecar filename suffix, in lockstep with `PreviewBundleFormat.BUNDLE_OVERRIDES_SIDECAR_EXT`
+     * and the `OVERRIDES_SUFFIX` [ServeBundleDaemon.readPreviews] looks for.
+     */
+    const val OVERRIDES_SIDECAR_SUFFIX: String = ".overrides.json"
   }
 }

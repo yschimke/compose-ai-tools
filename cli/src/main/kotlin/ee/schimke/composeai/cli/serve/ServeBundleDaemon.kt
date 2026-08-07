@@ -330,12 +330,13 @@ internal object ServeBundleDaemon {
   /**
    * Materialize a compiled **playground snippet** into a resumable live-session state — the Stage-2
    * ([PlaygroundRedeemService]) counterpart of [materialize], but over a just-compiled snippet's
-   * own classes instead of a fetched bundle. Writes a one-preview `previews.json` and a
-   * `daemon-launch.json` for the snippet's mode (desktop CMP / Android Robolectric) into the
-   * snippet's work dir, so the registry opens, resumes, seat-counts, and streams it through the
-   * exact same path a catalog uses — no new live-session machinery. Returns null (logged) when the
-   * mode's daemon backend (sidecar / `android.jar`) is unavailable, so redemption reports
-   * "unavailable" rather than standing up a dead session.
+   * own classes instead of a fetched bundle. Writes a `previews.json` (every `@Preview` the snippet
+   * declared, so the session can navigate between them) and a `daemon-launch.json` for the
+   * snippet's mode (desktop CMP / Android Robolectric) into the snippet's work dir, so the registry
+   * opens, resumes, seat-counts, and streams it through the exact same path a catalog uses — no new
+   * live-session machinery. Returns null (logged) when the mode's daemon backend (sidecar /
+   * `android.jar`) is unavailable, so redemption reports "unavailable" rather than standing up a
+   * dead session.
    *
    * [sandbox] is the per-session containment (PLAYGROUND.md §6, issue #3016): its jail argv and
    * hard TTL ride the written descriptor, so the registry's ordinary descriptor→spawn path launches
@@ -359,7 +360,7 @@ internal object ServeBundleDaemon {
     val previewsJson = File(workDir, "previews.json")
     try {
       fileSystem.write(previewsJson.path.toPath()) {
-        writeUtf8(PlaygroundPreviews.singlePreviewManifestJson(snippet))
+        writeUtf8(PlaygroundPreviews.previewManifestJson(snippet))
       }
     } catch (e: Exception) {
       onLog("$label: could not write previews.json (${e.message})")

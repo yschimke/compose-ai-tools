@@ -61,8 +61,21 @@ class PlaygroundTokenStore(
     val classpath: List<Path>,
     /** Kotlin `MODULE_NAME` the snippet compiled under. */
     val moduleName: String,
-    /** The `@Preview` id Stage 2 renders/streams. */
+    /** The `@Preview` id Stage 2 opens on, and the one the Stage-1 still frame draws. */
     val previewId: String,
+    /**
+     * **Every** `@Preview` the snippet declared, [previewId] first.
+     *
+     * A snippet routinely declares more than one — a multi-file snippet almost always does — and
+     * for a long time the live session was told about exactly one of them, so the others could be
+     * compiled and then never looked at. The redeemed session's `previews.json` lists all of these,
+     * which is what makes the viewer's ordinary preview navigation work on a snippet the same way
+     * it works on a catalog.
+     *
+     * Defaults to just [previewId] so a caller that doesn't care (and every existing test) is
+     * unchanged.
+     */
+    val previewIds: List<String> = listOf(previewId),
   )
 
   /** One minted token and its lifetime. */

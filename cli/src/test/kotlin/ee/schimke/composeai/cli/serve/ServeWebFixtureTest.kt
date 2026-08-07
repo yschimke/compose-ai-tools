@@ -587,6 +587,20 @@ class ServeWebFixtureTest {
         historyManifestUrl =
           ServeUrls.historyManifestUrl("yschimke/compose-ai-tools", "compose-preview/main"),
         historyRepo = "yschimke/compose-ai-tools",
+        // Inlined so the harness renders the strip offline. Shaped like the real manifest: three
+        // versions, one carried by several publishes, and flagged unstable so the capture covers
+        // the badge as well as the chips.
+        historyInlineJson =
+          """
+          {"formatVersion":"compose-preview-history/v1","generatedFrom":"df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80",
+           "previews":{"${previews.first { it.id.endsWith("ProfileScreenPreview") }.id}":{
+             "path":"renders/samples:compose-m3/ProfileScreenPreview.png","observations":7,
+             "unstable":true,"flapCount":4,"versions":[
+               {"blob":"a","commit":"df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80","date":"2026-05-22T11:08:37+00:00","sourceSha":"57ac24f3","commits":1},
+               {"blob":"b","commit":"8b9f6f2bc953756edcb13963e09cd57c54866570","date":"2026-05-07T08:34:51+00:00","sourceSha":"cf69a4a0","commits":3},
+               {"blob":"c","commit":"1f10ff93dcb1a0f5e6c7b8a9d0e1f2a3b4c5d6e7","date":"2026-04-19T09:12:00+00:00","sourceSha":"03ecb679","commits":1}]}}}
+          """
+            .trimIndent(),
       )
     val viewer =
       ServeWeb.viewerPage(

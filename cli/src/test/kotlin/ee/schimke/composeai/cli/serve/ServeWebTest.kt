@@ -669,4 +669,44 @@ class ServeWebTest {
 
     assertFalse(html.contains("data-history-url"))
   }
+
+  @Test
+  fun `an inline history payload is embedded for offline rendering`() {
+    val html =
+      ServeWeb.viewerPage(
+        checkbox[0],
+        token = "t",
+        basePath = "/compose-m3",
+        historyRepo = "o/r",
+        historyInlineJson = """{"previews":{}}""",
+      )
+
+    assertTrue(html.contains("<script type=\"application/json\" id=\"cp-history-data\">"))
+    assertTrue(html.contains("""{"previews":{}}"""))
+  }
+
+  @Test
+  fun `an inline payload cannot close the script element early`() {
+    // The only sequence that can break out of <script> is `</`. A payload carrying it verbatim
+    // would end the element and spill the rest into the document as markup.
+    val html =
+      ServeWeb.viewerPage(
+        checkbox[0],
+        token = "t",
+        basePath = "/compose-m3",
+        historyRepo = "o/r",
+        historyInlineJson = """{"x":"</script><img src=x onerror=alert(1)>"}""",
+      )
+
+    assertFalse(html.contains("</script><img"), "raw </script> must not survive into the page")
+    assertTrue(html.contains("<\\/script>"), "it is escaped, not dropped")
+  }
+
+  @Test
+  fun `no inline payload emits no data element`() {
+    val html =
+      ServeWeb.viewerPage(checkbox[0], token = "t", basePath = "/compose-m3", historyRepo = "o/r")
+
+    assertFalse(html.contains("cp-history-data"))
+  }
 }

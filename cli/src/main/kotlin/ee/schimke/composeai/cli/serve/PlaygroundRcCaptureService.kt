@@ -24,7 +24,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * The flow mirrors `ServeRenderHost.render`'s open → render → await → fetch shape, over a
  * bundle-less daemon standing on the snippet's own compiled classes:
  *
- * 1. synthesize a one-preview `previews.json` from the snippet's discovered `@Preview` id;
+ * 1. synthesize a `previews.json` from the snippet's discovered `@Preview` ids;
  * 2. [openSession] over the snippet's `classesDir` + full compile classpath (the production opener
  *    is [SubprocessRenderSessions.openBundleDaemon] with the Android backend — `lib-daemon-android`
  *     + `android.jar` on the daemon classpath, the Robolectric jvmArgs/sysprops, and the snippet
@@ -55,7 +55,7 @@ class PlaygroundRcCaptureService(
     return try {
       val previewsJson =
         File(workDir, "previews.json").apply {
-          writeText(PlaygroundPreviews.singlePreviewManifestJson(snippet))
+          writeText(PlaygroundPreviews.previewManifestJson(snippet))
         }
       // The playground's classpath entries are already absolute okio paths; File(toString()) is the
       // safe bridge to the java.io.File the render-session API takes.

@@ -2507,6 +2507,8 @@ object ServeWeb {
             <p id="pg-open-row" hidden>
               <a id="pg-open" class="cp-doc-btn" href="#" rel="noopener">Open preview →</a>
             </p>
+            <ul id="pg-previews" class="cp-pg-diags" hidden
+              aria-label="Previews declared by this snippet"></ul>
           </div>
         </div>
         ${scriptTag("codemirror.js")}
@@ -2542,6 +2544,7 @@ object ServeWeb {
       var openRow = document.getElementById("pg-open-row");
       var openLink = document.getElementById("pg-open");
       var note = document.getElementById("pg-preview-note");
+      var previewList = document.getElementById("pg-previews");
       var suffix = ${jsString(querySuffix)};
       // The catalog selector. Each entry carries its own mode list because a catalog's bundle
       // backend picks the renderer — selecting `compose-m3` (desktop) and selecting an Android
@@ -2728,6 +2731,7 @@ object ServeWeb {
         diags.hidden = true; diags.innerHTML = "";
         result.hidden = true; image.hidden = true; image.removeAttribute("src"); openRow.hidden = true;
         note.hidden = true; note.textContent = "";
+        previewList.hidden = true; previewList.innerHTML = "";
       }
       function indexOfFile(name) {
         for (var i = 0; i < files.length; i++) if (files[i].name === name) return i;
@@ -2801,14 +2805,36 @@ object ServeWeb {
               openLink.href = link + suffix;
               openLink.textContent = res.documentUrl ? "Open document →" : "Open live preview →";
             }
-            // With several @Previews in the snippet only one is rendered and tokenized, so name
-            // it — otherwise a multi-file snippet silently shows one of them with no clue why.
-            // Kept out of the status line, which stays the terminal "Done." the e2e keys on.
-            var found = (res.previews || []).length;
-            if (res.previewId && found > 1) {
+            // A snippet routinely declares more than one @Preview, and only the first drives the
+            // still frame. The rest are compiled and live in the same session, so list every one as
+            // its own link — `?preview=<id>` opens the session on it — rather than naming the drawn
+            // one and leaving the others unreachable. Kept out of the status line, which stays the
+            // terminal "Done." the e2e keys on.
+            var all = res.previews || [];
+            if (res.previewId && all.length > 1) {
               note.hidden = false;
               note.textContent =
-                "Rendered " + res.previewId + " — " + found + " previews found in this snippet.";
+                "Rendered " + res.previewId + " — " + all.length + " previews in this snippet.";
+            }
+            // Only the live-preview lane can open on a chosen preview; a documentUrl addresses a
+            // rendered document, which `?preview=` means nothing to. So the per-preview links hang
+            // off res.previewUrl specifically rather than the `link` that may be either.
+            if (res.previewUrl && all.length > 1) {
+              previewList.hidden = false;
+              previewList.innerHTML = "";
+              all.forEach(function (id) {
+                var li = document.createElement("li");
+                li.className = "cp-pg-diag cp-pg-info";
+                var a = document.createElement("a");
+                // Same `/pg/<token>` redemption the main link uses, plus the preview to open on.
+                // The token rides in `suffix`, so `?`/`&` depends on whether it is already there.
+                a.href = res.previewUrl + suffix + (suffix ? "&" : "?") +
+                  "preview=" + encodeURIComponent(id);
+                a.rel = "noopener";
+                a.textContent = id === res.previewId ? (id + " (shown above)") : id;
+                li.appendChild(a);
+                previewList.appendChild(li);
+              });
             }
             setStatus("Done.", false);
           })
@@ -4605,6 +4631,13 @@ object ServeWeb {
      * to is not worth drawing.
      */
     historyRepo: String? = null,
+    /**
+     * A manifest payload inlined into the page instead of fetched. Exists so a fixture (and any
+     * offline viewer) renders the timeline without reaching raw.githubusercontent.com — without it
+     * the preview-harness capture is byte-identical whether the strip works or is deleted, which is
+     * no coverage at all.
+     */
+    historyInlineJson: String? = null,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -5116,6 +5149,17 @@ object ServeWeb {
         " data-history-url=\"${WebEscaping.htmlEscape(historyManifestUrl)}\"" +
           " data-history-repo=\"${WebEscaping.htmlEscape(historyRepo)}\""
       } else ""
+    // `</script>` inside a JSON payload would end the element early, so the only sequence that can
+    // break out is neutralised. The payload itself is server-built from the catalog's own manifest.
+    val historyInlineHtml =
+      historyInlineJson
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          "<script type=\"application/json\" id=\"cp-history-data\">" +
+            it.replace("</", "<\\/") +
+            "</script>"
+        }
+        .orEmpty()
     val modeInputs =
       listOf(
           "<input type=\"radio\" name=\"cp-mode\" value=\"png\" id=\"cp-mode-png\" tabindex=\"-1\" checked>",
@@ -5149,6 +5193,7 @@ object ServeWeb {
         </span>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
+      $historyInlineHtml
       <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
