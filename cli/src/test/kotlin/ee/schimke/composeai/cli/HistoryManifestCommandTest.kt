@@ -78,8 +78,8 @@ class HistoryManifestCommandTest {
 
   @Test
   fun `generatedFrom is the resolved sha, not the ref name`() {
-    // A viewer compares this against the branch tip to tell whether the manifest is stale; a ref
-    // name would always look current.
+    // A viewer compares this against the newest render commit to tell whether the manifest is
+    // stale; a ref name would always look current.
     val repo = deliveryRepo("publish" to "v1")
     val output = File(repo, "history.json")
 
@@ -87,6 +87,55 @@ class HistoryManifestCommandTest {
 
     val manifest = assertNotNull(PreviewHistoryManifest.decode(output.readText()))
     assertTrue(manifest.generatedFrom.matches(Regex("[0-9a-f]{40}")), manifest.generatedFrom)
+  }
+
+  @Test
+  fun `a history-only commit does not change the manifest`() {
+    // The manifest ships in its own commit, which moves the branch tip. Anchoring generatedFrom to
+    // the tip would make every regeneration differ from the published file, so each baseline run
+    // would append another history commit forever. Regenerating after a history-only commit must
+    // be byte-identical so the push can skip.
+    val repo = deliveryRepo("Update preview baselines from aaaaaaaa" to "v1")
+    val first = File(repo, "history.json")
+    run(repo, "--output", first.path)
+    val firstText = first.readText()
+
+    // Commit the manifest, exactly as the publish step does — tip moves, renders do not.
+    ProcessBuilder("git", "add", "-A").directory(repo).start().waitFor()
+    ProcessBuilder("git", "commit", "--quiet", "-m", "Update preview history from aaaaaaaa")
+      .directory(repo)
+      .start()
+      .waitFor()
+
+    val second = File(repo, "regenerated.json")
+    run(repo, "--output", second.path)
+
+    assertEquals(firstText, second.readText(), "regeneration must be byte-identical, or CI churns")
+  }
+
+  @Test
+  fun `generatedFrom tracks the newest render commit, not the branch tip`() {
+    val repo = deliveryRepo("Update preview baselines from aaaaaaaa" to "v1")
+    val renderTip =
+      ProcessBuilder("git", "rev-parse", "HEAD")
+        .directory(repo)
+        .start()
+        .inputStream
+        .bufferedReader()
+        .readText()
+        .trim()
+    File(repo, "unrelated.txt").writeText("not a render")
+    ProcessBuilder("git", "add", "-A").directory(repo).start().waitFor()
+    ProcessBuilder("git", "commit", "--quiet", "-m", "history-only commit")
+      .directory(repo)
+      .start()
+      .waitFor()
+    val output = File(repo, "history.json")
+
+    run(repo, "--output", output.path)
+
+    val manifest = assertNotNull(PreviewHistoryManifest.decode(output.readText()))
+    assertEquals(renderTip, manifest.generatedFrom)
   }
 
   @Test

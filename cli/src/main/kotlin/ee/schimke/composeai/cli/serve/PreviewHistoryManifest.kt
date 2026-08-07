@@ -61,9 +61,14 @@ object PreviewHistoryManifest {
     @SerialName("formatVersion")
     val formatVersion: String = FORMAT_VERSION,
     /**
-     * Delivery-branch commit this was computed from. A viewer can compare it against the branch tip
-     * to tell whether the manifest is current; it is expected to lag by exactly the commit that
-     * carries the manifest itself.
+     * The newest delivery-branch commit **touching renders** that this timeline covers — not the
+     * branch tip.
+     *
+     * The distinction is load-bearing. The manifest ships in its own commit, so a tip-derived value
+     * would change on every publish even when no render did; the regenerated file would never match
+     * the published one and each run would append another history commit forever. Anchoring to the
+     * render tip makes an unchanged branch regenerate byte-identically. A viewer comparing
+     * staleness should compare against the newest render commit, which is exactly this.
      */
     @SerialName("generatedFrom") val generatedFrom: String,
     /** Keyed by preview id, the same keys `baselines.json` uses. */

@@ -87,14 +87,20 @@ class HistoryManifestCommand(
     // so a typo'd or unfetched ref is otherwise indistinguishable from "no history" — and since
     // the publish step overwrites history.json with whatever this writes, that would silently
     // replace a good manifest with an empty one.
-    val generatedFrom =
-      resolveSha(repoDir, branch)
-        ?: run {
-          stderr(
-            "compose-preview history-manifest: '$branch' is not a ref this repository can resolve."
-          )
-          exit(1)
-        }
+    if (resolveSha(repoDir, branch) == null) {
+      stderr(
+        "compose-preview history-manifest: '$branch' is not a ref this repository can resolve."
+      )
+      exit(1)
+    }
+
+    // Anchor to the newest commit that touched renders, NOT the branch tip. The manifest ships in
+    // its own commit, which moves the tip — so a tip-derived value changes on every publish even
+    // when no render did, the regenerated file never matches the published one, and each baseline
+    // run appends another history commit forever. Pinning to the render tip makes a no-op run
+    // regenerate a byte-identical file, which the push then skips. It also describes the manifest
+    // better: this is the render state the timeline covers.
+    val generatedFrom = renderTip(repoDir, branch) ?: resolveSha(repoDir, branch) ?: branch
 
     val timelines =
       try {
@@ -172,6 +178,16 @@ private fun gitShow(repoDir: File, ref: String, path: String): String? =
           .start()
       val out = p.inputStream.bufferedReader().readText()
       if (p.waitFor() == 0 && out.isNotBlank()) out else null
+    }
+    .getOrNull()
+
+/** Newest commit on [ref] that touched the renders tree, ignoring history-only commits. */
+private fun renderTip(repoDir: File, ref: String, pathspec: String = "renders"): String? =
+  runCatching {
+      val p =
+        ProcessBuilder("git", "rev-list", "-1", ref, "--", pathspec).directory(repoDir).start()
+      val out = p.inputStream.bufferedReader().readText().trim()
+      if (p.waitFor() == 0 && out.isNotEmpty()) out else null
     }
     .getOrNull()
 
