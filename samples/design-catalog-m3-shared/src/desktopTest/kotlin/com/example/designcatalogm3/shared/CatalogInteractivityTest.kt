@@ -10,6 +10,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
+import ee.schimke.composeai.overrides.PreviewOverrideController
 import kotlin.test.Test
 
 /**
@@ -64,13 +66,25 @@ class CatalogInteractivityTest {
 
   @Test
   fun `a disabled button stays inert on both lanes`() {
-    // Not an oversight that this one keeps a dead handler: unresponsiveness IS the documented
-    // state.
+    // The disabled state is no longer a slug of its own — it rides `button-filled` with the
+    // `enabled` knob seeded false, which is what `@OverrideVariant(name = "disabled")` bakes. So
+    // the
+    // test seeds the same knob through the same controller the renderer does, rather than asserting
+    // on a duplicate component that no longer exists.
+    //
+    // Not an oversight that the handler stays wired: unresponsiveness IS the documented state, and
+    // `enabled = false` is what makes the click a no-op. On the interactive lane a live click would
+    // otherwise tally into the label (see `counted`), so "the label did not move" is the assertion.
     for (interactive in listOf(true, false)) {
-      runComposeUiTest {
-        setContent { CatalogComponent("button-filled-disabled", interactive = interactive) }
-        onNodeWithText("Disabled").performClick()
-        onNodeWithText("Disabled").assertExists()
+      try {
+        PreviewOverrideController.set(mapOf("enabled" to PreviewOverrideValue.BooleanValue(false)))
+        runComposeUiTest {
+          setContent { CatalogComponent("button-filled", interactive = interactive) }
+          onNodeWithText("Filled").performClick()
+          onNodeWithText("Filled").assertExists()
+        }
+      } finally {
+        PreviewOverrideController.set(null)
       }
     }
   }

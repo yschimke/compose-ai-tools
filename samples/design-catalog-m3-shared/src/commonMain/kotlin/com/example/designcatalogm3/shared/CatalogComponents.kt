@@ -63,7 +63,6 @@ import com.example.designcatalogm3.shared.generated.resources.card_elevated
 import com.example.designcatalogm3.shared.generated.resources.card_filled
 import com.example.designcatalogm3.shared.generated.resources.card_outlined
 import com.example.designcatalogm3.shared.generated.resources.label_assist
-import com.example.designcatalogm3.shared.generated.resources.label_disabled
 import com.example.designcatalogm3.shared.generated.resources.label_elevated
 import com.example.designcatalogm3.shared.generated.resources.label_filled
 import com.example.designcatalogm3.shared.generated.resources.label_filter
@@ -137,7 +136,9 @@ fun CatalogComponent(id: String, interactive: Boolean) {
           catalogOverrideString("label", stringResource(Res.string.label_filled)),
           interactive,
         )
-      Button(onClick = onClick) { Text(label) }
+      // `enabled` is a knob so the disabled state rides this component as an `@OverrideVariant`
+      // rather than a second slug — the same shape the selection controls use for `checked`.
+      Button(onClick = onClick, enabled = catalogOverrideBoolean("enabled", true)) { Text(label) }
     }
     "button-tonal" -> {
       val (label, onClick) =
@@ -150,7 +151,9 @@ fun CatalogComponent(id: String, interactive: Boolean) {
           catalogOverrideString("label", stringResource(Res.string.label_outlined)),
           interactive,
         )
-      OutlinedButton(onClick = onClick) { Text(label) }
+      OutlinedButton(onClick = onClick, enabled = catalogOverrideBoolean("enabled", true)) {
+        Text(label)
+      }
     }
     "button-elevated" -> {
       val (label, onClick) =
@@ -167,11 +170,6 @@ fun CatalogComponent(id: String, interactive: Boolean) {
     }
     // Deliberately NOT counted: a disabled button must stay inert on every surface — that
     // unresponsiveness is the state this sticker documents.
-    "button-filled-disabled" ->
-      Button(onClick = {}, enabled = false) {
-        Text(catalogOverrideString("label", stringResource(Res.string.label_disabled)))
-      }
-
     // Selection controls — primary (checked/selected) state. The checked/selected flag is a
     // `catalogOverrideBoolean` knob so a render can flip the state; it also seeds the interactive
     // widget's initial value.
@@ -346,10 +344,6 @@ fun CatalogComponent(id: String, interactive: Boolean) {
         Text(label)
       }
     }
-    "button-outlined-disabled" ->
-      OutlinedButton(onClick = {}, enabled = false) {
-        Text(catalogOverrideString("label", stringResource(Res.string.label_disabled)))
-      }
     "switch-off" -> {
       val on = catalogOverrideBoolean("checked", false)
       if (interactive) StatefulSwitch(on) else Switch(checked = on, onCheckedChange = {})
@@ -416,7 +410,6 @@ val catalogComponentIds: List<String> =
     "button-outlined",
     "button-elevated",
     "button-text",
-    "button-filled-disabled",
     "checkbox-checked",
     "switch-on",
     "radiobutton-selected",
@@ -436,7 +429,6 @@ val catalogComponentIds: List<String> =
     "button-filled-pressed",
     "button-filled-focused",
     "button-filled-icon-label",
-    "button-outlined-disabled",
     "switch-off",
     "checkbox-unchecked",
     "chip-filter-unselected",
