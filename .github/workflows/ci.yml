@@ -344,8 +344,8 @@ jobs:
             rc-player/**/build/test-results/**
           retention-days: 7
 
-  # The CMP/Wasm player's first-frame timing, which is a browser-scheduling property and so cannot be
-  # asserted anywhere the player is not actually loaded in Chromium. Separate from the driver's
+  # The CMP/Wasm player's first-frame timing and readiness contract — browser-scheduling properties,
+  # so they cannot be asserted anywhere the player is not actually loaded in Chromium. Separate from the driver's
   # `node --test` job because it needs a built `wasmPlayerDist` that job has no Gradle to produce —
   # left there the test would self-skip forever, which is exactly the "nothing ran them" hole the
   # driver job comment describes. Ubuntu, not the macOS player job: frame pacing is per-platform, and
@@ -374,11 +374,11 @@ jobs:
       # `RC_CMP_WASM_REQUIRE` turns the test's self-skips into failures. Without it a missing
       # distribution, a missing playwright, or a browser that will not launch all leave this job
       # green having asserted nothing — which is the hole this job exists to close.
-      - name: Run the frame-pacing guard
+      - name: Run the browser-level player guards
         working-directory: scripts/design-artifacts
         env:
           RC_CMP_WASM_REQUIRE: "1"
-        run: node --test rc-cmp-wasm-frame-pacing.test.mjs
+        run: node --test rc-cmp-wasm-*.test.mjs
 
   functional-tests:
     name: Plugin Functional Tests

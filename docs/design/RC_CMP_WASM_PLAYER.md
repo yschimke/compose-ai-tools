@@ -580,6 +580,20 @@ The remote-m3 replacement corpus is guarded in CI, not recorded as a one-off man
   ~1.5 s the player itself waits before reporting readiness. Each row records its
   `cmpWasmDensity`, `cmpWasmViewport`, and `cmpWasmContextRender` in `rc-compare-summary.json`, so
   a slow row can be attributed rather than guessed at.
+- **The readiness signal is deliberately late, and only for hosts that can flash.** After its three
+  frames the player holds `ready` back for another 1.5 s, so viewer.js's `revealRcWasm` cannot swap
+  the snapshot for a surface the compositor has not presented. `?handoffDelayMs=0` drops that tail
+  and **only a host that composites the result itself may ask for it** — the parity driver does,
+  because its CDP screenshot drives its own frame and every pixel is then checked against the baked
+  reference. Measured across four full `remote-m3` runs, 60 rendered PNGs came back byte-for-byte
+  identical to the tailed baseline while the per-preview cost fell from ~2,000 ms to 453–891 ms
+  (~3 minutes saved on a 122-preview catalog). The viewer keeps the default: its hazard could not be
+  reproduced under any capture available here — `page.screenshot()` and CDP screencasts both drive
+  compositor frames of their own, and a control that revealed the frame 250 ms after load, long
+  before the player could be ready, still captured clean. An unverifiable hazard keeps its guard.
+  [`rc-cmp-wasm-handoff.test.mjs`](../../scripts/design-artifacts/rc-cmp-wasm-handoff.test.mjs)
+  pins both halves: the default still waits, and the tail-free render is byte-identical to a settled
+  one.
 - The live viewer forwards typed named overrides, reloads after knob changes, validates same-origin
   host messages, and surfaces host/named actions as inert `CustomEvent` payloads. Decode, support,
   and resource failures remain bounded inside the iframe instead of replacing the catalog page.
