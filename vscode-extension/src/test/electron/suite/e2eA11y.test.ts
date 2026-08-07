@@ -350,7 +350,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
             },
         );
 
-        // Mirror the e2eExternal sequencing: run the activation-time
+        // Mirror the e2eExternal sequencing: run the (lazy, view-open-driven)
         // `composePreviewApplied` marker bootstrap explicitly before warming
         // the daemon. `:samples:wear` is detected via literal-id text-scan
         // even without markers, so this isn't strictly required for
