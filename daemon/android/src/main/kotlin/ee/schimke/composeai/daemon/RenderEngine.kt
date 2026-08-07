@@ -1458,9 +1458,13 @@ class RenderEngine(
         }
 
     // Bake the stitched trees to SVG in a scratch export dir, then copy the artefact (+ its hybrid
-    // raster crops) into the long subdir the registry serves. Capsule clip; the black device face
-    // rides the shared opt-in (`composeai.svg.background`) rather than being forced on here, so a
-    // scrolled Wear export is as background-free as every other one by default.
+    // raster crops) into the long subdir the registry serves. Capsule clip, and this is the one
+    // surface whose default background mode is `DEVICE` rather than `NONE`: the stitched tree
+    // paints no fill of its own — the slices are composited onto the capsule, not onto a root that
+    // draws the watch face — so without the face its light `TimeText` chrome is unreadable on a
+    // light canvas. Every other export stays background-free by default; this one has nothing
+    // underneath to fall back on. A per-render `svgBackground` request still wins, and so does the
+    // daemon-wide `composeai.svg.background`, so `none` can still turn it off deliberately.
     val exportDir = File(workDir, "export")
     ComposeFigmaSvgDataProducer.writeSvg(
       rootDir = exportDir,
@@ -1474,6 +1478,12 @@ class RenderEngine(
       frameImage = out.framePng,
       roundClip = true,
       deviceBackground = WEAR_DEVICE_FACE,
+      backgroundMode =
+        spec.svgBackground
+          ?: FigmaSvgBackgroundMode.parse(
+            System.getProperty(ComposeFigmaSvgDataProducer.PROP_BACKGROUND)
+          )
+          ?: FigmaSvgBackgroundMode.DEVICE,
     )
     val producedSvg = exportDir.resolve(previewId).resolve(ComposeFigmaSvgProduct.FILE_SVG)
     if (!producedSvg.exists()) {
@@ -2128,10 +2138,11 @@ class RenderEngine(
     private const val SCROLL_SVG_TMP_SUFFIX: String = "__figma_svg_long"
 
     /**
-     * Black watch face offered behind the round Wear slice-stitch capsule. Painted only when the
-     * export's background opt-in is on (`composeai.svg.background=true`); otherwise the capsule
-     * exports background-free like every other sticker, and the stitched tree's own root fill —
-     * which is already this same black — is what shows.
+     * Black watch face painted behind the round Wear slice-stitch capsule. Unlike every other
+     * export this one defaults to painting it ([FigmaSvgBackgroundMode.DEVICE]): the stitched tree
+     * has no root fill of its own to fall back on, so background-free leaves its light `TimeText`
+     * chrome floating unreadably on a light canvas. Overridable per render (`svgBackground`) and
+     * daemon-wide (`composeai.svg.background=none`).
      */
     private const val WEAR_DEVICE_FACE: String = "#FF000000"
 

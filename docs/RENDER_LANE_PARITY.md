@@ -241,12 +241,16 @@ after:   <g id="Root"><rect ... fill="#FEF7FF"/>
 
 Rendering is unchanged there; the import is one dead layer lighter.
 
-**The one export that loses something** is the Wear scroll capsule, whose slice-stitched tree
-paints no fill of its own. Below: before/after on a light canvas, then before/after on dark. The
+**The one export that keeps its background by default** is the Wear scroll capsule, whose
+slice-stitched tree paints no fill of its own — the slices are composited onto the capsule, not
+onto a root that draws the watch face, so there is nothing underneath to fall back on. That surface
+alone defaults to `DEVICE` instead of `NONE` (`RenderEngine`'s capsule export; a per-render
+`svgBackground` or a daemon-wide `composeai.svg.background=none` still turns it off). Below is what
+dropping it would have cost — before/after on a light canvas, then before/after on dark. The
 cards, their text and the button all carry their own fills and are untouched — what gets hard to
 read is the light-grey `TimeText` clock, and only against a light canvas. On dark, before and after
-are indistinguishable. That export is exactly the case `DEVICE` exists for — it asks for the
-capsule fill back and gets it, without every component preview inheriting a tile.
+are indistinguishable. That is the case `DEVICE` exists for, and why the capsule opts into it
+rather than every component preview inheriting a tile.
 
 ![Wear scroll capsule with and without the injected background, on a light and a dark canvas](../renders/lane-parity/figma-svg-background-off-capsule.png)
 
