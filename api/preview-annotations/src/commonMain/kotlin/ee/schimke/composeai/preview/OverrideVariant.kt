@@ -41,9 +41,11 @@ package ee.schimke.composeai.preview
  *   }
  * ```
  *
- * Android/Wear (Robolectric) render path only today — the desktop (Skiko) backend is fed by
- * positional args and doesn't yet carry the seed, so a CMP-desktop catalog keeps hand-written
- * variant functions until desktop parity lands.
+ * Renders on **both** backends: the Robolectric (Android/Wear) path and the desktop (Skiko) one.
+ * `design-catalog-m3` is a CMP-desktop catalog and publishes `CheckboxChecked_*_VARIANT_unchecked`,
+ * `SwitchOn_*_VARIANT_off` and the rest from these annotations, with matching `figma/…` vectors —
+ * so a desktop catalog has no reason to keep a hand-written wrapper for a variant that differs only
+ * by a knob.
  */
 @Repeatable
 @Retention(AnnotationRetention.BINARY)

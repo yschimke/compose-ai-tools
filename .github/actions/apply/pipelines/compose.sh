@@ -139,6 +139,11 @@ if [ "$MODE" = "baseline" ]; then
     git show "FETCH_HEAD:baselines.json" > _prior_baselines/baselines.json 2>/dev/null || true
     git archive FETCH_HEAD renders 2>/dev/null \
       | tar -x -C _prior_baselines/ 2>/dev/null || true
+    # Redirection creates the file even when `git show` fails, so drop it on failure rather than
+    # carrying an empty manifest forward as if it were real.
+    git show "FETCH_HEAD:history.json" > _prior_baselines/history.json 2>/dev/null \
+      || rm -f _prior_baselines/history.json
+    [ -s _prior_baselines/history.json ] || rm -f _prior_baselines/history.json
   fi
 
   python3 "$ACTION_PATH/../lib/compare-previews.py" generate _previews.json \
@@ -148,6 +153,17 @@ if [ "$MODE" = "baseline" ]; then
     --prior-baselines _prior_baselines/baselines.json \
     --prior-renders _prior_baselines/renders \
     "${AB_ARGS[@]}"
+
+  # Carry the published history.json into the staged tree. push-branch.sh commits the staging dir
+  # as the whole tree, so a file absent here is *deleted* from the branch — without this the render
+  # push would drop the manifest every run, leaving a window with no history at all if the
+  # regeneration step later skips. It also keeps SKIP_IF_UNCHANGED meaningful: comparing a tree
+  # that never has history.json against a parent that does would never match, so an unchanged
+  # render set would still push a commit. The manifest is refreshed in a follow-up commit once the
+  # new tip exists (see "Publish compose baseline render history" in action.yml).
+  if [ -f _prior_baselines/history.json ]; then
+    cp _prior_baselines/history.json _baselines/history.json
+  fi
 
   # Stage the push commit MSG into the staging dir for the post-wait step.
   echo "Update preview baselines from ${GITHUB_SHA::8}" > _baselines/_push_msg

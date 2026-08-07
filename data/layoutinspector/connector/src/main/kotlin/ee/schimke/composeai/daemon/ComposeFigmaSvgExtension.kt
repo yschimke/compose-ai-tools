@@ -50,6 +50,11 @@ class ComposeFigmaSvgExtension(private val fontResolver: () -> FigmaFontResolver
     // (issue #2884) — including the device-masked Wear case, where it fills the watch face.
     val previewBackground =
       context.get(RenderArtifactContextKeys.PreviewBackground)?.takeIf { it.isNotBlank() }
+    // …but only laid down in the shape this render *asked* for. Declaring `showBackground` isn't
+    // enough: the export's product is editable layers, and a baked-in fill is hard to remove and
+    // easy to add back. Unset defers to the daemon-wide default, which is "none".
+    // See [RenderArtifactContextKeys.SvgBackgroundMode].
+    val backgroundMode = context.get(RenderArtifactContextKeys.SvgBackgroundMode)
     val layout =
       LayoutInspectorDataProducer.buildPayload(semanticsRoot, slotTables, density, fontScale)
         ?: return
@@ -65,6 +70,7 @@ class ComposeFigmaSvgExtension(private val fontResolver: () -> FigmaFontResolver
       fontResolver = fontResolver(),
       roundClip = roundClip,
       deviceBackground = previewBackground,
+      backgroundMode = backgroundMode,
     )
   }
 

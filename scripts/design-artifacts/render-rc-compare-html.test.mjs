@@ -10,12 +10,27 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  activeLanes,
   hasCmpWasmLane,
   hasEmbeddedJvmLane,
   hasEmbeddedLane,
   renderRcCompareHtml,
   summarizeRcCompare,
 } from "./render-rc-compare-html.mjs";
+
+/** The row model the page inlines for its client-side differ. */
+function clientModel(html) {
+  const match = html.match(/<script type="application\/json" id="rc-model">([\s\S]*?)<\/script>/);
+  assert.ok(match, "the page must inline its row model");
+  return JSON.parse(match[1].replace(/\\u003c/g, "<"));
+}
+
+/** The `Diff against` picker's option values, in order. */
+function referenceOptions(html) {
+  const select = html.match(/<select id="refselect">([\s\S]*?)<\/select>/);
+  assert.ok(select, "the page must carry a reference picker");
+  return [...select[1].matchAll(/value="([^"]+)"/g)].map((m) => m[1]);
+}
 
 function withCmpWasm(base) {
   return {
@@ -140,15 +155,88 @@ test("summarizeRcCompare yields null mean when nothing rendered", () => {
   assert.equal(s.meanPct, null);
 });
 
-test("the page is a self-contained document with the three-column header", () => {
+test("the page is a self-contained document with one column per player", () => {
   const html = renderRcCompareHtml(model);
   assert.match(html, /^<!doctype html>/);
   assert.match(html, /baked PNG/);
   assert.match(html, /RC · JS player/);
-  assert.match(html, /pixel diff/);
   // summary line reflects the counts
   assert.match(html, /mean mismatch <strong>38\.15%<\/strong>/);
   assert.match(html, /1 not decodable/);
+});
+
+test("nothing is diffed by default: no diff images, no score chips, picker on 'none'", () => {
+  const html = renderRcCompareHtml(withCmpWasm(withEmbeddedJvm(withEmbedded(model))));
+  // No diff column, and no diff image anywhere in the emitted markup — the diff slots are empty
+  // placeholders the client fills only once a reference is picked.
+  assert.doesNotMatch(html, /<th>pixel diff<\/th>/);
+  assert.doesNotMatch(html, /<img[^>]*src="rc-diff\//);
+  assert.doesNotMatch(html, /<img[^>]*src="rc-embedded-diff\//);
+  assert.doesNotMatch(html, /<img[^>]*src="rc-cmp-wasm-diff\//);
+  assert.match(html, /<div class="diffslot" hidden><\/div>/);
+  // Score chips are a property of a chosen reference, so the server renders none.
+  assert.doesNotMatch(html, /class="score /);
+  assert.match(html, /<div class="scores" data-scores><\/div>/);
+  // The picker defaults to not diffing at all.
+  assert.match(html, /<option value="none" selected>/);
+});
+
+/**
+ * Switching straight from one reference to another (baked → cmp-jvm, no reload, no scrolling) used
+ * to leave every on-screen row blank: `observe()` on an already-observed target is a no-op, so the
+ * rows that were still visible never got a second callback and nothing rescored them. The observer
+ * has to be disconnected *before* the re-observe, not only on the way through `none`.
+ */
+test("changing reference re-arms the observer, so visible rows rescore without scrolling", () => {
+  const apply = renderRcCompareHtml(model).match(/function apply\(\)\s*\{[\s\S]*?\n  \}/);
+  assert.ok(apply, "the page must inline its apply() handler");
+  const disconnect = apply[0].indexOf("observer.disconnect()");
+  const observe = apply[0].indexOf("observer.observe(row)");
+  assert.ok(disconnect > -1, "apply() must disconnect the observer");
+  assert.ok(observe > -1, "apply() must re-observe the rows");
+  assert.ok(disconnect < observe, "the disconnect must precede the re-observe, not follow it");
+  // And it must not be gated on the `none` branch, which is what made the bug reference-to-reference
+  // only: everything before the early return runs for every reference.
+  assert.ok(disconnect < apply[0].indexOf('if (ref === "none")'));
+});
+
+test("the reference picker offers every lane the run produced, and only those", () => {
+  assert.deepEqual(referenceOptions(renderRcCompareHtml(model)), ["none", "baked", "js"]);
+  assert.deepEqual(referenceOptions(renderRcCompareHtml(withEmbedded(model))), [
+    "none",
+    "baked",
+    "js",
+    "embedded",
+  ]);
+  assert.deepEqual(
+    referenceOptions(renderRcCompareHtml(withCmpWasm(withEmbeddedJvm(withEmbedded(model))))),
+    ["none", "baked", "js", "embedded", "cmp-jvm", "cmp-wasm"],
+  );
+  assert.deepEqual(
+    activeLanes(model.rows).map((l) => l.id),
+    ["baked", "js"],
+  );
+});
+
+test("the inlined row model carries each lane's render, build-time diff and score", () => {
+  const html = renderRcCompareHtml(withEmbedded(model));
+  const client = clientModel(html);
+  assert.deepEqual(
+    client.lanes.map((l) => l.id),
+    ["baked", "js", "embedded"],
+  );
+  // Rows are inlined in display order, so `data-row` indexes straight into this array.
+  const shader = client.rows.find((r) => r.name === "ShaderGradientSticker");
+  assert.equal(shader.lanes.js.src, "rc/pkg.CatalogPreviewsKt.ShaderGradientSticker.png");
+  assert.equal(shader.lanes.js.diff, "rc-diff/pkg.CatalogPreviewsKt.ShaderGradientSticker.png");
+  assert.equal(shader.lanes.js.pct, 76.3);
+  assert.equal(shader.lanes.js.px, 210301);
+  assert.equal(shader.lanes.embedded.rendered, true);
+  // The lane the JS player could not decode carries its reason instead of an image.
+  const dead = client.rows.find((r) => r.name === "Undecodable");
+  assert.equal(dead.lanes.js.rendered, false);
+  assert.equal(dead.lanes.js.src, "");
+  assert.equal(dead.lanes.js.note, "player could not decode the document");
 });
 
 test("a model with no embedded results renders the JS-only page — no empty embedded columns", () => {
@@ -156,8 +244,11 @@ test("a model with no embedded results renders the JS-only page — no empty emb
   assert.equal(hasEmbeddedLane(model.rows), false);
   assert.doesNotMatch(html, /RC · embedded player/);
   assert.doesNotMatch(html, /embedded player:<\/strong>/);
-  // exactly the original four columns
-  assert.match(html, /<thead><tr><th>preview<\/th><th>baked PNG<\/th><th>RC · JS player<\/th><th>pixel diff<\/th><\/tr><\/thead>/);
+  // exactly the baked + JS columns
+  assert.match(
+    html,
+    /<thead><tr><th>preview<\/th><th>baked PNG<\/th><th>RC · JS player<\/th><\/tr><\/thead>/,
+  );
 });
 
 test("rows sort worst-match-first, and unrenderable rows sink to the bottom", () => {
@@ -169,36 +260,37 @@ test("rows sort worst-match-first, and unrenderable rows sink to the bottom", ()
   assert.ok(iText < iUndecodable, "rendered rows sort above unrenderable ones");
 });
 
-test("mismatch % gets a severity band; a clean row is 'good', a far row 'bad'", () => {
-  const html = renderRcCompareHtml(model);
-  assert.match(html, /class="score good">0\.00%/);
-  assert.match(html, /class="score bad">76\.30%/);
+test("the severity band is computed client-side from the inlined build-time scores", () => {
+  const client = clientModel(renderRcCompareHtml(model));
+  assert.equal(client.rows.find((r) => r.name === "TextRemoteButton").lanes.js.pct, 0);
+  assert.equal(client.rows.find((r) => r.name === "ShaderGradientSticker").lanes.js.pct, 76.3);
 });
 
-test("an unrenderable row shows its note instead of a percentage and omits the rc/diff images", () => {
+test("an unrenderable row shows its note instead of an image and omits the rc/diff images", () => {
   const html = renderRcCompareHtml(model);
-  assert.match(html, /player could not decode the document/);
+  assert.match(html, /<div class="missing">player could not decode the document<\/div>/);
   assert.doesNotMatch(html, /src="rc\/pkg\.CatalogPreviewsKt\.Undecodable\.png"/);
 });
 
-test("the embedded lane adds two columns and its own summary line", () => {
+test("the embedded lane adds one column and its own summary line", () => {
   const html = renderRcCompareHtml(withEmbedded(model));
   assert.match(html, /RC · embedded player/);
   assert.match(html, /<strong>embedded player:<\/strong>/);
-  // both players keep their own score chip on every row
-  assert.match(html, /<span class="scorelabel">js<\/span>/);
-  assert.match(html, /<span class="scorelabel">embedded<\/span>/);
+  // One column per player — the embedded lane no longer drags a diff column along with it.
+  assert.equal((html.match(/<th>RC · embedded player<\/th>/g) || []).length, 1);
+  // Both players are diffable references, and both are in the client model.
+  const client = clientModel(html);
+  assert.ok(client.lanes.some((l) => l.id === "js"));
+  assert.ok(client.lanes.some((l) => l.id === "embedded"));
 });
 
-test("the cmp-jvm lane adds one column with a folded diff, a score chip and its own summary line", () => {
+test("the cmp-jvm lane adds one column, a picker entry and its own summary line", () => {
   const html = renderRcCompareHtml(withEmbeddedJvm(model));
   assert.equal(hasEmbeddedJvmLane(withEmbeddedJvm(model).rows), true);
   assert.match(html, /RC · cmp-jvm player/);
   assert.match(html, /<strong>cmp-jvm player:<\/strong>/);
-  assert.match(html, /<span class="scorelabel">cmp-jvm<\/span>/);
-  // The diff is a collapsible <details>, not a second column — keeps the page from ballooning.
-  assert.match(html, /<details class="difffold"><summary>pixel diff<\/summary>/);
-  // Header carries exactly one cmp-jvm column (no standalone "pixel diff" th for it).
+  assert.ok(referenceOptions(html).includes("cmp-jvm"));
+  // Header carries exactly one cmp-jvm column.
   assert.equal((html.match(/<th>RC · cmp-jvm player<\/th>/g) || []).length, 1);
   // The lede must describe the cmp-jvm player even when the Android embedded lane is off —
   // otherwise it falls into the JS-only branch and claims the TypeScript player is the only one.
@@ -215,7 +307,7 @@ test("the cmp-jvm and embedded lanes coexist, each its own column and summary", 
   assert.match(html, /<strong>JS player<\/strong>/);
   assert.match(html, /<strong>embedded player<\/strong>/);
   assert.match(html, /<strong>cmp-jvm player<\/strong>/);
-  assert.match(html, /rows sort worst-match-first on the worst-scoring player/);
+  assert.match(html, /Rows sort worst-match-first on the worst-scoring player/);
 });
 
 test("the cmp-wasm lane adds one folded-diff column and independent parity stats", () => {
@@ -228,7 +320,7 @@ test("the cmp-wasm lane adds one folded-diff column and independent parity stats
   assert.ok(Math.abs(stats.cmpWasmMeanPct - 3.5) < 1e-9);
   assert.match(html, /RC · cmp-wasm player/);
   assert.match(html, /<strong>cmp-wasm player:<\/strong>/);
-  assert.match(html, /<span class="scorelabel">cmp-wasm<\/span>/);
+  assert.ok(referenceOptions(html).includes("cmp-wasm"));
   assert.match(html, /\(JS \+ cmp-wasm players\)/);
   assert.match(html, /runs the new Compose Multiplatform \/ Skiko player in browser Wasm/);
   assert.match(
@@ -327,13 +419,15 @@ test("a blank reference is excluded from the embedded mean too — the reference
   assert.ok(Math.abs(s.embeddedMeanPct - (41.5 + 1.2 + 8) / 3) < 1e-9);
 });
 
-test("a blank-reference row shows 'no reference' rather than a green 0.00%", () => {
+test("a blank-reference row is flagged so the client never scores it against the baked PNG", () => {
   const html = renderRcCompareHtml(blankModel);
-  assert.match(html, /class="score na">no reference</);
   assert.match(html, /baked PNG is fully transparent/);
-  // the 0.00% chip belongs to TextRemoteButton, which has a real reference — exactly one of them
-  assert.equal(html.match(/class="score good">0\.00%/g).length, 1);
-  assert.equal(html.match(/class="score na">no reference/g).length, 1);
+  const client = clientModel(html);
+  const blank = client.rows.find((r) => r.name === "BrandedTextRemote");
+  assert.equal(blank.referenceBlank, true);
+  // Exactly one row carries the flag — the scored rows must not inherit it.
+  assert.equal(client.rows.filter((r) => r.referenceBlank).length, 1);
+  assert.equal((html.match(/baked PNG is fully transparent/g) || []).length, 1);
 });
 
 test("a blank-reference row sinks rather than topping the table on an unearned 0%", () => {
@@ -344,10 +438,11 @@ test("a blank-reference row sinks rather than topping the table on an unearned 0
   assert.ok(html.indexOf("TextRemoteButton") < iBlank);
 });
 
-test("both lanes read 'no reference' on a blank row — neither player gets credit", () => {
+test("a blank row is called out once per page, not once per lane — the reference is shared", () => {
   const html = renderRcCompareHtml(withEmbedded(blankModel));
-  assert.equal(html.match(/class="score na">no reference/g).length, 2);
-  assert.match(html, /1<\/strong> unscored \(blank reference\)/);
+  assert.equal((html.match(/baked PNG is fully transparent/g) || []).length, 1);
+  // Both lanes' summary lines report it, since the blank reference costs them the same row.
+  assert.equal((html.match(/1<\/strong> unscored \(blank reference\)/g) || []).length, 2);
 });
 
 test("an empty catalog renders the no-RC-docs notice, not a table", () => {

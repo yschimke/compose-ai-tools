@@ -387,6 +387,7 @@ internal object AndroidPreviewClasspath {
     fontsCacheDir: String,
     fontsOffline: String,
     svgEmbedFonts: String = "true",
+    svgBackground: String = "false",
     fontsFailOnFallback: String = "true",
     hostTheme: String = "",
   ): Map<String, String> =
@@ -436,6 +437,16 @@ internal object AndroidPreviewClasspath {
       // the
       // daemon.
       "composeai.svg.embedFonts" to svgEmbedFonts,
+      // Daemon-wide default background mode for the `compose/figma-svg` export — `none` (the
+      // default: an import should land as editable layers, not on an opaque rect a designer has to
+      // delete), `device` (the Wear mask shape), `content-shape` (the component's own silhouette),
+      // or `full-bleed` (a plain tile). Set it with `-Dcomposeai.svg.background=device` (or
+      // `-PcomposePreview.svgBackground=device`); `true`/`false` still work as the pre-modes
+      // aliases for `device`/`none`. A per-render `PreviewOverrides.svgBackground` wins over it.
+      // Read in the daemon JVM by
+      // `ComposeFigmaSvgDataProducer`, so it must be forwarded here — else the value set on the
+      // Gradle invocation never reaches the daemon and the opt-in does nothing.
+      "composeai.svg.background" to svgBackground,
       // Whether an unresolved downloadable `Font(GoogleFont(...))` fails its preview (default) or
       // degrades to a `<png>.warnings.json` warning. Read in the forked render / daemon JVM by
       // `FontResolutionDiagnostics`, so it must be forwarded here — else
@@ -580,6 +591,22 @@ internal fun composeAiSvgEmbedFonts(project: Project): org.gradle.api.provider.P
     .systemProperty("composeai.svg.embedFonts")
     .orElse(project.providers.gradleProperty("composePreview.svgEmbedFonts"))
     .orElse("true")
+
+/**
+ * The resolved value to forward as the daemon JVM's `composeai.svg.background`, so a
+ * `-Dcomposeai.svg.background=device` on the Gradle invocation reaches the daemon that reads it —
+ * without this the setting is unreachable through Gradle, since the property is consulted in the
+ * spawned daemon rather than the parent. Sourced from that system property first (the documented
+ * flag), then a `-PcomposePreview.svgBackground` Gradle property, else `"false"` (= `none`) — the
+ * layered SVG exports background-free so an import lands as editable layers rather than sitting on
+ * an opaque rect, and asking for a fill back means naming the mode you want. Mirrors
+ * [composeAiSvgEmbedFonts].
+ */
+internal fun composeAiSvgBackground(project: Project): org.gradle.api.provider.Provider<String> =
+  project.providers
+    .systemProperty("composeai.svg.background")
+    .orElse(project.providers.gradleProperty("composePreview.svgBackground"))
+    .orElse("false")
 
 /**
  * The resolved value to forward as the render / daemon JVM's `composeai.fonts.failOnFallback`, so a

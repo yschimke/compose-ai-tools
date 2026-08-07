@@ -284,6 +284,9 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     add("-Dcomposeai.fonts.cacheDir=${composeAiCacheDir("fonts").absolutePath}")
     System.getProperty("composeai.fonts.offline")?.let { add("-Dcomposeai.fonts.offline=$it") }
     System.getProperty("composeai.svg.embedFonts")?.let { add("-Dcomposeai.svg.embedFonts=$it") }
+    // Same for the figma-svg background opt-in: consulted in the child daemon, so without this a
+    // `-Dcomposeai.svg.background=true` set on this CLI process would never restore the fill.
+    System.getProperty("composeai.svg.background")?.let { add("-Dcomposeai.svg.background=$it") }
   }
 
   /**

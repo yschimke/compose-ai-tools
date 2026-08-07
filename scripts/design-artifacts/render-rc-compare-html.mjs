@@ -1,22 +1,30 @@
 /**
  * Render a self-contained `rc-compare.html` for a design-artifact catalog that
- * ships Remote Compose documents (`ir/<id>.rc`): every preview on one row, its
- * baked **PNG** (the Robolectric/Skiko render, source of truth) in one column,
- * the same document **rendered client-side by the vendored TypeScript player**
- * (`RC.RcdPlayer` on a `<canvas>`, the browser render lane) in a second, and a
- * **pixel-diff** in a third. A per-row mismatch % (fraction of pixels the diff
- * flags, `pixelmatch` at the driver's threshold) says how close the JS player
- * gets to the baked capture; rows sort **worst-match-first** so the biggest
- * divergences surface first.
+ * ships Remote Compose documents (`ir/<id>.rc`): every preview on one row, with
+ * **one column per player** — the baked **PNG** (the Robolectric/Skiko render,
+ * source of truth) alongside the same document as each Remote Compose player
+ * renders it.
  *
- * This is the RC counterpart of `render-compare-html.mjs` (PNG↔figma-svg). Unlike
- * that page, the diff here is computed **at build time** by the driver
- * (`rc-compare.mjs`, headless Chromium + pixelmatch) — this module is a pure
- * string emitter over the driver's result model, so it stays unit-testable with
- * a hand-built model and never touches a browser or the filesystem.
+ * The page **does not diff by default**. It opens as a plain side-by-side wall of
+ * every player's render, which is what you want when the question is "what does
+ * each player draw?". Diffing is opt-in: pick **one** column as the reference in
+ * the toolbar and every other column grows a pixel diff beneath its render plus a
+ * mismatch chip in the row's meta cell. Picking `baked PNG` reuses the diffs the
+ * driver already computed at build time (exact `pixelmatch` numbers, no work in
+ * the browser); picking any *player* as the reference — e.g. "how far is cmp-wasm
+ * from cmp-jvm?", a question the build-time lane-vs-baked diffs cannot answer —
+ * diffs client-side on a `<canvas>` with pixelmatch's YIQ metric at the same
+ * threshold.
  *
- * Player lanes are compared against the same baked PNG, each with its own diff
- * and its own mismatch %:
+ * This is the RC counterpart of `render-compare-html.mjs` (PNG↔figma-svg). This
+ * module stays a pure string emitter over the driver's result model — it never
+ * touches a browser or the filesystem — so it remains unit-testable with a
+ * hand-built model; the interactive part is the plain-JS snippet it inlines,
+ * driven by the row model it also inlines as JSON.
+ *
+ * Player lanes, each its own column and its own build-time mismatch % against the
+ * baked PNG (the summary header keeps reporting those, since they are the
+ * recorded parity numbers):
  *
  * * **JS player** — the vendored TypeScript `RC.RcdPlayer` on a `<canvas>`, the
  *   browser render lane.
@@ -25,12 +33,12 @@
  *   document. This is the lane that differs from `remote-player-view`'s
  *   `RemoteComposePlayer` (an Android `View` painting to a framework `Canvas`),
  *   so it shows what a host embedding RC content *inside* a Compose tree gets.
- * * **cmp-jvm / cmp-wasm** — optional Compose Multiplatform / Skiko player lanes on desktop and
- *   in browser Wasm. Their diffs fold beneath their renders so each costs only one extra column.
+ * * **cmp-jvm / cmp-wasm** — optional Compose Multiplatform / Skiko player lanes
+ *   on desktop and in browser Wasm.
  *
- * A row is kept even when only one player could render it — the
- * per-player `rendered` flags are independent, and a player that could not
- * decode the document shows its note in place of a percentage.
+ * A row is kept even when only one player could render it — the per-player
+ * `rendered` flags are independent, and a player that could not decode the
+ * document shows its note in place of the image.
  *
  * Model shape (produced by rc-compare.mjs):
  *   {
@@ -54,17 +62,19 @@
  *     }],
  *   }
  *
- * The embedded fields are optional: a model without them (an older summary, or a
- * run where the embedded lane was skipped) renders the JS-only page unchanged,
- * with the embedded columns omitted entirely rather than shown empty.
+ * The embedded/cmp-jvm/cmp-wasm fields are optional: a model without them (an
+ * older summary, or a run where the lane was skipped) omits that column entirely
+ * rather than showing it empty, and the lane never appears in the reference picker.
  *
  * `referenceBlank` marks a preview whose baked PNG carries no opaque pixel at all
  * (a capture that produced nothing). Both sides flatten onto the same neutral
  * background before diffing, so a player that also draws nothing scores an exact
  * 0.00% — a green "good" band for a comparison that never happened. Such rows are
  * shown (the blank baked capture is itself the finding) but excluded from every
- * mean and sorted with the unrenderable rows, and both score chips read
- * `no reference` instead of a percentage.
+ * mean, sorted with the unrenderable rows, and score `no reference` whenever the
+ * baked PNG is the selected reference. Choosing a *player* as the reference scores
+ * them normally: two player renders are a real comparison even when the baked
+ * capture is empty.
  */
 
 function esc(s) {
@@ -90,7 +100,85 @@ export function hasCmpWasmLane(rows = []) {
 }
 
 /**
+ * The player lanes the page can show, in column order. `baked` is not a player — it is the
+ * reference the driver scored everything against — but it is a first-class column and a first-class
+ * *reference choice*, so it lives in the same list.
+ *
+ * Each lane knows how to pull its own fields out of a row, which is what keeps `rowHtml` and the
+ * client model from repeating the four near-identical field families the model carries.
+ */
+const LANES = [
+  {
+    id: "baked",
+    label: "baked PNG",
+    short: "baked",
+    always: true,
+    src: (r) => r.baked,
+    rendered: (r) => Boolean(r.baked),
+    note: () => "",
+  },
+  {
+    id: "js",
+    label: "RC · JS player",
+    short: "js",
+    present: () => true,
+    src: (r) => r.rc,
+    diff: (r) => r.diff,
+    rendered: (r) => Boolean(r.rendered),
+    pct: (r) => r.mismatchPct,
+    px: (r) => r.mismatchPx,
+    note: (r) => r.note,
+  },
+  {
+    id: "embedded",
+    label: "RC · embedded player",
+    short: "embedded",
+    present: hasEmbeddedLane,
+    src: (r) => r.embedded,
+    diff: (r) => r.embeddedDiff,
+    rendered: (r) => Boolean(r.embeddedRendered),
+    pct: (r) => r.embeddedMismatchPct,
+    px: (r) => r.embeddedMismatchPx,
+    note: (r) => r.embeddedNote,
+  },
+  {
+    id: "cmp-jvm",
+    label: "RC · cmp-jvm player",
+    short: "cmp-jvm",
+    present: hasEmbeddedJvmLane,
+    src: (r) => r.embeddedJvm,
+    diff: (r) => r.embeddedJvmDiff,
+    rendered: (r) => Boolean(r.embeddedJvmRendered),
+    pct: (r) => r.embeddedJvmMismatchPct,
+    px: (r) => r.embeddedJvmMismatchPx,
+    note: (r) => r.embeddedJvmNote,
+  },
+  {
+    id: "cmp-wasm",
+    label: "RC · cmp-wasm player",
+    short: "cmp-wasm",
+    present: hasCmpWasmLane,
+    src: (r) => r.cmpWasm,
+    diff: (r) => r.cmpWasmDiff,
+    rendered: (r) => Boolean(r.cmpWasmRendered),
+    pct: (r) => r.cmpWasmMismatchPct,
+    px: (r) => r.cmpWasmMismatchPx,
+    note: (r) => r.cmpWasmNote,
+    error: (r) => r.cmpWasmError,
+  },
+];
+
+/** The lanes this model actually carries — `baked` + JS always, the optional players when they ran. */
+export function activeLanes(rows = []) {
+  return LANES.filter((lane) => lane.always || lane.present(rows));
+}
+
+/**
  * Aggregate stats over the rows — mean mismatch across *scored* rows, counts.
+ *
+ * These are the **build-time** numbers: every lane against the baked PNG, computed by the driver.
+ * The page's reference picker re-scores rows in the browser, but the header keeps reporting these,
+ * because they are what the run recorded and what the summary JSON and the CI gate use.
  *
  * A row whose baked PNG is fully transparent (`referenceBlank`) is rendered but **not scored**: with
  * nothing in the reference, a player that draws nothing flattens to the same neutral background and
@@ -153,9 +241,9 @@ export function summarizeRcCompare(rows = []) {
 }
 
 /**
- * Worst score on a row — the *worse* of the two players when both ran, so a row where only the
- * embedded lane diverges still sorts to the top rather than hiding behind a clean JS render.
- * Returns null when neither player produced a render.
+ * Worst score on a row — the worst of the players that ran, so a row where only one lane diverges
+ * still sorts to the top rather than hiding behind a clean JS render. Returns null when no player
+ * produced a render.
  */
 function worstPct(r) {
   // An unscorable row has no percentage to sort on — it sinks with the unrenderable ones rather
@@ -180,126 +268,35 @@ function sortRows(rows) {
   });
 }
 
-/** Colour band for a mismatch %: green (close) → amber → red (far). */
-function band(pct) {
-  if (pct == null) return "na";
-  if (pct < 2) return "good";
-  if (pct < 10) return "ok";
-  return "bad";
-}
-
-function cell(label, src, extraClass = "") {
-  const body = src
-    ? `<img loading="lazy" src="${esc(src)}" alt="${esc(label)}">`
-    : `<div class="missing">—</div>`;
-  return `<figure class="cell ${extraClass}"><figcaption>${esc(label)}</figcaption>${body}</figure>`;
-}
-
 /**
- * A render cell whose pixel diff sits in a **collapsed** `<details>` beneath the image, so adding a
- * player lane costs one column rather than two — the page already carries baked + JS (+ embedded)
- * columns, and a full diff column per new lane would quickly overwhelm. The mismatch % is always
- * visible as a score chip; the diff image is one click away when a divergence needs locating.
+ * One lane's cell: the render, or the reason there isn't one. The diff slot below it stays empty
+ * until a reference is picked — that is what "doesn't diff by default" means structurally, rather
+ * than a diff that is merely collapsed.
  */
-function cellWithDiff(label, src, diffSrc, extraClass = "") {
+function laneCell(row, lane) {
+  const src = lane.src(row) || "";
+  const note = lane.note(row) || "";
+  const errorHref = lane.error ? lane.error(row) || "" : "";
   const body = src
-    ? `<img loading="lazy" src="${esc(src)}" alt="${esc(label)}">`
-    : `<div class="missing">—</div>`;
-  const diff = diffSrc
-    ? `<details class="difffold"><summary>pixel diff</summary><img loading="lazy" src="${esc(
-        diffSrc,
-      )}" alt="${esc(label)} diff"></details>`
-    : "";
-  return `<figure class="cell ${extraClass}"><figcaption>${esc(
-    label,
-  )}</figcaption>${body}${diff}</figure>`;
+    ? `<img loading="lazy" src="${esc(src)}" alt="${esc(lane.label)}">`
+    : `<div class="missing">${esc(note || "—")}${
+        errorHref ? ` <a href="${esc(errorHref)}">details</a>` : ""
+      }</div>`;
+  return `<figure class="cell lane-${esc(lane.id)}" data-lane="${esc(lane.id)}">
+      <figcaption>${esc(lane.label)}<span class="refbadge">reference</span></figcaption>
+      ${body}
+      <div class="diffslot" hidden></div>
+    </figure>`;
 }
 
-/**
- * One player's score chip: `NN.NN%` + pixel count, or the reason it produced nothing.
- *
- * `referenceBlank` short-circuits both players: the baked PNG is empty, so there is no comparison to
- * report and any number here would be a lie in either direction.
- */
-function scoreBlock(label, rendered, pct, px, note, referenceBlank = false, errorHref = "") {
-  const scorable = rendered && !referenceBlank;
-  const text = scorable
-    ? `${(pct ?? 0).toFixed(2)}%`
-    : referenceBlank
-      ? "no reference"
-      : note || "no render";
-  const pxTxt =
-    scorable && px != null ? `<span class="px">${px.toLocaleString("en-US")} px</span>` : "";
-  const detail = !rendered && errorHref ? `<a href="${esc(errorHref)}">details</a>` : "";
-  return `<div class="scoreline">
-      <span class="scorelabel">${esc(label)}</span>
-      <span class="score ${band(scorable ? pct : null)}">${esc(text)}</span>
-      ${pxTxt}
-      ${detail}
-    </div>`;
-}
-
-function rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm) {
+function rowHtml(r, lanes, index) {
   const dims = r.width && r.height ? `<span class="dims">${r.width}×${r.height}</span>` : "";
-  const anyRendered =
-    r.rendered || r.embeddedRendered || r.embeddedJvmRendered || r.cmpWasmRendered;
-  const scores =
-    scoreBlock("js", r.rendered, r.mismatchPct, r.mismatchPx, r.note, r.referenceBlank) +
-    (withEmbedded
-      ? scoreBlock(
-          "embedded",
-          r.embeddedRendered,
-          r.embeddedMismatchPct,
-          r.embeddedMismatchPx,
-          r.embeddedNote,
-          r.referenceBlank,
-        )
-      : "") +
-    (withEmbeddedJvm
-      ? scoreBlock(
-          "cmp-jvm",
-          r.embeddedJvmRendered,
-          r.embeddedJvmMismatchPct,
-          r.embeddedJvmMismatchPx,
-          r.embeddedJvmNote,
-          r.referenceBlank,
-        )
-      : "") +
-    (withCmpWasm
-      ? scoreBlock(
-          "cmp-wasm",
-          r.cmpWasmRendered,
-          r.cmpWasmMismatchPct,
-          r.cmpWasmMismatchPx,
-          r.cmpWasmNote,
-          r.referenceBlank,
-          r.cmpWasmError,
-        )
-      : "") +
-    (r.referenceBlank
-      ? `<div class="blanknote">baked PNG is fully transparent — nothing to compare against</div>`
-      : "");
-
-  const embeddedCells = withEmbedded
-    ? `
-  <td>${cell("RC · embedded player", r.embedded, "rc")}</td>
-  <td>${cell("pixel diff", r.embeddedDiff, "diff")}</td>`
-    : "";
-  // The cmp-jvm lane adds ONE column: its render, with the diff folded into a <details> below the
-  // image (see cellWithDiff) so the page stays legible as players accumulate.
-  const embeddedJvmCell = withEmbeddedJvm
-    ? `
-  <td>${cellWithDiff("RC · cmp-jvm player", r.embeddedJvm, r.embeddedJvmDiff, "rc")}</td>`
-    : "";
-  const cmpWasmCell = withCmpWasm
-    ? `
-  <td>${cellWithDiff("RC · cmp-wasm player", r.cmpWasm, r.cmpWasmDiff, "rc")}</td>`
-    : "";
-
+  const anyRendered = lanes.some((lane) => lane.id !== "baked" && lane.rendered(r));
+  const cells = lanes.map((lane) => `<td>${laneCell(r, lane)}</td>`).join("");
   const scorable = !r.referenceBlank;
   return `<tr class="row ${anyRendered ? "rendered" : "unsupported"}${
     r.referenceBlank ? " blank-reference" : ""
-  }" data-pct="${scorable && r.rendered ? (r.mismatchPct ?? 0) : ""}" data-embedded-pct="${
+  }" data-row="${index}" data-pct="${scorable && r.rendered ? (r.mismatchPct ?? 0) : ""}" data-embedded-pct="${
     scorable && r.embeddedRendered ? (r.embeddedMismatchPct ?? 0) : ""
   }" data-embedded-jvm-pct="${
     scorable && r.embeddedJvmRendered ? (r.embeddedJvmMismatchPct ?? 0) : ""
@@ -309,27 +306,326 @@ function rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm) {
   <th class="meta">
     <div class="name">${esc(r.name)}</div>
     ${r.group ? `<div class="group">${esc(r.group)}</div>` : ""}
-    ${scores}
+    <div class="scores" data-scores></div>
+    ${
+      r.referenceBlank
+        ? `<div class="blanknote">baked PNG is fully transparent — nothing to compare against</div>`
+        : ""
+    }
     ${dims}
-  </th>
-  <td>${cell("baked PNG", r.baked)}</td>
-  <td>${cell("RC · JS player", r.rc, "rc")}</td>
-  <td>${cell("pixel diff", r.diff, "diff")}</td>${embeddedCells}${embeddedJvmCell}${cmpWasmCell}
+  </th>${cells}
 </tr>`;
+}
+
+/**
+ * The row model the inlined script diffs over: per lane, where its render lives, what the driver
+ * already measured against the baked PNG, and whether it rendered at all. Keeping it as data (rather
+ * than scraping the DOM) is what lets the client pick the exact build-time diff when the reference
+ * *is* the baked PNG and fall back to canvas only when it isn't.
+ */
+function clientModel(rows, lanes) {
+  return {
+    lanes: lanes.map((lane) => ({ id: lane.id, label: lane.label, short: lane.short })),
+    rows: rows.map((r) => {
+      const laneData = {};
+      for (const lane of lanes) {
+        laneData[lane.id] = {
+          src: lane.src(r) || "",
+          diff: lane.diff ? lane.diff(r) || "" : "",
+          pct: lane.pct ? (lane.pct(r) ?? null) : null,
+          px: lane.px ? (lane.px(r) ?? null) : null,
+          rendered: lane.rendered(r),
+          note: lane.note(r) || "",
+        };
+      }
+      return { name: r.name ?? "", referenceBlank: Boolean(r.referenceBlank), lanes: laneData };
+    }),
+  };
+}
+
+/** Inline JSON that a `</script>` inside a note can't break out of. */
+function jsonScript(id, value) {
+  return `<script type="application/json" id="${id}">${JSON.stringify(value).replace(
+    /</g,
+    "\\u003c",
+  )}</script>`;
+}
+
+/**
+ * The interactive layer, inlined so the page stays a single self-contained file that works from a
+ * `file://` open or a static host with no build step.
+ *
+ * Two diff paths, because they have very different costs and fidelities:
+ *
+ *  * reference = `baked` → the driver already diffed every lane against it with `pixelmatch`. Use
+ *    those PNGs and those percentages: exact, free, and available even when canvas readback is
+ *    blocked (a `file://` open taints the canvas, so `getImageData` throws).
+ *  * reference = any player → nothing precomputed can answer it, so diff in the browser. The metric
+ *    is pixelmatch's: YIQ colour distance against `threshold² · 35215`, minus the anti-aliasing
+ *    detection, which makes browser numbers a touch *higher* than the driver's on text-heavy
+ *    previews. The page says so rather than pretending they're interchangeable.
+ *
+ * Work is per-row and lazy (an IntersectionObserver kicks a row off when it scrolls in), and every
+ * pass carries a token so switching references mid-scroll abandons the previous pass instead of
+ * racing it.
+ */
+function clientScript(threshold) {
+  return `<script>
+(() => {
+  const MODEL = JSON.parse(document.getElementById("rc-model").textContent);
+  const THRESHOLD = ${JSON.stringify(threshold)};
+  const MAX_DELTA = 35215; // pixelmatch's maximum YIQ difference, for the threshold scale
+  const select = document.getElementById("refselect");
+  const status = document.getElementById("refstatus");
+  const rows = Array.from(document.querySelectorAll("tr.row"));
+  let token = 0;
+  let tainted = false;
+
+  const laneLabel = (id) => (MODEL.lanes.find((l) => l.id === id) || {}).short || id;
+  const band = (pct) => (pct == null ? "na" : pct < 2 ? "good" : pct < 10 ? "ok" : "bad");
+
+  function chip(label, text, pct, px) {
+    const line = document.createElement("div");
+    line.className = "scoreline";
+    const name = document.createElement("span");
+    name.className = "scorelabel";
+    name.textContent = label;
+    const score = document.createElement("span");
+    score.className = "score " + band(pct);
+    score.textContent = text;
+    line.append(name, score);
+    if (px != null) {
+      const pxEl = document.createElement("span");
+      pxEl.className = "px";
+      pxEl.textContent = px.toLocaleString("en-US") + " px";
+      line.append(pxEl);
+    }
+    return line;
+  }
+
+  function clear(row) {
+    row.querySelector("[data-scores]").replaceChildren();
+    for (const slot of row.querySelectorAll(".diffslot")) {
+      slot.replaceChildren();
+      slot.hidden = true;
+    }
+    for (const cell of row.querySelectorAll("figure.cell")) cell.classList.remove("is-reference");
+  }
+
+  function showDiff(row, laneId, src) {
+    const slot = row.querySelector('figure.cell[data-lane="' + laneId + '"] .diffslot');
+    if (!slot) return;
+    const caption = document.createElement("div");
+    caption.className = "difflabel";
+    caption.textContent = "pixel diff vs " + laneLabel(select.value);
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.src = src;
+    img.alt = "pixel diff";
+    slot.replaceChildren(caption, img);
+    slot.hidden = false;
+  }
+
+  const images = new Map();
+  function load(src) {
+    if (!images.has(src)) {
+      images.set(
+        src,
+        new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error("could not load " + src));
+          img.src = src;
+        }),
+      );
+    }
+    return images.get(src);
+  }
+
+  function pixels(img) {
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0);
+    return ctx.getImageData(0, 0, canvas.width, canvas.height);
+  }
+
+  /** pixelmatch's YIQ metric, without its anti-aliasing pass. Both sides are already opaque. */
+  function delta(a, b, i) {
+    const y = (p, o) => p[o] * 0.29889531 + p[o + 1] * 0.58662247 + p[o + 2] * 0.11448223;
+    const q = (p, o) => p[o] * 0.59597799 - p[o + 1] * 0.2741761 - p[o + 2] * 0.32180189;
+    const v = (p, o) => p[o] * 0.21147017 - p[o + 1] * 0.52261711 + p[o + 2] * 0.31114694;
+    const dy = y(a, i) - y(b, i);
+    const di = q(a, i) - q(b, i);
+    const dq = v(a, i) - v(b, i);
+    return 0.5053 * dy * dy + 0.299 * di * di + 0.1957 * dq * dq;
+  }
+
+  function diff(refData, laneData) {
+    const { width, height } = refData;
+    const out = new ImageData(width, height);
+    const limit = THRESHOLD * THRESHOLD * MAX_DELTA;
+    let count = 0;
+    for (let i = 0; i < refData.data.length; i += 4) {
+      if (delta(refData.data, laneData.data, i) > limit) {
+        out.data[i] = 255;
+        out.data[i + 1] = 60;
+        out.data[i + 2] = 60;
+        out.data[i + 3] = 255;
+        count++;
+      } else {
+        // pixelmatch's washed-out backdrop: the reference in grey at 10% so the flagged pixels read.
+        const grey =
+          255 +
+          (refData.data[i] * 0.29889531 +
+            refData.data[i + 1] * 0.58662247 +
+            refData.data[i + 2] * 0.11448223 -
+            255) *
+            0.1;
+        out.data[i] = out.data[i + 1] = out.data[i + 2] = grey;
+        out.data[i + 3] = 255;
+      }
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d").putImageData(out, 0, 0);
+    return { count, total: width * height, url: canvas.toDataURL("image/png") };
+  }
+
+  async function scoreRow(row, ref, pass) {
+    const model = MODEL.rows[Number(row.dataset.row)];
+    if (!model) return;
+    const scores = row.querySelector("[data-scores]");
+    const refLane = model.lanes[ref];
+    row
+      .querySelector('figure.cell[data-lane="' + ref + '"]')
+      ?.classList.add("is-reference");
+    if (!refLane || !refLane.rendered) {
+      scores.replaceChildren(chip(laneLabel(ref), "no reference", null, null));
+      return;
+    }
+    // A blank baked capture is no reference at all — but two *player* renders still compare, so the
+    // short-circuit is scoped to the baked lane rather than the whole row.
+    if (model.referenceBlank && ref === "baked") {
+      for (const lane of MODEL.lanes) {
+        if (lane.id === ref) continue;
+        scores.append(chip(lane.short, "no reference", null, null));
+      }
+      return;
+    }
+    let refData = null;
+    for (const lane of MODEL.lanes) {
+      if (lane.id === ref) continue;
+      const data = model.lanes[lane.id];
+      if (!data) continue;
+      if (!data.rendered || !data.src) {
+        scores.append(chip(lane.short, data.note || "no render", null, null));
+        continue;
+      }
+      // Build-time fast path: the driver's own pixelmatch result against the baked PNG.
+      if (ref === "baked" && data.diff && data.pct != null) {
+        scores.append(chip(lane.short, data.pct.toFixed(2) + "%", data.pct, data.px));
+        showDiff(row, lane.id, data.diff);
+        continue;
+      }
+      if (tainted) {
+        scores.append(chip(lane.short, "diff needs http://", null, null));
+        continue;
+      }
+      try {
+        if (!refData) refData = pixels(await load(refLane.src));
+        const laneData = pixels(await load(data.src));
+        if (pass !== token) return;
+        if (laneData.width !== refData.width || laneData.height !== refData.height) {
+          scores.append(
+            chip(
+              lane.short,
+              laneData.width + "×" + laneData.height + " ≠ " + refData.width + "×" + refData.height,
+              null,
+              null,
+            ),
+          );
+          continue;
+        }
+        const result = diff(refData, laneData);
+        if (pass !== token) return;
+        const pct = (100 * result.count) / result.total;
+        scores.append(chip(lane.short, pct.toFixed(2) + "%", pct, result.count));
+        showDiff(row, lane.id, result.url);
+      } catch (error) {
+        // A file:// open taints the canvas, so readback throws for every row. Say it once, in the
+        // toolbar, instead of writing the same failure into every chip.
+        if (String(error).includes("SecurityError") || error.name === "SecurityError") {
+          tainted = true;
+          status.textContent =
+            "client-side diffing needs the page served over http:// (canvas readback is blocked on file://)";
+        }
+        scores.append(chip(lane.short, tainted ? "diff needs http://" : "diff failed", null, null));
+      }
+    }
+  }
+
+  const pending = new WeakMap();
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const row = entry.target;
+        const ref = select.value;
+        if (ref === "none" || pending.get(row) === token) continue;
+        pending.set(row, token);
+        scoreRow(row, ref, token);
+      }
+    },
+    { rootMargin: "400px 0px" },
+  );
+
+  function apply() {
+    token++;
+    const ref = select.value;
+    document.body.dataset.reference = ref;
+    // Unconditionally, *before* re-observing: observe() on an already-observed target is a no-op, so
+    // switching straight from one reference to another would leave every on-screen row blank until it
+    // scrolled out and back. Disconnecting first makes the re-observe queue a fresh initial callback.
+    observer.disconnect();
+    for (const row of rows) {
+      clear(row);
+      pending.delete(row);
+    }
+    if (ref === "none") {
+      status.textContent = "";
+      return;
+    }
+    status.textContent =
+      ref === "baked"
+        ? "showing the build-time pixelmatch diffs against the baked PNG"
+        : "diffing in the browser against " + laneLabel(ref) + " — no anti-aliasing pass, so text-heavy previews read slightly higher than the build-time numbers";
+    for (const row of rows) observer.observe(row);
+  }
+
+  select.addEventListener("change", apply);
+  apply();
+})();
+</script>`;
 }
 
 export function renderRcCompareHtml(model, opts = {}) {
   const system = model.system ?? "";
   const title = model.title ?? system;
-  const rows = sortRows(model.rows ?? []);
-  const stats = summarizeRcCompare(model.rows ?? []);
+  const allRows = model.rows ?? [];
+  const rows = sortRows(allRows);
+  const stats = summarizeRcCompare(allRows);
   const meanTxt = stats.meanPct == null ? "n/a" : `${stats.meanPct.toFixed(2)}%`;
   const genNote = opts.generatedNote ? `<span class="note">${esc(opts.generatedNote)}</span>` : "";
+  const threshold = opts.threshold ?? 0.1;
 
-  const withEmbedded = hasEmbeddedLane(model.rows ?? []);
-  const withEmbeddedJvm = hasEmbeddedJvmLane(model.rows ?? []);
-  const withCmpWasm = hasCmpWasmLane(model.rows ?? []);
-  // "JS", "JS + embedded", "JS + embedded + cmp-jvm", … — the players this page actually compares.
+  const withEmbedded = hasEmbeddedLane(allRows);
+  const withEmbeddedJvm = hasEmbeddedJvmLane(allRows);
+  const withCmpWasm = hasCmpWasmLane(allRows);
+  const lanes = activeLanes(allRows);
+  // "JS", "JS + embedded", "JS + embedded + cmp-jvm", … — the players this page actually shows.
   const laneNames = [
     "JS",
     withEmbedded && "embedded",
@@ -345,7 +641,7 @@ export function renderRcCompareHtml(model, opts = {}) {
     stats.cmpWasmMeanPct == null ? "n/a" : `${stats.cmpWasmMeanPct.toFixed(2)}%`;
 
   // Blank references are called out once, not per lane — the reference is shared, so a blank one
-  // costs both players the same row.
+  // costs every player the same row.
   const blankTxt = stats.blankReference
     ? ` · <strong>${stats.blankReference}</strong> unscored (blank reference)`
     : "";
@@ -370,14 +666,18 @@ export function renderRcCompareHtml(model, opts = {}) {
         blankTxt
       : "");
 
-  // The cmp-jvm lane adds a single column (its diff folds into the cell); the embedded lane keeps
-  // its own diff column, as before.
-  const head =
-    `<tr><th>preview</th><th>baked PNG</th><th>RC · JS player</th><th>pixel diff</th>` +
-    (withEmbedded ? `<th>RC · embedded player</th><th>pixel diff</th>` : "") +
-    (withEmbeddedJvm ? `<th>RC · cmp-jvm player</th>` : "") +
-    (withCmpWasm ? `<th>RC · cmp-wasm player</th>` : "") +
-    `</tr>`;
+  // One column per lane — no standalone diff columns any more. A diff appears *inside* the column of
+  // whichever player is being compared, and only once a reference is picked.
+  const head = `<tr><th>preview</th>${lanes.map((l) => `<th>${esc(l.label)}</th>`).join("")}</tr>`;
+
+  const picker = `<div class="toolbar">
+    <label for="refselect">Diff against</label>
+    <select id="refselect">
+      <option value="none" selected>nothing (show renders only)</option>
+${lanes.map((l) => `      <option value="${esc(l.id)}">${esc(l.label)}</option>`).join("\n")}
+    </select>
+    <span id="refstatus" class="refstatus"></span>
+  </div>`;
 
   const body =
     rows.length === 0
@@ -385,7 +685,7 @@ export function renderRcCompareHtml(model, opts = {}) {
       : `<table class="grid">
   <thead>${head}</thead>
   <tbody>
-${rows.map((r) => rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm)).join("\n")}
+${rows.map((r, i) => rowHtml(r, lanes, i)).join("\n")}
   </tbody>
 </table>`;
 
@@ -396,9 +696,9 @@ ${rows.map((r) => rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm)).join("
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)} — PNG vs Remote Compose (${esc(laneLabel)})</title>
 <style>
-  :root { color-scheme: light dark; --bg:#fff; --fg:#111; --muted:#666; --line:#e2e2e2; --card:#fafafa; }
+  :root { color-scheme: light dark; --bg:#fff; --fg:#111; --muted:#666; --line:#e2e2e2; --card:#fafafa; --accent:#0969da; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#0e0e0e; --fg:#eee; --muted:#9a9a9a; --line:#2a2a2a; --card:#161616; }
+    :root { --bg:#0e0e0e; --fg:#eee; --muted:#9a9a9a; --line:#2a2a2a; --card:#161616; --accent:#4493f8; }
   }
   * { box-sizing: border-box; }
   body { margin:0; font:14px/1.4 system-ui, sans-serif; color:var(--fg); background:var(--bg); }
@@ -406,17 +706,27 @@ ${rows.map((r) => rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm)).join("
   h1 { margin:0 0 4px; font-size:18px; }
   .summary { color:var(--muted); }
   .note { display:block; margin-top:4px; color:var(--muted); font-size:12px; }
+  .toolbar { margin-top:10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .toolbar label { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  .toolbar select { font:inherit; padding:3px 6px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); }
+  .refstatus { color:var(--muted); font-size:12px; }
   .lede { padding:12px 20px; color:var(--muted); max-width:70ch; }
   .wrap { overflow-x:auto; padding:0 20px 40px; }
   table.grid { border-collapse:collapse; width:100%; min-width:720px; }
-  thead th { text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:12px 8px; border-bottom:1px solid var(--line); position:sticky; top:64px; background:var(--bg); }
+  /* Not sticky: the .wrap overflow-x makes it the scrollport these cells would stick to, and it
+     never scrolls vertically — so the old top:64px only ever parked them behind the header. Every
+     cell repeats its lane in its own figcaption, so scrolling never loses which column is which. */
+  thead th { text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:12px 8px; border-bottom:1px solid var(--line); background:var(--bg); }
   tbody tr { border-bottom:1px solid var(--line); }
   th.meta { text-align:left; vertical-align:top; padding:12px 8px; width:200px; }
   .name { font-weight:600; word-break:break-word; }
   .group { color:var(--muted); font-size:12px; margin-top:2px; }
-  .scoreline { margin-top:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-  .scorelabel { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em; min-width:56px; }
-  .score { display:inline-block; padding:2px 8px; border-radius:999px; font-variant-numeric:tabular-nums; font-weight:600; }
+  .scoreline { margin-top:8px; display:flex; align-items:flex-start; gap:6px; flex-wrap:wrap; }
+  .scorelabel { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em; min-width:56px; padding-top:2px; }
+  .score { display:inline-block; min-width:0; max-width:100%; padding:2px 8px; border-radius:999px; font-variant-numeric:tabular-nums; font-weight:600; overflow-wrap:anywhere; }
+  /* A reason ("player could not decode the document") is prose, not a score — it must not pretend to
+     be a measurement, and it must wrap instead of bursting out of the pill. */
+  .score.na { font-weight:400; font-size:11px; line-height:1.3; border-radius:6px; }
   .score.good { background:#1a7f37; color:#fff; }
   .score.ok   { background:#9a6700; color:#fff; }
   .score.bad  { background:#b32424; color:#fff; }
@@ -429,13 +739,14 @@ ${rows.map((r) => rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm)).join("
   figcaption { font-size:11px; color:var(--muted); margin-bottom:4px; }
   .cell img { display:block; max-width:280px; width:100%; height:auto; border:1px solid var(--line); border-radius:6px; background:
     repeating-conic-gradient(#0000 0% 25%, color-mix(in srgb, var(--fg) 6%, transparent) 0% 50%) 50% / 20px 20px; }
-  .cell.diff img { background:#000; }
-  .difffold { margin-top:6px; }
-  .difffold > summary { cursor:pointer; color:var(--muted); font-size:11px; list-style:revert; }
-  .difffold[open] > summary { margin-bottom:4px; }
-  .difffold img { background:#000; max-width:280px; width:100%; height:auto; border:1px solid var(--line); border-radius:6px; }
-  .missing { width:120px; height:80px; display:grid; place-items:center; color:var(--muted); border:1px dashed var(--line); border-radius:6px; }
-  tr.unsupported .score { background:#555; }
+  /* The chosen reference is called out rather than diffed against itself. */
+  .refbadge { display:none; margin-left:6px; padding:1px 6px; border-radius:999px; background:var(--accent); color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:.04em; }
+  figure.cell.is-reference .refbadge { display:inline-block; }
+  figure.cell.is-reference img { outline:2px solid var(--accent); outline-offset:1px; }
+  .diffslot { margin-top:6px; }
+  .difflabel { font-size:11px; color:var(--muted); margin-bottom:4px; }
+  .diffslot img { display:block; max-width:280px; width:100%; height:auto; border:1px solid var(--line); border-radius:6px; background:#000; }
+  .missing { min-width:120px; max-width:280px; min-height:80px; padding:8px; display:grid; place-items:center; text-align:center; color:var(--muted); font-size:11px; border:1px dashed var(--line); border-radius:6px; }
   .empty { padding:24px 20px; color:var(--muted); }
   code { background:var(--card); padding:1px 5px; border-radius:4px; }
 </style>
@@ -447,9 +758,10 @@ ${rows.map((r) => rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm)).join("
   )})</span></h1>
   <div class="summary">${summary}</div>
   ${genNote}
+  ${picker}
 </header>
-<p class="lede">Each preview's baked <strong>PNG</strong> (the offline Robolectric/Skiko render) next to the
-same <code>ir/*.rc</code> document as each player renders it, with a per-pixel diff after each.
+<p class="lede">Every preview across every player: its baked <strong>PNG</strong> (the offline
+Robolectric/Skiko render) next to the same <code>ir/*.rc</code> document as each player renders it.
 ${[
   `The <strong>JS player</strong> is the vendored TypeScript <code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>`,
   withEmbedded &&
@@ -461,14 +773,20 @@ ${[
 ]
   .filter(Boolean)
   .join("; ")}${laneNames.length > 1 ? " — so they diverge wherever those differences show." : "."}
-Mismatch % is the fraction of pixels each diff flags; rows sort worst-match-first${
+<strong>Nothing is diffed until you ask for it:</strong> pick a column in <em>Diff against</em> and every
+other column grows a pixel diff plus a mismatch chip. Choosing the baked PNG replays the build-time
+<code>pixelmatch</code> diffs; choosing a player diffs in the browser, which is how you compare two
+players directly. Rows sort worst-match-first${
     laneNames.length > 1 ? " on the worst-scoring player" : ""
-  }. A preview whose baked PNG is <strong>fully transparent</strong> is shown but not scored:
-with nothing in the reference, a player that draws nothing would score a perfect 0% — so those rows
-read <code>no reference</code> and stay out of the means.</p>
+  } using the build-time scores in the header. A preview whose baked PNG is
+<strong>fully transparent</strong> is shown but not scored against it: with nothing in the reference, a
+player that draws nothing would score a perfect 0% — so those rows read <code>no reference</code> and
+stay out of the means.</p>
 <div class="wrap">
 ${body}
 </div>
+${jsonScript("rc-model", clientModel(rows, lanes))}
+${clientScript(threshold)}
 </body>
 </html>
 `;

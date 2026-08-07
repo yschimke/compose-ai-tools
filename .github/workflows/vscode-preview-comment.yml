@@ -22,7 +22,17 @@ on:
       - '.github/actions/vscode-preview-comment/**'
       - '.github/actions/lib/vscode-preview-diff.py'
       - '.github/workflows/vscode-preview-comment.yml'
+  # Manual re-run, for when the `pull_request` trigger is missed (it happens) and
+  # the sticky comment is left describing an older head. `pr` is required in
+  # practice: a dispatch carries no `pull_request` event, so without it the
+  # comment step has no number to post to and 404s *after* doing all the capture
+  # work — a red check that says nothing about the diff.
   workflow_dispatch:
+    inputs:
+      pr:
+        description: 'PR number to post the comparison to'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -31,7 +41,7 @@ concurrency:
   # Per-PR group so a fast-follow push cancels the in-flight diff for
   # the same PR but leaves other PRs alone — same shape as the
   # composable preview-comment flow.
-  group: vscode-preview-comment-${{ github.event.pull_request.number || github.run_id }}
+  group: vscode-preview-comment-${{ github.event.pull_request.number || inputs.pr || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -46,3 +56,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/vscode-preview-comment
+        with:
+          # Empty on a `pull_request` run, where the action falls back to the
+          # event's own PR number.
+          pr-number: ${{ inputs.pr }}

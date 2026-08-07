@@ -16,12 +16,28 @@ import kotlin.test.assertTrue
  */
 class ServeWebPlaygroundCatalogTest {
 
-  private fun page(catalogs: List<PlaygroundCatalogInfo>, catalogSelectorEnabled: Boolean = false) =
+  private fun page(
+    catalogs: List<PlaygroundCatalogInfo>,
+    catalogSelectorEnabled: Boolean = false,
+    seed: PlaygroundSeed? = null,
+    preselectCatalog: String? = null,
+  ) =
     ServeWeb.playgroundPage(
       token = "t",
       isPublic = false,
       catalogs = catalogs,
       catalogSelectorEnabled = catalogSelectorEnabled,
+      seed = seed,
+      preselectCatalog = preselectCatalog,
+    )
+
+  private val previewSeed =
+    PlaygroundSeed(
+      catalog = "compose-m3",
+      previewId = "buttons.FilledButton",
+      fileName = "FilledButton.kt",
+      text = "@Preview @Composable fun FilledButtonPreview() {}",
+      blobUrl = "https://github.com/o/r/blob/main/FilledButton.kt",
     )
 
   private val pinnedDefault =
@@ -49,6 +65,72 @@ class ServeWebPlaygroundCatalogTest {
       modes = listOf(PlaygroundMode.ANDROID, PlaygroundMode.REMOTE_COMPOSE),
       resolved = false,
     )
+
+  @Test
+  fun `a seeded page opens on the preview's own source, in its own catalog`() {
+    val html = page(listOf(pinnedDefault, m3, wear), seed = previewSeed)
+    assertTrue(html.contains("fun FilledButtonPreview()"), "the buffer holds the preview's source")
+    assertFalse(html.contains("Hello, Compose!"), "…instead of the starter sample")
+    // The catalog it came from is preselected — compiling against a different design system than
+    // the preview was written for is exactly the wrong default.
+    assertTrue(html.contains("""<option value="compose-m3" selected>"""))
+    assertFalse(html.contains("""<option value="" selected>"""), "the pinned default is not chosen")
+    // …and the file tab is named after the source file, not "Snippet.kt".
+    assertTrue(html.contains("""data-pg-file="FilledButton.kt""""))
+    assertTrue(html.contains("""var files = [{ name: "FilledButton.kt""""))
+  }
+
+  @Test
+  fun `a seeded page says where the code came from, and what that does not promise`() {
+    val html = page(listOf(m3), seed = previewSeed)
+    assertTrue(html.contains("""id="pg-seed""""))
+    assertTrue(html.contains("buttons.FilledButton"))
+    assertTrue(html.contains("https://github.com/o/r/blob/main/FilledButton.kt"))
+    // Honest about both limits, because a catalog routinely declares many previews in one file and
+    // that file is ordinary module code: it is the WHOLE file, and what it pulls in from its own
+    // module will not resolve.
+    assertTrue(html.contains("whole file, not a"))
+    assertTrue(html.contains("unresolved reference"))
+  }
+
+  @Test
+  fun `a seed naming a catalog this host does not offer falls back rather than preselecting it`() {
+    // A link built before the catalog loaded, or against one whose backend this host cannot render.
+    // Preselecting it would leave Run pointed at a target every compile would refuse.
+    val html = page(listOf(pinnedDefault, wear), seed = previewSeed)
+    assertTrue(html.contains("""<option value="" selected>Server default</option>"""))
+    // The source is still opened — that half of the handoff works regardless of the selector.
+    assertTrue(html.contains("fun FilledButtonPreview()"))
+  }
+
+  @Test
+  fun `a catalog-only handoff preselects the system and keeps the starter sample`() {
+    val html = page(listOf(pinnedDefault, m3, wear), preselectCatalog = "compose-m3")
+    assertTrue(html.contains("""<option value="compose-m3" selected>"""))
+    assertTrue(html.contains("Hello, Compose!"), "no seed means the sample is untouched")
+    assertFalse(html.contains("""id="pg-seed""""), "…and no 'opened from' note")
+  }
+
+  @Test
+  fun `a seeded page escapes the source it opens`() {
+    val html =
+      page(
+        listOf(m3),
+        seed = previewSeed.copy(text = "val x = \"</textarea><script>alert(1)</script>\""),
+      )
+    assertFalse(html.contains("</textarea><script>"), "the buffer cannot close its own textarea")
+    assertTrue(html.contains("&lt;/textarea&gt;"))
+  }
+
+  @Test
+  fun `the mode control follows the preselected catalog, not the first entry`() {
+    // wear is android-backed; preselecting it must not leave Mode on the desktop entry's CMP.
+    val html = page(listOf(m3, wear), preselectCatalog = "compose-wear")
+    assertTrue(
+      html.contains("""<option value="compose-android" selected>Compose (Android)</option>""")
+    )
+    assertFalse(html.contains("""<option value="compose-cmp" selected>"""))
+  }
 
   @Test
   fun `a host that pins its bundles renders the bar it always did`() {

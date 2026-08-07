@@ -124,6 +124,23 @@ object ServeUrls {
   }
 
   /**
+   * The **raw file** twin of [githubBlobUrl]: `https://raw.githubusercontent.com/<repo>/<ref>/…`,
+   * resolving the same `<module>/<sourceFile>` path by the same rules. Where the blob URL is for a
+   * human to click, this is what the server reads a preview's Kotlin from to seed the playground
+   * editor (`/playground?from=…`).
+   *
+   * Every input comes from the catalog's own trusted metadata — `catalog.json`'s `source.{repo,
+   * ref, module}` and the `sourceFile` recorded per preview — never from a request, so the host
+   * cannot be steered at an arbitrary URL by a visitor naming a preview.
+   */
+  fun githubRawUrl(repo: String?, ref: String?, module: String?, sourceFile: String?): String? {
+    val blob = githubBlobUrl(repo, ref, module, sourceFile) ?: return null
+    return blob
+      .replaceFirst("https://github.com/", "https://raw.githubusercontent.com/")
+      .replaceFirst("/blob/", "/")
+  }
+
+  /**
    * Constant-time token comparison — avoids leaking how many leading characters matched via timing.
    * Both sides are compared as UTF-8 bytes; length mismatches short-circuit safely inside
    * [MessageDigest.isEqual] (which is itself constant-time for equal-length inputs).

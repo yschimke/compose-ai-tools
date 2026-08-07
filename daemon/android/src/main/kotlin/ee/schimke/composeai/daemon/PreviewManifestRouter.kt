@@ -160,6 +160,7 @@ class PreviewManifestRouter(
       inbound["captureAdvanceMs"]?.let { append("captureAdvanceMs=").append(it).append(';') }
       inbound["inspectionMode"]?.let { append("inspectionMode=").append(it).append(';') }
       inbound["clearBackground"]?.let { append("clearBackground=").append(it).append(';') }
+      inbound["svgBackground"]?.let { append("svgBackground=").append(it).append(';') }
       inbound["overrides"]?.let { append("overrides=").append(it).append(';') }
       inbound["mode"]?.let { append("mode=").append(it).append(';') }
       // Manifest-resolved kind forwards through verbatim; an inbound `kind=` override (rare —

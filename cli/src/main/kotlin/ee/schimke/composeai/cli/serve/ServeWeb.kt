@@ -393,11 +393,32 @@ object ServeWeb {
     sourcePath: String?,
     report: ReportIssue?,
     figmaSpec: FigmaSpec?,
+    playgroundHref: String?,
   ): String {
     val links =
-      sourceLinkHtml(sourceHref, sourcePath) + reportIssueHtml(report) + figmaSpecHtml(figmaSpec)
+      sourceLinkHtml(sourceHref, sourcePath) +
+        playgroundLinkHtml(playgroundHref) +
+        reportIssueHtml(report) +
+        figmaSpecHtml(figmaSpec)
     if (links.isBlank()) return ""
     return "\n      <div class=\"cp-preview-links\">$links\n      </div>"
+  }
+
+  /**
+   * "open in playground" — the same provenance row's action twin: where `source` sends you to read
+   * this preview's Kotlin on GitHub, this opens it *in the editor* against the catalog it came
+   * from, ready to press Run on.
+   *
+   * Deliberately sits in the provenance row rather than beside the render: it is a developer
+   * affordance about where this preview comes from, not a control over what is on screen. Null —
+   * the common case on a host with no playground lane, or a preview whose source path was never
+   * recorded — renders nothing at all rather than a dead entry.
+   */
+  private fun playgroundLinkHtml(href: String?): String {
+    val url = href?.takeIf { it.isNotBlank() } ?: return ""
+    return "\n      <p class=\"cp-source\">" +
+      "<a class=\"cp-source-link\" href=\"${WebEscaping.htmlEscape(url)}\" " +
+      "title=\"Open this preview's source in the playground\">▶ playground</a></p>"
   }
 
   /**
@@ -2338,10 +2359,28 @@ object ServeWeb {
      * is the host's configuration, which does not change under it.
      */
     catalogSelectorEnabled: Boolean = false,
+    /**
+     * A served preview's source, opened in place of the starter sample with its catalog preselected
+     * — the `/playground?from=<system>/<previewId>` handoff from a viewer page. Null is the
+     * ordinary "opened the playground directly" case.
+     */
+    seed: PlaygroundSeed? = null,
+    /**
+     * Preselect this catalog without seeding any source — the "try this design system" handoff from
+     * a catalog landing page. Ignored when [seed] is present, which carries its own catalog.
+     */
+    preselectCatalog: String? = null,
     unfurl: UnfurlMetadata? = null,
   ): String {
     val suffix = querySuffix(queryString(token, sessionId = null, isPublic = isPublic))
-    val sample = WebEscaping.htmlEscape(PLAYGROUND_SAMPLE)
+    val sample = WebEscaping.htmlEscape(seed?.text ?: PLAYGROUND_SAMPLE)
+    val fileName = seed?.fileName ?: "Snippet.kt"
+    // A seed names its own catalog; a catalog-page link names one without any source. Either way it
+    // only wins if this host actually offers it — a link built before a catalog loaded (or against
+    // one whose backend this host can't render) falls back to the first entry rather than
+    // preselecting something the Run button would refuse.
+    val wanted = (seed?.catalog ?: preselectCatalog)?.takeIf { id -> catalogs.any { it.id == id } }
+    val selectedIndex = catalogs.indexOfFirst { it.id == wanted }.takeIf { it >= 0 } ?: 0
     // A host that pins its bundles and offers no runtime choice renders exactly the bar it always
     // did — one Mode select — rather than a one-entry "Catalog" control that decides nothing.
     // Everything else gets the control, including the two states where the list is momentarily
@@ -2359,7 +2398,7 @@ object ServeWeb {
       else
         catalogs
           .mapIndexed { i, c ->
-            val selected = if (i == 0) " selected" else ""
+            val selected = if (i == selectedIndex) " selected" else ""
             """<option value="${WebEscaping.htmlEscape(c.id)}"$selected>${
               WebEscaping.htmlEscape(c.label)
             }</option>"""
@@ -2367,7 +2406,7 @@ object ServeWeb {
           .joinToString("\n              ")
     val options =
       catalogs
-        .firstOrNull()
+        .getOrNull(selectedIndex)
         ?.modes
         .orEmpty()
         .mapIndexed { i, mode ->
@@ -2403,6 +2442,26 @@ object ServeWeb {
             fetched in the background after the server starts, so this usually clears on its own —
             but a catalog also has to verify as <strong>trusted</strong> and publish a live bundle
             before the playground will compile against it.</p>"""
+    // Says whose code is in the buffer, and is honest that it is a starting point: a preview file
+    // is ordinary module code and may reference siblings the catalog's bundle never exported, so
+    // "opened from" is the claim, not "this compiles".
+    val seedNote =
+      if (seed == null) ""
+      else {
+        val where =
+          seed.blobUrl?.let {
+            """<a class="cp-source-link" href="${WebEscaping.htmlEscape(it)}">${
+                WebEscaping.htmlEscape(seed.fileName)
+              }</a>"""
+          } ?: WebEscaping.htmlEscape(seed.fileName)
+        """
+
+          <p id="pg-seed" class="cp-sub">Opened $where — the file
+            <code>${WebEscaping.htmlEscape(seed.previewId)}</code> is declared in, from
+            <code>${WebEscaping.htmlEscape(seed.catalog)}</code>. It is the whole file, not a
+            trimmed snippet, and it compiles against that catalog's classpath: anything it pulls in
+            from elsewhere in its own module shows up as an unresolved reference to delete.</p>"""
+      }
     val catalogData =
       jsString(
         JSON_COMPACT.encodeToString(
@@ -2422,7 +2481,7 @@ object ServeWeb {
         <h1 class="cp-head">Playground</h1>
         <p class="cp-sub">Write a Compose snippet, compile it against the live catalog, and open a
           preview. This lane runs your code on the server, so it stays behind your token.</p>
-        <div class="cp-pg">$emptyNote
+        <div class="cp-pg">$emptyNote$seedNote
           <div class="cp-pg-bar">
             $catalogRow<label class="cp-pg-modelabel" for="pg-mode">Mode</label>
             <select id="pg-mode" class="cp-pg-mode">
@@ -2432,7 +2491,9 @@ object ServeWeb {
           </div>
           <div id="pg-files" class="cp-pg-files" role="tablist" aria-label="Snippet files">
             <button class="cp-pg-file" type="button" role="tab" aria-current="true"
-              data-pg-file="Snippet.kt">Snippet.kt</button>
+              data-pg-file="${WebEscaping.htmlEscape(fileName)}">${
+                WebEscaping.htmlEscape(fileName)
+              }</button>
             <button id="pg-add-file" class="cp-pg-filebtn" type="button">+ file</button>
             <button id="pg-remove-file" class="cp-pg-filebtn" type="button" hidden>Remove file</button>
           </div>
@@ -2449,7 +2510,7 @@ object ServeWeb {
           </div>
         </div>
         ${scriptTag("codemirror.js")}
-        <script>${playgroundScript(suffix, catalogData)}</script>
+        <script>${playgroundScript(suffix, catalogData, fileName)}</script>
         """
           .trimIndent(),
     )
@@ -2460,7 +2521,11 @@ object ServeWeb {
    * surface the `/pg/<token>` (live) or `/d/<id>` (Remote Compose) handoff link. Kept
    * dependency-free (no bundle) so the page is one self-contained document.
    */
-  private fun playgroundScript(querySuffix: String, catalogsJson: String): String =
+  private fun playgroundScript(
+    querySuffix: String,
+    catalogsJson: String,
+    fileName: String,
+  ): String =
     """
     (function () {
       var source = document.getElementById("pg-source");
@@ -2607,7 +2672,7 @@ object ServeWeb {
       // The snippet is a LIST of files compiled as one module, not one file: `files` holds every
       // buffer, `active` is the one the textarea is showing. A single-file snippet keeps exactly
       // the old shape, so nothing about the common case changes.
-      var files = [{ name: "Snippet.kt", text: readSource() }];
+      var files = [{ name: ${jsString(fileName)}, text: readSource() }];
       var active = 0;
       function uniqueName(name) {
         var taken = {}; files.forEach(function (f) { taken[f.name.toLowerCase()] = true; });
@@ -3647,6 +3712,12 @@ object ServeWeb {
     /** POST URL that checks this catalog's delivery branch immediately. Null omits Refresh. */
     refreshUrl: String? = null,
     /**
+     * `/playground?catalog=<system>` — opens the playground with this design system preselected, so
+     * a snippet compiles against the catalog you were just browsing. Null on a host with no
+     * playground lane; the summary line then reads exactly as it always did.
+     */
+    playgroundHref: String? = null,
+    /**
      * The catalog's declared stage surface (`catalog.json`'s `display.surface`: `"light"`/`"dark"`)
      * — decides whether unthemed cards sit on the dark stage. Null ⇒ fall back to the system-name
      * dark-first heuristic ([isDarkFirstSystem]). So a system declares its own surface rather than
@@ -3992,6 +4063,16 @@ object ServeWeb {
       if (hasFormatComparison)
         " · <a class=\"cp-format-link\" href=\"$basePath/compare$q\">compare formats</a>"
       else ""
+    // Subtle by placement, not by styling: it joins the summary line's existing run of
+    // catalog-level actions rather than becoming a button competing with the grid. Absent on a host
+    // with no playground lane, so it never reads as an offer this server cannot keep.
+    val playgroundLink =
+      playgroundHref
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          " · <a class=\"cp-format-link\" href=\"${WebEscaping.htmlEscape(it)}\">" +
+            "try in playground</a>"
+        } ?: ""
     return document(
       title = "$heading — compose-preview",
       unfurlTitle = heading,
@@ -4003,7 +4084,7 @@ object ServeWeb {
         """
         $back<h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
         $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} ·
-          <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink$liveNote</p>
+          <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink$playgroundLink$liveNote</p>
         <div class="cp-catalog-tools">
         $themeToggle$searchBox</div>
         $tabBar$gridBlock$emptyState$filterScript$liveScript$about
@@ -4495,6 +4576,12 @@ object ServeWeb {
      * the affordance entirely rather than offering a guessed or dead link.
      */
     figmaSpec: FigmaSpec? = null,
+    /**
+     * `/playground?from=…` for this preview — opens its Kotlin in the editor against the catalog it
+     * came from. Null on a host with no playground lane, or for a preview whose source path the
+     * catalog never recorded; the affordance is then omitted rather than offered dead.
+     */
+    playgroundHref: String? = null,
     /** GitHub sign-in prompt shown when the daemon live stream is present but requires auth. */
     liveAuthPrompt: LiveAuthPrompt? = null,
     /** Human catalog title used in the breadcrumb; falls back to a generic "Previews" label. */
@@ -5025,7 +5112,7 @@ object ServeWeb {
       <p class="cp-breadcrumb"><a href="$basePath/$q">$catalogName</a> / Component</p>
       <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
       <p class="cp-preview-id" title="$idText"><code>$idText</code></p>
-      ${degradeBanner(degradations)}${previewLinksHtml(sourceHref, preview.sourceFile, reportIssue, figmaSpec)}
+      ${degradeBanner(degradations)}${previewLinksHtml(sourceHref, preview.sourceFile, reportIssue, figmaSpec, playgroundHref)}
       ${viewerViewCountHtml(engagement.views)}
       $switchers
       <div class="cp-preview-primary" aria-label="Preview renderer">
@@ -5427,9 +5514,19 @@ object ServeWeb {
         val bool = kind == "bool"
         val initial =
           if (bool) (if (value == "true" || value == "1") "true" else "false") else value
+        // …and `data-knob-default` is the AUTHOR default, which for a seeded variant is not the
+        // same thing. A `@OverrideVariant` preview opens on `current` (`enabled=false`) while its
+        // author default is `true`, and the Wasm tier — unlike the PNG lane — has no baked artifact
+        // carrying that seed: it mounts the live component and has to be told. So the Wasm patch
+        // compares against this rather than against `initial`, or a variant would mount as its
+        // primary (see `wasmOverridePatch`).
+        val authorDefault = WebEscaping.htmlEscape(overrideValueText(d.default))
+        val defaultAttr =
+          if (bool) (if (authorDefault == "true" || authorDefault == "1") "true" else "false")
+          else authorDefault
         val attrs =
           "class=\"cp-knob\" data-knob-key=\"$wireKey\" data-knob-kind=\"$kind\" " +
-            "data-knob-initial=\"$initial\""
+            "data-knob-initial=\"$initial\" data-knob-default=\"$defaultAttr\""
         if (bool) {
           val checked = if (value == "true" || value == "1") " checked" else ""
           "<label class=\"cp-live-row\"><input type=\"checkbox\" $attrs$checked$dis> $label</label>"

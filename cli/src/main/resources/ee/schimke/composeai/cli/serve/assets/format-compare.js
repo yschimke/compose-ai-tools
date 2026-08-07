@@ -4,6 +4,22 @@
   var C1 = 6.5025;
   var C2 = 58.5225;
   var MAX_SIDE = 192;
+  // Longest side of the downscale that content-box detection samples, and how far a pixel may sit
+  // from the backdrop colour before it counts as drawn.
+  var BOX_SAMPLE_SIDE = 256;
+  var BOX_COLOUR_TOLERANCE = 12;
+  // Below this, a content-box proportion difference is rasteriser noise rather than a finding.
+  var GEOMETRY_REPORT_THRESHOLD = 2;
+  // Smallest share of its canvas a content box may cover before cropping to it stops being
+  // trustworthy — see `normalisedBoxes`.
+  var MIN_BOX_COVERAGE = 0.05;
+  // The backing colours `@Preview(showBackground = true)` resolves to — white for a day uiMode and
+  // Material 3's dark surface (#1C1B1F) for a night one, mirroring `PreviewBackground` on the
+  // server. An opaque capture whose corner is one of these is sitting on a scaffold sheet; any
+  // other corner colour is artwork reaching the edge. See `contentBox`.
+  var SCAFFOLD_SHEETS = [[255, 255, 255], [28, 27, 31]];
+  // Slack for PNG round-tripping and the detection downscale's resampling of an edge pixel.
+  var SHEET_TOLERANCE = 6;
 
   function loadImage(src) {
     return new Promise(function (resolve, reject) {
@@ -201,44 +217,225 @@
     return { width: image.naturalWidth || image.width, height: image.naturalHeight || image.height };
   }
 
+  /** Whether an opaque corner colour is one of the sheets `showBackground` paints. */
+  function isScaffoldSheet(rgb) {
+    for (var i = 0; i < SCAFFOLD_SHEETS.length; i++) {
+      var sheet = SCAFFOLD_SHEETS[i];
+      if (
+        Math.abs(rgb[0] - sheet[0]) <= SHEET_TOLERANCE &&
+        Math.abs(rgb[1] - sheet[1]) <= SHEET_TOLERANCE &&
+        Math.abs(rgb[2] - sheet[2]) <= SHEET_TOLERANCE
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * The rectangle an image actually draws in, in source pixels.
+   *
+   * A design reference and a rendered preview are authored to different edges. The preview carries
+   * whatever its `@Preview` scaffold added — `showBackground`'s opaque sheet, a `padding()` inset, a
+   * fixed-height container the content does not fill — while the reference is usually cropped to the
+   * artboard. Scoring those against each other measures the scaffold, not the component: the whole
+   * image is translated and rescaled relative to its partner, which SSIM reads as total mismatch.
+   *
+   * Detection uses alpha where the image has any: a transparent pixel is unambiguously not artwork.
+   *
+   * An opaque image is the hard case, because "a uniform border around an interior region" is the
+   * *same picture* whether the border is a scaffold sheet with a card inset on it or a card that
+   * bleeds to the artboard edge with text inset on it. Guessing from the corner pixel gets the
+   * second one exactly backwards — it strips the component's own surface and boxes only its text,
+   * so a tightly-cropped card reference gets stretched against a whole-card render and the pair
+   * reads as a total mismatch. The denser the card, the worse the score.
+   *
+   * So an opaque image's backdrop is not guessed. It is trusted only when the corner is a sheet the
+   * preview renderer actually paints — `showBackground` resolves to exactly white or Material 3's
+   * dark surface, per `PreviewBackground` — and any other corner colour means the pixels there
+   * could be the artwork, so the whole image is the content box. That errs toward comparing too
+   * much, which costs a little of the scaffold correction on a preview with a custom
+   * `backgroundColor`, rather than toward silently comparing the wrong region.
+   *
+   * Sampling is done on a downscale: a crop rectangle needs to be roughly right, not exact, and a
+   * full-resolution scan of a 1078x2399 device shot per row is real time on the client.
+   */
+  function contentBox(image) {
+    var dimensions = imageDimensions(image);
+    var scale = Math.min(1, BOX_SAMPLE_SIDE / Math.max(dimensions.width, dimensions.height));
+    var width = Math.max(1, Math.round(dimensions.width * scale));
+    var height = Math.max(1, Math.round(dimensions.height * scale));
+    var canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    var context = canvas.getContext("2d", { willReadFrequently: true });
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, 0, 0, width, height);
+    var data;
+    try {
+      data = context.getImageData(0, 0, width, height).data;
+    } catch (ignore) {
+      // A tainted canvas (cross-origin artifact) cannot be sampled. Fall back to the whole image.
+      return { x: 0, y: 0, width: dimensions.width, height: dimensions.height };
+    }
+    var transparent = false;
+    for (var probe = 3; probe < data.length; probe += 4) {
+      if (data[probe] < 250) {
+        transparent = true;
+        break;
+      }
+    }
+    var backdrop = [data[0], data[1], data[2]];
+    // An opaque corner is only a backdrop if it is a sheet the renderer paints; otherwise it is
+    // artwork reaching the edge, and there is nothing here to strip.
+    if (!transparent && !isScaffoldSheet(backdrop)) {
+      return { x: 0, y: 0, width: dimensions.width, height: dimensions.height };
+    }
+    var minX = width;
+    var minY = height;
+    var maxX = -1;
+    var maxY = -1;
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width; x++) {
+        var i = (y * width + x) * 4;
+        var drawn = transparent
+          ? data[i + 3] > 8
+          : Math.abs(data[i] - backdrop[0]) +
+              Math.abs(data[i + 1] - backdrop[1]) +
+              Math.abs(data[i + 2] - backdrop[2]) >
+            BOX_COLOUR_TOLERANCE;
+        if (drawn) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    // A blank capture has no content box; comparing whole-image is the only meaningful answer.
+    if (maxX < 0) return { x: 0, y: 0, width: dimensions.width, height: dimensions.height };
+    // Widen by one sample cell each way — the downscale can shave a partially-covered edge pixel.
+    var inverse = 1 / scale;
+    var x0 = Math.max(0, Math.floor((minX - 1) * inverse));
+    var y0 = Math.max(0, Math.floor((minY - 1) * inverse));
+    var x1 = Math.min(dimensions.width, Math.ceil((maxX + 2) * inverse));
+    var y1 = Math.min(dimensions.height, Math.ceil((maxY + 2) * inverse));
+    return { x: x0, y: y0, width: Math.max(1, x1 - x0), height: Math.max(1, y1 - y0) };
+  }
+
+  /**
+   * How far apart the two content boxes are in shape, 0 (identical proportions) to 100.
+   *
+   * Reported beside the score rather than folded into it. Normalising both sides to a common box
+   * before scoring is what makes the appearance comparison meaningful, but it also makes a genuine
+   * proportion difference invisible — and on this page a reference stretched into the render's
+   * canvas is a real finding, not noise to be smoothed away. Two honest numbers beat one blended
+   * one.
+   */
+  function aspectDelta(a, b) {
+    var ratioA = a.width / a.height;
+    var ratioB = b.width / b.height;
+    return (Math.abs(ratioA - ratioB) / Math.max(ratioA, ratioB)) * 100;
+  }
+
+  /**
+   * The rectangles to actually compare over, plus the measured boxes for reporting.
+   *
+   * Cropping to content is the right move while both captures have enough content to locate. It
+   * stops being right on a near-empty one: an empty-state preview whose only mark is a heading
+   * yields a box of a few percent of the canvas, and stretching that sliver across its partner
+   * turns one line of text into the entire comparison. An empty state that genuinely matches its
+   * reference then scores like a total mismatch.
+   *
+   * So the crop is conditional. When either side's box is too small to be a reliable frame, both
+   * sides fall back to the whole canvas — the behaviour that was always correct for this case. The
+   * measured boxes are still reported either way; "these two match but are framed very differently"
+   * is worth surfacing even when the score is computed whole-canvas.
+   */
+  function normalisedBoxes(referenceImage, candidateImage) {
+    var referenceSize = imageDimensions(referenceImage);
+    var candidateSize = imageDimensions(candidateImage);
+    var referenceBox = contentBox(referenceImage);
+    var candidateBox = contentBox(candidateImage);
+    var coverage = Math.min(
+      (referenceBox.width * referenceBox.height) / (referenceSize.width * referenceSize.height),
+      (candidateBox.width * candidateBox.height) / (candidateSize.width * candidateSize.height)
+    );
+    var full = coverage < MIN_BOX_COVERAGE;
+    return {
+      reference: full ? { x: 0, y: 0, width: referenceSize.width, height: referenceSize.height } : referenceBox,
+      candidate: full ? { x: 0, y: 0, width: candidateSize.width, height: candidateSize.height } : candidateBox,
+      geometry: aspectDelta(referenceBox, candidateBox),
+      cropped: !full
+    };
+  }
+
+  /**
+   * Score a design reference against a rendered preview.
+   *
+   * Both sides are cropped to their content box and drawn into one common target box, so the score
+   * answers "does this component look like its design?" rather than "were these two files exported
+   * at the same size?". Dimensions no longer have to agree — requiring that was what pushed
+   * producers into resampling reference art to fit the render's canvas in the first place.
+   */
   function scoreImageUrls(referenceUrl, candidateUrl) {
     return Promise.all([loadImage(referenceUrl), loadImage(candidateUrl)]).then(function (images) {
       var referenceImage = images[0];
       var candidateImage = images[1];
-      var dimensions = imageDimensions(referenceImage);
-      var candidateDimensions = imageDimensions(candidateImage);
-      if (dimensions.width !== candidateDimensions.width || dimensions.height !== candidateDimensions.height) {
-        throw new Error("image dimensions differ");
-      }
-      var scale = Math.min(1, MAX_SIDE / Math.max(dimensions.width, dimensions.height));
-      var width = Math.max(1, Math.round(dimensions.width * scale));
-      var height = Math.max(1, Math.round(dimensions.height * scale));
+      var boxes = normalisedBoxes(referenceImage, candidateImage);
+      var referenceBox = boxes.reference;
+      var candidateBox = boxes.candidate;
+      var scale = Math.min(1, MAX_SIDE / Math.max(candidateBox.width, candidateBox.height));
+      var width = Math.max(1, Math.round(candidateBox.width * scale));
+      var height = Math.max(1, Math.round(candidateBox.height * scale));
       var reference = grayFromDraw(function (context) {
-        context.drawImage(referenceImage, 0, 0, width, height);
+        context.drawImage(
+          referenceImage,
+          referenceBox.x, referenceBox.y, referenceBox.width, referenceBox.height,
+          0, 0, width, height
+        );
       }, width, height);
       var candidate = grayFromDraw(function (context) {
-        context.drawImage(candidateImage, 0, 0, width, height);
+        context.drawImage(
+          candidateImage,
+          candidateBox.x, candidateBox.y, candidateBox.width, candidateBox.height,
+          0, 0, width, height
+        );
       }, width, height);
-      return scorePlanes(reference, candidate, width, height);
+      return {
+        percent: scorePlanes(reference, candidate, width, height),
+        geometry: boxes.geometry
+      };
     });
   }
 
+  /**
+   * The pixel diff behind the Reference / Diff / Actual detail page.
+   *
+   * Diffed over the same content-box normalisation the score uses. Diffing raw canvases only worked
+   * while both sides happened to be exported at identical dimensions, and when they were not, the
+   * page had nothing to show but "dimensions differ" — least useful exactly when a visitor most
+   * wants to see where the two drift apart.
+   */
   function compareImageUrls(referenceUrl, actualUrl, canvas) {
     return Promise.all([loadImage(referenceUrl), loadImage(actualUrl)]).then(function (images) {
-      var dimensions = imageDimensions(images[0]);
-      var actualDimensions = imageDimensions(images[1]);
-      if (dimensions.width !== actualDimensions.width || dimensions.height !== actualDimensions.height) {
-        throw new Error("image dimensions differ");
-      }
-      canvas.width = dimensions.width;
-      canvas.height = dimensions.height;
+      var boxes = normalisedBoxes(images[0], images[1]);
+      var referenceBox = boxes.reference;
+      var actualBox = boxes.candidate;
+      var width = actualBox.width;
+      var height = actualBox.height;
+      canvas.width = width;
+      canvas.height = height;
       var context = canvas.getContext("2d", { willReadFrequently: true });
-      context.drawImage(images[0], 0, 0);
-      var reference = context.getImageData(0, 0, dimensions.width, dimensions.height);
-      context.clearRect(0, 0, dimensions.width, dimensions.height);
-      context.drawImage(images[1], 0, 0);
-      var actual = context.getImageData(0, 0, dimensions.width, dimensions.height);
-      var diff = context.createImageData(dimensions.width, dimensions.height);
+      function readNormalised(image, box) {
+        context.clearRect(0, 0, width, height);
+        context.drawImage(image, box.x, box.y, box.width, box.height, 0, 0, width, height);
+        return context.getImageData(0, 0, width, height);
+      }
+      var reference = readNormalised(images[0], referenceBox);
+      var actual = readNormalised(images[1], actualBox);
+      var diff = context.createImageData(width, height);
       var changed = 0;
       for (var i = 0; i < reference.data.length; i += 4) {
         var delta = Math.max(
@@ -255,10 +452,15 @@
           diff.data[i + 3] = Math.min(255, 96 + delta);
         }
       }
-      context.clearRect(0, 0, dimensions.width, dimensions.height);
+      context.clearRect(0, 0, width, height);
       context.putImageData(diff, 0, 0);
       return scoreImageUrls(referenceUrl, actualUrl).then(function (score) {
-        return { score: score, changed: changed, pixels: dimensions.width * dimensions.height };
+        return {
+          score: score.percent,
+          geometry: score.geometry,
+          changed: changed,
+          pixels: width * height
+        };
       });
     });
   }
@@ -279,12 +481,15 @@
     var resultText = referenceRoot.querySelector(".cp-reference-result");
     compareImageUrls(referenceUrl, actualUrl, diffCanvas).then(function (result) {
       var changedPercent = result.pixels ? result.changed * 100 / result.pixels : 0;
+      // The geometry figure is only worth the visitor's attention once the two content boxes are
+      // meaningfully different in shape; below that it is rasteriser noise.
+      var geometry = result.geometry >= GEOMETRY_REPORT_THRESHOLD
+        ? " · " + result.geometry.toFixed(1) + "% proportion difference"
+        : "";
       resultText.textContent = result.score.toFixed(1) + "% structural match · " +
-        changedPercent.toFixed(2) + "% pixels changed";
-    }, function (error) {
-      resultText.textContent = error.message === "image dimensions differ"
-        ? "Unavailable · reference and actual dimensions differ"
-        : "Comparison unavailable";
+        changedPercent.toFixed(2) + "% pixels changed" + geometry;
+    }, function () {
+      resultText.textContent = "Comparison unavailable";
     });
     var overlayRange = referenceRoot.querySelector(".cp-overlay-range");
     var overlayActual = referenceRoot.querySelector(".cp-reference-overlay img:last-child");
@@ -557,20 +762,33 @@
       vector.hidden = true;
       canvas.hidden = false;
     }
+    // The vector lanes score a render against an export of that same render, so they share its
+    // geometry by construction and report a bare percentage. Only the reference lane compares
+    // independently-authored artwork, and only it carries a geometry figure.
     var result = format === "svg"
-      ? scoreSvgUrls(pngUrl, candidateUrl)
+      ? scoreSvgUrls(pngUrl, candidateUrl).then(function (percent) { return { percent: percent }; })
       : format === "reference"
         ? scoreImageUrls(candidateUrl, pngUrl)
-        : renderRc(row, pngUrl, candidateUrl);
-    return result.then(function (percent) {
+        : renderRc(row, pngUrl, candidateUrl).then(function (percent) { return { percent: percent }; });
+    return result.then(function (measured) {
       if (run !== sequence) return null;
+      var percent = measured.percent;
       row.setAttribute("data-score", String(percent));
       score.textContent = percent.toFixed(1) + "%";
       score.className = "cp-compare-score cp-compare-score--" + grade(percent);
+      if (typeof measured.geometry === "number") {
+        row.setAttribute("data-geometry-delta", measured.geometry.toFixed(2));
+        score.title = measured.geometry >= GEOMETRY_REPORT_THRESHOLD
+          ? measured.geometry.toFixed(1) + "% proportion difference between the two content boxes"
+          : "";
+      } else {
+        row.removeAttribute("data-geometry-delta");
+      }
       return percent;
     }, function () {
       if (run !== sequence) return null;
       row.setAttribute("data-score", "-1");
+      row.removeAttribute("data-geometry-delta");
       score.textContent = "unavailable";
       score.className = "cp-compare-score cp-compare-score--na";
       return null;

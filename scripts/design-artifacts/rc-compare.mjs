@@ -647,6 +647,9 @@ await browser.close();
 const model = { system: SYSTEM, title: TITLE, rows };
 const html = renderRcCompareHtml(model, {
   generatedNote: `${rows.length} Remote Compose preview(s) · pixelmatch threshold ${THRESHOLD} · theme ${THEME}`,
+  // The page can diff two *players* against each other client-side, which nothing here precomputes;
+  // handing it the driver's threshold keeps those in-browser numbers on the same scale as ours.
+  threshold: THRESHOLD,
 });
 fs.writeFileSync(path.join(OUT, "rc-compare.html"), html);
 

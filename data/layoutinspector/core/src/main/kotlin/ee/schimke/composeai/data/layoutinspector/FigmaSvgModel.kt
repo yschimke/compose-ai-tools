@@ -426,6 +426,73 @@ data class FigmaSvgCapsuleClip(val x: Int, val y: Int, val width: Int, val heigh
 /** An axis-aligned rectangle in root-pixel space. */
 data class FigmaSvgRect(val x: Int, val y: Int, val width: Int, val height: Int)
 
+/**
+ * How the `compose/figma-svg` export treats the background the render painted behind the preview.
+ *
+ * The export's product is **editable layers**, and a baked-in fill is the one thing an importing
+ * designer can't easily undo — an opaque shape spanning the canvas that has to be found and deleted
+ * before the import works anywhere but the surface it was baked for. Hard to remove, easy to add
+ * back: so [NONE] is the default and a background is *requested*, per preview, by whoever knows it
+ * is wanted.
+ */
+@kotlinx.serialization.Serializable
+enum class FigmaSvgBackgroundMode {
+  /**
+   * Export background-free (the default). The tree's own fills still draw — a screen that paints
+   * its surface colour keeps painting it; only the *injected* bottom layer is dropped.
+   */
+  NONE,
+  /**
+   * Paint the background in the **device-mask** shape: a black `<circle>` for a round Wear face,
+   * the vertical stadium for a tall Wear scroll export, and — with no mask — the plain frame rect.
+   * The corners outside the mask stay transparent, so the export reads as a watch sitting on the
+   * importing canvas rather than a square tile. This is the shape the export used to inject
+   * unconditionally, and what a Wear device or tall-scroll preview generally wants.
+   */
+  DEVICE,
+  /**
+   * Paint the background in the **content's own** shape — the outermost layer that declares one, so
+   * an `OutlinedButton` gets a filled pill exactly under its outline and a circular icon button
+   * gets a disc. No device mask involved; a component preview that just needs something to read
+   * against wants this, not a full tile.
+   *
+   * Falls back to the plain frame rect when the tree declares no shape at all.
+   */
+  CONTENT_SHAPE,
+  /**
+   * Paint the background as a plain rect across the whole export, ignoring the device mask. The
+   * mask keeps clipping the *content*, but the fill runs to the corners — the "stage" look, for an
+   * export that has to sit on a solid card rather than on the importing canvas.
+   */
+  FULL_BLEED;
+
+  companion object {
+    /**
+     * Parses a mode from a wire/property string, case- and separator-insensitive (`full-bleed`,
+     * `full_bleed`, `fullBleed`). Also accepts the pre-modes booleans: `true` is the device-mask
+     * shape the export used to inject unconditionally, `false` is [NONE]. Null when unset or
+     * unrecognised, so a typo falls back to the caller's default rather than failing a render.
+     */
+    fun parse(raw: String?): FigmaSvgBackgroundMode? =
+      when (raw?.trim()?.lowercase()?.replace("-", "")?.replace("_", "")) {
+        null,
+        "" -> null
+        "false",
+        "none" -> NONE
+        "true",
+        "device",
+        "clipped",
+        "clip" -> DEVICE
+        "contentshape",
+        "content",
+        "shape" -> CONTENT_SHAPE
+        "fullbleed",
+        "bleed" -> FULL_BLEED
+        else -> null
+      }
+  }
+}
+
 data class FigmaSvgModel(
   val root: FigmaSvgLayer,
   val minX: Int,
@@ -445,13 +512,22 @@ data class FigmaSvgModel(
   /**
    * The device screen background painted behind the whole tree, clipped to the device mask
    * ([roundClip]/[capsuleClip]) — the black watch face a Wear **device** preview sits on. Only set
-   * for a device frame that opted in (a `deviceBackground` was passed to [from]); component
-   * previews (no device mask) never carry one, so their export stays transparent behind the
-   * content. Without it a device export is transparent between rows and behind light-on-dark
-   * chrome, so the light `TimeText`/header vanish on a light canvas (Figma) — the fill gives them
-   * the dark face to read against while the corners outside the mask stay transparent.
+   * when a `deviceBackground` was passed to [from], which the shipped producers do **only** under
+   * the `composeai.svg.background` opt-in: an injected fill is an opaque layer spanning the canvas
+   * that a designer has to delete before the import works anywhere but the surface it was baked
+   * for, and a tree that declared `showBackground` generally paints that same colour itself (a Wear
+   * device export carried this black circle directly over the root's own identical black rect).
+   * Component previews (no device mask) never carry one either way.
    */
   val deviceBackground: FigmaSvgColor? = null,
+  /**
+   * The silhouette [deviceBackground] fills in [FigmaSvgBackgroundMode.CONTENT_SHAPE] — the
+   * outermost layer that declares a shape, carried as a fill-only layer so the writer draws it
+   * through the same corner-radius / circle / sampled-outline path every other layer uses. When set
+   * it wins over [backgroundRect] and the mask fill: those are whole-canvas layers, this one hugs
+   * the component.
+   */
+  val backgroundShape: FigmaSvgLayer? = null,
   /**
    * The frame the [deviceBackground] fills when the preview carries **no** device mask — an
    * ordinary `@Preview(showBackground = true, backgroundColor = …)` whose render painted a flat
@@ -564,6 +640,7 @@ data class FigmaSvgModel(
       roundClip: Boolean = false,
       capsuleClip: Boolean = false,
       deviceBackground: String? = null,
+      backgroundMode: FigmaSvgBackgroundMode = FigmaSvgBackgroundMode.DEVICE,
       frameWidthPx: Int? = null,
       frameHeightPx: Int? = null,
     ): FigmaSvgModel {
@@ -643,7 +720,39 @@ data class FigmaSvgModel(
                 .takeIf { it.maxX > it.minX && it.maxY > it.minY }
             } ?: drawn
           }
-      val deviceBgResolved = deviceBackground?.let { argbToColor(it, names) }
+      val deviceBgResolved =
+        deviceBackground
+          ?.takeIf { backgroundMode != FigmaSvgBackgroundMode.NONE }
+          ?.let { argbToColor(it, names) }
+      // FULL_BLEED paints the background as a plain rect across the whole export, even on a device
+      // preview whose *tree* is masked — the mask keeps clipping the content, but the fill runs to
+      // the corners instead of being cut to the watch face. CLIPPED (the historical shape) hands
+      // the colour to the mask so a round Wear export gets a black circle and nothing outside it.
+      val fullBleed =
+        deviceBgResolved != null && backgroundMode == FigmaSvgBackgroundMode.FULL_BLEED
+      // CONTENT_SHAPE hugs the component instead of tiling the canvas: reuse the outermost shaped
+      // layer's own geometry as a fill-only layer, so an OutlinedButton's pill and an icon button's
+      // disc come out exactly right without a second shape implementation. A tree that declares no
+      // shape has nothing to hug — fall through to the whole-canvas rect.
+      val contentShape =
+        deviceBgResolved
+          ?.takeIf { backgroundMode == FigmaSvgBackgroundMode.CONTENT_SHAPE }
+          ?.let { bg ->
+            rootLayer.outermostShapedLayer()?.let { shaped ->
+              FigmaSvgLayer(
+                name = "Background",
+                left = shaped.left,
+                top = shaped.top,
+                right = shaped.right,
+                bottom = shaped.bottom,
+                fill = bg,
+                cornerRadiiPx = shaped.cornerRadiiPx,
+                circle = shaped.circle,
+                cut = shaped.cut,
+                shapePathData = shaped.shapePathData,
+              )
+            }
+          }
       // The captured frame PNG's pixel size is the exact area a maskless `showBackground` preview
       // fills: the render paints the background across the whole window and crops top-left, so
       // every
@@ -655,18 +764,21 @@ data class FigmaSvgModel(
       // canvas that must contain it — cover the full crop. Skipped for masked device frames (they
       // paint the mask shape) and when no frame size is known (the vector-only path keeps the
       // extent-based sizing, e.g. #2884's synthetic model).
-      val backgroundFrame =
-        if (
-          deviceBgResolved != null &&
-            clip == null &&
-            capsule == null &&
-            frameWidthPx != null &&
-            frameHeightPx != null &&
-            frameWidthPx > 0 &&
-            frameHeightPx > 0
-        )
+      val framePixelExtent =
+        if (frameWidthPx != null && frameHeightPx != null && frameWidthPx > 0 && frameHeightPx > 0)
           Extent(frame.left, frame.top, frame.left + frameWidthPx, frame.top + frameHeightPx)
         else null
+      val backgroundFrame =
+        when {
+          deviceBgResolved == null -> null
+          // Full-bleed: a rect across the whole export whatever the mask. The Android export runs
+          // in the capture phase, before the PNG exists, so it knows no `frameWidthPx` — fall back
+          // to the root's own bounds, which for a masked device is the square the mask inscribes.
+          fullBleed -> framePixelExtent ?: Extent(frame.left, frame.top, frame.right, frame.bottom)
+          // Clipped: a masked frame paints the mask shape instead, so the two never both draw.
+          clip != null || capsule != null -> null
+          else -> framePixelExtent
+        }
       // The canvas has to contain both the drawn content and the background crop.
       val drawnExtent =
         backgroundFrame?.let {
@@ -733,8 +845,11 @@ data class FigmaSvgModel(
       // (measured inside a generous 400×800 dp sandbox, PNG cropped back to intrinsic size) still
       // fills only the cropped area rather than the sandbox, and the #2884 maskless path is
       // unchanged.
+      // Set alongside a device mask only in FULL_BLEED — which is the writer's signal to paint it
+      // outside the clip group, so the fill reaches the corners the mask cuts away.
       val backgroundRect =
-        if (deviceBg != null && clip == null && capsule == null)
+        if (contentShape != null) null
+        else if (deviceBg != null && (fullBleed || (clip == null && capsule == null)))
           FigmaSvgRect(
             x = extent.minX,
             y = extent.minY,
@@ -777,9 +892,19 @@ data class FigmaSvgModel(
         roundClip = clip,
         capsuleClip = capsule,
         deviceBackground = deviceBg,
+        backgroundShape = contentShape,
         backgroundRect = backgroundRect,
       )
     }
+
+    /**
+     * The shallowest layer that declares a shape of its own — a corner radius, a circle, or a
+     * sampled outline. Depth-first from the root, so a wrapper Box with no shape hands off to the
+     * component inside it.
+     */
+    private fun FigmaSvgLayer.outermostShapedLayer(): FigmaSvgLayer? =
+      if (circle || cornerRadiiPx != null || shapePathData != null) this
+      else children.firstNotNullOfOrNull { it.outermostShapedLayer() }
 
     private fun FigmaSvgLayer.withRasterHrefs(retained: Set<String>): FigmaSvgLayer =
       copy(

@@ -467,6 +467,9 @@ class ServeWebFixtureTest {
         version = version,
         provenance = provenance,
         refreshUrl = "/compose-m3/refresh",
+        // "try in playground" on the summary line — the catalog-level half of the handoff, captured
+        // so its placement in that run of actions is diffed like any other pixel.
+        playgroundHref = "/playground?catalog=compose-m3",
       )
     // The public preview server's FRONT DOOR: an index of the published design systems, each a card
     // with a meaningful hero preview, its title + library, trust badge, and a link to /<system>/.
@@ -601,6 +604,10 @@ class ServeWebFixtureTest {
             "Profile screen",
             "src/main/kotlin/com/example/ProfileScreen.kt",
           ),
+        // …and the "open in playground" handoff, so the golden captures the full provenance row a
+        // host with the compile lane renders — the row is where every one of these affordances
+        // lands, so a change to its rhythm shows up here.
+        playgroundHref = "/playground?from=compose-m3/com.example.ProfileScreenPreview",
       )
     // A second viewer carrying the in-browser Wasm tier, so the harness captures the "Run in
     // browser (Wasm)" toggle + iframe seam a CMP catalog session shows.
@@ -3344,6 +3351,7 @@ class ServeWebFixtureTest {
     assertTrue(
       catalogKnobs.contains(
         "data-knob-key=\"label\" data-knob-kind=\"string\" data-knob-initial=\"Filled\" " +
+          "data-knob-default=\"Filled\" " +
           "value=\"Filled\">"
       ),
       "declared knobs are enabled on an override-renderable session",
@@ -3420,6 +3428,7 @@ class ServeWebFixtureTest {
     assertTrue(
       staticKnobs.contains(
         "data-knob-key=\"label\" data-knob-kind=\"string\" data-knob-initial=\"Filled\" " +
+          "data-knob-default=\"Filled\" " +
           "value=\"Filled\" disabled"
       ),
       "a plain static bundle leaves declared knobs disabled",
@@ -3449,6 +3458,7 @@ class ServeWebFixtureTest {
     assertTrue(
       wasmKnobs.contains(
         "data-knob-key=\"label\" data-knob-kind=\"string\" data-knob-initial=\"Filled\" " +
+          "data-knob-default=\"Filled\" " +
           "value=\"Filled\">"
       ),
       "a wasm-backed published catalog enables the declared knob controls (no trailing disabled)",

@@ -130,6 +130,22 @@ object FigmaLayeredSvg {
     // padded canvas, keeping child coordinates absolute (matching Figma's absolute layout on
     // import).
     val clipAttr = if (clip != null || capsule != null) """ clip-path="url(#deviceRound)"""" else ""
+    // A **full-bleed** background on a masked export has to be painted outside the clip group, or
+    // the device mask would cut it back to the watch face — which is precisely the *clipped* mode
+    // it exists to contrast with. `FigmaSvgModel.from` sets `backgroundRect` alongside a mask only
+    // in that mode, so the presence of both is the signal.
+    val fullBleedOverMask =
+      model.deviceBackground != null &&
+        model.backgroundRect != null &&
+        (clip != null || capsule != null)
+    if (fullBleedOverMask) {
+      sb.append("""<g transform="translate(${model.tx}, ${model.ty})">""").append('\n')
+      sb
+        .append("  ")
+        .append(backgroundRectSvg(model.backgroundRect!!, model.deviceBackground!!))
+        .append('\n')
+      sb.append("</g>\n")
+    }
     sb.append("""<g transform="translate(${model.tx}, ${model.ty})"$clipAttr>""")
     sb.append('\n')
     // A device preview paints its screen background (the black watch face) behind the tree, in the
@@ -139,6 +155,12 @@ object FigmaLayeredSvg {
       val fillOpacity = opacity("fill", bg)
       val shape =
         when {
+          // Already painted above, outside the clip.
+          fullBleedOverMask -> null
+          // CONTENT_SHAPE: the component's own silhouette, drawn through the ordinary layer-shape
+          // path so radii / circle / cut / sampled outline all come out identical to the layer it
+          // was taken from.
+          model.backgroundShape != null -> shape(model.backgroundShape, emptyMap())
           capsule != null ->
             """<rect x="${capsule.x}" y="${capsule.y}" width="${capsule.width}" """ +
               """height="${capsule.height}" rx="${capsule.rx}" ry="${capsule.rx}" """ +
@@ -148,11 +170,7 @@ object FigmaLayeredSvg {
           // A maskless `@Preview(showBackground = true, backgroundColor = …)` paints the flat
           // frame the render drew behind the composable (issue #2884) — without it the SVG was
           // transparent exactly where the PNG was opaque.
-          else ->
-            model.backgroundRect?.let { r ->
-              """<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" """ +
-                """fill="${bg.hex}"$fillOpacity/>"""
-            }
+          else -> model.backgroundRect?.let { backgroundRectSvg(it, bg) }
         }
       if (shape != null) sb.append("  ").append(shape).append('\n')
     }
@@ -169,6 +187,14 @@ object FigmaLayeredSvg {
     sb.append("</svg>\n")
     return sb.toString()
   }
+
+  /**
+   * The flat background rect — the bottom layer of a maskless `showBackground` export, and of a
+   * full-bleed masked one (issue #2884).
+   */
+  private fun backgroundRectSvg(r: FigmaSvgRect, bg: FigmaSvgColor): String =
+    """<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" """ +
+      """fill="${bg.hex}"${opacity("fill", bg)}/>"""
 
   /** True when this layer draws its own rect: a flat fill/stroke, or a captured brush (#2852). */
   private fun FigmaSvgLayer.paintsShape(): Boolean =

@@ -139,6 +139,86 @@ export function imagesByPreviewFunction(spec, catalog) {
 }
 
 /**
+ * Index a catalog's images by the daemon `previewId` that produced them:
+ * `previewId -> [{ componentId, image }]`.
+ *
+ * The fallback join for an **annotation-led catalog**. [imagesByPreviewFunction] walks
+ * `spec.groups` to learn which `@Preview` function produced which sticker — but a catalog whose
+ * inventory lives in `@CatalogComponent` / `@CatalogVariant` annotations has no `groups` at all
+ * (`catalog.spec.json` carries only cover-sheet fields), so that index comes back empty and every
+ * design-map entry warns "matches no published sticker" while the catalog publishes happily around
+ * it. The references simply never appear on the delivery branch, and the server's PNG ↔ Design
+ * reference lane stays dark.
+ *
+ * Reintroducing `groups` purely to satisfy this join would restate the whole inventory in JSON —
+ * the exact duplication the annotations exist to remove, and a second source of truth that can
+ * drift from the first.
+ *
+ * `previewId` is the better key anyway: it is what the export already stamps on every catalog
+ * image, and what a design-map entry already carries to disambiguate light from dark. Joining on it
+ * is exact, where the function-name join needs the spec to say which function owns which sticker.
+ *
+ * ### Two id namespaces
+ *
+ * The two sides are NOT written in the same alphabet, and comparing them verbatim silently drops
+ * references. A design-map entry records the **raw discovery id** — the one the daemon keys renders
+ * on — while a catalog image's `previewId` comes from the bundle manifest, which carries the
+ * **sanitised in-bundle form** (`BundleCommand.kt`: "The manifest's previewIds carry the sanitised
+ * in-bundle form; the daemon keys renders on the RAW discovery id"). Anything outside
+ * `[A-Za-z0-9._-]` becomes `_`, so a `@Preview(name = "Small Round")` is `…_Small Round` in the
+ * design-map and `…_Small_Round` in the catalog.
+ *
+ * So the index is keyed by BOTH forms. An exact hit wins; otherwise the entry's id is sanitised and
+ * matched against the same projection. Catalogs whose preview names need no sanitising (`Light` /
+ * `Dark`) are unaffected either way — which is exactly why this gap survives casual testing.
+ */
+export function imagesByPreviewId(catalog) {
+  const exact = new Map();
+  const sanitised = new Map();
+  for (const component of catalog?.components ?? []) {
+    for (const image of component?.images ?? []) {
+      if (typeof image?.previewId !== "string" || image.previewId === "") continue;
+      const match = { componentId: component.componentId, image };
+      if (!exact.has(image.previewId)) exact.set(image.previewId, []);
+      exact.get(image.previewId).push(match);
+
+      const key = sanitizeBundleEntryId(image.previewId);
+      if (!sanitised.has(key)) sanitised.set(key, []);
+      sanitised.get(key).push(match);
+    }
+  }
+  return { exact, sanitised };
+}
+
+/**
+ * Mirrors `sanitizeBundleEntryId` in `gradle-plugin/.../BundlePreviewTask.kt`, the transform that
+ * turns a raw discovery id into its in-bundle entry name. Kept character-identical to that regex:
+ * a divergence here reintroduces exactly the silent-drop bug this exists to close.
+ *
+ * Note it is idempotent — sanitising an already-sanitised id is a no-op — which is what lets the
+ * lookup below sanitise both sides without caring which form it started from.
+ */
+export function sanitizeBundleEntryId(id) {
+  return String(id).replace(/[^A-Za-z0-9._-]/g, "_");
+}
+
+/**
+ * Resolve a design-map entry's `previewId` against the catalog, across both id namespaces.
+ *
+ * Returns `[]` when nothing matches, and also when the sanitised form matches SEVERAL images. That
+ * second case is `uniqueBundleEntryId`'s collision suffix: two distinct raw ids that sanitise the
+ * same are disambiguated in-bundle (`Foo_A_B`, `Foo_A_B-2`), and the raw id alone can no longer say
+ * which one it meant. Publishing a reference against a coin-flip is worse than publishing none, so
+ * the caller warns instead.
+ */
+function matchesForPreviewId({ exact, sanitised }, previewId) {
+  const direct = exact.get(previewId);
+  if (direct && direct.length > 0) return direct;
+  const viaSanitised = sanitised.get(sanitizeBundleEntryId(previewId)) ?? [];
+  return viaSanitised.length === 1 ? viaSanitised : [];
+}
+
+/**
  * The reference id for a serve preview id, disambiguated when one preview carries several
  * references (a Figma node *and* a committed HTML mock, say). Capped at the server's id length —
  * an over-long id is dropped silently on the box, so it must never be emitted.
@@ -214,6 +294,8 @@ export function planDesignReferences({ designMap, spec, catalog }) {
   const warnings = [];
   const records = [];
   const index = imagesByPreviewFunction(spec, catalog);
+  // Only built when the spec-driven index yields nothing for an entry — see [imagesByPreviewId].
+  const byPreviewId = imagesByPreviewId(catalog);
   const ordinals = new Map();
 
   for (const entry of designMap?.components ?? []) {
@@ -222,15 +304,28 @@ export function planDesignReferences({ designMap, spec, catalog }) {
       warnings.push(`design-map entry has no 'path#Member' code handle: ${entry?.code ?? "?"}`);
       continue;
     }
-    const allMatches = index.get(fn);
+    // Function name first — it is the join a spec-led catalog needs, and it stays authoritative
+    // where a spec exists. An annotation-led catalog has no `groups` for that index to walk, so
+    // fall back to the entry's own `previewId`, which the export stamps on every catalog image.
+    let allMatches = index.get(fn);
+    let joinedOnPreviewId = false;
+    if ((!allMatches || allMatches.length === 0) && typeof entry?.previewId === "string") {
+      allMatches = matchesForPreviewId(byPreviewId, entry.previewId);
+      joinedOnPreviewId = allMatches.length > 0;
+    }
     if (!allMatches || allMatches.length === 0) {
       warnings.push(
         `design-map '${fn}' matches no published sticker — no catalog.spec.json ` +
-          `preview names that @Preview function, or its component rendered nothing`,
+          `preview names that @Preview function, no published image carries its previewId, ` +
+          `or its component rendered nothing`,
       );
       continue;
     }
-    const matches = narrowToMappedPreviewId(allMatches, entry?.previewId, fn, warnings);
+    // A previewId join has already selected exactly the named sticker, so re-narrowing on the same
+    // field is a no-op at best; skip it so the intent reads once.
+    const matches = joinedOnPreviewId
+      ? allMatches
+      : narrowToMappedPreviewId(allMatches, entry?.previewId, fn, warnings);
     if (matches.length === 0) continue;
     for (const { componentId, image } of matches) {
       const previewId = servePreviewId(image.path);

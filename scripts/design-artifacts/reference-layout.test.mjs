@@ -51,3 +51,15 @@ test("returns undefined when there is no frame to scale against", () => {
   assert.equal(scaleTree({ root: {} }, 400), undefined);
   assert.equal(scaleTree({ root: { bounds: { x: 0, y: 0, width: 0, height: 0 } } }, 400), undefined);
 });
+
+test("offsets every box by where the artwork sits in a letterboxed raster", () => {
+  // A reference whose proportions differ from the sticker's is scaled to fit and centred, so the
+  // annotations have to move with the artwork rather than with the canvas.
+  const scaled = scaleTree(tree, 400, 0, 60);
+  assert.deepEqual(scaled.root.bounds, { x: 0, y: 60, width: 400, height: 96 });
+  assert.deepEqual(scaled.root.children[0].bounds, { x: 92, y: 112, width: 216, height: 40 });
+});
+
+test("no offset is the default, so a full-bleed reference is unaffected", () => {
+  assert.deepEqual(scaleTree(tree, 400).root.bounds, scaleTree(tree, 400, 0, 0).root.bounds);
+});

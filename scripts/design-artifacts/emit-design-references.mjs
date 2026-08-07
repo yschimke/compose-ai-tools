@@ -28,9 +28,11 @@
  *    token is present (`FIGMA_TOKEN` / `FIGMA_PAT` / `FIGMA_ACCESS_TOKEN`). No token ⇒ the entry is
  *    skipped with a warning, which is the normal state for a fork or a PR run.
  *
- * Every raster is then resampled to the exact dimensions of the catalog sticker it is mapped to
- * (see png-resample.mjs for why "exact" is load-bearing) and hashed, so the server can verify it
- * before advertising the reference.
+ * Every raster is then fitted to the dimensions of the catalog sticker it is mapped to and hashed,
+ * so the server can verify it before advertising the reference. Fitted, not stretched: a raster
+ * within rounding distance is resampled, and one authored at genuinely different proportions is
+ * scaled to fit and letterboxed rather than distorted into the sticker's shape. See
+ * png-resample.mjs for why that distinction matters.
  *
  * ## Failure posture
  *
@@ -52,7 +54,7 @@ import {
   planDesignReferences,
   referenceManifest,
 } from "./design-references.mjs";
-import { isRoundingDelta, resampleRgba } from "./png-resample.mjs";
+import { fitRgba, isRoundingDelta, resampleRgba } from "./png-resample.mjs";
 import { layoutFromNode } from "@design-parity/adapter-figma";
 import { scaleTree } from "./reference-layout.mjs";
 import { withReferenceAnnotations } from "@design-parity/catalog-export";
@@ -302,24 +304,40 @@ for (const record of records) {
     continue;
   }
 
-  // Captured before the resample rewrites `raster`, then scaled to the published size below.
+  // Captured before the fit rewrites `raster`, then moved onto the published raster below.
   const capturedLayout = raster.document ? layoutFromNode(raster.document) : undefined;
 
+  // Where the artwork ends up inside the published raster. Full-bleed unless a fit letterboxes it.
+  let placement = { width: target.width, height: target.height, x: 0, y: 0 };
   if (raster.width !== target.width || raster.height !== target.height) {
     const rounding = isRoundingDelta(raster.width, raster.height, target.width, target.height);
     const message =
-      `${record.id}: resampling reference ${raster.width}x${raster.height} -> ` +
-      `${target.width}x${target.height}`;
-    // A rounding correction is expected on every browser raster and not worth a warning; a real
-    // rescale means the reference was authored at a different density, which is worth saying out
-    // loud even though we handle it.
-    if (rounding) console.log(`design-references: ${message}`);
-    else warn(message);
-    raster = {
-      width: target.width,
-      height: target.height,
-      data: resampleRgba(raster.data, raster.width, raster.height, target.width, target.height),
-    };
+      `${record.id}: ${rounding ? "resampling" : "fitting"} reference ` +
+      `${raster.width}x${raster.height} -> ${target.width}x${target.height}`;
+    if (rounding) {
+      // Sub-pixel: the proportions already agree, so stretch and say nothing.
+      console.log(`design-references: ${message}`);
+      raster = {
+        width: target.width,
+        height: target.height,
+        data: resampleRgba(raster.data, raster.width, raster.height, target.width, target.height),
+      };
+    } else {
+      // A real size difference. Stretching here would republish the design at proportions its
+      // author never drew, so scale it to fit and leave the remainder transparent — the comparison
+      // normalises to the content box, so the padding costs nothing and the shape survives.
+      const fitted = fitRgba(raster.data, raster.width, raster.height, target.width, target.height);
+      placement = fitted.box;
+      if (fitted.box.width !== target.width || fitted.box.height !== target.height) {
+        warn(
+          `${message} (letterboxed to ${fitted.box.width}x${fitted.box.height} — the reference's ` +
+            `proportions differ from the sticker's)`
+        );
+      } else {
+        console.log(`design-references: ${message}`);
+      }
+      raster = { width: target.width, height: target.height, data: fitted.data };
+    }
   }
 
   const bytes = writePng(raster);
@@ -329,7 +347,9 @@ for (const record of records) {
   record.raster.sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
   written++;
 
-  const scaled = capturedLayout ? scaleTree(capturedLayout, target.width) : undefined;
+  const scaled = capturedLayout
+    ? scaleTree(capturedLayout, placement.width, placement.x, placement.y)
+    : undefined;
   if (scaled) annotatedReferences[record.id] = { layout: scaled };
 }
 

@@ -45,6 +45,11 @@ import org.robolectric.annotation.GraphicsMode
  * Issue #2974 — end-to-end PNG↔SVG parity for a dark `@Preview(showBackground = true)` whose only
  * drawn child is a hairline divider centred in a taller fixed-size `Box`.
  *
+ * Runs with the background injection **opted in** (`composeai.svg.background`), which is not the
+ * shipped default — the export is background-free unless a caller asks (see
+ * `ComposeFigmaSvgBackgroundOptInTest`). What this pins is the fill's *geometry* for callers who do
+ * ask, so the #2974 shrink-wrap regression stays covered.
+ *
  * The render paints the backing colour across the whole window (exactly as production's
  * `RobolectricRenderTest` does — on the activity's `decorView`, not a wrapper composable) and crops
  * top-left, so the PNG fills the whole 100×26 crop with the dark surface. The layered-SVG export
@@ -67,12 +72,17 @@ class FigmaSvgShowBackgroundBoundsRenderTest {
   fun setUp() {
     rootDir = Files.createTempDirectory("figma-svg-show-background").toFile()
     System.setProperty("roborazzi.test.record", "true")
+    // The export ships background-free (see ComposeFigmaSvgBackgroundOptInTest); this fixture is
+    // about the *shape* of the fill when a caller does opt in, so turn the injection on. Without
+    // it there is no rect to size and the #2974 regression this guards would go uncovered.
+    System.setProperty(ComposeFigmaSvgDataProducer.PROP_BACKGROUND, "true")
   }
 
   @After
   fun tearDown() {
     rootDir.deleteRecursively()
     System.clearProperty("roborazzi.test.record")
+    System.clearProperty(ComposeFigmaSvgDataProducer.PROP_BACKGROUND)
   }
 
   @Test

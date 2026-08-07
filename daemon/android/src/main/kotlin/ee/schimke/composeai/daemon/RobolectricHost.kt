@@ -25,6 +25,7 @@ import ee.schimke.composeai.daemon.protocol.SemanticsTargetCandidate
 import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedCode
 import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
 import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
 import ee.schimke.composeai.data.layoutinspector.TargetResolution
@@ -1762,6 +1763,9 @@ open class RobolectricHost(
       // path keeps the opaque background when the viewer sends `PreviewOverrides(clearBackground =
       // true)`. Null preserves the discovery-time value.
       clearBackground = overrides?.clearBackground ?: base.clearBackground,
+      // Per-render figma-svg background mode. Null (say nothing) leaves the export
+      // background-free. See RenderSpec.svgBackground.
+      svgBackground = overrides?.svgBackground ?: base.svgBackground,
       // Carry a `themeProvider` selection through the held/live path: toExtensionOverrides() drops it
       // (renderer-read, not extension-consumed), but the renderer reads spec.overrides directly, so
       // without this a live App-theme change would keep the default wrapper.

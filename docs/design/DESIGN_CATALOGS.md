@@ -536,6 +536,20 @@ preview server already disambiguates a *colliding* card label on its own
 (`Edgebutton · Small Round`), so the fan-out is for when you want authored ids and
 captions per breakpoint, not merely readable labels.
 
+### The render timeout scales with the sheet, not the job
+
+`bundle pack`'s own `--timeout` is separate from the job's `timeout-minutes`, and it is the one a
+growing catalog hits first: a sheet can sit comfortably inside a 90-minute job and still be killed
+by the inner render timeout, which surfaces as a bare `Build timed out after 600s` long before the
+publish step it never reached. The reusable workflow exposes it as `render-timeout` (seconds,
+default 600) for exactly that reason.
+
+It scales with the number of previews, so a catalog that fans one component out over a variant
+matrix outgrows the default well before it outgrows the job — `m3-catalog` crossed it going from 193
+previews to 287, which is one component family gaining its size and shape axes. Raise the input
+rather than thinning coverage; the other lever is the render priority below, which trades baked
+pixels for a live path.
+
 ### Render priority: deferring the long tail to the live server
 
 A catalog that publishes with a live path — `publish-live-bundle: true` (the bundle

@@ -6,6 +6,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.FigmaLayeredSvg
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.layoutinspector.FigmaSvgFontFace
 import ee.schimke.composeai.data.layoutinspector.FigmaSvgLayer
 import ee.schimke.composeai.data.layoutinspector.FigmaSvgModel
@@ -41,6 +42,21 @@ object ComposeFigmaSvgDataProducer {
   const val RASTER_DIR: String = "figma-raster"
 
   /**
+   * Daemon-wide default background mode for the export (`-Dcomposeai.svg.background=…`), for
+   * consumers who want every preview to inject one rather than requesting it per item.
+   *
+   * Accepts a [FigmaSvgBackgroundMode] name — `none`, `device`, `content-shape`, `full-bleed` —
+   * plus the legacy `true` (= `device`, the shape the export used to inject unconditionally) and
+   * `false` (= `none`). Unset or unrecognised means `none`: the export exists to produce editable
+   * layers, and an injected fill is an opaque rect/circle spanning the whole canvas that a designer
+   * has to delete before the import works on their own canvas — while the tree that declared
+   * `showBackground` almost always paints that same colour itself anyway.
+   *
+   * A per-render `PreviewOverrides.svgBackground` wins over this.
+   */
+  const val PROP_BACKGROUND: String = "composeai.svg.background"
+
+  /**
    * Writes `compose-figma.svg` under `<rootDir>/<previewId>/`.
    *
    * When [frameImage] is supplied (the render's already-captured frame PNG), the export runs in
@@ -67,6 +83,13 @@ object ComposeFigmaSvgDataProducer {
    *   Defaults to 1.0 (an un-scaled capture).
    * @param frameImage the captured frame PNG in root-pixel space; when present, enables hybrid
    *   raster export by cropping opaque-node rasters out of it.
+   * @param backgroundMode this render's per-item request (`PreviewOverrides.svgBackground`): how to
+   *   treat [deviceBackground] — [FigmaSvgBackgroundMode.NONE] (no injected layer),
+   *   [FigmaSvgBackgroundMode.DEVICE] (the device-mask shape),
+   *   [FigmaSvgBackgroundMode.CONTENT_SHAPE] (the component's own silhouette), or
+   *   [FigmaSvgBackgroundMode.FULL_BLEED] (a plain rect to the corners). Null defers to the
+   *   daemon-wide [PROP_BACKGROUND], which itself defaults to `NONE` — so a preview that asks for
+   *   nothing exports background-free.
    */
   fun writeSvg(
     rootDir: File,
@@ -80,9 +103,29 @@ object ComposeFigmaSvgDataProducer {
     fontResolver: FigmaFontResolver? = null,
     roundClip: Boolean = false,
     deviceBackground: String? = null,
+    backgroundMode: FigmaSvgBackgroundMode? = null,
     fileSystem: FileSystem = SystemFileSystem,
   ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
+    // Background injection is **off by default**. This export's job is editable layers, and an
+    // injected fill is the opposite: an opaque rect/circle under the whole tree that a designer has
+    // to find and delete before the import is usable on any canvas but the one it was baked for.
+    // It is also redundant in practice — a preview that declares `showBackground` is almost always
+    // a screen whose own root already paints that colour, so the injected layer sits directly on
+    // top of an identical one the tree drew itself (a Wear device export carries a black `<circle>`
+    // over the root's own black `<rect>`).
+    //
+    // Two ways back in, and the per-item one is the point: [backgroundMode] is this render asking
+    // for one — `DEVICE` for the Wear face / tall-scroll capsule, `CONTENT_SHAPE` for the pill
+    // under
+    // an outlined button, `FULL_BLEED` for a solid tile — while `composeai.svg.background=…` sets a
+    // daemon-wide default for consumers who want every preview to carry one. A hardcoded background
+    // is hard to remove and easy to add back, so neither is on by default.
+    val mode =
+      backgroundMode
+        ?: FigmaSvgBackgroundMode.parse(System.getProperty(PROP_BACKGROUND))
+        ?: FigmaSvgBackgroundMode.NONE
+    val background = deviceBackground?.takeIf { mode != FigmaSvgBackgroundMode.NONE }
     val frame = frameImage?.takeIf { it.exists() }
     // The frame PNG's pixel size is the exact area a maskless `showBackground` preview fills, so
     // hand it to the model — a thin/short child no longer shrink-wraps the background to itself
@@ -108,10 +151,10 @@ object ComposeFigmaSvgDataProducer {
         // mask the export to the same circle so its square full-frame background doesn't paint the
         // corners the render leaves clear.
         roundClip = roundClip,
-        // A device preview opts into painting its screen background (the black watch face) behind
-        // the
-        // tree, clipped to the device mask; component previews pass null and stay background-free.
-        deviceBackground = deviceBackground,
+        // Null unless this render asked for a background (or the daemon-wide default is set) — see
+        // [mode] above. A preview that asks for nothing exports background-free.
+        deviceBackground = background,
+        backgroundMode = mode,
       )
     val fonts = fontResolver?.let { resolveFonts(model, it, fileSystem) }
     // Everything this export can put a real name to: the faces it embedded, the captured→emitted

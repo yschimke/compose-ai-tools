@@ -2042,6 +2042,10 @@ internal object AndroidPreviewSupport {
         val fontsOffline =
           project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
         val svgEmbedFonts = composeAiSvgEmbedFonts(project)
+        // Whether the figma-svg export injects the preview's declared background. Off by default;
+        // forwarded so `-Dcomposeai.svg.background=true` (or `-PcomposePreview.svgBackground=true`)
+        // reaches the JVM that reads it rather than dying on the Gradle JVM.
+        val svgBackground = composeAiSvgBackground(project)
         // Whether an unresolved downloadable font fails its preview (default) or degrades to a
         // `<png>.warnings.json` warning. Forwarded so `-Dcomposeai.fonts.failOnFallback=false`
         // (or `-PcomposePreview.fontsFailOnFallback=false`) on the Gradle invocation actually
@@ -2062,6 +2066,7 @@ internal object AndroidPreviewSupport {
             fontsCacheDir = fontsCacheDir,
             fontsOffline = fontsOffline.get(),
             svgEmbedFonts = svgEmbedFonts.get(),
+            svgBackground = svgBackground.get(),
             fontsFailOnFallback = fontsFailOnFallback.get(),
             hostTheme = hostTheme.get(),
           )
@@ -2758,6 +2763,7 @@ internal object AndroidPreviewSupport {
     val daemonFontsOffline =
       project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
     val daemonSvgEmbedFonts = composeAiSvgEmbedFonts(project)
+    val daemonSvgBackground = composeAiSvgBackground(project)
     val daemonFontsFailOnFallback = composeAiFontsFailOnFallback(project)
     // The Android theme the preview host activity runs under, forwarded to the daemon JVM exactly
     // as the one-shot `composePreviewRender` path forwards it. `PreviewHostTheme` reads this in the
@@ -2933,6 +2939,7 @@ internal object AndroidPreviewSupport {
       this.systemProperties.put("composeai.fonts.offline", daemonFontsOffline)
       this.systemProperties.put("composeai.fonts.failOnFallback", daemonFontsFailOnFallback)
       this.systemProperties.put("composeai.svg.embedFonts", daemonSvgEmbedFonts)
+      this.systemProperties.put("composeai.svg.background", daemonSvgBackground)
       this.systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
       this.systemProperties.put("composeai.daemon.protocolVersion", "1")
       this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
