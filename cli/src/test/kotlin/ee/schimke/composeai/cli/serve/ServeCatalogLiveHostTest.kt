@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -1168,6 +1169,69 @@ class ServeCatalogLiveHostTest {
     assertEquals("degraded", snapshot?.state, "and no longer reads as ordinary throttling")
     // ...and the request lane can answer terminally (409) instead of a retry-after it can't honour.
     assertNotNull(composite.renderFailureLatch(catalogId, themeOverride()))
+  }
+
+  @Test
+  fun `a broken live lane stops theme optimization, live advertising, and busy retries`() {
+    // Issue #3448: the m3-catalog daemon hit an UnsatisfiedLinkError and theme pre-optimization
+    // kept feeding it — 4740 remaining, a ~7h ETA, 275s of gate wait, all on work where every
+    // single render fails — while the catalog went on reporting `live: true, degradation: null`
+    // and visitors got `503 render busy; retry shortly`.
+    val renderRoot = java.nio.file.Files.createTempDirectory("breaker").toFile()
+    renderRoot.deleteOnExit()
+    lateinit var session: FakeRenderSession
+    session =
+      FakeRenderSession(
+        renderRoot,
+        renderHook = { _, _ ->
+          session.emitFailed(daemonId, "UnsatisfiedLinkError: 'long PathBuilder_nMakeFromPath'")
+        },
+      )
+    val live =
+      ServeRenderHost(
+        session = session,
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked =
+          RecordingHost(
+            listOf(ServePreview(catalogId, catalogId), ServePreview(androidOnlyId, androidOnlyId)),
+            "baked",
+          ),
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+      )
+
+    composite.prewarm()
+    awaitPassIdle(composite)
+    assertEquals(1, session.renderCount.get(), "the failing daemon is asked once")
+
+    // Heartbeats re-enter the pass; it must stand down rather than queue more doomed renders.
+    repeat(10) {
+      composite.keepLiveWarm()
+      awaitPassIdle(composite)
+    }
+    assertEquals(1, session.renderCount.get(), "background work must not feed a broken renderer")
+
+    // The catalog stops claiming a healthy live lane and says why.
+    assertFalse(composite.hasLiveStream, "a catalog with no working render lane is not live")
+    val degradation =
+      composite.degradations.single { it.code == ServeDegradation.RENDER_LANE_BROKEN }
+    assertTrue(degradation.detail.contains("UnsatisfiedLinkError"), degradation.detail)
+    assertTrue(assertNotNull(composite.renderBreaker()).fatal)
+
+    // A request for a daemon-twinned preview is answered terminally with the real reason, so the
+    // HTTP layer 409s instead of sending the browser back round the retry-after loop…
+    val latched = assertNotNull(composite.renderFailureLatch(catalogId, themeOverride()))
+    assertTrue(latched.contains("UnsatisfiedLinkError"), latched)
+    // …while a preview that never needed the daemon keeps serving its baked pixels.
+    assertNull(composite.renderFailureLatch(androidOnlyId, PreviewOverrides()))
+    live.close()
   }
 
   @Test

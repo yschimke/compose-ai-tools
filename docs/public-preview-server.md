@@ -1191,6 +1191,39 @@ backoffs, timeouts) — and the top-level `renderStats` is the roll-up across da
 background-sandbox-boot work drives down). Both are additive on `status/v1` and null/absent until
 something has rendered.
 
+### Render circuit breaker
+
+`renderStats` also carries `shortCircuited` and — only while a lane is broken — a `breaker` object:
+
+```json
+"renderStats": { "renders": 196, "ok": 196, "failed": 21, "shortCircuited": 3773,
+  "breaker": { "open": true, "fatal": true,
+    "reason": "render lane disabled after a non-recoverable UnsatisfiedLinkError — retrying cannot help. …",
+    "openedAtEpochMillis": 1754582400000, "failureRate": 1.0, "sampleCount": 50,
+    "shortCircuitedRenders": 3773 } }
+```
+
+A daemon that fails a render **fatally** — an `UnsatisfiedLinkError`, `NoClassDefFoundError`,
+`NoSuchMethodError` or any other linkage/classpath fault — cannot succeed on retry, ever, for any
+input, so the host stops asking after the first occurrence (`fatal: true`, no cooldown; it takes a
+republished bundle or a restart to clear). Any *other* sustained run of failures — 90% of the last
+50 renders — trips the same breaker without being classified (`fatal: false`); that one probes with
+a single render a minute and closes itself as soon as one succeeds.
+
+While the breaker is open the host:
+
+- answers `/render` with the **underlying failure reason** as a terminal `409`, not
+  `503 render busy; retry shortly` (the daemon isn't busy, and retrying will never help);
+- reports `live: false` for the catalog and publishes a `render-lane-broken` `degradation`, instead
+  of advertising a healthy live lane at a 95% failure rate;
+- **pauses background theme optimization** for that catalog — it is the largest consumer of the
+  render gate and pure waste while every render fails. A presence heartbeat re-enters the pass, so
+  it resumes by itself if the breaker closes.
+
+`shortCircuited` counts the renders refused this way. It is deliberately *not* folded into `failed`
+— the daemon was never asked, so counting it there would inflate the failure rate that tripped the
+breaker and hide how much work the breaker is saving.
+
 A Home Assistant REST sensor reads the top-level `status` (`ok`/`degraded`) as its state and lifts
 the grouped counts + arrays as attributes, e.g.:
 
