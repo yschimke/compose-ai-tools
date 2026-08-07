@@ -6,6 +6,7 @@ import {
   derivationMismatches,
   functionNameOf,
   imagesByPreviewFunction,
+  imagesByPreviewId,
   planDesignReferences,
   referenceId,
   referenceManifest,
@@ -442,4 +443,108 @@ test("planDesignReferences warns when the entry's previewId matches no published
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /ContactRowChatPreview_Typo/);
   assert.match(warnings[0], /ContactRowChatPreview_Light/);
+});
+
+// --- Annotation-led catalogs (no `spec.groups`) ------------------------------------------------
+//
+// The inventory lives in `@CatalogComponent` / `@CatalogVariant` annotations and `catalog.spec.json`
+// carries only cover-sheet fields, so the function-name index has nothing to walk. Before the
+// previewId fallback, every entry in such a repo warned "matches no published sticker" and the
+// delivery branch published no `references/` at all — a silent, total loss of the PNG ↔ Design lane.
+
+const ANNOTATION_SPEC = {
+  system: "m3-catalog",
+  title: "Material 3 Design Kit",
+  modes: ["light", "dark"],
+};
+
+const ANNOTATION_CATALOG = {
+  components: [
+    {
+      componentId: "Button/Filled",
+      images: [
+        {
+          variant: "ideal",
+          path: "images/button-filled/ideal__default__light.png",
+          state: "default",
+          theme: "light",
+          width: 300,
+          height: 210,
+          previewId: "ee.m3catalog.sections.ButtonsKt.FilledButton_Light",
+        },
+        {
+          variant: "ideal",
+          path: "images/button-filled/ideal__default__dark.png",
+          state: "default",
+          theme: "dark",
+          width: 300,
+          height: 210,
+          previewId: "ee.m3catalog.sections.ButtonsKt.FilledButton_Dark",
+        },
+      ],
+    },
+  ],
+};
+
+test("planDesignReferences joins on previewId when the spec declares no groups", () => {
+  const designMap = {
+    components: [
+      {
+        code: "catalog/src/main/kotlin/ee/m3catalog/sections/Buttons.kt#FilledButton",
+        source: "figma",
+        ref: "figma:abc/57994:2227",
+        previewId: "ee.m3catalog.sections.ButtonsKt.FilledButton_Light",
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({
+    designMap,
+    spec: ANNOTATION_SPEC,
+    catalog: ANNOTATION_CATALOG,
+  });
+
+  assert.deepEqual(warnings, []);
+  // Exactly the light sticker: the previewId join selects one image, so the dark twin is not
+  // published against a light design.
+  assert.equal(records.length, 1);
+  assert.equal(records[0].raster.width, 300);
+  assert.match(records[0].label, /^Button\/Filled — figma$/);
+});
+
+test("planDesignReferences still warns when no published image carries the entry's previewId", () => {
+  const designMap = {
+    components: [
+      {
+        code: "catalog/src/main/kotlin/ee/m3catalog/sections/Buttons.kt#GhostButton",
+        source: "figma",
+        ref: "figma:abc/1:2",
+        previewId: "ee.m3catalog.sections.ButtonsKt.GhostButton_Light",
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({
+    designMap,
+    spec: ANNOTATION_SPEC,
+    catalog: ANNOTATION_CATALOG,
+  });
+
+  assert.deepEqual(records, []);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /matches no published sticker/);
+});
+
+test("imagesByPreviewId indexes every image that carries a previewId", () => {
+  const index = imagesByPreviewId(ANNOTATION_CATALOG);
+  assert.deepEqual(
+    [...index.keys()].sort(),
+    [
+      "ee.m3catalog.sections.ButtonsKt.FilledButton_Dark",
+      "ee.m3catalog.sections.ButtonsKt.FilledButton_Light",
+    ],
+  );
+  // Images with no previewId (the `--extra-renders` fold-in) are simply absent rather than keyed
+  // under undefined, which would collide every one of them onto a single bucket.
+  assert.equal(imagesByPreviewId({ components: [{ images: [{ path: "a.png" }] }] }).size, 0);
 });

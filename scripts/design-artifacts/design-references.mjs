@@ -139,6 +139,38 @@ export function imagesByPreviewFunction(spec, catalog) {
 }
 
 /**
+ * Index a catalog's images by the daemon `previewId` that produced them:
+ * `previewId -> [{ componentId, image }]`.
+ *
+ * The fallback join for an **annotation-led catalog**. [imagesByPreviewFunction] walks
+ * `spec.groups` to learn which `@Preview` function produced which sticker — but a catalog whose
+ * inventory lives in `@CatalogComponent` / `@CatalogVariant` annotations has no `groups` at all
+ * (`catalog.spec.json` carries only cover-sheet fields), so that index comes back empty and every
+ * design-map entry warns "matches no published sticker" while the catalog publishes happily around
+ * it. The references simply never appear on the delivery branch, and the server's PNG ↔ Design
+ * reference lane stays dark.
+ *
+ * Reintroducing `groups` purely to satisfy this join would restate the whole inventory in JSON —
+ * the exact duplication the annotations exist to remove, and a second source of truth that can
+ * drift from the first.
+ *
+ * `previewId` is the better key anyway: it is what the export already stamps on every catalog
+ * image, and what a design-map entry already carries to disambiguate light from dark. Joining on it
+ * is exact, where the function-name join needs the spec to say which function owns which sticker.
+ */
+export function imagesByPreviewId(catalog) {
+  const index = new Map();
+  for (const component of catalog?.components ?? []) {
+    for (const image of component?.images ?? []) {
+      if (typeof image?.previewId !== "string" || image.previewId === "") continue;
+      if (!index.has(image.previewId)) index.set(image.previewId, []);
+      index.get(image.previewId).push({ componentId: component.componentId, image });
+    }
+  }
+  return index;
+}
+
+/**
  * The reference id for a serve preview id, disambiguated when one preview carries several
  * references (a Figma node *and* a committed HTML mock, say). Capped at the server's id length —
  * an over-long id is dropped silently on the box, so it must never be emitted.
@@ -214,6 +246,8 @@ export function planDesignReferences({ designMap, spec, catalog }) {
   const warnings = [];
   const records = [];
   const index = imagesByPreviewFunction(spec, catalog);
+  // Only built when the spec-driven index yields nothing for an entry — see [imagesByPreviewId].
+  const byPreviewId = imagesByPreviewId(catalog);
   const ordinals = new Map();
 
   for (const entry of designMap?.components ?? []) {
@@ -222,15 +256,28 @@ export function planDesignReferences({ designMap, spec, catalog }) {
       warnings.push(`design-map entry has no 'path#Member' code handle: ${entry?.code ?? "?"}`);
       continue;
     }
-    const allMatches = index.get(fn);
+    // Function name first — it is the join a spec-led catalog needs, and it stays authoritative
+    // where a spec exists. An annotation-led catalog has no `groups` for that index to walk, so
+    // fall back to the entry's own `previewId`, which the export stamps on every catalog image.
+    let allMatches = index.get(fn);
+    let joinedOnPreviewId = false;
+    if ((!allMatches || allMatches.length === 0) && typeof entry?.previewId === "string") {
+      allMatches = byPreviewId.get(entry.previewId);
+      joinedOnPreviewId = Boolean(allMatches && allMatches.length > 0);
+    }
     if (!allMatches || allMatches.length === 0) {
       warnings.push(
         `design-map '${fn}' matches no published sticker — no catalog.spec.json ` +
-          `preview names that @Preview function, or its component rendered nothing`,
+          `preview names that @Preview function, no published image carries its previewId, ` +
+          `or its component rendered nothing`,
       );
       continue;
     }
-    const matches = narrowToMappedPreviewId(allMatches, entry?.previewId, fn, warnings);
+    // A previewId join has already selected exactly the named sticker, so re-narrowing on the same
+    // field is a no-op at best; skip it so the intent reads once.
+    const matches = joinedOnPreviewId
+      ? allMatches
+      : narrowToMappedPreviewId(allMatches, entry?.previewId, fn, warnings);
     if (matches.length === 0) continue;
     for (const { componentId, image } of matches) {
       const previewId = servePreviewId(image.path);
