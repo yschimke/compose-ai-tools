@@ -48,6 +48,12 @@ import ee.schimke.composeai.preview.CatalogComponent
 //     actually mutates state (the segmented toggle flips, the switch/chip toggle).
 // This is the one lever on which the baked and live lanes diverge, exactly as `CatalogComponent`
 // documents.
-internal fun Sticker(id: String) = CatalogSticker {
+// Public, not `internal`: the playground's "open this preview" handoff seeds ONE cluster file and
+// compiles it as its own module against the catalog's `classes/app.jar`. `internal` is
+// name-mangled and invisible across that module boundary, so every sticker in a seeded file would
+// fail to resolve its own helper — a regression the split introduced, since the helper used to be
+// `private` inside the single file the seed carried. `CatalogSticker` / `FullScreenM3` next door in
+// `CatalogTheme.kt` are public for the same reason.
+fun Sticker(id: String) = CatalogSticker {
   CatalogComponent(id, interactive = !LocalInspectionMode.current)
 }
