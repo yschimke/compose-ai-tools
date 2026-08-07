@@ -2754,6 +2754,7 @@ internal object AndroidPreviewSupport {
     // Built lazily via providers so the AGP unit-test task's javaLauncher
     // resolves at execution time (same reason composePreviewRender above defers it).
     val daemonFontsCacheDir = composeAiFontsCacheDir(project)
+    val daemonHistoryDir = composeAiHistoryDir(project)
     val daemonFontsOffline =
       project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
     val daemonSvgEmbedFonts = composeAiSvgEmbedFonts(project)
@@ -2997,13 +2998,10 @@ internal object AndroidPreviewSupport {
       // launchers used to set this); now any production-mode launcher needs it.
       this.systemProperties.put("composeai.harness.previewsManifest", manifestFile)
       // H1+H2 — `composeai.daemon.historyDir` flips daemon-side history recording on. Default
-      // location is `<projectDir>/.compose-preview-history` (matches the legacy convention;
-      // user-visible `.gitignore` pattern). Without this sysprop the daemon's `HistoryManager`
-      // stays null and the VS Code history view shows an empty drawer.
-      this.systemProperties.put(
-        "composeai.daemon.historyDir",
-        project.layout.projectDirectory.dir(".compose-preview-history").asFile.absolutePath,
-      )
+      // location is under the user-level cache root, NOT the project tree — see
+      // [composeAiHistoryDir]. Without this sysprop the daemon's `HistoryManager` stays null and
+      // the VS Code history view shows an empty drawer.
+      this.systemProperties.put("composeai.daemon.historyDir", daemonHistoryDir)
       this.systemProperties.put("composeai.daemon.workspaceRoot", project.rootDir.absolutePath)
       this.workingDirectory.set(project.projectDir.absolutePath)
       this.manifestPath.set(manifestFile)

@@ -13,6 +13,7 @@ import {
     readGitRefEntryField,
     reportingBranchLabel,
 } from "./reportingBranches";
+import { historyDirFor as resolveHistoryDir } from "./historyPaths";
 
 /**
  * Read-only Preview History panel — HISTORY.md § "VS Code integration".
@@ -532,6 +533,11 @@ export interface HistoryScope {
     /** Module project directory; the panel needs this to resolve the
      *  fallback `historyDir` when the daemon is down. */
     projectDir: string;
+    /** Workspace root the module sits under. Paired with `projectDir` to
+     *  locate the module's history archive under the user cache — the
+     *  archive is keyed by (workspace, module-relative path), so the panel
+     *  can't resolve it from `projectDir` alone. See `historyPaths.ts`. */
+    workspaceRoot: string;
     /** Optional preview filter; when null, the panel shows every preview
      *  in the module's history. */
     previewId?: string;
@@ -652,7 +658,7 @@ export function buildHistorySource(opts: BuildSourceOptions): HistorySource {
 }
 
 function historyDirFor(scope: HistoryScope): string {
-    return `${scope.projectDir}/.compose-preview-history`;
+    return resolveHistoryDir(scope.workspaceRoot, scope.projectDir);
 }
 
 /**

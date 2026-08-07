@@ -5066,8 +5066,13 @@ async function refresh(
               // Keep the chosen reporting branch across same-module refreshes
               // (mirrors the previewId narrow); a module switch resets to local.
               gitRef: prior!.gitRef,
+              workspaceRoot: gradleService.workspaceRoot,
           }
-        : { moduleId: module.modulePath, projectDir };
+        : {
+              moduleId: module.modulePath,
+              projectDir,
+              workspaceRoot: gradleService.workspaceRoot,
+          };
     applyHistoryScope(newScope);
     const modules: ModuleInfo[] = [module];
     const modulePathList = modules.map((m) => m.modulePath);
@@ -6754,6 +6759,7 @@ async function runLivePreviewDiff(
     const scope: HistoryScope = {
         moduleId: module.modulePath,
         projectDir,
+        workspaceRoot: gradleService.workspaceRoot,
         previewId,
     };
     let entries: unknown[];
@@ -7165,6 +7171,7 @@ async function diffAllVsMain(): Promise<void> {
                     const list = await historySource!.list({
                         moduleId,
                         projectDir,
+                        workspaceRoot: gradleService!.workspaceRoot,
                         previewId: preview.id,
                     });
                     for (const e of list.entries) {

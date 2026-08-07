@@ -465,14 +465,106 @@ internal object AndroidPreviewClasspath {
  * configuration cache records `XDG_CACHE_HOME` / `user.home` as inputs instead of flagging a raw
  * `System.getenv` read.
  */
-internal fun composeAiFontsCacheDir(project: Project): String {
+internal fun composeAiFontsCacheDir(project: Project): String =
+  File(composeAiCacheRoot(project), "fonts").absolutePath
+
+/**
+ * Root of the user-level cache — `$XDG_CACHE_HOME/composeai` when `XDG_CACHE_HOME` is set and
+ * non-blank, else `~/.cache/composeai`. Resolved through [org.gradle.api.provider.ProviderFactory]
+ * so the configuration cache records `XDG_CACHE_HOME` / `user.home` as inputs instead of flagging a
+ * raw `System.getenv` read.
+ */
+private fun composeAiCacheRoot(project: Project): File {
   val xdg =
     project.providers.environmentVariable("XDG_CACHE_HOME").orNull?.takeIf { it.isNotBlank() }
-  val base =
-    if (xdg != null) File(xdg, "composeai")
-    else File(project.providers.systemProperty("user.home").get(), ".cache/composeai")
-  return File(base, "fonts").absolutePath
+  return if (xdg != null) File(xdg, "composeai")
+  else File(project.providers.systemProperty("user.home").get(), ".cache/composeai")
 }
+
+/** Directory name of the legacy in-tree history archive, kept for backwards compatibility. */
+internal const val LEGACY_HISTORY_DIRNAME: String = ".compose-preview-history"
+
+/**
+ * Absolute path of this module's render-history archive:
+ * `$XDG_CACHE_HOME/composeai/history/<workspaceSlug>/<moduleRel>`.
+ *
+ * **Mirror of `common/io`'s `composeAiHistoryDir` — the plugin can't depend on that module, so the
+ * layout is inlined here.** A third implementation lives in the VS Code extension
+ * (`vscode-extension/src/historyPaths.ts`), which reads the archive the daemon writes. All three
+ * must agree byte-for-byte; they're pinned by `HistoryPathsTest` (`:common-io`),
+ * `AndroidPreviewClasspathTest` (here) and `historyPaths.test.ts` sharing the same golden vectors.
+ * A drift between them doesn't crash — it silently gives the reader an empty history drawer.
+ *
+ * History used to live at `<projectDir>/.compose-preview-history`, which grew an untracked
+ * directory next to every previewed module's sources. It's a semi-persistent timeline of local
+ * edits — cache-shaped data, never user-authored — so it belongs beside the font cache rather than
+ * in the working tree. The reporting-branch flow is unaffected: that publishes to a git ref, and
+ * the in-tree directory was only its local staging area.
+ *
+ * An existing `<projectDir>/.compose-preview-history` wins, so upgrading doesn't strand a timeline
+ * someone already has. Nothing recreates it once removed.
+ */
+internal fun composeAiHistoryDir(project: Project): String {
+  val projectDir = project.layout.projectDirectory.asFile
+  val legacy = File(projectDir, LEGACY_HISTORY_DIRNAME)
+  if (legacy.isDirectory) return legacy.absolutePath
+  val historyRoot = File(composeAiCacheRoot(project), "history")
+  return File(
+      File(historyRoot, composeAiHistoryWorkspaceSlug(project.rootDir)),
+      composeAiHistoryModuleSegment(project.rootDir, projectDir),
+    )
+    .absolutePath
+}
+
+/** See `common/io`'s `composeAiHistoryWorkspaceSlug`. Kept byte-identical to it. */
+internal fun composeAiHistoryWorkspaceSlug(workspaceRoot: File): String {
+  val normalised = workspaceRoot.absolutePath.replace('\\', '/').trimEnd('/')
+  val digest =
+    java.security.MessageDigest.getInstance("SHA-256")
+      .digest(normalised.toByteArray(Charsets.UTF_8))
+      .joinToString("") { "%02x".format(it) }
+      .take(12)
+  val name = sanitiseHistorySegment(normalised.substringAfterLast('/'))
+  return if (name.isEmpty()) digest else "$name-$digest"
+}
+
+/** See `common/io`'s `composeAiHistoryModuleSegment`. Kept byte-identical to it. */
+internal fun composeAiHistoryModuleSegment(workspaceRoot: File, projectDir: File): String {
+  val root = workspaceRoot.absolutePath.replace('\\', '/').trimEnd('/')
+  val module = projectDir.absolutePath.replace('\\', '/').trimEnd('/')
+  if (module == root) return "_root"
+  if (!module.startsWith("$root/")) {
+    return "_external-" + composeAiHistoryWorkspaceSlug(projectDir)
+  }
+  return module
+    .removePrefix("$root/")
+    .split('/')
+    .filter { it.isNotEmpty() }
+    .joinToString("/") { sanitiseHistorySegmentInjectively(it) }
+    .ifEmpty { "_root" }
+}
+
+/**
+ * See `common/io`'s `sanitiseHistorySegmentInjectively`. Kept byte-identical to it: a segment that
+ * sanitising had to rewrite carries an 8-hex digest of its original text, so `ui components` and
+ * `ui-components` stay distinct modules.
+ */
+private fun sanitiseHistorySegmentInjectively(segment: String): String {
+  val sanitised = sanitiseHistorySegment(segment)
+  if (sanitised == segment) return sanitised
+  val digest =
+    java.security.MessageDigest.getInstance("SHA-256")
+      .digest(segment.toByteArray(Charsets.UTF_8))
+      .joinToString("") { "%02x".format(it) }
+      .take(8)
+  return "$sanitised-$digest"
+}
+
+/** ASCII-only on purpose — see `common/io`'s counterpart for why. */
+private fun sanitiseHistorySegment(segment: String): String =
+  segment
+    .map { if (it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it in ".-_") it else '-' }
+    .joinToString("")
 
 /**
  * The resolved value to forward as the daemon JVM's `composeai.svg.embedFonts`, so a
