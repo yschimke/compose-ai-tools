@@ -27,7 +27,17 @@ interface FontAxis {
  * percentage, and next to what the other lanes apply — recorded in the audit doc rather than
  * papered over.
  */
-const FONT_STRETCH_STEPS: ReadonlyArray<readonly [number, string]> = [
+/**
+ * The nine keywords `ctx.fontStretch` accepts. Spelled as a union rather than `string` because that
+ * property is typed as this same enum in lib.dom: widening it here makes the assignment below a
+ * type error, and casting at the assignment would lose the check that these spellings are the ones
+ * canvas actually takes — a typo'd step is silently ignored at runtime.
+ */
+type FontStretchKeyword =
+    | 'ultra-condensed' | 'extra-condensed' | 'condensed' | 'semi-condensed' | 'normal'
+    | 'semi-expanded' | 'expanded' | 'extra-expanded' | 'ultra-expanded';
+
+const FONT_STRETCH_STEPS: ReadonlyArray<readonly [number, FontStretchKeyword]> = [
     [50, 'ultra-condensed'],
     [62.5, 'extra-condensed'],
     [75, 'condensed'],
@@ -40,7 +50,7 @@ const FONT_STRETCH_STEPS: ReadonlyArray<readonly [number, string]> = [
 ];
 
 /** The keyword whose percentage is closest to [percent]; the face clamps it to its own range. */
-export function nearestFontStretch(percent: number): string {
+export function nearestFontStretch(percent: number): FontStretchKeyword {
     let best = FONT_STRETCH_STEPS[0];
     for (const step of FONT_STRETCH_STEPS) {
         if (Math.abs(step[0] - percent) < Math.abs(best[0] - percent)) best = step;
@@ -107,6 +117,14 @@ export function namedFontStack(family: string): string {
     return `"${cssQuoted(family)}", ${cssFontStackFor(0)}`;
 }
 
+/** Fallback text size when the paint carries none. */
+const DEFAULT_TEXT_SIZE = 14;
+/** Ascent / descent as fractions of the text size — roughly Roboto's, i.e. a phone's. */
+const ASCENT_RATIO = 0.92;
+const DESCENT_RATIO = 0.24;
+/** Mean advance per character as a fraction of text size, measured on a device. */
+const AVG_ADVANCE = 0.528;
+
 export class CanvasPaintContext extends PaintContext {
     private ctx: CanvasRenderingContext2D;
 
@@ -147,6 +165,14 @@ export class CanvasPaintContext extends PaintContext {
     // Active shader (set via PaintBundle.SHADER)
     private activeShaderData: ShaderData | null = null;
     private shaderRenderer: WebGLShaderRenderer | null = null;
+
+    /** Release the WebGL context this paint context lazily created, if any. */
+    destroy(): void {
+        if (this.shaderRenderer) {
+            this.shaderRenderer.destroy();
+            this.shaderRenderer = null;
+        }
+    }
     private glslCache = new Map<number, string>();  // shaderTextId -> transpiled GLSL
 
     // Paint stack for save/restore
@@ -576,7 +602,7 @@ export class CanvasPaintContext extends PaintContext {
         this.ctx.font = `${style}${weight}${this.textSize}px ${this.fontFamily}`;
         // After `font`, not before: assigning the shorthand resets `fontStretch` to the shorthand's
         // own (absent, so `normal`) value, which would undo this.
-        const stretchable = this.ctx as CanvasRenderingContext2D & { fontStretch?: string };
+        const stretchable = this.ctx as CanvasRenderingContext2D & { fontStretch?: FontStretchKeyword };
         if ('fontStretch' in stretchable) {
             const wdth = this.axisValue('wdth');
             stretchable.fontStretch = wdth !== null ? nearestFontStretch(wdth) : 'normal';
@@ -945,7 +971,11 @@ export class CanvasPaintContext extends PaintContext {
             }
         }
 
-        // Lazy-init renderer
+        // One renderer per document. Sharing a single renderer page-wide looks
+        // tempting (a browser allows only ~16 live WebGL contexts) but is wrong: the
+        // renderer draws into its own offscreen canvas, so documents sharing one read
+        // back whichever shader drew last. Every card on a page then shows the same
+        // shader. Contexts are bounded by paginating the page, not by sharing.
         if (!this.shaderRenderer) {
             this.shaderRenderer = new WebGLShaderRenderer();
             if (!this.shaderRenderer.isAvailable()) {
@@ -1164,18 +1194,50 @@ export class CanvasPaintContext extends PaintContext {
         }
     }
 
-    getTextBounds(textId: number, start: number, end: number, _flags: number, bounds: Float32Array): void {
+    getTextBounds(textId: number, start: number, end: number, flags: number, bounds: Float32Array): void {
         const text = this.textCache.get(textId);
         if (!text) { bounds.fill(0); return; }
         const s = start >= 0 ? start : 0;
         const e = end >= 0 ? Math.min(end, text.length) : text.length;
         const substr = text.substring(s, e);
         this.setFont();
-        const metrics = this.ctx.measureText(substr);
+        const metrics: any = this.ctx.measureText(substr);
+
+        // Vertical extent, in order of preference:
+        //   1. the font box, which is what TEXT_MEASURE_FONT_HEIGHT asks for and what
+        //      makes a line of digits the same height as one with descenders;
+        //   2. the glyph ink box;
+        //   3. an estimate proportional to the text size.
+        //
+        // The estimate is the important part. Where the canvas reports no metrics at all
+        // — some fonts, some emoji, some headless builds — the first two are 0, height
+        // came back 0, and text laid out with a real width and no height whatsoever, so
+        // it never painted. The ratios are approximate on purpose: a proportional,
+        // deterministic height is what layout needs, and exact agreement with a real font
+        // was never on offer here.
+        const size = this.textSize > 0 ? this.textSize : DEFAULT_TEXT_SIZE;
+        const wantFontBox = (flags & 0x02 /* TEXT_MEASURE_FONT_HEIGHT */) !== 0;
+        const pick = (...vals: any[]) => {
+            for (const v of vals) if (typeof v === 'number' && isFinite(v) && v > 0) return v;
+            return 0;
+        };
+        let ascent = wantFontBox
+            ? pick(metrics.fontBoundingBoxAscent, metrics.actualBoundingBoxAscent)
+            : pick(metrics.actualBoundingBoxAscent, metrics.fontBoundingBoxAscent);
+        let descent = wantFontBox
+            ? pick(metrics.fontBoundingBoxDescent, metrics.actualBoundingBoxDescent)
+            : pick(metrics.actualBoundingBoxDescent, metrics.fontBoundingBoxDescent);
+        if (ascent <= 0 && descent <= 0) {
+            // Calibrated against a device: text size 18 measured a ~20.8px line there,
+            // split about 0.92 / 0.24 the way Roboto's own metrics are.
+            ascent = ASCENT_RATIO * size;
+            descent = DESCENT_RATIO * size;
+        }
+
         bounds[0] = 0;
-        bounds[1] = -metrics.actualBoundingBoxAscent;
-        bounds[2] = metrics.width;
-        bounds[3] = metrics.actualBoundingBoxDescent;
+        bounds[1] = -ascent;
+        bounds[2] = pick(metrics.width, substr.length * AVG_ADVANCE * size);
+        bounds[3] = descent;
     }
 
     layoutComplexText(textId: number, start: number, end: number, alignment: number,
@@ -1191,7 +1253,11 @@ export class CanvasPaintContext extends PaintContext {
         const text = str.substring(s, e);
 
         this.setFont();
-        const lineHeight = this.textSize * (lineHeightMultiplier || 1.2);
+        // Guard the text size the same way getTextBounds does. A zero size here produced
+        // a layout with a real width and zero height, so the text occupied no space and
+        // never painted — with nothing anywhere reporting an error.
+        const size = this.textSize > 0 ? this.textSize : DEFAULT_TEXT_SIZE;
+        const lineHeight = size * (lineHeightMultiplier || 1.2);
 
         // Word-wrap text to fit maxWidth, honoring embedded newlines as hard breaks
         const lines: string[] = [];

@@ -1940,6 +1940,13 @@ var RC = (() => {
         context.loadFloat(this.mId, result);
       }
     }
+    /**
+     * Evaluate now, without waiting for this operation's turn in the frame.
+     *
+     * `ValueFloatExpressionChangeAction` needs the value at the moment the action
+     * runs; reading the last loaded value instead would be a frame stale, which on a
+     * per-frame action compounds into visible drift.
+     */
     evaluate(context) {
       return _FloatExpression.evalRPN(context, this.mBits, this.mVar);
     }
@@ -3710,9 +3717,14 @@ var RC = (() => {
     isGone() {
       return Visibility.isGone(this.mVisibility);
     }
+    getVisibility() {
+      return this.mVisibility;
+    }
     setVisibility(v) {
+      if (v === this.mVisibility) return;
       this.mVisibility = v;
       this.invalidateMeasure();
+      if (this.mParent) this.mParent.invalidateMeasure();
     }
     inflate() {
       for (const op of this.mChildren) {
@@ -4059,7 +4071,14 @@ var RC = (() => {
       const id = c.getComponentId();
       let m = this.mList.get(id);
       if (!m) {
-        m = new ComponentMeasure(id, c.getX(), c.getY(), c.getWidth(), c.getHeight());
+        m = new ComponentMeasure(
+          id,
+          c.getX(),
+          c.getY(),
+          c.getWidth(),
+          c.getHeight(),
+          c.getVisibility()
+        );
         this.mList.set(id, m);
       }
       return m;
@@ -4628,6 +4647,12 @@ var RC = (() => {
     getValue() {
       return this.mOutValue;
     }
+    /** True when a fill fraction was supplied. A bare fill encodes NaN, which
+     *  getValue() reports as 0 — so the raw bits are the only way to tell
+     *  "fill half" from "fill completely". */
+    hasFraction() {
+      return !isNaNBits(this.mValueBits);
+    }
     registerListening(context) {
       if ((this.mType === _WidthModifier.EXACT || this.mType === _WidthModifier.EXACT_DP) && isNaNBits(this.mValueBits)) {
         context.listensTo(idFromBits(this.mValueBits), this);
@@ -4672,6 +4697,12 @@ var RC = (() => {
     }
     getValue() {
       return this.mOutValue;
+    }
+    /** True when a fill fraction was supplied. A bare fill encodes NaN, which
+     *  getValue() reports as 0 — so the raw bits are the only way to tell
+     *  "fill half" from "fill completely". */
+    hasFraction() {
+      return !isNaNBits(this.mValueBits);
     }
     registerListening(context) {
       if ((this.mType === _HeightModifier.EXACT || this.mType === _HeightModifier.EXACT_DP) && isNaNBits(this.mValueBits)) {
@@ -5388,6 +5419,20 @@ var RC = (() => {
         this.updateVariables(context);
       }
     }
+    /**
+     * Re-resolve the visibility every layout pass, matching
+     * ComponentVisibilityOperation.evaluateInLayout in the reference.
+     *
+     * `apply` only runs when the op is dirty, which never happens for a visibility id
+     * that nothing writes — so the component stayed VISIBLE while the reference
+     * resolved the same id to GONE. A document using visibility to switch between
+     * mutually exclusive branches therefore drew *both* of them.
+     */
+    evaluateInLayout(context) {
+      const before = this.mVisibility;
+      this.updateVariables(context);
+      return before !== this.mVisibility;
+    }
     deepToString(indent) {
       return `${indent}VisibilityModifier(${this.mVisibilityId})`;
     }
@@ -5707,6 +5752,48 @@ var RC = (() => {
   };
   _AlignByModifier.OP_CODE = 237;
   var AlignByModifier = _AlignByModifier;
+  var _AccessibilitySemantics = class _AccessibilitySemantics extends Operation {
+    constructor(contentDescriptionId, role, textId, stateDescriptionId, mode, enabled, clickable) {
+      super();
+      this.mContentDescriptionId = contentDescriptionId;
+      this.mRole = role;
+      this.mTextId = textId;
+      this.mStateDescriptionId = stateDescriptionId;
+      this.mMode = mode;
+      this.mEnabled = enabled;
+      this.mClickable = clickable;
+    }
+    getContentDescriptionId() {
+      return this.mContentDescriptionId;
+    }
+    write(_buffer) {
+    }
+    apply(_context) {
+    }
+    deepToString(indent) {
+      return `${indent}AccessibilitySemantics(contentDescriptionId=${this.mContentDescriptionId}, role=${this.mRole}, enabled=${this.mEnabled}, clickable=${this.mClickable})`;
+    }
+    static read(buffer, operations) {
+      const contentDescriptionId = buffer.declareId ? buffer.declareId() : buffer.readInt();
+      const role = buffer.readByte();
+      const textId = buffer.declareId ? buffer.declareId() : buffer.readInt();
+      const stateDescriptionId = buffer.declareId ? buffer.declareId() : buffer.readInt();
+      const mode = buffer.readByte();
+      const enabled = buffer.readBoolean();
+      const clickable = buffer.readBoolean();
+      operations.push(new _AccessibilitySemantics(
+        contentDescriptionId,
+        role,
+        textId,
+        stateDescriptionId,
+        mode,
+        enabled,
+        clickable
+      ));
+    }
+  };
+  _AccessibilitySemantics.OP_CODE = 250;
+  var AccessibilitySemantics = _AccessibilitySemantics;
 
   // src/core/operations/DataOperations.ts
   var NANMAP_PATH_BASE = 3145728;
@@ -6101,35 +6188,94 @@ var RC = (() => {
   var RootContentBehavior = _RootContentBehavior;
 
   // src/core/operations/StubOperations.ts
-  var _ImpulseOperation = class _ImpulseOperation extends Operation {
-    constructor() {
+  var _ImpulseOperation = class _ImpulseOperation extends PaintOperation {
+    constructor(duration, startAt) {
       super();
+      this.mList = [];
+      this.mProcess = null;
+      this.mInitialPass = true;
+      this.mDuration = duration;
+      this.mStartAt = startAt;
+      this.mOutDuration = duration;
+      this.mOutStartAt = startAt;
+    }
+    getList() {
+      return this.mList;
+    }
+    updateVariables(context) {
+      this.mOutDuration = Number.isNaN(this.mDuration) ? context.getFloat(idFromBits(floatToRawIntBits(this.mDuration))) : this.mDuration;
+      this.mOutStartAt = Number.isNaN(this.mStartAt) ? context.getFloat(idFromBits(floatToRawIntBits(this.mStartAt))) : this.mStartAt;
+    }
+    /** The trailing ImpulseProcess is the repeating part; it is not run as setup. */
+    takeProcess() {
+      if (this.mProcess || !this.mList.length) return;
+      const last = this.mList[this.mList.length - 1];
+      if (last instanceof ImpulseProcess) {
+        this.mProcess = last;
+        this.mList.pop();
+      }
     }
     write(_buffer) {
     }
-    apply(_context) {
+    paint(context) {
+      this.takeProcess();
+      const remote = context.getContext();
+      const now = remote.getAnimationTime();
+      if (now < this.mOutStartAt) {
+        context.wakeIn(this.mOutStartAt - now);
+        return;
+      }
+      if (now <= this.mOutStartAt + this.mOutDuration) {
+        if (this.mInitialPass) {
+          for (const op of this.mList) {
+            if (op.isDirty() && typeof op.updateVariables === "function") {
+              op.updateVariables(remote);
+            }
+            remote.incrementOpCount();
+            op.apply(remote);
+          }
+          this.mInitialPass = false;
+        } else {
+          remote.incrementOpCount();
+          if (this.mProcess) this.mProcess.paint(context);
+        }
+      } else {
+        this.mInitialPass = true;
+      }
     }
     deepToString(indent) {
-      return `${indent}ImpulseOperation`;
+      return `${indent}ImpulseOperation(${this.mList.length} setup ops)`;
     }
     static read(buffer, operations) {
-      buffer.readFloat();
-      buffer.readFloat();
-      operations.push(new _ImpulseOperation());
+      const duration = buffer.readFloat();
+      const startAt = buffer.readFloat();
+      operations.push(new _ImpulseOperation(duration, startAt));
     }
   };
   _ImpulseOperation.OP_CODE = 164;
   var ImpulseOperation = _ImpulseOperation;
-  var _ImpulseProcess = class _ImpulseProcess extends Operation {
+  var _ImpulseProcess = class _ImpulseProcess extends PaintOperation {
     constructor() {
       super();
+      this.mList = [];
+    }
+    getList() {
+      return this.mList;
     }
     write(_buffer) {
     }
-    apply(_context) {
+    paint(context) {
+      const remote = context.getContext();
+      for (const op of this.mList) {
+        if (op.isDirty() && typeof op.updateVariables === "function") {
+          op.updateVariables(remote);
+        }
+        remote.incrementOpCount();
+        op.apply(remote);
+      }
     }
     deepToString(indent) {
-      return `${indent}ImpulseProcess`;
+      return `${indent}ImpulseProcess(${this.mList.length})`;
     }
     static read(_buffer, operations) {
       operations.push(new _ImpulseProcess());
@@ -6176,7 +6322,7 @@ var RC = (() => {
   };
   _HostActionMetadataOperation.OP_CODE = 216;
   var HostActionMetadataOperation = _HostActionMetadataOperation;
-  var _RunActionOperation = class _RunActionOperation extends Operation {
+  var _RunActionOperation = class _RunActionOperation extends PaintOperation {
     constructor() {
       super();
       this.mList = [];
@@ -6186,9 +6332,13 @@ var RC = (() => {
     }
     write(_buffer) {
     }
-    apply(context) {
+    // `apply` comes from PaintOperation: it routes to paint() in PAINT mode, and
+    // outside it walks children without running them, which is what we want — the
+    // actions must fire per frame, not once at load.
+    paint(context) {
+      const remote = context.getContext();
       for (const op of this.mList) {
-        op.apply(context);
+        op.apply(remote);
       }
     }
     deepToString(indent) {
@@ -6201,20 +6351,26 @@ var RC = (() => {
   _RunActionOperation.OP_CODE = 236;
   var RunActionOperation = _RunActionOperation;
   var _ValueFloatExpressionChangeAction = class _ValueFloatExpressionChangeAction extends Operation {
-    constructor() {
+    constructor(targetValueId, valueExpressionId) {
       super();
+      this.mTargetValueId = targetValueId;
+      this.mValueExpressionId = valueExpressionId;
     }
     write(_buffer) {
     }
-    apply(_context) {
+    apply(context) {
+      if (context.mMode !== "PAINT" /* PAINT */) return;
+      const document2 = context.getDocument();
+      if (!document2) return;
+      document2.evaluateFloatExpression(this.mValueExpressionId, this.mTargetValueId, context);
     }
     deepToString(indent) {
-      return `${indent}ValueFloatExpressionChangeAction`;
+      return `${indent}ValueFloatExpressionChangeAction(${this.mTargetValueId} <- ${this.mValueExpressionId})`;
     }
     static read(buffer, operations) {
-      buffer.readInt();
-      buffer.readInt();
-      operations.push(new _ValueFloatExpressionChangeAction());
+      const valueId = buffer.readInt();
+      const expressionId = buffer.readInt();
+      operations.push(new _ValueFloatExpressionChangeAction(valueId, expressionId));
     }
   };
   _ValueFloatExpressionChangeAction.OP_CODE = 227;
@@ -6276,27 +6432,117 @@ var RC = (() => {
   };
   _WakeIn.OP_CODE = 191;
   var WakeIn = _WakeIn;
-  var _TimeAttribute = class _TimeAttribute extends Operation {
-    constructor() {
+  var _TimeAttribute = class _TimeAttribute extends PaintOperation {
+    constructor(id, timeId, type, args) {
       super();
+      this.mId = id;
+      this.mTimeId = timeId;
+      this.mType = type;
+      this.mArgs = args;
     }
     write(_buffer) {
     }
-    apply(_context) {
+    paint(context) {
+      const val = this.mType & 255;
+      const ctx = context.getContext();
+      const loadTime = ctx.getDocLoadTime();
+      const longConstant = ctx.getObject(this.mTimeId);
+      const now = context.getClock().snapshot();
+      const value = longConstant && typeof longConstant.getValue === "function" ? createSnapshot(longConstant.getValue()) : now;
+      let delta = 0;
+      switch (val) {
+        case _TimeAttribute.TIME_FROM_NOW_SEC:
+        case _TimeAttribute.TIME_FROM_NOW_MIN:
+        case _TimeAttribute.TIME_FROM_NOW_HR:
+          delta = value.getMillis() - now.getMillis();
+          break;
+        case _TimeAttribute.TIME_FROM_ARG_SEC:
+        case _TimeAttribute.TIME_FROM_ARG_MIN:
+        case _TimeAttribute.TIME_FROM_ARG_HR: {
+          const lc2 = ctx.getObject(this.mArgs[0]);
+          delta = value.getMillis() - (lc2 && typeof lc2.getValue === "function" ? lc2.getValue() : 0);
+          break;
+        }
+        default:
+          break;
+      }
+      switch (val) {
+        case _TimeAttribute.TIME_FROM_NOW_SEC:
+        case _TimeAttribute.TIME_FROM_ARG_SEC:
+          ctx.loadFloat(this.mId, delta * 1e-3);
+          ctx.needsRepaint?.();
+          break;
+        case _TimeAttribute.TIME_FROM_NOW_MIN:
+        case _TimeAttribute.TIME_FROM_ARG_MIN:
+          ctx.loadFloat(this.mId, delta * 1e-3 / 60);
+          ctx.needsRepaint?.();
+          break;
+        case _TimeAttribute.TIME_FROM_NOW_HR:
+        case _TimeAttribute.TIME_FROM_ARG_HR:
+          ctx.loadFloat(this.mId, delta * 1e-3 / 3600);
+          break;
+        case _TimeAttribute.TIME_IN_SEC:
+          ctx.loadFloat(this.mId, value.getSecond());
+          break;
+        case _TimeAttribute.TIME_IN_MIN:
+          ctx.loadFloat(this.mId, value.getMinute());
+          break;
+        case _TimeAttribute.TIME_IN_HR:
+          ctx.loadFloat(this.mId, value.getHour());
+          break;
+        case _TimeAttribute.TIME_DAY_OF_MONTH:
+          ctx.loadFloat(this.mId, value.getDayOfMonth());
+          break;
+        case _TimeAttribute.TIME_DAY_OF_YEAR:
+          ctx.loadFloat(this.mId, value.getDayOfYear());
+          break;
+        // month and day-of-week are zero-based here, matching the reference
+        case _TimeAttribute.TIME_MONTH_VALUE:
+          ctx.loadFloat(this.mId, value.getMonth() - 1);
+          break;
+        case _TimeAttribute.TIME_DAY_OF_WEEK:
+          ctx.loadFloat(this.mId, value.getDayOfWeek() - 1);
+          break;
+        case _TimeAttribute.TIME_YEAR:
+          ctx.loadFloat(this.mId, value.getYear());
+          break;
+        case _TimeAttribute.TIME_FROM_LOAD_SEC:
+          ctx.loadFloat(this.mId, (value.getMillis() - loadTime) * 1e-3);
+          ctx.needsRepaint?.();
+          break;
+        default:
+          break;
+      }
     }
     deepToString(indent) {
-      return `${indent}TimeAttribute`;
+      return `${indent}TimeAttribute[${this.mId}] = ${this.mTimeId} ${this.mType}`;
     }
     static read(buffer, operations) {
-      buffer.readInt();
-      buffer.readInt();
-      buffer.readShort();
+      const id = buffer.readInt();
+      const timeId = buffer.readInt();
+      const type = buffer.readShort();
       const len = buffer.readShort();
-      for (let i = 0; i < len; i++) buffer.readInt();
-      operations.push(new _TimeAttribute());
+      const args = [];
+      for (let i = 0; i < len; i++) args.push(buffer.readInt());
+      operations.push(new _TimeAttribute(id, timeId, type, args));
     }
   };
   _TimeAttribute.OP_CODE = 172;
+  _TimeAttribute.TIME_FROM_NOW_SEC = 0;
+  _TimeAttribute.TIME_FROM_NOW_MIN = 1;
+  _TimeAttribute.TIME_FROM_NOW_HR = 2;
+  _TimeAttribute.TIME_FROM_ARG_SEC = 3;
+  _TimeAttribute.TIME_FROM_ARG_MIN = 4;
+  _TimeAttribute.TIME_FROM_ARG_HR = 5;
+  _TimeAttribute.TIME_IN_SEC = 6;
+  _TimeAttribute.TIME_IN_MIN = 7;
+  _TimeAttribute.TIME_IN_HR = 8;
+  _TimeAttribute.TIME_DAY_OF_MONTH = 9;
+  _TimeAttribute.TIME_MONTH_VALUE = 10;
+  _TimeAttribute.TIME_DAY_OF_WEEK = 11;
+  _TimeAttribute.TIME_YEAR = 12;
+  _TimeAttribute.TIME_FROM_LOAD_SEC = 14;
+  _TimeAttribute.TIME_DAY_OF_YEAR = 15;
   var TimeAttribute = _TimeAttribute;
 
   // src/core/operations/loom/PatternOperations.ts
@@ -8285,6 +8531,11 @@ var RC = (() => {
     constructor(id, mask, values) {
       super();
       this.mPreCalcValues = null;
+      /** mMask with the id bit cleared for every entry already resolved to a
+       *  literal — the reference's mPreMask. Evaluating with the original mask
+       *  makes the evaluator treat a resolved value as an id and look it up
+       *  again, so `copy variable 1898` returned getInteger(1) = 0 instead of 1. */
+      this.mPreMask = 0;
       this.mVar = [0, 0, 0];
       this.mId = id;
       this.mMask = mask;
@@ -8306,8 +8557,10 @@ var RC = (() => {
       if (!this.mPreCalcValues || this.mPreCalcValues.length !== this.mValues.length) {
         this.mPreCalcValues = new Int32Array(this.mValues.length);
       }
+      this.mPreMask = this.mMask;
       for (let i = 0; i < this.mValues.length; i++) {
         if (this.isId(this.mMask, i, this.mValues[i])) {
+          this.mPreMask &= ~(1 << i);
           this.mPreCalcValues[i] = context.getInteger(this.mValues[i]);
         } else {
           this.mPreCalcValues[i] = this.mValues[i];
@@ -8315,8 +8568,9 @@ var RC = (() => {
       }
     }
     apply(context) {
+      this.updateVariables(context);
       const vals = this.mPreCalcValues || this.mValues;
-      const result = this.evaluate(this.mMask, vals);
+      const result = this.evaluate(this.mPreMask, vals);
       context.loadInteger(this.mId, result);
     }
     /**
@@ -8541,6 +8795,9 @@ var RC = (() => {
     }
     update(other) {
       this.mValue = other.mValue;
+    }
+    getValue() {
+      return this.mValue;
     }
     write(_buffer) {
     }
@@ -8994,6 +9251,7 @@ var RC = (() => {
       }
     }
     apply(context) {
+      this.updateVariables(context);
       const v = this.mOutValue;
       let s;
       if (this.mLegacy) {
@@ -9562,12 +9820,23 @@ ${inner}`;
       // Extracted modifiers
       this.mWidthMod = null;
       this.mHeightMod = null;
+      // Min/max constraints reach a component two ways: the older WidthIn/HeightIn ops
+      // (231/232) and DimensionConstraints (243), which is what `requiredWidthIn` and
+      // `requiredHeightIn` compile to. Both expose getMin()/getMax(), and the measure
+      // pass only needs that, so store either.
       this.mWidthInMod = null;
       this.mHeightInMod = null;
       this.mZIndexMod = null;
       this.mGraphicsLayerMod = null;
       // Padding
       this.mPaddingLeft = 0;
+      // Padding declared *before* the size modifier, which is the only padding that adds
+      // to an explicit width/height. The reference walks the modifier list and stops at
+      // the size modifier (LayoutComponent.computeModifierDefinedWidth), so
+      // `.width(200).padding(30)` is 200 wide with 140 of content, while
+      // `.padding(30).width(200)` is 260 wide — exactly Compose's modifier-order rule.
+      this.mPadBeforeWidth = 0;
+      this.mPadBeforeHeight = 0;
       this.mPaddingRight = 0;
       this.mPaddingTop = 0;
       this.mPaddingBottom = 0;
@@ -9625,6 +9894,10 @@ ${inner}`;
       this.mPaddingRight = 0;
       this.mPaddingTop = 0;
       this.mPaddingBottom = 0;
+      this.mPadBeforeWidth = 0;
+      this.mPadBeforeHeight = 0;
+      let sawWidth = false;
+      let sawHeight = false;
       this.mComputedLayoutModifiers = null;
       for (const op of this.getList()) {
         if (op instanceof PaddingModifier) {
@@ -9632,15 +9905,26 @@ ${inner}`;
           this.mPaddingTop += op.mTopValue;
           this.mPaddingRight += op.mRightValue;
           this.mPaddingBottom += op.mBottomValue;
+          if (!sawWidth) this.mPadBeforeWidth += op.mLeftValue + op.mRightValue;
+          if (!sawHeight) this.mPadBeforeHeight += op.mTopValue + op.mBottomValue;
           this.mComponentModifiers.push(op);
         } else if (op instanceof WidthModifier) {
           this.mWidthMod = _LayoutComponent.preferExactSize(this.mWidthMod, op);
+          sawWidth = true;
         } else if (op instanceof HeightModifier) {
           this.mHeightMod = _LayoutComponent.preferExactSize(this.mHeightMod, op);
+          sawHeight = true;
         } else if (op instanceof WidthInModifier) {
           this.mWidthInMod = op;
         } else if (op instanceof HeightInModifier) {
           this.mHeightInMod = op;
+        } else if (op instanceof DimensionConstraintsModifier) {
+          const t = op.getType();
+          if (t === DimensionConstraintsModifier.HORIZONTAL || t === DimensionConstraintsModifier.REQUIRED_HORIZONTAL) {
+            this.mWidthInMod = op;
+          } else if (t === DimensionConstraintsModifier.VERTICAL || t === DimensionConstraintsModifier.REQUIRED_VERTICAL) {
+            this.mHeightInMod = op;
+          }
         } else if (op instanceof ZIndexModifier) {
           this.mZIndexMod = op;
           this.mZIndex = op.mValue ?? 0;
@@ -10154,22 +10438,24 @@ ${inner}`;
       const hMod = this.getHeightModifier();
       const dp = this.getDpScale(context);
       let w;
-      if (wMod && wMod.getType() === WidthModifier.EXACT) {
-        w = wMod.getValue() + padding_w;
-      } else if (wMod && wMod.getType() === WidthModifier.EXACT_DP) {
-        w = wMod.getValue() * dp + padding_w;
+      if (wMod && (wMod.getType() === WidthModifier.EXACT || wMod.getType() === WidthModifier.EXACT_DP)) {
+        const exactW = wMod.getType() === WidthModifier.EXACT_DP ? wMod.getValue() * dp : wMod.getValue();
+        w = Math.min(exactW + this.mPadBeforeWidth, maxWidth);
       } else if (wMod && wMod.getType() === WidthModifier.FILL) {
-        w = maxWidth;
+        w = wMod.hasFraction() ? maxWidth * wMod.getValue() : maxWidth;
+      } else if (wMod && wMod.getType() === WidthModifier.WEIGHT) {
+        w = Math.min(Math.max(this.mPadBeforeWidth, minWidth), maxWidth);
       } else {
         w = maxWidth;
       }
       let h;
-      if (hMod && hMod.getType() === HeightModifier.EXACT) {
-        h = hMod.getValue() + padding_h;
-      } else if (hMod && hMod.getType() === HeightModifier.EXACT_DP) {
-        h = hMod.getValue() * dp + padding_h;
+      if (hMod && (hMod.getType() === HeightModifier.EXACT || hMod.getType() === HeightModifier.EXACT_DP)) {
+        const exactH = hMod.getType() === HeightModifier.EXACT_DP ? hMod.getValue() * dp : hMod.getValue();
+        h = Math.min(exactH + this.mPadBeforeHeight, maxHeight);
       } else if (hMod && hMod.getType() === HeightModifier.FILL) {
-        h = maxHeight;
+        h = hMod.hasFraction() ? maxHeight * hMod.getValue() : maxHeight;
+      } else if (hMod && hMod.getType() === HeightModifier.WEIGHT) {
+        h = Math.min(Math.max(this.mPadBeforeHeight, minHeight), maxHeight);
       } else {
         h = maxHeight;
       }
@@ -10179,12 +10465,14 @@ ${inner}`;
       const verticalWrap = hMod?.getType() === HeightModifier.WRAP;
       if (horizontalWrap || verticalWrap) {
         this.mCachedWrapSize.clear();
+        const childMaxW = (horizontalWrap ? maxWidth : w) - padding_w;
+        const childMaxH = (verticalWrap ? maxHeight : h) - padding_h;
         this.computeWrapSize(
           context,
           minWidth,
-          maxWidth - padding_w,
+          childMaxW,
           minHeight,
-          maxHeight - padding_h,
+          childMaxH,
           horizontalWrap,
           verticalWrap,
           measure,
@@ -13009,6 +13297,612 @@ ${inner}`;
   _TextSubtext.OP_CODE = 182;
   var TextSubtext = _TextSubtext;
 
+  // src/core/operations/ParticleOperations.ts
+  var OFFSET2 = 3211264;
+  var ID_REGION_MASK = 7340032;
+  var ID_REGION_ARRAY2 = 2097152;
+  function isMathOperatorBits(b) {
+    if (!isNaNBits(b)) return false;
+    const id = idFromBits(b);
+    return id > OFFSET2 && id <= OFFSET2 + 79;
+  }
+  function isDataVariableBits2(b) {
+    if (!isNaNBits(b)) return false;
+    const id = idFromBits(b);
+    return (id & ID_REGION_MASK) === ID_REGION_ARRAY2;
+  }
+  var asNan3 = (v) => (v | 4286578688) >>> 0;
+  var CMD1_BITS = asNan3(OFFSET2 + 64) | 0;
+  var CMD2_BITS = asNan3(OFFSET2 + 65) | 0;
+  var NOP_BITS = asNan3(OFFSET2 + 55) | 0;
+  function resolvePairEquation(src, context, varIds, particle1, particle2) {
+    const out = new Int32Array(src.length);
+    for (let i = 0; i < src.length; i++) {
+      const b = src[i];
+      out[i] = isNaNBits(b) && !isMathOperatorBits(b) && !isDataVariableBits2(b) ? floatToRawIntBits(context.getFloat(idFromBits(b))) : b;
+      if (i + 1 >= src.length) continue;
+      for (let k = 0; k < varIds.length; k++) {
+        if (!isNaNBits(b) || idFromBits(b) !== varIds[k]) continue;
+        if (src[i + 1] === CMD1_BITS) {
+          out[i] = floatToRawIntBits(particle1[k]);
+          out[i + 1] = NOP_BITS;
+          i++;
+        } else if (src[i + 1] === CMD2_BITS) {
+          out[i] = floatToRawIntBits(particle2[k]);
+          out[i + 1] = NOP_BITS;
+          i++;
+        }
+      }
+    }
+    return out;
+  }
+  function resolveEquation(src, context) {
+    const out = new Int32Array(src.length);
+    for (let i = 0; i < src.length; i++) {
+      const b = src[i];
+      if (isNaNBits(b) && !isMathOperatorBits(b) && !isDataVariableBits2(b)) {
+        out[i] = floatToRawIntBits(context.getFloat(idFromBits(b)));
+      } else {
+        out[i] = b;
+      }
+    }
+    return out;
+  }
+  function registerEquationListening(eq, context, op) {
+    for (let i = 0; i < eq.length; i++) {
+      const b = eq[i];
+      if (isNaNBits(b) && !isMathOperatorBits(b) && !isDataVariableBits2(b)) {
+        context.listensTo(idFromBits(b), op);
+      }
+    }
+  }
+  var _ParticlesCreateOp = class _ParticlesCreateOp extends Operation {
+    constructor(id, particleCount, varId, equations) {
+      super();
+      this.mInitialized = false;
+      this.mContext = null;
+      this.mId = id;
+      this.mParticleCount = particleCount;
+      this.mVarId = varId;
+      this.mEquations = equations;
+      this.mOutEquations = equations.map((eq) => new Int32Array(eq));
+      this.mParticles = [];
+      for (let i = 0; i < particleCount; i++) {
+        this.mParticles.push(new Array(varId.length).fill(0));
+      }
+    }
+    write(_buffer) {
+    }
+    registerListening(context) {
+      context.putObject(this.mId, this);
+      for (const eq of this.mEquations) {
+        registerEquationListening(eq, context, this);
+      }
+    }
+    updateVariables(context) {
+      this.mContext = context;
+      for (let j = 0; j < this.mEquations.length; j++) {
+        this.mOutEquations[j] = resolveEquation(this.mEquations[j], context);
+      }
+    }
+    apply(context) {
+      if (context.mMode === "PAINT" /* PAINT */ && !this.mInitialized) {
+        this.mContext = context;
+        for (let i = 0; i < this.mParticleCount; i++) {
+          this.initializeParticle(i, context);
+        }
+        this.mInitialized = true;
+      }
+    }
+    initializeParticle(i, context) {
+      const varCount = this.mVarId.length;
+      for (let j = 0; j < varCount; j++) {
+        this.mParticles[i][j] = FloatExpression.evalRPN(
+          context,
+          this.mOutEquations[j],
+          [i, 0, 0]
+        );
+      }
+    }
+    getParticles() {
+      return this.mParticles;
+    }
+    getVariableIds() {
+      return this.mVarId;
+    }
+    deepToString(indent) {
+      return `${indent}ParticlesCreateOp(id=${this.mId}, count=${this.mParticleCount}, vars=${this.mVarId.length})`;
+    }
+    static read(buffer, operations) {
+      const id = buffer.readInt();
+      const particleCount = buffer.readInt();
+      const varLen = buffer.readInt();
+      const varIds = [];
+      const equations = [];
+      for (let i = 0; i < varLen; i++) {
+        varIds.push(buffer.readInt());
+        const equLen = buffer.readInt();
+        const eq = new Int32Array(equLen);
+        for (let j = 0; j < equLen; j++) eq[j] = buffer.readInt();
+        equations.push(eq);
+      }
+      operations.push(new _ParticlesCreateOp(id, particleCount, varIds, equations));
+    }
+  };
+  _ParticlesCreateOp.OP_CODE = 161;
+  var ParticlesCreateOp = _ParticlesCreateOp;
+  var _ParticlesLoopOp = class _ParticlesLoopOp extends PaintOperation {
+    constructor(id, restart, equations) {
+      super();
+      this.mList = [];
+      this.mSource = null;
+      this.mId = id;
+      this.mRestart = restart;
+      this.mOutRestart = new Int32Array(restart);
+      this.mEquations = equations;
+      this.mOutEquations = equations.map((eq) => new Int32Array(eq));
+    }
+    getList() {
+      return this.mList;
+    }
+    write(_buffer) {
+    }
+    registerListening(context) {
+      registerEquationListening(this.mRestart, context, this);
+      for (const eq of this.mEquations) {
+        registerEquationListening(eq, context, this);
+      }
+    }
+    updateVariables(context) {
+      this.mOutRestart = resolveEquation(this.mRestart, context);
+      for (let j = 0; j < this.mEquations.length; j++) {
+        this.mOutEquations[j] = resolveEquation(this.mEquations[j], context);
+      }
+    }
+    paint(paintContext) {
+      const context = paintContext.getContext();
+      if (context.mMode !== "PAINT" /* PAINT */) return;
+      if (!this.mSource) {
+        const obj = context.getObject(this.mId);
+        if (obj instanceof ParticlesCreateOp) {
+          this.mSource = obj;
+        } else {
+          return;
+        }
+      }
+      const source = this.mSource;
+      const particles = source.getParticles();
+      const varIds = source.getVariableIds();
+      const varCount = varIds.length;
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = 0; j < varCount; j++) {
+          context.loadFloat(varIds[j], particles[i][j]);
+        }
+        this.updateVariables(context);
+        for (let j = 0; j < this.mOutEquations.length && j < varCount; j++) {
+          particles[i][j] = FloatExpression.evalRPN(context, this.mOutEquations[j]);
+          context.loadFloat(varIds[j], particles[i][j]);
+        }
+        const restartVal = FloatExpression.evalRPN(context, this.mOutRestart);
+        if (restartVal > 0) {
+          source.initializeParticle(i, context);
+          for (let j = 0; j < varCount; j++) {
+            context.loadFloat(varIds[j], particles[i][j]);
+          }
+          this.updateVariables(context);
+          for (let j = 0; j < this.mOutEquations.length && j < varCount; j++) {
+            particles[i][j] = FloatExpression.evalRPN(context, this.mOutEquations[j]);
+            context.loadFloat(varIds[j], particles[i][j]);
+          }
+        }
+        for (const child of this.mList) {
+          if (child.isDirty() && typeof child.updateVariables === "function") {
+            child.markNotDirty();
+            child.updateVariables(context);
+          }
+          context.incrementOpCount();
+          child.apply(context);
+        }
+      }
+      context.needsRepaint();
+    }
+    deepToString(indent) {
+      return `${indent}ParticlesLoopOp(id=${this.mId}, children=${this.mList.length})`;
+    }
+    static read(buffer, operations) {
+      const id = buffer.readInt();
+      const restartLen = buffer.readInt();
+      const restart = new Int32Array(restartLen);
+      for (let i = 0; i < restartLen; i++) restart[i] = buffer.readInt();
+      const varLen = buffer.readInt();
+      const equations = [];
+      for (let i = 0; i < varLen; i++) {
+        const equLen = buffer.readInt();
+        const eq = new Int32Array(equLen);
+        for (let j = 0; j < equLen; j++) eq[j] = buffer.readInt();
+        equations.push(eq);
+      }
+      operations.push(new _ParticlesLoopOp(id, restart, equations));
+    }
+  };
+  _ParticlesLoopOp.OP_CODE = 163;
+  var ParticlesLoopOp = _ParticlesLoopOp;
+  var _ParticlesCompareOp = class _ParticlesCompareOp extends PaintOperation {
+    constructor(id, flags, min, max, condition, equations1, equations2) {
+      super();
+      this.mList = [];
+      this.mSource = null;
+      this.mId = id;
+      this.mFlags = flags;
+      this.mMin = min;
+      this.mMax = max;
+      this.mCondition = condition;
+      this.mOutCondition = new Int32Array(condition);
+      this.mEquations1 = equations1;
+      this.mOutEquations1 = equations1.map((eq) => new Int32Array(eq));
+      this.mEquations2 = equations2;
+    }
+    getList() {
+      return this.mList;
+    }
+    write(_buffer) {
+    }
+    registerListening(context) {
+      registerEquationListening(this.mCondition, context, this);
+      for (const eq of this.mEquations1) {
+        registerEquationListening(eq, context, this);
+      }
+      for (const eq of this.mEquations2) {
+        registerEquationListening(eq, context, this);
+      }
+    }
+    updateVariables(context) {
+      this.mOutCondition = resolveEquation(this.mCondition, context);
+      for (let j = 0; j < this.mEquations1.length; j++) {
+        this.mOutEquations1[j] = resolveEquation(this.mEquations1[j], context);
+      }
+    }
+    paint(paintContext) {
+      const context = paintContext.getContext();
+      if (context.mMode !== "PAINT" /* PAINT */) return;
+      if (!this.mSource) {
+        const obj = context.getObject(this.mId);
+        if (obj instanceof ParticlesCreateOp) {
+          this.mSource = obj;
+        } else {
+          return;
+        }
+      }
+      const source = this.mSource;
+      const particles = source.getParticles();
+      const varIds = source.getVariableIds();
+      const varCount = varIds.length;
+      const startIdx = this.mMin < 0 ? 0 : Math.min(this.mMin, particles.length);
+      const endIdx = this.mMax < 0 ? particles.length : Math.min(this.mMax, particles.length);
+      if (this.mEquations2 && this.mEquations2.length > 0) {
+        this.paintPairs(context, particles, varIds, varCount, startIdx, endIdx);
+        context.needsRepaint();
+        return;
+      }
+      for (let i = startIdx; i < endIdx; i++) {
+        for (let j = 0; j < varCount; j++) {
+          context.loadFloat(varIds[j], particles[i][j]);
+        }
+        this.updateVariables(context);
+        const condVal = FloatExpression.evalRPN(context, this.mOutCondition);
+        if (condVal > 0) {
+          for (let j = 0; j < this.mOutEquations1.length && j < varCount; j++) {
+            particles[i][j] = FloatExpression.evalRPN(context, this.mOutEquations1[j]);
+            context.loadFloat(varIds[j], particles[i][j]);
+          }
+          this.runChildren(context);
+        }
+      }
+      context.needsRepaint();
+    }
+    /** Run the child operations, as `ParticlesCompare.runChildren` does. */
+    runChildren(context) {
+      for (const child of this.mList) {
+        if (typeof child.updateVariables === "function") {
+          child.markNotDirty();
+          child.updateVariables(context);
+        }
+        context.incrementOpCount();
+        child.apply(context);
+      }
+    }
+    /**
+     * Pairwise comparison over distinct particles — the `condition2Body` algorithm.
+     *
+     * Note the inner loop starts at `k + 1`: only distinct pairs, so a single particle
+     * produces nothing at all. Children run twice per matching pair, once after each
+     * particle's equation set is applied, which is what the reference does.
+     */
+    paintPairs(context, particles, varIds, varCount, startIdx, endIdx) {
+      for (let k = startIdx; k < endIdx; k++) {
+        const particle2 = particles[k];
+        for (let i = k + 1; i < endIdx; i++) {
+          const particle1 = particles[i];
+          for (let j = 0; j < varCount; j++) context.loadFloat(varIds[j], particle1[j]);
+          const cond = resolvePairEquation(
+            this.mCondition,
+            context,
+            varIds,
+            particle1,
+            particle2
+          );
+          context.incrementOpCount();
+          if (!(FloatExpression.evalRPN(context, cond) > 0)) continue;
+          const eq1 = this.mEquations1.map((e) => resolvePairEquation(e, context, varIds, particle1, particle2));
+          for (let j = 0; j < varCount; j++) context.loadFloat(varIds[j], particle2[j]);
+          const eq2 = this.mEquations2.map((e) => resolvePairEquation(e, context, varIds, particle1, particle2));
+          for (let j = 0; j < eq1.length && j < varCount; j++) {
+            particle1[j] = FloatExpression.evalRPN(context, eq1[j]);
+            context.loadFloat(varIds[j], particle1[j]);
+          }
+          this.runChildren(context);
+          for (let j = 0; j < eq2.length && j < varCount; j++) {
+            particle2[j] = FloatExpression.evalRPN(context, eq2[j]);
+            context.loadFloat(varIds[j], particle2[j]);
+          }
+          this.runChildren(context);
+        }
+      }
+    }
+    deepToString(indent) {
+      return `${indent}ParticlesCompareOp(id=${this.mId}, flags=${this.mFlags})`;
+    }
+    // Read an equation as raw int32 token bits (NaN operator/array ids survive).
+    static readEquationBits(buffer) {
+      const len = buffer.readInt();
+      const arr = new Int32Array(len);
+      for (let i = 0; i < len; i++) arr[i] = buffer.readInt();
+      return arr;
+    }
+    static read(buffer, operations) {
+      const id = buffer.readInt();
+      const flags = buffer.readShort();
+      const min = buffer.readFloat();
+      const max = buffer.readFloat();
+      const condition = _ParticlesCompareOp.readEquationBits(buffer);
+      const result1Len = buffer.readInt();
+      const equations1 = [];
+      for (let i = 0; i < result1Len; i++) {
+        equations1.push(_ParticlesCompareOp.readEquationBits(buffer));
+      }
+      const result2Len = buffer.readInt();
+      const equations2 = [];
+      for (let i = 0; i < result2Len; i++) {
+        equations2.push(_ParticlesCompareOp.readEquationBits(buffer));
+      }
+      operations.push(new _ParticlesCompareOp(id, flags, min, max, condition, equations1, equations2));
+    }
+  };
+  _ParticlesCompareOp.OP_CODE = 194;
+  var ParticlesCompareOp = _ParticlesCompareOp;
+
+  // src/core/operations/layout/managers/FlowLayout.ts
+  var _FlowLayout = class _FlowLayout extends RowLayout {
+    constructor(componentId, animationId, horizontalPositioning, verticalPositioning, spacedBy) {
+      super(componentId, animationId, horizontalPositioning, verticalPositioning, spacedBy);
+      this.mMaxItemsInEachRow = 0;
+      this.mMaxLines = 0;
+    }
+    hasWeight(c) {
+      return c instanceof LayoutComponent && c.hasWidthWeight();
+    }
+    /** Divide children into rows based on available width. */
+    segmentComponents(context, maxWidth, maxHeight, measure) {
+      const rows = [];
+      let currentRow = [];
+      rows.push(currentRow);
+      let currentWidth = 0;
+      for (const c of this.mChildrenComponents) {
+        let componentWidth = 0;
+        if (measure.get(c).isGone()) {
+          componentWidth = 0;
+        } else if (this.hasWeight(c)) {
+          const wIn = c.getWidthInModifier();
+          if (wIn) {
+            const min = wIn.getMin();
+            if (min !== -1) {
+              componentWidth = min * this.getDpScale(context);
+            }
+          }
+        } else {
+          c.measure(context, 0, maxWidth, 0, maxHeight, measure);
+          const m = measure.get(c);
+          componentWidth = m.getW();
+        }
+        if (componentWidth + currentWidth > maxWidth) {
+          currentRow = [];
+          rows.push(currentRow);
+          currentWidth = 0;
+        }
+        currentRow.push(c);
+        currentWidth += componentWidth;
+      }
+      return rows;
+    }
+    computeWrapSize(context, minWidth, maxWidth, minHeight, maxHeight, horizontalWrap, verticalWrap, measure, size) {
+      for (const c of this.mChildrenComponents) {
+        if (c.needsMeasure()) {
+          c.measure(context, 0, maxWidth, 0, maxHeight, measure);
+        }
+      }
+      const rows = this.segmentComponents(context, maxWidth, maxHeight, measure);
+      const rowSize = new Size();
+      let width = minWidth;
+      let height = 0;
+      for (const row of rows) {
+        this.computeWrapSizeForComponents(
+          context,
+          minWidth,
+          maxWidth,
+          minHeight,
+          maxHeight,
+          horizontalWrap,
+          verticalWrap,
+          measure,
+          rowSize,
+          row
+        );
+        width = Math.max(width, rowSize.getWidth());
+        height += rowSize.getHeight();
+      }
+      width = Math.min(Math.max(minWidth, width), maxWidth);
+      height = Math.min(Math.max(minHeight, height), maxHeight);
+      size.setWidth(width);
+      size.setHeight(height);
+    }
+    computeSize(context, minWidth, maxWidth, minHeight, maxHeight, measure) {
+      const rows = this.segmentComponents(context, maxWidth, maxHeight, measure);
+      for (const row of rows) {
+        const mw = maxWidth;
+        for (const child of row) {
+          child.measure(context, minWidth, mw, minHeight, maxHeight, measure);
+        }
+      }
+    }
+    internalLayoutMeasure(context, measure) {
+      if (this.mChildrenComponents.length === 0) return;
+      const selfMeasure = measure.get(this);
+      const selfWidth = selfMeasure.getW() - this.mPaddingLeft - this.mPaddingRight;
+      const selfHeight = selfMeasure.getH() - this.mPaddingTop - this.mPaddingBottom;
+      const rows = this.segmentComponents(context, selfWidth, selfHeight, measure);
+      let positionX = 0;
+      let positionY = 0;
+      let rowsHeight = 0;
+      for (const row of rows) {
+        rowsHeight += this.minIntrinsicHeightForComponents(row);
+      }
+      switch (this.mVerticalPositioning) {
+        case RowLayout.CENTER:
+          positionY = (selfHeight - rowsHeight) / 2;
+          break;
+        case RowLayout.BOTTOM:
+          positionY = selfHeight - rowsHeight;
+          break;
+      }
+      const rowSize = new Size();
+      const rowWidth = selfWidth;
+      for (const row of rows) {
+        const rowHeight = this.minIntrinsicHeightForComponents(row);
+        this.internalLayoutMeasureForComponents(
+          context,
+          measure,
+          row,
+          rowWidth,
+          rowHeight,
+          positionX,
+          positionY,
+          rowSize
+        );
+        positionY += rowSize.getHeight();
+      }
+    }
+    write(buffer) {
+      buffer.start(_FlowLayout.OP_CODE);
+      buffer.writeInt(this.getComponentId());
+      buffer.writeInt(0);
+      buffer.writeInt(this.mHorizontalPositioning);
+      buffer.writeInt(this.mVerticalPositioning);
+      buffer.writeFloat(this.mSpacedBy);
+      buffer.writeInt(this.mMaxItemsInEachRow);
+      buffer.writeInt(this.mMaxLines);
+    }
+    apply(context) {
+      super.apply(context);
+    }
+    deepToString(indent) {
+      return `${indent}FlowLayout(${this.getComponentId()}, spacing=${this.mSpacedBy})`;
+    }
+    static read(buffer, operations) {
+      const componentId = buffer.declareId();
+      const animationId = buffer.declareId();
+      const horizontalPositioning = buffer.readInt();
+      const verticalPositioning = buffer.readInt();
+      const spacedBy = buffer.readFloat();
+      const maxItemsInEachRow = buffer.readInt();
+      const maxLines = buffer.readInt();
+      const op = new _FlowLayout(
+        componentId,
+        animationId,
+        horizontalPositioning,
+        verticalPositioning,
+        spacedBy
+      );
+      op.mMaxItemsInEachRow = maxItemsInEachRow;
+      op.mMaxLines = maxLines;
+      operations.push(op);
+    }
+  };
+  _FlowLayout.OP_CODE = 240;
+  var FlowLayout = _FlowLayout;
+
+  // src/core/operations/layout/LoopOperation.ts
+  var _LoopOperation = class _LoopOperation extends Operation {
+    constructor(indexId, fromBits, stepBits, untilBits) {
+      super();
+      this.mList = [];
+      this.mIndexId = indexId;
+      this.mFromBits = fromBits;
+      this.mStepBits = stepBits;
+      this.mUntilBits = untilBits;
+    }
+    getList() {
+      return this.mList;
+    }
+    write(_buffer) {
+    }
+    apply(context) {
+      if (context.mMode === "DATA" /* DATA */) {
+        for (const op of this.mList) {
+          op.apply(context);
+        }
+        return;
+      }
+      const from = this.rv(this.mFromBits, context);
+      const step = this.rv(this.mStepBits, context);
+      const until = this.rv(this.mUntilBits, context);
+      if (step <= 0 || !isFinite(from) || !isFinite(until) || !isFinite(step)) return;
+      if (this.mIndexId === 0) {
+        for (let i = from; i < until; i += step) {
+          for (const op of this.mList) {
+            context.incrementOpCount();
+            op.apply(context);
+          }
+        }
+      } else {
+        for (let i = from; i < until; i += step) {
+          context.loadFloat(this.mIndexId, i);
+          for (const op of this.mList) {
+            if (op.isDirty() && typeof op.updateVariables === "function") {
+              op.updateVariables(context);
+            }
+            context.incrementOpCount();
+            op.apply(context);
+          }
+        }
+      }
+    }
+    rv(bits, ctx) {
+      return isNaNBits(bits) ? ctx.getFloat(idFromBits(bits)) : intBitsToFloat(bits);
+    }
+    deepToString(indent) {
+      return `${indent}LoopOperation(${intBitsToFloat(this.mFromBits)}..${intBitsToFloat(this.mUntilBits)} step ${intBitsToFloat(this.mStepBits)})`;
+    }
+    static read(buffer, operations) {
+      const indexId = buffer.readInt();
+      const from = buffer.readInt();
+      const step = buffer.readInt();
+      const until = buffer.readInt();
+      operations.push(new _LoopOperation(indexId, from, step, until));
+    }
+  };
+  _LoopOperation.OP_CODE = 215;
+  var LoopOperation = _LoopOperation;
+
   // src/core/operations/layout/managers/CoreText.ts
   var P_INT = 1;
   var P_FLOAT = 2;
@@ -13542,10 +14436,13 @@ ${inner}`;
       ));
     }
   };
+  // Typed as `number` rather than the literal 239 so TextLayout (208) can
+  // subclass this without a static-side type clash.
   _CoreText.OP_CODE = 239;
   var CoreText = _CoreText;
 
   // src/core/operations/layout/managers/TextLayout.ts
+  var FLAG_IS_DYNAMIC_COLOR = 1;
   var _TextLayout = class _TextLayout extends CoreText {
     deepToString(indent) {
       return `${indent}TEXT_LAYOUT [${this.getComponentId()}]`;
@@ -13562,587 +14459,53 @@ ${inner}`;
       const textAlign = buffer.readInt();
       const overflow = buffer.readInt();
       const maxLines = buffer.readInt();
+      const dynamicColor = (textAlign >>> 16 & FLAG_IS_DYNAMIC_COLOR) > 0;
       operations.push(new _TextLayout(
         componentId,
         animationId,
         textId,
-        color,
-        /* colorId = */
-        -1,
+        dynamicColor ? 4278190080 | 0 : color,
+        dynamicColor ? color : -1,
         fontSize,
-        /* minFontSize = */
         -1,
-        /* maxFontSize = */
+        // minFontSize — not carried by this op
         -1,
+        // maxFontSize
         fontStyle,
         fontWeight,
         fontFamilyId,
         textAlign,
         overflow,
         maxLines,
-        /* letterSpacing = */
         0,
-        /* lineHeightAdd = */
+        // letterSpacing
         0,
-        /* lineHeightMultiplier = */
+        // lineHeightAdd
         1,
-        /* lineBreakStrategy = */
+        // lineHeightMultiplier
         0,
-        /* hyphenationFrequency = */
+        // lineBreakStrategy
         0,
-        /* justificationMode = */
+        // hyphenationFrequency
         0,
-        /* underline = */
+        // justificationMode
         false,
-        /* strikethrough = */
+        // underline
         false,
-        /* fontAxis = */
+        // strikethrough
         null,
-        /* fontAxisValues = */
+        // fontAxis
         null,
-        /* autosize = */
+        // fontAxisValues
         false,
-        /* flags = */
+        // autosize
         0
+        // flags
       ));
     }
   };
   _TextLayout.OP_CODE = 208;
   var TextLayout = _TextLayout;
-
-  // src/core/operations/ParticleOperations.ts
-  var OFFSET2 = 3211264;
-  var ID_REGION_MASK = 7340032;
-  var ID_REGION_ARRAY2 = 2097152;
-  function isMathOperatorBits(b) {
-    if (!isNaNBits(b)) return false;
-    const id = idFromBits(b);
-    return id > OFFSET2 && id <= OFFSET2 + 79;
-  }
-  function isDataVariableBits2(b) {
-    if (!isNaNBits(b)) return false;
-    const id = idFromBits(b);
-    return (id & ID_REGION_MASK) === ID_REGION_ARRAY2;
-  }
-  function resolveEquation(src, context) {
-    const out = new Int32Array(src.length);
-    for (let i = 0; i < src.length; i++) {
-      const b = src[i];
-      if (isNaNBits(b) && !isMathOperatorBits(b) && !isDataVariableBits2(b)) {
-        out[i] = floatToRawIntBits(context.getFloat(idFromBits(b)));
-      } else {
-        out[i] = b;
-      }
-    }
-    return out;
-  }
-  function registerEquationListening(eq, context, op) {
-    for (let i = 0; i < eq.length; i++) {
-      const b = eq[i];
-      if (isNaNBits(b) && !isMathOperatorBits(b) && !isDataVariableBits2(b)) {
-        context.listensTo(idFromBits(b), op);
-      }
-    }
-  }
-  var _ParticlesCreateOp = class _ParticlesCreateOp extends Operation {
-    constructor(id, particleCount, varId, equations) {
-      super();
-      this.mInitialized = false;
-      this.mContext = null;
-      this.mId = id;
-      this.mParticleCount = particleCount;
-      this.mVarId = varId;
-      this.mEquations = equations;
-      this.mOutEquations = equations.map((eq) => new Int32Array(eq));
-      this.mParticles = [];
-      for (let i = 0; i < particleCount; i++) {
-        this.mParticles.push(new Array(varId.length).fill(0));
-      }
-    }
-    write(_buffer) {
-    }
-    registerListening(context) {
-      context.putObject(this.mId, this);
-      for (const eq of this.mEquations) {
-        registerEquationListening(eq, context, this);
-      }
-    }
-    updateVariables(context) {
-      this.mContext = context;
-      for (let j = 0; j < this.mEquations.length; j++) {
-        this.mOutEquations[j] = resolveEquation(this.mEquations[j], context);
-      }
-    }
-    apply(context) {
-      if (context.mMode === "PAINT" /* PAINT */ && !this.mInitialized) {
-        this.mContext = context;
-        for (let i = 0; i < this.mParticleCount; i++) {
-          this.initializeParticle(i, context);
-        }
-        this.mInitialized = true;
-      }
-    }
-    initializeParticle(i, context) {
-      const varCount = this.mVarId.length;
-      for (let j = 0; j < varCount; j++) {
-        this.mParticles[i][j] = FloatExpression.evalRPN(
-          context,
-          this.mOutEquations[j],
-          [i, 0, 0]
-        );
-      }
-    }
-    getParticles() {
-      return this.mParticles;
-    }
-    getVariableIds() {
-      return this.mVarId;
-    }
-    deepToString(indent) {
-      return `${indent}ParticlesCreateOp(id=${this.mId}, count=${this.mParticleCount}, vars=${this.mVarId.length})`;
-    }
-    static read(buffer, operations) {
-      const id = buffer.readInt();
-      const particleCount = buffer.readInt();
-      const varLen = buffer.readInt();
-      const varIds = [];
-      const equations = [];
-      for (let i = 0; i < varLen; i++) {
-        varIds.push(buffer.readInt());
-        const equLen = buffer.readInt();
-        const eq = new Int32Array(equLen);
-        for (let j = 0; j < equLen; j++) eq[j] = buffer.readInt();
-        equations.push(eq);
-      }
-      operations.push(new _ParticlesCreateOp(id, particleCount, varIds, equations));
-    }
-  };
-  _ParticlesCreateOp.OP_CODE = 161;
-  var ParticlesCreateOp = _ParticlesCreateOp;
-  var _ParticlesLoopOp = class _ParticlesLoopOp extends PaintOperation {
-    constructor(id, restart, equations) {
-      super();
-      this.mList = [];
-      this.mSource = null;
-      this.mId = id;
-      this.mRestart = restart;
-      this.mOutRestart = new Int32Array(restart);
-      this.mEquations = equations;
-      this.mOutEquations = equations.map((eq) => new Int32Array(eq));
-    }
-    getList() {
-      return this.mList;
-    }
-    write(_buffer) {
-    }
-    registerListening(context) {
-      registerEquationListening(this.mRestart, context, this);
-      for (const eq of this.mEquations) {
-        registerEquationListening(eq, context, this);
-      }
-    }
-    updateVariables(context) {
-      this.mOutRestart = resolveEquation(this.mRestart, context);
-      for (let j = 0; j < this.mEquations.length; j++) {
-        this.mOutEquations[j] = resolveEquation(this.mEquations[j], context);
-      }
-    }
-    paint(paintContext) {
-      const context = paintContext.getContext();
-      if (context.mMode !== "PAINT" /* PAINT */) return;
-      if (!this.mSource) {
-        const obj = context.getObject(this.mId);
-        if (obj instanceof ParticlesCreateOp) {
-          this.mSource = obj;
-        } else {
-          return;
-        }
-      }
-      const source = this.mSource;
-      const particles = source.getParticles();
-      const varIds = source.getVariableIds();
-      const varCount = varIds.length;
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = 0; j < varCount; j++) {
-          context.loadFloat(varIds[j], particles[i][j]);
-        }
-        this.updateVariables(context);
-        for (let j = 0; j < this.mOutEquations.length && j < varCount; j++) {
-          particles[i][j] = FloatExpression.evalRPN(context, this.mOutEquations[j]);
-          context.loadFloat(varIds[j], particles[i][j]);
-        }
-        const restartVal = FloatExpression.evalRPN(context, this.mOutRestart);
-        if (restartVal > 0) {
-          source.initializeParticle(i, context);
-          for (let j = 0; j < varCount; j++) {
-            context.loadFloat(varIds[j], particles[i][j]);
-          }
-          this.updateVariables(context);
-          for (let j = 0; j < this.mOutEquations.length && j < varCount; j++) {
-            particles[i][j] = FloatExpression.evalRPN(context, this.mOutEquations[j]);
-            context.loadFloat(varIds[j], particles[i][j]);
-          }
-        }
-        for (const child of this.mList) {
-          if (child.isDirty() && typeof child.updateVariables === "function") {
-            child.markNotDirty();
-            child.updateVariables(context);
-          }
-          context.incrementOpCount();
-          child.apply(context);
-        }
-      }
-      context.needsRepaint();
-    }
-    deepToString(indent) {
-      return `${indent}ParticlesLoopOp(id=${this.mId}, children=${this.mList.length})`;
-    }
-    static read(buffer, operations) {
-      const id = buffer.readInt();
-      const restartLen = buffer.readInt();
-      const restart = new Int32Array(restartLen);
-      for (let i = 0; i < restartLen; i++) restart[i] = buffer.readInt();
-      const varLen = buffer.readInt();
-      const equations = [];
-      for (let i = 0; i < varLen; i++) {
-        const equLen = buffer.readInt();
-        const eq = new Int32Array(equLen);
-        for (let j = 0; j < equLen; j++) eq[j] = buffer.readInt();
-        equations.push(eq);
-      }
-      operations.push(new _ParticlesLoopOp(id, restart, equations));
-    }
-  };
-  _ParticlesLoopOp.OP_CODE = 163;
-  var ParticlesLoopOp = _ParticlesLoopOp;
-  var _ParticlesCompareOp = class _ParticlesCompareOp extends PaintOperation {
-    constructor(id, flags, min, max, condition, equations1, equations2) {
-      super();
-      this.mList = [];
-      this.mSource = null;
-      this.mId = id;
-      this.mFlags = flags;
-      this.mMin = min;
-      this.mMax = max;
-      this.mCondition = condition;
-      this.mOutCondition = new Int32Array(condition);
-      this.mEquations1 = equations1;
-      this.mOutEquations1 = equations1.map((eq) => new Int32Array(eq));
-      this.mEquations2 = equations2;
-    }
-    getList() {
-      return this.mList;
-    }
-    write(_buffer) {
-    }
-    registerListening(context) {
-      registerEquationListening(this.mCondition, context, this);
-      for (const eq of this.mEquations1) {
-        registerEquationListening(eq, context, this);
-      }
-      for (const eq of this.mEquations2) {
-        registerEquationListening(eq, context, this);
-      }
-    }
-    updateVariables(context) {
-      this.mOutCondition = resolveEquation(this.mCondition, context);
-      for (let j = 0; j < this.mEquations1.length; j++) {
-        this.mOutEquations1[j] = resolveEquation(this.mEquations1[j], context);
-      }
-    }
-    paint(paintContext) {
-      const context = paintContext.getContext();
-      if (context.mMode !== "PAINT" /* PAINT */) return;
-      if (!this.mSource) {
-        const obj = context.getObject(this.mId);
-        if (obj instanceof ParticlesCreateOp) {
-          this.mSource = obj;
-        } else {
-          return;
-        }
-      }
-      const source = this.mSource;
-      const particles = source.getParticles();
-      const varIds = source.getVariableIds();
-      const varCount = varIds.length;
-      const startIdx = this.mMin < 0 ? 0 : Math.min(this.mMin, particles.length);
-      const endIdx = this.mMax < 0 ? particles.length : Math.min(this.mMax, particles.length);
-      for (let i = startIdx; i < endIdx; i++) {
-        for (let j = 0; j < varCount; j++) {
-          context.loadFloat(varIds[j], particles[i][j]);
-        }
-        this.updateVariables(context);
-        const condVal = FloatExpression.evalRPN(context, this.mOutCondition);
-        if (condVal > 0) {
-          for (let j = 0; j < this.mOutEquations1.length && j < varCount; j++) {
-            particles[i][j] = FloatExpression.evalRPN(context, this.mOutEquations1[j]);
-            context.loadFloat(varIds[j], particles[i][j]);
-          }
-          for (const child of this.mList) {
-            if (child.isDirty() && typeof child.updateVariables === "function") {
-              child.markNotDirty();
-              child.updateVariables(context);
-            }
-            context.incrementOpCount();
-            child.apply(context);
-          }
-        }
-      }
-      context.needsRepaint();
-    }
-    deepToString(indent) {
-      return `${indent}ParticlesCompareOp(id=${this.mId}, flags=${this.mFlags})`;
-    }
-    // Read an equation as raw int32 token bits (NaN operator/array ids survive).
-    static readEquationBits(buffer) {
-      const len = buffer.readInt();
-      const arr = new Int32Array(len);
-      for (let i = 0; i < len; i++) arr[i] = buffer.readInt();
-      return arr;
-    }
-    static read(buffer, operations) {
-      const id = buffer.readInt();
-      const flags = buffer.readShort();
-      const min = buffer.readFloat();
-      const max = buffer.readFloat();
-      const condition = _ParticlesCompareOp.readEquationBits(buffer);
-      const result1Len = buffer.readInt();
-      const equations1 = [];
-      for (let i = 0; i < result1Len; i++) {
-        equations1.push(_ParticlesCompareOp.readEquationBits(buffer));
-      }
-      const result2Len = buffer.readInt();
-      const equations2 = [];
-      for (let i = 0; i < result2Len; i++) {
-        equations2.push(_ParticlesCompareOp.readEquationBits(buffer));
-      }
-      operations.push(new _ParticlesCompareOp(id, flags, min, max, condition, equations1, equations2));
-    }
-  };
-  _ParticlesCompareOp.OP_CODE = 194;
-  var ParticlesCompareOp = _ParticlesCompareOp;
-
-  // src/core/operations/layout/managers/FlowLayout.ts
-  var _FlowLayout = class _FlowLayout extends RowLayout {
-    constructor(componentId, animationId, horizontalPositioning, verticalPositioning, spacedBy) {
-      super(componentId, animationId, horizontalPositioning, verticalPositioning, spacedBy);
-      this.mMaxItemsInEachRow = 0;
-      this.mMaxLines = 0;
-    }
-    hasWeight(c) {
-      return c instanceof LayoutComponent && c.hasWidthWeight();
-    }
-    /** Divide children into rows based on available width. */
-    segmentComponents(context, maxWidth, maxHeight, measure) {
-      const rows = [];
-      let currentRow = [];
-      rows.push(currentRow);
-      let currentWidth = 0;
-      for (const c of this.mChildrenComponents) {
-        let componentWidth = 0;
-        if (measure.get(c).isGone()) {
-          componentWidth = 0;
-        } else if (this.hasWeight(c)) {
-          const wIn = c.getWidthInModifier();
-          if (wIn) {
-            const min = wIn.getMin();
-            if (min !== -1) {
-              componentWidth = min * this.getDpScale(context);
-            }
-          }
-        } else {
-          c.measure(context, 0, maxWidth, 0, maxHeight, measure);
-          const m = measure.get(c);
-          componentWidth = m.getW();
-        }
-        if (componentWidth + currentWidth > maxWidth) {
-          currentRow = [];
-          rows.push(currentRow);
-          currentWidth = 0;
-        }
-        currentRow.push(c);
-        currentWidth += componentWidth;
-      }
-      return rows;
-    }
-    computeWrapSize(context, minWidth, maxWidth, minHeight, maxHeight, horizontalWrap, verticalWrap, measure, size) {
-      for (const c of this.mChildrenComponents) {
-        if (c.needsMeasure()) {
-          c.measure(context, 0, maxWidth, 0, maxHeight, measure);
-        }
-      }
-      const rows = this.segmentComponents(context, maxWidth, maxHeight, measure);
-      const rowSize = new Size();
-      let width = minWidth;
-      let height = 0;
-      for (const row of rows) {
-        this.computeWrapSizeForComponents(
-          context,
-          minWidth,
-          maxWidth,
-          minHeight,
-          maxHeight,
-          horizontalWrap,
-          verticalWrap,
-          measure,
-          rowSize,
-          row
-        );
-        width = Math.max(width, rowSize.getWidth());
-        height += rowSize.getHeight();
-      }
-      width = Math.min(Math.max(minWidth, width), maxWidth);
-      height = Math.min(Math.max(minHeight, height), maxHeight);
-      size.setWidth(width);
-      size.setHeight(height);
-    }
-    computeSize(context, minWidth, maxWidth, minHeight, maxHeight, measure) {
-      const rows = this.segmentComponents(context, maxWidth, maxHeight, measure);
-      for (const row of rows) {
-        const mw = maxWidth;
-        for (const child of row) {
-          child.measure(context, minWidth, mw, minHeight, maxHeight, measure);
-        }
-      }
-    }
-    internalLayoutMeasure(context, measure) {
-      if (this.mChildrenComponents.length === 0) return;
-      const selfMeasure = measure.get(this);
-      const selfWidth = selfMeasure.getW() - this.mPaddingLeft - this.mPaddingRight;
-      const selfHeight = selfMeasure.getH() - this.mPaddingTop - this.mPaddingBottom;
-      const rows = this.segmentComponents(context, selfWidth, selfHeight, measure);
-      let positionX = 0;
-      let positionY = 0;
-      let rowsHeight = 0;
-      for (const row of rows) {
-        rowsHeight += this.minIntrinsicHeightForComponents(row);
-      }
-      switch (this.mVerticalPositioning) {
-        case RowLayout.CENTER:
-          positionY = (selfHeight - rowsHeight) / 2;
-          break;
-        case RowLayout.BOTTOM:
-          positionY = selfHeight - rowsHeight;
-          break;
-      }
-      const rowSize = new Size();
-      const rowWidth = selfWidth;
-      for (const row of rows) {
-        const rowHeight = this.minIntrinsicHeightForComponents(row);
-        this.internalLayoutMeasureForComponents(
-          context,
-          measure,
-          row,
-          rowWidth,
-          rowHeight,
-          positionX,
-          positionY,
-          rowSize
-        );
-        positionY += rowSize.getHeight();
-      }
-    }
-    write(buffer) {
-      buffer.start(_FlowLayout.OP_CODE);
-      buffer.writeInt(this.getComponentId());
-      buffer.writeInt(0);
-      buffer.writeInt(this.mHorizontalPositioning);
-      buffer.writeInt(this.mVerticalPositioning);
-      buffer.writeFloat(this.mSpacedBy);
-      buffer.writeInt(this.mMaxItemsInEachRow);
-      buffer.writeInt(this.mMaxLines);
-    }
-    apply(context) {
-      super.apply(context);
-    }
-    deepToString(indent) {
-      return `${indent}FlowLayout(${this.getComponentId()}, spacing=${this.mSpacedBy})`;
-    }
-    static read(buffer, operations) {
-      const componentId = buffer.declareId();
-      const animationId = buffer.declareId();
-      const horizontalPositioning = buffer.readInt();
-      const verticalPositioning = buffer.readInt();
-      const spacedBy = buffer.readFloat();
-      const maxItemsInEachRow = buffer.readInt();
-      const maxLines = buffer.readInt();
-      const op = new _FlowLayout(
-        componentId,
-        animationId,
-        horizontalPositioning,
-        verticalPositioning,
-        spacedBy
-      );
-      op.mMaxItemsInEachRow = maxItemsInEachRow;
-      op.mMaxLines = maxLines;
-      operations.push(op);
-    }
-  };
-  _FlowLayout.OP_CODE = 240;
-  var FlowLayout = _FlowLayout;
-
-  // src/core/operations/layout/LoopOperation.ts
-  var _LoopOperation = class _LoopOperation extends Operation {
-    constructor(indexId, fromBits, stepBits, untilBits) {
-      super();
-      this.mList = [];
-      this.mIndexId = indexId;
-      this.mFromBits = fromBits;
-      this.mStepBits = stepBits;
-      this.mUntilBits = untilBits;
-    }
-    getList() {
-      return this.mList;
-    }
-    write(_buffer) {
-    }
-    apply(context) {
-      if (context.mMode === "DATA" /* DATA */) {
-        for (const op of this.mList) {
-          op.apply(context);
-        }
-        return;
-      }
-      const from = this.rv(this.mFromBits, context);
-      const step = this.rv(this.mStepBits, context);
-      const until = this.rv(this.mUntilBits, context);
-      if (step <= 0 || !isFinite(from) || !isFinite(until) || !isFinite(step)) return;
-      if (this.mIndexId === 0) {
-        for (let i = from; i < until; i += step) {
-          for (const op of this.mList) {
-            context.incrementOpCount();
-            op.apply(context);
-          }
-        }
-      } else {
-        for (let i = from; i < until; i += step) {
-          context.loadFloat(this.mIndexId, i);
-          for (const op of this.mList) {
-            if (typeof op.updateVariables === "function") {
-              op.updateVariables(context);
-            }
-            context.incrementOpCount();
-            op.apply(context);
-          }
-        }
-      }
-    }
-    rv(bits, ctx) {
-      return isNaNBits(bits) ? ctx.getFloat(idFromBits(bits)) : intBitsToFloat(bits);
-    }
-    deepToString(indent) {
-      return `${indent}LoopOperation(${intBitsToFloat(this.mFromBits)}..${intBitsToFloat(this.mUntilBits)} step ${intBitsToFloat(this.mStepBits)})`;
-    }
-    static read(buffer, operations) {
-      const indexId = buffer.readInt();
-      const from = buffer.readInt();
-      const step = buffer.readInt();
-      const until = buffer.readInt();
-      operations.push(new _LoopOperation(indexId, from, step, until));
-    }
-  };
-  _LoopOperation.OP_CODE = 215;
-  var LoopOperation = _LoopOperation;
 
   // src/core/operations/layout/managers/FitBoxLayout.ts
   var _FitBoxLayout = class _FitBoxLayout extends LayoutManager {
@@ -15263,48 +15626,6 @@ ${inner}`;
   _Custom.OP_CODE = 93;
   var Custom = _Custom;
 
-  // src/core/operations/semantics/CoreSemantics.ts
-  var _CoreSemantics = class _CoreSemantics extends Operation {
-    constructor(mContentDescriptionId, mRole, mTextId, mStateDescriptionId, mMode, mEnabled, mClickable) {
-      super();
-      this.mContentDescriptionId = mContentDescriptionId;
-      this.mRole = mRole;
-      this.mTextId = mTextId;
-      this.mStateDescriptionId = mStateDescriptionId;
-      this.mMode = mMode;
-      this.mEnabled = mEnabled;
-      this.mClickable = mClickable;
-    }
-    write(_buffer) {
-    }
-    // Accessibility metadata has no visual effect, so applying it paints nothing.
-    apply(_context) {
-    }
-    deepToString(indent) {
-      return `${indent}CoreSemantics(contentDescription=${this.mContentDescriptionId}, role=${this.mRole}, text=${this.mTextId}, stateDescription=${this.mStateDescriptionId}, mode=${this.mMode}, enabled=${this.mEnabled}, clickable=${this.mClickable})`;
-    }
-    static read(buffer, operations) {
-      const contentDescriptionId = buffer.declareId();
-      const role = buffer.readByte();
-      const textId = buffer.declareId();
-      const stateDescriptionId = buffer.declareId();
-      const mode = buffer.readByte();
-      const enabled = buffer.readBoolean();
-      const clickable = buffer.readBoolean();
-      operations.push(new _CoreSemantics(
-        contentDescriptionId,
-        role,
-        textId,
-        stateDescriptionId,
-        mode,
-        enabled,
-        clickable
-      ));
-    }
-  };
-  _CoreSemantics.OP_CODE = 250;
-  var CoreSemantics = _CoreSemantics;
-
   // src/core/Operations.ts
   var _Operations = class _Operations {
     static init() {
@@ -15399,6 +15720,7 @@ ${inner}`;
       m.set(RippleModifier.OP_CODE, RippleModifier.read);
       m.set(DrawContentModifier.OP_CODE, DrawContentModifier.read);
       m.set(AlignByModifier.OP_CODE, AlignByModifier.read);
+      m.set(AccessibilitySemantics.OP_CODE, AccessibilitySemantics.read);
       m.set(TouchExpression.OP_CODE, TouchExpression.read);
       m.set(ConditionalOperations.OP_CODE, ConditionalOperations.read);
       m.set(PathCreate.OP_CODE, PathCreate.read);
@@ -15459,7 +15781,6 @@ ${inner}`;
       m.set(PatternArgument.OP_CODE, PatternArgument.read);
       m.set(PatternDefine.OP_CODE, PatternDefine.read);
       m.set(Custom.OP_CODE, Custom.read);
-      m.set(CoreSemantics.OP_CODE, CoreSemantics.read);
     }
     static getOperations() {
       _Operations.init();
@@ -16013,10 +16334,13 @@ ${inner}`;
       return this.mPatchVersion >= patch;
     }
   };
+  var FONT_SCALE = 1;
   var _CoreDocument = class _CoreDocument {
     constructor(clock = SYSTEM_CLOCK) {
       this.mOperations = [];
       this.mRootLayoutComponent = null;
+      /** Ops re-evaluated before every layout pass — see registerVariables. */
+      this.mLayoutComputeOps = /* @__PURE__ */ new Set();
       this.mRemoteComposeState = new RemoteComposeState();
       this.mVersion = null;
       this.mWidth = 256;
@@ -16046,6 +16370,11 @@ ${inner}`;
       this.mTextData = /* @__PURE__ */ new Map();
       this.mReferencedOperations = /* @__PURE__ */ new Map();
       this.mArrays = /* @__PURE__ */ new Map();
+      /**
+       * Float expressions by id, so an action can evaluate one on demand.
+       * Mirrors `CoreDocument.mFloatExpressions` / `evaluateFloatExpression`.
+       */
+      this.mFloatExpressions = /* @__PURE__ */ new Map();
       this.mClock = clock;
       this.mTimeVariables = new TimeVariables(clock);
     }
@@ -16097,8 +16426,19 @@ ${inner}`;
       }
       return this.mWidth;
     }
+    /**
+     * Set the document width **and** the `windowWidth()` system variable.
+     *
+     * The reference `CoreDocument.setWidth` updates both. Setting only the field left
+     * ids 5/6 at whatever the header declared, so every expression built on
+     * `windowWidth()` / `windowHeight()` was computed against the header size rather
+     * than the viewport the document is actually being played at. A document that
+     * declares no size reports 256x256, so a full-bleed document played at any other
+     * size laid itself out for a 256-pixel world while being drawn much larger.
+     */
     setWidth(w) {
       this.mWidth = w;
+      this.mRemoteComposeState?.setWindowWidth(w);
     }
     getHeight() {
       if (this.mRootLayoutComponent) {
@@ -16107,8 +16447,10 @@ ${inner}`;
       }
       return this.mHeight;
     }
+    /** Set the document height and the `windowHeight()` system variable — see setWidth. */
     setHeight(h) {
       this.mHeight = h;
+      this.mRemoteComposeState?.setWindowHeight(h);
     }
     setProperties(properties) {
       this.mProperties = properties;
@@ -16311,6 +16653,26 @@ ${inner}`;
       for (const op of finalOps) {
         operations.push(op);
       }
+      this.mFloatExpressions.clear();
+      this.indexFloatExpressions(operations);
+    }
+    /** Collect every FloatExpression in the tree, including inside containers. */
+    indexFloatExpressions(operations) {
+      for (const op of operations) {
+        if (op.constructor?.OP_CODE === 81 && typeof op.mId === "number") {
+          this.mFloatExpressions.set(op.mId, op);
+        }
+        if (typeof op.getList === "function") {
+          this.indexFloatExpressions(op.getList());
+        }
+      }
+    }
+    /** Evaluate `expressionId` and write the result into `targetId`. */
+    evaluateFloatExpression(expressionId, targetId, context) {
+      const expression = this.mFloatExpressions.get(expressionId);
+      if (expression && typeof expression.evaluate === "function") {
+        context.overrideFloat(targetId, expression.evaluate(context));
+      }
     }
     isContainer(op) {
       return typeof op.getList === "function" && !(op instanceof ContainerEnd);
@@ -16321,8 +16683,29 @@ ${inner}`;
       context.mRemoteComposeState = this.mRemoteComposeState;
       this.mRemoteComposeState.setContext(context);
     }
+    /**
+     * Seed ID_FONT_SIZE, the platform's default text size.
+     *
+     * The host owns this value: the Android view uses `14 * density * fontScale`
+     * (RemoteComposeView.getDefaultTextSize) and the Compose player the same. Without it
+     * the variable reads 0, and any font size a document derives from it resolves to 0 as
+     * well. A zero font size is a legal float, so nothing errors — the text measures a
+     * real width with zero height, takes up no space, and never paints.
+     */
+    seedPlatformTextSize(context) {
+      let density = context.getDensity();
+      if (!(density > 0)) {
+        density = this.getProperty(
+          7
+          /* DOC_DENSITY_AT_GENERATION */
+        ) || 1;
+      }
+      context.loadFloat(27, density);
+      context.loadFloat(33, 14 * density * FONT_SCALE);
+    }
     applyDataOperations(context) {
       context.setMode("DATA" /* DATA */);
+      this.seedPlatformTextSize(context);
       this.mTimeVariables.updateTime(context);
       this.registerVariables(context, this.mOperations);
       this.applyOperations(context, this.mOperations);
@@ -16348,6 +16731,9 @@ ${inner}`;
         if (typeof op.registerListening === "function") {
           op.registerListening(context);
         }
+        if (typeof op.evaluateInLayout === "function") {
+          this.mLayoutComputeOps.add(op);
+        }
         if (typeof op.getList === "function" && !(op instanceof ContainerEnd)) {
           this.registerVariables(context, op.getList());
         }
@@ -16359,6 +16745,15 @@ ${inner}`;
       this.mRemoteComposeState.setContext(context);
       this.mClickAreas.clear();
       this.mTimeVariables.updateTime(context);
+      if (this.mRootLayoutComponent && this.mLayoutComputeOps.size > 0) {
+        let needsEvaluate = true;
+        for (let round = 0; needsEvaluate && round < 2; round++) {
+          needsEvaluate = false;
+          for (const op of this.mLayoutComputeOps) {
+            if (op.evaluateInLayout(context)) needsEvaluate = true;
+          }
+        }
+      }
       if (this.mRootLayoutComponent && this.mRootLayoutComponent.needsMeasure()) {
         this.mRootLayoutComponent.layoutTree(context);
       }
@@ -16381,6 +16776,7 @@ ${inner}`;
         context.setDensity(density);
       }
       context.loadFloat(27, density);
+      this.seedPlatformTextSize(context);
       const pc = context.getPaintContext();
       if (pc) pc.save();
       if (this.mContentSizing === RootContentBehavior.SIZING_SCALE) {
@@ -17233,6 +17629,9 @@ void main() {
       }
       this.programCache.clear();
       if (this.vao) gl.deleteVertexArray(this.vao);
+      this.vao = null;
+      const lose = gl.getExtension("WEBGL_lose_context");
+      if (lose) lose.loseContext();
       this.gl = null;
     }
     // ── Internal ──────────────────────────────────────────────────────
@@ -17498,6 +17897,10 @@ void main() {
   function namedFontStack(family) {
     return `"${cssQuoted(family)}", ${cssFontStackFor(0)}`;
   }
+  var DEFAULT_TEXT_SIZE = 14;
+  var ASCENT_RATIO = 0.92;
+  var DESCENT_RATIO = 0.24;
+  var AVG_ADVANCE = 0.528;
   var _CanvasPaintContext = class _CanvasPaintContext extends PaintContext {
     constructor(context, canvas) {
       super(context);
@@ -17582,6 +17985,13 @@ void main() {
         throw new Error("CanvasPaintContext: canvas rendering context is null or undefined");
       }
       this.ctx = canvas;
+    }
+    /** Release the WebGL context this paint context lazily created, if any. */
+    destroy() {
+      if (this.shaderRenderer) {
+        this.shaderRenderer.destroy();
+        this.shaderRenderer = null;
+      }
     }
     getCanvas() {
       return this.ctx;
@@ -18560,7 +18970,7 @@ void main() {
         progress += charWidth;
       }
     }
-    getTextBounds(textId, start, end, _flags, bounds) {
+    getTextBounds(textId, start, end, flags, bounds) {
       const text = this.textCache.get(textId);
       if (!text) {
         bounds.fill(0);
@@ -18571,10 +18981,22 @@ void main() {
       const substr = text.substring(s, e);
       this.setFont();
       const metrics = this.ctx.measureText(substr);
+      const size = this.textSize > 0 ? this.textSize : DEFAULT_TEXT_SIZE;
+      const wantFontBox = (flags & 2) !== 0;
+      const pick = (...vals) => {
+        for (const v of vals) if (typeof v === "number" && isFinite(v) && v > 0) return v;
+        return 0;
+      };
+      let ascent = wantFontBox ? pick(metrics.fontBoundingBoxAscent, metrics.actualBoundingBoxAscent) : pick(metrics.actualBoundingBoxAscent, metrics.fontBoundingBoxAscent);
+      let descent = wantFontBox ? pick(metrics.fontBoundingBoxDescent, metrics.actualBoundingBoxDescent) : pick(metrics.actualBoundingBoxDescent, metrics.fontBoundingBoxDescent);
+      if (ascent <= 0 && descent <= 0) {
+        ascent = ASCENT_RATIO * size;
+        descent = DESCENT_RATIO * size;
+      }
       bounds[0] = 0;
-      bounds[1] = -metrics.actualBoundingBoxAscent;
-      bounds[2] = metrics.width;
-      bounds[3] = metrics.actualBoundingBoxDescent;
+      bounds[1] = -ascent;
+      bounds[2] = pick(metrics.width, substr.length * AVG_ADVANCE * size);
+      bounds[3] = descent;
     }
     layoutComplexText(textId, start, end, alignment, overflow, maxLines, maxWidth, maxHeight, _letterSpacing, _lineHeightAdd, lineHeightMultiplier, _lineBreakStrategy, _hyphenationFrequency, _justificationMode, _useUnderline, _strikethrough, _flags) {
       const str = this.textCache.get(textId);
@@ -18583,7 +19005,8 @@ void main() {
       const e = end === -1 || end > str.length ? str.length : end;
       const text = str.substring(s, e);
       this.setFont();
-      const lineHeight = this.textSize * (lineHeightMultiplier || 1.2);
+      const size = this.textSize > 0 ? this.textSize : DEFAULT_TEXT_SIZE;
+      const lineHeight = size * (lineHeightMultiplier || 1.2);
       const lines = [];
       const paragraphs = text.split("\n");
       for (let pi = 0; pi < paragraphs.length; pi++) {
@@ -19839,6 +20262,20 @@ void main() {
       if (this.animationFrameId !== null) {
         cancelAnimationFrame(this.animationFrameId);
         this.animationFrameId = null;
+      }
+    }
+    /**
+     * Stop, and release the WebGL context.
+     *
+     * `stop()` only cancels the animation frame; a document that used a shader still
+     * holds a WebGL context afterwards. Callers showing many documents at once must
+     * use this instead, or the browser's context limit silently blanks the earliest
+     * ones.
+     */
+    destroy() {
+      this.stop();
+      if (this.paintContext) {
+        this.paintContext.destroy();
       }
     }
     repaint() {

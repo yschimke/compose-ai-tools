@@ -11,10 +11,19 @@ without a server-side Robolectric daemon.
 
 ## Upstream
 
-- Repository: <https://github.com/camaelon/remotecompose-experiments>
+- Repository: <https://github.com/yschimke/remotecompose-experiments> (fork of
+  `camaelon/remotecompose-experiments`, which is where changes are filed)
 - Path: `players/typescript/`
-- Commit: `d8b07da2ad540eaf2d0b7f59cb9d7fb4624719c0`
+- Commit: `53e19e93` ("docs: record the layout/text conformance work and its traps")
 - License: Apache-2.0 (see `LICENSE`)
+
+Previously vendored at `d8b07da2ad540eaf2d0b7f59cb9d7fb4624719c0`. The refresh to `53e19e93` picked
+up five upstream commits, of which `c3a08e1` ("typescript: fix six layout and variable-resolution
+defects") independently implemented two ops we had carried as local deltas — `TEXT_LAYOUT` (208) and
+`ACCESSIBILITY_SEMANTICS` (250). Both now come from upstream: our `CoreSemantics.ts` was deleted in
+favour of upstream's `AccessibilitySemantics` (identical wire reads), and our `TextLayout` was
+replaced by upstream's, which additionally decodes the dynamic-colour flag. See the delta list below
+for the one part of ours that survived the swap.
 
 ## Local modifications
 
@@ -34,42 +43,48 @@ Local deltas over that snapshot (each also filed upstream):
 - **`LayoutComponent` draw-content guard** (`operations/layout/LayoutComponent.ts`).
   The draw-content path only replaces normal painting when the block actually
   holds a drawing op (a `PaintOperation`); a `DrawContentModifier` trailed solely
-  by non-visual ops (e.g. `CoreSemantics`) no longer blanks the component's real
+  by non-visual ops (e.g. `AccessibilitySemantics`) no longer blanks the component's real
   content. Known remaining gap: a fill whose path geometry comes from
   layout-bound `FloatExpression`s still resolves empty, so the fill *shape*
   (not its colour or the label) is missing — tracked separately.
 
-- **`CoreSemantics` (opcode 250 / `ACCESSIBILITY_SEMANTICS`).** Added
-  `src/core/operations/semantics/CoreSemantics.ts` and registered it in
-  `src/core/Operations.ts`. Before this, an `AccessibilityModifier` op in the
-  stream hit the unknown-opcode path in `RemoteComposeBuffer.inflateFromBuffer`,
-  which logs `Unknown operation opcode: 250, skipping rest of buffer` and
-  abandons the rest of the document — so any component carrying accessibility
-  semantics (every Material3 catalog preview) lost all operations after it. The
-  op is accessibility metadata with no visual instructions, so the reader just
-  consumes its wire payload (matching `CoreSemantics.read` in remote-core) and
-  paints nothing, letting the rest of the document parse.
+- **`TextLookupInt` (opcode 153) and integer-expression ids** (`src/core/operations/TextLookupInt.ts`,
+  `src/core/operations/IntegerExpression.ts`, registered in `src/core/Operations.ts`). The
+  integer-indexed sibling of `TextLookup` (151) had no implementation, so a document containing one
+  hit `Unknown operation opcode: 153` and abandoned the rest of the buffer — losing far more than the
+  looked-up string. Added in [#3427](https://github.com/yschimke/compose-ai-tools/pull/3427); it was
+  not written down here at the time.
 
-- **`TextLayout` (opcode 208 / `TEXT_LAYOUT`).** Replaced the parse-only stub
-  with a real component: `src/core/operations/layout/managers/TextLayout.ts`
-  extends `CoreText` (239) and is registered in `src/core/Operations.ts` in place
-  of the `StubOperations` entry. `TEXT_LAYOUT` is the same text component as
-  `CoreText` in a narrower, fixed-positional encoding — the form the Glance Wear
-  widget capture (`WearWidgetDocument.captureRawContent`) and `remote-material3`'s
-  `RemoteText` emit. The stub consumed the right number of bytes, so the stream
-  stayed aligned and **no** unknown-opcode warning fired, but it discarded every
-  field and painted nothing: a document whose text arrived this way replayed as
-  its background alone. That is a strictly worse failure than opcode 250's
-  truncation, because nothing reports it — the PNG↔RC parity page scored the
-  text-less renders inside the catalog's normal mismatch band, since a missing
-  string and a font-substituted one cost a similar pixel count. Extending
-  `CoreText` reuses its measure/layout/paint path; only the wire decoding
-  differs. One decoding subtlety: `fontSize`/`fontWeight` are NaN-boxed (a
-  literal float, or an id in the NaN payload), and `WireBuffer.readNanId()`
-  routes them through `readFloat()`, which collapses the payload because JS
-  canonicalises NaN — so those two fields are read as raw int bits via
-  `readInt()` (same 4 bytes, so the stream stays aligned), matching what
-  `CoreText` stores and decodes with `isNaNBits`/`intBitsToFloat`.
+- **`TextLayout` (opcode 208) reads its NaN-boxed fields through the remapping hook**
+  (`src/core/operations/layout/managers/TextLayout.ts`). The op itself is upstream's now; this is the
+  one line of ours that outlived the swap. `fontSize` and `fontWeight` are NaN-boxed — a literal
+  float, or an id smuggled in the NaN payload — so both readers agree they must be taken in the bits
+  domain rather than through `readFloat()`, which collapses the payload because JS canonicalises NaN.
+  Upstream takes them with a bare `readInt()`; we take them with `readNanIdBits()`. Both consume the
+  same four bytes, so the stream stays aligned either way, but only the latter is a remapping hook:
+  under macro/pattern expansion `LoomWireBuffer.readNanIdBits` rewrites the id in the payload, and a
+  plain `readInt()` skips that silently, leaving every expanded instance of a template pointing at the
+  template's own id instead of its own.
+
+- **A weighted child honours the size its parent distributed to it**
+  (`src/core/operations/layout/managers/LayoutManager.ts`). Upstream's `WEIGHT` branch takes the
+  child's modifier-defined size (`mPadBeforeWidth`, normally 0) rather than the full `maxWidth`,
+  which is right for the case it was written for — a weight on the cross axis, or in a parent that
+  wraps and so has no slack to distribute. But `RowLayout`/`ColumnLayout` communicate the share they
+  decided on *as the incoming constraint*, re-measuring each weighted child with
+  `minWidth == maxWidth == childWidth`; taking the modifier-defined size unconditionally discards
+  that and re-measures the child at ~0. The branch now clamps the modifier-defined size into the
+  incoming `[min, max]`, so a tight constraint wins and a loose one leaves upstream's behaviour
+  intact. Filed upstream.
+
+  Worth stating how this failed, because it is the reason the round-clip fixture grew a second
+  assertion: the child is *laid out and painted* at that zero width, so its text re-wraps one word
+  per line and each line is then centred about a zero-width box — landing at a negative x, outside
+  the component, clipped away. Both card titles vanished from the watch-face fixture while the
+  document parsed cleanly, warned about nothing, and still scored 78.8% canvas coverage, because two
+  titles are ~0.001% of a 454x454 canvas. `rc-round-clip.test.mjs` now asserts on the text draws
+  themselves (one `fillText` per string, no negative offsets), which is the signal coverage cannot
+  carry.
 
 - **Size-relative corner radii on `MODIFIER_ROUNDED_CLIP_RECT` (opcode 54)**
   (`src/core/operations/layout/modifiers/ModifierOperations.ts`, with a guard in

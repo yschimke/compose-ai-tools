@@ -149,7 +149,9 @@ function readCommandParams(buffer: WireBuffer, count: number, cb: ReadCallback):
 }
 
 export class CoreText extends LayoutManager implements VariableSupport {
-    static readonly OP_CODE = 239;
+    // Typed as `number` rather than the literal 239 so TextLayout (208) can
+    // subclass this without a static-side type clash.
+    static readonly OP_CODE: number = 239;
 
     private mTextId: number;
     private mColor: number;

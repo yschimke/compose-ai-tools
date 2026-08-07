@@ -32,12 +32,35 @@ export abstract class LayoutManager extends LayoutComponent {
 
         // Determine width
         let w: number;
-        if (wMod && wMod.getType() === WidthModifier.EXACT) {
-            w = wMod.getValue() + padding_w;
-        } else if (wMod && wMod.getType() === WidthModifier.EXACT_DP) {
-            w = wMod.getValue() * dp + padding_w;
+        if (wMod && (wMod.getType() === WidthModifier.EXACT || wMod.getType() === WidthModifier.EXACT_DP)) {
+            // EXACT is already in px; EXACT_DP is raw dp and needs the document's
+            // generation density applied before it can be compared with anything else.
+            const exactW = wMod.getType() === WidthModifier.EXACT_DP
+                ? wMod.getValue() * dp
+                : wMod.getValue();
+            // Clamp to the incoming constraint. Without this a child larger than its
+            // parent keeps its requested size and overflows; the reference and the C++
+            // player both clamp (BaseModernMeasurePolicy: min(measuredWidth, maxWidth)).
+            w = Math.min(exactW + this.mPadBeforeWidth, maxWidth);
         } else if (wMod && wMod.getType() === WidthModifier.FILL) {
-            w = maxWidth;
+            // A fill may carry a fraction of the parent; a bare fill carries NaN.
+            w = wMod.hasFraction() ? maxWidth * wMod.getValue() : maxWidth;
+        } else if (wMod && wMod.getType() === WidthModifier.WEIGHT) {
+            // A weighted child gets its share from the parent's distribution pass. Until
+            // then its own size is just its modifier-defined size, as in the reference
+            // (max(measured, computeModifierDefinedWidth)). Defaulting to maxWidth here
+            // leaks the full width whenever no distribution happens — a weight on the
+            // cross axis, or in a parent that wraps and so has no slack to share.
+            //
+            // But the distribution pass communicates the share it decided on *as the
+            // incoming constraint*: RowLayout re-measures each weighted child with
+            // `minWidth == maxWidth == childWidth`. Taking the modifier-defined size
+            // unconditionally throws that away and re-measures the child at ~0, which is
+            // silent — the child is then laid out and painted at that width, so a text
+            // inside it wraps one word per line and centres itself around a zero-width
+            // box, i.e. off its own component. Honour the constraint the parent handed
+            // down and fall back to the modifier-defined size only when it is loose.
+            w = Math.min(Math.max(this.mPadBeforeWidth, minWidth), maxWidth);
         } else {
             // WRAP or other — compute from children
             w = maxWidth; // temporary, will be adjusted by computeWrapSize
@@ -45,12 +68,17 @@ export abstract class LayoutManager extends LayoutComponent {
 
         // Determine height
         let h: number;
-        if (hMod && hMod.getType() === HeightModifier.EXACT) {
-            h = hMod.getValue() + padding_h;
-        } else if (hMod && hMod.getType() === HeightModifier.EXACT_DP) {
-            h = hMod.getValue() * dp + padding_h;
+        if (hMod && (hMod.getType() === HeightModifier.EXACT || hMod.getType() === HeightModifier.EXACT_DP)) {
+            const exactH = hMod.getType() === HeightModifier.EXACT_DP
+                ? hMod.getValue() * dp
+                : hMod.getValue();
+            h = Math.min(exactH + this.mPadBeforeHeight, maxHeight);
         } else if (hMod && hMod.getType() === HeightModifier.FILL) {
-            h = maxHeight;
+            h = hMod.hasFraction() ? maxHeight * hMod.getValue() : maxHeight;
+        } else if (hMod && hMod.getType() === HeightModifier.WEIGHT) {
+            // See the width branch: a tight incoming constraint is the parent's
+            // distributed share and wins over the modifier-defined size.
+            h = Math.min(Math.max(this.mPadBeforeHeight, minHeight), maxHeight);
         } else {
             h = maxHeight;
         }
@@ -63,8 +91,17 @@ export abstract class LayoutManager extends LayoutComponent {
 
         if (horizontalWrap || verticalWrap) {
             this.mCachedWrapSize.clear();
-            this.computeWrapSize(context, minWidth, maxWidth - padding_w, minHeight,
-                maxHeight - padding_h, horizontalWrap, verticalWrap, measure, this.mCachedWrapSize);
+            // Children must be measured against *this* component's resolved size, not
+            // against the space it was offered. The reference tightens the inset to the
+            // measured size for any non-wrapping axis (BaseModernMeasurePolicy: "non-WRAP
+            // gets exact inset"), and C++ does the same. Without it a box with an explicit
+            // width measures its children at the parent's full width first, and a
+            // wrapping height then locks in from that wrong measurement — which is why
+            // text in a narrow fixed-width box was sized to one line and never re-grew.
+            const childMaxW = (horizontalWrap ? maxWidth : w) - padding_w;
+            const childMaxH = (verticalWrap ? maxHeight : h) - padding_h;
+            this.computeWrapSize(context, minWidth, childMaxW, minHeight,
+                childMaxH, horizontalWrap, verticalWrap, measure, this.mCachedWrapSize);
 
             // width/heightIn bounds are authored in dp (androidx `widthIn(min: Dp,
             // max: Dp)`), but the wire stores the raw dp number — scale to px by the

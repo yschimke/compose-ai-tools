@@ -106,6 +106,11 @@ export class TextFromFloat extends Operation implements VariableSupport {
     }
 
     apply(context: RemoteContext): void {
+        // Refresh the source value before formatting, as the reference does
+        // (TextFromFloat.apply calls updateVariables first). Relying on the dirty
+        // listener leaves mOutValue at whatever it held when this op was last marked
+        // dirty, so the rendered text silently lags or stays empty.
+        this.updateVariables(context);
         const v = this.mOutValue;
         let s: string;
         if (this.mLegacy) {

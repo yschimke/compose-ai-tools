@@ -39,6 +39,50 @@ function isDataVariableBits(b: number): boolean {
  * Variable NaN refs become the literal float's bits; operators and data
  * variables are preserved as their NaN bits.
  */
+/** `Utils.asNan(v)` as raw bits — the same encoding the equations already carry. */
+const asNan = (v: number): number => (v | 0xff800000) >>> 0;
+const CMD1_BITS = asNan(OFFSET + 64) | 0;
+const CMD2_BITS = asNan(OFFSET + 65) | 0;
+const NOP_BITS = asNan(OFFSET + 55) | 0;
+
+/**
+ * Resolve an equation for a *pair* of particles.
+ *
+ * A reference to a particle variable followed by CMD1 means "particle1's value for
+ * that variable", and CMD2 means particle2's; the command token becomes a NOP. Without
+ * this the two command tokens survive into the RPN and the expression evaluates to
+ * something meaningless, so a pair condition never passes and the whole body — nested
+ * conditionals, run-actions and all — is skipped in silence.
+ *
+ * Mirrors `ParticlesCompare.update2Body`.
+ */
+function resolvePairEquation(
+    src: Int32Array, context: RemoteContext, varIds: number[],
+    particle1: number[], particle2: number[],
+): Int32Array {
+    const out = new Int32Array(src.length);
+    for (let i = 0; i < src.length; i++) {
+        const b = src[i];
+        out[i] = (isNaNBits(b) && !isMathOperatorBits(b) && !isDataVariableBits(b))
+            ? floatToRawIntBits(context.getFloat(idFromBits(b)))
+            : b;
+        if (i + 1 >= src.length) continue;
+        for (let k = 0; k < varIds.length; k++) {
+            if (!isNaNBits(b) || idFromBits(b) !== varIds[k]) continue;
+            if (src[i + 1] === CMD1_BITS) {
+                out[i] = floatToRawIntBits(particle1[k]);
+                out[i + 1] = NOP_BITS;
+                i++;
+            } else if (src[i + 1] === CMD2_BITS) {
+                out[i] = floatToRawIntBits(particle2[k]);
+                out[i + 1] = NOP_BITS;
+                i++;
+            }
+        }
+    }
+    return out;
+}
+
 function resolveEquation(src: Int32Array, context: RemoteContext): Int32Array {
     const out = new Int32Array(src.length);
     for (let i = 0; i < src.length; i++) {
@@ -349,6 +393,16 @@ export class ParticlesCompareOp extends PaintOperation implements VariableSuppor
         const startIdx = this.mMin < 0 ? 0 : Math.min(this.mMin, particles.length);
         const endIdx = this.mMax < 0 ? particles.length : Math.min(this.mMax, particles.length);
 
+        // Two equation sets means a *pair* comparison, which is a different algorithm
+        // entirely — see `ParticlesCompare.condition2Body`. Running the single-particle
+        // loop for those documents leaves the condition tokens unsubstituted, so it
+        // never fires and every nested action is silently dropped.
+        if (this.mEquations2 && this.mEquations2.length > 0) {
+            this.paintPairs(context, particles, varIds, varCount, startIdx, endIdx);
+            context.needsRepaint();
+            return;
+        }
+
         for (let i = startIdx; i < endIdx; i++) {
             // Load particle variable values into context
             for (let j = 0; j < varCount; j++) {
@@ -367,20 +421,76 @@ export class ParticlesCompareOp extends PaintOperation implements VariableSuppor
                     context.loadFloat(varIds[j], particles[i][j]);
                 }
 
-                // Execute child operations
-                for (const child of this.mList) {
-                    if (child.isDirty() && typeof (child as any).updateVariables === 'function') {
-                        child.markNotDirty();
-                        (child as any).updateVariables(context);
-                    }
-                    context.incrementOpCount();
-                    child.apply(context);
-                }
+                // Re-resolve the children's variables *unconditionally*, as
+                // `ParticlesCompare.runChildren` does. The particle's variables were
+                // just loaded into the context, so a child whose operands depend on
+                // them is stale by definition — but it is not marked dirty, because
+                // nothing told it the particle moved. Gating on `isDirty()` meant a
+                // conditional inside a particle comparison resolved its operands once
+                // and then kept them forever: one branch permanently true, the other
+                // permanently false.
+                this.runChildren(context);
             }
         }
 
         context.needsRepaint();
     }
+
+    /** Run the child operations, as `ParticlesCompare.runChildren` does. */
+    private runChildren(context: RemoteContext): void {
+        for (const child of this.mList) {
+            if (typeof (child as any).updateVariables === 'function') {
+                child.markNotDirty();
+                (child as any).updateVariables(context);
+            }
+            context.incrementOpCount();
+            child.apply(context);
+        }
+    }
+
+    /**
+     * Pairwise comparison over distinct particles — the `condition2Body` algorithm.
+     *
+     * Note the inner loop starts at `k + 1`: only distinct pairs, so a single particle
+     * produces nothing at all. Children run twice per matching pair, once after each
+     * particle's equation set is applied, which is what the reference does.
+     */
+    private paintPairs(
+        context: RemoteContext, particles: number[][], varIds: number[],
+        varCount: number, startIdx: number, endIdx: number,
+    ): void {
+        for (let k = startIdx; k < endIdx; k++) {
+            const particle2 = particles[k];
+            for (let i = k + 1; i < endIdx; i++) {
+                const particle1 = particles[i];
+                for (let j = 0; j < varCount; j++) context.loadFloat(varIds[j], particle1[j]);
+
+                const cond = resolvePairEquation(
+                    this.mCondition, context, varIds, particle1, particle2);
+                context.incrementOpCount();
+                if (!(FloatExpression.evalRPN(context, cond) > 0)) continue;
+
+                const eq1 = this.mEquations1.map((e) =>
+                    resolvePairEquation(e, context, varIds, particle1, particle2));
+                for (let j = 0; j < varCount; j++) context.loadFloat(varIds[j], particle2[j]);
+                const eq2 = this.mEquations2.map((e) =>
+                    resolvePairEquation(e, context, varIds, particle1, particle2));
+
+                for (let j = 0; j < eq1.length && j < varCount; j++) {
+                    particle1[j] = FloatExpression.evalRPN(context, eq1[j]);
+                    context.loadFloat(varIds[j], particle1[j]);
+                }
+                this.runChildren(context);
+
+                for (let j = 0; j < eq2.length && j < varCount; j++) {
+                    particle2[j] = FloatExpression.evalRPN(context, eq2[j]);
+                    context.loadFloat(varIds[j], particle2[j]);
+                }
+                this.runChildren(context);
+            }
+        }
+    }
+
 
     deepToString(indent: string): string {
         return `${indent}ParticlesCompareOp(id=${this.mId}, flags=${this.mFlags})`;

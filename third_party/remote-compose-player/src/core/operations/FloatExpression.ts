@@ -149,7 +149,14 @@ export class FloatExpression extends Operation implements VariableSupport {
     private static readonly ID_REGION_MASK = 0x700000;
     private static readonly ID_REGION_ARRAY = 0x200000;
 
-    private evaluate(context: RemoteContext): number {
+    /**
+     * Evaluate now, without waiting for this operation's turn in the frame.
+     *
+     * `ValueFloatExpressionChangeAction` needs the value at the moment the action
+     * runs; reading the last loaded value instead would be a frame stale, which on a
+     * per-frame action compounds into visible drift.
+     */
+    evaluate(context: RemoteContext): number {
         return FloatExpression.evalRPN(context, this.mBits, this.mVar);
     }
 

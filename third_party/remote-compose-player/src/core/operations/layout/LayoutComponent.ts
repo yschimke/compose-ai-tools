@@ -7,8 +7,10 @@ import { PaintOperation } from '../../PaintOperation';
 import type { PaintContext } from '../../PaintContext';
 import type { RemoteContext } from '../../RemoteContext';
 import type { MeasurePass } from './measure/MeasurePass';
+import type { DimensionConstraint } from './modifiers/ModifierOperations';
 import { WidthModifier, HeightModifier, PaddingModifier,
          WidthInModifier, HeightInModifier, ZIndexModifier,
+         DimensionConstraintsModifier,
          GraphicsLayerModifier, BackgroundModifier, BorderModifier,
          RoundedClipRectModifier, ClipRectModifier, OffsetModifier,
          DrawContentModifier, VisibilityModifier, ClickModifier,
@@ -26,13 +28,24 @@ export class LayoutComponent extends Component {
     // Extracted modifiers
     private mWidthMod: WidthModifier | null = null;
     private mHeightMod: HeightModifier | null = null;
-    private mWidthInMod: WidthInModifier | null = null;
-    private mHeightInMod: HeightInModifier | null = null;
+    // Min/max constraints reach a component two ways: the older WidthIn/HeightIn ops
+    // (231/232) and DimensionConstraints (243), which is what `requiredWidthIn` and
+    // `requiredHeightIn` compile to. Both expose getMin()/getMax(), and the measure
+    // pass only needs that, so store either.
+    private mWidthInMod: DimensionConstraint | null = null;
+    private mHeightInMod: DimensionConstraint | null = null;
     private mZIndexMod: ZIndexModifier | null = null;
     private mGraphicsLayerMod: GraphicsLayerModifier | null = null;
 
     // Padding
     mPaddingLeft = 0;
+    // Padding declared *before* the size modifier, which is the only padding that adds
+    // to an explicit width/height. The reference walks the modifier list and stops at
+    // the size modifier (LayoutComponent.computeModifierDefinedWidth), so
+    // `.width(200).padding(30)` is 200 wide with 140 of content, while
+    // `.padding(30).width(200)` is 260 wide — exactly Compose's modifier-order rule.
+    mPadBeforeWidth = 0;
+    mPadBeforeHeight = 0;
     mPaddingRight = 0;
     mPaddingTop = 0;
     mPaddingBottom = 0;
@@ -66,8 +79,8 @@ export class LayoutComponent extends Component {
 
     getWidthModifier(): WidthModifier | null { return this.mWidthMod; }
     getHeightModifier(): HeightModifier | null { return this.mHeightMod; }
-    getWidthInModifier(): WidthInModifier | null { return this.mWidthInMod; }
-    getHeightInModifier(): HeightInModifier | null { return this.mHeightInMod; }
+    getWidthInModifier(): DimensionConstraint | null { return this.mWidthInMod; }
+    getHeightInModifier(): DimensionConstraint | null { return this.mHeightInMod; }
     getScrollModifier(): ScrollModifier | null { return this.mScrollModifier; }
 
     /** Choose which of two competing width/height modifiers a component keeps.
@@ -95,6 +108,10 @@ export class LayoutComponent extends Component {
         this.mPaddingRight = 0;
         this.mPaddingTop = 0;
         this.mPaddingBottom = 0;
+        this.mPadBeforeWidth = 0;
+        this.mPadBeforeHeight = 0;
+        let sawWidth = false;
+        let sawHeight = false;
         this.mComputedLayoutModifiers = null;
 
         for (const op of this.getList()) {
@@ -104,6 +121,8 @@ export class LayoutComponent extends Component {
                 this.mPaddingTop += op.mTopValue;
                 this.mPaddingRight += op.mRightValue;
                 this.mPaddingBottom += op.mBottomValue;
+                if (!sawWidth) this.mPadBeforeWidth += op.mLeftValue + op.mRightValue;
+                if (!sawHeight) this.mPadBeforeHeight += op.mTopValue + op.mBottomValue;
                 // Also keep in modifier list for paint-time translation
                 // (matches Java ComponentModifiers pattern)
                 this.mComponentModifiers.push(op);
@@ -114,12 +133,25 @@ export class LayoutComponent extends Component {
                 // measures at the fixed size. So keep an EXACT/EXACT_DP constraint
                 // rather than letting a later FILL/WRAP clobber it (last-wins).
                 this.mWidthMod = LayoutComponent.preferExactSize(this.mWidthMod, op) as WidthModifier;
+                sawWidth = true;
             } else if (op instanceof HeightModifier) {
                 this.mHeightMod = LayoutComponent.preferExactSize(this.mHeightMod, op) as HeightModifier;
+                sawHeight = true;
             } else if (op instanceof WidthInModifier) {
                 this.mWidthInMod = op;
             } else if (op instanceof HeightInModifier) {
                 this.mHeightInMod = op;
+            } else if (op instanceof DimensionConstraintsModifier) {
+                // Mirrors Java LayoutComponent: horizontal types feed the width
+                // constraint, vertical types the height one.
+                const t = op.getType();
+                if (t === DimensionConstraintsModifier.HORIZONTAL
+                    || t === DimensionConstraintsModifier.REQUIRED_HORIZONTAL) {
+                    this.mWidthInMod = op;
+                } else if (t === DimensionConstraintsModifier.VERTICAL
+                    || t === DimensionConstraintsModifier.REQUIRED_VERTICAL) {
+                    this.mHeightInMod = op;
+                }
             } else if (op instanceof ZIndexModifier) {
                 this.mZIndexMod = op;
                 this.mZIndex = (op as any).mValue ?? 0;
@@ -454,7 +486,7 @@ export class LayoutComponent extends Component {
         // The draw-content path (a `Modifier.drawWithContent` block) replaces the
         // component's normal painting with its own draw ops. Only take it when the
         // block actually contains a *drawing* op — a `DrawContentModifier` can be
-        // trailed by non-visual ops alone (e.g. accessibility `CoreSemantics`),
+        // trailed by non-visual ops alone (e.g. accessibility `AccessibilitySemantics`),
         // and treating that as a custom draw would blank the component's real
         // content (its `CanvasOperations` fill, text, and children).
         const drawContentOps = this.mDrawContentOperations;

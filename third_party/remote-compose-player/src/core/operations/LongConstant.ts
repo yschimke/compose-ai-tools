@@ -15,6 +15,7 @@ export class LongConstant extends Operation {
     }
 
     update(other: LongConstant): void { this.mValue = other.mValue; }
+    getValue(): number { return this.mValue; }
 
     write(_buffer: WireBuffer): void { /* stub */ }
 

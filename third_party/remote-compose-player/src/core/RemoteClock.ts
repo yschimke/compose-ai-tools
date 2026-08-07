@@ -23,7 +23,7 @@ export interface RemoteClock {
     snapshot(): TimeSnapshot;
 }
 
-function createSnapshot(millis: number): TimeSnapshot {
+export function createSnapshot(millis: number): TimeSnapshot {
     const d = new Date(millis);
     const year = d.getFullYear();
     const month = d.getMonth() + 1; // 1-12
