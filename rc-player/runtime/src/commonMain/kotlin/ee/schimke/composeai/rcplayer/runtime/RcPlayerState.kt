@@ -553,6 +553,10 @@ public class RcPlayerState(
   public fun applyContentStateOperations(children: List<RcLinkedNode>) {
     children.forEach { child ->
       when (val operation = (child as? RcLinkedNode.Operation)?.operation) {
+        // Float producers run before the text operations that reference them: a TEXT_FROM_FLOAT
+        // reading an id no expression has computed resolves to the reference's own NaN bits and
+        // formats as garbage. Wire order is the document's order, so one pass suffices.
+        is RcFloatExpression -> applyFloatExpression(operation)
         is RcIntegerExpression -> applyIntegerExpression(operation)
         is RcIdLookup,
         is RcDataMapLookup -> applyDataOperation(operation)

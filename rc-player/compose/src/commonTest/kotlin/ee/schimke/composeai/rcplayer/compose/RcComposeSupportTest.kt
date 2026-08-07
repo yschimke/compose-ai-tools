@@ -15,8 +15,11 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
+import ee.schimke.composeai.rcplayer.protocol.RcDataMapEntry
+import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
+import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
@@ -30,6 +33,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostNamedActionValue
 import ee.schimke.composeai.rcplayer.protocol.RcIdList
+import ee.schimke.composeai.rcplayer.protocol.RcIdMap
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImpulseProcess
 import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
@@ -190,6 +194,40 @@ class RcComposeSupportTest {
       document.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).issues.map { it.detail },
     )
     assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_IOS_ALPHA16).fullyRenderable)
+  }
+
+  @Test
+  fun dataMapLookupDeclaresTextOnlyForMapsThatCanYieldAString() {
+    fun document(entryType: Int) =
+      RcDocument(
+        header,
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcTextData(40, "temperature"),
+          RcFloatConstant(41, RcFloatWord.literal(21.5f)),
+          RcIdMap(42, listOf(RcDataMapEntry("temperature", entryType, 41))),
+          RcDataMapLookup(43, 42, 40),
+          RcCoreText(43, listOf(RcTextStyleProperty.IntValue(1, 10))),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcLayoutContent(3),
+        ) + List(3) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+
+    assertTrue(
+      document(RcIdMap.TYPE_STRING)
+        .composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16)
+        .fullyRenderable
+    )
+    // A float entry writes the float store, so the CoreText would render empty rather than fail.
+    assertEquals(
+      "text id 43 is not declared",
+      document(RcIdMap.TYPE_FLOAT)
+        .composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16)
+        .issues
+        .single()
+        .detail,
+    )
   }
 
   @Test

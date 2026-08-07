@@ -39,6 +39,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcNamedVariable
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentDescription
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
+import ee.schimke.composeai.rcplayer.protocol.RcTextFromFloat
 import ee.schimke.composeai.rcplayer.protocol.RcTextLength
 import ee.schimke.composeai.rcplayer.protocol.RcTextLookup
 import ee.schimke.composeai.rcplayer.protocol.RcTextLookupInt
@@ -868,6 +869,33 @@ class RcPlayerStateTest {
     assertNull(state.text(70))
     state.applyContentStateOperations(operations)
     assertEquals("Morning run", state.text(70))
+  }
+
+  @Test
+  fun replaysFloatProducersBeforeTheTextOperationsThatReadThem() {
+    val state = RcPlayerState(RcDocument(RcHeader(RcVersion(0, 1, 0)), emptyList()))
+    state.setFloat(10, 2f)
+    val operations =
+      listOf<RcLinkedNode>(
+        RcLinkedNode.Operation(
+          RcFloatExpression(
+            11,
+            listOf(
+              RcFloatWord(0x7fc00000 or 10),
+              RcFloatWord.literal(3f),
+              RcFloatExpressionEvaluator.operatorWord(RcFloatExpressionEvaluator.OFFSET + 3),
+            ),
+            null,
+          )
+        ),
+        RcLinkedNode.Operation(RcTextFromFloat(12, RcFloatWord(0x7fc00000 or 11), 1, 0, 0)),
+      )
+
+    state.beginFrame()
+    state.applyContentStateOperations(operations)
+
+    // Without the float expression the reference resolves to its own NaN bits and formats as junk.
+    assertEquals("6", state.text(12))
   }
 
   @Test

@@ -30,6 +30,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
+import ee.schimke.composeai.rcplayer.protocol.RcIdMap
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
@@ -101,6 +102,7 @@ public fun RcDocument.composeSupportReport(
     operations.filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcTextData>().associate {
       it.id to it.text
     }
+  val idMaps = operations.filterIsInstance<RcIdMap>().associateBy { it.id }
   // A text id is declared either by a literal DATA_TEXT or by a runtime operation that publishes a
   // string under its out id. Only the literals carry a value the report can inspect (font family
   // names, style properties), so `texts` stays literal-only while `textIds` covers both.
@@ -114,8 +116,14 @@ public fun RcDocument.composeSupportReport(
           is RcTextFromFloat -> operation.outId
           is RcTextLookup -> operation.outId
           is RcTextLookupInt -> operation.outId
-          // Publishes text under `outId` when the map entry is TYPE_STRING.
-          is RcDataMapLookup -> operation.outId
+          // A data-map lookup writes `outId` to the store its selected entry's type names, so it
+          // declares text only if the map can yield a string at all. The key is resolved at
+          // runtime, so a map mixing string and non-string entries stays permissive: rejecting it
+          // would refuse a document whose key selects the string.
+          is RcDataMapLookup ->
+            operation.outId.takeIf { _ ->
+              idMaps[operation.mapId]?.entries?.any { it.type == RcIdMap.TYPE_STRING } ?: true
+            }
           else -> null
         }
       }
