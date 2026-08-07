@@ -422,9 +422,26 @@ Every producer—PNG, SVG, HTML, Figma, or another design tool—must normalize 
 declared PNG before publication. `serve` reads only that inert raster. It never executes the
 artifact or follows `source.uri`; catalog import fetches the raster from the already-trusted catalog
 branch and rewrites it to a server-owned path. IDs and paths are contained, duplicate mappings are
-discarded, and an optional SHA-256 is verified before the reference is advertised. Comparisons are
-exact: a reference names one preview id, and differing image dimensions are reported rather than
-silently scaled into a misleading score.
+discarded, and an optional SHA-256 is verified before the reference is advertised. A reference names
+one preview id — the mapping is never inferred.
+
+**The two sides are scored on their content box, not their canvas.** A reference and a preview are
+framed differently by construction: the preview carries whatever its `@Preview` scaffold added
+(`showBackground`'s opaque sheet, a `padding()` inset, a fixed-height container the content does not
+fill), while the reference is usually cropped to the artboard. Comparing canvases measured the
+scaffold rather than the component — a padded preview scored like unrelated art, and a size mismatch
+reported nothing at all. So each side is cropped to the region it actually draws in and both are
+normalized into one box before scoring, and the match score is reported beside a **proportion
+difference** rather than blended with it: a reference stretched into the render's canvas is a real
+finding, not noise to smooth away. Near-empty captures are the exception and fall back to
+whole-canvas scoring, because a content box of a few percent is located by whichever stray mark
+happens to be present rather than by the component.
+
+Measure a whole lane with [`scripts/compare-audit.mjs`](../scripts/compare-audit.mjs): `mirror`
+pulls a catalog's compare page and its artifacts onto disk, `run` replays them in Chromium and
+reports per-catalog mean / p10 / min / count-below-threshold. `run --patch <format-compare.js>`
+scores the same bytes with a local copy of the scorer, which is how a scoring change is A/B'd
+against real artifacts before it ships.
 
 ### Where a published catalog's references come from
 
