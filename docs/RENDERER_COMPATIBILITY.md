@@ -78,6 +78,55 @@ JVM/desktop consumer classpaths — a pure-Android KMP fallback
 exists, and that classpath can't feed the JVM renderer anyway). Covered by
 `DesktopRendererGraphAlignmentFunctionalTest`.
 
+### The serve host is a version FLOOR for every catalog it renders live
+
+The graph-alignment mitigation above works because Gradle resolves one graph and
+picks a coherent max version. **A published bundle rendered by `compose-preview
+serve` has no such resolution step**, and that is the failure mode of issue
+#3447.
+
+The rule it implies:
+
+> The serve host's `compose-multiplatform` must be **>= the newest
+> `compose-multiplatform` of any catalog served from it.**
+
+A catalog that upgrades *ahead* of the host breaks its own live lane, and it
+does so in the worst possible way — **silently, at regeneration time**, with no
+build failure anywhere. Baked PNGs keep serving, so the catalog looks healthy
+until someone requests an override; only then does every live render 503.
+
+What #3447 looked like concretely:
+
+| | compose-multiplatform | skiko |
+|---|---|---|
+| serve host (compose-ai-tools) | 1.10.3 | 0.9.37.4 |
+| `m3-catalog` | 1.11.1 | **0.144.6** |
+
+`org.jetbrains.skia.PathBuilder` is new in the 1.11 line. The bundle's newer
+`org.jetbrains.skia.*` bindings paired with the host sidecar's older `libskiko`,
+whose native exports no `PathBuilder_*` symbol at all, so every render touching
+a path — which for Material 3 is nearly all of them — died with:
+
+```
+UnsatisfiedLinkError: 'long org.jetbrains.skia.PathBuilderKt.PathBuilder_nMakeFromPath(long)'
+```
+
+3794 of 3990 renders (95%) on the largest published catalog.
+
+Note this is **not** a hole in `ServeBundleDaemon.shouldPrecedeDaemonSidecar` —
+that rule already promotes `org.jetbrains.skiko` alongside `org.jetbrains.compose`
+precisely so bindings and native move together. Promotion can only reorder what
+the bundle actually carries; it cannot conjure a newer native than the host has
+ever shipped. **The fix is releasing the host, not editing the classpath rules.**
+
+Two practical consequences:
+
+1. **Bumping `compose-multiplatform` in this repo is a serve-host release
+   concern.** Cutting a release that does *not* move it ships the identical
+   skiko and fixes nothing — the host must be re-released *and redeployed*.
+2. **A catalog's CMP bump is a cross-repo change.** Land the host bump, release,
+   and redeploy *before* the catalog regenerates against a newer line.
+
 ## Known findings that still warrant a note
 
 ### A library declares a higher minSdk than the module

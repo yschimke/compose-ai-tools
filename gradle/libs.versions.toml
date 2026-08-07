@@ -56,7 +56,17 @@ compose-bom-stable = "2026.06.01"
 # Renovate is constrained to the 2025.11.x line in `.github/renovate.json` —
 # raising the supported-Compose-minimum is a manual decision.
 compose-bom-compat = "2025.11.01"
-compose-multiplatform = "1.10.3"
+# The desktop/Skiko floor for `renderer-desktop`, `daemon-desktop`, `bundle-viewer` and the CMP
+# player. This version is also a CEILING CONSTRAINT ON EVERY CATALOG THE SERVE HOST RENDERS LIVE:
+# it must be >= the newest `compose-multiplatform` of any catalog served from this host. A catalog
+# that upgrades ahead of the host pairs its newer `org.jetbrains.skia.*` bindings with the sidecar's
+# older `libskiko` and every live render dies with `UnsatisfiedLinkError` — silently, at
+# regeneration time, with baked PNGs still serving fine. That is issue #3447: m3-catalog moved to
+# CMP 1.11.1 (skiko 0.144.6, which introduced `org.jetbrains.skia.PathBuilder`) while the host was
+# on 1.10.3 (skiko 0.9.37.4, whose native exports no `PathBuilder_*` symbol at all). Bumping this
+# ref is therefore a SERVE-HOST RELEASE concern, not just a build-hygiene one — see
+# `docs/RENDERER_COMPATIBILITY.md`.
+compose-multiplatform = "1.11.1"
 # The Compose M3 design catalog (`:samples:design-catalog-m3`) pins material3
 # FORWARD of `compose-bom-stable` (which carries 1.4.0) solely for the Material 3
 # **inset focus ring** APIs — `LocalRippleThemeConfiguration` +
@@ -71,18 +81,18 @@ compose-multiplatform = "1.10.3"
 # `:samples:design-catalog-remote-m3`. Drop this pin and revert to `libs.compose.material3`
 # once material3 1.5.0 is stable in `compose-bom-stable`.
 compose-material3-catalog = "1.5.0-alpha25"
-# JetBrains Compose Multiplatform material3 tracks its own line: the
-# `org.jetbrains.compose` 1.10.3 plugin pins `compose.material3` to 1.9.0
-# (material3 multiplatform 1.10.x is still alpha), so the explicit coordinate
-# must use this version rather than `compose-multiplatform`. Mirrors what the
-# deprecated `compose.material3` accessor resolved to.
-compose-multiplatform-material3 = "1.9.0"
-# Compottie — the KMP Lottie runtime that powers `:lottie-preview-runtime`. Pinned to 2.1.0
-# because it is built against JetBrains Compose foundation 1.10.1 (same minor as our
-# `compose-multiplatform = 1.10.3`); 2.2.x jumps to foundation 1.11.0, which would drag a
-# *newer* Compose onto the renderer classpath — the failure direction `docs/RENDERER_COMPATIBILITY.md`
-# warns about. Bump only in lockstep with `compose-multiplatform`.
-compottie = "2.1.0"
+# JetBrains Compose Multiplatform material3 tracks its own line, so the explicit coordinate must
+# use this version rather than `compose-multiplatform`. Matched to what `m3-catalog` pins on the
+# 1.11 line, so the largest live-rendered catalog and the host agree on the material3 ABI as well
+# as on Skiko. (This artifact itself declares foundation/ui `1.11.0-beta03`; the `1.11.1` ref above
+# is newer, so Gradle's conflict resolution keeps one coherent 1.11.1 Compose graph.)
+compose-multiplatform-material3 = "1.11.0-alpha07"
+# Compottie — the KMP Lottie runtime that powers `:lottie-preview-runtime`. Tracks the same Compose
+# minor as `compose-multiplatform`: 2.2.x is built against JetBrains Compose foundation 1.11.0, which
+# is what the 1.11 line above now ships. (On the old 1.10.3 floor this was held at 2.1.0 precisely so
+# it could not drag a *newer* Compose onto the renderer classpath — the failure direction
+# `docs/RENDERER_COMPATIBILITY.md` warns about. Bump only in lockstep with `compose-multiplatform`.)
+compottie = "2.2.4"
 activity-compose = "1.13.0"
 # `androidx.navigation:navigation-compose` — used only by the
 # `:samples:android` NavHost preview that exercises the daemon's

@@ -82,6 +82,18 @@ internal object FloatsToPath {
                     // Upstream guards this on `Build.VERSION.SDK_INT >= 34` and reaches
                     // AndroidPath.internalPath; skiko's Path exposes conicTo directly, so call it
                     // through the desktop backing path (no SDK gate). See the file header.
+                    //
+                    // Skiko m144 (CMP 1.11, skiko 0.144.6) deprecated the mutating `Path` API at
+                    // DeprecationLevel.ERROR in favour of `PathBuilder` — the same API move that
+                    // introduced `org.jetbrains.skia.PathBuilder`. It is a SOURCE-level deprecation
+                    // only: the native still exports `Java_org_jetbrains_skia_PathKt__1nConicTo`, so
+                    // the call is as correct at runtime as it was before. Suppressed rather than
+                    // migrated because this walk mutates one `Path` incrementally across the whole
+                    // command stream, while `PathBuilder` is a build-then-`snapshot()` type —
+                    // porting it would restructure a block whose whole value is being *verbatim*
+                    // upstream. Revisit when upstream `remote-player-compose` moves, so this file
+                    // keeps tracking it line-for-line.
+                    @Suppress("DEPRECATION_ERROR")
                     path.asSkiaPath()
                         .conicTo(
                             floatPath[i + 0],
