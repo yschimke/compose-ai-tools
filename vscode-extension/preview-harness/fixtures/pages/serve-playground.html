@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Playground — compose-preview</title>
-        <link rel="stylesheet" href="/assets/serve/1049b-fb6c8feac2f8dc97/serve.css">
+        <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
         <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
@@ -22,8 +22,8 @@
   </nav>
 </header>
         <main class="cp-main">
-                <link rel="stylesheet" href="/assets/serve/2210-eb494ea972d2661e/codemirror.css">
-        <link rel="stylesheet" href="/assets/serve/1083-2f91e7afbda68d07/playground.css">
+                <link rel="stylesheet" href="/assets/serve/fixture/codemirror.css">
+        <link rel="stylesheet" href="/assets/serve/fixture/playground.css">
         <h1 class="cp-head">Playground</h1>
         <p class="cp-sub">Write a Compose snippet, compile it against the live catalog, and open a
           preview. This lane runs your code on the server, so it stays behind your token.</p>
@@ -74,7 +74,7 @@ fun Greeting() {
               aria-label="Previews declared by this snippet"></ul>
           </div>
         </div>
-        <script src="/assets/serve/6b581-d6e9c9379c1c3b8b/codemirror.js"></script>
+        <script src="/assets/serve/fixture/codemirror.js"></script>
         <script>(function () {
   var source = document.getElementById("pg-source");
   var mode = document.getElementById("pg-mode");

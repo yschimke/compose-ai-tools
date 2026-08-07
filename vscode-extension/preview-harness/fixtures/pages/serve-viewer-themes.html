@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Profile screen — compose-preview</title>
-        <link rel="stylesheet" href="/assets/serve/1049b-fb6c8feac2f8dc97/serve.css">
+        <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
         <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
@@ -166,10 +166,10 @@
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
-      <script src="/assets/serve/e8c-acead748488355b1/url-state.js"></script>
-      <script src="/assets/serve/22e-68c7d41937f0dccd/viewer-groups.js"></script>
-      <script src="/assets/serve/c0f-86b66f86ed745fcf/viewer-drawers.js"></script>
-      <script src="/assets/serve/2d42-a013f0117b063b17/viewer-history.js"></script>
+      <script src="/assets/serve/fixture/url-state.js"></script>
+      <script src="/assets/serve/fixture/viewer-groups.js"></script>
+      <script src="/assets/serve/fixture/viewer-drawers.js"></script>
+      <script src="/assets/serve/fixture/viewer-history.js"></script>
       <script>(function () {
   var el = document.getElementById("cp-theme");
   if (!el) return;
@@ -228,8 +228,8 @@
   });
   syncBg();
 })();</script>
-      <script src="/assets/serve/1a3bf-5821c98cb28d9399/viewer.js"></script>
-      <script src="/assets/serve/580-33b18e7b310ae1cc/backend-badge.js"></script>
+      <script src="/assets/serve/fixture/viewer.js"></script>
+      <script src="/assets/serve/fixture/backend-badge.js"></script>
         </main>
       </body>
     </html>

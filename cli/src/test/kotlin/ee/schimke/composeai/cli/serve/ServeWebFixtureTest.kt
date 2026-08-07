@@ -40,6 +40,11 @@ import kotlinx.serialization.json.buildJsonObject
  *
  * (An env var rather than a `-D` system property, since Gradle forwards the environment to the
  * forked test JVM but not arbitrary system properties.)
+ *
+ * Two fields are deliberately held constant in the goldens so that a diff only ever shows markup:
+ * the server version ([version]) and the cache-busting hash in every asset href (see
+ * [stableAssetHrefs]). Both are volatile, neither is a surface anyone reviews, and left alone they
+ * made this test fail for reasons no reviewer could act on.
  */
 class ServeWebFixtureTest {
 
@@ -1478,7 +1483,7 @@ class ServeWebFixtureTest {
     // The page goldens, named once: the same list backs both the `UPDATE_SERVE_WEB_FIXTURES=true`
     // regeneration below and the sync assertion further down, so a fixture can never be written
     // by one and forgotten by the other.
-    val goldens =
+    val renderedGoldens =
       listOf(
         "serve-landing.html" to landing,
         "serve-landing-public.html" to landingPublic,
@@ -1518,6 +1523,10 @@ class ServeWebFixtureTest {
         "serve-doc-lottie.html" to docLottie,
         "serve-doc-remotecompose.html" to docRemoteCompose,
       )
+
+    // Normalise once, here, so the regeneration below and the sync assertion further down cannot
+    // disagree about what a golden is supposed to contain.
+    val goldens = renderedGoldens.map { (name, html) -> name to stableAssetHrefs(html) }
 
     if (update) {
       pagesDir.mkdirs()
@@ -4059,6 +4068,21 @@ class ServeWebFixtureTest {
    * everything (drift across unrelated pages, on a line nobody on the branch edited).
    */
   private fun assertGoldensInSync(pagesDir: File, goldens: List<Pair<String, String>>) {
+    // Every page loads at least one hashed asset, so a golden without the placeholder means
+    // `stableAssetHrefs` stopped matching what `ServeWeb` emits — the URL shape changed, or the
+    // digest format did. Say so directly instead of letting it surface as 36 files of "drift",
+    // which is the failure this normalisation exists to stop being noise.
+    val unnormalised =
+      goldens.filterNot { (_, html) -> STABLE_ASSET_PREFIX in html }.map { it.first }
+    if (unnormalised.isNotEmpty()) {
+      fail(
+        "no `$STABLE_ASSET_PREFIX` href in: ${unnormalised.joinToString(", ")}.\n" +
+          "ServeWeb's asset URLs no longer match the shape ServeWebFixtureTest normalises " +
+          "(`$ASSET_HREF_PATTERN`). Update stableAssetHrefs to match ServeWebAssets.href, or the " +
+          "goldens will start pinning real content hashes again and every asset edit will drift " +
+          "every page."
+      )
+    }
     val missing = goldens.filterNot { (name, _) -> File(pagesDir, name).isFile }.map { it.first }
     val drifted =
       goldens
@@ -4083,6 +4107,33 @@ class ServeWebFixtureTest {
     }
     fail(report)
   }
+
+  /**
+   * Replace the cache-busting content hash in every asset href with a constant.
+   *
+   * [ServeWebAssets.href] builds `/assets/serve/<size>-<sha256 prefix>/<file>`, so editing any one
+   * of the eleven CSS/JS assets changes a hash that up to **36** goldens embed. That drift is pure
+   * noise: the hash is not a surface anyone reviews, it cannot appear in a screenshot, and the
+   * preview-harness deliberately ignores it — both its static server and the Playwright routes
+   * match these URLs by basename precisely because "the hash is cache-busting and changes whenever
+   * the asset does". What it did instead was fail this test on every branch that touched
+   * `viewer.js`, and twice reach `main` red (#3446, #3456) when a merge landed the asset without
+   * the regeneration. Worse, it trained the reflex the failure message argues against: 36 files of
+   * drift you did not cause looks exactly like the "regenerated before merging main" case, so the
+   * honest response and the lazy one are the same command.
+   *
+   * Pinning it here is the same move this test already makes for the server version ([version] =
+   * `0.0.0-fixture`, so a release does not churn the goldens) and for the fixed provenance date —
+   * hold the volatile-but-uninteresting field constant so the diff only ever shows markup.
+   *
+   * This does not weaken the guard. The regex matches only the versioned form, so if `ServeWeb`
+   * ever stopped emitting one the rendered text would pass through unchanged and
+   * [assertGoldensInSync] would fail on the missing placeholder rather than silently accepting a
+   * broken URL. Production still serves the real hash: [ServeHttpServer] 404s a mismatched version,
+   * and nothing about that path changes here.
+   */
+  private fun stableAssetHrefs(html: String): String =
+    ASSET_HREF_PATTERN.replace(html, STABLE_ASSET_PREFIX)
 
   /** `line N: golden … | rendered …` for the first line where the two texts diverge. */
   private fun firstDifference(golden: String, rendered: String): String {
@@ -4143,4 +4194,17 @@ class ServeWebFixtureTest {
     </svg>
     """
       .trimIndent()
+
+  private companion object {
+    /** What the goldens carry in place of a real content hash. See [stableAssetHrefs]. */
+    const val STABLE_ASSET_PREFIX = "/assets/serve/fixture/"
+
+    /**
+     * `/assets/serve/<size-hex>-<16 hex digits>/` — the exact shape [ServeWebAssets.href] builds
+     * from an asset's byte length and SHA-256 prefix. Deliberately narrow: a looser pattern
+     * (`[^/]+`) would keep matching if that scheme changed, and the goldens would go on looking
+     * normalised while pinning something else.
+     */
+    val ASSET_HREF_PATTERN = Regex("""/assets/serve/[0-9a-f]+-[0-9a-f]{16}/""")
+  }
 }
