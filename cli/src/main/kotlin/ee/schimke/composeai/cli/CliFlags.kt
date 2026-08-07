@@ -33,6 +33,11 @@ internal object CliFlags {
       "--exclude-preview-id",
       "--exclude-preview-row",
       "--output",
+      // The short alias, classified for the same reason as its long form: it consumes the next
+      // token. The registry test's scanner only matches `--` flags, so this one has to be added by
+      // hand — and it has to be, or a variadic positional list (`bundle merge a.png b.png -o
+      // out.png`) reads the output path as another operand.
+      "-o",
       "--timeout",
       "--plugin-version",
       "--fail-on",
@@ -161,6 +166,27 @@ internal object CliFlags {
 
   /** Index of [firstPositional] in [args], or `-1`. */
   fun firstPositionalIndex(args: List<String>): Int = findCommandIndex(args.toTypedArray())
+
+  /**
+   * EVERY bare token in [args] — the positionals, in order, with each [VALUE_FLAGS] flag and the
+   * token it consumes skipped. [firstPositional] answers "which subcommand is this?"; this answers
+   * "which operands did the subcommand get?", for a variadic one like `bundle merge <base>
+   * <shard>…`.
+   */
+  fun positionals(args: List<String>): List<String> = buildList {
+    var i = 0
+    while (i < args.size) {
+      val arg = args[i]
+      when {
+        arg in VALUE_FLAGS -> i += 2
+        arg.startsWith("-") -> i++
+        else -> {
+          add(arg)
+          i++
+        }
+      }
+    }
+  }
 
   /**
    * Index of the subcommand token in [args], or `-1` if argv is entirely flags and their values.

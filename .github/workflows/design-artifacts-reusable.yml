@@ -217,6 +217,34 @@ on:
         required: false
         type: number
         default: 60
+      render-shards:
+        description: >
+          Split the PRIMARY render across this many parallel jobs. 1 (the default) keeps the
+          single-job pipeline byte for byte — no extra jobs, no artifacts, no merge.
+
+          Above 1, each shard runs the same `bundle pack` with `--exclude-preview-id` naming every
+          preview that is not its share, which leaves the excluded previews listed in the bundle
+          without a baked PNG. The shards therefore emit structurally identical bundles differing
+          only in which `previews/<id>.*` slots are filled, and `compose-preview bundle merge` unions
+          them back into the bundle one serial render would have produced. Every shard derives its
+          own partition from its own `compose-preview list --json` (deterministic: the id list is
+          sorted, then round-robined), so there is no serial discover-then-fan-out prefix — and the
+          merge cross-checks the shards' plans before trusting them.
+
+          What this buys, and what it does not: only the MARGINAL cost divides. Measured on
+          m3-catalog, `render_minutes ≈ 3.7 + 2.15s × previews`, and every shard pays the ~3.7 min of
+          Gradle configure + compile in full. So 4–6 is the useful range and 16 is buying compile
+          time, not throughput. At 1500 previews it takes the render from ~58 min (which blows a
+          40-minute `render-timeout`) to ~23 min end to end.
+
+          Reach for `modePriority` first where a catalog can: deferral makes the work smaller, which
+          sharding then divides. The two compose.
+
+          The extra module (`extra-module`) is NOT sharded — it is a supplement, small by
+          construction, and it renders in the generate job as before.
+        required: false
+        type: number
+        default: 1
       render-timeout:
         description: >
           Seconds `bundle pack` may spend rendering, per module. This is the INNER timeout on the
@@ -246,8 +274,260 @@ on:
 permissions: {}
 
 jobs:
+  # ── Sharded render (render-shards > 1) ──────────────────────────────────────────────────────
+  # Two jobs that do not exist at all in the default single-shard pipeline. `shard-matrix` only
+  # turns the count into a matrix (Actions has no range expression); `render-shard` is the render,
+  # fanned out. Both are skipped when render-shards is 1, and `generate` renders inline exactly as
+  # it always has.
+  shard-matrix:
+    name: ${{ inputs.system }} · plan
+    if: ${{ inputs.render-shards > 1 }}
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      # No checkout, no toolchain: this is `[1, 2, …, N]` and nothing else. The real partition is
+      # computed inside each shard from its own discovery, which is what keeps the fan-out free of a
+      # serial "discover once, then start the shards" prefix — that prefix would cost a full Gradle
+      # configure + compile (~3.7 min) before any shard began, which is the same fixed cost each
+      # shard pays anyway.
+      - name: Build the shard matrix
+        id: plan
+        env:
+          SHARDS: ${{ inputs.render-shards }}
+        run: |
+          set -euo pipefail
+          echo "matrix=[$(seq -s, 1 "$SHARDS")]" >> "$GITHUB_OUTPUT"
+
+  render-shard:
+    name: ${{ inputs.system }} · shard ${{ matrix.shard }}/${{ inputs.render-shards }}
+    if: ${{ inputs.render-shards > 1 }}
+    needs: [shard-matrix]
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    strategy:
+      # A shard that dies takes the run with it: the merge needs every partition, so letting the
+      # siblings burn another 20 minutes to produce an unpublishable bundle helps nobody.
+      fail-fast: true
+      matrix:
+        # The `|| '[1]'` is inert insurance: a skipped `shard-matrix` (render-shards at its default)
+        # leaves the output empty, and `strategy` is expanded early enough that a bare `fromJSON('')`
+        # can fail the workflow rather than skip the job. The fallback is never rendered — the `if`
+        # above is false in exactly the case that produces it.
+        shard: ${{ fromJSON(needs.shard-matrix.outputs.matrix || '[1]') }}
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ secrets.buildfetch_ro_token }}
+    steps:
+      - name: Check out the calling repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install compose-preview CLI
+        if: ${{ inputs.cli-source == 'released' }}
+        uses: yschimke/compose-ai-tools/.github/actions/install@main
+        with:
+          version: ${{ inputs.cli-version }}
+          catalog-key: ${{ inputs.catalog-key }}
+          catalog-path: ${{ inputs.catalog-path }}
+          github-token: ${{ github.token }}
+
+      - name: Check out compose-ai-tools (export driver)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yschimke/compose-ai-tools
+          ref: ${{ inputs.driver-ref }}
+          path: compose-ai-tools
+          persist-credentials: false
+
+      - name: Build compose-preview CLI from source
+        if: ${{ inputs.cli-source == 'build' }}
+        working-directory: compose-ai-tools
+        run: |
+          set -euo pipefail
+          ./gradlew :cli:installDist --no-daemon --quiet
+          echo "$GITHUB_WORKSPACE/compose-ai-tools/cli/build/install/compose-preview/bin" >> "$GITHUB_PATH"
+
+      # Node for the driver's partition + spec scripts only. Deliberately NO `npm ci`: the three
+      # scripts this job runs (validate-catalog-spec / deferred-preview-ids / shard-preview-ids) are
+      # dependency-free by design — node built-ins and their own siblings — so a shard skips the
+      # ~1 min install of playwright + the design-parity export engine, which only `generate` needs.
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      # The same build-free pre-flight `generate` runs. Duplicated on purpose rather than passed
+      # down as a job output: it costs seconds, it fails a mistyped spec here instead of after a
+      # 20-minute fan-out, and its `render-filter` output has to reach THIS job's render anyway.
+      - name: Validate catalog spec
+        id: validate-spec
+        env:
+          SPEC: ${{ inputs.spec }}
+          MODULE: ${{ inputs.module }}
+          EXTRA_MODULE: ${{ inputs.extra-module }}
+          PREVIEW_ANNOTATIONS: ${{ inputs.preview-annotations }}
+          WORKDIR: ${{ inputs.working-directory }}
+          LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
+          LIVE_SOURCE: ${{ inputs.live-rerender-source }}
+        run: |
+          set -euo pipefail
+          to_dir() { printf '%s' "${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
+          args=(--spec "$SPEC" --module-dir "$(to_dir "$MODULE")")
+          if [ -n "$EXTRA_MODULE" ]; then args+=(--src "$(to_dir "$EXTRA_MODULE")"); fi
+          for ann in $PREVIEW_ANNOTATIONS; do args+=(--preview-annotation "$ann"); done
+          if [ "$LIVE_BUNDLE" = "true" ] || [ "$LIVE_SOURCE" = "true" ]; then
+            args+=(--live-bundle)
+          else
+            args+=(--no-live-bundle)
+          fi
+          node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs "${args[@]}" \
+            --render-filter-out "$GITHUB_WORKSPACE/render-filter.txt" \
+            --deferred-modes-out "$GITHUB_WORKSPACE/deferred-modes.txt"
+          echo "render-filter=$(cat "$GITHUB_WORKSPACE/render-filter.txt")" >> "$GITHUB_OUTPUT"
+          echo "deferred-modes=$(cat "$GITHUB_WORKSPACE/deferred-modes.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: Stage fonts for rendering
+        if: ${{ inputs.stage-font-globs != '' }}
+        env:
+          FONT_GLOBS: ${{ inputs.stage-font-globs }}
+        run: |
+          set -euo pipefail
+          command -v fc-cache >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends fontconfig; }
+          mkdir -p "$HOME/.local/share/fonts"
+          shopt -s nullglob
+          for g in $FONT_GLOBS; do cp $g "$HOME/.local/share/fonts/"; done
+          fc-cache -f "$HOME/.local/share/fonts" >/dev/null
+
+      - name: Install desktop (Skiko) render deps
+        if: ${{ inputs.desktop-render }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig
+
+      # Same font cache as the single-job pipeline. The save key carries the shard index because
+      # Actions caches are immutable: N shards saving one `…-<run_id>` key would have the first win
+      # and the rest log a conflict. The restore-keys are prefixes, so every shard still starts warm
+      # from whatever the last run left — including from a sibling shard's save.
+      - name: Restore downloadable-font cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/composeai/fonts
+          key: composeai-fonts-${{ runner.os }}-${{ inputs.system }}-${{ github.run_id }}-shard-${{ matrix.shard }}
+          restore-keys: |
+            composeai-fonts-${{ runner.os }}-${{ inputs.system }}-
+            composeai-fonts-${{ runner.os }}-
+
+      # Discovery, in this shard, for this shard. `compose-preview list --json` runs
+      # `composePreviewDiscover`; the compile it forces is shared with the render below (same Gradle
+      # build, warm caches), so it costs discovery — the same arrangement the single-job pipeline
+      # already relies on for `modePriority`.
+      - name: Discover previews
+        working-directory: ${{ inputs.working-directory || '.' }}
+        run: |
+          set -euo pipefail
+          compose-preview list --json --module "${{ inputs.module }}" \
+            > "$GITHUB_WORKSPACE/discovered-previews.json"
+
+      - name: Derive per-mode render exclusions
+        id: mode-filter
+        if: ${{ steps.validate-spec.outputs.deferred-modes != '' }}
+        env:
+          SPEC: ${{ inputs.spec }}
+        run: |
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/deferred-preview-ids.mjs" \
+            --spec "$GITHUB_WORKSPACE/$SPEC" \
+            --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
+            --out "$GITHUB_WORKSPACE/mode-filter.txt" \
+            --rows-out "$GITHUB_WORKSPACE/mode-filter-rows.txt"
+          echo "exclude-rows=$(cat "$GITHUB_WORKSPACE/mode-filter-rows.txt")" >> "$GITHUB_OUTPUT"
+
+      # This shard's share of the render, as the ids it must NOT render. Deferred ids are dropped
+      # from the partition and re-added to every shard's exclusion list, so a `modePriority` deferral
+      # shrinks the work the shards divide instead of competing with the partition for slots.
+      - name: Plan this shard
+        id: shard-plan
+        run: |
+          set -euo pipefail
+          exclude_file=()
+          if [ -s "$GITHUB_WORKSPACE/mode-filter.txt" ]; then
+            exclude_file=(--exclude-file "$GITHUB_WORKSPACE/mode-filter.txt")
+          fi
+          previews=$(node compose-ai-tools/scripts/design-artifacts/shard-preview-ids.mjs \
+            --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
+            --shards "${{ inputs.render-shards }}" \
+            --index "${{ matrix.shard }}" \
+            "${exclude_file[@]}" \
+            --out "$GITHUB_WORKSPACE/shard-exclude.txt" \
+            --plan-out "$GITHUB_WORKSPACE/shard-plan.json")
+          echo "previews=$previews" >> "$GITHUB_OUTPUT"
+
+      # Skipped when the partition handed this shard nothing — more shards than previews. Its
+      # exclusion list would then name every preview, which `composePreviewRender` refuses outright,
+      # so the right answer is a no-op shard, not a failed one.
+      - name: Render shard ${{ matrix.shard }}
+        if: ${{ steps.shard-plan.outputs.previews != '0' }}
+        working-directory: ${{ inputs.working-directory || '.' }}
+        env:
+          ORG_GRADLE_PROJECT_composePreview.filter: ${{ steps.validate-spec.outputs.render-filter }}
+          EXCLUDE_PREVIEW_ROWS: ${{ steps.mode-filter.outputs.exclude-rows }}
+        run: |
+          set -euo pipefail
+          run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
+          embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
+          exclude=()
+          if [ -s "$GITHUB_WORKSPACE/shard-exclude.txt" ]; then
+            exclude=(--exclude-preview-id "$(cat "$GITHUB_WORKSPACE/shard-exclude.txt")")
+          fi
+          if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
+          run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics --progress \
+            "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
+            --timeout ${{ inputs.render-timeout }}
+
+      - name: Save downloadable-font cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/composeai/fonts
+          key: composeai-fonts-${{ runner.os }}-${{ inputs.system }}-${{ github.run_id }}-shard-${{ matrix.shard }}
+
+      # `compression-level: 0` because a bundle is an already-compressed zip behind a PNG cover —
+      # re-deflating it costs CPU on both ends and saves nothing. `retention-days: 1` because these
+      # are intermediates consumed by the merge minutes later; the published artifact is the
+      # delivery branch.
+      - name: Upload shard ${{ matrix.shard }}
+        if: ${{ steps.shard-plan.outputs.previews != '0' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.system }}-render-shard-${{ matrix.shard }}
+          path: |
+            ${{ github.workspace }}/bundle.png
+            ${{ github.workspace }}/shard-plan.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
   generate:
     name: ${{ inputs.system }}
+    # Skipped needs are the single-shard path, not a failure: with render-shards at its default the
+    # two jobs above never run, and this job must still start. `!cancelled()` plus an explicit
+    # failure check is the pattern that distinguishes "skipped" from "broke".
+    needs: [shard-matrix, render-shard]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -373,9 +653,13 @@ jobs:
       # shared with the render below (same Gradle build, warm caches), so the extra invocation costs
       # discovery, not a second compile. Skipped entirely when the spec defers no mode, which is the
       # state of every catalog that hasn't opted in.
+      #
+      # Skipped entirely for a sharded run: the render happens in `render-shard`, which does its own
+      # discovery and its own deferral, so paying for a second Gradle configure + compile here would
+      # add ~4 minutes to produce a filter nothing in this job uses.
       - name: Derive per-mode render exclusions
         id: mode-filter
-        if: ${{ steps.validate-spec.outputs.deferred-modes != '' }}
+        if: ${{ steps.validate-spec.outputs.deferred-modes != '' && inputs.render-shards < 2 }}
         working-directory: ${{ inputs.working-directory || '.' }}
         env:
           SPEC: ${{ inputs.spec }}
@@ -445,6 +729,8 @@ jobs:
             composeai-fonts-${{ runner.os }}-
 
       - name: Render catalog bundle
+        # Sharded runs render in `render-shard` and merge below instead.
+        if: ${{ inputs.render-shards < 2 }}
         # compose-preview finds the Gradle root by walking up for gradlew, so a
         # monorepo of separate builds must render from the build's own dir.
         working-directory: ${{ inputs.working-directory || '.' }}
@@ -475,6 +761,46 @@ jobs:
           run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics --progress \
             "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" \
             --timeout ${{ inputs.render-timeout }}
+
+      - name: Download shard renders
+        if: ${{ inputs.render-shards > 1 }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ${{ inputs.system }}-render-shard-*
+          path: ${{ github.workspace }}/shards
+
+      # Merge the shard renders into the bundle a single serial render would have produced.
+      #
+      # `bundle merge`, NOT `bundle repack`. Repack swaps re-renders into slots the target already
+      # has, and only for `previews/<id>.png` + `previews/<id>.figma.svg` — so against a shard base
+      # every other shard's previews would report "no matching baked slot" and be skipped entirely,
+      # and any that did land would arrive without their `.semantics.json`, which the completeness
+      # gate fails on. Merge adds the slot and carries every sidecar.
+      #
+      # Shard 1 is the base and contributes the manifests, the cover and the re-render classpath.
+      # That is not an arbitrary pick, it is why `publish-live-bundle` needs no designated shard:
+      # every shard packs the same module at the same commit, so `classes/app.jar` + `libs/` are
+      # identical in all of them and the merge inherits rather than merges them.
+      - name: Merge shard renders
+        if: ${{ inputs.render-shards > 1 }}
+        run: |
+          set -euo pipefail
+          mapfile -t bundles < <(find "$GITHUB_WORKSPACE/shards" -name bundle.png | sort -V)
+          mapfile -t plans < <(find "$GITHUB_WORKSPACE/shards" -name shard-plan.json | sort -V)
+          if [ "${#bundles[@]}" -eq 0 ]; then
+            echo "::error title=No shard renders::render-shards is ${{ inputs.render-shards }} but no shard uploaded a bundle."
+            exit 1
+          fi
+          # Cross-check the partitions BEFORE trusting them. Each shard derived its own from its own
+          # discovery; they agree by construction, and if they ever don't, the symptom downstream is
+          # a completeness-gate failure naming a component, with nothing pointing at the shards.
+          node compose-ai-tools/scripts/design-artifacts/shard-preview-ids.mjs --verify "${plans[@]}"
+          if [ "${#bundles[@]}" -eq 1 ]; then
+            # One shard did all the work (more shards than previews). Nothing to union.
+            cp "${bundles[0]}" "$GITHUB_WORKSPACE/bundle.png"
+          else
+            compose-preview bundle merge "${bundles[@]}" -o "$GITHUB_WORKSPACE/bundle.png"
+          fi
 
       - name: Render extra module
         if: ${{ inputs.extra-module != '' }}

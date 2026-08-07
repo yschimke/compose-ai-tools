@@ -54,6 +54,9 @@ class CliFlagsRegistryTest {
     assertEquals(2, CliFlags.findCommandIndex(arrayOf("--force", "edit didn't reflect", "render")))
     // Attached form is a single argv token, so it's skipped like any other flag.
     assertEquals(1, CliFlags.findCommandIndex(arrayOf("--force=stale", "render")))
+    // The short output alias consumes its value too — the scanner above can't see short flags, so
+    // this is the guard that it stays classified.
+    assertEquals(2, CliFlags.findCommandIndex(arrayOf("-o", "out.png", "render")))
   }
 
   @Test
