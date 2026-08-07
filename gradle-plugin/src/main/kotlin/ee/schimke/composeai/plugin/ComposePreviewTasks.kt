@@ -730,6 +730,7 @@ internal object ComposePreviewTasks {
     val daemonFontsOffline =
       project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
     val daemonSvgEmbedFonts = composeAiSvgEmbedFonts(project)
+    val daemonSvgBackground = composeAiSvgBackground(project)
     val daemonFontsFailOnFallback = composeAiFontsFailOnFallback(project)
     // Android theme for the daemon's preview host activity — see `PreviewHostTheme`. Empty
     // unless the consumer names one; only a library module (no `<application android:theme>` to
@@ -860,6 +861,7 @@ internal object ComposePreviewTasks {
       systemProperties.put("composeai.fonts.offline", daemonFontsOffline)
       systemProperties.put("composeai.fonts.failOnFallback", daemonFontsFailOnFallback)
       systemProperties.put("composeai.svg.embedFonts", daemonSvgEmbedFonts)
+      systemProperties.put("composeai.svg.background", daemonSvgBackground)
       systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
       systemProperties.put(
         "composeai.daemon.perfettoTrace",
