@@ -1051,6 +1051,43 @@ jobs:
             --repo "$GITHUB_WORKSPACE" \
             --spec "${{ inputs.spec }}"
 
+      # The design-parity dashboard's feed (`parity/activity.json`) — recent
+      # commits, recent Figma versions/comments, and the mapping gaps behind
+      # the server's `/<system>/parity` view.
+      #
+      # It has to be produced HERE rather than by the server for two reasons the
+      # server cannot work around: `serve` has no checkout to `git log`, and it
+      # holds no Figma credential and never talks to Figma at all (see
+      # `docs/public-preview-server.md`). This job has both — the same
+      # `figma_token` the reference rasteriser above uses, and two extra
+      # read-only GETs (`/versions`, `/comments`).
+      #
+      # Runs after the reference step so the catalog is final, and fail-soft
+      # like it: a shallow checkout or a missing token drops that lane with a
+      # warning rather than costing the catalog its publish. A repo with no
+      # git history, no design-map and no token writes nothing at all, so this
+      # is safe to run for every catalog unconditionally.
+      - name: Publish design-parity activity
+        if: ${{ inputs.publish || inputs.upload-out }}
+        env:
+          FIGMA_TOKEN: ${{ secrets.figma_token }}
+        run: |
+          set -euo pipefail
+          # `actions/checkout` clones at depth 1, which has no history to log. Deepen just far
+          # enough for the window rather than switching the catalog checkout to `fetch-depth: 0`
+          # — a full clone on every catalog render, to read one month of commits. Best-effort:
+          # a private caller repo checked out with `persist-credentials: false` may not be able
+          # to fetch, and the emitter then warns and publishes the other lanes.
+          if [ -f .git/shallow ]; then
+            git fetch --shallow-since="35 days ago" origin HEAD 2>/dev/null || \
+              echo "::notice::could not deepen the checkout; the code lane may be empty"
+          fi
+          node compose-ai-tools/scripts/design-artifacts/emit-parity-activity.mjs \
+            --out "$GITHUB_WORKSPACE/out" \
+            --repo "$GITHUB_WORKSPACE" \
+            --source-repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}"
+
       # PNG ↔ Remote Compose parity page: for a catalog that ships `.rc`
       # documents (remote-m3), render each one client-side with the vendored
       # TypeScript player (headless Chromium) and pixel-diff it against the baked

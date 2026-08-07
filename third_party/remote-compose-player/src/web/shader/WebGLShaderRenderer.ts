@@ -35,6 +35,7 @@ export class WebGLShaderRenderer {
     private vao: WebGLVertexArrayObject | null = null;
     private programCache = new Map<string, CachedProgram>();
 
+
     constructor() {
         this.canvas = document.createElement('canvas');
     }
@@ -174,6 +175,13 @@ export class WebGLShaderRenderer {
         }
         this.programCache.clear();
         if (this.vao) gl.deleteVertexArray(this.vao);
+        this.vao = null;
+        // Deleting resources does not return the context itself. A browser allows only
+        // ~16 live WebGL contexts per page and silently kills the oldest beyond that,
+        // so a page showing many shader documents loses the ones it drew first unless
+        // each renderer hands its context back explicitly.
+        const lose = gl.getExtension('WEBGL_lose_context');
+        if (lose) lose.loseContext();
         this.gl = null;
     }
 

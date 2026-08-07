@@ -10,6 +10,19 @@ import { Size } from '../measure/Size';
 import { WidthModifier, HeightModifier, ScrollModifier } from '../modifiers/ModifierOperations';
 import { isNaNBits, idFromBits } from '../../Utils';
 
+/**
+ * The space left for content inside [size] once [padding] is taken off, never negative.
+ *
+ * Padding can exceed the component's own size — `.width(20).padding(30)` is legal, and the size
+ * modifier is not widened to fit the padding — so the subtraction can go below zero. Compose gives
+ * such a component a zero-sized content area; letting a negative reach child measurement instead
+ * puts it into text layout and wrap-size accumulation, where it produces negative measured widths
+ * rather than an empty one.
+ */
+function contentExtent(size: number, padding: number): number {
+    return Math.max(0, size - padding);
+}
+
 export abstract class LayoutManager extends LayoutComponent {
     protected mCachedWrapSize = new Size();
 
@@ -32,12 +45,35 @@ export abstract class LayoutManager extends LayoutComponent {
 
         // Determine width
         let w: number;
-        if (wMod && wMod.getType() === WidthModifier.EXACT) {
-            w = wMod.getValue() + padding_w;
-        } else if (wMod && wMod.getType() === WidthModifier.EXACT_DP) {
-            w = wMod.getValue() * dp + padding_w;
+        if (wMod && (wMod.getType() === WidthModifier.EXACT || wMod.getType() === WidthModifier.EXACT_DP)) {
+            // EXACT is already in px; EXACT_DP is raw dp and needs the document's
+            // generation density applied before it can be compared with anything else.
+            const exactW = wMod.getType() === WidthModifier.EXACT_DP
+                ? wMod.getValue() * dp
+                : wMod.getValue();
+            // Clamp to the incoming constraint. Without this a child larger than its
+            // parent keeps its requested size and overflows; the reference and the C++
+            // player both clamp (BaseModernMeasurePolicy: min(measuredWidth, maxWidth)).
+            w = Math.min(exactW + this.mPadBeforeWidth, maxWidth);
         } else if (wMod && wMod.getType() === WidthModifier.FILL) {
-            w = maxWidth;
+            // A fill may carry a fraction of the parent; a bare fill carries NaN.
+            w = wMod.hasFraction() ? maxWidth * wMod.getValue() : maxWidth;
+        } else if (wMod && wMod.getType() === WidthModifier.WEIGHT) {
+            // A weighted child gets its share from the parent's distribution pass. Until
+            // then its own size is just its modifier-defined size, as in the reference
+            // (max(measured, computeModifierDefinedWidth)). Defaulting to maxWidth here
+            // leaks the full width whenever no distribution happens — a weight on the
+            // cross axis, or in a parent that wraps and so has no slack to share.
+            //
+            // But the distribution pass communicates the share it decided on *as the
+            // incoming constraint*: RowLayout re-measures each weighted child with
+            // `minWidth == maxWidth == childWidth`. Taking the modifier-defined size
+            // unconditionally throws that away and re-measures the child at ~0, which is
+            // silent — the child is then laid out and painted at that width, so a text
+            // inside it wraps one word per line and centres itself around a zero-width
+            // box, i.e. off its own component. Honour the constraint the parent handed
+            // down and fall back to the modifier-defined size only when it is loose.
+            w = Math.min(Math.max(this.mPadBeforeWidth, minWidth), maxWidth);
         } else {
             // WRAP or other — compute from children
             w = maxWidth; // temporary, will be adjusted by computeWrapSize
@@ -45,12 +81,17 @@ export abstract class LayoutManager extends LayoutComponent {
 
         // Determine height
         let h: number;
-        if (hMod && hMod.getType() === HeightModifier.EXACT) {
-            h = hMod.getValue() + padding_h;
-        } else if (hMod && hMod.getType() === HeightModifier.EXACT_DP) {
-            h = hMod.getValue() * dp + padding_h;
+        if (hMod && (hMod.getType() === HeightModifier.EXACT || hMod.getType() === HeightModifier.EXACT_DP)) {
+            const exactH = hMod.getType() === HeightModifier.EXACT_DP
+                ? hMod.getValue() * dp
+                : hMod.getValue();
+            h = Math.min(exactH + this.mPadBeforeHeight, maxHeight);
         } else if (hMod && hMod.getType() === HeightModifier.FILL) {
-            h = maxHeight;
+            h = hMod.hasFraction() ? maxHeight * hMod.getValue() : maxHeight;
+        } else if (hMod && hMod.getType() === HeightModifier.WEIGHT) {
+            // See the width branch: a tight incoming constraint is the parent's
+            // distributed share and wins over the modifier-defined size.
+            h = Math.min(Math.max(this.mPadBeforeHeight, minHeight), maxHeight);
         } else {
             h = maxHeight;
         }
@@ -63,8 +104,17 @@ export abstract class LayoutManager extends LayoutComponent {
 
         if (horizontalWrap || verticalWrap) {
             this.mCachedWrapSize.clear();
-            this.computeWrapSize(context, minWidth, maxWidth - padding_w, minHeight,
-                maxHeight - padding_h, horizontalWrap, verticalWrap, measure, this.mCachedWrapSize);
+            // Children must be measured against *this* component's resolved size, not
+            // against the space it was offered. The reference tightens the inset to the
+            // measured size for any non-wrapping axis (BaseModernMeasurePolicy: "non-WRAP
+            // gets exact inset"), and C++ does the same. Without it a box with an explicit
+            // width measures its children at the parent's full width first, and a
+            // wrapping height then locks in from that wrong measurement — which is why
+            // text in a narrow fixed-width box was sized to one line and never re-grew.
+            const childMaxW = contentExtent(horizontalWrap ? maxWidth : w, padding_w);
+            const childMaxH = contentExtent(verticalWrap ? maxHeight : h, padding_h);
+            this.computeWrapSize(context, minWidth, childMaxW, minHeight,
+                childMaxH, horizontalWrap, verticalWrap, measure, this.mCachedWrapSize);
 
             // width/heightIn bounds are authored in dp (androidx `widthIn(min: Dp,
             // max: Dp)`), but the wire stores the raw dp number — scale to px by the
@@ -99,8 +149,8 @@ export abstract class LayoutManager extends LayoutComponent {
         const scrollMod = this.getScrollModifier();
         if (scrollMod) {
             const isVertical = (scrollMod.getDirection() === ScrollModifier.VERTICAL);
-            const hostW = Math.min(w, maxWidth) - padding_w;
-            const hostH = Math.min(h, maxHeight) - padding_h;
+            const hostW = contentExtent(Math.min(w, maxWidth), padding_w);
+            const hostH = contentExtent(Math.min(h, maxHeight), padding_h);
             const unboundW = isVertical ? hostW : 1e9;
             const unboundH = isVertical ? 1e9 : hostH;
 
@@ -117,8 +167,10 @@ export abstract class LayoutManager extends LayoutComponent {
             }
 
             // Re-measure children with unbounded content dimension
-            const childMaxW = isVertical ? (w - padding_w) : Math.max(w - padding_w, this.mScrollContentDimension);
-            const childMaxH = isVertical ? Math.max(h - padding_h, this.mScrollContentDimension) : (h - padding_h);
+            const childMaxW = isVertical ? contentExtent(w, padding_w)
+                : Math.max(contentExtent(w, padding_w), this.mScrollContentDimension);
+            const childMaxH = isVertical ? Math.max(contentExtent(h, padding_h), this.mScrollContentDimension)
+                : contentExtent(h, padding_h);
             this.computeSize(context, 0, childMaxW, 0, childMaxH, measure);
         }
 
@@ -127,9 +179,19 @@ export abstract class LayoutManager extends LayoutComponent {
         // Java does this via ComponentData.updateComponentData in LayoutComponent.
         this.updateComponentValues(context.getContext(), w, h);
 
-        // Measure children with fill sizing (skip if already done in scroll path)
+        // Measure children with fill sizing (skip if already done in scroll path).
+        // The children's minimums are 0, not this container's own `minWidth`/`minHeight`: a min
+        // constraint bounds *this* component (a weighted cell is handed min == max so it fills its
+        // slot), and forwarding it downward made every child at least as large as the parent — a
+        // `size(20)` icon and a wrapped label both came out full-cell and overlapped their
+        // neighbours. Compose measures a Row/Column/Box child with a zero minimum for the same
+        // reason. It also kept `ColumnLayout.computeSize` from ever shrinking: that loop reduces
+        // the child *max* as it goes, so with a fixed min the second child was measured min > max
+        // and every later child inherited the parent's height. The scroll path above already
+        // passes 0.
         if (!scrollMod) {
-            this.computeSize(context, minWidth, w - padding_w, minHeight, h - padding_h, measure);
+            this.computeSize(context, 0, contentExtent(w, padding_w),
+                0, contentExtent(h, padding_h), measure);
         }
 
         // Re-assign final dimensions after computeSize() (matching Java lines 558-563).

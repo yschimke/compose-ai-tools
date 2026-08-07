@@ -3698,6 +3698,13 @@ object ServeWeb {
     /** Whether this session has at least one SVG or Remote Compose format to compare. */
     hasFormatComparison: Boolean = false,
     /**
+     * Whether this catalog has a design-parity view to link to — it maps at least one preview to a
+     * design reference, or it publishes a `parity/activity.json` feed. False (the default) omits
+     * the link entirely rather than offering a page of zeroes, so a plain module / an unmapped
+     * catalog's landing is unchanged.
+     */
+    hasParityView: Boolean = false,
+    /**
      * Per-preview thumbnail content-crop lookup — frames a card's render to its component box (a
      * Wear sticker on a 454² watch canvas shows just the component). Returns null for a card that
      * should show the raw render (no figma-svg, or a render already tight to the component). The
@@ -4089,6 +4096,12 @@ object ServeWeb {
       if (hasFormatComparison)
         " · <a class=\"cp-format-link\" href=\"$basePath/compare$q\">compare formats</a>"
       else ""
+    // Joins the same run of catalog-level actions as "compare formats" rather than becoming a tab:
+    // parity is a property OF this catalog, and the grid stays the page's subject.
+    val parityLink =
+      if (hasParityView)
+        " · <a class=\"cp-format-link\" href=\"$basePath/parity$q\">design parity</a>"
+      else ""
     // Subtle by placement, not by styling: it joins the summary line's existing run of
     // catalog-level actions rather than becoming a button competing with the grid. Absent on a host
     // with no playground lane, so it never reads as an offer this server cannot keep.
@@ -4110,7 +4123,7 @@ object ServeWeb {
         """
         $back<h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
         $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} ·
-          <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink$playgroundLink$liveNote</p>
+          <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink$parityLink$playgroundLink$liveNote</p>
         <div class="cp-catalog-tools">
         $themeToggle$searchBox</div>
         $tabBar$gridBlock$emptyState$filterScript$liveScript$about
@@ -4441,6 +4454,366 @@ object ServeWeb {
   }
 
   /**
+   * The catalog's **Design parity** view: recent movement on both sides of the code ↔ design pair,
+   * how far apart they are, and what isn't mapped yet.
+   *
+   * The page is three bands, in the order a reader actually needs them:
+   *
+   * 1. **Where we stand** — coverage (how many components carry a design reference), open Figma
+   *    comments, and how recently each side moved. Computed live for the coverage half, so it is
+   *    right even for a catalog that publishes no feed at all.
+   * 2. **Needs a look** — components whose two sides moved *unevenly* inside the window. This is
+   *    the band that justifies putting the feeds together: a component with a commit and no design
+   *    change (or the reverse) is where the render and its reference are drifting apart, and every
+   *    row links straight to that component's reference-vs-render comparison.
+   * 3. **Recent activity** — the merged, reverse-chronological feed itself, filterable by lane.
+   *
+   * Then the gaps: components with no reference (derived here) plus the producer-declared gaps only
+   * the publish job can see.
+   *
+   * Everything textual in [dashboard] is third-party — commit subjects and Figma comment bodies
+   * written by other people — so every interpolation goes through [WebEscaping.htmlEscape], and
+   * outbound hrefs were rebuilt from validated parts by [ServeParityActivityStore] rather than
+   * taken from the catalog.
+   */
+  fun parityPage(
+    moduleLabel: String,
+    dashboard: ServeParityDashboard.Dashboard,
+    token: String,
+    sessionId: String? = null,
+    basePath: String = "",
+    isPublic: Boolean = false,
+    trust: String? = null,
+    themeCss: String = "",
+    unfurl: UnfurlMetadata? = null,
+    displayTitle: String? = null,
+    /** Whether a preview carries a design reference — decides "compare" vs "open" on a link. */
+    hasReferenceFor: (String) -> Boolean = { false },
+  ): String {
+    fun esc(s: String) = WebEscaping.htmlEscape(s)
+    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val navSuffix =
+      querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val coverage = dashboard.coverage
+
+    /**
+     * The strongest link we can offer for a preview: the reference-vs-render comparison when the
+     * catalog maps one, else the plain viewer. Never a dead link — the caller has already filtered
+     * to preview ids this session actually serves.
+     */
+    fun previewHref(previewId: String): String {
+      val seg = WebEscaping.urlEncodeSegment(previewId)
+      return if (hasReferenceFor(previewId)) "$basePath/compare/$seg$q" else "$basePath/p/$seg$q"
+    }
+
+    fun previewLink(previewId: String, label: String): String =
+      "<a href=\"${esc(previewHref(previewId))}\">${esc(label)}</a>"
+
+    fun outboundLink(entry: ServeParityDashboard.FeedEntry): String {
+      val href = entry.href ?: return ""
+      val label = entry.hrefLabel ?: "open"
+      return "<a class=\"cp-parity-out\" href=\"${esc(href)}\" rel=\"noopener\">${esc(label)} ↗</a>"
+    }
+
+    val laneLabel =
+      mapOf(
+        ServeParityDashboard.Lane.CODE to "code",
+        ServeParityDashboard.Lane.FIGMA_VERSION to "figma",
+        ServeParityDashboard.Lane.FIGMA_COMMENT to "comment",
+      )
+
+    val lastCode = dashboard.feed.firstOrNull { it.lane == ServeParityDashboard.Lane.CODE }?.at
+    val lastDesign = dashboard.feed.firstOrNull { it.lane != ServeParityDashboard.Lane.CODE }?.at
+    val stats =
+      buildList {
+          add("mapped" to "${coverage.mapped}/${coverage.components}")
+          if (dashboard.hasActivity) {
+            add("open comments" to dashboard.openComments.toString())
+            add("last code change" to (lastCode?.let(::prettyDate) ?: "—"))
+            add("last design change" to (lastDesign?.let(::prettyDate) ?: "—"))
+          }
+          if (dashboard.gaps.isNotEmpty()) add("declared gaps" to dashboard.gaps.size.toString())
+        }
+        .joinToString("\n") { (key, value) ->
+          "<div class=\"cp-stat\"><div class=\"cp-stat-key\">${esc(key)}</div>" +
+            "<div class=\"cp-stat-val\">${esc(value)}</div></div>"
+        }
+
+    // The coverage meter is a plain bar rather than a chart: one number, and the number is already
+    // written beside it. `aria-*` carries the same value for a screen reader.
+    val coverageMeter =
+      """
+      <div class="cp-parity-meter" role="img"
+        aria-label="${esc("${coverage.percent}% of components carry a design reference")}">
+        <div class="cp-parity-meter-fill" style="width: ${coverage.percent}%"></div>
+      </div>
+      """
+        .trimIndent()
+
+    val driftRows =
+      dashboard.components
+        .filter { it.correlation != ServeParityDashboard.Correlation.BOTH }
+        .take(20)
+    val driftBand =
+      if (driftRows.isEmpty()) ""
+      else {
+        val rows =
+          driftRows.joinToString("\n") { component ->
+            val oneSided = component.correlation == ServeParityDashboard.Correlation.CODE_ONLY
+            val badgeClass = if (oneSided) "cp-parity-lane--code" else "cp-parity-lane--figma"
+            val badge = if (oneSided) "code only" else "design only"
+            val why =
+              if (oneSided) "the render moved; its reference did not"
+              else "the design moved; the code did not"
+            val name =
+              component.previewId?.let { previewLink(it, component.name) } ?: esc(component.name)
+            "<tr><td>$name</td>" +
+              "<td><span class=\"cp-parity-lane $badgeClass\">${esc(badge)}</span></td>" +
+              "<td class=\"cp-muted\">${esc(why)}</td>" +
+              "<td class=\"cp-muted\">${esc(prettyDate(component.lastAt))}</td></tr>"
+          }
+        """
+        <h2 class="cp-status-sec">Needs a look</h2>
+        <p class="cp-muted">Components that moved on one side only inside this window — where the
+          render and its reference are most likely to have drifted apart.</p>
+        <div class="cp-status-scroll">
+          <table class="cp-table">
+            <thead><tr><th>Component</th><th>Moved</th><th>Why it's here</th><th>Last change</th></tr></thead>
+            <tbody>
+            $rows
+            </tbody>
+          </table>
+        </div>
+        """
+          .trimIndent()
+      }
+
+    val feedBand =
+      if (dashboard.feed.isEmpty()) {
+        """
+        <h2 class="cp-status-sec">Recent activity</h2>
+        <p class="cp-muted">This catalog publishes no activity feed yet. A producer adds one by
+          emitting <code>parity/activity.json</code> beside its catalog — see the
+          <a href="https://github.com/$SOURCE_REPO/blob/main/docs/public-preview-server.md">server
+          docs</a>. Coverage above is computed live and needs nothing published.</p>
+        """
+          .trimIndent()
+      } else {
+        val items =
+          dashboard.feed.joinToString("\n") { entry ->
+            val lane = laneLabel[entry.lane].orEmpty()
+            val laneClass =
+              if (entry.lane == ServeParityDashboard.Lane.CODE) "cp-parity-lane--code"
+              else "cp-parity-lane--figma"
+            val resolved = if (entry.resolved) " cp-parity-entry--resolved" else ""
+            val who =
+              entry.author?.let { "<span class=\"cp-parity-who\">${esc(it)}</span>" }.orEmpty()
+            val detail =
+              entry.detail?.let { "<span class=\"cp-parity-detail\">${esc(it)}</span>" }.orEmpty()
+            val resolvedBadge =
+              if (entry.resolved) "<span class=\"cp-parity-detail\">resolved</span>" else ""
+            // Inbound links are what make this a parity feed rather than a changelog: every row
+            // that names previews this session serves offers a jump to their comparison.
+            val targets =
+              entry.previewIds
+                .take(6)
+                .mapIndexed { index, previewId ->
+                  previewLink(previewId, entry.components.getOrNull(index) ?: previewId)
+                }
+                .joinToString(" · ")
+            val targetsHtml =
+              if (targets.isEmpty()) "" else "<div class=\"cp-parity-targets\">$targets</div>"
+            val componentsHtml =
+              if (entry.previewIds.isNotEmpty() || entry.components.isEmpty()) ""
+              else
+                "<div class=\"cp-parity-targets cp-muted\">" +
+                  esc(entry.components.take(6).joinToString(" · ")) +
+                  "</div>"
+            """
+            <li class="cp-parity-entry$resolved" data-lane="${esc(lane)}">
+              <div class="cp-parity-when">${esc(prettyDate(entry.at))}</div>
+              <div class="cp-parity-body">
+                <div class="cp-parity-head">
+                  <span class="cp-parity-lane $laneClass">${esc(lane)}</span>
+                  <span class="cp-parity-title">${esc(entry.title)}</span>
+                </div>
+                <div class="cp-parity-meta">$who$detail$resolvedBadge${outboundLink(entry)}</div>
+                $targetsHtml$componentsHtml
+              </div>
+            </li>
+            """
+              .trimIndent()
+          }
+        val filters =
+          listOf("all" to "All", "code" to "Code", "figma" to "Figma", "comment" to "Comments")
+            .joinToString("\n") { (value, label) ->
+              val current = if (value == "all") " aria-current=\"page\"" else ""
+              "<button type=\"button\" class=\"cp-state-btn\" data-parity-lane=\"$value\"$current>" +
+                "${esc(label)}</button>"
+            }
+        """
+        <h2 class="cp-status-sec">Recent activity</h2>
+        <div class="cp-states" role="group" aria-label="Filter activity by lane">
+        $filters
+        </div>
+        <ul class="cp-parity-feed" id="cp-parity-feed">
+        $items
+        </ul>
+        <p class="cp-muted" id="cp-parity-feed-empty" hidden>No activity in this lane.</p>
+        ${scriptTag("parity.js")}
+        """
+          .trimIndent()
+      }
+
+    val unmappedBand =
+      if (coverage.unmapped.isEmpty() && dashboard.gaps.isEmpty()) {
+        if (coverage.components == 0) ""
+        else
+          """
+          <h2 class="cp-status-sec">Mapping</h2>
+          <p class="cp-muted">Every component in this catalog carries a design reference.</p>
+          """
+            .trimIndent()
+      } else {
+        val unmappedList =
+          if (coverage.unmapped.isEmpty()) ""
+          else {
+            val chips =
+              coverage.unmapped.joinToString("\n") { component ->
+                val seg = WebEscaping.urlEncodeSegment(component.previewId)
+                "<li><a class=\"cp-state-btn\" href=\"$basePath/p/$seg$q\">" +
+                  "${esc(component.name)}</a></li>"
+              }
+            val overflow =
+              if (coverage.unmappedOverflow <= 0) ""
+              else "<p class=\"cp-muted\">…and ${coverage.unmappedOverflow} more.</p>"
+            """
+            <h3 class="cp-parity-sub">No design reference (${coverage.unmappedCount})</h3>
+            <p class="cp-muted">These render, but nothing in the design file is mapped to them — so
+              nothing can score them against a spec.</p>
+            <ul class="cp-parity-chips">
+            $chips
+            </ul>
+            $overflow
+            """
+              .trimIndent()
+          }
+        val gapRows =
+          if (dashboard.gaps.isEmpty()) ""
+          else {
+            val kindLabel =
+              mapOf(
+                MappingGap.Kind.DANGLING_MAPPING to "mapping points at a missing preview",
+                MappingGap.Kind.UNRENDERED_REFERENCE to "reference could not be published",
+                MappingGap.Kind.UNMAPPED_DESIGN_NODE to "design node with no code",
+              )
+            val rows =
+              dashboard.gaps.joinToString("\n") { gap ->
+                val subject = gap.component ?: gap.previewId ?: gap.code ?: gap.ref ?: "—"
+                "<tr><td class=\"cp-muted\">${esc(kindLabel[gap.kind] ?: gap.kind)}</td>" +
+                  "<td><code>${esc(subject)}</code></td>" +
+                  "<td>${esc(gap.detail)}</td></tr>"
+              }
+            """
+            <h3 class="cp-parity-sub">Declared by the producer (${dashboard.gaps.size})</h3>
+            <p class="cp-muted">Gaps only the publish job can see — it has the design file and the
+              checkout; this server has neither.</p>
+            <div class="cp-status-scroll">
+              <table class="cp-table">
+                <thead><tr><th>Kind</th><th>Subject</th><th>Detail</th></tr></thead>
+                <tbody>
+                $rows
+                </tbody>
+              </table>
+            </div>
+            """
+              .trimIndent()
+          }
+        """
+        <h2 class="cp-status-sec">Mapping</h2>
+        $unmappedList
+        $gapRows
+        """
+          .trimIndent()
+      }
+
+    // Provenance for the page itself: this is snapshotted data, and saying so is the difference
+    // between "nothing changed in Figma" and "we last looked a week ago".
+    val sources = buildList {
+      dashboard.codeRepo?.let { repo ->
+        val ref = dashboard.codeRef?.let { " @ ${esc(it)}" }.orEmpty()
+        add(
+          "<span class=\"cp-prov-item\"><span class=\"cp-prov-key\">code</span> " +
+            "<a href=\"${esc("https://github.com/$repo")}\">$GITHUB_ICON ${esc(repo)}</a>$ref</span>"
+        )
+      }
+      dashboard.figmaFileHref?.let { href ->
+        val name = dashboard.figmaFileName ?: "Figma file"
+        add(
+          "<span class=\"cp-prov-item\"><span class=\"cp-prov-key\">design</span> " +
+            "<a href=\"${esc(href)}\" rel=\"noopener\">${esc(name)} ↗</a></span>"
+        )
+      }
+      dashboard.generatedAt?.let {
+        add(
+          "<span class=\"cp-prov-item\"><span class=\"cp-prov-key\">snapshotted</span> " +
+            "${esc(prettyDate(it))}</span>"
+        )
+      }
+      dashboard.windowDays?.let {
+        add(
+          "<span class=\"cp-prov-item\"><span class=\"cp-prov-key\">window</span> " +
+            "last $it days</span>"
+        )
+      }
+    }
+    val sourcesStrip =
+      if (sources.isEmpty()) ""
+      else
+        """
+        <details class="cp-prov cp-disclosure">
+          <summary>
+            <span class="cp-prov-title">Feed details</span>
+            <span class="cp-disclosure-hint">Where this activity was read from, and when</span>
+          </summary>
+          <div class="cp-prov-body" aria-label="Activity provenance">
+            ${sources.joinToString("\n            ")}
+          </div>
+        </details>
+        """
+          .trimIndent()
+
+    return document(
+      title = "Design parity — $heading — compose-preview",
+      unfurlTitle = "$heading — design parity",
+      unfurlDescription =
+        "${coverage.mapped} of ${coverage.components} components in $heading are mapped to a design reference.",
+      unfurl = unfurl,
+      navSuffix = navSuffix,
+      themeCss = themeCss,
+      body =
+        """
+        <p class="cp-breadcrumb"><a href="$basePath/$q">← ${esc(heading)}</a></p>
+        <h1 class="cp-head cp-catalog-head">Design parity${compactTrustBadge(trust)}</h1>
+        <p class="cp-sub">How this catalog's code and its design file have moved, and how far apart
+          they are.</p>
+        $sourcesStrip
+        <div class="cp-status-grid">
+        $stats
+        </div>
+        $coverageMeter
+        <p class="cp-muted">${coverage.percent}% of ${coverage.components} component(s) carry a
+          design reference.</p>
+        $driftBand
+        $feedBand
+        $unmappedBand
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
    * Viewer page for one preview: an `<img>` driven by the override controls.
    *
    * [wasmSrc] (non-null only for a CMP catalog session the server carries a Wasm app for) adds a
@@ -4638,6 +5011,16 @@ object ServeWeb {
      * no coverage at all.
      */
     historyInlineJson: String? = null,
+    /**
+     * Project mode: the timeline was computed from the local repository ([ServeProjectHistory]), so
+     * its entries link at this server's own `/history/render/<blob>.png` rather than at
+     * raw.githubusercontent.com — a local checkout has no such URL. Also tells the viewer the strip
+     * describes *published baselines* rather than the stage, which in project mode is rendered from
+     * the working tree and so need not match the newest entry.
+     *
+     * Only honoured alongside [historyInlineJson]: with no payload there is nothing to link.
+     */
+    historyLocalRenders: Boolean = false,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -4976,12 +5359,16 @@ object ServeWeb {
         """
         .trimIndent()
     }
-    // Live-only overlay toggles (accessibility / touch visualization). The daemon composites these
-    // onto the held session's frames, so they mean nothing on a baked PNG — offered only when a
-    // Live
-    // Compose stream is available, and disabled until that mode is active (the mode-transition JS
-    // flips them). Omitted entirely when no stream backs the session, rather than left permanently
-    // dead. `cp-overlay` marks them for the JS collector + enable/disable sync.
+    // Live overlay toggles (accessibility / touch visualization). The daemon composites these onto
+    // the held session's frames, so they mean nothing on a baked PNG — offered only when a Live
+    // Compose stream is available, and omitted entirely otherwise rather than left permanently
+    // dead. Rendered **enabled**: a visitor who ticks one while the viewer is still on the static
+    // snapshot is asking to see the overlay, so the JS switches into Live Compose for them (the
+    // ticked toggle rides in on the stream's initial overrides) instead of presenting a dead
+    // control that first demands a click on "Live preview". They carry `$liveDis` — the same gate
+    // as the live transport radio — so the one case where they really are dead (the stream exists
+    // but is behind sign-in) stays greyed out in the server-rendered markup, matching what
+    // `syncOverlayToggles()` reconciles to. `cp-overlay` marks them for the JS collector + sync.
     val overlaysHtml =
       if (hasLiveStream)
         """
@@ -4990,8 +5377,8 @@ object ServeWeb {
           <div class="cp-group-body">
             <div class="cp-overlays">
               <div class="cp-overlays-head">Overlays (Live Compose)</div>
-              <label class="cp-live-row"><input class="cp-overlay" id="cp-talkBack" type="checkbox" disabled> Accessibility (TalkBack)</label>
-              <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox" disabled> Show touches</label>
+              <label class="cp-live-row"><input class="cp-overlay" id="cp-talkBack" type="checkbox"$liveDis> Accessibility (TalkBack)</label>
+              <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox"$liveDis> Show touches</label>
             </div>
           </div>
         </details>
@@ -5148,6 +5535,14 @@ object ServeWeb {
       if (!historyManifestUrl.isNullOrBlank() && !historyRepo.isNullOrBlank()) {
         " data-history-url=\"${WebEscaping.htmlEscape(historyManifestUrl)}\"" +
           " data-history-repo=\"${WebEscaping.htmlEscape(historyRepo)}\""
+      } else if (historyLocalRenders && !historyInlineJson.isNullOrBlank()) {
+        // The project-mode twin of the pair above: no delivery repo to address a historical render
+        // on, so the entries point back at this server, which reads the bytes out of the local
+        // object store by content sha. `{blob}` is substituted client-side — a template rather than
+        // one URL per version keeps the payload to the shas the manifest already carries.
+        " data-history-blob-url=\"" +
+          WebEscaping.htmlEscape("$basePath/history/render/{blob}.png$q") +
+          "\""
       } else ""
     // `</script>` inside a JSON payload would end the element early, so the only sequence that can
     // break out is neutralised. The payload itself is server-built from the catalog's own manifest.

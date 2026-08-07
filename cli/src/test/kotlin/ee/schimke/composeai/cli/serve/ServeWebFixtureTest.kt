@@ -17,6 +17,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.fail
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -39,6 +40,11 @@ import kotlinx.serialization.json.buildJsonObject
  *
  * (An env var rather than a `-D` system property, since Gradle forwards the environment to the
  * forked test JVM but not arbitrary system properties.)
+ *
+ * Two fields are deliberately held constant in the goldens so that a diff only ever shows markup:
+ * the server version ([version]) and the cache-busting hash in every asset href (see
+ * [stableAssetHrefs]). Both are volatile, neither is a surface anyone reviews, and left alone they
+ * made this test fail for reasons no reviewer could act on.
  */
 class ServeWebFixtureTest {
 
@@ -602,6 +608,28 @@ class ServeWebFixtureTest {
           """
             .trimIndent(),
       )
+    // The same strip in PROJECT mode: no delivery branch to fetch from, so the timeline is computed
+    // from the local repo ([ServeProjectHistory]) and its entries link at this server's own
+    // content-addressed lane. Captured separately because it differs where it matters — the newest
+    // entry is not "current" (the stage is rendered from the working tree), and the head carries
+    // the "published baselines" scope label.
+    val viewerHistoryLocal =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        token,
+        historyLocalRenders = true,
+        historyInlineJson =
+          """
+          {"formatVersion":"compose-preview-history/v1","generatedFrom":"df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80",
+           "previews":{"${previews.first { it.id.endsWith("ProfileScreenPreview") }.id}":{
+             "path":"renders/samples:compose-m3/ProfileScreenPreview.png","observations":5,
+             "unstable":false,"flapCount":0,"versions":[
+               {"blob":"1c9a3f6b2d4e5f708192a3b4c5d6e7f809a1b2c3","commit":"df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80","date":"2026-05-22T11:08:37+00:00","sourceSha":"57ac24f3","commits":1},
+               {"blob":"2d8b4a7c3e5f60718293a4b5c6d7e8f90a1b2c3d","commit":"8b9f6f2bc953756edcb13963e09cd57c54866570","date":"2026-05-07T08:34:51+00:00","sourceSha":"cf69a4a0","commits":3},
+               {"blob":"3e7c5b8d4f60718293a4b5c6d7e8f90a1b2c3d4e","commit":"1f10ff93dcb1a0f5e6c7b8a9d0e1f2a3b4c5d6e7","date":"2026-04-19T09:12:00+00:00","sourceSha":"03ecb679","commits":1}]}}}
+          """
+            .trimIndent(),
+      )
     val viewer =
       ServeWeb.viewerPage(
         previews
@@ -744,6 +772,10 @@ class ServeWebFixtureTest {
         hasHomeIndex = true,
         basePath = "/meshcore-mobile",
         version = version,
+        // meshcore-mobile is the catalog that really publishes Figma-backed design references, so
+        // it is the one whose landing offers the design-parity view — captured here so the
+        // visual-diff bot covers the new summary-line action.
+        hasParityView = true,
       )
     val viewerPath =
       ServeWeb.viewerPage(
@@ -920,6 +952,109 @@ class ServeWebFixtureTest {
           raster = DesignReferenceRaster("references/design-button-filled-review.png", 320, 160),
           source = DesignReferenceSource(provider = "penpot", revision = "fixture-43"),
         ),
+      )
+    // The design-parity dashboard. Built through the real [ServeParityDashboard] rather than by
+    // hand-assembling a view model, so the golden also pins the *derivation* — coverage folding
+    // light/dark onto one component, the two lanes merging by time, and a comment on a component
+    // whose code didn't move landing in the "needs a look" band.
+    val parityDashboard =
+      ServeParityDashboard.build(
+        previews = themedPreviews,
+        // Button is mapped; Switch and Badge are not — a realistic, partly-covered catalog.
+        hasReference = { it.startsWith("button-filled") },
+        activity =
+          ParityActivity(
+            generatedAt = "2026-07-17T09:30:00.000Z",
+            windowDays = 30,
+            code =
+              CodeLane(
+                repo = "yschimke/compose-ai-tools",
+                ref = "main",
+                events =
+                  listOf(
+                    CodeEvent(
+                      sha = "4e73ec2b9f0a1c3d5e7f9a1b3c5d7e9f0a1b3c5d",
+                      subject = "fix(button): tighten the filled button's label padding to 16dp",
+                      at = "2026-07-16T14:22:00.000Z",
+                      author = "yschimke",
+                      previewIds = listOf("button-filled__ideal__default__light"),
+                      components = listOf("Button/Filled"),
+                    ),
+                    CodeEvent(
+                      sha = "b842ee3c1d5f7a9b1c3d5e7f9a1b3c5d7e9f0a1b",
+                      subject = "feat(badge): add the small/large size axis",
+                      at = "2026-07-14T08:05:00.000Z",
+                      author = "yschimke",
+                      previewIds = listOf("badge"),
+                      components = listOf("Badge"),
+                    ),
+                  ),
+              ),
+            figma =
+              FigmaLane(
+                fileKey = "ocdacdEsnHipMJD3egzxKb",
+                fileName = "Material 3 Design Kit",
+                versions =
+                  listOf(
+                    FigmaVersionEvent(
+                      id = "3928471",
+                      at = "2026-07-15T11:40:00.000Z",
+                      label = "Buttons: 16dp label padding",
+                      description = "Aligns the filled/tonal pair with the spec update.",
+                      author = "Dana",
+                    )
+                  ),
+                comments =
+                  listOf(
+                    FigmaCommentEvent(
+                      id = "9182",
+                      at = "2026-07-16T09:02:00.000Z",
+                      message = "The switch track reads 2dp short against the M3 spec sheet.",
+                      author = "Dana",
+                      nodeId = "51592:4768",
+                      previewIds = listOf("switch-on__ideal__default__light"),
+                      components = listOf("Switch/On"),
+                    ),
+                    FigmaCommentEvent(
+                      id = "9165",
+                      at = "2026-07-15T16:31:00.000Z",
+                      message = "Padding change landed here too — matching the code side.",
+                      author = "Dana",
+                      resolved = true,
+                      nodeId = "57994:2227",
+                      previewIds = listOf("button-filled__ideal__default__light"),
+                      components = listOf("Button/Filled"),
+                    ),
+                  ),
+              ),
+            gaps =
+              listOf(
+                MappingGap(
+                  kind = MappingGap.Kind.UNMAPPED_DESIGN_NODE,
+                  detail = "Published in the kit, but no design-map entry names it.",
+                  ref = "figma:ocdacdEsnHipMJD3egzxKb/51827:5859",
+                  component = "Bottom sheet / Modal",
+                ),
+                MappingGap(
+                  kind = MappingGap.Kind.UNRENDERED_REFERENCE,
+                  detail = "Figma render returned no image for this node; reference not published.",
+                  ref = "figma:ocdacdEsnHipMJD3egzxKb/51159:5105",
+                  component = "Bottom app bar",
+                ),
+              ),
+          ),
+      )
+    val parity =
+      ServeWeb.parityPage(
+        moduleLabel = "compose-m3",
+        dashboard = parityDashboard,
+        token = token,
+        sessionId = "compose-m3",
+        basePath = "/compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        displayTitle = "Compose Material 3",
+        hasReferenceFor = { it.startsWith("button-filled") },
       )
     val referenceComparison =
       ServeWeb.referenceComparisonPage(
@@ -1345,52 +1480,94 @@ class ServeWebFixtureTest {
           ),
       )
 
+    // The page goldens, named once: the same list backs both the `UPDATE_SERVE_WEB_FIXTURES=true`
+    // regeneration below and the sync assertion further down, so a fixture can never be written
+    // by one and forgotten by the other.
+    val renderedGoldens =
+      listOf(
+        "serve-landing.html" to landing,
+        "serve-landing-public.html" to landingPublic,
+        "serve-home-index.html" to homeIndex,
+        "serve-viewer.html" to viewer,
+        "serve-viewer-history.html" to viewerHistory,
+        "serve-viewer-history-local.html" to viewerHistoryLocal,
+        "serve-viewer-wasm.html" to wasmViewer,
+        "serve-viewer-wasm-live.html" to wasmViewerLive,
+        "serve-viewer-signin.html" to viewerSignIn,
+        "serve-viewer-catalog-knobs.html" to viewerCatalogKnobs,
+        "serve-viewer-themes.html" to viewerThemes,
+        "serve-viewer-focus.html" to viewerFocus,
+        "serve-viewer-gestures.html" to viewerGestures,
+        "serve-landing-path.html" to landingPath,
+        "serve-viewer-path.html" to viewerPath,
+        "serve-viewer-wear-screen.html" to viewerWearScreen,
+        "serve-landing-themed.html" to landingThemed,
+        "serve-landing-catalog-palette.html" to landingCatalogPalette,
+        "serve-viewer-catalog-palette.html" to viewerCatalogPalette,
+        "serve-format-compare.html" to formatComparison,
+        "serve-reference-compare.html" to referenceComparison,
+        "serve-parity.html" to parity,
+        "serve-landing-declared-themes.html" to landingDeclaredThemes,
+        "serve-landing-live.html" to landingLive,
+        "serve-landing-states.html" to landingStates,
+        "serve-landing-sections.html" to landingSections,
+        "serve-viewer-states.html" to viewerStates,
+        "serve-status.html" to serveStatus,
+        "serve-landing-variants.html" to landingVariants,
+        "serve-viewer-variants.html" to viewerVariants,
+        "serve-landing-grouped.html" to landingGrouped,
+        "serve-viewer-nav-collapsed.html" to viewerNavCollapsed,
+        "serve-notfound.html" to notFound,
+        "serve-docs-upload.html" to docUpload,
+        "serve-playground.html" to playground,
+        "serve-doc-lottie.html" to docLottie,
+        "serve-doc-remotecompose.html" to docRemoteCompose,
+      )
+
+    // Normalise once, here, so the regeneration below and the sync assertion further down cannot
+    // disagree about what a golden is supposed to contain.
+    val goldens = renderedGoldens.map { (name, html) -> name to stableAssetHrefs(html) }
+
     if (update) {
       pagesDir.mkdirs()
-      File(pagesDir, "serve-landing.html").writeText(landing)
-      File(pagesDir, "serve-landing-public.html").writeText(landingPublic)
-      File(pagesDir, "serve-home-index.html").writeText(homeIndex)
-      File(pagesDir, "serve-viewer.html").writeText(viewer)
-      File(pagesDir, "serve-viewer-history.html").writeText(viewerHistory)
-      File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
-      File(pagesDir, "serve-viewer-wasm-live.html").writeText(wasmViewerLive)
-      File(pagesDir, "serve-viewer-signin.html").writeText(viewerSignIn)
-      File(pagesDir, "serve-viewer-catalog-knobs.html").writeText(viewerCatalogKnobs)
-      File(pagesDir, "serve-viewer-themes.html").writeText(viewerThemes)
-      File(pagesDir, "serve-viewer-focus.html").writeText(viewerFocus)
-      File(pagesDir, "serve-viewer-gestures.html").writeText(viewerGestures)
-      File(pagesDir, "serve-landing-path.html").writeText(landingPath)
-      File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
-      File(pagesDir, "serve-viewer-wear-screen.html").writeText(viewerWearScreen)
-      File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
-      File(pagesDir, "serve-landing-catalog-palette.html").writeText(landingCatalogPalette)
-      File(pagesDir, "serve-viewer-catalog-palette.html").writeText(viewerCatalogPalette)
-      File(pagesDir, "serve-format-compare.html").writeText(formatComparison)
-      File(pagesDir, "serve-reference-compare.html").writeText(referenceComparison)
-      File(pagesDir, "serve-landing-declared-themes.html").writeText(landingDeclaredThemes)
-      File(pagesDir, "serve-landing-live.html").writeText(landingLive)
-      File(pagesDir, "serve-landing-states.html").writeText(landingStates)
-      File(pagesDir, "serve-landing-sections.html").writeText(landingSections)
-      File(pagesDir, "serve-viewer-states.html").writeText(viewerStates)
-      File(pagesDir, "serve-status.html").writeText(serveStatus)
-      File(pagesDir, "serve-landing-variants.html").writeText(landingVariants)
-      File(pagesDir, "serve-viewer-variants.html").writeText(viewerVariants)
-      File(pagesDir, "serve-landing-grouped.html").writeText(landingGrouped)
-      File(pagesDir, "serve-viewer-nav-collapsed.html").writeText(viewerNavCollapsed)
-      File(pagesDir, "serve-notfound.html").writeText(notFound)
-      File(pagesDir, "serve-docs-upload.html").writeText(docUpload)
-      File(pagesDir, "serve-playground.html").writeText(playground)
-      File(pagesDir, "serve-doc-lottie.html").writeText(docLottie)
-      File(pagesDir, "serve-doc-remotecompose.html").writeText(docRemoteCompose)
+      goldens.forEach { (name, html) -> File(pagesDir, name).writeText(html) }
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       File(pagesDir, "_render-placeholder.svg").writeText(renderPlaceholderSvg())
       return
     }
 
-    assertGolden(File(pagesDir, "serve-landing.html"), landing)
-    assertGolden(File(pagesDir, "serve-landing-public.html"), landingPublic)
-    assertGolden(File(pagesDir, "serve-home-index.html"), homeIndex)
-    assertGolden(File(pagesDir, "serve-viewer.html"), viewer)
+    assertGoldensInSync(pagesDir, goldens)
+    // The parity page's load-bearing claims, asserted rather than left to the pixel diff. A
+    // comment on Switch (whose code never moved in this window) is one-sided design movement, so
+    // it must reach the "needs a look" band; Button moved on both sides and must NOT, because that
+    // band exists to be short.
+    assertTrue(
+      parity.contains("Needs a look") &&
+        parity.contains("Switch on") &&
+        parity.contains("design only"),
+      "one-sided design movement reaches the drift band",
+    )
+    assertFalse(
+      parity.substringAfter("Needs a look").substringBefore("Recent activity").contains("Button"),
+      "a component that moved on both sides is not drift",
+    )
+    // Coverage is derived live from the previews + references, never from the published feed: 3
+    // components (light/dark folded), one of them mapped.
+    assertTrue(
+      parity.contains("mapped</div>") && parity.contains(">1/3<"),
+      "coverage tile: $parity",
+    )
+    // The unmapped chips link to the viewer; a mapped component's feed row links to its comparison.
+    assertTrue(
+      parity.contains("href=\"/compose-m3/p/switch-on__ideal__default__light\""),
+      "an unmapped component opens its viewer",
+    )
+    assertTrue(
+      parity.contains("href=\"/compose-m3/compare/button-filled__ideal__default__light\""),
+      "a mapped component opens its reference comparison",
+    )
+    // A resolved comment is still shown (it is history) but visually stood down.
+    assertTrue(parity.contains("cp-parity-entry--resolved"), "resolved comments render greyed")
     // The overrides drawer defaults OPEN (`cp-controls-open` on the viewer, its toggle expanded)…
     assertTrue(
       viewer.contains("class=\"cp-viewer cp-controls-open\"") &&
@@ -1428,11 +1605,14 @@ class ServeWebFixtureTest {
         "a single-preview session shows no component nav drawer",
       )
     }
-    assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
-    assertGolden(File(pagesDir, "serve-viewer-wasm-live.html"), wasmViewerLive)
-    assertGolden(File(pagesDir, "serve-viewer-history.html"), viewerHistory)
-    assertGolden(File(pagesDir, "serve-viewer-signin.html"), viewerSignIn)
-    assertGolden(File(pagesDir, "serve-viewer-catalog-knobs.html"), viewerCatalogKnobs)
+    // Project mode addresses an old render on THIS server (by content sha) rather than on
+    // raw.githubusercontent.com, and must not advertise a manifest URL it has no repo to fetch.
+    assertTrue(
+      viewerHistoryLocal.contains("data-history-blob-url=\"/history/render/{blob}.png?token=") &&
+        !viewerHistoryLocal.contains("data-history-url=") &&
+        !viewerHistoryLocal.contains("data-history-repo="),
+      "the project-mode timeline links at this server's own render lane",
+    )
     // The declared Remote Compose knobs render as their own "Remote Compose" control group, one
     // `.cp-rc-knob` per knob carrying its name + wire kind (a `color` swatch value + a `string`),
     // separate from the plain-Compose Overrides panel.
@@ -1456,8 +1636,6 @@ class ServeWebFixtureTest {
       viewerThemes.contains("data-cp-group=\"remotecompose\""),
       "a preview without RC knobs shows no Remote Compose control group",
     )
-    assertGolden(File(pagesDir, "serve-viewer-themes.html"), viewerThemes)
-    assertGolden(File(pagesDir, "serve-viewer-focus.html"), viewerFocus)
     // The detected-feature control shows for a focus-supporting preview…
     assertTrue(
       viewerFocus.contains("id=\"cp-focus\"") && viewerFocus.contains("Keyboard focus"),
@@ -1468,7 +1646,6 @@ class ServeWebFixtureTest {
       viewerThemes.contains("id=\"cp-focus\""),
       "a preview without @FocusedPreview shows no Keyboard focus control",
     )
-    assertGolden(File(pagesDir, "serve-viewer-gestures.html"), viewerGestures)
     // The gesture control shows for a gesture-supporting preview on an Android-backed session…
     assertTrue(
       viewerGestures.contains("id=\"cp-gestures\"") &&
@@ -1481,12 +1658,6 @@ class ServeWebFixtureTest {
       viewerGesturesDesktop.contains("id=\"cp-gestures\""),
       "a gesture-supporting preview shows no gesture control on a desktop session",
     )
-    assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
-    assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
-    assertGolden(File(pagesDir, "serve-viewer-wear-screen.html"), viewerWearScreen)
-    assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
-    assertGolden(File(pagesDir, "serve-landing-catalog-palette.html"), landingCatalogPalette)
-    assertGolden(File(pagesDir, "serve-viewer-catalog-palette.html"), viewerCatalogPalette)
     // The projected palette is inlined AFTER serve.css, so it wins at equal specificity — and it
     // carries both modes, so a dark-mode visitor to a light-first catalog still gets its brand.
     assertTrue(
@@ -1522,8 +1693,6 @@ class ServeWebFixtureTest {
     for ((name, html) in inCatalogPages) {
       assertTrue(html.contains("--cp-accent: #bf0031;"), "the $name page carries the palette")
     }
-    assertGolden(File(pagesDir, "serve-format-compare.html"), formatComparison)
-    assertGolden(File(pagesDir, "serve-reference-compare.html"), referenceComparison)
     assertTrue(
       landingThemed.contains("class=\"cp-format-link\" href=\"/compare?session=compose-m3\"") &&
         landingThemed.contains(">compare formats</a>"),
@@ -1667,8 +1836,6 @@ class ServeWebFixtureTest {
         !sizedComparisonIds[1].contains("__compact"),
       "expanded aliases fold state and props without selecting the compact comparison row",
     )
-    assertGolden(File(pagesDir, "serve-landing-declared-themes.html"), landingDeclaredThemes)
-    assertGolden(File(pagesDir, "serve-landing-live.html"), landingLive)
     // Long-press a card and its preview streams from the daemon in place. The page carries the
     // gesture's configuration — each card's streamable ids, emitted in document order rather than
     // read back off the DOM — plus the header note that says the lane exists at all.
@@ -1803,10 +1970,6 @@ class ServeWebFixtureTest {
         ),
       "a theme-neutral module with declared themes gets a Default chip plus the declared themes",
     )
-    assertGolden(File(pagesDir, "serve-landing-states.html"), landingStates)
-    assertGolden(File(pagesDir, "serve-landing-sections.html"), landingSections)
-    assertGolden(File(pagesDir, "serve-viewer-states.html"), viewerStates)
-    assertGolden(File(pagesDir, "serve-status.html"), serveStatus)
     // The status page leads with the header health badge, links to the machine-readable JSON, and
     // renders the catalog / running-daemon / failure tables. A recent failure ⇒ the amber
     // "degraded" badge; a live+running catalog reads "live · running"; a baked one shows its
@@ -1834,8 +1997,6 @@ class ServeWebFixtureTest {
         serveStatus.contains("design-parity <code>0.1.25</code>"),
       "catalog status links its delivery branch and shows friendly build provenance",
     )
-    assertGolden(File(pagesDir, "serve-landing-variants.html"), landingVariants)
-    assertGolden(File(pagesDir, "serve-viewer-variants.html"), viewerVariants)
     // The variant landing folds the component's props-axis renders out: eight renders yield ONE
     // (default) swap card, and no RTL / locale / fontscale variant is emitted as its own card.
     assertEquals(
@@ -1944,7 +2105,6 @@ class ServeWebFixtureTest {
         statesNav.contains("/p/checkbox__ideal__unchecked__light"),
       "the viewer state switcher marks Default active and links the same-theme sibling",
     )
-    assertGolden(File(pagesDir, "serve-landing-grouped.html"), landingGrouped)
     // A section-less catalog gains SYNTHESIZED family sub-group dividers (as <h2 cp-group-head>)
     // over
     // a flat grid — no tab bar — so a large ungrouped catalog reads as clustered families.
@@ -1959,7 +2119,6 @@ class ServeWebFixtureTest {
       landingGrouped.contains("role=\"tablist\""),
       "synthesized family grouping renders no tab bar (it is a flat grouped grid, not tabs)",
     )
-    assertGolden(File(pagesDir, "serve-viewer-nav-collapsed.html"), viewerNavCollapsed)
     // The component nav collapses to ONE entry per component: button-filled's ~8 baked variants +
     // checkbox/radiobutton states yield exactly three nav items, button-filled listed once.
     val collapsedNav =
@@ -1991,9 +2150,6 @@ class ServeWebFixtureTest {
         !darkNav.contains("/p/radiobutton__ideal__default__light"),
       "the collapsed nav preserves the viewer's theme (a dark preview links dark siblings)",
     )
-    assertGolden(File(pagesDir, "serve-notfound.html"), notFound)
-    assertGolden(File(pagesDir, "serve-docs-upload.html"), docUpload)
-    assertGolden(File(pagesDir, "serve-playground.html"), playground)
     // The editor page carries its three DOM hooks the run script + the Playwright e2e drive: the
     // source box, the mode selector with all three modes, and the Run button.
     assertTrue(
@@ -2041,8 +2197,6 @@ class ServeWebFixtureTest {
       playground.contains("setStatus(\"Done.\", false)"),
       "a successful run still ends on the terminal status the e2e keys on",
     )
-    assertGolden(File(pagesDir, "serve-doc-lottie.html"), docLottie)
-    assertGolden(File(pagesDir, "serve-doc-remotecompose.html"), docRemoteCompose)
     // The upload page names every format it accepts and states the expiry up front, so a visitor
     // knows what to drop and how long the resulting link lives before they share it.
     for (format in ServeDocFormats.ALL) {
@@ -3332,13 +3486,28 @@ class ServeWebFixtureTest {
       liveCatalogWasm.contains("id=\"cp-sizeMode\" disabled"),
       "server-render-only sizing stays disabled on a live catalog's static snapshot",
     )
-    // A live-stream session offers the overlay toggles (talkBack / touch), rendered disabled until
-    // the Live Compose mode is actually entered (the mode-transition JS flips them on).
+    // A live-stream session offers the overlay toggles (talkBack / touch) ENABLED, even though the
+    // viewer opens on the static snapshot: ticking one switches into Live Compose (viewer.js'
+    // onOverlayChanged) rather than sitting dead until "Live preview" is clicked first.
     assertTrue(
       liveCatalogWasm.contains("cp-overlays") &&
-        liveCatalogWasm.contains("id=\"cp-talkBack\" type=\"checkbox\" disabled") &&
-        liveCatalogWasm.contains("id=\"cp-touchOverlay\" type=\"checkbox\" disabled"),
-      "live stream offers the overlay toggles, disabled until Live Compose is active",
+        liveCatalogWasm.contains("id=\"cp-talkBack\" type=\"checkbox\">") &&
+        liveCatalogWasm.contains("id=\"cp-touchOverlay\" type=\"checkbox\">"),
+      "live stream offers the overlay toggles enabled from the static lane",
+    )
+    assertTrue(
+      assetText("viewer.js")
+        .contains("if (anyOverlayChecked() && live && !live.disabled) setMode(\"live\");"),
+      "checking an overlay off the live lane enters Live Compose",
+    )
+    // Overlays are URL-owned state, not live-socket-only state: collected by `overrides()` (the map
+    // `query()` serializes) and listed in URL_STATE_PARAMS, so a ticked box rides the page URL, the
+    // export links and the stream's connect query. Collected only in `liveOverrides()` it would
+    // reach the daemon and nowhere else — unshareable, unrestorable by Back, and applied a frame
+    // late via the onopen replay instead of arriving with `stream/start`.
+    assertTrue(
+      assetText("viewer.js").contains("\"gestures\", \"talkBack\", \"touchOverlay\","),
+      "overlays are URL-owned params",
     )
     // The stream replays the full liveOverrides() on open so an overlay checked while the socket
     // was
@@ -3882,16 +4051,99 @@ class ServeWebFixtureTest {
     )
   }
 
-  private fun assertGolden(file: File, rendered: String) {
-    assertTrue(
-      file.isFile,
-      "missing fixture ${file.name} — regenerate with UPDATE_SERVE_WEB_FIXTURES=true",
-    )
-    assertEquals(
-      file.readText(),
-      rendered,
-      "${file.name} is stale vs ServeWeb — regenerate with UPDATE_SERVE_WEB_FIXTURES=true",
-    )
+  /**
+   * Compare every page golden against what `ServeWeb` renders now, and report **all** of the drift
+   * in one failure rather than aborting on the first mismatch.
+   *
+   * Asserting per fixture (the previous shape) surfaced one file at a time and, in the console log
+   * CI prints, only a line number inside the helper — so a run that moved twenty pages looked
+   * identical to one that moved a single unrelated page, and the reported line pointed at whatever
+   * assertion happened to sit there. That is what makes this check easy to regenerate past instead
+   * of read (#3442): the output never says what actually moved.
+   *
+   * The message names each drifted fixture with the first line that differs, which distinguishes
+   * the two causes that look the same from the outside — a deliberate `ServeWeb` change whose
+   * goldens want regenerating (drift concentrated in the pages you touched) versus goldens
+   * regenerated on a branch *before* merging `main`, where `main` then changed the markup for
+   * everything (drift across unrelated pages, on a line nobody on the branch edited).
+   */
+  private fun assertGoldensInSync(pagesDir: File, goldens: List<Pair<String, String>>) {
+    // Every page loads at least one hashed asset, so a golden without the placeholder means
+    // `stableAssetHrefs` stopped matching what `ServeWeb` emits — the URL shape changed, or the
+    // digest format did. Say so directly instead of letting it surface as 36 files of "drift",
+    // which is the failure this normalisation exists to stop being noise.
+    val unnormalised =
+      goldens.filterNot { (_, html) -> STABLE_ASSET_PREFIX in html }.map { it.first }
+    if (unnormalised.isNotEmpty()) {
+      fail(
+        "no `$STABLE_ASSET_PREFIX` href in: ${unnormalised.joinToString(", ")}.\n" +
+          "ServeWeb's asset URLs no longer match the shape ServeWebFixtureTest normalises " +
+          "(`$ASSET_HREF_PATTERN`). Update stableAssetHrefs to match ServeWebAssets.href, or the " +
+          "goldens will start pinning real content hashes again and every asset edit will drift " +
+          "every page."
+      )
+    }
+    val missing = goldens.filterNot { (name, _) -> File(pagesDir, name).isFile }.map { it.first }
+    val drifted =
+      goldens
+        .filter { (name, _) -> File(pagesDir, name).isFile }
+        .mapNotNull { (name, rendered) ->
+          val golden = File(pagesDir, name).readText()
+          if (golden == rendered) null else name to firstDifference(golden, rendered)
+        }
+    if (missing.isEmpty() && drifted.isEmpty()) return
+
+    val report = buildString {
+      append("serve web page fixtures are out of sync with ServeWeb")
+      append(" (${drifted.size} stale, ${missing.size} missing of ${goldens.size}).")
+      if (missing.isNotEmpty()) append("\n  missing: ${missing.joinToString(", ")}")
+      drifted.forEach { (name, where) -> append("\n  $name: $where") }
+      append(
+        "\n\nRegenerate with UPDATE_SERVE_WEB_FIXTURES=true — but read the list first. Drift across " +
+          "pages this branch never touched usually means the goldens were regenerated before " +
+          "merging main and main has since changed the markup, not that ServeWeb is broken; " +
+          "re-merge and regenerate again rather than assuming the check is flaky."
+      )
+    }
+    fail(report)
+  }
+
+  /**
+   * Replace the cache-busting content hash in every asset href with a constant.
+   *
+   * [ServeWebAssets.href] builds `/assets/serve/<size>-<sha256 prefix>/<file>`, so editing any one
+   * of the eleven CSS/JS assets changes a hash that up to **36** goldens embed. That drift is pure
+   * noise: the hash is not a surface anyone reviews, it cannot appear in a screenshot, and the
+   * preview-harness deliberately ignores it — both its static server and the Playwright routes
+   * match these URLs by basename precisely because "the hash is cache-busting and changes whenever
+   * the asset does". What it did instead was fail this test on every branch that touched
+   * `viewer.js`, and twice reach `main` red (#3446, #3456) when a merge landed the asset without
+   * the regeneration. Worse, it trained the reflex the failure message argues against: 36 files of
+   * drift you did not cause looks exactly like the "regenerated before merging main" case, so the
+   * honest response and the lazy one are the same command.
+   *
+   * Pinning it here is the same move this test already makes for the server version ([version] =
+   * `0.0.0-fixture`, so a release does not churn the goldens) and for the fixed provenance date —
+   * hold the volatile-but-uninteresting field constant so the diff only ever shows markup.
+   *
+   * This does not weaken the guard. The regex matches only the versioned form, so if `ServeWeb`
+   * ever stopped emitting one the rendered text would pass through unchanged and
+   * [assertGoldensInSync] would fail on the missing placeholder rather than silently accepting a
+   * broken URL. Production still serves the real hash: [ServeHttpServer] 404s a mismatched version,
+   * and nothing about that path changes here.
+   */
+  private fun stableAssetHrefs(html: String): String =
+    ASSET_HREF_PATTERN.replace(html, STABLE_ASSET_PREFIX)
+
+  /** `line N: golden … | rendered …` for the first line where the two texts diverge. */
+  private fun firstDifference(golden: String, rendered: String): String {
+    val a = golden.lines()
+    val b = rendered.lines()
+    val index = (0 until maxOf(a.size, b.size)).firstOrNull { a.getOrNull(it) != b.getOrNull(it) }
+    if (index == null) return "differs only in trailing newline"
+    fun show(line: String?) = line?.trim()?.take(120) ?: "<end of file>"
+    return "line ${index + 1}: golden ${show(a.getOrNull(index))} | rendered " +
+      show(b.getOrNull(index))
   }
 
   /** Walk up from the test working dir (the `:cli` project dir) to the repo root. */
@@ -3942,4 +4194,17 @@ class ServeWebFixtureTest {
     </svg>
     """
       .trimIndent()
+
+  private companion object {
+    /** What the goldens carry in place of a real content hash. See [stableAssetHrefs]. */
+    const val STABLE_ASSET_PREFIX = "/assets/serve/fixture/"
+
+    /**
+     * `/assets/serve/<size-hex>-<16 hex digits>/` — the exact shape [ServeWebAssets.href] builds
+     * from an asset's byte length and SHA-256 prefix. Deliberately narrow: a looser pattern
+     * (`[^/]+`) would keep matching if that scheme changed, and the goldens would go on looking
+     * normalised while pinning something else.
+     */
+    val ASSET_HREF_PATTERN = Regex("""/assets/serve/[0-9a-f]+-[0-9a-f]{16}/""")
+  }
 }

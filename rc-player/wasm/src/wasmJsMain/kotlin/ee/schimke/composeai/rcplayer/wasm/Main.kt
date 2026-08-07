@@ -109,7 +109,7 @@ public fun main() {
           repeat(3) { withFrameNanos {} }
           // Chromium can acknowledge those frames before the Skiko surface is presented to the
           // compositor. Keep the parent snapshot visible through that short cold-start tail.
-          delay(1_500)
+          delay(handoffDelayMs)
           postReady()
         }
       }
@@ -187,6 +187,21 @@ private suspend fun loadHostFontFamilies(): Map<String, RcFontFaces> {
         runCatching { RcFontFaces(faces.map { load(it) }) }
           .onSuccess { put(family.lowercase(), it) }
       }
+    // `role` names what a family *is for*, and the default-role family answers to two keys: its own
+    // name, registered above so `google:Roboto Flex` resolves, and the literal "default" a document
+    // asks for when it names no family at all — which is what every CoreText in the remote-m3
+    // catalog does. Keying by name alone left "default" unresolvable, so all of that text silently
+    // fell through to Compose's built-in face instead of the manifest's.
+    entries
+      .filter { it.role == "default" }
+      .groupBy { it.family }
+      .forEach { (family, faces) ->
+        if (!containsKey("default")) {
+          (get(family.lowercase())
+              ?: runCatching { RcFontFaces(faces.map { load(it) }) }.getOrNull())
+            ?.let { put("default", it) }
+        }
+      }
   }
 }
 
@@ -246,6 +261,28 @@ private suspend fun fetchText(url: String): String = suspendCancellableCoroutine
       null
     }
 }
+
+/** The default cold-start tail. Every render pays it, so a host that cannot flash should not. */
+private const val DEFAULT_HANDOFF_DELAY_MS = 1_500L
+
+/**
+ * How long to keep saying "not ready" after the frames have gone through, so a host that reveals
+ * this player on `ready` cannot swap a snapshot for a surface the compositor has not presented yet.
+ *
+ * `?handoffDelayMs=0` turns the tail off, and **only a host that composites the result itself**
+ * should ask for that. The parity driver is the case that exists: it screenshots through CDP, which
+ * drives its own compositor frame, then verifies the size and every pixel of what came back — so a
+ * surface that was not presented yet cannot slip past it, and the 1.5 s is dead weight repeated
+ * once per preview (~3 minutes across a 122-preview catalog). The viewer's iframe handoff has no
+ * such check and keeps the default: it is the one that would show a blank frame to a human, and
+ * that failure could not be reproduced under CDP capture in the first place — screenshots and
+ * screencasts both drive frames of their own, so neither can observe it. An unverifiable hazard
+ * keeps its guard.
+ */
+private val handoffDelayMs: Long
+  get() =
+    queryParameter("handoffDelayMs")?.toLongOrNull()?.coerceIn(0L, 10_000L)
+      ?: DEFAULT_HANDOFF_DELAY_MS
 
 private fun queryParameter(name: String): String? =
   queryParameterFromLocation(name).toString().takeUnless { it == "null" }

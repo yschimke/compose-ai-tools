@@ -179,6 +179,18 @@
     if (fontScaleTouched && fs) o.fontScale = fs.value;
     var size = sizeOverrides();
     Object.keys(size).forEach(function (k) { o[k] = size[k]; });
+    // Overlay toggles (talkBack / touchOverlay). Their id is "cp-<key>", so the daemon key is the
+    // id minus the prefix. Collected HERE, in the map query() serializes, rather than only in
+    // liveOverrides(): the daemon renders these on the ordinary render path, so they belong on the
+    // page URL, the export links, and the live socket's connect query — which is what makes a
+    // ticked box arrive with `stream/start` instead of a second setOverrides that restarts the
+    // stream a frame later. Only a CHECKED overlay is sent: every consumer re-parses this whole
+    // map, so an absent key already means "off", and omitting the false ones keeps
+    // `&talkBack=false` out of every link.
+    document.querySelectorAll(".cp-overlay").forEach(function (el) {
+      if (el.disabled || !el.checked) return;
+      o[el.id.replace(/^cp-/, "")] = "true";
+    });
     return o;
   }
   // A knob control's declared kind (`string` / `int` / `float` / `bool` / `color`), from the row
@@ -220,14 +232,8 @@
       if (val === "") return;
       o["rc." + name] = kind + ":" + val;
     });
-    // Live-only overlay toggles (talkBack / touchOverlay). Their id is "cp-<key>", so the daemon
-    // key is the id minus the prefix. Sent as an explicit true/false so unchecking clears the
-    // overlay on the next setOverrides (which replaces the whole map). Disabled ⇒ not live ⇒
-    // skipped, so they never leak onto a snapshot.
-    document.querySelectorAll(".cp-overlay").forEach(function (el) {
-      if (el.disabled) return;
-      o[el.id.replace(/^cp-/, "")] = el.checked ? "true" : "false";
-    });
+    // (The overlay toggles are collected by overrides() above, not here — they ride the URL and
+    // the connect query like the display fields do.)
     // App-declared theme (themeProvider = provider FQN). Only when a theme is picked and the
     // control is live; "(default)" (empty) leaves the daemon on the preview's own wrapper.
     var tp = chosenThemeProvider();
@@ -327,6 +333,16 @@
     }
     return qs;
   }
+  // Called once the snapshot request has SETTLED, whichever way it went — pixels decoded, or a
+  // failure that leaves the stage without them. The bookmarked-mode bootstrap waits on this: it
+  // used to wait on the <img>'s own load/error, which a failed render never fires (no src is ever
+  // assigned), so a deep link into an interactive lane sat on the snapshot for the full 8s timeout.
+  // A refusal is a settled snapshot too, and one the Wasm/live lane may well be able to honour.
+  var onSnapshotSettled = null;
+  function snapshotSettled() {
+    var fn = onSnapshotSettled;
+    if (fn) { onSnapshotSettled = null; fn(); }
+  }
   function refreshSnapshot() {
     status.textContent = "rendering…";
     var gen = ++snapshotGen;
@@ -342,7 +358,21 @@
     // frame visible until the replacement has decoded.
     fetch(url, { credentials: "same-origin" })
       .then(function (response) {
-        if (!response.ok) throw new Error("render " + response.status);
+        if (!response.ok) {
+          // The server refused to answer an override it could not apply, rather than handing back
+          // the un-overridden snapshot under a 200 (#3449). Name the params it dropped: "render
+          // failed" would read as a broken preview, when in fact the preview is fine and the live
+          // lane isn't.
+          var dropped = response.headers.get("X-Compose-Preview-Dropped-Overrides");
+          if (dropped) {
+            var e = new Error("dropped overrides");
+            e.cpDropped = dropped;
+            // 409 is terminal: this preview has no live lane, so retrying never helps.
+            e.cpTerminal = response.status === 409;
+            throw e;
+          }
+          throw new Error("render " + response.status);
+        }
         return response.blob();
       })
       .then(function (blob) {
@@ -372,14 +402,24 @@
           setSnapshotLoading(false);
           showModeError((requestedExt === ".svg" ? "SVG" : "PNG") +
             " render failed for this preview.");
+          snapshotSettled();
         };
         next.src = objectUrl;
       })
-      .catch(function () {
+      .catch(function (e) {
         if (gen !== snapshotGen) return;
         setSnapshotLoading(false);
+        if (e && e.cpDropped) {
+          showModeError("Not rendered with " + e.cpDropped.split(",").join(", ") + " — " +
+            (e.cpTerminal
+              ? "this preview can only be served as its published snapshot."
+              : "the live render is unavailable right now; retry shortly."));
+          snapshotSettled();
+          return;
+        }
         showModeError((requestedExt === ".svg" ? "SVG" : "PNG") +
           " render failed for this preview.");
+        snapshotSettled();
       });
     refreshLinks();
   }
@@ -720,11 +760,11 @@
       encodeURIComponent(previewId) + "?" + (qs ? qs + "&codec=webp" : "codec=webp"));
     ws = sock;
     sock.onopen = function () {
-      // The connect URL seeds only query()'s fields — the display axes plus changed knobs — so
-      // the live-only overlays (talkBack / touchOverlay) and anything toggled during the
-      // connecting window aren't in it. Replay the full live override map once the socket is
-      // ready so the daemon reflects the exact current control state, including an overlay
-      // checked before onopen whose change event the readyState guard dropped.
+      // The connect URL seeds only query()'s fields — the display axes, the overlays, and changed
+      // knobs — so every knob, and anything toggled during the connecting window, isn't in it.
+      // Replay the full live override map once the socket is ready so the daemon reflects the
+      // exact current control state, including a control changed before onopen whose change event
+      // the readyState guard dropped.
       sock.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
     };
     sock.onmessage = function (ev) {
@@ -1361,12 +1401,15 @@
       refreshSnapshot();
     });
   }
-  // The live-only overlay toggles (talkBack / touchOverlay) are meaningful only while the daemon
-  // holds the composition, so they're enabled iff the live stream is the active mode and greyed
-  // out otherwise. Called on every mode transition.
+  // The overlay toggles (talkBack / touchOverlay) are rendered by the daemon, so they're enabled
+  // whenever the daemon lane is REACHABLE — not only while it's the active mode. Ticking one from
+  // the static snapshot switches into Live Compose (see onOverlayChanged), which is what the
+  // visitor meant; greying them out until "Live preview" was clicked made the group look broken.
+  // They stay disabled only when the lane genuinely can't be entered (the transport radio is
+  // disabled — e.g. the stream is behind sign-in). Called on every mode transition.
   var overlayToggles = document.querySelectorAll(".cp-overlay");
   function syncOverlayToggles() {
-    var on = !!(live && live.checked);
+    var on = !!(live && !live.disabled);
     Array.prototype.forEach.call(overlayToggles, function (el) { el.disabled = !on; });
   }
   // Enable/disable the display controls to match what the active session can actually render.
@@ -1664,14 +1707,28 @@
       if (el) el.addEventListener("input", onControlsChanged);
     });
   }
-  // Overlay toggles are live-only: they push a fresh setOverrides through the open stream and do
-  // nothing otherwise. They get their own handler rather than onControlsChanged so a toggle mid
-  // connect (ws not yet readyState 1) can't fall through to the snapshot / wasm-auto-enable
-  // branches — an overlay never applies to a baked PNG or the in-browser tier.
+  // Overlay toggles are daemon-rendered: on the live lane they push a fresh setOverrides through
+  // the open stream; off it, ticking one ENTERS the live lane rather than doing nothing — the
+  // ticked box is already part of openStream()'s initial overrides, so the overlay is on in the
+  // first frame. They get their own handler rather than onControlsChanged so a toggle mid connect
+  // (ws not yet readyState 1) can't fall through to the snapshot / wasm-auto-enable branches — an
+  // overlay never applies to a baked PNG or the in-browser tier.
   function onOverlayChanged() {
-    if (live.checked && ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+    // Overlays are part of overrides(), so the page URL and the export links have to be re-synced
+    // like any other control — otherwise the ticked box is unshareable and Back can't restore it.
+    refreshLinks();
+    if (live && live.checked) {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+      }
+      return;
     }
+    // Not on the daemon lane yet. Only a *check* starts it: unticking an already-off overlay from
+    // the snapshot lane shouldn't drag the visitor into Live Compose.
+    if (anyOverlayChecked() && live && !live.disabled) setMode("live");
+  }
+  function anyOverlayChecked() {
+    return Array.prototype.some.call(overlayToggles, function (el) { return el.checked; });
   }
   Array.prototype.forEach.call(overlayToggles, function (el) {
     el.addEventListener("change", onOverlayChanged);
@@ -1754,7 +1811,8 @@
   // with.
   var URL_STATE_PARAMS = [
     "device", "localeTag", "orientation", "background", "fontScale",
-    "uiMode", "themeProvider", "focus", "gestures", "scroll", "mode", "sizeMode", "rcPlayer",
+    "uiMode", "themeProvider", "focus", "gestures", "talkBack", "touchOverlay",
+    "scroll", "mode", "sizeMode", "rcPlayer",
     "widthPx", "heightPx", "minWidthPx", "minHeightPx", "maxWidthPx", "maxHeightPx",
   ];
   function ownsUrlParam(name) {
@@ -1816,6 +1874,12 @@
     ["focus", "gestures"].forEach(function (f) {
       var el = document.getElementById("cp-" + f);
       if (el) el.checked = q.get(f) !== null;
+    });
+    // Overlays ride the URL now that they're collected outside the live lane, so a shared
+    // `?talkBack=true&mode=live` link opens with the box already ticked (and Back restores it).
+    // Only `true` is ever written, so presence-with-that-value is the whole state.
+    document.querySelectorAll(".cp-overlay").forEach(function (el) {
+      el.checked = q.get(el.id.replace(/^cp-/, "")) === "true";
     });
     var sizeModeEl = document.getElementById("cp-sizeMode");
     if (sizeModeEl) {
@@ -1881,6 +1945,7 @@
   // Reconcile the control enabled-state + the toggle's initial look with the session's
   // capabilities (matches the server-rendered markup; keeps them in sync after hydration).
   syncServerControls();
+  syncOverlayToggles();
   updateLiveToggle();
   refreshSnapshot();
   // A bookmarked `?mode=live` / `wasm` / `rc` opens in that lane — but only once the initial
@@ -1917,6 +1982,11 @@
     }
     img.addEventListener("load", enterBookmarkedMode);
     img.addEventListener("error", enterBookmarkedMode);
+    // A snapshot that FAILS assigns no src, so neither <img> event fires. Settling on the request
+    // itself (see snapshotSettled) enters the bookmarked lane immediately instead of after the
+    // timeout below — which matters for a link like `?mode=wasm&fontScale=2.0` on a baked-only
+    // session: the snapshot is refused (#3449), but the in-browser Wasm lane can apply the override.
+    onSnapshotSettled = enterBookmarkedMode;
     setTimeout(enterBookmarkedMode, 8000);
   })();
 })();

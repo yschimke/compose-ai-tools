@@ -1,49 +1,47 @@
+// TextLayout (208): the text component the writer emits when the document's profile
+// does not enable CORE_TEXT.
+//
+// RemoteComposeBuffer.addTextComponentStart() picks between two ops:
+//   * CoreText (239)   when mValidOperations[CORE_TEXT] — a parameter block, and
+//   * TextLayout (208) otherwise — a fixed field list, used as the backstop.
+// A document whose header carries no `profiles` tag gets the baseline operation map and
+// therefore this op, so "I forgot one header field" is enough to land here. Until this
+// was implemented the player parsed it and drew nothing: the document rendered with its
+// background and no text at all, silently.
+//
+// The two ops describe the same component with the same semantics, so this subclasses
+// CoreText and only replaces the reader. Java's TextLayout is a separate class that
+// duplicates the measure/paint logic; reusing CoreText keeps them from drifting.
+
 import { CoreText } from './CoreText';
 import type { Operation } from '../../../Operation';
 import type { WireBuffer } from '../../../WireBuffer';
 
-/**
- * TEXT_LAYOUT (208) — the fixed-field text component.
- *
- * Semantically this is the same thing as `CoreText` (239): a `LayoutManager` that
- * measures a string and paints it. The two differ only in how they are encoded.
- * `CoreText` carries a variable-length parameter bag (`readCommandParams`), while
- * `TEXT_LAYOUT` carries a fixed positional record of the eleven fields below —
- * the narrower form emitted by the Glance Wear widget capture
- * (`WearWidgetDocument.captureRawContent`) and by `remote-material3`'s
- * `RemoteText`.
- *
- * It was previously a parse-only stub: the reader consumed the right number of
- * bytes (so the stream stayed aligned and nothing downstream reported an unknown
- * opcode) but discarded every field and painted nothing. A document whose text
- * came through this op therefore replayed as its background alone — silently, and
- * with no truncation warning to give it away. Extending `CoreText` reuses its
- * measure/layout/paint path wholesale; only the wire decoding differs.
- *
- * The fields absent from this encoding take the same defaults `CoreText.read`
- * applies when the parameter bag omits them.
- */
+/** Packed into the top half of the textAlign field. */
+const FLAG_IS_DYNAMIC_COLOR = 1;
+
 export class TextLayout extends CoreText {
-    static readonly OP_CODE = 208;
+    static readonly OP_CODE: number = 208;
 
     deepToString(indent: string): string {
         return `${indent}TEXT_LAYOUT [${this.getComponentId()}]`;
     }
 
     static read(buffer: WireBuffer, operations: Operation[]): void {
-        // Ids go through declareId/readId so macro expansion can uniqueify them.
         const componentId = buffer.declareId();
         const animationId = buffer.declareId();
         const textId = buffer.readId();
         const color = buffer.readInt();
-        // fontSize/fontWeight are NaN-boxed: a literal float, or an id smuggled in
-        // the NaN payload. `CoreText` stores them as raw float32 int bits and
-        // decodes with isNaNBits/intBitsToFloat, so read them in the bits domain —
-        // but via `readNanIdBits()`, not a bare `readInt()`. Both yield the same
-        // four bytes, and only the former is a remapping hook: under macro/pattern
-        // expansion `LoomWireBuffer` rewrites the id payload, and a plain
-        // `readInt()` would silently skip that, leaving each expanded instance
-        // pointing at the template's id.
+        // fontSize and fontWeight are written with writeFloat but read back as raw int
+        // bits: a value driven by a variable is a NaN-encoded id, and round-tripping it
+        // through a JS number can canonicalise the NaN and lose the payload. This is the
+        // same reason CoreText's parameter reader takes floats via readInt().
+        //
+        // Read via readNanIdBits() rather than a bare readInt(): both consume the same
+        // four bytes, but only the former is a remapping hook — under macro/pattern
+        // expansion LoomWireBuffer rewrites the id in the NaN payload, and a plain
+        // readInt() skips that, leaving every expanded instance pointing at the
+        // template's id.
         const fontSize = buffer.readNanIdBits();
         const fontStyle = buffer.readInt();
         const fontWeight = buffer.readNanIdBits();
@@ -52,17 +50,37 @@ export class TextLayout extends CoreText {
         const overflow = buffer.readInt();
         const maxLines = buffer.readInt();
 
+        // When the colour is dynamic the `color` field carries a colour *id* instead of
+        // an ARGB literal, flagged in the high half of textAlign.
+        const dynamicColor = ((textAlign >>> 16) & FLAG_IS_DYNAMIC_COLOR) > 0;
+
         operations.push(new TextLayout(
-            componentId, animationId, textId,
-            color, /* colorId = */ -1,
-            fontSize, /* minFontSize = */ -1, /* maxFontSize = */ -1,
-            fontStyle, fontWeight, fontFamilyId,
-            textAlign, overflow, maxLines,
-            /* letterSpacing = */ 0, /* lineHeightAdd = */ 0, /* lineHeightMultiplier = */ 1,
-            /* lineBreakStrategy = */ 0, /* hyphenationFrequency = */ 0, /* justificationMode = */ 0,
-            /* underline = */ false, /* strikethrough = */ false,
-            /* fontAxis = */ null, /* fontAxisValues = */ null,
-            /* autosize = */ false, /* flags = */ 0
+            componentId,
+            animationId,
+            textId,
+            dynamicColor ? (0xFF000000 | 0) : color,
+            dynamicColor ? color : -1,
+            fontSize,
+            -1,                 // minFontSize — not carried by this op
+            -1,                 // maxFontSize
+            fontStyle,
+            fontWeight,
+            fontFamilyId,
+            textAlign,
+            overflow,
+            maxLines,
+            0,                  // letterSpacing
+            0,                  // lineHeightAdd
+            1,                  // lineHeightMultiplier
+            0,                  // lineBreakStrategy
+            0,                  // hyphenationFrequency
+            0,                  // justificationMode
+            false,              // underline
+            false,              // strikethrough
+            null,               // fontAxis
+            null,               // fontAxisValues
+            false,              // autosize
+            0,                  // flags
         ));
     }
 }

@@ -257,6 +257,21 @@ export class RcdPlayer {
         }
     }
 
+    /**
+     * Stop, and release the WebGL context.
+     *
+     * `stop()` only cancels the animation frame; a document that used a shader still
+     * holds a WebGL context afterwards. Callers showing many documents at once must
+     * use this instead, or the browser's context limit silently blanks the earliest
+     * ones.
+     */
+    destroy(): void {
+        this.stop();
+        if (this.paintContext) {
+            this.paintContext.destroy();
+        }
+    }
+
     repaint(): void {
         if (this.document) {
             this.renderFrame(performance.now());

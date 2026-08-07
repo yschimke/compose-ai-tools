@@ -191,7 +191,10 @@ export class ColumnLayout extends LayoutManager {
                     if (hIn.getMax() >= 0) childHeight = Math.min(hIn.getMax() * dp, childHeight);
                 }
                 cm.setH(childHeight);
-                child.measure(context, cm.getW(), cm.getW(), cm.getH(), cm.getH(), measure);
+                // Cross axis stays free (0 .. selfWidth) — see the matching note in
+                // `RowLayout.internalLayoutMeasureForComponents`. Only the main axis is decided by
+                // the weight; `computeWrapSize`'s weighted branch above already measures this way.
+                child.measure(context, 0, selfWidth, childHeight, childHeight, measure);
             }
         }
 

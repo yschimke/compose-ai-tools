@@ -192,6 +192,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutAnimation
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
+import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
@@ -351,6 +352,8 @@ public fun RcComposePlayer(
   }
   val linkedDocument = remember(document) { RcDocumentLinker.link(document) }
   val layout = remember(linkedDocument) { RcLayoutTree.build(linkedDocument) }
+  val contentStateOperations =
+    remember(linkedDocument) { linkedDocument.operations.collectContentStateOperations() }
   LaunchedEffect(linkedDocument, layout) {
     // Layout rendering consumes paint operations through component content rather than walking
     // the document root. AndroidX still applies root-level diagnostics during document execution.
@@ -386,7 +389,12 @@ public fun RcComposePlayer(
     // composition/measurement rather than painting, so action mutations must invalidate this
     // branch as well as the draw layer.
     invalidationVersion
-    SideEffect { state.beginFrame(frameNanos / 1_000_000_000f) }
+    SideEffect {
+      state.beginFrame(frameNanos / 1_000_000_000f)
+      // beginFrame resets derived text to the document's literals, so the ids the layout's own
+      // data operations publish have to be recomputed before measurement and drawing read them.
+      state.applyContentStateOperations(contentStateOperations)
+    }
     LookaheadScope {
       CompositionLocalProvider(
         LocalRcLookaheadScope provides this,
@@ -894,7 +902,7 @@ private fun RenderLayoutNode(
                 state,
                 fontFamilies,
                 namedFontFamilies,
-                variationSettings,
+                withWeightAxis(variationSettings, boldWeight),
               ),
             textAlign = androidXTextAlign(properties.intProperty(9, RcTextLayout.ALIGN_LEFT)),
           ),
@@ -2934,6 +2942,30 @@ internal fun fontVariationSettings(
   return if (axes.isEmpty()) null else FontVariation.Settings(*axes.toTypedArray())
 }
 
+/**
+ * [settings] with the style's weight added as a `wght` axis, unless the document named `wght`
+ * itself.
+ *
+ * `TextStyle.fontWeight` only picks *between* registered faces, so a family carrying one variable
+ * file registered at 400 — which is what a `fonts.json` default role usually is — renders every
+ * weight at 400: a `CoreText` asking for Medium came out visibly lighter than the reference, which
+ * rasterizes with a real 500 face. Naming the axis is what actually moves a variable font, and on a
+ * static face an axis the file does not define is ignored by the font engine, so this is a no-op
+ * for families that select by weight in the ordinary way.
+ *
+ * An explicit `wght` from the document wins: a specimen sweeping the axis is naming the value it
+ * wants, and the style weight beside it is only there so a non-variable fallback picks a face.
+ */
+internal fun withWeightAxis(
+  settings: FontVariation.Settings?,
+  weight: Int,
+): FontVariation.Settings? {
+  val existing = settings?.settings.orEmpty()
+  if (existing.any { it.axisName == "wght" }) return settings
+  val axes = existing + FontVariation.weight(weight.coerceIn(1, 1000))
+  return FontVariation.Settings(*axes.toTypedArray())
+}
+
 private fun decodeInlineImage(bitmap: RcBitmapData): ImageBitmap =
   when (bitmap.type) {
     RcBitmapData.TYPE_PNG_8888,
@@ -3970,3 +4002,21 @@ private fun blendMode(value: Int): BlendMode =
     28 -> BlendMode.Luminosity
     else -> BlendMode.SrcOver
   }
+
+/**
+ * Collects, in document order, the data operations layout containers carry beside their components.
+ *
+ * The layout tree keeps only components, so these — the `TEXT_LOOKUP_INT` publishing a card title,
+ * the integer expressions feeding its index — have no other execution site in the layout path.
+ * Operations nested in a container that owns its own execution (CanvasOperations, LayoutCompute)
+ * are left to that owner; only the direct children of a LayoutComponentContent are replayed here.
+ */
+private fun List<RcLinkedNode>.collectContentStateOperations(): List<RcLinkedNode> = buildList {
+  this@collectContentStateOperations.filterIsInstance<RcLinkedNode.Container>().forEach { container
+    ->
+    if (container.operation is RcLayoutContent) {
+      addAll(container.children.filterIsInstance<RcLinkedNode.Operation>())
+    }
+    addAll(container.children.collectContentStateOperations())
+  }
+}

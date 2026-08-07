@@ -81,6 +81,34 @@ class ServeHttpRoutingTest {
       override fun close() {}
     }
 
+  /**
+   * A session whose live lane exists but cannot serve right now — the daemon is down / cold / out
+   * of seats — so an override-bearing render falls back to the catalog's baked PNG. Exactly the
+   * state #3449 was reported in: the pixels are published bytes that ignore the override.
+   */
+  private val liveDownHost =
+    object : ServeHost {
+      override val previews = listOf(ServePreview(previewId, previewId))
+      override val label = "live-down"
+      override val canRenderOverrides = true
+
+      override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+        RenderOutcome.Ok(png(), RenderOutcome.Generation.BAKED)
+
+      override fun subscribeStream(
+        previewId: String,
+        overrides: PreviewOverrides,
+        codec: StreamCodec?,
+        maxFps: Int?,
+        onUnavailable: ((String) -> Unit)?,
+        onFrame: (StreamFrameParams) -> Unit,
+      ): StreamHandle? = null
+
+      override fun activeStreamCount(): Int = 0
+
+      override fun close() {}
+    }
+
   private fun png(): ByteArray =
     ByteArrayOutputStream()
       .also { ImageIO.write(BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", it) }
@@ -110,6 +138,7 @@ class ServeHttpRoutingTest {
     degradations: List<ServeDegradation> = emptyList(),
     rcDoc: ByteArray? = null,
     designReference: Boolean = false,
+    parityFeed: Boolean = false,
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
@@ -150,6 +179,57 @@ class ServeHttpRoutingTest {
           )
         )
     }
+    if (parityFeed) {
+      File(dir, ParityActivity.DIRECTORY).apply { mkdirs() }
+      File(dir, "${ParityActivity.DIRECTORY}/${ParityActivity.FILE}")
+        .writeText(
+          Json.encodeToString(
+            ParityActivity.serializer(),
+            ParityActivity(
+              generatedAt = "2026-08-06T09:12:00Z",
+              windowDays = 30,
+              code =
+                CodeLane(
+                  repo = "yschimke/compose-ai-tools",
+                  ref = "main",
+                  events =
+                    listOf(
+                      CodeEvent(
+                        sha = "4e73ec2b9f0a1c3d5e7f9a1b3c5d7e9f0a1b3c5d",
+                        subject = "fix: red is too red",
+                        at = "2026-08-05T10:00:00Z",
+                        previewIds = listOf(previewId),
+                        components = listOf("Red"),
+                      )
+                    ),
+                ),
+              figma =
+                FigmaLane(
+                  fileKey = "abc123",
+                  fileName = "Compose M3",
+                  comments =
+                    listOf(
+                      FigmaCommentEvent(
+                        id = "c1",
+                        at = "2026-08-04T10:00:00Z",
+                        message = "swatch is off",
+                        nodeId = "51592:4768",
+                        components = listOf("Blue"),
+                      )
+                    ),
+                ),
+              gaps =
+                listOf(
+                  MappingGap(
+                    kind = MappingGap.Kind.UNMAPPED_DESIGN_NODE,
+                    detail = "Figma component with no code entry",
+                    ref = "figma:abc123/1:2",
+                  )
+                ),
+            ),
+          )
+        )
+    }
     if (overrides.isNotEmpty()) {
       val sidecar =
         Json.encodeToString(
@@ -167,6 +247,23 @@ class ServeHttpRoutingTest {
       File(dir, "previews/$previewId.remotecompose.json").writeText(sidecar)
     }
     return ServeBundleHost(dir, label = label, title = title, degradations = degradations)
+  }
+
+  /**
+   * A baked catalog that also carries the published `figma/<slug>.svg` vector, so the `.svg` lane
+   * serves something instead of 404ing. The vector is as static as the PNG — it was exported at the
+   * preview's discovery-time axes — which is what makes an override on this lane a silent drop
+   * (#3449).
+   */
+  private fun svgBundle(label: String): ServeBundleHost {
+    val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
+    File(dir, "index.html").writeText("<html></html>")
+    File(dir, "previews").apply { mkdirs() }
+    File(dir, "previews/$previewId.png").writeBytes(png())
+    val figma = File(dir, "figma").apply { mkdirs() }
+    File(figma, "$previewId.svg")
+      .writeText("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"2\" height=\"2\"></svg>")
+    return ServeBundleHost(dir, label = label, figmaDir = figma)
   }
 
   private val registry = ServeSessionRegistry(open = { null })
@@ -188,6 +285,7 @@ class ServeHttpRoutingTest {
           listOf(rcColorKnob),
           rcDoc = rcDocBytes,
           designReference = true,
+          parityFeed = true,
         ),
       pinned = true,
     )
@@ -199,6 +297,8 @@ class ServeHttpRoutingTest {
       pinned = true,
     )
     registry.register("burst", host = burstHost, pinned = true)
+    registry.register("live-down", host = liveDownHost, pinned = true)
+    registry.register("svg-catalog", host = svgBundle("svg-catalog"), pinned = true)
     ServeHttpServer(
         host = "127.0.0.1",
         requestedPort = 0,
@@ -226,6 +326,14 @@ class ServeHttpRoutingTest {
     val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
     client.newCall(req).execute().use { r ->
       return r.code to (r.body?.string() ?: "")
+    }
+  }
+
+  /** [get], keeping the response headers — the baked-fallback signals ride there. */
+  private fun getFull(path: String): Triple<Int, String, okhttp3.Headers> {
+    val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
+    client.newCall(req).execute().use { r ->
+      return Triple(r.code, r.body?.string() ?: "", r.headers)
     }
   }
 
@@ -290,6 +398,115 @@ class ServeHttpRoutingTest {
     assertEquals(200, renderCode)
     assertEquals(1, leasedBurstHostRenders.get())
     assertEquals(0, ordinaryBurstHostRenders.get())
+  }
+
+  /**
+   * #3449: a validated override that could not be applied must not come back as `200 image/png`
+   * carrying the un-overridden snapshot — those pixels are byte-identical to the override-free
+   * render, so the caller reads "this override changes nothing" for a render that never happened.
+   */
+  @Test
+  fun `an override a static session cannot apply is refused, not answered with baked pixels`() {
+    val (plainCode, plainBody, plainHeaders) = getFull("/default-mod/render/$previewId.png")
+    assertEquals(200, plainCode)
+    assertTrue(plainBody.isNotEmpty(), "the un-overridden request still serves baked pixels")
+    assertEquals("baked", plainHeaders[ServeHttpServer.GENERATION_HEADER])
+    assertEquals(null, plainHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+
+    // 409, not 503: a static bundle has no live lane at all, so retrying can never help.
+    val (code, body, headers) = getFull("/default-mod/render/$previewId.png?fontScale=2.0")
+    assertEquals(409, code)
+    assertEquals("fontScale", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+    assertTrue(body.contains("override not applied: fontScale"), "body names the param: $body")
+  }
+
+  @Test
+  fun `every override kind agrees — uiMode and knobs are refused like fontScale`() {
+    assertEquals(409, get("/default-mod/render/$previewId.png?uiMode=dark").first)
+    val (_, _, knobHeaders) =
+      getFull("/compose-m3/render/$previewId.png?knob.label=Hi&fontScale=1.5")
+    assertEquals("fontScale,knob.label", knobHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+    // An unrecognised param is not an override, so it still serves the snapshot (unchanged).
+    assertEquals(200, get("/default-mod/render/$previewId.png?zzzBogusParam=1").first)
+  }
+
+  /**
+   * The vector lane drops overrides exactly like the raster one — a `figma/<slug>.svg` read off the
+   * delivery branch was exported at the preview's discovery-time axes — so it must refuse too, and
+   * with the same shape.
+   */
+  @Test
+  fun `the svg lane refuses an override it cannot apply, and marks an accepted fallback`() {
+    val (plainCode, plainBody, plainHeaders) = getFull("/svg-catalog/render/$previewId.svg")
+    assertEquals(200, plainCode)
+    assertTrue(plainBody.contains("<svg"), "the un-overridden request serves the baked vector")
+    assertEquals("baked", plainHeaders[ServeHttpServer.GENERATION_HEADER])
+    assertEquals(null, plainHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+
+    val (code, body, headers) = getFull("/svg-catalog/render/$previewId.svg?fontScale=2.0")
+    assertEquals(409, code)
+    assertEquals("fontScale", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+    assertTrue(body.contains("override not applied: fontScale"), "body names the param: $body")
+
+    val (okCode, okBody, okHeaders) =
+      getFull("/svg-catalog/render/$previewId.svg?fontScale=2.0&fallback=baked")
+    assertEquals(200, okCode)
+    assertEquals(plainBody, okBody, "the opted-in fallback is the baked vector")
+    assertEquals(
+      ServeHttpServer.RENDER_BAKED_FALLBACK,
+      okHeaders[ServeHttpServer.RENDER_HEADER],
+      "the fallback vector says it is one",
+    )
+    assertEquals("fontScale", okHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+  }
+
+  /**
+   * The Storybook isolation pages are consumed by PNG-diffing visual tools — precisely the
+   * caller #3449 describes — and a story's args ride the same override params, so they refuse too.
+   * The page shape has no room for a signal of its own, hence the status.
+   */
+  @Test
+  fun `the storybook iframe lanes refuse a dropped override`() {
+    assertEquals(200, get("/compose-m3/iframe.html?id=$previewId").first)
+    val (code, _, headers) = getFull("/compose-m3/iframe.html?id=$previewId&fontScale=2.0")
+    assertEquals(409, code)
+    assertEquals("fontScale", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+
+    assertEquals(200, get("/svg-catalog/iframe.html?id=$previewId&format=svg").first)
+    val (svgCode, _, svgHeaders) =
+      getFull("/svg-catalog/iframe.html?id=$previewId&format=svg&fontScale=2.0")
+    assertEquals(409, svgCode)
+    assertEquals("fontScale", svgHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+
+    // The opt-in still works here: the page is served, marked as carrying baked bytes.
+    val (okCode, _, okHeaders) =
+      getFull("/compose-m3/iframe.html?id=$previewId&fontScale=2.0&fallback=baked")
+    assertEquals(200, okCode)
+    assertEquals(ServeHttpServer.RENDER_BAKED_FALLBACK, okHeaders[ServeHttpServer.RENDER_HEADER])
+  }
+
+  @Test
+  fun `a live lane that is merely unavailable answers 503 with a retry hint`() {
+    val (code, body, headers) = getFull("/live-down/render/$previewId.png?fontScale=2.0")
+    assertEquals(503, code)
+    assertEquals("2", headers["Retry-After"])
+    assertEquals("fontScale", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+    assertTrue(body.contains("retry shortly"), "body offers a retry: $body")
+  }
+
+  @Test
+  fun `fallback=baked opts back into the snapshot, marked unmissably`() {
+    val (code, body, headers) =
+      getFull("/live-down/render/$previewId.png?fontScale=2.0&fallback=baked")
+    assertEquals(200, code)
+    assertTrue(body.isNotEmpty(), "the snapshot is served")
+    assertEquals(
+      ServeHttpServer.RENDER_BAKED_FALLBACK,
+      headers[ServeHttpServer.RENDER_HEADER],
+      "the response says the pixels are a fallback",
+    )
+    assertEquals("fontScale", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+    assertEquals("no-store", headers["Cache-Control"])
   }
 
   @Test
@@ -571,6 +788,57 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `the design-parity view serves under both session forms and links from the landing`() {
+    val (pathCode, page) = get("/compose-m3/parity")
+    assertEquals(200, pathCode)
+    assertTrue(page.contains("Design parity"), "parity heading: $page")
+    // The code lane's commit link is rebuilt from the validated repo + sha, not taken verbatim.
+    assertTrue(
+      page.contains(
+        "https://github.com/yschimke/compose-ai-tools/commit/4e73ec2b9f0a1c3d5e7f9a1b3c5d7e9f0a1b3c5d"
+      ),
+      "commit link: $page",
+    )
+    // …and the Figma comment deep-links to its node, in Figma's `-` URL form.
+    assertTrue(
+      page.contains("https://www.figma.com/design/abc123?node-id=51592-4768"),
+      "figma node link: $page",
+    )
+    // The comment names a component with no code movement, so it lands in the drift band.
+    assertTrue(page.contains("design only"), "one-sided design movement: $page")
+    // A producer-declared gap the server could not have derived itself.
+    assertTrue(page.contains("design node with no code"), "declared gap: $page")
+
+    val (queryCode, _) = get("/parity?session=compose-m3")
+    assertEquals(200, queryCode, "the legacy ?session= form serves the same view")
+
+    val (jsonCode, json) = get("/compose-m3/parity.json")
+    assertEquals(200, jsonCode)
+    assertTrue(
+      json.contains("\"schema\":\"compose-preview-serve/parity/v1\""),
+      "json schema: $json",
+    )
+    assertTrue(json.contains("\"percent\":100"), "the one component is mapped: $json")
+    assertTrue(json.contains("\"lane\":\"figma-comment\""), "the comment lane: $json")
+    assertEquals(jsonCode to json, get("/compose-m3/parity?format=json"))
+
+    val (_, landing) = get("/compose-m3")
+    assertTrue(landing.contains("href=\"/compose-m3/parity\""), "landing links the view: $landing")
+  }
+
+  @Test
+  fun `a session with no references and no feed offers no parity view at all`() {
+    // `default-mod` maps nothing and publishes no feed — a page of zeroes helps nobody, so the
+    // route 404s and the landing must not advertise it.
+    val (code, _) = get("/parity")
+    assertEquals(404, code)
+    assertEquals(404, get("/parity.json").first)
+
+    val (_, landing) = get("/")
+    assertTrue(!landing.contains("/parity"), "no dead parity link on the landing: $landing")
+  }
+
+  @Test
   fun `viewer unfurl metadata uses the external origin and preserves render overrides`() {
     val request =
       Request.Builder()
@@ -690,13 +958,17 @@ class ServeHttpRoutingTest {
 
   @Test
   fun `variant render remains non cacheable`() {
+    // This fixture is a static bundle, so it can only return baked bytes. Since #3449 that is a
+    // refusal unless the caller opts into the snapshot — and the opted-in response, being a variant
+    // request, must still never poison the cache for another query.
     val req =
       Request.Builder()
-        .url("http://127.0.0.1:${server.port}/compose-m3/render/$previewId.png?fontScale=1.5")
+        .url(
+          "http://127.0.0.1:${server.port}/compose-m3/render/$previewId.png" +
+            "?fontScale=1.5&fallback=baked"
+        )
         .build()
     client.newCall(req).execute().use { response ->
-      // This fixture is a static bundle, so it can only return baked bytes; the variant-bearing
-      // request is nevertheless dynamic and must never poison the cache for another query.
       assertEquals("baked", response.header(ServeHttpServer.GENERATION_HEADER))
       assertEquals("no-store", response.header("Cache-Control"))
     }

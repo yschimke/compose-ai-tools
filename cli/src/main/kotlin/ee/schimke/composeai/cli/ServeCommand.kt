@@ -51,6 +51,7 @@ import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
 import ee.schimke.composeai.cli.serve.ServeModuleRef
 import ee.schimke.composeai.cli.serve.ServePerPreviewDaemonPool
 import ee.schimke.composeai.cli.serve.ServePreview
+import ee.schimke.composeai.cli.serve.ServeProjectHistory
 import ee.schimke.composeai.cli.serve.ServeRateLimiter
 import ee.schimke.composeai.cli.serve.ServeRenderHost
 import ee.schimke.composeai.cli.serve.ServeRevisionFactory
@@ -126,6 +127,21 @@ class ServeCommand(args: List<String>) : Command(args) {
    * resumed by the registry. Off by default (just the current module).
    */
   private val revisions: Boolean = "--revisions" in args
+
+  /**
+   * Project mode's render-history timeline: the **baseline delivery branch**, as it exists in this
+   * checkout, whose publishes the viewer's history strip is computed from ([ServeProjectHistory]).
+   *
+   * On by default and self-disabling: a clone that never fetched the branch resolves nothing and
+   * the strip is simply omitted, so the default costs one `git rev-parse` per refresh window on a
+   * project that doesn't publish baselines. `--history-branch <ref>` points it at another branch (a
+   * fork's, or a fully-qualified `refs/…`); `--no-history` turns it off outright.
+   */
+  private val historyBranch: String? =
+    if ("--no-history" in args) null
+    else
+      args.flagValue("--history-branch")?.trim()?.takeIf { it.isNotEmpty() }
+        ?: ServeProjectHistory.DEFAULT_BRANCH
 
   /**
    * Opt in to local Gradle discovery + build. By default `serve` never runs Gradle: it hosts only
@@ -948,6 +964,11 @@ class ServeCommand(args: List<String>) : Command(args) {
       catalogLoads = catalogReg?.loads,
       catalogStore = catalogReg?.store,
       catalogRefresh = catalogRefresher?.let { refresher -> refresher::refresh },
+      // Project mode has the repository, so the viewer's history strip is computed from local git
+      // instead of a published history.json — the same timeline the hosted viewer shows, sourced
+      // the other way round. Only wired on this path: [runBundleServer] has no checkout to read.
+      projectHistory =
+        historyBranch?.let { ServeProjectHistory(repoRoot = projectRepoRoot(module), branch = it) },
       onStarted = {
         catalogReg?.loader?.start { loaded ->
           catalogRefresher?.let {
@@ -1935,6 +1956,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     catalogStore: ServeCatalogStore? = null,
     /** Immediate branch-head check used by the Refresh control on catalog landing pages. */
     catalogRefresh: ((String) -> CatalogRefreshResult)? = null,
+    /** Project mode's local-git render history; null on a box with no checkout to read. */
+    projectHistory: ServeProjectHistory? = null,
     /** Called immediately after the HTTP listener binds, before the long blocking wait. */
     onStarted: () -> Unit = {},
   ) {
@@ -2021,6 +2044,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           playgroundLane?.let { { url: String -> PlaygroundSeedResolver.httpFetch(url) } },
         trustForwardedFor = trustForwardedFor,
         engagementStore = ServeEngagementStore(engagementFile),
+        projectHistory = projectHistory,
       )
     if (trustAdmin != null) {
       System.err.println(
@@ -2112,13 +2136,18 @@ class ServeCommand(args: List<String>) : Command(args) {
     return exec
   }
 
+  /**
+   * The repository the served module lives in — the root every project-mode git surface works from
+   * (worktrees, the revision factory, the render-history timeline). Falls back to the module's
+   * parent directory when the project root can't be identified, which is what the git calls
+   * themselves will then fail against, harmlessly.
+   */
+  private fun projectRepoRoot(module: PreviewModule): File =
+    findProjectRoot() ?: module.projectDir.absoluteFile.parentFile ?: module.projectDir
+
   /** Open the worktree manager rooted at the repo (project mode), gated to the allowed refs. */
   private fun openWorktrees(module: PreviewModule, rootOverride: File? = null): GitWorktrees {
-    val repoRoot =
-      rootOverride
-        ?: findProjectRoot()
-        ?: module.projectDir.absoluteFile.parentFile
-        ?: module.projectDir
+    val repoRoot = rootOverride ?: projectRepoRoot(module)
     if (revisionAllowRefs.isEmpty()) {
       System.err.println(
         "serve: --revisions has no --revisions-allow refs; no revision will build (fail closed). " +
@@ -2138,8 +2167,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     module: PreviewModule,
     worktrees: GitWorktrees,
   ): ServeRevisionFactory {
-    val repoRoot =
-      findProjectRoot() ?: module.projectDir.absoluteFile.parentFile ?: module.projectDir
+    val repoRoot = projectRepoRoot(module)
     val relativePath =
       module.projectDir.absoluteFile.relativeToOrNull(repoRoot.absoluteFile)?.path ?: ""
     // Match the bootstrap args the normal build path (Command.withGradle) applies, so a worktree
@@ -3029,6 +3057,13 @@ class ServeCommand(args: List<String>) : Command(args) {
         --revisions       Project mode: also serve other git revisions of this repo on demand. A
                           request with ?session=<rev> checks that revision out into a worktree,
                           builds it, and serves it as its own session (suspended/resumed when idle).
+        --history-branch <ref>
+                          Project mode: the baseline delivery branch, as fetched in this checkout,
+                          whose publishes the viewer's render-history strip is built from (default
+                          ${ServeProjectHistory.DEFAULT_BRANCH}; 'origin/<ref>' is tried too). Each
+                          entry opens that version's render, served from the local object store.
+                          A ref this clone can't resolve simply means no strip.
+        --no-history      Don't compute the render-history strip from local git.
         --revisions-allow <ref>[,<ref>…]
                           Project mode SECURITY gate: only revisions reachable from these trusted
                           refs (e.g. main,release) are checked out and built — building runs that

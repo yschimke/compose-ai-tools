@@ -44,6 +44,7 @@ import pixelmatch from "pixelmatch";
 import { chromium } from "playwright";
 
 import { renderRcCompareHtml } from "./render-rc-compare-html.mjs";
+import { CHROMIUM_LAUNCH_ARGS } from "./rc-chromium.mjs";
 import {
   applyCmpWasmPerformanceBudgets,
   applyCmpWasmPixelTolerances,
@@ -425,13 +426,24 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
     const viewportHeight = previewParams?.heightDp ?? Math.round(height / density);
     const pageState = await cmpWasmPageFor(density);
     const { page: cmpWasmPage, consoleErrors: cmpWasmConsoleErrors } = pageState;
-    const startup = pageState.renders++ === 0 ? "cold" : "warm";
+    // `cold`/`warm` describes *this browser context*, and contexts are keyed by density (see
+    // `cmpWasmPageFor`) — so a catalog whose previews span two densities legitimately reports two
+    // cold rows, the second of them partway through the run. Both are recorded with their density
+    // so a slow row can be attributed instead of guessed at.
+    const contextRender = pageState.renders++;
+    const startup = contextRender === 0 ? "cold" : "warm";
     cmpWasmConsoleErrors.length = 0;
     cmpWasmServer.setDocument(bytes);
     await cmpWasmPage.setViewportSize({ width: viewportWidth, height: viewportHeight });
     const startedAt = performance.now();
+    // `handoffDelayMs=0` drops the player's cold-start tail — 1.5 s it holds back `ready` so a host
+    // that reveals it on that signal cannot show a blank surface. This lane is not such a host: the
+    // screenshot below goes through CDP, which drives its own compositor frame, and every pixel of
+    // the result is then checked against the baked reference. Measured over a full 27-preview
+    // remote-m3 run, dropping it leaves every rendered PNG byte-for-byte identical and takes the
+    // per-preview cost from ~2.0 s to ~0.5 s. The viewer keeps the default.
     await cmpWasmPage.goto(
-      `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}`,
+      `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}&handoffDelayMs=0`,
     );
     await cmpWasmPage.waitForFunction(
       () => ["ready", "error"].includes(document.documentElement.dataset.rcPlayerState),
@@ -468,6 +480,9 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
       cmpWasmMismatchPx: referenceBlank ? null : px,
       cmpWasmFirstFrameMs: firstFrameMs,
       cmpWasmStartup: startup,
+      cmpWasmDensity: density,
+      cmpWasmContextRender: contextRender,
+      cmpWasmViewport: `${viewportWidth}×${viewportHeight}`,
       cmpWasm: `rc-cmp-wasm/${id}.png`,
       cmpWasmDiff: `rc-cmp-wasm-diff/${id}.png`,
     };
@@ -492,11 +507,18 @@ const bundleJs = fs.readFileSync(PLAYER, "utf8");
 const browser = await chromium.launch({
   headless: true,
   ...(EXEC ? { executablePath: EXEC } : {}),
-  args: ["--enable-unsafe-swiftshader", "--no-sandbox"],
+  args: [...CHROMIUM_LAUNCH_ARGS],
 });
 const page = await browser.newContext({ deviceScaleFactor: 1 }).then((c) => c.newPage());
 const cmpWasmServer = CMP_WASM ? await startCmpWasmServer(CMP_WASM) : null;
 const cmpWasmPages = new Map();
+/**
+ * One browser context per preview density, because Playwright binds `deviceScaleFactor` at context
+ * creation — there is no per-render way to change it, and the player takes its density from the
+ * page's `devicePixelRatio`. Contexts do not share a cache, so the first render in each pays a
+ * fresh player load; that render is the one labelled `cold` (measured at ~0.3 s over a warm one
+ * here, small next to the ~2 s every render costs). Everything after it in that context is `warm`.
+ */
 async function cmpWasmPageFor(density) {
   if (cmpWasmPages.has(density)) return cmpWasmPages.get(density);
   const context = await browser.newContext({ deviceScaleFactor: density });
@@ -669,7 +691,8 @@ for (const id of rcIds) {
       ? ""
       : cmpWasm.cmpWasmRendered
         ? `  |  cmp-wasm ${cmpWasm.cmpWasmMismatchPct.toFixed(2)}% ` +
-          `(${cmpWasm.cmpWasmStartup} ${cmpWasm.cmpWasmFirstFrameMs.toFixed(0)} ms)`
+          `(${cmpWasm.cmpWasmStartup} ${cmpWasm.cmpWasmFirstFrameMs.toFixed(0)} ms, ` +
+          `${cmpWasm.cmpWasmViewport}@${cmpWasm.cmpWasmDensity})`
         : `  |  cmp-wasm NOT RENDERED`;
   console.log(
     `  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})${embNote}${embJvmNote}${cmpWasmNote}`,
@@ -828,6 +851,9 @@ fs.writeFileSync(
         cmpWasmMismatchPx: r.cmpWasmMismatchPx ?? null,
         cmpWasmFirstFrameMs: r.cmpWasmFirstFrameMs ?? null,
         cmpWasmStartup: r.cmpWasmStartup ?? null,
+        cmpWasmDensity: r.cmpWasmDensity ?? null,
+        cmpWasmContextRender: r.cmpWasmContextRender ?? null,
+        cmpWasmViewport: r.cmpWasmViewport ?? null,
         cmpWasmNote: r.cmpWasmNote ?? null,
         cmpWasmError: r.cmpWasmError ?? null,
       })),

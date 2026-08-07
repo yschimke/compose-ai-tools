@@ -262,6 +262,14 @@ class ServeHttpServer(
   private val playgroundSourceFetch: ((String) -> ByteArray?)? = null,
   /** Aggregate view counts; pass a file-backed store to keep them across server restarts. */
   private val engagementStore: ServeEngagementStore = ServeEngagementStore(),
+  /**
+   * Project mode's render-history source, computed from the local repository. When non-null, a
+   * viewer whose session has **no delivery provenance** (i.e. not a catalog) inlines that preview's
+   * timeline and enables `GET /history/render/{blob}.png`, which serves an old render out of the
+   * local object store. Null — every hosted/bundle-only box — leaves both out entirely, so the
+   * route 404s rather than existing unwired.
+   */
+  private val projectHistory: ServeProjectHistory? = null,
 ) {
 
   /**
@@ -769,6 +777,13 @@ class ServeHttpServer(
         get("/reference/{name}") { handleDesignReferenceAsset(sessionInPath = false) }
         get("/{system}/reference/{name}") { handleDesignReferenceAsset(sessionInPath = true) }
 
+        // The design-parity dashboard. `?format=json` mirrors the `/status` convention; `.json` is
+        // the canonical machine path a CI check polls.
+        get("/parity") { handleParity(sessionInPath = false, json = false) }
+        get("/{system}/parity") { handleParity(sessionInPath = true, json = false) }
+        get("/parity.json") { handleParity(sessionInPath = false, json = true) }
+        get("/{system}/parity.json") { handleParity(sessionInPath = true, json = true) }
+
         post("/refresh") { handleCatalogRefresh(sessionInPath = false) }
         post("/{system}/refresh") { handleCatalogRefresh(sessionInPath = true) }
 
@@ -803,6 +818,14 @@ class ServeHttpServer(
 
         get("/render/{name}") { handleRender(sessionInPath = false) }
         get("/{system}/render/{name}") { handleRender(sessionInPath = true) }
+
+        // Project mode only (see [projectHistory]): one version of a render, addressed by its
+        // content sha, read straight out of the local repository. Registered conditionally like
+        // every other optional lane, so a server without a repo has no such route at all.
+        if (projectHistory != null) {
+          get("/history/render/{name}") { handleHistoryRender() }
+          get("/{system}/history/render/{name}") { handleHistoryRender() }
+        }
       }
     }
 
@@ -1437,6 +1460,10 @@ class ServeHttpServer(
                 renderHost.hasRemoteComposeDoc(preview.id) ||
                 renderHost.designReferencesFor(preview.id).isNotEmpty()
             },
+          // Same condition `handleParity` serves on, so the link never leads to that route's 404.
+          hasParityView =
+            renderHost.parityActivity() != null ||
+              renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
           version = BUNDLE_VERSION,
           // Catalog provenance (delivery branch, generation date, tool versions) for the strip
           // under the header; null for a plain (non-catalog) module session.
@@ -1613,6 +1640,77 @@ class ServeHttpServer(
           referencesFor = renderHost::designReferencesFor,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           displayTitle = catalogBundleHost(renderHost)?.title,
+        ),
+        ContentType.Text.Html,
+      )
+    }
+  }
+
+  /**
+   * `GET /<system>/parity` — the catalog's design-parity dashboard: coverage, the merged code ↔
+   * Figma activity feed, and the mapping gaps.
+   *
+   * Offered for every session, not only ones publishing an activity feed: the coverage half is
+   * computed live from the previews and their design references, so a catalog that has adopted
+   * nothing new still gets an honest "N of M components are mapped" page. Only a session with
+   * neither references nor a feed 404s, because there the page would be a table of zeroes.
+   *
+   * `?format=json` returns the same dashboard as data — the shape a CI check or a dashboard poller
+   * wants, and the reason the view model is computed in [ServeParityDashboard] rather than inline
+   * in the HTML.
+   */
+  private suspend fun RoutingContext.handleParity(sessionInPath: Boolean, json: Boolean) {
+    if (rejectBadToken()) return
+    @Suppress("NAME_SHADOWING")
+    val json = json || call.request.queryParameters["format"].equals("json", ignoreCase = true)
+    val sessionId = selectedSessionId(sessionInPath)
+    val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
+    withLeasedSession(
+      sessionId,
+      onMissing = {
+        if (json) call.respond(HttpStatusCode.NotFound)
+        else respondNotFoundHtml("That design system was not found on this server.")
+      },
+    ) { renderHost ->
+      val activity = renderHost.parityActivity()
+      val hasReference = { id: String -> renderHost.designReferencesFor(id).isNotEmpty() }
+      val mapped = renderHost.previews.any { hasReference(it.id) }
+      if (activity == null && !mapped) {
+        if (json) call.respond(HttpStatusCode.NotFound)
+        else
+          respondNotFoundHtml(
+            "This session publishes no design references and no parity activity feed."
+          )
+        return@withLeasedSession
+      }
+      val dashboard =
+        ServeParityDashboard.build(
+          previews = renderHost.previews,
+          hasReference = hasReference,
+          activity = activity,
+        )
+      if (json) {
+        markGeneration("parity", pageCacheControl())
+        call.respondText(
+          JSON.encodeToString(ParityResponse.serializer(), ParityResponse.of(dashboard)),
+          ContentType.Application.Json,
+        )
+        return@withLeasedSession
+      }
+      markGeneration("static-page", pageCacheControl())
+      call.respondText(
+        ServeWeb.parityPage(
+          moduleLabel = renderHost.label,
+          dashboard = dashboard,
+          token = token,
+          sessionId = webSessionId,
+          basePath = basePath,
+          isPublic = isPublic,
+          trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          displayTitle = catalogBundleHost(renderHost)?.title,
+          hasReferenceFor = hasReference,
         ),
         ContentType.Text.Html,
       )
@@ -2805,8 +2903,18 @@ class ServeHttpServer(
         call.response.headers.append(HttpHeaders.RetryAfter, "2")
         call.respondText("render busy; retry shortly", status = HttpStatusCode.ServiceUnavailable)
       }
-      is RenderOutcome.Ok ->
-        call.respondText(StorybookCompat.iframePage(storyId, outcome.png), ContentType.Text.Html)
+      is RenderOutcome.Ok -> {
+        // A story's args ride the same override params, and this lane is consumed by exactly the
+        // tools #3449 is about — BackstopJS / reg-suit style PNG-diffing across arg values. Baked
+        // pixels here would read as "this arg changes nothing".
+        val dropped = droppedOverridesFor(outcome.generation, previewId, overrides)
+        if (dropped.isNotEmpty() && !acceptsBakedFallback()) {
+          refuseDroppedOverrides(renderHost, previewId, dropped)
+        } else {
+          markDroppedOverrides(dropped)
+          call.respondText(StorybookCompat.iframePage(storyId, outcome.png), ContentType.Text.Html)
+        }
+      }
       RenderOutcome.NotFound -> call.respondText("no such story", status = HttpStatusCode.NotFound)
       is RenderOutcome.Failed ->
         call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
@@ -2845,8 +2953,18 @@ class ServeHttpServer(
           status = HttpStatusCode.ServiceUnavailable,
         )
       }
-      is SvgOutcome.Ok ->
-        call.respondText(StorybookCompat.iframeSvgPage(storyId, outcome.svg), ContentType.Text.Html)
+      is SvgOutcome.Ok -> {
+        val dropped = droppedOverridesFor(outcome.generation, previewId, overrides)
+        if (dropped.isNotEmpty() && !acceptsBakedFallback()) {
+          refuseDroppedOverrides(renderHost, previewId, dropped)
+        } else {
+          markDroppedOverrides(dropped)
+          call.respondText(
+            StorybookCompat.iframeSvgPage(storyId, outcome.svg),
+            ContentType.Text.Html,
+          )
+        }
+      }
       SvgOutcome.NotFound ->
         call.respondText(
           "svg unavailable for this story (no daemon-backed SVG export)",
@@ -2961,6 +3079,15 @@ class ServeHttpServer(
               repository = it.accessRepository(),
             )
           }
+      // Project mode's timeline, computed from the local repo rather than fetched from a delivery
+      // branch. Gated on the session having no delivery provenance — exactly the condition that
+      // leaves `historyManifestUrl` null — because a catalog served from a delivery branch already
+      // ships the published manifest, and that, not this box's checkout, is the truth about what it
+      // has rendered. Off the event loop: the first call per refresh window shells out to git.
+      val localHistoryJson =
+        projectHistory
+          ?.takeIf { catalogBundleHost(renderHost)?.provenance == null }
+          ?.let { history -> withContext(Dispatchers.IO) { history.timelineJsonFor(preview.id) } }
       markGeneration(
         "static-page",
         viewerCacheControl(githubAuthConfigured = githubAuth != null, isPublic = isPublic),
@@ -3044,10 +3171,41 @@ class ServeHttpServer(
               ServeUrls.historyManifestUrl(it.repo, it.branch)
             },
           historyRepo = catalogBundleHost(renderHost)?.provenance?.repo,
+          // …and its project-mode twin: the timeline inlined rather than fetched, with its entries
+          // pointing back at this server's `/history/render/` lane. Mutually exclusive with the
+          // pair above by construction — a session has catalog provenance or it has a local repo,
+          // never both.
+          historyInlineJson = localHistoryJson,
+          historyLocalRenders = localHistoryJson != null,
         ),
         ContentType.Text.Html,
       )
     }
+  }
+
+  /**
+   * `GET /history/render/{blob}.png`: one historical render, read out of the local repository by
+   * content sha — what a project-mode timeline chip links to (see [ServeProjectHistory]).
+   *
+   * Content-addressed rather than `<commit>/<path>` addressed, so there is no path to traverse and
+   * no ref to steer: the sha is either one the current timeline names or it is a 404. Deliberately
+   * session-independent — the blob belongs to the repository, not to a session — but registered in
+   * both URL forms so the viewer can link relative to whichever prefix it was served under.
+   */
+  private suspend fun RoutingContext.handleHistoryRender() {
+    if (rejectBadToken()) return
+    val history = projectHistory
+    val name = call.parameters["name"].orEmpty().removeSuffix(".png")
+    val bytes =
+      if (history == null) null else withContext(Dispatchers.IO) { history.renderBytes(name) }
+    if (bytes == null) {
+      call.respondText("no such render", status = HttpStatusCode.NotFound)
+      return
+    }
+    // Immutable by construction — the URL *is* the content hash — but this is a token-gated
+    // response on a private box, so it follows the same no-store rule as every other one.
+    markGeneration("history-render", DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondBytes(bytes, ContentType.Image.PNG)
   }
 
   /**
@@ -3277,19 +3435,34 @@ class ServeHttpServer(
               )
             }
             is RenderOutcome.Ok -> {
-              markGeneration(
-                outcome.generation.wire,
-                if (
-                  outcome.generation == RenderOutcome.Generation.BAKED &&
-                    overrideParams.isEmpty() &&
-                    isPublic
-                ) {
-                  STATIC_RESOURCE_CACHE_CONTROL
-                } else {
-                  DYNAMIC_RESOURCE_CACHE_CONTROL
-                },
-              )
-              call.respondBytes(outcome.png, ContentType.Image.PNG)
+              // Baked pixels answering an override-bearing request are pixels that do NOT reflect
+              // the override — byte-identical to the un-overridden snapshot, under a 200 (#3449).
+              // Every other generation is a real render keyed by these overrides.
+              val dropped = droppedOverridesFor(outcome.generation, previewId, overrides)
+              if (dropped.isNotEmpty()) {
+                respondDroppedOverrides(
+                  renderHost,
+                  previewId,
+                  dropped,
+                  outcome.png,
+                  ContentType.Image.PNG,
+                  outcome.generation,
+                )
+              } else {
+                markGeneration(
+                  outcome.generation.wire,
+                  if (
+                    outcome.generation == RenderOutcome.Generation.BAKED &&
+                      overrideParams.isEmpty() &&
+                      isPublic
+                  ) {
+                    STATIC_RESOURCE_CACHE_CONTROL
+                  } else {
+                    DYNAMIC_RESOURCE_CACHE_CONTROL
+                  },
+                )
+                call.respondBytes(outcome.png, ContentType.Image.PNG)
+              }
             }
             RenderOutcome.NotFound ->
               call.respondText("no such preview", status = HttpStatusCode.NotFound)
@@ -3298,6 +3471,105 @@ class ServeHttpServer(
           }
         }
       }
+    }
+  }
+
+  /**
+   * The validated overrides a [generation] artifact for [previewId] does **not** reflect — empty
+   * unless the bytes came straight off a published bundle ([RenderOutcome.Generation.BAKED] — no
+   * renderer was involved in this request). Every other generation is a real render keyed by these
+   * overrides, cache hit or not.
+   */
+  private fun droppedOverridesFor(
+    generation: RenderOutcome.Generation,
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): List<String> =
+    if (generation == RenderOutcome.Generation.BAKED) {
+      CatalogLiveRouting.droppedOverrideNames(previewId, overrides)
+    } else {
+      emptyList()
+    }
+
+  /**
+   * Answer a render whose **validated overrides were not applied** — [bytes] are the preview's
+   * baked artifact, produced without a renderer, while the request asked for [dropped]. Shared by
+   * the PNG and SVG lanes so the two can't drift: a vector read off the delivery branch ignores a
+   * `fontScale` exactly as thoroughly as a baked PNG does.
+   *
+   * The old behaviour was `200` with those bytes, which is a wrong answer delivered confidently:
+   * the response is indistinguishable from a render where the override genuinely changed nothing,
+   * so a diff bot, a parity check, or an agent iterating on a theme concludes "no visual
+   * difference" for an artifact that was never rendered (#3449). Every override kind agrees here —
+   * `fontScale`, `uiMode`, and `themeProvider` alike — rather than one path 503ing while the
+   * commoner ones quietly returned the snapshot.
+   *
+   * Three outcomes, all naming the dropped params in [DROPPED_OVERRIDES_HEADER] so even a `curl -I`
+   * can tell:
+   * - `?fallback=baked` — the caller explicitly accepted the snapshot (the viewer asks for this
+   *   when it would rather show published pixels than a broken image). 200, plus
+   *   `X-Compose-Preview-Render: baked-fallback`, since the bytes carry no signal of their own.
+   * - the preview HAS a live lane, just not right now (daemon down, cold, no free seat) — 503 +
+   *   `Retry-After`, matching what a pure `themeProvider` request already returned in this state.
+   * - the preview has NO live lane at all (a static/untrusted catalog, an unmapped Android-only
+   *   variant) — 409: retrying can't help, and the viewer already treats 409 as terminal.
+   */
+  private suspend fun RoutingContext.respondDroppedOverrides(
+    renderHost: ServeHost,
+    previewId: String,
+    dropped: List<String>,
+    bytes: ByteArray,
+    contentType: ContentType,
+    generation: RenderOutcome.Generation,
+  ) {
+    if (acceptsBakedFallback()) {
+      markDroppedOverrides(dropped)
+      markGeneration(generation.wire, DYNAMIC_RESOURCE_CACHE_CONTROL)
+      call.respondBytes(bytes, contentType)
+      return
+    }
+    refuseDroppedOverrides(renderHost, previewId, dropped)
+  }
+
+  /** Whether the caller passed `?fallback=baked` — an explicit "serve the snapshot anyway". */
+  private fun RoutingContext.acceptsBakedFallback(): Boolean =
+    call.request.queryParameters[FALLBACK_PARAM]?.lowercase() == FALLBACK_BAKED
+
+  /**
+   * Name the un-applied overrides on a response that carries the baked artifact regardless — the
+   * accepted `?fallback=baked`, and the Storybook isolation pages, whose consumers asked for an
+   * HTML wrapper this server has no refusal shape for beyond a status. A no-op when nothing was
+   * dropped, so an honest render carries no stray header.
+   */
+  private fun RoutingContext.markDroppedOverrides(dropped: List<String>) {
+    if (dropped.isEmpty()) return
+    call.response.headers.append(DROPPED_OVERRIDES_HEADER, dropped.joinToString(","))
+    call.response.headers.append(RENDER_HEADER, RENDER_BAKED_FALLBACK)
+  }
+
+  /** The refusal half of [respondDroppedOverrides]: 503 when a live lane exists, else 409. */
+  private suspend fun RoutingContext.refuseDroppedOverrides(
+    renderHost: ServeHost,
+    previewId: String,
+    dropped: List<String>,
+  ) {
+    call.response.headers.append(DROPPED_OVERRIDES_HEADER, dropped.joinToString(","))
+    val params = dropped.joinToString(", ")
+    if (renderHost.canRenderOverridesFor(previewId)) {
+      call.response.headers.append(HttpHeaders.RetryAfter, "2")
+      call.respondText(
+        "override not applied: $params — this preview's live render lane is unavailable; " +
+          "retry shortly, or add &$FALLBACK_PARAM=$FALLBACK_BAKED to accept the baked snapshot " +
+          "(which ignores the override)",
+        status = HttpStatusCode.ServiceUnavailable,
+      )
+    } else {
+      call.respondText(
+        "override not applied: $params — this preview has no live render lane, so only its baked " +
+          "snapshot can be served; add &$FALLBACK_PARAM=$FALLBACK_BAKED to accept it (which " +
+          "ignores the override)",
+        status = HttpStatusCode.Conflict,
+      )
     }
   }
 
@@ -3428,7 +3700,25 @@ class ServeHttpServer(
         val svg =
           if (webMode) webModeSvg(outcome.svg.toString(Charsets.UTF_8)).toByteArray(Charsets.UTF_8)
           else outcome.svg
-        call.respondBytes(svg, ContentType.parse(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG))
+        val contentType = ContentType.parse(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG)
+        // The vector lane drops overrides exactly like the PNG one: a `figma/<slug>.svg` read off
+        // the delivery branch was drawn at the preview's discovery-time axes, so serving it for a
+        // `?fontScale=2.0` export is the same silent wrong answer (#3449). `?scroll=long` is
+        // daemon-only (a bundle has no full-page vector), so it never lands here baked.
+        val dropped = droppedOverridesFor(outcome.generation, previewId, overrides)
+        if (dropped.isNotEmpty()) {
+          respondDroppedOverrides(
+            renderHost,
+            previewId,
+            dropped,
+            svg,
+            contentType,
+            outcome.generation,
+          )
+        } else {
+          markGeneration(outcome.generation.wire)
+          call.respondBytes(svg, contentType)
+        }
       }
       SvgOutcome.NotFound -> call.respondText("no such preview", status = HttpStatusCode.NotFound)
       is SvgOutcome.Failed ->
@@ -3655,6 +3945,33 @@ class ServeHttpServer(
     private const val MAX_ADMIN_BODY_BYTES = 64L * 1024
 
     const val GENERATION_HEADER: String = "X-Compose-Preview-Generation"
+
+    /**
+     * How a `/render` response relates to what was asked for, when that needs saying at all. Only
+     * value today: [RENDER_BAKED_FALLBACK] — the caller asked for an override, accepted a baked
+     * snapshot via `?fallback=baked`, and these pixels do not reflect it. Absent on an ordinary
+     * render (see [GENERATION_HEADER] for how the pixels were produced).
+     */
+    const val RENDER_HEADER: String = "X-Compose-Preview-Render"
+
+    /** [RENDER_HEADER] value: baked pixels standing in for a render that could not be made. */
+    const val RENDER_BAKED_FALLBACK: String = "baked-fallback"
+
+    /**
+     * Comma-separated names of the validated override params a `/render` response does NOT reflect
+     * (`fontScale,uiMode`, `knob.label`, …). Present on the refusals *and* on an accepted
+     * `?fallback=baked` 200, because the pixels themselves carry no signal.
+     */
+    const val DROPPED_OVERRIDES_HEADER: String = "X-Compose-Preview-Dropped-Overrides"
+
+    /**
+     * `?fallback=baked` — opt in to the un-overridden snapshot instead of a refusal when the live
+     * render lane can't honour the request. Not an override param (never reaches
+     * [ServeOverrides.parse]).
+     */
+    const val FALLBACK_PARAM: String = "fallback"
+
+    const val FALLBACK_BAKED: String = "baked"
     private const val DEFAULT_PORT_RANGE = 32
 
     /** Short edge/browser caching for HTML assembled entirely from published catalog metadata. */
@@ -4181,6 +4498,125 @@ private data class PreviewsResponse(
 )
 
 @Serializable private data class DegradationDto(val code: String, val detail: String)
+
+/**
+ * `GET /<system>/parity?format=json`: the design-parity dashboard as data.
+ *
+ * Same numbers the HTML page shows, so a CI check can gate on `coverage.percent` or on
+ * `drift`/`gaps` being empty without scraping a page. Deliberately the *derived* view rather than a
+ * passthrough of the published `activity.json`: the coverage half doesn't exist in that file (the
+ * server computes it live), and the preview ids here have already been filtered to ones this
+ * session actually serves.
+ */
+@Serializable
+private data class ParityResponse(
+  val schema: String = "compose-preview-serve/parity/v1",
+  val generatedAt: String? = null,
+  val windowDays: Int? = null,
+  val coverage: ParityCoverageDto,
+  /** Components that moved on one side only — the actionable subset of the correlation. */
+  val drift: List<ParityDriftDto> = emptyList(),
+  val activity: List<ParityEventDto> = emptyList(),
+  val gaps: List<ParityGapDto> = emptyList(),
+) {
+  companion object {
+    fun of(dashboard: ServeParityDashboard.Dashboard): ParityResponse =
+      ParityResponse(
+        generatedAt = dashboard.generatedAt,
+        windowDays = dashboard.windowDays,
+        coverage =
+          ParityCoverageDto(
+            components = dashboard.coverage.components,
+            mapped = dashboard.coverage.mapped,
+            unmapped = dashboard.coverage.unmappedCount,
+            percent = dashboard.coverage.percent,
+          ),
+        drift =
+          dashboard.components
+            .filter { it.correlation != ServeParityDashboard.Correlation.BOTH }
+            .map {
+              ParityDriftDto(
+                component = it.name,
+                side =
+                  if (it.correlation == ServeParityDashboard.Correlation.CODE_ONLY) "code"
+                  else "design",
+                lastChangeAt = it.lastAt,
+                previewId = it.previewId,
+              )
+            },
+        activity =
+          dashboard.feed.map {
+            ParityEventDto(
+              lane =
+                when (it.lane) {
+                  ServeParityDashboard.Lane.CODE -> "code"
+                  ServeParityDashboard.Lane.FIGMA_VERSION -> "figma-version"
+                  ServeParityDashboard.Lane.FIGMA_COMMENT -> "figma-comment"
+                },
+              at = it.at,
+              title = it.title,
+              author = it.author,
+              url = it.href,
+              previewIds = it.previewIds,
+              components = it.components,
+              resolved = it.resolved,
+            )
+          },
+        gaps =
+          dashboard.gaps.map {
+            ParityGapDto(
+              kind = it.kind,
+              detail = it.detail,
+              code = it.code,
+              ref = it.ref,
+              previewId = it.previewId,
+              component = it.component,
+            )
+          },
+      )
+  }
+}
+
+@Serializable
+private data class ParityCoverageDto(
+  val components: Int,
+  val mapped: Int,
+  val unmapped: Int,
+  /** 0–100, rounded. */
+  val percent: Int,
+)
+
+@Serializable
+private data class ParityDriftDto(
+  val component: String,
+  /** `code` (render moved, reference didn't) or `design` (the reverse). */
+  val side: String,
+  val lastChangeAt: String,
+  val previewId: String? = null,
+)
+
+@Serializable
+private data class ParityEventDto(
+  /** `code`, `figma-version`, or `figma-comment`. */
+  val lane: String,
+  val at: String,
+  val title: String,
+  val author: String? = null,
+  val url: String? = null,
+  val previewIds: List<String> = emptyList(),
+  val components: List<String> = emptyList(),
+  val resolved: Boolean = false,
+)
+
+@Serializable
+private data class ParityGapDto(
+  val kind: String,
+  val detail: String,
+  val code: String? = null,
+  val ref: String? = null,
+  val previewId: String? = null,
+  val component: String? = null,
+)
 
 /** What `/api/daemons` reports: is a render server up for this catalog, and how many processes. */
 @Serializable

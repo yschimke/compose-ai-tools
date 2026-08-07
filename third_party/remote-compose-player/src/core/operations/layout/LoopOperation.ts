@@ -54,8 +54,12 @@ export class LoopOperation extends Operation {
             for (let i = from; i < until; i += step) {
                 context.loadFloat(this.mIndexId, i);
                 for (const op of this.mList) {
-                    // Re-evaluate expressions that depend on the loop variable
-                    if (typeof (op as any).updateVariables === 'function') {
+                    // Refresh only what is dirty, as the reference does. Recomputing
+                    // every operation on every iteration is not merely wasteful: an
+                    // operation the engine considers clean keeps the values it resolved
+                    // earlier, and re-resolving it against the current loop index gives
+                    // a different answer.
+                    if (op.isDirty() && typeof (op as any).updateVariables === 'function') {
                         (op as any).updateVariables(context);
                     }
                     context.incrementOpCount();
