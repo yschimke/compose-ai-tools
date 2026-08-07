@@ -705,6 +705,49 @@ dirs and a retirement policy. A long-running host keeps compiling against the AB
 it first resolved; restart to pick up a newer one. Issue #3212 splits that half
 out explicitly.
 
+### 8.4.1 Getting into the playground from a catalog
+
+Two subtle entry points, both on surfaces a visitor is already reading rather
+than as controls of their own:
+
+| Where | Link | Opens |
+|---|---|---|
+| Catalog landing summary line | `try in playground` | `/playground?catalog=<system>` — that design system preselected, starter sample kept |
+| Viewer's provenance row, beside `source` | `▶ playground` | `/playground?from=<system>/<previewId>` — that preview's **source file** in the editor, its catalog preselected |
+
+![The viewer's provenance row: source · ▶ playground · report an issue](../images/serve-playground-handoff-viewer.png)
+
+![A catalog landing's summary line carrying "try in playground"](../images/serve-playground-handoff-landing.png)
+
+![The playground opened from a preview: its source file in the editor, its catalog preselected](../images/serve-playground-seeded.png)
+
+The per-preview handoff reads the file off GitHub (`PlaygroundSeedResolver`). Two
+properties make that safe to expose publicly:
+
+**The URL is never client-derived.** A request names a system and a preview id;
+both resolve through this server's own registry, and the repo/ref/module/path
+that build the fetch URL all come from the catalog's trusted metadata
+(`catalog.json`'s `source`, plus the per-preview `sourceFile`). The worst a
+visitor can name is a preview that doesn't exist, which resolves to null.
+
+**Everything fails soft.** No source path recorded, a fetch that 404s or times
+out, a file over the 256 KB cap, bytes that aren't UTF-8 — each opens the
+ordinary sample and logs the reason. A link is only rendered when this host has
+the lane *and* the preview records a source path, so the affordance is absent
+rather than dead. Seeds are cached, and the cache is bounded (256) so a crawler
+walking every preview cannot grow it.
+
+**What it is not:** a trimmed snippet. It is the file the preview is declared in,
+which for a catalog that declares many previews in one `CatalogPreviews.kt` is
+that whole file — the page says so rather than implying otherwise. It compiles
+against the catalog's classpath, so anything the file pulls in from *elsewhere in
+its own module* comes back as an unresolved reference to delete (measured on
+`compose-m3`: 9 diagnostics across 511 lines, all sibling helpers). Extracting
+just the named preview would need an exact preview-id → function-name mapping;
+the catalog id is a slug (`badge__ideal__default__light`) and guessing at the
+function would risk silently showing the wrong code, so it is deliberately left
+until that mapping is plumbed through.
+
 ### 8.5 Sharing the compile lane — **a per-caller budget, not just capacity**
 
 Everything above bounds *simultaneous resource use across the host*: compile
