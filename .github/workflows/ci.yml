@@ -315,6 +315,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # `:rc-player-compose` has no `iosX64` compile task: it is the only `:rc-player-*` module that
+      # depends on Compose Multiplatform, and CMP 1.11 dropped the Intel-iOS-simulator variant (see
+      # that module's build.gradle.kts). Its non-Compose siblings still declare `iosX64()`, so they
+      # keep their entries below. Naming a task that no longer exists fails the whole invocation
+      # ("Cannot locate tasks that match ..."), not just that one target.
       - name: Run shared, Wasm, and iOS player tests
         run: |
           ./gradlew \
@@ -330,8 +335,7 @@ jobs:
             :rc-player-runtime:compileTestKotlinIosSimulatorArm64 \
             :rc-player-runtime:compileTestKotlinIosX64 \
             :rc-player-compose:compileTestKotlinIosArm64 \
-            :rc-player-compose:compileTestKotlinIosSimulatorArm64 \
-            :rc-player-compose:compileTestKotlinIosX64
+            :rc-player-compose:compileTestKotlinIosSimulatorArm64
           ./gradlew :cli:test --tests ee.schimke.composeai.cli.serve.ServeWebTest
           ./gradlew ktfmtCheck
       - name: Upload player test reports on failure
