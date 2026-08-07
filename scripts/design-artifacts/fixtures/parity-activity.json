@@ -1,0 +1,60 @@
+{
+  "schema": "compose-preview-activity/v1",
+  "generatedAt": "2026-08-06T09:12:00.000Z",
+  "windowDays": 30,
+  "code": {
+    "repo": "yschimke/m3-catalog",
+    "ref": "main",
+    "events": [
+      {
+        "sha": "4e73ec2b9f0a1c3d5e7f9a1b3c5d7e9f0a1b3c5d",
+        "subject": "fix(button): tighten the filled button's label padding",
+        "at": "2026-08-05T10:00:00+00:00",
+        "author": "yschimke",
+        "previewIds": [
+          "sections.ButtonsKt.FilledButton_Light"
+        ],
+        "components": [
+          "Button/Filled"
+        ]
+      }
+    ]
+  },
+  "figma": {
+    "fileKey": "ocdacdEsnHipMJD3egzxKb",
+    "fileName": "Material 3 Design Kit",
+    "versions": [
+      {
+        "id": "3928471",
+        "at": "2026-08-04T11:40:00Z",
+        "label": "Buttons: 16dp label padding",
+        "description": "Aligns the filled/tonal pair with the spec update.",
+        "author": "Dana"
+      }
+    ],
+    "comments": [
+      {
+        "id": "9182",
+        "at": "2026-08-04T08:00:00Z",
+        "message": "The switch track reads 2dp short against the M3 spec sheet.",
+        "author": "Dana",
+        "resolved": false,
+        "nodeId": "51592:4768",
+        "previewIds": [
+          "sections.SwitchesKt.SwitchOn_Light"
+        ],
+        "components": [
+          "Switch/On"
+        ]
+      }
+    ]
+  },
+  "gaps": [
+    {
+      "kind": "unmapped-design-node",
+      "detail": "Published in the design file, but no design-map entry names it.",
+      "ref": "figma:ocdacdEsnHipMJD3egzxKb/51827:5859",
+      "component": "Bottom sheet / Modal"
+    }
+  ]
+}

@@ -195,6 +195,40 @@ html.cp-js .cp-section-head { display: none; }
 .cp-table code { font-size: 0.76rem; padding: 0 4px; border-radius: 4px; background: var(--cp-surface-2); }
 .cp-ok { color: #1e7a34; font-weight: 600; }
 .cp-muted { color: var(--cp-fg-faint); font-size: 0.76rem; }
+/* Design parity page (GET /<system>/parity): the coverage meter, the merged two-lane activity
+   feed, and the mapping-gap tables. The lane colours are SEMANTIC (code vs. design), so — like the
+   trusted/unverified badges — they stay literal rather than following a catalog's palette: a row
+   must mean the same thing on /wear-m3 as on /m3-catalog. Everything else here is drawn from the
+   chrome tokens and needs no dark counterpart. */
+.cp-parity-meter { max-width: 860px; height: 8px; border-radius: 999px; overflow: hidden;
+  background: var(--cp-surface-2); margin: 0 0 6px; }
+.cp-parity-meter-fill { height: 100%; background: var(--cp-accent); border-radius: 999px; }
+.cp-parity-sub { margin: 18px 0 6px; font-size: 0.85rem; font-weight: 600; color: var(--cp-fg-soft); }
+.cp-parity-lane { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.68rem;
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+.cp-parity-lane--code { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
+.cp-parity-lane--figma { background: #ede8fb; color: #5b3fa8; border: 1px solid #d0c3f0; }
+.cp-parity-feed { list-style: none; margin: 0; padding: 0; max-width: 860px; }
+.cp-parity-entry { display: flex; gap: 16px; padding: 12px 0;
+  border-bottom: 1px solid var(--cp-surface-2); }
+.cp-parity-entry:last-child { border-bottom: none; }
+.cp-parity-entry[hidden] { display: none; }
+.cp-parity-entry--resolved { opacity: 0.55; }
+.cp-parity-when { flex: 0 0 128px; font-size: 0.74rem; color: var(--cp-fg-faint);
+  font-variant-numeric: tabular-nums; padding-top: 2px; }
+.cp-parity-body { flex: 1 1 auto; min-width: 0; }
+.cp-parity-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.cp-parity-title { font-size: 0.86rem; color: var(--cp-fg); overflow-wrap: anywhere; }
+.cp-parity-meta { margin-top: 3px; display: flex; flex-wrap: wrap; gap: 10px;
+  font-size: 0.74rem; color: var(--cp-fg-faint); }
+.cp-parity-who { color: var(--cp-fg-muted); }
+.cp-parity-targets { margin-top: 5px; font-size: 0.76rem; }
+.cp-parity-chips { list-style: none; margin: 0 0 8px; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 640px) {
+  .cp-parity-entry { flex-direction: column; gap: 4px; }
+  .cp-parity-when { flex: none; }
+}
 .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; }
 .cp-syslist { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 22px; }
 /* 220px hero + a meta row that takes the rest, so the meta block can bottom-align its count
@@ -725,6 +759,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-bg { border-color: var(--cp-border); }
   .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
   .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
+  /* Same semantic pair as the badges above: literal, re-mixed for a dark surface. */
+  .cp-parity-lane--code { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
+  .cp-parity-lane--figma { background: #241d3d; color: #b3a1ee; border-color: #453a6b; }
   .cp-degrade { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
   .cp-drawer-toggle { border-color: var(--cp-border); }
   .cp-nav { border-color: var(--cp-border); }

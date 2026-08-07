@@ -777,6 +777,13 @@ class ServeHttpServer(
         get("/reference/{name}") { handleDesignReferenceAsset(sessionInPath = false) }
         get("/{system}/reference/{name}") { handleDesignReferenceAsset(sessionInPath = true) }
 
+        // The design-parity dashboard. `?format=json` mirrors the `/status` convention; `.json` is
+        // the canonical machine path a CI check polls.
+        get("/parity") { handleParity(sessionInPath = false, json = false) }
+        get("/{system}/parity") { handleParity(sessionInPath = true, json = false) }
+        get("/parity.json") { handleParity(sessionInPath = false, json = true) }
+        get("/{system}/parity.json") { handleParity(sessionInPath = true, json = true) }
+
         post("/refresh") { handleCatalogRefresh(sessionInPath = false) }
         post("/{system}/refresh") { handleCatalogRefresh(sessionInPath = true) }
 
@@ -1453,6 +1460,10 @@ class ServeHttpServer(
                 renderHost.hasRemoteComposeDoc(preview.id) ||
                 renderHost.designReferencesFor(preview.id).isNotEmpty()
             },
+          // Same condition `handleParity` serves on, so the link never leads to that route's 404.
+          hasParityView =
+            renderHost.parityActivity() != null ||
+              renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
           version = BUNDLE_VERSION,
           // Catalog provenance (delivery branch, generation date, tool versions) for the strip
           // under the header; null for a plain (non-catalog) module session.
@@ -1629,6 +1640,77 @@ class ServeHttpServer(
           referencesFor = renderHost::designReferencesFor,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           displayTitle = catalogBundleHost(renderHost)?.title,
+        ),
+        ContentType.Text.Html,
+      )
+    }
+  }
+
+  /**
+   * `GET /<system>/parity` — the catalog's design-parity dashboard: coverage, the merged code ↔
+   * Figma activity feed, and the mapping gaps.
+   *
+   * Offered for every session, not only ones publishing an activity feed: the coverage half is
+   * computed live from the previews and their design references, so a catalog that has adopted
+   * nothing new still gets an honest "N of M components are mapped" page. Only a session with
+   * neither references nor a feed 404s, because there the page would be a table of zeroes.
+   *
+   * `?format=json` returns the same dashboard as data — the shape a CI check or a dashboard poller
+   * wants, and the reason the view model is computed in [ServeParityDashboard] rather than inline
+   * in the HTML.
+   */
+  private suspend fun RoutingContext.handleParity(sessionInPath: Boolean, json: Boolean) {
+    if (rejectBadToken()) return
+    @Suppress("NAME_SHADOWING")
+    val json = json || call.request.queryParameters["format"].equals("json", ignoreCase = true)
+    val sessionId = selectedSessionId(sessionInPath)
+    val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
+    withLeasedSession(
+      sessionId,
+      onMissing = {
+        if (json) call.respond(HttpStatusCode.NotFound)
+        else respondNotFoundHtml("That design system was not found on this server.")
+      },
+    ) { renderHost ->
+      val activity = renderHost.parityActivity()
+      val hasReference = { id: String -> renderHost.designReferencesFor(id).isNotEmpty() }
+      val mapped = renderHost.previews.any { hasReference(it.id) }
+      if (activity == null && !mapped) {
+        if (json) call.respond(HttpStatusCode.NotFound)
+        else
+          respondNotFoundHtml(
+            "This session publishes no design references and no parity activity feed."
+          )
+        return@withLeasedSession
+      }
+      val dashboard =
+        ServeParityDashboard.build(
+          previews = renderHost.previews,
+          hasReference = hasReference,
+          activity = activity,
+        )
+      if (json) {
+        markGeneration("parity", pageCacheControl())
+        call.respondText(
+          JSON.encodeToString(ParityResponse.serializer(), ParityResponse.of(dashboard)),
+          ContentType.Application.Json,
+        )
+        return@withLeasedSession
+      }
+      markGeneration("static-page", pageCacheControl())
+      call.respondText(
+        ServeWeb.parityPage(
+          moduleLabel = renderHost.label,
+          dashboard = dashboard,
+          token = token,
+          sessionId = webSessionId,
+          basePath = basePath,
+          isPublic = isPublic,
+          trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          displayTitle = catalogBundleHost(renderHost)?.title,
+          hasReferenceFor = hasReference,
         ),
         ContentType.Text.Html,
       )
@@ -4416,6 +4498,125 @@ private data class PreviewsResponse(
 )
 
 @Serializable private data class DegradationDto(val code: String, val detail: String)
+
+/**
+ * `GET /<system>/parity?format=json`: the design-parity dashboard as data.
+ *
+ * Same numbers the HTML page shows, so a CI check can gate on `coverage.percent` or on
+ * `drift`/`gaps` being empty without scraping a page. Deliberately the *derived* view rather than a
+ * passthrough of the published `activity.json`: the coverage half doesn't exist in that file (the
+ * server computes it live), and the preview ids here have already been filtered to ones this
+ * session actually serves.
+ */
+@Serializable
+private data class ParityResponse(
+  val schema: String = "compose-preview-serve/parity/v1",
+  val generatedAt: String? = null,
+  val windowDays: Int? = null,
+  val coverage: ParityCoverageDto,
+  /** Components that moved on one side only — the actionable subset of the correlation. */
+  val drift: List<ParityDriftDto> = emptyList(),
+  val activity: List<ParityEventDto> = emptyList(),
+  val gaps: List<ParityGapDto> = emptyList(),
+) {
+  companion object {
+    fun of(dashboard: ServeParityDashboard.Dashboard): ParityResponse =
+      ParityResponse(
+        generatedAt = dashboard.generatedAt,
+        windowDays = dashboard.windowDays,
+        coverage =
+          ParityCoverageDto(
+            components = dashboard.coverage.components,
+            mapped = dashboard.coverage.mapped,
+            unmapped = dashboard.coverage.unmappedCount,
+            percent = dashboard.coverage.percent,
+          ),
+        drift =
+          dashboard.components
+            .filter { it.correlation != ServeParityDashboard.Correlation.BOTH }
+            .map {
+              ParityDriftDto(
+                component = it.name,
+                side =
+                  if (it.correlation == ServeParityDashboard.Correlation.CODE_ONLY) "code"
+                  else "design",
+                lastChangeAt = it.lastAt,
+                previewId = it.previewId,
+              )
+            },
+        activity =
+          dashboard.feed.map {
+            ParityEventDto(
+              lane =
+                when (it.lane) {
+                  ServeParityDashboard.Lane.CODE -> "code"
+                  ServeParityDashboard.Lane.FIGMA_VERSION -> "figma-version"
+                  ServeParityDashboard.Lane.FIGMA_COMMENT -> "figma-comment"
+                },
+              at = it.at,
+              title = it.title,
+              author = it.author,
+              url = it.href,
+              previewIds = it.previewIds,
+              components = it.components,
+              resolved = it.resolved,
+            )
+          },
+        gaps =
+          dashboard.gaps.map {
+            ParityGapDto(
+              kind = it.kind,
+              detail = it.detail,
+              code = it.code,
+              ref = it.ref,
+              previewId = it.previewId,
+              component = it.component,
+            )
+          },
+      )
+  }
+}
+
+@Serializable
+private data class ParityCoverageDto(
+  val components: Int,
+  val mapped: Int,
+  val unmapped: Int,
+  /** 0–100, rounded. */
+  val percent: Int,
+)
+
+@Serializable
+private data class ParityDriftDto(
+  val component: String,
+  /** `code` (render moved, reference didn't) or `design` (the reverse). */
+  val side: String,
+  val lastChangeAt: String,
+  val previewId: String? = null,
+)
+
+@Serializable
+private data class ParityEventDto(
+  /** `code`, `figma-version`, or `figma-comment`. */
+  val lane: String,
+  val at: String,
+  val title: String,
+  val author: String? = null,
+  val url: String? = null,
+  val previewIds: List<String> = emptyList(),
+  val components: List<String> = emptyList(),
+  val resolved: Boolean = false,
+)
+
+@Serializable
+private data class ParityGapDto(
+  val kind: String,
+  val detail: String,
+  val code: String? = null,
+  val ref: String? = null,
+  val previewId: String? = null,
+  val component: String? = null,
+)
 
 /** What `/api/daemons` reports: is a render server up for this catalog, and how many processes. */
 @Serializable

@@ -137,6 +137,12 @@ class ServeBundleHost(
   override fun designReferenceRaster(referenceId: String): ByteArray? =
     designReferences.raster(referenceId)
 
+  // Read once at load, like the reference manifest: the feed is a published snapshot, so re-reading
+  // it per request would buy nothing (a refresh reloads the whole catalog and rebuilds this host).
+  private val parityActivity = ServeParityActivityStore.load(bundleDir, fileSystem)
+
+  override fun parityActivity(): ParityActivity? = parityActivity
+
   private val annotations = ServeAnnotationStore.load(bundleDir, fileSystem)
 
   override fun annotationsForPreview(previewId: String): List<DesignAnnotation> =
