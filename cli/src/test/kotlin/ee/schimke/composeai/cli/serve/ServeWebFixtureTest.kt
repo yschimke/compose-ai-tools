@@ -603,6 +603,28 @@ class ServeWebFixtureTest {
           """
             .trimIndent(),
       )
+    // The same strip in PROJECT mode: no delivery branch to fetch from, so the timeline is computed
+    // from the local repo ([ServeProjectHistory]) and its entries link at this server's own
+    // content-addressed lane. Captured separately because it differs where it matters — the newest
+    // entry is not "current" (the stage is rendered from the working tree), and the head carries
+    // the "published baselines" scope label.
+    val viewerHistoryLocal =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        token,
+        historyLocalRenders = true,
+        historyInlineJson =
+          """
+          {"formatVersion":"compose-preview-history/v1","generatedFrom":"df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80",
+           "previews":{"${previews.first { it.id.endsWith("ProfileScreenPreview") }.id}":{
+             "path":"renders/samples:compose-m3/ProfileScreenPreview.png","observations":5,
+             "unstable":false,"flapCount":0,"versions":[
+               {"blob":"1c9a3f6b2d4e5f708192a3b4c5d6e7f809a1b2c3","commit":"df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80","date":"2026-05-22T11:08:37+00:00","sourceSha":"57ac24f3","commits":1},
+               {"blob":"2d8b4a7c3e5f60718293a4b5c6d7e8f90a1b2c3d","commit":"8b9f6f2bc953756edcb13963e09cd57c54866570","date":"2026-05-07T08:34:51+00:00","sourceSha":"cf69a4a0","commits":3},
+               {"blob":"3e7c5b8d4f60718293a4b5c6d7e8f90a1b2c3d4e","commit":"1f10ff93dcb1a0f5e6c7b8a9d0e1f2a3b4c5d6e7","date":"2026-04-19T09:12:00+00:00","sourceSha":"03ecb679","commits":1}]}}}
+          """
+            .trimIndent(),
+      )
     val viewer =
       ServeWeb.viewerPage(
         previews
@@ -1356,6 +1378,7 @@ class ServeWebFixtureTest {
         "serve-home-index.html" to homeIndex,
         "serve-viewer.html" to viewer,
         "serve-viewer-history.html" to viewerHistory,
+        "serve-viewer-history-local.html" to viewerHistoryLocal,
         "serve-viewer-wasm.html" to wasmViewer,
         "serve-viewer-wasm-live.html" to wasmViewerLive,
         "serve-viewer-signin.html" to viewerSignIn,
@@ -1434,6 +1457,14 @@ class ServeWebFixtureTest {
         "a single-preview session shows no component nav drawer",
       )
     }
+    // Project mode addresses an old render on THIS server (by content sha) rather than on
+    // raw.githubusercontent.com, and must not advertise a manifest URL it has no repo to fetch.
+    assertTrue(
+      viewerHistoryLocal.contains("data-history-blob-url=\"/history/render/{blob}.png?token=") &&
+        !viewerHistoryLocal.contains("data-history-url=") &&
+        !viewerHistoryLocal.contains("data-history-repo="),
+      "the project-mode timeline links at this server's own render lane",
+    )
     // The declared Remote Compose knobs render as their own "Remote Compose" control group, one
     // `.cp-rc-knob` per knob carrying its name + wire kind (a `color` swatch value + a `string`),
     // separate from the plain-Compose Overrides panel.
