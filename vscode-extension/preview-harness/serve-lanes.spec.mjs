@@ -107,6 +107,13 @@ test("SVG lane bakes the override text into the vector", async ({
   // The overridden label must appear as text in the SVG body — this is the lane
   // that regressed when the bundle daemon didn't register compose/figma-svg.
   expect(svg, "SVG body should contain the override text").toContain(OVERRIDE);
+  // #3449: this vector was really rendered with the override, so the response must
+  // carry no dropped-override signal. A refusal here would mean the lane had
+  // silently dropped back to the catalog's baked `figma/<slug>.svg`.
+  expect(
+    res.headers()["x-compose-preview-dropped-overrides"],
+    "a real override SVG export drops nothing",
+  ).toBeUndefined();
 });
 
 test("Live WebSocket lane upgrades and pushes a frame", async ({ page }) => {
