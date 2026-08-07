@@ -138,6 +138,7 @@ class ServeHttpRoutingTest {
     degradations: List<ServeDegradation> = emptyList(),
     rcDoc: ByteArray? = null,
     designReference: Boolean = false,
+    parityFeed: Boolean = false,
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
@@ -174,6 +175,57 @@ class ServeHttpRoutingTest {
                     source = DesignReferenceSource(provider = "penpot", revision = "8"),
                   ),
                 )
+            ),
+          )
+        )
+    }
+    if (parityFeed) {
+      File(dir, ParityActivity.DIRECTORY).apply { mkdirs() }
+      File(dir, "${ParityActivity.DIRECTORY}/${ParityActivity.FILE}")
+        .writeText(
+          Json.encodeToString(
+            ParityActivity.serializer(),
+            ParityActivity(
+              generatedAt = "2026-08-06T09:12:00Z",
+              windowDays = 30,
+              code =
+                CodeLane(
+                  repo = "yschimke/compose-ai-tools",
+                  ref = "main",
+                  events =
+                    listOf(
+                      CodeEvent(
+                        sha = "4e73ec2b9f0a1c3d5e7f9a1b3c5d7e9f0a1b3c5d",
+                        subject = "fix: red is too red",
+                        at = "2026-08-05T10:00:00Z",
+                        previewIds = listOf(previewId),
+                        components = listOf("Red"),
+                      )
+                    ),
+                ),
+              figma =
+                FigmaLane(
+                  fileKey = "abc123",
+                  fileName = "Compose M3",
+                  comments =
+                    listOf(
+                      FigmaCommentEvent(
+                        id = "c1",
+                        at = "2026-08-04T10:00:00Z",
+                        message = "swatch is off",
+                        nodeId = "51592:4768",
+                        components = listOf("Blue"),
+                      )
+                    ),
+                ),
+              gaps =
+                listOf(
+                  MappingGap(
+                    kind = MappingGap.Kind.UNMAPPED_DESIGN_NODE,
+                    detail = "Figma component with no code entry",
+                    ref = "figma:abc123/1:2",
+                  )
+                ),
             ),
           )
         )
@@ -233,6 +285,7 @@ class ServeHttpRoutingTest {
           listOf(rcColorKnob),
           rcDoc = rcDocBytes,
           designReference = true,
+          parityFeed = true,
         ),
       pinned = true,
     )
@@ -732,6 +785,57 @@ class ServeHttpRoutingTest {
     assertEquals(200, apiCode)
     assertTrue(api.contains("\"module\":\"compose-m3\""), "api for the path session: $api")
     assertTrue(api.contains("\"views\":1"), "catalog and preview engagement in api: $api")
+  }
+
+  @Test
+  fun `the design-parity view serves under both session forms and links from the landing`() {
+    val (pathCode, page) = get("/compose-m3/parity")
+    assertEquals(200, pathCode)
+    assertTrue(page.contains("Design parity"), "parity heading: $page")
+    // The code lane's commit link is rebuilt from the validated repo + sha, not taken verbatim.
+    assertTrue(
+      page.contains(
+        "https://github.com/yschimke/compose-ai-tools/commit/4e73ec2b9f0a1c3d5e7f9a1b3c5d7e9f0a1b3c5d"
+      ),
+      "commit link: $page",
+    )
+    // …and the Figma comment deep-links to its node, in Figma's `-` URL form.
+    assertTrue(
+      page.contains("https://www.figma.com/design/abc123?node-id=51592-4768"),
+      "figma node link: $page",
+    )
+    // The comment names a component with no code movement, so it lands in the drift band.
+    assertTrue(page.contains("design only"), "one-sided design movement: $page")
+    // A producer-declared gap the server could not have derived itself.
+    assertTrue(page.contains("design node with no code"), "declared gap: $page")
+
+    val (queryCode, _) = get("/parity?session=compose-m3")
+    assertEquals(200, queryCode, "the legacy ?session= form serves the same view")
+
+    val (jsonCode, json) = get("/compose-m3/parity.json")
+    assertEquals(200, jsonCode)
+    assertTrue(
+      json.contains("\"schema\":\"compose-preview-serve/parity/v1\""),
+      "json schema: $json",
+    )
+    assertTrue(json.contains("\"percent\":100"), "the one component is mapped: $json")
+    assertTrue(json.contains("\"lane\":\"figma-comment\""), "the comment lane: $json")
+    assertEquals(jsonCode to json, get("/compose-m3/parity?format=json"))
+
+    val (_, landing) = get("/compose-m3")
+    assertTrue(landing.contains("href=\"/compose-m3/parity\""), "landing links the view: $landing")
+  }
+
+  @Test
+  fun `a session with no references and no feed offers no parity view at all`() {
+    // `default-mod` maps nothing and publishes no feed — a page of zeroes helps nobody, so the
+    // route 404s and the landing must not advertise it.
+    val (code, _) = get("/parity")
+    assertEquals(404, code)
+    assertEquals(404, get("/parity.json").first)
+
+    val (_, landing) = get("/")
+    assertTrue(!landing.contains("/parity"), "no dead parity link on the landing: $landing")
   }
 
   @Test

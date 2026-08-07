@@ -27,6 +27,8 @@ internal object ServeWebAssets {
       "viewer-history.js" to "text/javascript; charset=utf-8",
       "backend-badge.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
+      // The design-parity page's lane filter; loaded only by that page.
+      "parity.js" to "text/javascript; charset=utf-8",
     )
 
   private val cache = java.util.concurrent.ConcurrentHashMap<String, Asset>()

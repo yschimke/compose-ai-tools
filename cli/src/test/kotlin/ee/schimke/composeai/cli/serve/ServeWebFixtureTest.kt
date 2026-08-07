@@ -767,6 +767,10 @@ class ServeWebFixtureTest {
         hasHomeIndex = true,
         basePath = "/meshcore-mobile",
         version = version,
+        // meshcore-mobile is the catalog that really publishes Figma-backed design references, so
+        // it is the one whose landing offers the design-parity view — captured here so the
+        // visual-diff bot covers the new summary-line action.
+        hasParityView = true,
       )
     val viewerPath =
       ServeWeb.viewerPage(
@@ -943,6 +947,109 @@ class ServeWebFixtureTest {
           raster = DesignReferenceRaster("references/design-button-filled-review.png", 320, 160),
           source = DesignReferenceSource(provider = "penpot", revision = "fixture-43"),
         ),
+      )
+    // The design-parity dashboard. Built through the real [ServeParityDashboard] rather than by
+    // hand-assembling a view model, so the golden also pins the *derivation* — coverage folding
+    // light/dark onto one component, the two lanes merging by time, and a comment on a component
+    // whose code didn't move landing in the "needs a look" band.
+    val parityDashboard =
+      ServeParityDashboard.build(
+        previews = themedPreviews,
+        // Button is mapped; Switch and Badge are not — a realistic, partly-covered catalog.
+        hasReference = { it.startsWith("button-filled") },
+        activity =
+          ParityActivity(
+            generatedAt = "2026-07-17T09:30:00.000Z",
+            windowDays = 30,
+            code =
+              CodeLane(
+                repo = "yschimke/compose-ai-tools",
+                ref = "main",
+                events =
+                  listOf(
+                    CodeEvent(
+                      sha = "4e73ec2b9f0a1c3d5e7f9a1b3c5d7e9f0a1b3c5d",
+                      subject = "fix(button): tighten the filled button's label padding to 16dp",
+                      at = "2026-07-16T14:22:00.000Z",
+                      author = "yschimke",
+                      previewIds = listOf("button-filled__ideal__default__light"),
+                      components = listOf("Button/Filled"),
+                    ),
+                    CodeEvent(
+                      sha = "b842ee3c1d5f7a9b1c3d5e7f9a1b3c5d7e9f0a1b",
+                      subject = "feat(badge): add the small/large size axis",
+                      at = "2026-07-14T08:05:00.000Z",
+                      author = "yschimke",
+                      previewIds = listOf("badge"),
+                      components = listOf("Badge"),
+                    ),
+                  ),
+              ),
+            figma =
+              FigmaLane(
+                fileKey = "ocdacdEsnHipMJD3egzxKb",
+                fileName = "Material 3 Design Kit",
+                versions =
+                  listOf(
+                    FigmaVersionEvent(
+                      id = "3928471",
+                      at = "2026-07-15T11:40:00.000Z",
+                      label = "Buttons: 16dp label padding",
+                      description = "Aligns the filled/tonal pair with the spec update.",
+                      author = "Dana",
+                    )
+                  ),
+                comments =
+                  listOf(
+                    FigmaCommentEvent(
+                      id = "9182",
+                      at = "2026-07-16T09:02:00.000Z",
+                      message = "The switch track reads 2dp short against the M3 spec sheet.",
+                      author = "Dana",
+                      nodeId = "51592:4768",
+                      previewIds = listOf("switch-on__ideal__default__light"),
+                      components = listOf("Switch/On"),
+                    ),
+                    FigmaCommentEvent(
+                      id = "9165",
+                      at = "2026-07-15T16:31:00.000Z",
+                      message = "Padding change landed here too — matching the code side.",
+                      author = "Dana",
+                      resolved = true,
+                      nodeId = "57994:2227",
+                      previewIds = listOf("button-filled__ideal__default__light"),
+                      components = listOf("Button/Filled"),
+                    ),
+                  ),
+              ),
+            gaps =
+              listOf(
+                MappingGap(
+                  kind = MappingGap.Kind.UNMAPPED_DESIGN_NODE,
+                  detail = "Published in the kit, but no design-map entry names it.",
+                  ref = "figma:ocdacdEsnHipMJD3egzxKb/51827:5859",
+                  component = "Bottom sheet / Modal",
+                ),
+                MappingGap(
+                  kind = MappingGap.Kind.UNRENDERED_REFERENCE,
+                  detail = "Figma render returned no image for this node; reference not published.",
+                  ref = "figma:ocdacdEsnHipMJD3egzxKb/51159:5105",
+                  component = "Bottom app bar",
+                ),
+              ),
+          ),
+      )
+    val parity =
+      ServeWeb.parityPage(
+        moduleLabel = "compose-m3",
+        dashboard = parityDashboard,
+        token = token,
+        sessionId = "compose-m3",
+        basePath = "/compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        displayTitle = "Compose Material 3",
+        hasReferenceFor = { it.startsWith("button-filled") },
       )
     val referenceComparison =
       ServeWeb.referenceComparisonPage(
@@ -1394,6 +1501,7 @@ class ServeWebFixtureTest {
         "serve-viewer-catalog-palette.html" to viewerCatalogPalette,
         "serve-format-compare.html" to formatComparison,
         "serve-reference-compare.html" to referenceComparison,
+        "serve-parity.html" to parity,
         "serve-landing-declared-themes.html" to landingDeclaredThemes,
         "serve-landing-live.html" to landingLive,
         "serve-landing-states.html" to landingStates,
@@ -1420,6 +1528,37 @@ class ServeWebFixtureTest {
     }
 
     assertGoldensInSync(pagesDir, goldens)
+    // The parity page's load-bearing claims, asserted rather than left to the pixel diff. A
+    // comment on Switch (whose code never moved in this window) is one-sided design movement, so
+    // it must reach the "needs a look" band; Button moved on both sides and must NOT, because that
+    // band exists to be short.
+    assertTrue(
+      parity.contains("Needs a look") &&
+        parity.contains("Switch on") &&
+        parity.contains("design only"),
+      "one-sided design movement reaches the drift band",
+    )
+    assertFalse(
+      parity.substringAfter("Needs a look").substringBefore("Recent activity").contains("Button"),
+      "a component that moved on both sides is not drift",
+    )
+    // Coverage is derived live from the previews + references, never from the published feed: 3
+    // components (light/dark folded), one of them mapped.
+    assertTrue(
+      parity.contains("mapped</div>") && parity.contains(">1/3<"),
+      "coverage tile: $parity",
+    )
+    // The unmapped chips link to the viewer; a mapped component's feed row links to its comparison.
+    assertTrue(
+      parity.contains("href=\"/compose-m3/p/switch-on__ideal__default__light\""),
+      "an unmapped component opens its viewer",
+    )
+    assertTrue(
+      parity.contains("href=\"/compose-m3/compare/button-filled__ideal__default__light\""),
+      "a mapped component opens its reference comparison",
+    )
+    // A resolved comment is still shown (it is history) but visually stood down.
+    assertTrue(parity.contains("cp-parity-entry--resolved"), "resolved comments render greyed")
     // The overrides drawer defaults OPEN (`cp-controls-open` on the viewer, its toggle expanded)…
     assertTrue(
       viewer.contains("class=\"cp-viewer cp-controls-open\"") &&

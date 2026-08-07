@@ -486,6 +486,150 @@ and selecting it scores each mock against the sticker it is mapped to:
 
 ![PNG ↔ Design reference lane on the meshcore-mobile catalog](images/serve-references-compare.png)
 
+## The design-parity view (`/<system>/parity`)
+
+A catalog landing links **design parity** beside "compare formats". That page answers one question
+the grid can't: *has this catalog's code drifted from the design file it is specified by?*
+
+![The design-parity view](images/serve-parity-light.png)
+
+![The same page on a dark surface](images/serve-parity-dark.png)
+
+Four bands, in the order a reader needs them:
+
+1. **Where we stand** — how many components carry a design reference, how many Figma comments are
+   open, and when each side last moved.
+2. **Needs a look** — components that moved on **one side only** inside the window. This is why the
+   two feeds share a page rather than sitting in two tools: a component with a commit and no design
+   change (or a design comment and no commit) is exactly where the render and its reference are
+   about to disagree, and every row links straight to that component's Reference / Diff / Actual
+   comparison.
+3. **Recent activity** — the merged reverse-chronological feed: commits, Figma file versions, and
+   Figma comments, filterable by lane. A row that names previews this session serves links inward
+   to them; a row's outbound link opens the commit on GitHub or the node in Figma.
+4. **Mapping** — components with no design reference (derived live), then the gaps only the publish
+   job can see.
+
+### Half of it is derived live; the other half is published
+
+**Coverage is computed on the box**, per request, from the previews and design references the
+session is already serving. So the view works for *every* catalog that maps anything, with no
+pipeline change and no new file — and a stale feed can never claim a component is mapped after the
+catalog dropped it.
+
+**The activity itself is a published snapshot**, read from `parity/activity.json` on the delivery
+branch. That split is forced, not stylistic:
+
+- The server has no checkout, so it cannot `git log`.
+- **The server holds no Figma credential and never talks to Figma** — the same rule that keeps
+  `source.uri` on a design reference informational (see [above](#opening-the-figma-node-a-preview-is-specified-by)).
+  A dashboard that called `GET /v1/files/:key/comments` at request time would mean a write-capable
+  design-file token on a public box, and page loads that fail when Figma rate-limits.
+
+The publish job has both, and already holds `figma_token` to rasterize references. So it snapshots
+the feed at publish time and the server only renders it — which also makes the page reproducible
+(every visitor sees the same feed) and diffable (the delivery branch keeps its history). The page
+says so: the **Feed details** disclosure names the repo, the file, and when the snapshot was taken,
+because "nothing changed in Figma" and "we last looked a week ago" are different claims.
+
+### The wire format
+
+`parity/activity.json`, schema `compose-preview-activity/v1`. Every field is optional; a lane that
+produced nothing is omitted rather than published empty.
+
+```json
+{
+  "schema": "compose-preview-activity/v1",
+  "generatedAt": "2026-08-06T09:12:00.000Z",
+  "windowDays": 30,
+  "code": {
+    "repo": "yschimke/m3-catalog",
+    "ref": "main",
+    "events": [{
+      "sha": "4e73ec2…",
+      "subject": "fix(button): tighten the filled button's label padding",
+      "at": "2026-08-05T10:00:00+00:00",
+      "author": "yschimke",
+      "previewIds": ["sections.ButtonsKt.FilledButton_Light"],
+      "components": ["Button/Filled"]
+    }]
+  },
+  "figma": {
+    "fileKey": "ocdacdEsnHipMJD3egzxKb",
+    "fileName": "Material 3 Design Kit",
+    "versions": [{ "id": "3928471", "at": "…", "label": "…", "description": "…", "author": "Dana" }],
+    "comments": [{
+      "id": "9182",
+      "at": "2026-08-04T08:00:00Z",
+      "message": "The switch track reads 2dp short against the M3 spec sheet.",
+      "author": "Dana",
+      "resolved": false,
+      "nodeId": "51592:4768",
+      "previewIds": ["sections.SwitchesKt.SwitchOn_Light"],
+      "components": ["Switch/On"]
+    }]
+  },
+  "gaps": [{
+    "kind": "unmapped-design-node",
+    "detail": "Published in the design file, but no design-map entry names it.",
+    "ref": "figma:ocdacdEsnHipMJD3egzxKb/51827:5859",
+    "component": "Bottom sheet / Modal"
+  }]
+}
+```
+
+`gaps[].kind` is one of `dangling-mapping` (the map names a preview the catalog no longer
+publishes), `unrendered-reference` (a mapped node whose raster couldn't be published), or
+`unmapped-design-node` (a component in the design file nothing maps to). An unknown kind is dropped
+rather than rendered as a mystery row. Note what is *not* a gap kind: "this preview has no design
+reference" — the server derives that itself, so a stale feed can't contradict the catalog in front
+of the reader.
+
+**A catalog is third-party data carrying free text other people wrote** (commit subjects, comment
+bodies), so nothing in this file is trusted. Every string is HTML-escaped, an event with no
+parseable timestamp is dropped (the feed is ordered by time), over-long text is truncated rather
+than dropped, and the two outbound link shapes are **reassembled** from a validated repo/sha and a
+validated file-key/node-id against literal origins — a catalog declaring `javascript:…` produces no
+link at all rather than an attacker-chosen href.
+
+### Where the feed comes from
+
+The `Publish design-parity activity` step of
+[`design-artifacts-reusable.yml`](../.github/workflows/design-artifacts-reusable.yml) runs
+[`emit-parity-activity.mjs`](../scripts/design-artifacts/emit-parity-activity.mjs), immediately
+after the references step so the catalog is final. It reads:
+
+- **code** — `git log --name-only` over the window, joined to previews through `design-map.json`'s
+  `code` handles (a changed file path → the entries under it → their preview ids). `actions/checkout`
+  clones at depth 1, so the step deepens the checkout to the window first; failing that, the code
+  lane is warned about rather than published empty, because an empty lane reads as "nothing
+  changed".
+- **design** — `GET /v1/files/:key/versions` and `GET /v1/files/:key/comments`, both read-only, with
+  the file key taken from the design map's own `figma:` refs (nothing extra to configure). A pinned
+  comment's `client_meta.node_id` is joined back through the map to the previews it specifies —
+  that join is what turns "a designer commented" into a link to a comparison. Replies are dropped
+  (a thread's openers are the signal) and only a display name is published, never an email.
+- **gaps** — computed against the published `catalog.json` and, with a token, the file's component
+  list.
+
+Fail-soft throughout, like the reference step: no token ⇒ the code lane and the gaps still publish,
+which is the normal state for a fork or a PR run. A repo with no history, no design map and no token
+writes nothing at all, so the step runs unconditionally for every catalog. `--strict` gates on any
+skipped lane.
+
+The pure half lives in [`parity-activity.mjs`](../scripts/design-artifacts/parity-activity.mjs) and
+unit-tests without an `npm ci`; its output is committed as
+[`fixtures/parity-activity.json`](../scripts/design-artifacts/fixtures/parity-activity.json) and
+loaded by the Kotlin reader's own test, so the two languages can't drift apart silently.
+
+### `?format=json`
+
+`GET /<system>/parity.json` (or `?format=json`) returns the same dashboard as data — schema
+`compose-preview-serve/parity/v1`, with `coverage`, `drift`, `activity` and `gaps`. It is the
+derived view rather than a passthrough of `activity.json`: coverage isn't in that file, and the
+preview ids here have already been filtered to ones the session actually serves. A CI check can gate
+on `coverage.percent` or on `drift` being empty without scraping HTML.
+
 ## Two axes: trust × format
 
 These are orthogonal. **Trust** decides attribution; **format** decides what draws the pixels. Neither

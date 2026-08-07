@@ -33,6 +33,14 @@ interface ServeHost : AutoCloseable {
   fun annotationsForReference(referenceId: String): List<DesignAnnotation> = emptyList()
 
   /**
+   * The design-parity activity feed this catalog published (`parity/activity.json`), or null when
+   * it publishes none — the common case, and the one every host defaults to. Drives the
+   * `/<system>/parity` view's code / Figma feeds; the coverage half of that page is derived from
+   * [previews] + [designReferencesFor] and needs no feed at all.
+   */
+  fun parityActivity(): ParityActivity? = null
+
+  /**
    * The app's declared `@ThemeCatalog` themes — module-global, so the viewer's Theme selector can
    * offer "render this preview under Brand Dark". Non-empty only for a daemon-backed host
    * ([ServeRenderHost]) whose module declares them; a static bundle carries no theme-apply lane
