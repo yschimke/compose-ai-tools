@@ -7,6 +7,7 @@ import {
   undeclaredBreakpointDevices,
   DEFAULT_WEAR_BREAKPOINTS,
 } from "./catalog-breakpoints.mjs";
+import { previewIdAliases } from "./preview-id-alias.mjs";
 
 test("Wear catalogs default to standard round device breakpoints", () => {
   assert.equal(
@@ -191,5 +192,39 @@ test("undeclaredBreakpointDevices names the devices no breakpoint claims", () =>
       { size: "xlRound", widthDp: 240 },
     ]),
     [],
+  );
+});
+
+test("a raw (unsanitised) candidate previewId still resolves its declared breakpoint", () => {
+  // The regression this guards: `bundle pack` stores `previews.json` ids sanitised
+  // (`…_Small_Round`) while the candidate reader hands back the raw discovery id
+  // (`…_Small Round`). Matching on one spelling left every Wear breakpoint render on the generic
+  // `compact` width class, which the export then reported as a *missing* render for a preview that
+  // had rendered perfectly.
+  const candidates = [
+    {
+      componentId: "EdgeButtonSticker",
+      previewId: "FooKt.EdgeButtonSticker_Small Round",
+      images: [{}],
+    },
+    {
+      componentId: "EdgeButtonSticker",
+      previewId: "FooKt.EdgeButtonSticker_Large Round",
+      images: [{}],
+    },
+  ];
+  const previews = [
+    { id: "FooKt.EdgeButtonSticker_Small_Round", params: { device: "id:wearos_small_round" } },
+    { id: "FooKt.EdgeButtonSticker_Large_Round", params: { device: "id:wearos_large_round" } },
+  ];
+  const aliases = previewIdAliases({
+    previewIds: previews.map((p) => p.id),
+    rawPreviewIds: candidates.map((c) => c.previewId),
+  });
+
+  assert.equal(applySpecBreakpoints(candidates, previews, DEFAULT_WEAR_BREAKPOINTS, aliases), 2);
+  assert.deepEqual(
+    candidates.map((c) => c.images[0].size),
+    ["smallRound", "largeRound"],
   );
 });
