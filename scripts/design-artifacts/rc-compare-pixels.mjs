@@ -49,3 +49,50 @@ export function isFullyTransparent(png) {
   for (let i = 3; i < d.length; i += 4) if (d[i] !== 0) return false;
   return true;
 }
+
+/**
+ * Split a comparison into **coverage** disagreement and **content** disagreement.
+ *
+ * A single mismatch percentage conflates two unrelated failures. If the player paints a smaller
+ * region than the baked render — a card that under-fills its canvas, a band left undrawn at the
+ * bottom — every pixel of that band is composited onto {@link BG} on one side only, so a framing or
+ * background gap reads as a large content error and drowns out the thing you were actually looking
+ * at. Both are worth knowing; they are not worth adding together.
+ *
+ * - `coverageDeltaPct` — share of the canvas where exactly one side painted anything. Pure
+ *   framing/background disagreement: nothing is said about colour.
+ * - `contentMismatchPct` — share of the pixels **both** sides painted whose colour disagrees beyond
+ *   [tolerance]. This is the number to read when asking "does the player draw this correctly",
+ *   because it is computed only where the question is meaningful. Null when the two never overlap.
+ * - `bothPaintedPct` — how much of the canvas that judgement covers, so a tiny overlap can't quietly
+ *   masquerade as a clean score.
+ *
+ * Must be called *before* `flattenOnto` on either side — the alpha it reads is what flattening
+ * destroys.
+ */
+export function splitCoverage(bakedRgba, playerRgba, width, height, tolerance = 24) {
+  const ALPHA_PAINTED = 8;
+  let bothPainted = 0;
+  let bothPaintedDiff = 0;
+  let coverageOnly = 0;
+  for (let i = 0; i < bakedRgba.length; i += 4) {
+    const bakedPainted = bakedRgba[i + 3] > ALPHA_PAINTED;
+    const playerPainted = playerRgba[i + 3] > ALPHA_PAINTED;
+    if (bakedPainted && playerPainted) {
+      bothPainted++;
+      const delta =
+        Math.abs(bakedRgba[i] - playerRgba[i]) +
+        Math.abs(bakedRgba[i + 1] - playerRgba[i + 1]) +
+        Math.abs(bakedRgba[i + 2] - playerRgba[i + 2]);
+      if (delta > tolerance) bothPaintedDiff++;
+    } else if (bakedPainted !== playerPainted) {
+      coverageOnly++;
+    }
+  }
+  const total = width * height;
+  return {
+    coverageDeltaPct: total ? (100 * coverageOnly) / total : 0,
+    contentMismatchPct: bothPainted ? (100 * bothPaintedDiff) / bothPainted : null,
+    bothPaintedPct: total ? (100 * bothPainted) / total : 0,
+  };
+}
