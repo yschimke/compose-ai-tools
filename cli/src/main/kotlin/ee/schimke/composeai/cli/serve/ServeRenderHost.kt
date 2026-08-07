@@ -820,12 +820,12 @@ internal constructor(
 
     val key = ServeOverrides.cacheKey(previewId, overrides)
     svgCache.get(key)?.let {
-      return SvgOutcome.Ok(it)
+      return SvgOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
     }
 
     return renderLock.withLock {
       svgCache.get(key)?.let {
-        return@withLock SvgOutcome.Ok(it)
+        return@withLock SvgOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
       }
 
       // Force a fresh render of these overrides so the shared per-preview SVG file on disk is
@@ -894,12 +894,12 @@ internal constructor(
 
     val key = ServeOverrides.cacheKey(previewId, overrides)
     scrollSvgCache.get(key)?.let {
-      return SvgOutcome.Ok(it)
+      return SvgOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
     }
 
     return renderLock.withLock {
       scrollSvgCache.get(key)?.let {
-        return@withLock SvgOutcome.Ok(it)
+        return@withLock SvgOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
       }
 
       // Force a fresh full-page render at these overrides (the shared per-preview file may hold a
