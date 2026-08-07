@@ -179,6 +179,18 @@
     if (fontScaleTouched && fs) o.fontScale = fs.value;
     var size = sizeOverrides();
     Object.keys(size).forEach(function (k) { o[k] = size[k]; });
+    // Overlay toggles (talkBack / touchOverlay). Their id is "cp-<key>", so the daemon key is the
+    // id minus the prefix. Collected HERE, in the map query() serializes, rather than only in
+    // liveOverrides(): the daemon renders these on the ordinary render path, so they belong on the
+    // page URL, the export links, and the live socket's connect query — which is what makes a
+    // ticked box arrive with `stream/start` instead of a second setOverrides that restarts the
+    // stream a frame later. Only a CHECKED overlay is sent: every consumer re-parses this whole
+    // map, so an absent key already means "off", and omitting the false ones keeps
+    // `&talkBack=false` out of every link.
+    document.querySelectorAll(".cp-overlay").forEach(function (el) {
+      if (el.disabled || !el.checked) return;
+      o[el.id.replace(/^cp-/, "")] = "true";
+    });
     return o;
   }
   // A knob control's declared kind (`string` / `int` / `float` / `bool` / `color`), from the row
@@ -220,15 +232,8 @@
       if (val === "") return;
       o["rc." + name] = kind + ":" + val;
     });
-    // Overlay toggles (talkBack / touchOverlay). Their id is "cp-<key>", so the daemon key is the
-    // id minus the prefix. Only a CHECKED overlay is sent: every consumer re-parses this whole map
-    // (the live lane restarts `stream/start` with it, the snapshot lane re-renders from it), so an
-    // absent key already means "off" — and omitting the false ones keeps `&talkBack=false` out of
-    // every snapshot/export URL now that these toggles are enabled outside the live lane.
-    document.querySelectorAll(".cp-overlay").forEach(function (el) {
-      if (el.disabled || !el.checked) return;
-      o[el.id.replace(/^cp-/, "")] = "true";
-    });
+    // (The overlay toggles are collected by overrides() above, not here — they ride the URL and
+    // the connect query like the display fields do.)
     // App-declared theme (themeProvider = provider FQN). Only when a theme is picked and the
     // control is live; "(default)" (empty) leaves the daemon on the preview's own wrapper.
     var tp = chosenThemeProvider();
@@ -721,11 +726,11 @@
       encodeURIComponent(previewId) + "?" + (qs ? qs + "&codec=webp" : "codec=webp"));
     ws = sock;
     sock.onopen = function () {
-      // The connect URL seeds only query()'s fields — the display axes plus changed knobs — so
-      // the live-only overlays (talkBack / touchOverlay) and anything toggled during the
-      // connecting window aren't in it. Replay the full live override map once the socket is
-      // ready so the daemon reflects the exact current control state, including an overlay
-      // checked before onopen whose change event the readyState guard dropped.
+      // The connect URL seeds only query()'s fields — the display axes, the overlays, and changed
+      // knobs — so every knob, and anything toggled during the connecting window, isn't in it.
+      // Replay the full live override map once the socket is ready so the daemon reflects the
+      // exact current control state, including a control changed before onopen whose change event
+      // the readyState guard dropped.
       sock.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
     };
     sock.onmessage = function (ev) {
@@ -1675,6 +1680,9 @@
   // (ws not yet readyState 1) can't fall through to the snapshot / wasm-auto-enable branches — an
   // overlay never applies to a baked PNG or the in-browser tier.
   function onOverlayChanged() {
+    // Overlays are part of overrides(), so the page URL and the export links have to be re-synced
+    // like any other control — otherwise the ticked box is unshareable and Back can't restore it.
+    refreshLinks();
     if (live && live.checked) {
       if (ws && ws.readyState === 1) {
         ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
@@ -1769,7 +1777,8 @@
   // with.
   var URL_STATE_PARAMS = [
     "device", "localeTag", "orientation", "background", "fontScale",
-    "uiMode", "themeProvider", "focus", "gestures", "scroll", "mode", "sizeMode", "rcPlayer",
+    "uiMode", "themeProvider", "focus", "gestures", "talkBack", "touchOverlay",
+    "scroll", "mode", "sizeMode", "rcPlayer",
     "widthPx", "heightPx", "minWidthPx", "minHeightPx", "maxWidthPx", "maxHeightPx",
   ];
   function ownsUrlParam(name) {

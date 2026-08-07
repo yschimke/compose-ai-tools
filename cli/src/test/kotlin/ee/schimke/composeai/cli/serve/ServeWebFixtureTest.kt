@@ -3346,6 +3346,15 @@ class ServeWebFixtureTest {
         .contains("if (anyOverlayChecked() && live && !live.disabled) setMode(\"live\");"),
       "checking an overlay off the live lane enters Live Compose",
     )
+    // Overlays are URL-owned state, not live-socket-only state: collected by `overrides()` (the map
+    // `query()` serializes) and listed in URL_STATE_PARAMS, so a ticked box rides the page URL, the
+    // export links and the stream's connect query. Collected only in `liveOverrides()` it would
+    // reach the daemon and nowhere else — unshareable, unrestorable by Back, and applied a frame
+    // late via the onopen replay instead of arriving with `stream/start`.
+    assertTrue(
+      assetText("viewer.js").contains("\"gestures\", \"talkBack\", \"touchOverlay\","),
+      "overlays are URL-owned params",
+    )
     // The stream replays the full liveOverrides() on open so an overlay checked while the socket
     // was
     // still connecting (its change event dropped by the readyState guard) still reaches the daemon.

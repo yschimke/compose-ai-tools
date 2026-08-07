@@ -677,8 +677,6 @@ class RenderEngine(
             "Failed to encode image to PNG for ${state.spec.className}.${state.spec.functionName}"
           )
       }
-    val clippedBytes =
-      if (state.spec.isRoundComposePreview()) applyRoundClip(pngData.bytes) else pngData.bytes
     // `overrides.talkBack` composites the TalkBack focus overlay onto the captured frame. Applied
     // here — the single encode every non-recording desktop capture funnels through — so the
     // override means the same thing on a one-shot `/render` snapshot and on the *live* lane, whose
@@ -688,9 +686,16 @@ class RenderEngine(
     // `stream/start` is layered on an interactive session, not a recording. Recordings keep their
     // own per-frame path (they walk the focus stops over time) and never call renderOnce, so the
     // overlay is never applied twice.
+    val overlaidBytes =
+      if (state.spec.overrides?.talkBack == true) talkBackOverlaid(state, pngData.bytes)
+      else pngData.bytes
+    // Round clip goes LAST, over the overlay. The overlay draws in the frame's full rectangle —
+    // its caption spans nearly the whole bottom edge — so clipping first and compositing after
+    // would repaint opaque pixels outside the ellipse and a round Wear frame would lose its mask.
+    // Clipping after costs the corners of the overlay instead, which is the right trade: the
+    // device shape is what the frame is claiming to be.
     val pngBytes =
-      if (state.spec.overrides?.talkBack == true) talkBackOverlaid(state, clippedBytes)
-      else clippedBytes
+      if (state.spec.isRoundComposePreview()) applyRoundClip(overlaidBytes) else overlaidBytes
 
     state.outputFile.parentFile?.mkdirs()
     trace.section("render:writePng") {
