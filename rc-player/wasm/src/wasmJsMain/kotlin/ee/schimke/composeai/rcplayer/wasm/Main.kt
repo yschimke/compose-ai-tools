@@ -187,6 +187,21 @@ private suspend fun loadHostFontFamilies(): Map<String, RcFontFaces> {
         runCatching { RcFontFaces(faces.map { load(it) }) }
           .onSuccess { put(family.lowercase(), it) }
       }
+    // `role` names what a family *is for*, and the default-role family answers to two keys: its own
+    // name, registered above so `google:Roboto Flex` resolves, and the literal "default" a document
+    // asks for when it names no family at all — which is what every CoreText in the remote-m3
+    // catalog does. Keying by name alone left "default" unresolvable, so all of that text silently
+    // fell through to Compose's built-in face instead of the manifest's.
+    entries
+      .filter { it.role == "default" }
+      .groupBy { it.family }
+      .forEach { (family, faces) ->
+        if (!containsKey("default")) {
+          (get(family.lowercase())
+              ?: runCatching { RcFontFaces(faces.map { load(it) }) }.getOrNull())
+            ?.let { put("default", it) }
+        }
+      }
   }
 }
 

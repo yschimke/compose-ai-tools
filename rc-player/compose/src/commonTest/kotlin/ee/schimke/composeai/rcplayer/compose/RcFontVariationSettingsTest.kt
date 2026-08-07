@@ -44,6 +44,32 @@ class RcFontVariationSettingsTest {
     assertEquals(listOf("wght" to 700f), settings.pairs())
   }
 
+  @Test
+  fun theStyleWeightBecomesAWghtAxisSoAVariableDefaultFaceRespondsToIt() {
+    // `TextStyle.fontWeight` only picks between registered faces; a family carrying one variable
+    // file registered at 400 renders every weight at 400 unless the axis is named.
+    assertEquals(listOf("wght" to 500f), withWeightAxis(null, 500).pairs())
+    assertEquals(
+      listOf("wdth" to 25f, "wght" to 500f),
+      withWeightAxis(fontVariationSettings(listOf("wdth"), listOf(25f)), 500).pairs(),
+    )
+  }
+
+  @Test
+  fun anExplicitWghtFromTheDocumentWinsOverTheStyleWeight() {
+    // A specimen sweeping the axis names the value it wants; the style weight beside it is only
+    // there so a non-variable fallback picks a face.
+    val declared = fontVariationSettings(listOf("wght"), listOf(700f))
+
+    assertEquals(listOf("wght" to 700f), withWeightAxis(declared, 400).pairs())
+  }
+
+  @Test
+  fun theWeightAxisStaysInTheRangeAVariationValueAccepts() {
+    assertEquals(listOf("wght" to 1f), withWeightAxis(null, 0).pairs())
+    assertEquals(listOf("wght" to 1000f), withWeightAxis(null, 5000).pairs())
+  }
+
   private fun androidx.compose.ui.text.font.FontVariation.Settings?.pairs():
     List<Pair<String, Float>> =
     this?.settings.orEmpty().map { it.axisName to it.toVariationValue(null) }
