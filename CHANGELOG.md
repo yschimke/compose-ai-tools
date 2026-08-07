@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.46](https://github.com/yschimke/compose-ai-tools/compare/v0.19.45...v0.19.46) (2026-08-07)
+
+
+### Bug Fixes
+
+* **plugin:** scope Rule 3's Compose exclusion to our own render dependencies ([#3483](https://github.com/yschimke/compose-ai-tools/issues/3483)) ([a73a88e](https://github.com/yschimke/compose-ai-tools/commit/a73a88e1b377f2cd4eb7bbae1f421f3f77b39280))
+
 ## [0.19.45](https://github.com/yschimke/compose-ai-tools/compare/v0.19.44...v0.19.45) (2026-08-07)
 
 
