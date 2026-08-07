@@ -596,6 +596,51 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 #cp-compare[data-format="rc"] .cp-compare-target-head::after { content: "Remote Compose"; }
 #cp-compare[data-format="reference"] .cp-compare-target-head::after { content: "Design reference"; }
 #cp-compare[data-format="reference"] .cp-compare-vector { cursor: pointer; }
+
+/* The Remote Compose player wall: one column per player, every render published by the offline
+   rc-compare run. A diff appears *inside* a player's column once a reference column is picked. */
+#cp-compare[data-rc-lanes="1"][data-format="rc"] .cp-compare-theme-controls { display: none; }
+/* The page's one-line summary belongs to whichever pane is showing: the format table scores
+   structural similarity, the player wall replays published pixel diffs. */
+.cp-sub-rc { display: none; }
+#cp-compare[data-rc-lanes="1"][data-format="rc"] .cp-sub-rc { display: inline; }
+#cp-compare[data-rc-lanes="1"][data-format="rc"] .cp-sub-formats { display: none; }
+.cp-rc-table td { vertical-align: top; }
+.cp-rc-table tbody th { vertical-align: top; min-width: 180px; }
+.cp-rc-status { color: var(--cp-fg-muted); font-size: 0.75rem; }
+.cp-rc-dims, .cp-rc-blank { color: var(--cp-fg-muted); font-size: 0.72rem; margin-top: 4px; }
+.cp-rc-cell { margin: 0; width: min(220px, 26vw); min-width: 130px; }
+.cp-rc-cell figcaption { color: var(--cp-fg-muted); font-size: 0.7rem; margin-bottom: 4px; }
+/* Capped like the format table's shots: a player render is whatever size the preview was captured
+   at, and a tall one must not push the next row a screen away. */
+.cp-rc-cell img { display: block; width: auto; height: auto; max-width: 100%; max-height: 220px;
+  object-fit: contain; border: 1px solid var(--cp-border); border-radius: 8px;
+  background: repeating-conic-gradient(var(--cp-surface-2) 0% 25%, var(--cp-surface) 0% 50%) 50% / 14px 14px; }
+.cp-rc-refbadge { display: none; margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+  background: var(--cp-accent, #0969da); color: #fff; font-size: 0.62rem; text-transform: uppercase; }
+.cp-rc-cell.is-reference .cp-rc-refbadge { display: inline-block; }
+.cp-rc-cell.is-reference img { outline: 2px solid var(--cp-accent, #0969da); outline-offset: 1px; }
+.cp-rc-missing { display: grid; place-items: center; text-align: center; min-height: 80px;
+  padding: 8px; border: 1px dashed var(--cp-border); border-radius: 8px;
+  color: var(--cp-fg-muted); font-size: 0.7rem; }
+.cp-rc-diffslot { margin-top: 6px; }
+.cp-rc-difflabel { color: var(--cp-fg-muted); font-size: 0.7rem; margin-bottom: 4px; }
+.cp-rc-diffslot img { display: block; width: auto; height: auto; max-width: 100%;
+  max-height: 220px; object-fit: contain; border: 1px solid var(--cp-border);
+  border-radius: 8px; background: #000; }
+.cp-rc-scoreline { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.cp-rc-scorelabel { color: var(--cp-fg-muted); font-size: 0.68rem; text-transform: uppercase;
+  min-width: 54px; padding-top: 2px; }
+.cp-rc-score { display: inline-block; padding: 2px 8px; border-radius: 999px; font-weight: 600;
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cp-rc-score--good { background: #1a7f37; color: #fff; }
+.cp-rc-score--ok { background: #9a6700; color: #fff; }
+.cp-rc-score--bad { background: #b32424; color: #fff; }
+/* A reason ("player could not decode the document") is prose, not a measurement — it must not
+   wear a score pill's weight, and it must wrap rather than burst out of it. */
+.cp-rc-score--na { background: #555; color: #fff; font-weight: 400; font-size: 0.68rem;
+  border-radius: 6px; }
+.cp-rc-px { color: var(--cp-fg-muted); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
 .cp-reference-meta { margin: 12px 0 20px; color: var(--cp-fg-muted); font-size: 0.82rem; }
 .cp-reference-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   margin: 14px 0 10px; color: var(--cp-fg-muted); font-size: 0.8rem; }

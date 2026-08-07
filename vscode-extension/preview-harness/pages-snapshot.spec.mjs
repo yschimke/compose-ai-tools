@@ -47,7 +47,7 @@ const serveAssetsDir = resolve(
 // a realistic size instead of collapsing on broken images.
 const renderPlaceholder = resolve(pagesDir, "_render-placeholder.png");
 const renderSvgPlaceholder = resolve(pagesDir, "_render-placeholder.svg");
-const IMAGE_LANES = ["**/render/**", "**/hero/**", "**/reference/**"];
+const IMAGE_LANES = ["**/render/**", "**/hero/**", "**/reference/**", "**/rc-compare/**"];
 const REFERENCE_PLACEHOLDER = `
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="420" viewBox="0 0 200 420">
   <rect width="200" height="420" rx="20" fill="#f4efff"/>
@@ -63,6 +63,10 @@ const REFERENCE_PLACEHOLDER = `
 // `tokens.dtcg.json`, which is invisible without the stylesheet the palette overrides.
 const STYLED_FIXTURES = new Set([
     "serve-format-compare",
+    // The Remote Compose player wall. Its whole claim is a LAYOUT — one column per player, a diff
+    // growing inside a player's own column — and it is only visible at all once `format-compare.js`
+    // switches the format pane, so it needs both the stylesheet and the scripts routed in.
+    "serve-rc-lanes",
     "serve-reference-compare",
     "serve-viewer-catalog-knobs",
     "serve-landing-catalog-palette",
@@ -104,6 +108,7 @@ const SERVE_ASSETS = [
     ["viewer-drawers.js", "text/javascript"],
     ["backend-badge.js", "text/javascript"],
     ["format-compare.js", "text/javascript"],
+    ["rc-lanes.js", "text/javascript"],
     ["catalog-live.js", "text/javascript"],
 ];
 
@@ -489,6 +494,21 @@ const FIXTURE_STATES = [
                 const box = document.querySelector(".cp-annotation");
                 return box && box.getBoundingClientRect().width > 0;
             });
+        },
+    },
+    {
+        // The player wall's other half. It opens as a plain side-by-side of every player — nothing
+        // is diffed until a column is picked as the reference — so the diff layout (the badge on
+        // the reference column, the mismatch chips, a diff growing inside each other column) is
+        // invisible to the default shot. Picking the baked PNG captures it, and picking the one
+        // reference whose diffs are precomputed keeps the shot deterministic.
+        fixture: "serve-rc-lanes",
+        suffix: "diff-baked",
+        apply: async (page) => {
+            await page.click('[data-rc-ref="baked"]');
+            await page.waitForFunction(
+                () => document.querySelector(".cp-rc-row .cp-rc-score") !== null,
+            );
         },
     },
 ];

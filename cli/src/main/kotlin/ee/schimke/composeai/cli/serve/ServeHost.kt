@@ -324,6 +324,25 @@ interface ServeHost : AutoCloseable {
   fun hasRemoteComposeDoc(previewId: String): Boolean = remoteComposeDoc(previewId) != null
 
   /**
+   * The **published** Remote Compose player comparison this catalog carries — every player's render
+   * of every `ir/<id>.rc` document plus the build-time pixel diffs, as the offline `rc-compare`
+   * pipeline computed them (see [ServeRcCompare]). Drives the `?format=rc` half of the compare
+   * page, which replays these instead of rendering documents in the visitor's browser: one player
+   * runs in a browser, five ran offline, and replaying costs a few `<img>` loads.
+   *
+   * Null for every host but a catalog whose delivery branch published one — a plain uploaded
+   * bundle, or a system that ships no `ir/<id>.rc`, keeps the client-rendered lane.
+   */
+  fun rcCompare(): RcCompareManifest? = null
+
+  /**
+   * Bytes for one staged rc-compare lane image ([RcCompareCell.render] / [RcCompareCell.diff]),
+   * served over `GET /<system>/rc-compare/<lane>/<slot>.png`. Null for anything the host didn't
+   * stage — the name vocabulary is fixed, so this is never a general file read.
+   */
+  fun rcCompareImage(name: String): ByteArray? = null
+
+  /**
    * The pixel size and density a **cmp-jvm** render of [previewId] should use — matched to the
    * baked View-player capture so the desktop-player PNG lands at the same size the viewer shows the
    * other lanes at. Null when this host cannot supply one (no captured doc, or size metadata

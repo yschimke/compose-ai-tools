@@ -4150,6 +4150,12 @@ object ServeWeb {
     themeCss: String = "",
     hasSvgFor: (String) -> Boolean = { false },
     hasRemoteComposeFor: (String) -> Boolean = { false },
+    /**
+     * The catalog's **published** Remote Compose player comparison, when it has one. Present ⇒ the
+     * `rc` format shows every player side by side from the offline run's renders (see
+     * [rcLanesSection]) instead of rendering one player's output in the visitor's browser.
+     */
+    rcCompare: RcCompareManifest? = null,
     referencesFor: (String) -> List<DesignReference> = { emptyList() },
     unfurl: UnfurlMetadata? = null,
     displayTitle: String? = null,
@@ -4167,7 +4173,9 @@ object ServeWeb {
     }
     val cards = groupPreviews(comparablePreviews)
     val hasSvg = comparablePreviews.any { hasSvgFor(it.id) }
-    val hasRc = comparablePreviews.any { hasRemoteComposeFor(it.id) }
+    // The published comparison is a Remote Compose lane in its own right: it may cover previews
+    // whose `.rc` sidecar never reached this box, so it turns the format on by itself.
+    val hasRc = comparablePreviews.any { hasRemoteComposeFor(it.id) } || rcCompare != null
     val hasReference = comparablePreviews.any { referencesFor(it.id).isNotEmpty() }
     val defaultFormat = if (hasSvg) "svg" else if (hasRc) "rc" else "reference"
     val darkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
@@ -4256,7 +4264,9 @@ object ServeWeb {
       if (hasRc)
         append(
           "<button type=\"button\" class=\"cp-theme-btn\" data-compare-format=\"rc\" " +
-            "aria-pressed=\"${defaultFormat == "rc"}\">PNG ↔ Remote Compose</button>"
+            "aria-pressed=\"${defaultFormat == "rc"}\">" +
+            (if (rcCompare != null) "Remote Compose players" else "PNG ↔ Remote Compose") +
+            "</button>"
         )
       if (hasReference)
         append(
@@ -4266,11 +4276,15 @@ object ServeWeb {
     }
     val themeControls =
       if (cards.any { it.swappable })
+        // Wrapped so the lane wall can hide it wholesale: those renders were rasterised offline at
+        // the run's own theme, so offering a theme switch over them would be a lie.
         """
-        <span class="cp-compare-control-label">Theme</span>
-        <span class="cp-theme" role="group" aria-label="Comparison theme">
-          <button type="button" class="cp-theme-btn" data-compare-theme="light" aria-pressed="${!darkFirst}">Light</button>
-          <button type="button" class="cp-theme-btn" data-compare-theme="dark" aria-pressed="$darkFirst">Dark</button>
+        <span class="cp-compare-theme-controls">
+          <span class="cp-compare-control-label">Theme</span>
+          <span class="cp-theme" role="group" aria-label="Comparison theme">
+            <button type="button" class="cp-theme-btn" data-compare-theme="light" aria-pressed="${!darkFirst}">Light</button>
+            <button type="button" class="cp-theme-btn" data-compare-theme="dark" aria-pressed="$darkFirst">Dark</button>
+          </span>
         </span>
         """
           .trimIndent()
@@ -4290,11 +4304,15 @@ object ServeWeb {
         <p id="cp-compare-empty" class="cp-empty" hidden>No comparisons match this filter.</p>
         """
           .trimIndent()
+    val rcLanes = rcCompare?.let {
+      rcLanesSection(it, previews, previewIdsByCard, token, sessionId, basePath, isPublic)
+    }
     val rootAttrs =
       "data-default-format=\"$defaultFormat\" data-default-theme=\"${if (darkFirst) "dark" else "light"}\" " +
         "data-theme-key=\"${WebEscaping.htmlEscape(themeStorageKey(sessionId, basePath))}\" " +
         "data-has-svg=\"${if (hasSvg) "1" else "0"}\" data-has-rc=\"${if (hasRc) "1" else "0"}\" " +
-        "data-has-reference=\"${if (hasReference) "1" else "0"}\""
+        "data-has-reference=\"${if (hasReference) "1" else "0"}\"" +
+        (if (rcLanes != null) " data-rc-lanes=\"1\"" else "")
 
     return document(
       title = "$heading — format comparison",
@@ -4308,7 +4326,11 @@ object ServeWeb {
         <div id="cp-compare" $rootAttrs>
           <p class="cp-breadcrumb"><a href="$basePath/$q">${WebEscaping.htmlEscape(heading)}</a> / Compare formats</p>
           <h1 class="cp-head">Format comparison${compactTrustBadge(trust)}</h1>
-          <p class="cp-sub">PNG, SVG and Remote Compose fidelity · scores use structural similarity on a fixed backdrop</p>
+          <p class="cp-sub"><span class="cp-sub-formats">PNG, SVG and Remote Compose fidelity · scores use structural similarity on a fixed backdrop</span>${
+          if (rcLanes != null)
+            "<span class=\"cp-sub-rc\">Every Remote Compose player side by side · pixel diffs from the published parity run</span>"
+          else ""
+        }</p>
           <div class="cp-compare-controls">
             <span class="cp-theme" role="group" aria-label="Comparison format">$formatControls</span>
             $themeControls
@@ -4317,13 +4339,164 @@ object ServeWeb {
             <input id="cp-compare-search" class="cp-search" type="search" placeholder="Filter comparisons…" aria-label="Filter comparisons">
             <span id="cp-compare-count" class="cp-count" role="status"></span>
           </div>
-          $empty
+          <div id="cp-compare-formats">$empty</div>
+          ${rcLanes.orEmpty()}
         </div>
         ${scriptTag("url-state.js")}
+        ${if (rcLanes != null) scriptTag("rc-lanes.js") else ""}
         ${scriptTag("format-compare.js")}
         """
           .trimIndent(),
     )
+  }
+
+  /**
+   * The **Remote Compose players** view: every player's published render of every `ir/<id>.rc`
+   * document, one column per player, with the baked PNG (the offline Robolectric/Skiko render, and
+   * the reference the offline run scored everything against) first.
+   *
+   * Nothing is diffed until asked. Picking a column as the reference gives every *other* column a
+   * pixel diff and a mismatch chip — which is the point of the view: "how far is cmp-wasm from
+   * cmp-jvm?" is a question no build-time artifact answers, because the offline run only ever
+   * diffed each player against the baked PNG.
+   *
+   * The whole thing replays what the delivery branch already published, so the page costs a few
+   * `<img>` loads rather than a `.rc` fetch plus a canvas render per preview — and it shows five
+   * players where the in-browser lane could only ever show the one that runs in a browser. The
+   * mirror of the published `rc-compare.html` (`render-rc-compare-html.mjs`), which is built from
+   * the same data.
+   */
+  private fun rcLanesSection(
+    manifest: RcCompareManifest,
+    previews: List<ServePreview>,
+    previewIdsByCard: Map<String, List<String>>,
+    token: String,
+    sessionId: String?,
+    basePath: String,
+    isPublic: Boolean,
+  ): String? {
+    if (manifest.lanes.isEmpty() || manifest.rows.isEmpty()) return null
+    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val previewsById = previews.associateBy { it.id }
+    fun asset(name: String): String =
+      if (name.isEmpty()) "" else "$basePath/${ServeRcCompare.DIRECTORY}/$name$q"
+
+    // Worst-match first on the worst-scoring player, so a preview only one player gets wrong still
+    // sorts to the top; rows nothing scored sink, then alphabetical. Mirrors the published page.
+    fun worst(row: RcCompareRow): Double? =
+      if (row.referenceBlank) null
+      else row.lanes.values.filter { it.rendered }.mapNotNull { it.mismatchPct }.maxOrNull()
+
+    val labelled =
+      manifest.rows.map { row ->
+        val preview = previewsById[row.previewId]
+        row to (preview?.let(::componentKey) ?: row.previewId)
+      }
+    val ordered =
+      labelled.sortedWith(
+        compareBy<Pair<RcCompareRow, String>>(
+          { worst(it.first) == null },
+          { -(worst(it.first) ?: 0.0) },
+          { it.second },
+        )
+      )
+
+    val head =
+      "<tr><th>Preview</th>" +
+        manifest.lanes.joinToString("") { "<th>${WebEscaping.htmlEscape(it.label)}</th>" } +
+        "</tr>"
+
+    val rows =
+      ordered.withIndex().joinToString("\n") { (index, entry) ->
+        val (row, label) = entry
+        val preview = previewsById[row.previewId]
+        val ids =
+          preview
+            ?.let { previewIdsByCard[comparisonCardKey(it)] }
+            .orEmpty()
+            .ifEmpty { listOf(row.previewId) }
+        val hay = (label + " " + ids.joinToString(" ")).lowercase()
+        val viewer = "$basePath/p/${WebEscaping.urlEncodeSegment(row.previewId)}$q"
+        val dims = if (row.width > 0 && row.height > 0) "${row.width}×${row.height}" else ""
+        val cells =
+          manifest.lanes.joinToString("") { lane ->
+            val cell = row.lanes[lane.id] ?: RcCompareCell()
+            val body =
+              if (cell.render.isNotEmpty())
+                "<img loading=\"lazy\" src=\"${WebEscaping.htmlEscape(asset(cell.render))}\" " +
+                  "alt=\"${WebEscaping.htmlEscape(label)} — ${WebEscaping.htmlEscape(lane.label)}\">"
+              else
+                "<div class=\"cp-rc-missing\">${WebEscaping.htmlEscape(cell.note.ifBlank { "—" })}</div>"
+            """
+            <td><figure class="cp-rc-cell" data-lane="${WebEscaping.htmlEscape(lane.id)}">
+              <figcaption>${WebEscaping.htmlEscape(lane.label)}<span class="cp-rc-refbadge">reference</span></figcaption>
+              $body
+              <div class="cp-rc-diffslot" hidden></div>
+            </figure></td>
+            """
+              .trimIndent()
+          }
+        """
+        <tr class="cp-rc-row" data-row="$index" data-hay="${WebEscaping.htmlEscape(hay)}"
+          data-preview-ids="${WebEscaping.htmlEscape(ids.joinToString(" "))}">
+          <th scope="row">
+            <a href="$viewer">${WebEscaping.htmlEscape(label)}</a>
+            ${if (dims.isNotEmpty()) "<div class=\"cp-rc-dims\">$dims</div>" else ""}
+            ${if (row.referenceBlank) "<div class=\"cp-rc-blank\">baked PNG is fully transparent — nothing to compare against</div>" else ""}
+            <div class="cp-rc-scores" data-scores></div>
+          </th>$cells
+        </tr>
+        """
+          .trimIndent()
+      }
+
+    val picker =
+      "<button type=\"button\" class=\"cp-theme-btn\" data-rc-ref=\"none\" aria-pressed=\"true\">nothing</button>" +
+        manifest.lanes.joinToString("") { lane ->
+          "<button type=\"button\" class=\"cp-theme-btn\" data-rc-ref=\"${WebEscaping.htmlEscape(lane.id)}\" " +
+            "aria-pressed=\"false\">${WebEscaping.htmlEscape(lane.short)}</button>"
+        }
+
+    val model =
+      ServeRcCompare.ClientModel(
+        threshold = manifest.threshold,
+        lanes = manifest.lanes,
+        rows =
+          ordered.map { (row, label) ->
+            ServeRcCompare.ClientRow(
+              label = label,
+              referenceBlank = row.referenceBlank,
+              lanes =
+                row.lanes.mapValues { (_, cell) ->
+                  cell.copy(render = asset(cell.render), diff = asset(cell.diff))
+                },
+            )
+          },
+      )
+
+    return """
+      <section id="cp-rc-lanes" hidden>
+        <p class="cp-sub">Pick a column and every other column grows a pixel diff and a mismatch chip.
+          The baked PNG replays the build-time <code>pixelmatch</code> diffs; a player diffs in your browser,
+          which is how you compare two players directly.</p>
+        <div class="cp-compare-controls">
+          <span class="cp-compare-control-label">Diff against</span>
+          <span class="cp-theme" role="group" aria-label="Diff reference">$picker</span>
+          <span id="cp-rc-status" class="cp-rc-status" role="status"></span>
+        </div>
+        <div class="cp-compare-table-wrap">
+          <table class="cp-compare-table cp-rc-table">
+            <thead>$head</thead>
+            <tbody>
+$rows
+            </tbody>
+          </table>
+        </div>
+        <p id="cp-rc-empty" class="cp-empty" hidden>No comparisons match this filter.</p>
+        <script type="application/json" id="cp-rc-model">${ServeRcCompare.encodeClientModel(model)}</script>
+      </section>
+      """
+      .trimIndent()
   }
 
   /** Focused design handoff view: independent reference, marked diff, and actual Compose output. */

@@ -586,6 +586,11 @@ class ServeCatalogStore(
     // URLs (and unmapped ids — the Android-only variants — fall back to baked PNGs).
     val alias = previewAliasFor(catalog)
 
+    // The published Remote Compose player comparison (`rc-compare-summary.json` + the lane PNGs),
+    // re-keyed through the same alias. Background, like the vectors: it is an enrichment the
+    // compare page picks up once it lands, and the catalog must not wait on ~150 small PNGs.
+    scheduleRcCompareFetch(system, generation, alias, base, dir)
+
     // Trusted server-side re-render from a carried EXECUTABLE BUNDLE (opt-in,
     // --allow-render-trusted) — tried FIRST, ahead of the Gradle `source` build below: no clone, no
     // worktree, no per-request Gradle invocation. Only a Trusted catalog that declares `liveBundle`
@@ -1201,6 +1206,66 @@ class ServeCatalogStore(
         }
         .onFailure { System.err.println("serve: catalog $system figma vectors: ${it.message}") }
     }
+  }
+
+  private fun scheduleRcCompareFetch(
+    system: String,
+    generation: Int,
+    alias: Map<String, String>,
+    base: String,
+    dir: File,
+  ) {
+    if (alias.isEmpty()) return
+    figmaExecutor.execute {
+      if (generations[system] != generation) return@execute
+      runCatching { fetchRcCompare(alias, base, dir) { generations[system] == generation } }
+        .onFailure { System.err.println("serve: catalog $system rc-compare: ${it.message}") }
+    }
+  }
+
+  /**
+   * Stage the catalog's **published player comparison** — what `rc-compare.html` is built from — so
+   * the compare page can show every Remote Compose player side by side without rendering anything
+   * in the visitor's browser.
+   *
+   * One small JSON decides the whole lane: `rc-compare-summary.json` names every preview the
+   * offline run scored, which players ran, and what each scored against the baked PNG. Everything
+   * else follows from it — [ServeRcCompare.plan] re-keys those rows from daemon ids to catalog ids
+   * through [alias] and lists the lane PNGs to fetch, and only *rendered* cells cost a round-trip.
+   * A catalog that ships no `ir/<id>.rc` publishes no summary, so this is a single 404 and done.
+   *
+   * The manifest is written **last**, after the images: it is what [ServeRcCompareStore] gates on,
+   * so a page can never be handed a row whose pixels are still in flight. Cells whose image didn't
+   * arrive are dropped from it rather than served as broken `<img>`s.
+   */
+  private fun fetchRcCompare(
+    alias: Map<String, String>,
+    base: String,
+    dir: File,
+    stillWanted: () -> Boolean,
+  ) {
+    val summaryBytes =
+      runCatching { fetchCatalogAsset(base + ServeRcCompare.SUMMARY_FILE) }.getOrNull() ?: return
+    val summary = ServeRcCompare.parseSummary(summaryBytes) ?: return
+    val plan = ServeRcCompare.plan(summary, alias) ?: return
+    if (!stillWanted()) return
+
+    val root = File(dir, ServeRcCompare.DIRECTORY)
+    val rootPath = root.canonicalFile.toPath()
+    // Staged names come from a fixed lane vocabulary and an integer slot, so this is belt and
+    // braces — but the write stays contained the same way every other staging lane's does.
+    val fetchPlan =
+      plan.assets.mapNotNull { (source, staged) ->
+        val target = File(root, staged)
+        if (!target.canonicalFile.toPath().startsWith(rootPath)) null else (base + source) to target
+      }
+    val fetched = fetchCatalogAssetsToFiles(fetchPlan, stillWanted)
+    if (!stillWanted()) return
+    val staged = plan.assets.filterKeys { (base + it) in fetched }.values.toSet()
+    val manifest = ServeRcCompare.retainStaged(plan.manifest, staged) ?: return
+    root.mkdirs()
+    File(root, ServeRcCompare.INDEX_FILE)
+      .writeText(json.encodeToString(RcCompareManifest.serializer(), manifest))
   }
 
   /**

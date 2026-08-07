@@ -27,6 +27,9 @@ internal object ServeWebAssets {
       "viewer-history.js" to "text/javascript; charset=utf-8",
       "backend-badge.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
+      // The published Remote Compose player wall; loaded only by a compare page whose catalog
+      // carries an `rc-compare` manifest.
+      "rc-lanes.js" to "text/javascript; charset=utf-8",
       // The design-parity page's lane filter; loaded only by that page.
       "parity.js" to "text/javascript; charset=utf-8",
     )

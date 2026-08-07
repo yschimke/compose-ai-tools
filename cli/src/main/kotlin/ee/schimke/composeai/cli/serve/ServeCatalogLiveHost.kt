@@ -165,6 +165,12 @@ class ServeCatalogLiveHost(
   override fun annotationsForReference(referenceId: String): List<DesignAnnotation> =
     baked.annotationsForReference(referenceId)
 
+  // The catalog's published player comparison rides the baked staging dir, so it stays reachable
+  // when a live daemon fronts this session.
+  override fun rcCompare(): RcCompareManifest? = baked.rcCompare()
+
+  override fun rcCompareImage(name: String): ByteArray? = baked.rcCompareImage(name)
+
   /**
    * The baked host's live-only (deferred) ids — previews it lists with no PNG behind them, which
    * the catalog publishes for on-demand render. Carried through so the routing below sends them to

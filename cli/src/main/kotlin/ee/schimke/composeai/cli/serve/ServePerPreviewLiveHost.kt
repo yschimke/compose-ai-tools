@@ -98,6 +98,12 @@ class ServePerPreviewLiveHost(
   override fun annotationsForReference(referenceId: String): List<DesignAnnotation> =
     baked.annotationsForReference(referenceId)
 
+  // The catalog's published player comparison rides the baked staging dir, so it stays reachable
+  // when a live daemon fronts this session.
+  override fun rcCompare(): RcCompareManifest? = baked.rcCompare()
+
+  override fun rcCompareImage(name: String): ByteArray? = baked.rcCompareImage(name)
+
   /**
    * The baked host's live-only (deferred) ids — listed previews with no PNG behind them, published
    * for on-demand render. Their requests always route to a per-preview daemon: there is no baked

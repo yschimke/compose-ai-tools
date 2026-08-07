@@ -137,6 +137,15 @@ class ServeBundleHost(
   override fun designReferenceRaster(referenceId: String): ByteArray? =
     designReferences.raster(referenceId)
 
+  // The published player comparison, if the catalog's branch shipped one. Unlike the manifests
+  // above this store resolves lazily: its lane PNGs land on the catalog's background fetch lane, so
+  // a host built the moment `catalog.json` arrived must be able to see them once they do.
+  private val rcCompare = ServeRcCompareStore.load(bundleDir, fileSystem)
+
+  override fun rcCompare(): RcCompareManifest? = rcCompare.manifest()
+
+  override fun rcCompareImage(name: String): ByteArray? = rcCompare.image(name)
+
   // Read once at load, like the reference manifest: the feed is a published snapshot, so re-reading
   // it per request would buy nothing (a refresh reloads the whole catalog and rebuilds this host).
   private val parityActivity = ServeParityActivityStore.load(bundleDir, fileSystem)
