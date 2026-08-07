@@ -34,6 +34,18 @@
     return "https://raw.githubusercontent.com/" + repo + "/" + commit + "/" + encoded;
   }
 
+  // The "current" chip restores whatever the stage was showing, which means reading a src out of
+  // the DOM and writing it back — a flow CodeQL flags, and rightly: a `javascript:` or `data:` src
+  // reaching an image sink is how that becomes script execution. The value here is server-set, but
+  // "safe because of where it came from" is exactly the assumption that rots, so allow only a
+  // same-origin path or an https URL and drop anything else.
+  function safeSrc(value) {
+    if (!value) return null;
+    if (/^\/(?!\/)/.test(value)) return value; // same-origin absolute path, not "//host"
+    if (/^https:\/\//i.test(value)) return value;
+    return null;
+  }
+
   function shortDate(iso) {
     var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
     return m ? m[1] + "-" + m[2] + "-" + m[3] : "";
@@ -77,7 +89,7 @@
 
     var list = document.createElement("div");
     list.className = "cp-history-list";
-    var current = img.getAttribute("src");
+    var current = safeSrc(img.getAttribute("src"));
     var buttons = [];
 
     function select(btn, url) {
@@ -90,7 +102,7 @@
     }
 
     versions.forEach(function (v, i) {
-      var url = i === 0 ? current : renderUrlAt(v.commit, entry.path);
+      var url = (i === 0 ? current : null) || renderUrlAt(v.commit, entry.path);
       if (!url) return; // Skip an entry we cannot address rather than rendering a dead control.
       var btn = document.createElement("button");
       btn.type = "button";
