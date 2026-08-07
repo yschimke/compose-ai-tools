@@ -71,6 +71,7 @@ import java.io.File
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.io.SystemFileSystem
 import okio.ByteString.Companion.decodeBase64
 import okio.Path.Companion.toPath
@@ -762,6 +763,11 @@ class RenderEngine(
                     ?.let {
                       add(RenderDataArtifactContextKeys.PreviewBackground provides argbHex(it))
                     }
+                  // …and the shape it was asked for in, if it was. The figma-svg export injects
+                  // nothing unless a mode was requested (see the key's KDoc).
+                  spec.svgBackground?.let {
+                    add(RenderDataArtifactContextKeys.SvgBackgroundMode provides it)
+                  }
                 }
               val extensionContextData =
                 ExtensionContextData.of(*artifactContextData.toTypedArray())
@@ -2556,6 +2562,17 @@ data class RenderSpec(
    */
   val clearBackground: Boolean = false,
   /**
+   * Per-render background mode for the `compose/figma-svg` export (`PreviewOverrides.svgBackground`)
+   * — `NONE`, `DEVICE`, `CONTENT_SHAPE`, or `FULL_BLEED`. Only that export reads it; it changes
+   * nothing about the rendered PNG.
+   *
+   * Null means the caller said nothing and the daemon-wide `composeai.svg.background` default
+   * applies, which is itself `NONE`: the export is background-free unless asked, because an
+   * injected fill is an opaque shape spanning the canvas — hard to remove once baked, easy to add
+   * back — so a *declared* `showBackground` is not enough to earn one.
+   */
+  val svgBackground: FigmaSvgBackgroundMode? = null,
+  /**
    * Raw `@Preview(device = …)` string when known — `id:wearos_small_round`,
    * `spec:width=…,isRound=true`, `id:pixel_5`, etc. Used by the render body to detect round Wear
    * devices and apply the circular crop / `round` resource qualifier; non-round / null values are a
@@ -2683,6 +2700,8 @@ data class RenderSpec(
         showBackground = map["showBackground"]?.toBoolean() ?: defaults.showBackground,
         backgroundColor = map["backgroundColor"]?.toLongOrNull() ?: defaults.backgroundColor,
         clearBackground = map["clearBackground"]?.toBoolean() ?: defaults.clearBackground,
+        svgBackground =
+          FigmaSvgBackgroundMode.parse(map["svgBackground"]) ?: defaults.svgBackground,
         device = map["device"]?.takeIf { it.isNotBlank() } ?: defaults.device,
         renderMode = map["mode"]?.takeIf { it.isNotBlank() },
         outputBaseName = map["outputBaseName"] ?: defaults.outputBaseName,

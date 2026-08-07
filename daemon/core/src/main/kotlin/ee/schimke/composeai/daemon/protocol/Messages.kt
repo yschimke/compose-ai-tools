@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon.protocol
 
 import ee.schimke.composeai.daemon.history.HistoryDataDelta
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
@@ -587,6 +588,24 @@ data class PreviewOverrides(
    * byte-identical to before. Both backends honour it.
    */
   val clearBackground: Boolean? = null,
+  /**
+   * Per-render background mode for the **`compose/figma-svg` export** — orthogonal to
+   * [clearBackground], which changes the *render* itself. This one changes only what the vector
+   * export lays under the tree, and it exists because that layer behaves differently from a
+   * rendered background: it arrives in a designer's file as an opaque shape spanning the canvas
+   * that has to be found and deleted. Hard to remove, easy to add back, so it is requested per
+   * preview rather than assumed from a declared `showBackground`.
+   *
+   * Four modes (see `FigmaSvgBackgroundMode`): `NONE` — export background-free; `DEVICE` — the
+   * device-mask shape, so a round Wear face is a `<circle>` and a tall Wear scroll export a
+   * stadium, corners left transparent; `CONTENT_SHAPE` — the component's own silhouette, the pill
+   * under an `OutlinedButton` or the disc under an icon button; `FULL_BLEED` — a plain rect to the
+   * corners regardless of any mask, for an export that has to sit on a solid tile.
+   *
+   * Null means the caller said nothing, and the daemon-wide `composeai.svg.background` default
+   * applies — which is itself `NONE`. Backends that don't produce the export ignore this field.
+   */
+  val svgBackground: FigmaSvgBackgroundMode? = null,
   /**
    * Optional Material 3 theme token overrides applied by the renderer as a normal
    * `MaterialTheme(...) { preview() }` wrapper around the invoked preview. This lets callers test

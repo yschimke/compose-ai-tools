@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.render.PreviewBackends
 import ee.schimke.composeai.data.render.PreviewBackground
 import ee.schimke.composeai.data.render.PreviewContext
@@ -746,6 +747,11 @@ class RenderEngine(
                 // publishes nothing, keeping component exports background-free.
                 previewBackgroundHex(state.spec)?.let {
                   add(RenderArtifactContextKeys.PreviewBackground provides it)
+                }
+                // …and the shape it was asked for in, if it was. The figma-svg export injects
+                // nothing unless a mode was requested (see the key's KDoc).
+                state.spec.svgBackground?.let {
+                  add(RenderArtifactContextKeys.SvgBackgroundMode provides it)
                 }
               }
               .toTypedArray()
@@ -1685,6 +1691,17 @@ data class RenderSpec(
    */
   val clearBackground: Boolean = false,
   /**
+   * Per-render background mode for the `compose/figma-svg` export
+   * (`PreviewOverrides.svgBackground`) — `NONE`, `DEVICE`, `CONTENT_SHAPE`, or `FULL_BLEED`. Only
+   * that export reads it; it changes nothing about the rendered PNG.
+   *
+   * Null means the caller said nothing and the daemon-wide `composeai.svg.background` default
+   * applies, which is itself `NONE`: the export is background-free unless asked, because an
+   * injected fill is an opaque shape spanning the canvas — hard to remove once baked, easy to add
+   * back — so a *declared* `showBackground` is not enough to earn one.
+   */
+  val svgBackground: FigmaSvgBackgroundMode? = null,
+  /**
    * Per-call overrides bag, threaded through every registered [PreviewOverrideExtension]. The
    * renderer doesn't read individual fields directly — registered planners decide what to apply.
    * Direct-applied overrides like size, density, and locale stay on this spec's typed fields above
@@ -1787,6 +1804,8 @@ data class RenderSpec(
         inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull(),
         slotMode = map["slotMode"]?.toBooleanStrictOrNull(),
         clearBackground = map["clearBackground"]?.toBoolean() ?: defaults.clearBackground,
+        svgBackground =
+          FigmaSvgBackgroundMode.parse(map["svgBackground"]) ?: defaults.svgBackground,
         overrides = map["overrides"]?.decodePreviewOverrides(),
         wrapperClassName = map["wrapperClassName"]?.takeIf { it.isNotBlank() },
         previewParameterProviderClassName =

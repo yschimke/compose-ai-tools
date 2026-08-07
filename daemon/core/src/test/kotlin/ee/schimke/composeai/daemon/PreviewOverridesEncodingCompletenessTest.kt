@@ -19,6 +19,7 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
@@ -111,6 +112,7 @@ class PreviewOverridesEncodingCompletenessTest {
       slotMode = true,
       placeholderActive = true,
       clearBackground = true,
+      svgBackground = FigmaSvgBackgroundMode.FULL_BLEED,
       material3Theme = Material3ThemeOverrides(colorScheme = mapOf("primary" to "#FF3366FF")),
       themeProvider = "com.example.BrandDarkThemeCatalog",
       wallpaper = WallpaperOverride(seedColor = "#FF8800"),

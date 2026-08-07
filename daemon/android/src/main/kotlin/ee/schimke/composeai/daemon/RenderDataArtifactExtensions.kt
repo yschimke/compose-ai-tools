@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import android.content.Context
 import androidx.compose.ui.semantics.SemanticsNode
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.ExtensionContextKey
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
@@ -108,6 +109,14 @@ object RenderDataArtifactContextKeys {
    * [RenderArtifactContextKeys.PreviewBackground].
    */
   val PreviewBackground: ExtensionContextKey<String> = RenderArtifactContextKeys.PreviewBackground
+
+  /**
+   * How this render asked the `compose/figma-svg` export to treat [PreviewBackground] — `NONE`,
+   * `DEVICE`, `CONTENT_SHAPE`, or `FULL_BLEED`. Unset exports background-free. Delegates to
+   * [RenderArtifactContextKeys.SvgBackgroundMode].
+   */
+  val SvgBackgroundMode: ExtensionContextKey<FigmaSvgBackgroundMode> =
+    RenderArtifactContextKeys.SvgBackgroundMode
 
   /**
    * The held [`androidx.activity.ComponentActivity`] the rule launched for this render. Threaded to

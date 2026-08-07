@@ -201,7 +201,19 @@ is the reliable check, and it agrees in every lane.
 
 `compose/figma-svg` used to inject the preview's declared `showBackground` colour as the export's
 bottom layer — a full-canvas rect, or a device-mask circle for a Wear screen. That is off by
-default now (`-Dcomposeai.svg.background=true` restores it).
+default now, and when a background *is* wanted it is asked for per preview through
+`PreviewOverrides.svgBackground`, in one of four modes:
+
+| Mode | What it paints |
+|---|---|
+| `NONE` (default) | Nothing. The tree's own fills still draw; only the injected layer is dropped. |
+| `DEVICE` | The device-mask shape — a `<circle>` for a round Wear face, a vertical stadium for a tall Wear scroll export, the plain frame rect with no mask. Corners outside the mask stay transparent. |
+| `CONTENT_SHAPE` | The component's own silhouette: the pill exactly under an `OutlinedButton`, the disc under a circular icon button. |
+| `FULL_BLEED` | A plain rect to the corners regardless of any mask — a solid tile for an export that can't rely on the importing canvas. |
+
+`-Dcomposeai.svg.background=<mode>` (or `-PcomposePreview.svgBackground=<mode>` through the Gradle
+plugin) sets a daemon-wide default for consumers who want every preview to carry one; `true` and
+`false` still work as the pre-modes aliases for `device` and `none`.
 
 The export's product is editable layers, and an injected fill is the opposite: an opaque shape
 spanning the whole canvas that a designer has to find and delete before the import works anywhere
@@ -221,7 +233,8 @@ Rendering is unchanged there; the import is one dead layer lighter.
 paints no fill of its own. Below: before/after on a light canvas, then before/after on dark. The
 cards, their text and the button all carry their own fills and are untouched — what gets hard to
 read is the light-grey `TimeText` clock, and only against a light canvas. On dark, before and after
-are indistinguishable.
+are indistinguishable. That export is exactly the case `DEVICE` exists for — it asks for the
+capsule fill back and gets it, without every component preview inheriting a tile.
 
 ![Wear scroll capsule with and without the injected background, on a light and a dark canvas](../renders/lane-parity/figma-svg-background-off-capsule.png)
 

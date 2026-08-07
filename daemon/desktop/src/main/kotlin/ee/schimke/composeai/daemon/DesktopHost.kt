@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.io.composeAiCacheDir
@@ -619,6 +620,9 @@ open class DesktopHost(
       // Background → Clear toggle sends `PreviewOverrides(clearBackground = true)`. Null preserves
       // the discovery-time value.
       clearBackground = overrides?.clearBackground ?: base.clearBackground,
+      // Per-render figma-svg background mode. Null (say nothing) leaves the export
+      // background-free. See RenderSpec.svgBackground.
+      svgBackground = overrides?.svgBackground ?: base.svgBackground,
       // Carry a `themeProvider` selection through the held/live path: toExtensionOverrides() drops
       // it
       // (it's renderer-read, not extension-consumed), but the renderer reads spec.overrides
@@ -783,6 +787,7 @@ open class DesktopHost(
       inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull() ?: base.inspectionMode,
       slotMode = map["slotMode"]?.toBooleanStrictOrNull() ?: base.slotMode,
       clearBackground = map["clearBackground"]?.toBoolean() ?: base.clearBackground,
+      svgBackground = FigmaSvgBackgroundMode.parse(map["svgBackground"]) ?: base.svgBackground,
       // The extension-driven override bag (`namedOverrides` / `themeProvider` / `wallpaper` /
       // `permissions` / `gestures` / `lottie`) rides the `overrides=<base64>` token that
       // `JsonRpcServer.encodeRenderPayload` emits. The className-based `parseFromPayload` decodes
