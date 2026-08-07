@@ -588,14 +588,39 @@ two files and compiles it on a real daemon.
 
 Discovery won (it reuses `PlaygroundPreviewDiscoverer` and the render pipeline's
 id shape). Multi-file made the follow-on question real: a snippet can now declare
-several `@Preview`s while exactly **one** drives the first frame and the Stage-2
-session. The orchestrator therefore picks the **lowest id in sorted order** — a
-ClassGraph scan has no guaranteed order, and a preview that changed between two
-runs of the same snippet would be baffling — and the response carries both
-`previewId` (what was drawn) and `previews` (everything found), so the editor can
-say which one it rendered instead of silently choosing.
+several `@Preview`s while exactly **one** drives the first frame. The orchestrator
+therefore picks the **lowest id in sorted order** — a ClassGraph scan has no
+guaranteed order, and a preview that changed between two runs of the same snippet
+would be baffling — and the response carries both `previewId` (what was drawn) and
+`previews` (everything found), so the editor can say which one it rendered instead
+of silently choosing.
 
 ![Playground result naming the rendered preview](../images/serve-playground-multifile-result.png)
+
+**All of them are reachable, not just the drawn one.** The still frame is a single
+render, but the Stage-2 *session* stands on the snippet's whole compiled module —
+so `PlaygroundSnippet` carries `previewIds` (every discovered id, `previewId`
+first), the synthesized `previews.json` lists them all, and `/pg/<token>?preview=<id>`
+opens the session on any of them. `preview` is validated against the snippet's own
+set and falls back to the first when it isn't in it: an id off that list would
+address a viewer route the daemon can't serve, and it arrives on a query string.
+The editor renders one link per discovered preview under the result; redemption is
+idempotent, so following them all rides one session rather than compiling again.
+Pinned by `PlaygroundPreviewsTest`, `PlaygroundRedeemServiceTest` ("a declared
+preview opens the session on that preview" / "…never declared falls back to the
+first"), and the `serve-playground · multi-preview` page-snapshot state.
+
+**Knobs come along too.** A snippet's `previewOverride*` / `catalogOverride*`
+declarations only exist once something renders, so the still-frame render enables
+the daemon's `data/overrides` connector, drains `compose/overrides` afterwards, and
+writes it to the snippet's `previews/<id>.overrides.json` — the same sidecar a
+packed bundle carries, which `ServeBundleDaemon.readPreviews` folds into
+`ServePreview.overrides`. A redeemed session therefore gets the viewer's ordinary
+live knob drawer, so a dynamic override can be flipped in place instead of edited
+and recompiled. Strictly best-effort and additive: a backend without the connector,
+or a preview that declared no knobs, still renders its first frame and simply shows
+no controls. It covers the **rendered** preview — the others declare their knobs on
+renders that haven't happened yet.
 
 ### 8.3 Token TTL + redemption count — **many within the TTL**
 
