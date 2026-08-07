@@ -43,6 +43,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.ComposeFigmaSvgDataProducer
 import ee.schimke.composeai.daemon.ComposeSemanticsDataProducer
 import ee.schimke.composeai.daemon.LayoutInspectorDataProducer
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.render.PreviewContext
 import java.io.File
 import java.nio.file.Files
@@ -435,6 +436,9 @@ class WearScrollSvgGrowthTest {
       frameImage = out.framePng,
       roundClip = true,
       deviceBackground = "#FF000000",
+      // Mirrors the daemon's capsule export (RenderEngine): this is the one surface that defaults
+      // to painting the device face, because the stitched tree has no root fill of its own.
+      backgroundMode = FigmaSvgBackgroundMode.DEVICE,
     )
     val svg = File(rootDir, "wear-slice/compose-figma.svg").readText()
     File("build/wear-scroll-svg/figma-raster").mkdirs()

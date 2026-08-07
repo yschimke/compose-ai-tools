@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.ui.semantics.SemanticsNode
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.render.extensions.ExtensionContextKey
 import java.io.File
 
@@ -91,6 +92,23 @@ object RenderArtifactContextKeys {
     ExtensionContextKey(
       name = "render-data-artifact.roundClip",
       type = Boolean::class.javaObjectType,
+    )
+
+  /**
+   * How this render asked the `compose/figma-svg` export to treat [PreviewBackground]
+   * (`PreviewOverrides.svgBackground`) — `NONE`, `DEVICE`, `CONTENT_SHAPE`, or `FULL_BLEED`.
+   *
+   * Unset means the caller said nothing, and the export falls back to the daemon-wide
+   * `composeai.svg.background` default, which is itself `NONE`. A declared `showBackground` is
+   * deliberately not enough to earn a fill: an injected background is an opaque shape spanning the
+   * canvas, hard to remove once baked and easy to add back, so it is requested rather than assumed.
+   * A Wear device screen or tall-scroll capsule asks for `DEVICE`; an outlined button that needs
+   * contrast asks for `CONTENT_SHAPE`.
+   */
+  val SvgBackgroundMode: ExtensionContextKey<FigmaSvgBackgroundMode> =
+    ExtensionContextKey(
+      name = "render-data-artifact.svgBackgroundMode",
+      type = FigmaSvgBackgroundMode::class.java,
     )
 
   /**

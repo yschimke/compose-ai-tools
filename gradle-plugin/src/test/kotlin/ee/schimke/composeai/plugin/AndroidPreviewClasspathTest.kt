@@ -131,6 +131,35 @@ class AndroidPreviewClasspathTest {
   }
 
   @Test
+  fun `buildSystemProperties forwards the svg-background opt-in into the daemon jvm`() {
+    // Same regression shape as the embed-fonts flag above: `composeai.svg.background` is read in
+    // the spawned daemon by `ComposeFigmaSvgDataProducer`, so an opt-in set on the Gradle
+    // invocation only takes effect if this map carries it — otherwise the daemon sees null and
+    // keeps exporting background-free while the user believes they turned the fill back on.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+          svgBackground = "true",
+        )
+      )
+      .containsEntry("composeai.svg.background", "true")
+    // Off unless asked: the layered SVG exports as editable layers rather than sitting on an
+    // opaque rect a designer has to delete.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+        )
+      )
+      .containsEntry("composeai.svg.background", "false")
+  }
+
+  @Test
   fun `buildSystemProperties forwards the font fail-on-fallback flag into the render jvm`() {
     // The render / daemon JVM reads `composeai.fonts.failOnFallback`; if this map doesn't forward
     // it, `-Dcomposeai.fonts.failOnFallback=false` set on the Gradle invocation never reaches it

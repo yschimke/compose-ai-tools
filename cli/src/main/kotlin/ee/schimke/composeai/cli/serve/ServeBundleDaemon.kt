@@ -797,6 +797,9 @@ internal object ServeBundleDaemon {
     put("composeai.fonts.cacheDir", composeAiCacheDir("fonts").absolutePath)
     System.getProperty("composeai.fonts.offline")?.let { put("composeai.fonts.offline", it) }
     System.getProperty("composeai.svg.embedFonts")?.let { put("composeai.svg.embedFonts", it) }
+    // The figma-svg background opt-in is read in the daemon, not here, so a
+    // `-Dcomposeai.svg.background=true` on this process only takes effect if it is forwarded.
+    System.getProperty("composeai.svg.background")?.let { put("composeai.svg.background", it) }
   }
 
   /**

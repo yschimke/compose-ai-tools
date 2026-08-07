@@ -71,6 +71,7 @@ import java.io.File
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.io.SystemFileSystem
 import okio.ByteString.Companion.decodeBase64
 import okio.Path.Companion.toPath
@@ -762,6 +763,11 @@ class RenderEngine(
                     ?.let {
                       add(RenderDataArtifactContextKeys.PreviewBackground provides argbHex(it))
                     }
+                  // …and the shape it was asked for in, if it was. The figma-svg export injects
+                  // nothing unless a mode was requested (see the key's KDoc).
+                  spec.svgBackground?.let {
+                    add(RenderDataArtifactContextKeys.SvgBackgroundMode provides it)
+                  }
                 }
               val extensionContextData =
                 ExtensionContextData.of(*artifactContextData.toTypedArray())
@@ -1452,7 +1458,13 @@ class RenderEngine(
         }
 
     // Bake the stitched trees to SVG in a scratch export dir, then copy the artefact (+ its hybrid
-    // raster crops) into the long subdir the registry serves. Black device face, capsule clip.
+    // raster crops) into the long subdir the registry serves. Capsule clip, and this is the one
+    // surface whose default background mode is `DEVICE` rather than `NONE`: the stitched tree
+    // paints no fill of its own — the slices are composited onto the capsule, not onto a root that
+    // draws the watch face — so without the face its light `TimeText` chrome is unreadable on a
+    // light canvas. Every other export stays background-free by default; this one has nothing
+    // underneath to fall back on. A per-render `svgBackground` request still wins, and so does the
+    // daemon-wide `composeai.svg.background`, so `none` can still turn it off deliberately.
     val exportDir = File(workDir, "export")
     ComposeFigmaSvgDataProducer.writeSvg(
       rootDir = exportDir,
@@ -1466,6 +1478,12 @@ class RenderEngine(
       frameImage = out.framePng,
       roundClip = true,
       deviceBackground = WEAR_DEVICE_FACE,
+      backgroundMode =
+        spec.svgBackground
+          ?: FigmaSvgBackgroundMode.parse(
+            System.getProperty(ComposeFigmaSvgDataProducer.PROP_BACKGROUND)
+          )
+          ?: FigmaSvgBackgroundMode.DEVICE,
     )
     val producedSvg = exportDir.resolve(previewId).resolve(ComposeFigmaSvgProduct.FILE_SVG)
     if (!producedSvg.exists()) {
@@ -2119,7 +2137,13 @@ class RenderEngine(
     /** Output-base suffix isolating the tall render so it can't clobber the preview's products. */
     private const val SCROLL_SVG_TMP_SUFFIX: String = "__figma_svg_long"
 
-    /** Black watch face painted behind the round Wear slice-stitch capsule (opt-in device bg). */
+    /**
+     * Black watch face painted behind the round Wear slice-stitch capsule. Unlike every other
+     * export this one defaults to painting it ([FigmaSvgBackgroundMode.DEVICE]): the stitched tree
+     * has no root fill of its own to fall back on, so background-free leaves its light `TimeText`
+     * chrome floating unreadably on a light canvas. Overridable per render (`svgBackground`) and
+     * daemon-wide (`composeai.svg.background=none`).
+     */
     private const val WEAR_DEVICE_FACE: String = "#FF000000"
 
     /**
@@ -2549,6 +2573,17 @@ data class RenderSpec(
    */
   val clearBackground: Boolean = false,
   /**
+   * Per-render background mode for the `compose/figma-svg` export (`PreviewOverrides.svgBackground`)
+   * — `NONE`, `DEVICE`, `CONTENT_SHAPE`, or `FULL_BLEED`. Only that export reads it; it changes
+   * nothing about the rendered PNG.
+   *
+   * Null means the caller said nothing and the daemon-wide `composeai.svg.background` default
+   * applies, which is itself `NONE`: the export is background-free unless asked, because an
+   * injected fill is an opaque shape spanning the canvas — hard to remove once baked, easy to add
+   * back — so a *declared* `showBackground` is not enough to earn one.
+   */
+  val svgBackground: FigmaSvgBackgroundMode? = null,
+  /**
    * Raw `@Preview(device = …)` string when known — `id:wearos_small_round`,
    * `spec:width=…,isRound=true`, `id:pixel_5`, etc. Used by the render body to detect round Wear
    * devices and apply the circular crop / `round` resource qualifier; non-round / null values are a
@@ -2676,6 +2711,8 @@ data class RenderSpec(
         showBackground = map["showBackground"]?.toBoolean() ?: defaults.showBackground,
         backgroundColor = map["backgroundColor"]?.toLongOrNull() ?: defaults.backgroundColor,
         clearBackground = map["clearBackground"]?.toBoolean() ?: defaults.clearBackground,
+        svgBackground =
+          FigmaSvgBackgroundMode.parse(map["svgBackground"]) ?: defaults.svgBackground,
         device = map["device"]?.takeIf { it.isNotBlank() } ?: defaults.device,
         renderMode = map["mode"]?.takeIf { it.isNotBlank() },
         outputBaseName = map["outputBaseName"] ?: defaults.outputBaseName,
