@@ -237,6 +237,16 @@ fi
   args+=(--playground-sandbox-ro "${SERVE_PLAYGROUND_SANDBOX_RO}")
 [[ -n "${SERVE_PLAYGROUND_COMPILE_SLOTS:-}" ]] &&
   args+=(--playground-compile-slots "${SERVE_PLAYGROUND_COMPILE_SLOTS}")
+# Per-caller compile budget (issue #3214). Every other playground bound is a whole-host one, so
+# without this one caller can hold every compile slot. Default 10/min, 1 concurrent; set
+# SERVE_PLAYGROUND_RATE_LIMIT=0 to turn the limiter off. SERVE_TRUST_FORWARDED_FOR is only safe
+# behind a reverse proxy that APPENDS the peer address it saw — see the CLI flag's docs.
+[[ -n "${SERVE_PLAYGROUND_RATE_LIMIT:-}" ]] &&
+  args+=(--playground-rate-limit "${SERVE_PLAYGROUND_RATE_LIMIT}")
+[[ -n "${SERVE_PLAYGROUND_CALLER_CONCURRENCY:-}" ]] &&
+  args+=(--playground-caller-concurrency "${SERVE_PLAYGROUND_CALLER_CONCURRENCY}")
+[[ -n "${SERVE_TRUST_FORWARDED_FOR:-}" && "${SERVE_TRUST_FORWARDED_FOR}" != "0" ]] &&
+  args+=(--trust-forwarded-for)
 
 # Bound concurrent live (daemon-backed) stream sessions by a PERMIT BUDGET — each live session
 # charges permits by backend weight (a desktop CMP daemon = 1, a heavier Robolectric Android one = 2,

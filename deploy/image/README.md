@@ -158,6 +158,31 @@ Peak compile memory is `SERVE_PLAYGROUND_COMPILE_SLOTS × SERVE_PLAYGROUND_SANDB
 (≈3 GB at defaults) on top of the catalogs already loaded, so review `SERVE_LIVE_SEATS` in the same
 change on a small box.
 
+### Fair sharing between callers
+
+Compile slots, the compile timeout, the body cap, live seats and the token store are all
+**whole-host** bounds — none of them stops one caller from holding every slot with back-to-back
+compiles while everyone else is told the playground is busy. A per-caller budget is on by default
+and needs no configuration:
+
+```bash
+SERVE_PLAYGROUND_RATE_LIMIT=10           # compiles per minute per caller (0 disables)
+SERVE_PLAYGROUND_CALLER_CONCURRENCY=1    # compiles one caller may hold at once
+```
+
+The caller is the **signed-in GitHub login** where there is one — which on a repo-access-gated host
+is every compile — and the client address otherwise. Over budget answers `429` with `Retry-After`,
+before the request body is read, so a throttled caller costs the box nothing. Watch it on
+`/status.json` at `playground.rateLimit` (`activeCallers`, `trackedCallers`).
+
+> **Behind a reverse proxy, anonymous callers share one bucket** unless you opt in with
+> `SERVE_TRUST_FORWARDED_FOR=1`. That makes the limiter key on the **last** `X-Forwarded-For` entry
+> — the one nginx's `$proxy_add_x_forwarded_for` appended from the peer address it actually saw,
+> which a client cannot forge. Do **not** set it on a directly-exposed host: the header is
+> client-supplied there, so a caller could mint a fresh identity per request and bypass the limit
+> entirely. It assumes exactly one proxy hop. This matters much less than it sounds on this image,
+> where the playground is repo-access-gated and every compile therefore carries a GitHub login.
+
 > **Do not set `SERVE_PLAYGROUND_SANDBOX=bwrap` on a public host and expect it to admit the lane.**
 > Earlier revisions of this file recommended exactly that, and it is refused: `bwrap` contains a
 > snippet but applies no CPU or process-count cap, so the containment posture rejects it and points

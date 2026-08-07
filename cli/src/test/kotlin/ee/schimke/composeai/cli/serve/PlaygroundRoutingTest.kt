@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
@@ -151,6 +152,7 @@ class PlaygroundRoutingTest {
     runCatching { gatedServer.stop() }
     runCatching { githubNoRepoServer.stop() }
     runCatching { githubRepoServer.stop() }
+    runCatching { limitedServer.stop() }
     runCatching { registry.close() }
   }
 
@@ -179,6 +181,65 @@ class PlaygroundRoutingTest {
         "/pg/${json["previewToken"]!!.jsonPrimitive.content}",
         json["previewUrl"]!!.jsonPrimitive.content,
       )
+    }
+  }
+
+  /**
+   * A host whose compile lane carries a per-caller budget of two per window (issue #3214). Two is
+   * the smallest number that still shows the *bucket* rather than only its floor.
+   */
+  private val limitedServer: ServeHttpServer by lazy {
+    ServeHttpServer(
+        host = "127.0.0.1",
+        requestedPort = 0,
+        token = "unused-in-public",
+        sessions = registry,
+        defaultSessionId = "none",
+        isPublic = true,
+        playgroundService = playground,
+        playgroundRateLimiter =
+          ServeRateLimiter(permitsPerWindow = 2, windowSeconds = 600, maxConcurrent = 2),
+      )
+      .also { it.start() }
+  }
+
+  @Test
+  fun `a caller over their compile budget gets 429 with Retry-After`() {
+    val body =
+      """{"files":[{"name":"Snippet.kt","text":"@Preview @Composable fun P(){}"}],"confType":"compose-cmp"}"""
+    repeat(2) { i ->
+      postRun(body, limitedServer.port).use { resp ->
+        assertEquals(200, resp.code, "budgeted request ${i + 1} should be admitted")
+      }
+    }
+    postRun(body, limitedServer.port).use { resp ->
+      assertEquals(429, resp.code)
+      val retryAfter = resp.header("Retry-After")?.toLongOrNull()
+      assertTrue(retryAfter != null && retryAfter >= 1, "Retry-After should be set: $retryAfter")
+      // Answered in the run route's own JSON shape, so the editor surfaces it as a status line
+      // rather than as an unparseable body.
+      val json = Json.parseToJsonElement(resp.body!!.string()).jsonObject
+      assertTrue(
+        json["exception"]?.jsonPrimitive?.content?.contains("Too many requests") == true,
+        "the refusal rides the run response contract: $json",
+      )
+      // …and it costs the caller nothing: a throttled request never reaches the compiler, so no
+      // token is minted and no work dir is allocated for it.
+      assertTrue(
+        json["previewToken"]?.jsonPrimitive?.contentOrNull?.startsWith("pg_") != true,
+        "a throttled request must not mint a token: $json",
+      )
+    }
+  }
+
+  @Test
+  fun `an unmetered host still admits every compile`() {
+    // The default `server` has no limiter wired — the pre-#3214 behaviour, which must be exactly
+    // what a host that opts out of the budget still gets.
+    val body =
+      """{"files":[{"name":"Snippet.kt","text":"@Preview @Composable fun P(){}"}],"confType":"compose-cmp"}"""
+    repeat(4) { i ->
+      postRun(body, server.port).use { resp -> assertEquals(200, resp.code, "request ${i + 1}") }
     }
   }
 
