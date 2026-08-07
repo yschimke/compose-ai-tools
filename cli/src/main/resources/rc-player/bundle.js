@@ -9837,6 +9837,15 @@ ${inner}`;
       // `.padding(30).width(200)` is 260 wide — exactly Compose's modifier-order rule.
       this.mPadBeforeWidth = 0;
       this.mPadBeforeHeight = 0;
+      // The modifiers those two totals are summed from. Kept as references rather than as
+      // the sums alone because `inflate()` runs before `PaddingModifier.updateVariables`
+      // has resolved variables or applied DP density scaling — the same staleness
+      // `refreshPadding()` exists to undo for the *total* padding, which has to reach the
+      // ordered totals too now that they feed the measured size. Which side of the size
+      // modifier each one falls on is fixed by the modifier list, so only the values need
+      // re-reading, not the partition.
+      this.mPadBeforeWidthMods = [];
+      this.mPadBeforeHeightMods = [];
       this.mPaddingRight = 0;
       this.mPaddingTop = 0;
       this.mPaddingBottom = 0;
@@ -9896,6 +9905,8 @@ ${inner}`;
       this.mPaddingBottom = 0;
       this.mPadBeforeWidth = 0;
       this.mPadBeforeHeight = 0;
+      this.mPadBeforeWidthMods = [];
+      this.mPadBeforeHeightMods = [];
       let sawWidth = false;
       let sawHeight = false;
       this.mComputedLayoutModifiers = null;
@@ -9905,8 +9916,14 @@ ${inner}`;
           this.mPaddingTop += op.mTopValue;
           this.mPaddingRight += op.mRightValue;
           this.mPaddingBottom += op.mBottomValue;
-          if (!sawWidth) this.mPadBeforeWidth += op.mLeftValue + op.mRightValue;
-          if (!sawHeight) this.mPadBeforeHeight += op.mTopValue + op.mBottomValue;
+          if (!sawWidth) {
+            this.mPadBeforeWidth += op.mLeftValue + op.mRightValue;
+            this.mPadBeforeWidthMods.push(op);
+          }
+          if (!sawHeight) {
+            this.mPadBeforeHeight += op.mTopValue + op.mBottomValue;
+            this.mPadBeforeHeightMods.push(op);
+          }
           this.mComponentModifiers.push(op);
         } else if (op instanceof WidthModifier) {
           this.mWidthMod = _LayoutComponent.preferExactSize(this.mWidthMod, op);
@@ -10183,6 +10200,12 @@ ${inner}`;
       this.mPaddingTop = t;
       this.mPaddingRight = r;
       this.mPaddingBottom = b;
+      let pw = 0;
+      for (const mod of this.mPadBeforeWidthMods) pw += mod.mLeftValue + mod.mRightValue;
+      this.mPadBeforeWidth = pw;
+      let ph = 0;
+      for (const mod of this.mPadBeforeHeightMods) ph += mod.mTopValue + mod.mBottomValue;
+      this.mPadBeforeHeight = ph;
     }
     /** Walk modifiers reducing dimensions by padding and passing to decorators.
      *  Matches Java ComponentModifiers.layout(). */
@@ -10424,6 +10447,9 @@ ${inner}`;
   };
 
   // src/core/operations/layout/managers/LayoutManager.ts
+  function contentExtent(size, padding) {
+    return Math.max(0, size - padding);
+  }
   var LayoutManager = class extends LayoutComponent {
     constructor() {
       super(...arguments);
@@ -10465,8 +10491,8 @@ ${inner}`;
       const verticalWrap = hMod?.getType() === HeightModifier.WRAP;
       if (horizontalWrap || verticalWrap) {
         this.mCachedWrapSize.clear();
-        const childMaxW = (horizontalWrap ? maxWidth : w) - padding_w;
-        const childMaxH = (verticalWrap ? maxHeight : h) - padding_h;
+        const childMaxW = contentExtent(horizontalWrap ? maxWidth : w, padding_w);
+        const childMaxH = contentExtent(verticalWrap ? maxHeight : h, padding_h);
         this.computeWrapSize(
           context,
           minWidth,
@@ -10502,8 +10528,8 @@ ${inner}`;
       const scrollMod = this.getScrollModifier();
       if (scrollMod) {
         const isVertical = scrollMod.getDirection() === ScrollModifier.VERTICAL;
-        const hostW = Math.min(w, maxWidth) - padding_w;
-        const hostH = Math.min(h, maxHeight) - padding_h;
+        const hostW = contentExtent(Math.min(w, maxWidth), padding_w);
+        const hostH = contentExtent(Math.min(h, maxHeight), padding_h);
         const unboundW = isVertical ? hostW : 1e9;
         const unboundH = isVertical ? 1e9 : hostH;
         this.mCachedWrapSize.clear();
@@ -10525,13 +10551,20 @@ ${inner}`;
           this.mScrollHostDimension = hostW;
           this.mScrollContentDimension = this.mCachedWrapSize.getWidth();
         }
-        const childMaxW = isVertical ? w - padding_w : Math.max(w - padding_w, this.mScrollContentDimension);
-        const childMaxH = isVertical ? Math.max(h - padding_h, this.mScrollContentDimension) : h - padding_h;
+        const childMaxW = isVertical ? contentExtent(w, padding_w) : Math.max(contentExtent(w, padding_w), this.mScrollContentDimension);
+        const childMaxH = isVertical ? Math.max(contentExtent(h, padding_h), this.mScrollContentDimension) : contentExtent(h, padding_h);
         this.computeSize(context, 0, childMaxW, 0, childMaxH, measure);
       }
       this.updateComponentValues(context.getContext(), w, h);
       if (!scrollMod) {
-        this.computeSize(context, minWidth, w - padding_w, minHeight, h - padding_h, measure);
+        this.computeSize(
+          context,
+          minWidth,
+          contentExtent(w, padding_w),
+          minHeight,
+          contentExtent(h, padding_h),
+          measure
+        );
       }
       w = Math.max(w, minWidth);
       h = Math.max(h, minHeight);

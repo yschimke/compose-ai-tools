@@ -10,6 +10,19 @@ import { Size } from '../measure/Size';
 import { WidthModifier, HeightModifier, ScrollModifier } from '../modifiers/ModifierOperations';
 import { isNaNBits, idFromBits } from '../../Utils';
 
+/**
+ * The space left for content inside [size] once [padding] is taken off, never negative.
+ *
+ * Padding can exceed the component's own size — `.width(20).padding(30)` is legal, and the size
+ * modifier is not widened to fit the padding — so the subtraction can go below zero. Compose gives
+ * such a component a zero-sized content area; letting a negative reach child measurement instead
+ * puts it into text layout and wrap-size accumulation, where it produces negative measured widths
+ * rather than an empty one.
+ */
+function contentExtent(size: number, padding: number): number {
+    return Math.max(0, size - padding);
+}
+
 export abstract class LayoutManager extends LayoutComponent {
     protected mCachedWrapSize = new Size();
 
@@ -98,8 +111,8 @@ export abstract class LayoutManager extends LayoutComponent {
             // width measures its children at the parent's full width first, and a
             // wrapping height then locks in from that wrong measurement — which is why
             // text in a narrow fixed-width box was sized to one line and never re-grew.
-            const childMaxW = (horizontalWrap ? maxWidth : w) - padding_w;
-            const childMaxH = (verticalWrap ? maxHeight : h) - padding_h;
+            const childMaxW = contentExtent(horizontalWrap ? maxWidth : w, padding_w);
+            const childMaxH = contentExtent(verticalWrap ? maxHeight : h, padding_h);
             this.computeWrapSize(context, minWidth, childMaxW, minHeight,
                 childMaxH, horizontalWrap, verticalWrap, measure, this.mCachedWrapSize);
 
@@ -136,8 +149,8 @@ export abstract class LayoutManager extends LayoutComponent {
         const scrollMod = this.getScrollModifier();
         if (scrollMod) {
             const isVertical = (scrollMod.getDirection() === ScrollModifier.VERTICAL);
-            const hostW = Math.min(w, maxWidth) - padding_w;
-            const hostH = Math.min(h, maxHeight) - padding_h;
+            const hostW = contentExtent(Math.min(w, maxWidth), padding_w);
+            const hostH = contentExtent(Math.min(h, maxHeight), padding_h);
             const unboundW = isVertical ? hostW : 1e9;
             const unboundH = isVertical ? 1e9 : hostH;
 
@@ -154,8 +167,10 @@ export abstract class LayoutManager extends LayoutComponent {
             }
 
             // Re-measure children with unbounded content dimension
-            const childMaxW = isVertical ? (w - padding_w) : Math.max(w - padding_w, this.mScrollContentDimension);
-            const childMaxH = isVertical ? Math.max(h - padding_h, this.mScrollContentDimension) : (h - padding_h);
+            const childMaxW = isVertical ? contentExtent(w, padding_w)
+                : Math.max(contentExtent(w, padding_w), this.mScrollContentDimension);
+            const childMaxH = isVertical ? Math.max(contentExtent(h, padding_h), this.mScrollContentDimension)
+                : contentExtent(h, padding_h);
             this.computeSize(context, 0, childMaxW, 0, childMaxH, measure);
         }
 
@@ -166,7 +181,8 @@ export abstract class LayoutManager extends LayoutComponent {
 
         // Measure children with fill sizing (skip if already done in scroll path)
         if (!scrollMod) {
-            this.computeSize(context, minWidth, w - padding_w, minHeight, h - padding_h, measure);
+            this.computeSize(context, minWidth, contentExtent(w, padding_w),
+                minHeight, contentExtent(h, padding_h), measure);
         }
 
         // Re-assign final dimensions after computeSize() (matching Java lines 558-563).

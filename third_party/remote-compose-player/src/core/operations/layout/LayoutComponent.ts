@@ -46,6 +46,15 @@ export class LayoutComponent extends Component {
     // `.padding(30).width(200)` is 260 wide — exactly Compose's modifier-order rule.
     mPadBeforeWidth = 0;
     mPadBeforeHeight = 0;
+    // The modifiers those two totals are summed from. Kept as references rather than as
+    // the sums alone because `inflate()` runs before `PaddingModifier.updateVariables`
+    // has resolved variables or applied DP density scaling — the same staleness
+    // `refreshPadding()` exists to undo for the *total* padding, which has to reach the
+    // ordered totals too now that they feed the measured size. Which side of the size
+    // modifier each one falls on is fixed by the modifier list, so only the values need
+    // re-reading, not the partition.
+    private mPadBeforeWidthMods: PaddingModifier[] = [];
+    private mPadBeforeHeightMods: PaddingModifier[] = [];
     mPaddingRight = 0;
     mPaddingTop = 0;
     mPaddingBottom = 0;
@@ -110,6 +119,8 @@ export class LayoutComponent extends Component {
         this.mPaddingBottom = 0;
         this.mPadBeforeWidth = 0;
         this.mPadBeforeHeight = 0;
+        this.mPadBeforeWidthMods = [];
+        this.mPadBeforeHeightMods = [];
         let sawWidth = false;
         let sawHeight = false;
         this.mComputedLayoutModifiers = null;
@@ -121,8 +132,14 @@ export class LayoutComponent extends Component {
                 this.mPaddingTop += op.mTopValue;
                 this.mPaddingRight += op.mRightValue;
                 this.mPaddingBottom += op.mBottomValue;
-                if (!sawWidth) this.mPadBeforeWidth += op.mLeftValue + op.mRightValue;
-                if (!sawHeight) this.mPadBeforeHeight += op.mTopValue + op.mBottomValue;
+                if (!sawWidth) {
+                    this.mPadBeforeWidth += op.mLeftValue + op.mRightValue;
+                    this.mPadBeforeWidthMods.push(op);
+                }
+                if (!sawHeight) {
+                    this.mPadBeforeHeight += op.mTopValue + op.mBottomValue;
+                    this.mPadBeforeHeightMods.push(op);
+                }
                 // Also keep in modifier list for paint-time translation
                 // (matches Java ComponentModifiers pattern)
                 this.mComponentModifiers.push(op);
@@ -454,6 +471,18 @@ export class LayoutComponent extends Component {
         this.mPaddingTop = t;
         this.mPaddingRight = r;
         this.mPaddingBottom = b;
+
+        // Same re-sum for the padding declared before the size modifier. This one feeds the
+        // component's own measured size, not just its content inset, so leaving it on the
+        // `inflate()` snapshot measures `.padding(30).width(200)` at 260 instead of 320 at
+        // density 2 — and drops variable padding from the size entirely, since an unresolved
+        // modifier reads 0 at load time.
+        let pw = 0;
+        for (const mod of this.mPadBeforeWidthMods) pw += mod.mLeftValue + mod.mRightValue;
+        this.mPadBeforeWidth = pw;
+        let ph = 0;
+        for (const mod of this.mPadBeforeHeightMods) ph += mod.mTopValue + mod.mBottomValue;
+        this.mPadBeforeHeight = ph;
     }
 
     /** Walk modifiers reducing dimensions by padding and passing to decorators.
