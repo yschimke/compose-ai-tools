@@ -34,6 +34,13 @@ const mimeByExt = {
     ".map": "application/json; charset=utf-8",
 };
 
+// The CLI viewer's CSS/JS, resolved from this module rather than from the server root so it holds
+// however the harness is booted (in-process or standalone).
+const SERVE_ASSETS_DIR = resolve(
+    harnessDir,
+    "../../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets",
+);
+
 export function startServer(root, port = 0) {
     return new Promise((resolveServer) => {
         const server = createServer(async (req, res) => {
@@ -43,6 +50,40 @@ export function startServer(root, port = 0) {
                     /^\/+/,
                     "",
                 );
+                // Serve-page fixtures embed the CLI viewer's hashed asset URLs
+                // (`/assets/serve/<hash>/serve.css`). Those live in the CLI's resources, not under
+                // the extension root, so without this they 404 — which is why every `serve-*` page
+                // capture has been rendering unstyled and with no JS at all, making the captures
+                // far weaker evidence than they look (a JS-driven surface could regress or be
+                // deleted and the capture would not move). The hash is cache-busting and changes
+                // whenever the asset does, so match on the basename and ignore it.
+                const assetMatch = /^assets\/serve\/[^/]+\/([^/]+)$/.exec(rel);
+                if (assetMatch) {
+                    const name = assetMatch[1];
+                    // Basename only: the pattern already excludes `/`, and this rejects `..` so a
+                    // fixture cannot reach outside the assets dir.
+                    if (name.includes("..")) {
+                        res.writeHead(403);
+                        res.end("forbidden");
+                        return;
+                    }
+                    const assetPath = resolve(SERVE_ASSETS_DIR, name);
+                    try {
+                        const body = await readFile(assetPath);
+                        const ext = name.slice(name.lastIndexOf("."));
+                        res.writeHead(200, {
+                            "content-type":
+                                mimeByExt[ext] ?? "application/octet-stream",
+                            "cache-control": "no-store",
+                        });
+                        res.end(body);
+                        return;
+                    } catch {
+                        res.writeHead(404);
+                        res.end("not found: " + rel);
+                        return;
+                    }
+                }
                 const target = normalize(resolve(root, rel));
                 if (
                     relative(root, target).startsWith("..") ||
