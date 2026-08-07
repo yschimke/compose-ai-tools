@@ -52,7 +52,7 @@ import {
   readCmpWasmAllowlist,
   readCmpWasmPixelTolerances,
 } from "./rc-compare-gate.mjs";
-import { BG, flattenOnto, isFullyTransparent } from "./rc-compare-pixels.mjs";
+import { BG, flattenOnto, isFullyTransparent, splitCoverage } from "./rc-compare-pixels.mjs";
 import { DEFAULT_FONTS_DIR, fontFaceCss, loadAndVerifyFonts } from "./rc-fonts.mjs";
 
 function arg(name, def = undefined) {
@@ -506,6 +506,9 @@ for (const id of rcIds) {
   // Ask about blankness first: `flattenOnto` composites the alpha away in place.
   const bakedRaw = PNG.sync.read(entries.get(pngName)());
   const referenceBlank = isFullyTransparent(bakedRaw);
+  // Keep the un-flattened pixels: `splitCoverage` below needs to know which side actually painted,
+  // and `flattenOnto` composites that away in place.
+  const bakedUnflattened = Buffer.from(bakedRaw.data);
   const baked = flattenOnto(bakedRaw, BG);
   const rcB64 = entries.get(`ir/${id}.rc`)().toString("base64");
   const { width, height } = baked;
@@ -583,7 +586,11 @@ for (const id of rcIds) {
     continue;
   }
 
-  const rcPng = flattenOnto(PNG.sync.read(Buffer.from(result.dataUrl.split(",")[1], "base64")), BG);
+  const rcRaw = PNG.sync.read(Buffer.from(result.dataUrl.split(",")[1], "base64"));
+  // Split before flattening: `mismatchPct` below can't tell "the player drew this the wrong colour"
+  // from "the player didn't draw here at all", and on an under-filling card the second dominates.
+  const coverage = splitCoverage(bakedUnflattened, rcRaw.data, width, height);
+  const rcPng = flattenOnto(rcRaw, BG);
   const diff = new PNG({ width, height });
   const mismatchPx = pixelmatch(baked.data, rcPng.data, diff.data, width, height, {
     threshold: THRESHOLD,
@@ -602,6 +609,11 @@ for (const id of rcIds) {
     height,
     rendered: true,
     mismatchPct: referenceBlank ? null : mismatchPct,
+    // Coverage vs content, so a framing/background gap can't read as a content error. See
+    // `splitCoverage`.
+    coverageDeltaPct: referenceBlank ? null : coverage.coverageDeltaPct,
+    contentMismatchPct: referenceBlank ? null : coverage.contentMismatchPct,
+    bothPaintedPct: referenceBlank ? null : coverage.bothPaintedPct,
     mismatchPx: referenceBlank ? null : mismatchPx,
     baked: `rc-baked/${id}.png`,
     rc: `rc/${id}.png`,
@@ -658,6 +670,12 @@ const rendered = rows.filter((r) => r.rendered);
 // `isFullyTransparent`. Left in `rendered` because the player did in fact render them.
 const scored = rendered.filter((r) => !r.referenceBlank);
 const meanPct = scored.length ? scored.reduce((s, r) => s + r.mismatchPct, 0) / scored.length : null;
+const meanOf = (pick) => {
+  const vals = scored.map(pick).filter((v) => typeof v === "number");
+  return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+};
+const meanCoverageDeltaPct = meanOf((r) => r.coverageDeltaPct);
+const meanContentMismatchPct = meanOf((r) => r.contentMismatchPct);
 let cmpWasmGate = null;
 if (REQUIRE_CMP_WASM) {
   try {
@@ -693,6 +711,8 @@ fs.writeFileSync(
       blankReference: rows.filter((r) => r.referenceBlank).length,
       unsupported: rows.length - rendered.length,
       meanMismatchPct: meanPct,
+      meanCoverageDeltaPct,
+      meanContentMismatchPct,
       threshold: THRESHOLD,
       theme: THEME,
       cmpWasmGate,
@@ -753,6 +773,8 @@ fs.writeFileSync(
         id: r.id,
         rendered: r.rendered,
         mismatchPct: r.mismatchPct,
+        coverageDeltaPct: r.coverageDeltaPct,
+        contentMismatchPct: r.contentMismatchPct,
         mismatchPx: r.mismatchPx,
         width: r.width,
         height: r.height,

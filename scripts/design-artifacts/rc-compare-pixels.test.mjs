@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PNG } from "pngjs";
 
-import { BG, flattenOnto, isFullyTransparent } from "./rc-compare-pixels.mjs";
+import { BG, flattenOnto, isFullyTransparent, splitCoverage } from "./rc-compare-pixels.mjs";
 
 /** A tiny RGBA image; `fill` is called per pixel and returns `[r, g, b, a]`. */
 function image(width, height, fill) {
@@ -77,4 +77,45 @@ test("flattening composites partial alpha toward the background", () => {
 test("flattening leaves opaque pixels untouched", () => {
   const png = flattenOnto(image(1, 1, () => [10, 20, 30, 255]), BG);
   assert.deepEqual([...png.data], [10, 20, 30, 255]);
+});
+
+/**
+ * `splitCoverage` exists because a single mismatch number can't distinguish "the player drew this
+ * the wrong colour" from "the player didn't draw here at all" — and on a card that under-fills its
+ * canvas the second dominates, making a framing gap read as a content error.
+ */
+test("splitCoverage separates an under-filled region from a colour disagreement", () => {
+  // Baked paints all 10 rows white; the player paints only the top 5 — a classic under-fill.
+  const baked = image(10, 10, () => [255, 255, 255, 255]);
+  const player = image(10, 10, (_x, y) => (y < 5 ? [255, 255, 255, 255] : [0, 0, 0, 0]));
+  const s = splitCoverage(baked.data, player.data, 10, 10);
+  assert.equal(s.coverageDeltaPct, 50, "half the canvas is painted by exactly one side");
+  assert.equal(s.contentMismatchPct, 0, "where both painted, the colours agree exactly");
+  assert.equal(s.bothPaintedPct, 50);
+});
+
+test("splitCoverage scores colour disagreement only over the shared painted area", () => {
+  // Both paint the same top half, but the player's colour is wrong there.
+  const baked = image(10, 10, (_x, y) => (y < 5 ? [255, 255, 255, 255] : [0, 0, 0, 0]));
+  const player = image(10, 10, (_x, y) => (y < 5 ? [0, 0, 0, 255] : [0, 0, 0, 0]));
+  const s = splitCoverage(baked.data, player.data, 10, 10);
+  assert.equal(s.coverageDeltaPct, 0, "both sides painted exactly the same region");
+  assert.equal(s.contentMismatchPct, 100, "…and disagreed on every pixel of it");
+  assert.equal(s.bothPaintedPct, 50, "the judgement covers only half the canvas");
+});
+
+test("splitCoverage reports no content verdict when the two never overlap", () => {
+  const baked = image(10, 10, (_x, y) => (y < 5 ? [255, 255, 255, 255] : [0, 0, 0, 0]));
+  const player = image(10, 10, (_x, y) => (y >= 5 ? [255, 255, 255, 255] : [0, 0, 0, 0]));
+  const s = splitCoverage(baked.data, player.data, 10, 10);
+  assert.equal(s.coverageDeltaPct, 100);
+  assert.equal(s.contentMismatchPct, null, "no shared pixels means no meaningful colour verdict");
+  assert.equal(s.bothPaintedPct, 0);
+});
+
+test("splitCoverage tolerates sub-threshold colour drift", () => {
+  const baked = image(4, 4, () => [100, 100, 100, 255]);
+  const player = image(4, 4, () => [104, 103, 102, 255]); // total delta 9, under the 24 default
+  assert.equal(splitCoverage(baked.data, player.data, 4, 4).contentMismatchPct, 0);
+  assert.equal(splitCoverage(baked.data, player.data, 4, 4, 4).contentMismatchPct, 100);
 });
