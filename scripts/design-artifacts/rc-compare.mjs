@@ -53,6 +53,7 @@ import {
   readCmpWasmPixelTolerances,
 } from "./rc-compare-gate.mjs";
 import { BG, flattenOnto, isFullyTransparent, splitCoverage } from "./rc-compare-pixels.mjs";
+import { laneSplit as laneSplitFor } from "./rc-compare-means.mjs";
 import { DEFAULT_FONTS_DIR, fontFaceCss, loadAndVerifyFonts } from "./rc-fonts.mjs";
 
 function arg(name, def = undefined) {
@@ -698,11 +699,6 @@ const meanOf = (pick) => {
 };
 const meanCoverageDeltaPct = meanOf((r) => r.coverageDeltaPct);
 const meanContentMismatchPct = meanOf((r) => r.contentMismatchPct);
-/** Same split for the other player lanes, so every lane is judged on the same two axes. */
-const laneSplit = (prefix) => ({
-  meanCoverageDeltaPct: meanOf((r) => r[`${prefix}CoverageDeltaPct`]),
-  meanContentMismatchPct: meanOf((r) => r[`${prefix}ContentMismatchPct`]),
-});
 let cmpWasmGate = null;
 if (REQUIRE_CMP_WASM) {
   try {
@@ -751,7 +747,7 @@ fs.writeFileSync(
               const ok = rows.filter((r) => r.embeddedRendered && !r.referenceBlank);
               return ok.length ? ok.reduce((s, r) => s + r.embeddedMismatchPct, 0) / ok.length : null;
             })(),
-            ...laneSplit("embedded"),
+            ...laneSplitFor(rows, "embedded"),
           }
         : null,
       embeddedJvm: EMBEDDED_JVM
@@ -764,7 +760,7 @@ fs.writeFileSync(
                 ? ok.reduce((s, r) => s + r.embeddedJvmMismatchPct, 0) / ok.length
                 : null;
             })(),
-            ...laneSplit("embeddedJvm"),
+            ...laneSplitFor(rows, "embeddedJvm"),
           }
         : null,
       cmpWasm: CMP_WASM
@@ -777,7 +773,7 @@ fs.writeFileSync(
                 ? ok.reduce((s, r) => s + r.cmpWasmMismatchPct, 0) / ok.length
                 : null;
             })(),
-            ...laneSplit("cmpWasm"),
+            ...laneSplitFor(rows, "cmpWasm"),
             firstFrame: (() => {
               const summarize = (kind) => {
                 const values = rows
@@ -805,6 +801,9 @@ fs.writeFileSync(
         mismatchPct: r.mismatchPct,
         coverageDeltaPct: r.coverageDeltaPct,
         contentMismatchPct: r.contentMismatchPct,
+        // The share of the canvas the content verdict is computed over. Without it a content
+        // number read alone can't be told apart from one drawn from a sliver of overlap.
+        bothPaintedPct: r.bothPaintedPct ?? null,
         mismatchPx: r.mismatchPx,
         width: r.width,
         height: r.height,
@@ -812,14 +811,20 @@ fs.writeFileSync(
         referenceBlank: r.referenceBlank ?? false,
         embeddedRendered: r.embeddedRendered ?? null,
         embeddedMismatchPct: r.embeddedMismatchPct ?? null,
+        embeddedCoverageDeltaPct: r.embeddedCoverageDeltaPct ?? null,
+        embeddedContentMismatchPct: r.embeddedContentMismatchPct ?? null,
         embeddedMismatchPx: r.embeddedMismatchPx ?? null,
         embeddedNote: r.embeddedNote ?? null,
         embeddedJvmRendered: r.embeddedJvmRendered ?? null,
         embeddedJvmMismatchPct: r.embeddedJvmMismatchPct ?? null,
+        embeddedJvmCoverageDeltaPct: r.embeddedJvmCoverageDeltaPct ?? null,
+        embeddedJvmContentMismatchPct: r.embeddedJvmContentMismatchPct ?? null,
         embeddedJvmMismatchPx: r.embeddedJvmMismatchPx ?? null,
         embeddedJvmNote: r.embeddedJvmNote ?? null,
         cmpWasmRendered: r.cmpWasmRendered ?? null,
         cmpWasmMismatchPct: r.cmpWasmMismatchPct ?? null,
+        cmpWasmCoverageDeltaPct: r.cmpWasmCoverageDeltaPct ?? null,
+        cmpWasmContentMismatchPct: r.cmpWasmContentMismatchPct ?? null,
         cmpWasmMismatchPx: r.cmpWasmMismatchPx ?? null,
         cmpWasmFirstFrameMs: r.cmpWasmFirstFrameMs ?? null,
         cmpWasmStartup: r.cmpWasmStartup ?? null,
