@@ -189,6 +189,21 @@ class PlaygroundSeedResolverTest {
   }
 
   @Test
+  fun `locations that would join to the same string are still distinct keys`() {
+    // Every field in the key is a repository path component, and paths may contain whatever
+    // separator a joined string would use: `("a", "b c.kt")` and `("a b", "c.kt")` concatenate
+    // identically. A catalog moving between those two must still miss the cache.
+    var where = m3.copy(module = "a", sourceFile = "b c.kt")
+    val r = resolver(locate = { _, _ -> where })
+    assertNotNull(r.seed("s", "p"))
+    where = m3.copy(module = "a b", sourceFile = "c.kt")
+    assertNotNull(r.seed("s", "p"))
+    assertEquals(2, fetched.size, "the second location must be fetched, not served from cache")
+    assertTrue(fetched[0].endsWith("/a/b%20c.kt"), fetched[0])
+    assertTrue(fetched[1].endsWith("/a%20b/c.kt"), fetched[1])
+  }
+
+  @Test
   fun `the editor tab is named by the source basename`() {
     assertEquals("FilledButton.kt", PlaygroundSeedResolver.fileNameFor("a/b/FilledButton.kt"))
     assertEquals("FilledButton.kt", PlaygroundSeedResolver.fileNameFor("a\\b\\FilledButton.kt"))

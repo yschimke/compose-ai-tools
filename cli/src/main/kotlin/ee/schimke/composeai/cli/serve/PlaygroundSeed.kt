@@ -80,9 +80,20 @@ class PlaygroundSeedResolver(
     val sourceFile: String,
   )
 
+  /**
+   * The cache key: the request's identity plus the *resolved* location it maps to.
+   *
+   * A data class rather than a joined string on purpose. Every field here is a repository path
+   * component, and paths may legitimately contain the separator you'd pick — `"a" + " " + "b c.kt"`
+   * and `"a b" + " " + "c.kt"` join to the same string, so a catalog whose location moved between
+   * those two would hit the cache it was supposed to miss. Structural equality has no such seam and
+   * needs no escaping rules to get right.
+   */
+  private data class CacheKey(val system: String, val previewId: String, val where: Location)
+
   private class Entry(val seed: PlaygroundSeed, val readAtMillis: Long)
 
-  private val cache = ConcurrentHashMap<String, Entry>()
+  private val cache = ConcurrentHashMap<CacheKey, Entry>()
 
   fun seed(system: String, previewId: String): PlaygroundSeed? {
     // Resolve FIRST, then consult the cache. The location is an in-memory registry read, and keying
@@ -94,7 +105,7 @@ class PlaygroundSeedResolver(
           onLog("no source path recorded for $system/$previewId; playground seed unavailable")
           return null
         }
-    val key = "$system $previewId ${where.repo} ${where.ref} ${where.module} ${where.sourceFile}"
+    val key = CacheKey(system, previewId, where)
     val now = clock()
     cache[key]
       ?.takeIf { now - it.readAtMillis < ttlSeconds * 1000 }
