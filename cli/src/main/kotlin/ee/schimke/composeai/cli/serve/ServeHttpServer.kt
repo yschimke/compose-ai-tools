@@ -262,6 +262,14 @@ class ServeHttpServer(
   private val playgroundSourceFetch: ((String) -> ByteArray?)? = null,
   /** Aggregate view counts; pass a file-backed store to keep them across server restarts. */
   private val engagementStore: ServeEngagementStore = ServeEngagementStore(),
+  /**
+   * Project mode's render-history source, computed from the local repository. When non-null, a
+   * viewer whose session has **no delivery provenance** (i.e. not a catalog) inlines that preview's
+   * timeline and enables `GET /history/render/{blob}.png`, which serves an old render out of the
+   * local object store. Null — every hosted/bundle-only box — leaves both out entirely, so the
+   * route 404s rather than existing unwired.
+   */
+  private val projectHistory: ServeProjectHistory? = null,
 ) {
 
   /**
@@ -803,6 +811,14 @@ class ServeHttpServer(
 
         get("/render/{name}") { handleRender(sessionInPath = false) }
         get("/{system}/render/{name}") { handleRender(sessionInPath = true) }
+
+        // Project mode only (see [projectHistory]): one version of a render, addressed by its
+        // content sha, read straight out of the local repository. Registered conditionally like
+        // every other optional lane, so a server without a repo has no such route at all.
+        if (projectHistory != null) {
+          get("/history/render/{name}") { handleHistoryRender() }
+          get("/{system}/history/render/{name}") { handleHistoryRender() }
+        }
       }
     }
 
@@ -2961,6 +2977,15 @@ class ServeHttpServer(
               repository = it.accessRepository(),
             )
           }
+      // Project mode's timeline, computed from the local repo rather than fetched from a delivery
+      // branch. Gated on the session having no delivery provenance — exactly the condition that
+      // leaves `historyManifestUrl` null — because a catalog served from a delivery branch already
+      // ships the published manifest, and that, not this box's checkout, is the truth about what it
+      // has rendered. Off the event loop: the first call per refresh window shells out to git.
+      val localHistoryJson =
+        projectHistory
+          ?.takeIf { catalogBundleHost(renderHost)?.provenance == null }
+          ?.let { history -> withContext(Dispatchers.IO) { history.timelineJsonFor(preview.id) } }
       markGeneration(
         "static-page",
         viewerCacheControl(githubAuthConfigured = githubAuth != null, isPublic = isPublic),
@@ -3044,10 +3069,41 @@ class ServeHttpServer(
               ServeUrls.historyManifestUrl(it.repo, it.branch)
             },
           historyRepo = catalogBundleHost(renderHost)?.provenance?.repo,
+          // …and its project-mode twin: the timeline inlined rather than fetched, with its entries
+          // pointing back at this server's `/history/render/` lane. Mutually exclusive with the
+          // pair above by construction — a session has catalog provenance or it has a local repo,
+          // never both.
+          historyInlineJson = localHistoryJson,
+          historyLocalRenders = localHistoryJson != null,
         ),
         ContentType.Text.Html,
       )
     }
+  }
+
+  /**
+   * `GET /history/render/{blob}.png`: one historical render, read out of the local repository by
+   * content sha — what a project-mode timeline chip links to (see [ServeProjectHistory]).
+   *
+   * Content-addressed rather than `<commit>/<path>` addressed, so there is no path to traverse and
+   * no ref to steer: the sha is either one the current timeline names or it is a 404. Deliberately
+   * session-independent — the blob belongs to the repository, not to a session — but registered in
+   * both URL forms so the viewer can link relative to whichever prefix it was served under.
+   */
+  private suspend fun RoutingContext.handleHistoryRender() {
+    if (rejectBadToken()) return
+    val history = projectHistory
+    val name = call.parameters["name"].orEmpty().removeSuffix(".png")
+    val bytes =
+      if (history == null) null else withContext(Dispatchers.IO) { history.renderBytes(name) }
+    if (bytes == null) {
+      call.respondText("no such render", status = HttpStatusCode.NotFound)
+      return
+    }
+    // Immutable by construction — the URL *is* the content hash — but this is a token-gated
+    // response on a private box, so it follows the same no-store rule as every other one.
+    markGeneration("history-render", DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondBytes(bytes, ContentType.Image.PNG)
   }
 
   /**

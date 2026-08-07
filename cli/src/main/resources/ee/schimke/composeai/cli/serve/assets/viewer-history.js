@@ -22,19 +22,42 @@
   var root = document.querySelector(".cp-viewer");
   if (!root) return;
   var repo = root.getAttribute("data-history-repo");
+  // Project mode (`serve` against a local checkout): there is no delivery repo to address an old
+  // render on, so the server offers its own content-addressed lane instead — see
+  // ServeProjectHistory. Exactly one of the two is ever present.
+  var blobUrl = root.getAttribute("data-history-blob-url");
   var previewId = root.getAttribute("data-preview-id");
   var bar = document.querySelector(".cp-viewer-bar");
-  if (!repo || !previewId || !bar) return;
+  if (!previewId || !bar) return;
   // `repo` is DOM text and is interpolated into every link's href below. Linking out rather than
   // swapping the stage moved that sink from `img.src` to `a.href` — it did not remove it — so
   // constrain the value to the only shape a GitHub `owner/name` can take before it can reach a URL.
   // A value that does not match cannot be made safe by escaping, so the strip is simply not drawn.
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(repo)) return;
+  if (repo && !/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(repo)) return;
+  // The same treatment for the local template, and for the same reason: it reaches an href. Only a
+  // site-relative path is accepted — a leading "//" is a protocol-relative URL to another host, so
+  // it is rejected rather than escaped — and it must carry the placeholder, since a template
+  // without one would point every version at the same render.
+  if (blobUrl && (blobUrl.charAt(0) !== "/" || blobUrl.charAt(1) === "/")) return;
+  if (blobUrl && blobUrl.indexOf("{blob}") === -1) return;
+  if (!repo && !blobUrl) return;
+  // Whether the strip describes renders this page is *not* showing. In project mode the stage comes
+  // from the working tree while the timeline comes from the published baselines, so the newest
+  // entry is the last publish rather than "what you are looking at".
+  var local = !repo && !!blobUrl;
 
   // Mirrors ServeUrls.historicalRenderUrl, and rejects the same inputs for the same reason: the
   // manifest records shas, so accepting a ref would let a malformed manifest point the viewer at an
-  // arbitrary branch.
-  function renderUrlAt(commit, path) {
+  // arbitrary branch. In project mode the version's content sha addresses it directly instead —
+  // same rule, one identifier shorter, and the server refuses any sha its own timeline doesn't name.
+  function renderUrlAt(version, path) {
+    // `local` rather than `blobUrl`, so a page that somehow carried both stays coherent: one flag
+    // decides both how an entry is addressed and how it is labelled.
+    if (local) {
+      if (!/^[0-9a-f]{40}$/.test(version.blob || "")) return null;
+      return blobUrl.replace("{blob}", version.blob);
+    }
+    var commit = version.commit;
     if (!/^[0-9a-fA-F]{7,40}$/.test(commit || "")) return null;
     if (!path || path.indexOf("renders/") !== 0 || path.indexOf("..") !== -1) return null;
     return (
@@ -73,6 +96,19 @@
       versions.length + " versions over " + (entry.observations || versions.length) + " publishes";
     head.appendChild(count);
 
+    // Say where the strip came from when it is not describing the stage. Without this the newest
+    // chip reads as "the render above", which in project mode it is not: the stage is rendered from
+    // the working tree and the timeline is the published baseline history.
+    if (local) {
+      var scope = document.createElement("span");
+      scope.className = "cp-history-scope";
+      scope.textContent = "published baselines";
+      scope.title =
+        "Read from the delivery branch in your local checkout. The preview above is rendered from " +
+        "your working tree, so it may differ from the newest entry.";
+      head.appendChild(scope);
+    }
+
     // Surface instability rather than quietly showing a trimmed list: when a render keeps reverting
     // to bytes it already had, the entries below are a trimmed view and would otherwise not add up
     // to the publish count beside them.
@@ -95,14 +131,15 @@
     versions.forEach(function (v, i) {
       // Every entry, including the newest, is addressed from the manifest — never from the stage.
       // That is what keeps the strip independent of whether the render has loaded yet.
-      var url = renderUrlAt(v.commit, entry.path);
+      var url = renderUrlAt(v, entry.path);
       if (!url) return; // Skip an entry we cannot address rather than rendering a dead control.
+      var current = i === 0 && !local;
       var link = document.createElement("a");
       link.className = "cp-history-item";
       link.href = url;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
-      if (i === 0) link.setAttribute("data-current", "1");
+      if (current) link.setAttribute("data-current", "1");
 
       var date = document.createElement("span");
       date.className = "cp-history-date";
@@ -113,7 +150,7 @@
       meta.className = "cp-history-meta";
       // sourceSha is the commit the render was produced from — far more useful to a human than the
       // delivery-branch commit, which is just a publish marker.
-      meta.textContent = i === 0 ? "current" : v.sourceSha || (v.commit || "").slice(0, 8);
+      meta.textContent = current ? "current" : v.sourceSha || (v.commit || "").slice(0, 8);
       link.appendChild(meta);
 
       if (v.commits > 1) {
@@ -125,7 +162,7 @@
       }
 
       link.title =
-        (i === 0 ? "Open the current render" : "Open the render as of " + shortDate(v.date)) +
+        (current ? "Open the current render" : "Open the render as of " + shortDate(v.date)) +
         (v.sourceSha ? " (source " + v.sourceSha + ")" : "");
       made++;
       list.appendChild(link);
