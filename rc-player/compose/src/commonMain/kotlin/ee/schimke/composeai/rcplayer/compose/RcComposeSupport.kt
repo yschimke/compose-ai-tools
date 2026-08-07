@@ -13,6 +13,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
+import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
 import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
@@ -43,10 +44,16 @@ import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcTextFromFloat
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
+import ee.schimke.composeai.rcplayer.protocol.RcTextLookup
+import ee.schimke.composeai.rcplayer.protocol.RcTextLookupInt
 import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
+import ee.schimke.composeai.rcplayer.protocol.RcTextMerge
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcTextSubtext
+import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
 import ee.schimke.composeai.rcplayer.protocol.RcTouchExpression
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
@@ -94,7 +101,24 @@ public fun RcDocument.composeSupportReport(
     operations.filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcTextData>().associate {
       it.id to it.text
     }
-  val textIds = texts.keys
+  // A text id is declared either by a literal DATA_TEXT or by a runtime operation that publishes a
+  // string under its out id. Only the literals carry a value the report can inspect (font family
+  // names, style properties), so `texts` stays literal-only while `textIds` covers both.
+  val textIds =
+    texts.keys +
+      operations.mapNotNull { operation ->
+        when (operation) {
+          is RcTextMerge -> operation.outId
+          is RcTextSubtext -> operation.outId
+          is RcTextTransform -> operation.outId
+          is RcTextFromFloat -> operation.outId
+          is RcTextLookup -> operation.outId
+          is RcTextLookupInt -> operation.outId
+          // Publishes text under `outId` when the map entry is TYPE_STRING.
+          is RcDataMapLookup -> operation.outId
+          else -> null
+        }
+      }
   val colorIds =
     operations.filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcColorConstant>().mapTo(
       mutableSetOf()

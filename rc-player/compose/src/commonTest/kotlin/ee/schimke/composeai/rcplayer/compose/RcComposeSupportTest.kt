@@ -29,9 +29,11 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostNamedActionValue
+import ee.schimke.composeai.rcplayer.protocol.RcIdList
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImpulseProcess
 import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
+import ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutAnimation
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
@@ -47,6 +49,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
+import ee.schimke.composeai.rcplayer.protocol.RcTextLookup
+import ee.schimke.composeai.rcplayer.protocol.RcTextLookupInt
+import ee.schimke.composeai.rcplayer.protocol.RcTextMerge
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcTimeAttribute
@@ -153,6 +158,38 @@ class RcComposeSupportTest {
       "text id 99 is not declared",
       invalid.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).issues.single().detail,
     )
+  }
+
+  @Test
+  fun textIdsProducedByRuntimeTextOperationsCountAsDeclared() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcTextData(66, "Heart rate"),
+          RcTextData(67, "Morning run"),
+          RcIdList(2097194, listOf(66, 67)),
+          RcIntegerConstant(69, 1),
+          RcTextLookupInt(70, 2097194, 69),
+          RcCoreText(70, listOf(RcTextStyleProperty.IntValue(1, 10))),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcTextLookup(71, 2097194, RcFloatWord.literal(0f)),
+          RcCoreText(71, listOf(RcTextStyleProperty.IntValue(1, 11))),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcTextMerge(72, 66, 67),
+          RcCoreText(72, listOf(RcTextStyleProperty.IntValue(1, 12))),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcLayoutContent(3),
+        ) + List(3) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+
+    assertEquals(
+      emptyList(),
+      document.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).issues.map { it.detail },
+    )
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_IOS_ALPHA16).fullyRenderable)
   }
 
   @Test
