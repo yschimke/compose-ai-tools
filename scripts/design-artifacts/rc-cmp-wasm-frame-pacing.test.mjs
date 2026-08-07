@@ -3,7 +3,10 @@
  * viewport as in a tall one.
  *
  * Run with `node --test scripts/design-artifacts/`. Skipped unless the player distribution is
- * built (`./gradlew :rc-player-wasm:wasmPlayerDist`, or point `RC_CMP_WASM_DIST` at one).
+ * built (`./gradlew :rc-player-wasm:wasmPlayerDist`, or point `RC_CMP_WASM_DIST` at one) — set
+ * `RC_CMP_WASM_REQUIRE=1` to make every one of those skips a failure instead, which is how the
+ * `CMP/Wasm Frame Pacing` CI job runs it. A guard that can silently skip is a guard that stops
+ * guarding the moment its build step moves.
  *
  * The regression this guards (#3445): Chromium paces `requestAnimationFrame` at roughly **1 fps**
  * for a page whose CSS viewport is only a few dozen pixels tall, unless the compositor's frame cap
@@ -39,6 +42,7 @@ const TALL = { width: 216, height: 124 };
 // Throttled pacing put ~950 ms between frames instead of ~70 ms, over three frames. 2× leaves room
 // for a slow machine's noise on a ~2 s render while staying far below the ~3× the bug produced.
 const MAX_RATIO = 2;
+const REQUIRE = process.env.RC_CMP_WASM_REQUIRE === "1";
 
 let chromium;
 let browser;
@@ -117,6 +121,7 @@ async function firstFrameMs(page, viewport) {
 }
 
 test("a short viewport reaches first frame as fast as a tall one", async (t) => {
+  if (skip && REQUIRE) assert.fail(`RC_CMP_WASM_REQUIRE is set but the guard cannot run: ${skip}`);
   if (skip) return t.skip(skip);
   const context = await browser.newContext({ deviceScaleFactor: 2.625 });
   const page = await context.newPage();
