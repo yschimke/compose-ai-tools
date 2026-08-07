@@ -436,8 +436,14 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
     cmpWasmServer.setDocument(bytes);
     await cmpWasmPage.setViewportSize({ width: viewportWidth, height: viewportHeight });
     const startedAt = performance.now();
+    // `handoffDelayMs=0` drops the player's cold-start tail — 1.5 s it holds back `ready` so a host
+    // that reveals it on that signal cannot show a blank surface. This lane is not such a host: the
+    // screenshot below goes through CDP, which drives its own compositor frame, and every pixel of
+    // the result is then checked against the baked reference. Measured over a full 27-preview
+    // remote-m3 run, dropping it leaves every rendered PNG byte-for-byte identical and takes the
+    // per-preview cost from ~2.0 s to ~0.5 s. The viewer keeps the default.
     await cmpWasmPage.goto(
-      `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}`,
+      `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}&handoffDelayMs=0`,
     );
     await cmpWasmPage.waitForFunction(
       () => ["ready", "error"].includes(document.documentElement.dataset.rcPlayerState),
