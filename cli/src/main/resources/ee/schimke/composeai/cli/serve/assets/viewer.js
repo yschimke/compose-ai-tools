@@ -832,15 +832,28 @@
     parts.push("bgPhase=" + encodeURIComponent(wasmBgPhase()));
     parts.push("stageBg=" + encodeURIComponent(wasmStageBg()));
     // Author-declared knobs also apply in the browser: the wasm catalog seeds its
-    // `catalogOverride*` from these `knob.<key>` params. Mirror query() — omit a knob still at
-    // its `data-knob-initial` so an unedited knob reverts to the author default in the app.
+    // `catalogOverride*` from these `knob.<key>` params.
+    //
+    // Compared against the AUTHOR DEFAULT, not against `data-knob-initial` as query() does — and
+    // that difference is the whole point. A `@OverrideVariant` sticker (the unchecked checkbox, the
+    // disabled button) opens with its knob already seeded away from the author default, so
+    // `val === initial` holds and an initial-based filter would send nothing. The PNG lane can
+    // afford that because the baked capture already carries the seed; the Wasm tier has no baked
+    // artifact — it mounts the live component from `?id=<slug>`, and `wasmAppSrc` strips the
+    // variant axis off the id — so an unsent seed silently mounts the PRIMARY (a checked checkbox,
+    // an enabled button) under a sticker that says otherwise. A knob genuinely at its author
+    // default is still omitted, so an ordinary sticker is unchanged.
     document.querySelectorAll(".cp-knob").forEach(function (el) {
       if (el.disabled) return;
       var key = el.getAttribute("data-knob-key");
       if (!key) return;
       var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
       if (val === "") return;
-      if (val === (el.getAttribute("data-knob-initial") || "")) return;
+      // Older pages carry no `data-knob-default`; fall back to the initial so they behave as before
+      // rather than sending every knob.
+      var authorDefault = el.getAttribute("data-knob-default");
+      if (authorDefault === null) authorDefault = el.getAttribute("data-knob-initial") || "";
+      if (val === authorDefault) return;
       parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(val));
     });
     return parts.join("&");
