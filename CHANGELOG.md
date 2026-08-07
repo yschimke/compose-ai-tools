@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.19.42](https://github.com/yschimke/compose-ai-tools/compare/v0.19.41...v0.19.42) (2026-08-07)
+
+
+### Features
+
+* **catalogs:** make every M3 catalog component respond to a click ([#3407](https://github.com/yschimke/compose-ai-tools/issues/3407)) ([367f1ff](https://github.com/yschimke/compose-ai-tools/commit/367f1ff15d189810430efb43e039302e16618c21))
+* **serve:** add the history.json manifest for delivery-branch render history ([#3403](https://github.com/yschimke/compose-ai-tools/issues/3403)) ([b9fd6e7](https://github.com/yschimke/compose-ai-tools/commit/b9fd6e7597bb6b3e471b0640612138385570a879))
+* **serve:** let a playground snippet pick its catalog at runtime ([#3397](https://github.com/yschimke/compose-ai-tools/issues/3397)) ([d90be9a](https://github.com/yschimke/compose-ai-tools/commit/d90be9aa0f7027ed95eb33325ffee6f9c199d6ef))
+* **serve:** long-press a catalog card to start a live daemon session in place ([#3408](https://github.com/yschimke/compose-ai-tools/issues/3408)) ([dc66c1f](https://github.com/yschimke/compose-ai-tools/commit/dc66c1f8eb662a6af7e629e70ba09bb96d05bee9))
+* **serve:** read per-preview render history off the delivery branches ([#3394](https://github.com/yschimke/compose-ai-tools/issues/3394)) ([04be3cd](https://github.com/yschimke/compose-ai-tools/commit/04be3cd6ebdb2dd545795f13a4152a18fe9088e1))
+* **serve:** widen the background render lane from 1 to 3 ([#3399](https://github.com/yschimke/compose-ai-tools/issues/3399)) ([643b497](https://github.com/yschimke/compose-ai-tools/commit/643b497d7386f86c38e1011f296fb2a39991c86a))
+
+
+### Bug Fixes
+
+* **history:** move the render-history archive out of the working tree ([#3410](https://github.com/yschimke/compose-ai-tools/issues/3410)) ([b11140d](https://github.com/yschimke/compose-ai-tools/commit/b11140d1dd927786b249377566a21ab357f3c8ea))
+* **render:** make the live, SVG and Wasm lanes agree with the snapshot ([#3409](https://github.com/yschimke/compose-ai-tools/issues/3409)) ([1ffed6f](https://github.com/yschimke/compose-ai-tools/commit/1ffed6f388caa529e805c605cbef53675324e8d4))
+* **serve:** close three gaps in the playground catalog selector ([#3398](https://github.com/yschimke/compose-ai-tools/issues/3398)) ([618a65f](https://github.com/yschimke/compose-ai-tools/commit/618a65ff2cbc12174ce6f38fc7b299f64dc4d427))
+* **serve:** derive the background render lane from the seat budget ([#3401](https://github.com/yschimke/compose-ai-tools/issues/3401)) ([75acc64](https://github.com/yschimke/compose-ai-tools/commit/75acc648b5d78a904f70f84a9bf4bf74f29549b4))
+* **serve:** drop a playground jail that cannot launch, keep the caps ([#3392](https://github.com/yschimke/compose-ai-tools/issues/3392)) ([2a8702f](https://github.com/yschimke/compose-ai-tools/commit/2a8702f53696b1728b1a5136e0d69d31c162de53))
+* **serve:** keep prefetch off foreground and per-preview seats ([#3396](https://github.com/yschimke/compose-ai-tools/issues/3396)) ([2e8fe08](https://github.com/yschimke/compose-ai-tools/commit/2e8fe087bca3a7d6abaf69ef942d7a19eeddbf46))
+* **serve:** offer sign-in instead of a dead Live preview toggle ([#3400](https://github.com/yschimke/compose-ai-tools/issues/3400)) ([17053ed](https://github.com/yschimke/compose-ai-tools/commit/17053ed5b324baa7ddd396615138924497bba34f))
+* **serve:** price prefetch replicas as background residency ([#3393](https://github.com/yschimke/compose-ai-tools/issues/3393)) ([b2cbd2f](https://github.com/yschimke/compose-ai-tools/commit/b2cbd2f33125321639e32dd6523e99be31d24ce3))
+* **vscode:** defer the applied-marker bootstrap to first view open ([#3406](https://github.com/yschimke/compose-ai-tools/issues/3406)) ([45f5ccb](https://github.com/yschimke/compose-ai-tools/commit/45f5ccbda34291732279eba88b0042e17aa687ee))
+
 ## [0.19.41](https://github.com/yschimke/compose-ai-tools/compare/v0.19.40...v0.19.41) (2026-08-06)
 
 
