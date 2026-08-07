@@ -150,7 +150,7 @@ test("compiles the default Android snippet to a first frame + live /pg/ handoff"
   ).toMatch(/^data:image\/png/);
 });
 
-test("a multi-file snippet compiles as one module and names the preview it drew", async ({
+test("a multi-file snippet compiles as one module and offers every preview it declared", async ({
   page,
 }) => {
   requirePlayground();
@@ -203,11 +203,29 @@ test("a multi-file snippet compiles as one module and names the preview it drew"
       `(diagnostics: ${await page.locator("#pg-diagnostics").textContent()})`,
   ).toBe("Done.");
 
-  // Two @Previews in the snippet: exactly one is rendered and tokenized, and the editor says
-  // which — otherwise the choice is invisible.
+  // Two @Previews in the snippet: exactly one drives the still frame, and the editor says which —
+  // otherwise the choice is invisible.
   const note = page.locator("#pg-preview-note");
   await expect(note, "preview note for a multi-preview snippet").toBeVisible();
-  expect(await note.textContent()).toMatch(/2 previews found/);
+  expect(await note.textContent()).toMatch(/2 previews in this snippet/);
+
+  // …and BOTH are reachable. The session stands on the whole compiled module, so every declared
+  // preview gets its own `?preview=<id>` link into the same `/pg/` token rather than only the
+  // drawn one being openable.
+  const links = page.locator("#pg-previews a");
+  await expect(links, "one link per declared preview").toHaveCount(2);
+  const hrefs = await links.evaluateAll((els) =>
+    els.map((e) => e.getAttribute("href")),
+  );
+  expect(hrefs.join(" ")).toContain("preview=SnippetKt.Greeting");
+  expect(hrefs.join(" ")).toContain("preview=SnippetKt.Second");
+  // All of them address the one token the run minted — navigating between previews must not
+  // require a second compile.
+  const tokens = new Set(hrefs.map((h) => h.split("?")[0]));
+  expect(
+    tokens.size,
+    `every preview link rides one session, got ${[...tokens]}`,
+  ).toBe(1);
 });
 
 test("the /pg/ token redeems into the live viewer", async ({ page }) => {
