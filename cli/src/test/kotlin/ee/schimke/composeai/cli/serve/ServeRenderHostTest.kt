@@ -393,9 +393,21 @@ class ServeRenderHostTest {
   fun `renderSvg serves identical requests from cache`() {
     val session = FakeRenderSession(newRenderRoot())
     host(session).use { h ->
-      h.renderSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
-      h.renderSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      val first = h.renderSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      val second = h.renderSvg(previewId, PreviewOverrides(uiMode = UiMode.DARK))
       assertEquals(1, session.renderCount.get(), "second identical SVG request must hit the cache")
+      // The vector lane reports the same generation ladder as the raster one — it rides the
+      // `X-Compose-Preview-Generation` header, so a cache hit must not claim to be a fresh render.
+      assertEquals(
+        RenderOutcome.Generation.DAEMON,
+        (first as SvgOutcome.Ok).generation,
+        "the first SVG export really was rendered",
+      )
+      assertEquals(
+        RenderOutcome.Generation.DAEMON_CACHE,
+        (second as SvgOutcome.Ok).generation,
+        "the second came from the SVG cache",
+      )
     }
   }
 

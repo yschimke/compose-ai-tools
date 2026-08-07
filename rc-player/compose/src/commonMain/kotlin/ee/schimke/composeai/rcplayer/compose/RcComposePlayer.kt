@@ -902,7 +902,7 @@ private fun RenderLayoutNode(
                 state,
                 fontFamilies,
                 namedFontFamilies,
-                variationSettings,
+                withWeightAxis(variationSettings, boldWeight),
               ),
             textAlign = androidXTextAlign(properties.intProperty(9, RcTextLayout.ALIGN_LEFT)),
           ),
@@ -2940,6 +2940,30 @@ internal fun fontVariationSettings(
     tag?.takeIf { it.isNotBlank() }?.let { FontVariation.Setting(it, value) }
   }
   return if (axes.isEmpty()) null else FontVariation.Settings(*axes.toTypedArray())
+}
+
+/**
+ * [settings] with the style's weight added as a `wght` axis, unless the document named `wght`
+ * itself.
+ *
+ * `TextStyle.fontWeight` only picks *between* registered faces, so a family carrying one variable
+ * file registered at 400 — which is what a `fonts.json` default role usually is — renders every
+ * weight at 400: a `CoreText` asking for Medium came out visibly lighter than the reference, which
+ * rasterizes with a real 500 face. Naming the axis is what actually moves a variable font, and on a
+ * static face an axis the file does not define is ignored by the font engine, so this is a no-op
+ * for families that select by weight in the ordinary way.
+ *
+ * An explicit `wght` from the document wins: a specimen sweeping the axis is naming the value it
+ * wants, and the style weight beside it is only there so a non-variable fallback picks a face.
+ */
+internal fun withWeightAxis(
+  settings: FontVariation.Settings?,
+  weight: Int,
+): FontVariation.Settings? {
+  val existing = settings?.settings.orEmpty()
+  if (existing.any { it.axisName == "wght" }) return settings
+  val axes = existing + FontVariation.weight(weight.coerceIn(1, 1000))
+  return FontVariation.Settings(*axes.toTypedArray())
 }
 
 private fun decodeInlineImage(bitmap: RcBitmapData): ImageBitmap =

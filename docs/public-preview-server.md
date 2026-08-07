@@ -1108,25 +1108,34 @@ un-overridden snapshot**, so a `200 image/png` there is a wrong answer delivered
 bot, a parity check, or an agent iterating on a theme reads "no visual difference" and concludes the
 override had no effect on the UI, when in fact it was never rendered ([#3449]).
 
-So `GET /render/{id}.png` refuses instead, and every override kind agrees — `fontScale`, `uiMode`,
-`themeProvider`, `device`, `knob.<key>`, `rc.<name>`:
+So the render refuses instead, and every override kind agrees — `fontScale`, `uiMode`,
+`themeProvider`, `device`, `knob.<key>`, `rc.<name>` — as does every lane that can answer with
+published bytes: the raster `GET /render/{id}.png`, the vector `GET /render/{id}.svg` (a
+`figma/<slug>.svg` off the delivery branch was exported at the preview's discovery-time axes, so it
+drops an override exactly as thoroughly), and the Storybook isolation pages `GET /iframe.html?id=…`
+(a story's args ride the same params, and PNG-diffing visual tools are precisely the caller this is
+for):
 
 | state | response |
 |---|---|
-| no override, or one the baked variant already satisfies (`uiMode=light` on a `…__light` id) | `200 image/png`, `X-Compose-Preview-Generation: baked` |
-| the override was applied | `200 image/png`, `X-Compose-Preview-Generation: daemon` (or `daemon-cache` / `catalog-cache`) |
+| no override, or one the baked variant already satisfies (`uiMode=light` on a `…__light` id, `background=default`) | `200`, `X-Compose-Preview-Generation: baked` |
+| the override was applied | `200`, `X-Compose-Preview-Generation: daemon` (or `daemon-cache` / `catalog-cache`) |
 | the preview **has** a live lane, but it can't serve right now (daemon down/cold, no free seat) | `503` + `Retry-After: 2` |
 | the preview has **no** live lane at all (static or untrusted catalog, unmapped variant) | `409` — retrying can't help |
-| `&fallback=baked` on the request | `200 image/png` + `X-Compose-Preview-Render: baked-fallback` |
+| `&fallback=baked` on the request | `200` + `X-Compose-Preview-Render: baked-fallback` |
 
 All four override-carrying responses carry **`X-Compose-Preview-Dropped-Overrides`** — a
-comma-separated list of exactly the params the returned pixels do not reflect (`fontScale,uiMode`,
+comma-separated list of exactly the params the returned bytes do not reflect (`fontScale,uiMode`,
 `knob.label`, …), so even a `curl -I` can tell. An unrecognised param is not an override and is
 still ignored silently (a cache-buster must not 409 a page).
 
 `&fallback=baked` is the opt-in for callers that would rather show the published snapshot than
-nothing — but it is marked unmissably in the headers, because the pixels themselves carry no signal.
+nothing — but it is marked unmissably in the headers, because the bytes themselves carry no signal.
 A malformed override value is still a `400` at parse time, as before; this is about *valid* ones.
+
+Not affected: `?scroll=long` (the full-page raster/vector export is daemon-only, so it 404s rather
+than falling back), and the `.rc` document lane (the browser player applies `rc.<name>` seeds
+client-side, so nothing is dropped server-side).
 
 [#3449]: https://github.com/yschimke/compose-ai-tools/issues/3449
 

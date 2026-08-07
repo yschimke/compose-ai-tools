@@ -197,6 +197,23 @@ class ServeHttpRoutingTest {
     return ServeBundleHost(dir, label = label, title = title, degradations = degradations)
   }
 
+  /**
+   * A baked catalog that also carries the published `figma/<slug>.svg` vector, so the `.svg` lane
+   * serves something instead of 404ing. The vector is as static as the PNG — it was exported at the
+   * preview's discovery-time axes — which is what makes an override on this lane a silent drop
+   * (#3449).
+   */
+  private fun svgBundle(label: String): ServeBundleHost {
+    val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
+    File(dir, "index.html").writeText("<html></html>")
+    File(dir, "previews").apply { mkdirs() }
+    File(dir, "previews/$previewId.png").writeBytes(png())
+    val figma = File(dir, "figma").apply { mkdirs() }
+    File(figma, "$previewId.svg")
+      .writeText("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"2\" height=\"2\"></svg>")
+    return ServeBundleHost(dir, label = label, figmaDir = figma)
+  }
+
   private val registry = ServeSessionRegistry(open = { null })
   private val rcWasmDir =
     Files.createTempDirectory("routing-rc-wasm").toFile().also { dir ->
@@ -228,6 +245,7 @@ class ServeHttpRoutingTest {
     )
     registry.register("burst", host = burstHost, pinned = true)
     registry.register("live-down", host = liveDownHost, pinned = true)
+    registry.register("svg-catalog", host = svgBundle("svg-catalog"), pinned = true)
     ServeHttpServer(
         host = "127.0.0.1",
         requestedPort = 0,
@@ -357,6 +375,61 @@ class ServeHttpRoutingTest {
     assertEquals("fontScale,knob.label", knobHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
     // An unrecognised param is not an override, so it still serves the snapshot (unchanged).
     assertEquals(200, get("/default-mod/render/$previewId.png?zzzBogusParam=1").first)
+  }
+
+  /**
+   * The vector lane drops overrides exactly like the raster one — a `figma/<slug>.svg` read off the
+   * delivery branch was exported at the preview's discovery-time axes — so it must refuse too, and
+   * with the same shape.
+   */
+  @Test
+  fun `the svg lane refuses an override it cannot apply, and marks an accepted fallback`() {
+    val (plainCode, plainBody, plainHeaders) = getFull("/svg-catalog/render/$previewId.svg")
+    assertEquals(200, plainCode)
+    assertTrue(plainBody.contains("<svg"), "the un-overridden request serves the baked vector")
+    assertEquals("baked", plainHeaders[ServeHttpServer.GENERATION_HEADER])
+    assertEquals(null, plainHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+
+    val (code, body, headers) = getFull("/svg-catalog/render/$previewId.svg?fontScale=2.0")
+    assertEquals(409, code)
+    assertEquals("fontScale", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+    assertTrue(body.contains("override not applied: fontScale"), "body names the param: $body")
+
+    val (okCode, okBody, okHeaders) =
+      getFull("/svg-catalog/render/$previewId.svg?fontScale=2.0&fallback=baked")
+    assertEquals(200, okCode)
+    assertEquals(plainBody, okBody, "the opted-in fallback is the baked vector")
+    assertEquals(
+      ServeHttpServer.RENDER_BAKED_FALLBACK,
+      okHeaders[ServeHttpServer.RENDER_HEADER],
+      "the fallback vector says it is one",
+    )
+    assertEquals("fontScale", okHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+  }
+
+  /**
+   * The Storybook isolation pages are consumed by PNG-diffing visual tools — precisely the
+   * caller #3449 describes — and a story's args ride the same override params, so they refuse too.
+   * The page shape has no room for a signal of its own, hence the status.
+   */
+  @Test
+  fun `the storybook iframe lanes refuse a dropped override`() {
+    assertEquals(200, get("/compose-m3/iframe.html?id=$previewId").first)
+    val (code, _, headers) = getFull("/compose-m3/iframe.html?id=$previewId&fontScale=2.0")
+    assertEquals(409, code)
+    assertEquals("fontScale", headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+
+    assertEquals(200, get("/svg-catalog/iframe.html?id=$previewId&format=svg").first)
+    val (svgCode, _, svgHeaders) =
+      getFull("/svg-catalog/iframe.html?id=$previewId&format=svg&fontScale=2.0")
+    assertEquals(409, svgCode)
+    assertEquals("fontScale", svgHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+
+    // The opt-in still works here: the page is served, marked as carrying baked bytes.
+    val (okCode, _, okHeaders) =
+      getFull("/compose-m3/iframe.html?id=$previewId&fontScale=2.0&fallback=baked")
+    assertEquals(200, okCode)
+    assertEquals(ServeHttpServer.RENDER_BAKED_FALLBACK, okHeaders[ServeHttpServer.RENDER_HEADER])
   }
 
   @Test
