@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.19.44](https://github.com/yschimke/compose-ai-tools/compare/v0.19.43...v0.19.44) (2026-08-07)
+
+
+### Features
+
+* **design-artifacts:** shard the catalog render across parallel jobs ([#3439](https://github.com/yschimke/compose-ai-tools/issues/3439)) ([8985bea](https://github.com/yschimke/compose-ai-tools/commit/8985bea543a519f6459391acfc5ede6b6d0f28cd))
+* **rc-compare:** score coverage and content separately ([#3434](https://github.com/yschimke/compose-ai-tools/issues/3434)) ([11b0be4](https://github.com/yschimke/compose-ai-tools/commit/11b0be48927644c6ccc926a17a0933a323002fa7))
+* **rc-compare:** split coverage and content for every player lane ([#3438](https://github.com/yschimke/compose-ai-tools/issues/3438)) ([4fd379d](https://github.com/yschimke/compose-ai-tools/commit/4fd379d033ac8e98809efcca3c5cac57e6b10c05))
+* **serve:** show a render-history timeline in the viewer ([#3430](https://github.com/yschimke/compose-ai-tools/issues/3430)) ([c650aeb](https://github.com/yschimke/compose-ai-tools/commit/c650aeb5d1453e18f709d9453cd8cced6aafa224))
+
+
+### Bug Fixes
+
+* **harness:** refresh the viewer.js hash in the serve-viewer-history fixture ([#3446](https://github.com/yschimke/compose-ai-tools/issues/3446)) ([3a4e57e](https://github.com/yschimke/compose-ai-tools/commit/3a4e57ed76ea86a522f5b2e4c028805dfbeef830))
+* **harness:** serve the CLI viewer's assets to page fixtures ([#3437](https://github.com/yschimke/compose-ai-tools/issues/3437)) ([29e5ecb](https://github.com/yschimke/compose-ai-tools/commit/29e5ecb42d04d4a277c6d73c3310e5e569958fcb))
+* **rc-compare:** serialize the per-lane split and scope its means correctly ([#3440](https://github.com/yschimke/compose-ai-tools/issues/3440)) ([a5d19f1](https://github.com/yschimke/compose-ai-tools/commit/a5d19f14a3cc854134c485fab2d32820ceadb474))
+* **serve:** treat an empty knob value as a value, not a missing one ([#3435](https://github.com/yschimke/compose-ai-tools/issues/3435)) ([612b137](https://github.com/yschimke/compose-ai-tools/commit/612b1373fca5573d6a6923efffcba070af515a3b))
+
 ## [0.19.43](https://github.com/yschimke/compose-ai-tools/compare/v0.19.42...v0.19.43) (2026-08-07)
 
 
