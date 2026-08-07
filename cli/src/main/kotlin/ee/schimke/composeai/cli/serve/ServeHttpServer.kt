@@ -262,6 +262,14 @@ class ServeHttpServer(
   private val playgroundSourceFetch: ((String) -> ByteArray?)? = null,
   /** Aggregate view counts; pass a file-backed store to keep them across server restarts. */
   private val engagementStore: ServeEngagementStore = ServeEngagementStore(),
+  /**
+   * Project mode's render-history source, computed from the local repository. When non-null, a
+   * viewer whose session has **no delivery provenance** (i.e. not a catalog) inlines that preview's
+   * timeline and enables `GET /history/render/{blob}.png`, which serves an old render out of the
+   * local object store. Null — every hosted/bundle-only box — leaves both out entirely, so the
+   * route 404s rather than existing unwired.
+   */
+  private val projectHistory: ServeProjectHistory? = null,
 ) {
 
   /**
@@ -803,6 +811,14 @@ class ServeHttpServer(
 
         get("/render/{name}") { handleRender(sessionInPath = false) }
         get("/{system}/render/{name}") { handleRender(sessionInPath = true) }
+
+        // Project mode only (see [projectHistory]): one version of a render, addressed by its
+        // content sha, read straight out of the local repository. Registered conditionally like
+        // every other optional lane, so a server without a repo has no such route at all.
+        if (projectHistory != null) {
+          get("/history/render/{name}") { handleHistoryRender() }
+          get("/{system}/history/render/{name}") { handleHistoryRender() }
+        }
       }
     }
 
@@ -2961,6 +2977,15 @@ class ServeHttpServer(
               repository = it.accessRepository(),
             )
           }
+      // Project mode's timeline, computed from the local repo rather than fetched from a delivery
+      // branch. Gated on the session having no delivery provenance — exactly the condition that
+      // leaves `historyManifestUrl` null — because a catalog served from a delivery branch already
+      // ships the published manifest, and that, not this box's checkout, is the truth about what it
+      // has rendered. Off the event loop: the first call per refresh window shells out to git.
+      val localHistoryJson =
+        projectHistory
+          ?.takeIf { catalogBundleHost(renderHost)?.provenance == null }
+          ?.let { history -> withContext(Dispatchers.IO) { history.timelineJsonFor(preview.id) } }
       markGeneration(
         "static-page",
         viewerCacheControl(githubAuthConfigured = githubAuth != null, isPublic = isPublic),
@@ -3044,10 +3069,41 @@ class ServeHttpServer(
               ServeUrls.historyManifestUrl(it.repo, it.branch)
             },
           historyRepo = catalogBundleHost(renderHost)?.provenance?.repo,
+          // …and its project-mode twin: the timeline inlined rather than fetched, with its entries
+          // pointing back at this server's `/history/render/` lane. Mutually exclusive with the
+          // pair above by construction — a session has catalog provenance or it has a local repo,
+          // never both.
+          historyInlineJson = localHistoryJson,
+          historyLocalRenders = localHistoryJson != null,
         ),
         ContentType.Text.Html,
       )
     }
+  }
+
+  /**
+   * `GET /history/render/{blob}.png`: one historical render, read out of the local repository by
+   * content sha — what a project-mode timeline chip links to (see [ServeProjectHistory]).
+   *
+   * Content-addressed rather than `<commit>/<path>` addressed, so there is no path to traverse and
+   * no ref to steer: the sha is either one the current timeline names or it is a 404. Deliberately
+   * session-independent — the blob belongs to the repository, not to a session — but registered in
+   * both URL forms so the viewer can link relative to whichever prefix it was served under.
+   */
+  private suspend fun RoutingContext.handleHistoryRender() {
+    if (rejectBadToken()) return
+    val history = projectHistory
+    val name = call.parameters["name"].orEmpty().removeSuffix(".png")
+    val bytes =
+      if (history == null) null else withContext(Dispatchers.IO) { history.renderBytes(name) }
+    if (bytes == null) {
+      call.respondText("no such render", status = HttpStatusCode.NotFound)
+      return
+    }
+    // Immutable by construction — the URL *is* the content hash — but this is a token-gated
+    // response on a private box, so it follows the same no-store rule as every other one.
+    markGeneration("history-render", DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondBytes(bytes, ContentType.Image.PNG)
   }
 
   /**
@@ -3277,19 +3333,32 @@ class ServeHttpServer(
               )
             }
             is RenderOutcome.Ok -> {
-              markGeneration(
-                outcome.generation.wire,
-                if (
-                  outcome.generation == RenderOutcome.Generation.BAKED &&
-                    overrideParams.isEmpty() &&
-                    isPublic
-                ) {
-                  STATIC_RESOURCE_CACHE_CONTROL
+              // Baked pixels answering an override-bearing request are pixels that do NOT reflect
+              // the override — byte-identical to the un-overridden snapshot, under a 200 (#3449).
+              // Every other generation is a real render keyed by these overrides.
+              val dropped =
+                if (outcome.generation == RenderOutcome.Generation.BAKED) {
+                  CatalogLiveRouting.droppedOverrideNames(previewId, overrides)
                 } else {
-                  DYNAMIC_RESOURCE_CACHE_CONTROL
-                },
-              )
-              call.respondBytes(outcome.png, ContentType.Image.PNG)
+                  emptyList()
+                }
+              if (dropped.isNotEmpty()) {
+                respondDroppedOverrides(renderHost, previewId, outcome, dropped)
+              } else {
+                markGeneration(
+                  outcome.generation.wire,
+                  if (
+                    outcome.generation == RenderOutcome.Generation.BAKED &&
+                      overrideParams.isEmpty() &&
+                      isPublic
+                  ) {
+                    STATIC_RESOURCE_CACHE_CONTROL
+                  } else {
+                    DYNAMIC_RESOURCE_CACHE_CONTROL
+                  },
+                )
+                call.respondBytes(outcome.png, ContentType.Image.PNG)
+              }
             }
             RenderOutcome.NotFound ->
               call.respondText("no such preview", status = HttpStatusCode.NotFound)
@@ -3298,6 +3367,60 @@ class ServeHttpServer(
           }
         }
       }
+    }
+  }
+
+  /**
+   * Answer a render whose **validated overrides were not applied** — the pixels in [outcome] are
+   * the preview's baked snapshot, produced without a renderer, while the request asked for
+   * [dropped].
+   *
+   * The old behaviour was `200 image/png` with those bytes, which is a wrong answer delivered
+   * confidently: the response is indistinguishable from a render where the override genuinely
+   * changed nothing, so a diff bot, a parity check, or an agent iterating on a theme concludes "no
+   * visual difference" for pixels that were never rendered (#3449). Every override kind now agrees
+   * here — `fontScale`, `uiMode`, and `themeProvider` alike — rather than one path 503ing while the
+   * commoner ones quietly returned the snapshot.
+   *
+   * Three outcomes, all naming the dropped params in [DROPPED_OVERRIDES_HEADER] so even a `curl -I`
+   * can tell:
+   * - `?fallback=baked` — the caller explicitly accepted the snapshot (the viewer asks for this
+   *   when it would rather show published pixels than a broken image). 200, plus
+   *   `X-Compose-Preview-Render: baked-fallback`, since the pixels carry no signal of their own.
+   * - the preview HAS a live lane, just not right now (daemon down, cold, no free seat) — 503 +
+   *   `Retry-After`, matching what a pure `themeProvider` request already returned in this state.
+   * - the preview has NO live lane at all (a static/untrusted catalog, an unmapped Android-only
+   *   variant) — 409: retrying can't help, and the viewer already treats 409 as terminal.
+   */
+  private suspend fun RoutingContext.respondDroppedOverrides(
+    renderHost: ServeHost,
+    previewId: String,
+    outcome: RenderOutcome.Ok,
+    dropped: List<String>,
+  ) {
+    call.response.headers.append(DROPPED_OVERRIDES_HEADER, dropped.joinToString(","))
+    if (call.request.queryParameters[FALLBACK_PARAM]?.lowercase() == FALLBACK_BAKED) {
+      call.response.headers.append(RENDER_HEADER, RENDER_BAKED_FALLBACK)
+      markGeneration(outcome.generation.wire, DYNAMIC_RESOURCE_CACHE_CONTROL)
+      call.respondBytes(outcome.png, ContentType.Image.PNG)
+      return
+    }
+    val params = dropped.joinToString(", ")
+    if (renderHost.canRenderOverridesFor(previewId)) {
+      call.response.headers.append(HttpHeaders.RetryAfter, "2")
+      call.respondText(
+        "override not applied: $params — this preview's live render lane is unavailable; " +
+          "retry shortly, or add &$FALLBACK_PARAM=$FALLBACK_BAKED to accept the baked snapshot " +
+          "(which ignores the override)",
+        status = HttpStatusCode.ServiceUnavailable,
+      )
+    } else {
+      call.respondText(
+        "override not applied: $params — this preview has no live render lane, so only its baked " +
+          "snapshot can be served; add &$FALLBACK_PARAM=$FALLBACK_BAKED to accept it (which " +
+          "ignores the override)",
+        status = HttpStatusCode.Conflict,
+      )
     }
   }
 
@@ -3655,6 +3778,33 @@ class ServeHttpServer(
     private const val MAX_ADMIN_BODY_BYTES = 64L * 1024
 
     const val GENERATION_HEADER: String = "X-Compose-Preview-Generation"
+
+    /**
+     * How a `/render` response relates to what was asked for, when that needs saying at all. Only
+     * value today: [RENDER_BAKED_FALLBACK] — the caller asked for an override, accepted a baked
+     * snapshot via `?fallback=baked`, and these pixels do not reflect it. Absent on an ordinary
+     * render (see [GENERATION_HEADER] for how the pixels were produced).
+     */
+    const val RENDER_HEADER: String = "X-Compose-Preview-Render"
+
+    /** [RENDER_HEADER] value: baked pixels standing in for a render that could not be made. */
+    const val RENDER_BAKED_FALLBACK: String = "baked-fallback"
+
+    /**
+     * Comma-separated names of the validated override params a `/render` response does NOT reflect
+     * (`fontScale,uiMode`, `knob.label`, …). Present on the refusals *and* on an accepted
+     * `?fallback=baked` 200, because the pixels themselves carry no signal.
+     */
+    const val DROPPED_OVERRIDES_HEADER: String = "X-Compose-Preview-Dropped-Overrides"
+
+    /**
+     * `?fallback=baked` — opt in to the un-overridden snapshot instead of a refusal when the live
+     * render lane can't honour the request. Not an override param (never reaches
+     * [ServeOverrides.parse]).
+     */
+    const val FALLBACK_PARAM: String = "fallback"
+
+    const val FALLBACK_BAKED: String = "baked"
     private const val DEFAULT_PORT_RANGE = 32
 
     /** Short edge/browser caching for HTML assembled entirely from published catalog metadata. */

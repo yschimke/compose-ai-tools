@@ -85,6 +85,13 @@ test("PNG lane re-renders on knob override", async ({ request }) => {
     Buffer.compare(baseBuf, overBuf) !== 0,
     "override PNG bytes should differ from baseline (daemon re-rendered)",
   ).toBeTruthy();
+  // #3449: the honest-render side of the same contract. These pixels DID come from
+  // a daemon, so the response must carry no dropped-override signal — a refusal
+  // here would mean the live lane silently stopped being used.
+  expect(
+    over.headers()["x-compose-preview-dropped-overrides"],
+    "a real override render drops nothing",
+  ).toBeUndefined();
 });
 
 test("SVG lane bakes the override text into the vector", async ({

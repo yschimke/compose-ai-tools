@@ -48,6 +48,14 @@ object PreviewHistoryManifest {
   /** The file's name on the delivery branch, beside `baselines.json`. */
   const val FILE_NAME: String = "history.json"
 
+  /**
+   * Its neighbour, and the only source of the render-path → preview-id join
+   * ([renderPathsToPreviewIds]). Named here so a reader of the delivery branch — CI's
+   * `HistoryManifestCommand`, `serve`'s project-mode [ServeProjectHistory] — doesn't restate the
+   * filename per call site.
+   */
+  const val BASELINES_FILE_NAME: String = "baselines.json"
+
   @Serializable
   data class Manifest(
     /**

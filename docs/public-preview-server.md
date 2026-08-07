@@ -1099,6 +1099,37 @@ available from the carried documents.
 > slugs once per process and renders those families in Roboto — non-fatal, but visibly different from
 > the PNG.
 
+### When an override can't be applied, the render is refused — not quietly baked
+
+Every fallback above (`livebundle-unavailable`, an untrusted catalog, a missing Android runtime, an
+unmapped sticker, no free live seat, a daemon that is simply down) leaves `serve` holding baked
+pixels for a request that asked for something else. Those pixels are **byte-identical to the
+un-overridden snapshot**, so a `200 image/png` there is a wrong answer delivered confidently: a diff
+bot, a parity check, or an agent iterating on a theme reads "no visual difference" and concludes the
+override had no effect on the UI, when in fact it was never rendered ([#3449]).
+
+So `GET /render/{id}.png` refuses instead, and every override kind agrees — `fontScale`, `uiMode`,
+`themeProvider`, `device`, `knob.<key>`, `rc.<name>`:
+
+| state | response |
+|---|---|
+| no override, or one the baked variant already satisfies (`uiMode=light` on a `…__light` id) | `200 image/png`, `X-Compose-Preview-Generation: baked` |
+| the override was applied | `200 image/png`, `X-Compose-Preview-Generation: daemon` (or `daemon-cache` / `catalog-cache`) |
+| the preview **has** a live lane, but it can't serve right now (daemon down/cold, no free seat) | `503` + `Retry-After: 2` |
+| the preview has **no** live lane at all (static or untrusted catalog, unmapped variant) | `409` — retrying can't help |
+| `&fallback=baked` on the request | `200 image/png` + `X-Compose-Preview-Render: baked-fallback` |
+
+All four override-carrying responses carry **`X-Compose-Preview-Dropped-Overrides`** — a
+comma-separated list of exactly the params the returned pixels do not reflect (`fontScale,uiMode`,
+`knob.label`, …), so even a `curl -I` can tell. An unrecognised param is not an override and is
+still ignored silently (a cache-buster must not 409 a page).
+
+`&fallback=baked` is the opt-in for callers that would rather show the published snapshot than
+nothing — but it is marked unmissably in the headers, because the pixels themselves carry no signal.
+A malformed override value is still a `400` at parse time, as before; this is about *valid* ones.
+
+[#3449]: https://github.com/yschimke/compose-ai-tools/issues/3449
+
 ### Bounding the live tier — `--live-seats` / `SERVE_LIVE_SEATS`
 
 Each live (daemon-backed) stream holds a JVM Compose render session, so on a constrained box a burst
@@ -1190,6 +1221,39 @@ backoffs, timeouts) — and the top-level `renderStats` is the roll-up across da
 (`firstRenderMs` there is the *worst* first render, the cold-start headline the
 background-sandbox-boot work drives down). Both are additive on `status/v1` and null/absent until
 something has rendered.
+
+### Render circuit breaker
+
+`renderStats` also carries `shortCircuited` and — only while a lane is broken — a `breaker` object:
+
+```json
+"renderStats": { "renders": 196, "ok": 196, "failed": 21, "shortCircuited": 3773,
+  "breaker": { "open": true, "fatal": true,
+    "reason": "render lane disabled after a non-recoverable UnsatisfiedLinkError — retrying cannot help. …",
+    "openedAtEpochMillis": 1754582400000, "failureRate": 1.0, "sampleCount": 50,
+    "shortCircuitedRenders": 3773 } }
+```
+
+A daemon that fails a render **fatally** — an `UnsatisfiedLinkError`, `NoClassDefFoundError`,
+`NoSuchMethodError` or any other linkage/classpath fault — cannot succeed on retry, ever, for any
+input, so the host stops asking after the first occurrence (`fatal: true`, no cooldown; it takes a
+republished bundle or a restart to clear). Any *other* sustained run of failures — 90% of the last
+50 renders — trips the same breaker without being classified (`fatal: false`); that one probes with
+a single render a minute and closes itself as soon as one succeeds.
+
+While the breaker is open the host:
+
+- answers `/render` with the **underlying failure reason** as a terminal `409`, not
+  `503 render busy; retry shortly` (the daemon isn't busy, and retrying will never help);
+- reports `live: false` for the catalog and publishes a `render-lane-broken` `degradation`, instead
+  of advertising a healthy live lane at a 95% failure rate;
+- **pauses background theme optimization** for that catalog — it is the largest consumer of the
+  render gate and pure waste while every render fails. A presence heartbeat re-enters the pass, so
+  it resumes by itself if the breaker closes.
+
+`shortCircuited` counts the renders refused this way. It is deliberately *not* folded into `failed`
+— the daemon was never asked, so counting it there would inflate the failure rate that tripped the
+breaker and hide how much work the breaker is saving.
 
 A Home Assistant REST sensor reads the top-level `status` (`ok`/`degraded`) as its state and lifts
 the grouped counts + arrays as attributes, e.g.:

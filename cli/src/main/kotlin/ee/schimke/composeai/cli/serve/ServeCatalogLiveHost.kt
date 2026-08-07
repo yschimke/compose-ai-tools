@@ -397,6 +397,12 @@ class ServeCatalogLiveHost(
     }
     catalogThemeCache.configureTargets(jobs.map { it.cacheKey })
     if (jobs.isEmpty() || catalogThemeCache.snapshot().fullyOptimized) return
+    // Never start a pass into a broken renderer. The optimizer is the largest consumer of the
+    // render gate, and every item it queues against an open breaker is pure waste — 4740 remaining
+    // at a ~7h ETA on work where every single render fails (issue #3448). Targets stay configured
+    // so `/status` keeps reporting the shortfall; `keepLiveWarm` re-enters this on every presence
+    // heartbeat, so the pass resumes by itself if the breaker closes.
+    if (renderBreakerStopsBackgroundWork()) return
     if (!optimizationStarted.compareAndSet(false, true)) return
     optimizationActive.set(true)
     optimizationExecutor.execute {
@@ -412,6 +418,10 @@ class ServeCatalogLiveHost(
         val byPreview =
           jobs.filter { catalogThemeCache.get(it.cacheKey) == null }.groupBy { it.previewId }
         for ((previewId, previewJobs) in byPreview) {
+          // Re-checked per preview as well as at entry: a breaker can trip mid-pass (that is the
+          // rate trip's whole job), and the pass must stop feeding the renderer the moment it does
+          // rather than grinding through the remaining thousands of items.
+          if (renderBreakerStopsBackgroundWork()) return@execute
           // Gate BEFORE the warm, not just before the renders. `daemonWarmOrScheduling` starts a
           // cold daemon, which is the single most expensive thing this pass can do to a box that is
           // still loading catalogs or serving traffic — exactly what the idle gate exists to
@@ -520,6 +530,17 @@ class ServeCatalogLiveHost(
         optimizationStarted.set(false)
       }
     }
+  }
+
+  /**
+   * True when the live lane's circuit breaker is open, so background prefetch must stand down.
+   * Marks the cache paused on the way out — the pass is stopping, not finishing, and `/status` must
+   * not read a broken catalog's abandoned targets as a completed optimization.
+   */
+  private fun renderBreakerStopsBackgroundWork(): Boolean {
+    if (renderBreaker()?.open != true) return false
+    catalogThemeCache.markPaused()
+    return true
   }
 
   /**
@@ -756,8 +777,33 @@ class ServeCatalogLiveHost(
   override fun hasSvgExportFor(previewId: String): Boolean =
     (previewId in alias && live.hasSvgExport) || baked.hasSvgExportFor(previewId)
 
-  /** The "Live (stream)" toggle is offered (unlike a plain static catalog). */
-  override val hasLiveStream: Boolean = true
+  /**
+   * The "Live (stream)" toggle is offered (unlike a plain static catalog) — until this catalog's
+   * live lane breaks. An open render breaker means no live render can succeed, so the catalog must
+   * stop advertising `live` on `/status` and stop offering the toggle: reporting a healthy live
+   * lane at a 95% failure rate is issue #3448's third consequence.
+   *
+   * Read off [renderBreaker] rather than `live.hasLiveStream` so a composite whose live host is a
+   * non-daemon stand-in still advertises the stream exactly as before.
+   */
+  override val hasLiveStream: Boolean
+    get() = renderBreaker()?.open != true
+
+  /**
+   * The live lane's open breaker, if any. Only the monolithic daemon is consulted: the per-preview
+   * pool's residents come and go (and a broken *classpath* breaks them all identically, so the
+   * monolith speaks for them), while the pool snapshot would need a live read of hosts this must
+   * never wake.
+   */
+  override fun renderBreaker(): RenderBreakerSnapshot? = live.renderBreaker()
+
+  /**
+   * The baked catalog's own degradations (baked-only, unverified, deferred-not-served — which this
+   * composite previously dropped on the floor, reporting `degradation: null` for every catalog it
+   * fronted), plus the live lane's broken-render-lane degradation when its breaker is open.
+   */
+  override val degradations: List<ServeDegradation>
+    get() = baked.degradations + live.degradations
 
   /**
    * The underlying baked catalog host, so the HTTP layer can read its title / subtitle / trust
@@ -794,8 +840,19 @@ class ServeCatalogLiveHost(
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
     renderInternal(previewId, overrides, leased = false)
 
+  /**
+   * A broken live lane latches EVERY preview, not just the ones the theme cache has recorded
+   * against: the fault is in the daemon, so the answer is the same for all of them. Checked first
+   * so a `/render` gets the terminal 409 naming the real error before it takes a render slot —
+   * ahead of the per-key theme latch, which only knows about keys the optimizer reached.
+   *
+   * Scoped to daemon-twinned ids ([alias]): an unmapped variant never reaches the live lane — it
+   * replays baked pixels — so a broken daemon must not turn its perfectly serveable request into
+   * a 409.
+   */
   override fun renderFailureLatch(previewId: String, overrides: PreviewOverrides): String? =
-    themeCacheKey(previewId, overrides)?.let(catalogThemeCache::failureReason)
+    (if (previewId in alias) live.renderBreaker()?.takeIf { it.open }?.reason else null)
+      ?: themeCacheKey(previewId, overrides)?.let(catalogThemeCache::failureReason)
 
   /**
    * Shed the pooled daemons — burst replicas and per-preview residents — while keeping the

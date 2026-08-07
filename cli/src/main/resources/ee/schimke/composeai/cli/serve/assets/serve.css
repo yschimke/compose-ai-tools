@@ -864,6 +864,16 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   font-size: 0.75rem;
   cursor: help;
 }
+/* Project mode: the strip describes published baselines, not the stage above it. Styled as a quiet
+   label rather than a warning — it is context, not a problem. */
+.cp-history-scope {
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--cp-border, #d0d7de);
+  border-radius: 999px;
+  color: var(--cp-muted, #656d76);
+  font-size: 0.75rem;
+  cursor: help;
+}
 /* Horizontal scroll rather than wrap: the strip is chronological, and a wrapped timeline reads as
    unordered. */
 .cp-history-list {

@@ -4638,6 +4638,16 @@ object ServeWeb {
      * no coverage at all.
      */
     historyInlineJson: String? = null,
+    /**
+     * Project mode: the timeline was computed from the local repository ([ServeProjectHistory]), so
+     * its entries link at this server's own `/history/render/<blob>.png` rather than at
+     * raw.githubusercontent.com — a local checkout has no such URL. Also tells the viewer the strip
+     * describes *published baselines* rather than the stage, which in project mode is rendered from
+     * the working tree and so need not match the newest entry.
+     *
+     * Only honoured alongside [historyInlineJson]: with no payload there is nothing to link.
+     */
+    historyLocalRenders: Boolean = false,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -5152,6 +5162,14 @@ object ServeWeb {
       if (!historyManifestUrl.isNullOrBlank() && !historyRepo.isNullOrBlank()) {
         " data-history-url=\"${WebEscaping.htmlEscape(historyManifestUrl)}\"" +
           " data-history-repo=\"${WebEscaping.htmlEscape(historyRepo)}\""
+      } else if (historyLocalRenders && !historyInlineJson.isNullOrBlank()) {
+        // The project-mode twin of the pair above: no delivery repo to address a historical render
+        // on, so the entries point back at this server, which reads the bytes out of the local
+        // object store by content sha. `{blob}` is substituted client-side — a template rather than
+        // one URL per version keeps the payload to the shas the manifest already carries.
+        " data-history-blob-url=\"" +
+          WebEscaping.htmlEscape("$basePath/history/render/{blob}.png$q") +
+          "\""
       } else ""
     // `</script>` inside a JSON payload would end the element early, so the only sequence that can
     // break out is neutralised. The payload itself is server-built from the catalog's own manifest.

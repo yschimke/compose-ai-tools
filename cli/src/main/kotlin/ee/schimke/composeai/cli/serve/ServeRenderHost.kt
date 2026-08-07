@@ -523,7 +523,48 @@ internal constructor(
   // Serve-side render-latency accounting for `/status` (`renderStats`) — see [RenderPerfStats].
   private val perfStats = RenderPerfStats()
 
-  override fun renderPerfStats(): RenderPerfSnapshot = perfStats.snapshot()
+  /**
+   * Stops this host re-attempting renders it has proved it cannot serve — a linkage fault on the
+   * first occurrence, an unclassified sustained failure rate on the backstop. See
+   * [RenderCircuitBreaker] and issue #3448 (3794 retries of one `UnsatisfiedLinkError` in 14
+   * minutes).
+   */
+  private val breaker = RenderCircuitBreaker()
+
+  override fun renderPerfStats(): RenderPerfSnapshot =
+    perfStats.snapshot().copy(breaker = breaker.snapshot())
+
+  override fun renderBreaker(): RenderBreakerSnapshot? = breaker.snapshot()
+
+  /**
+   * An open breaker is host-wide, so it latches EVERY preview: the fault is in the daemon's
+   * classpath, not in one composition. This is what turns the `503 render busy; retry shortly` into
+   * a terminal 409 naming the linkage error — the HTTP layer consults the latch before it takes a
+   * render slot.
+   */
+  override fun renderFailureLatch(previewId: String, overrides: PreviewOverrides): String? =
+    breaker.peekReason()
+
+  /**
+   * A host whose breaker is open has no working live lane, so it must stop advertising one — the
+   * `/status` `live` / `running` columns and the viewer's stream toggle both read this. Reported
+   * from the breaker alone; no session is touched, so a registered-but-unopened catalog is
+   * unaffected.
+   */
+  override val hasLiveStream: Boolean
+    get() = breaker.peekReason() == null
+
+  /** Publishes the open breaker as a session degradation, so `/status` says WHY it went dark. */
+  override val degradations: List<ServeDegradation>
+    get() =
+      breaker.snapshot()?.let { listOf(ServeDegradation.renderLaneBroken(it.reason, it.fatal)) }
+        ?: emptyList()
+
+  /** Record a failed render against both the perf counters and the breaker. */
+  private fun recordFailure(durationMs: Long, timeout: Boolean, reason: String) {
+    perfStats.recordFailed(durationMs, timeout = timeout, reason = reason)
+    breaker.recordFailure(reason)
+  }
 
   // Set under renderLock immediately before each renderNow; the (single) in-flight render's
   // renderFinished notification fills pngPath and trips the latch. Safe because the lock guarantees
@@ -619,6 +660,16 @@ internal constructor(
       return RenderOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
     }
 
+    // The daemon has already proved it cannot serve this (a linkage fault, or a sustained failure
+    // rate) — answer with that reason instead of asking it again. Ahead of the lock acquire, so a
+    // broken daemon neither holds the render lock nor pushes other callers into a Busy back-off
+    // that reads to the browser as "the server is busy, retry" (issue #3448). A rate-tripped
+    // breaker lets one probe render through per cooldown, so a transient wave still heals.
+    breaker.blockedReason()?.let {
+      perfStats.recordShortCircuit()
+      return RenderOutcome.Failed(it)
+    }
+
     // Perf accounting for `/status` (`renderStats`): the round-trip clock starts at the cache
     // miss, and "cold" is judged before the render — a render issued while this host has never
     // completed one is the cold-start population the boot/warm work targets.
@@ -667,7 +718,7 @@ internal constructor(
           } catch (e: RenderSessionException) {
             val reason = "renderNow failed: ${e.message}"
             onLog(reason)
-            perfStats.recordFailed(perfElapsedMs(), timeout = false, reason = reason)
+            recordFailure(perfElapsedMs(), timeout = false, reason = reason)
             return RenderOutcome.Failed(reason)
           }
 
@@ -679,7 +730,7 @@ internal constructor(
           }
           val reason = "render rejected: ${rejected.reason}"
           onLog(reason)
-          perfStats.recordFailed(perfElapsedMs(), timeout = false, reason = reason)
+          recordFailure(perfElapsedMs(), timeout = false, reason = reason)
           return RenderOutcome.Failed(reason)
         }
 
@@ -697,7 +748,7 @@ internal constructor(
           staleRenders.merge(previewId, 1, Int::plus)
           val reason = "timed out after ${budget}s waiting for render"
           onLog(reason)
-          perfStats.recordFailed(perfElapsedMs(), timeout = true, reason = reason)
+          recordFailure(perfElapsedMs(), timeout = true, reason = reason)
           return RenderOutcome.Failed(reason)
         }
         // The latch also trips on `renderFailed` — the daemon reported the render body threw.
@@ -709,7 +760,7 @@ internal constructor(
         pendingFailure.get()?.let { failure ->
           val reason = "render failed: $failure"
           onLog(reason)
-          perfStats.recordFailed(perfElapsedMs(), timeout = false, reason = reason)
+          recordFailure(perfElapsedMs(), timeout = false, reason = reason)
           return RenderOutcome.Failed(reason)
         }
         warmedUp.set(true)
@@ -726,12 +777,13 @@ internal constructor(
       if (bytes == null) {
         val reason = "render produced no PNG"
         onLog(reason)
-        perfStats.recordFailed(perfElapsedMs(), timeout = false, reason = reason)
+        recordFailure(perfElapsedMs(), timeout = false, reason = reason)
         return RenderOutcome.Failed(reason)
       }
 
       cache.put(key, bytes)
       perfStats.recordOk(perfElapsedMs(), cold = coldAtEntry)
+      breaker.recordOk()
       return RenderOutcome.Ok(bytes)
     } finally {
       renderLock.unlock()

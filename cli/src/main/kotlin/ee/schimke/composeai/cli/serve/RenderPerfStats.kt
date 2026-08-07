@@ -24,6 +24,7 @@ class RenderPerfStats {
   private var failed = 0L
   private var timedOut = 0L
   private var busy = 0L
+  private var shortCircuited = 0L
   private var cacheHits = 0L
   private var coldOk = 0L
   private var firstRenderMs: Long? = null
@@ -44,6 +45,14 @@ class RenderPerfStats {
 
   /** The bounded render-lock acquire backed off ([RenderOutcome.Busy] → caller serves baked). */
   fun recordBusy(): Unit = synchronized(lock) { busy++ }
+
+  /**
+   * A render refused without asking the daemon because this host's [RenderCircuitBreaker] is open.
+   * Its own counter rather than a [recordFailed]: the daemon was never asked, so folding these into
+   * `failed` would inflate the very failure rate that tripped the breaker and hide how much work
+   * the breaker is saving.
+   */
+  fun recordShortCircuit(): Unit = synchronized(lock) { shortCircuited++ }
 
   /**
    * A render that ended in [RenderOutcome.Failed]; [timeout] when it blew its render budget.
@@ -107,6 +116,7 @@ class RenderPerfStats {
         failed = failed,
         timedOut = timedOut,
         busy = busy,
+        shortCircuited = shortCircuited,
         cacheHits = cacheHits,
         coldRenders = coldOk,
         firstRenderMs = firstRenderMs,
@@ -161,6 +171,12 @@ data class RenderPerfSnapshot(
   val timedOut: Long,
   /** Bounded lock acquires that backed off to baked ([RenderOutcome.Busy]). */
   val busy: Long,
+  /**
+   * Renders refused without asking the daemon because the host's [RenderCircuitBreaker] is open —
+   * the retry storm that is no longer happening. Excluded from [renders] and [failed]: the daemon
+   * was never asked.
+   */
+  val shortCircuited: Long = 0,
   /** `/render`s served from the PNG cache without waking the daemon. */
   val cacheHits: Long,
   /** Successful renders issued before the host's first success — the cold-start population. */
@@ -186,6 +202,11 @@ data class RenderPerfSnapshot(
   val lastFailureAtEpochMillis: Long? = null,
   /** Bounded, newest-first failure detail for status diagnostics. */
   val recentFailures: List<RenderFailureSample> = emptyList(),
+  /**
+   * Set while this lane's [RenderCircuitBreaker] is open — the host has stopped attempting renders
+   * and is answering with [RenderBreakerSnapshot.reason] instead. Null is the healthy case.
+   */
+  val breaker: RenderBreakerSnapshot? = null,
 ) {
   companion object {
     /**
@@ -202,6 +223,7 @@ data class RenderPerfSnapshot(
         failed = snapshots.sumOf { it.failed },
         timedOut = snapshots.sumOf { it.timedOut },
         busy = snapshots.sumOf { it.busy },
+        shortCircuited = snapshots.sumOf { it.shortCircuited },
         cacheHits = snapshots.sumOf { it.cacheHits },
         coldRenders = snapshots.sumOf { it.coldRenders },
         firstRenderMs = snapshots.mapNotNull { it.firstRenderMs }.maxOrNull(),
@@ -225,6 +247,17 @@ data class RenderPerfSnapshot(
             .flatMap { it.recentFailures }
             .sortedByDescending { it.atEpochMillis }
             .take(RenderPerfStats.FAILURE_WINDOW_SIZE),
+        // A fatal (linkage) trip wins over a rate trip, then the most recent — the roll-up should
+        // name the breaker that most needs a human, not whichever daemon happens to sort first.
+        breaker =
+          snapshots
+            .mapNotNull { it.breaker }
+            .filter { it.open }
+            .sortedWith(
+              compareByDescending<RenderBreakerSnapshot> { it.fatal }
+                .thenByDescending { it.openedAtEpochMillis ?: 0 }
+            )
+            .firstOrNull(),
       )
     }
   }
