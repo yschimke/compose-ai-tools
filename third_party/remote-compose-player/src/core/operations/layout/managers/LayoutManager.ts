@@ -179,10 +179,19 @@ export abstract class LayoutManager extends LayoutComponent {
         // Java does this via ComponentData.updateComponentData in LayoutComponent.
         this.updateComponentValues(context.getContext(), w, h);
 
-        // Measure children with fill sizing (skip if already done in scroll path)
+        // Measure children with fill sizing (skip if already done in scroll path).
+        // The children's minimums are 0, not this container's own `minWidth`/`minHeight`: a min
+        // constraint bounds *this* component (a weighted cell is handed min == max so it fills its
+        // slot), and forwarding it downward made every child at least as large as the parent — a
+        // `size(20)` icon and a wrapped label both came out full-cell and overlapped their
+        // neighbours. Compose measures a Row/Column/Box child with a zero minimum for the same
+        // reason. It also kept `ColumnLayout.computeSize` from ever shrinking: that loop reduces
+        // the child *max* as it goes, so with a fixed min the second child was measured min > max
+        // and every later child inherited the parent's height. The scroll path above already
+        // passes 0.
         if (!scrollMod) {
-            this.computeSize(context, minWidth, contentExtent(w, padding_w),
-                minHeight, contentExtent(h, padding_h), measure);
+            this.computeSize(context, 0, contentExtent(w, padding_w),
+                0, contentExtent(h, padding_h), measure);
         }
 
         // Re-assign final dimensions after computeSize() (matching Java lines 558-563).

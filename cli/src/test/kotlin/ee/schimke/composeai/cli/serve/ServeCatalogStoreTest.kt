@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
@@ -342,6 +343,123 @@ class ServeCatalogStoreTest {
     assertTrue(requested.any { it.endsWith("/references/index.json") })
     assertFalse(requested.any { it.startsWith("https://api.figma.com") })
     assertFalse(requested.any { it.endsWith("mocks/button.html") })
+  }
+
+  /**
+   * A served catalog is a fresh staging tree assembled from explicitly fetched parts, so a
+   * published file nobody copies is invisible to the host no matter what the producer wrote. The
+   * parity feed is exactly that kind of file, and getting this wrong is silent: the `/parity` view
+   * still renders, just coverage-only, on every *published* catalog — which is every catalog the
+   * feature exists for.
+   */
+  @Test
+  fun `catalog stages the published parity activity feed`() {
+    val root = tempRoot()
+    val requested = mutableListOf<String>()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[
+         {"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val activity =
+      """
+      {"schema":"compose-preview-activity/v1","generatedAt":"2026-08-06T09:12:00Z",
+       "windowDays":30,
+       "code":{"repo":"yschimke/m3-catalog","ref":"main","events":[
+         {"sha":"4e73ec2b9f0a1c3d5e7f9a1b3c5d7e9f0a1b3c5d","subject":"fix: padding",
+          "at":"2026-08-05T10:00:00Z","previewIds":["button"],"components":["Button/Filled"]}]},
+       "figma":{"fileKey":"abc123","comments":[
+         {"id":"c1","at":"2026-08-04T08:00:00Z","message":"2dp short","nodeId":"51592:4768"}]},
+       "gaps":[{"kind":"unmapped-design-node","detail":"nothing maps to it"}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      requested += url
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+        url.endsWith("/parity/activity.json") -> activity.encodeToByteArray()
+        url.endsWith("/images/button.png") -> png()
+        else -> null
+      }
+    }
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = fetch,
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    assertTrue(requested.any { it.endsWith("/parity/activity.json") }, "the feed is fetched")
+    val loaded = registered.getValue("compose-m3").parityActivity()
+    assertNotNull(loaded, "the feed reached the host through the staging tree")
+    assertEquals("yschimke/m3-catalog", loaded.code?.repo)
+    assertEquals(1, loaded.code?.events?.size)
+    assertEquals("51592:4768", loaded.figma?.comments?.single()?.nodeId)
+    assertEquals(1, loaded.gaps.size)
+  }
+
+  @Test
+  fun `a catalog publishing no parity feed serves without one`() {
+    val root = tempRoot()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertNull(registered.getValue("compose-m3").parityActivity())
+  }
+
+  /** A malformed feed must not reach the staging tree, let alone the page. */
+  @Test
+  fun `a parity feed that fails validation is not staged`() {
+    val root = tempRoot()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = { url ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+            // Right filename, wrong schema token — the reader would discard it anyway; this
+            // asserts it never lands.
+            url.endsWith("/parity/activity.json") ->
+              """{"schema":"something-else/v9","gaps":[]}""".encodeToByteArray()
+            url.endsWith("/images/button.png") -> png()
+            else -> null
+          }
+        },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertNull(registered.getValue("compose-m3").parityActivity())
   }
 
   @Test

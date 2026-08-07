@@ -90,6 +90,30 @@ else
   echo "$RENDER_RC" > "$GITHUB_WORKSPACE/_compose_render_rc"
 fi
 
+# Snapshot the per-preview `.error.json` sidecars NOW, while they still
+# describe this render. Two things make the live tree unsafe to upload later:
+# `notifications` re-runs `composePreviewRenderAll` into the same
+# `<module>/build/compose-previews` tree in the default all-pipeline run, and
+# the renderer drops each stale sidecar before its next attempt (see
+# DesktopRendererMain, "Drop any stale sidecar before attempting a fresh
+# render"). The upload step is a top-level GHA step that runs after every
+# pipeline, so a compose failure followed by a successful later re-render
+# would leave `compose_render_rc` non-zero while the diagnostics it points at
+# were deleted — or replaced by a different pipeline's errors.
+compose_rc_now=$(cat "$GITHUB_WORKSPACE/_compose_render_rc" 2>/dev/null || echo 0)
+if [ "$compose_rc_now" -ne 0 ]; then
+  stage_dir="$GITHUB_WORKSPACE/_compose_render_errors"
+  rm -rf "$stage_dir"
+  staged=0
+  while IFS= read -r sidecar; do
+    rel="${sidecar#./}"
+    mkdir -p "$stage_dir/$(dirname "$rel")"
+    cp "$sidecar" "$stage_dir/$rel" || true
+    staged=$((staged + 1))
+  done < <(find . -path '*/build/compose-previews/*' -name '*.error.json' -type f 2>/dev/null)
+  echo "compose pipeline: staged ${staged} render-error sidecar(s) for upload."
+fi
+
 if [ ! -s _previews.json ]; then
   echo "compose pipeline: no _previews.json — workspace has no compose modules, skipping."
   echo "0" > "$GITHUB_WORKSPACE/_compose_rc"

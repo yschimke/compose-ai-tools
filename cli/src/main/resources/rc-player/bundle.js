@@ -9887,10 +9887,17 @@ ${inner}`;
     /** Choose which of two competing width/height modifiers a component keeps.
      *  An EXACT / EXACT_DP fixed-size constraint takes precedence over a FILL/WRAP
      *  (Compose composes `size().fillMaxSize()` so the fixed size wins); otherwise
-     *  the later modifier wins, preserving the previous last-writer behaviour. */
+     *  the later modifier wins, preserving the previous last-writer behaviour.
+     *
+     *  When *both* are fixed the earlier one wins, because the modifier chain is emitted
+     *  outermost-first and Compose resolves `size(48).size(24)` to 48 — the outer call fixes the
+     *  constraints and the inner one is coerced into them. A widget that appends its own default
+     *  size behind the caller's is the common case (`RemoteIcon(modifier = size(48.dp))` carries a
+     *  24 dp default), so last-wins silently rendered every such icon at the default rather than
+     *  the size the document asked for. */
     static preferExactSize(current, next) {
       const isExact = (t) => t === WidthModifier.EXACT || t === WidthModifier.EXACT_DP;
-      if (current && isExact(current.getType()) && !isExact(next.getType())) {
+      if (current && isExact(current.getType())) {
         return current;
       }
       return next;
@@ -10559,9 +10566,9 @@ ${inner}`;
       if (!scrollMod) {
         this.computeSize(
           context,
-          minWidth,
+          0,
           contentExtent(w, padding_w),
-          minHeight,
+          0,
           contentExtent(h, padding_h),
           measure
         );
@@ -10892,7 +10899,7 @@ ${inner}`;
             if (wIn.getMax() >= 0) childWidth = Math.min(wIn.getMax() * dp, childWidth);
           }
           cm.setW(childWidth);
-          child.measure(context, childWidth, childWidth, cm.getH(), cm.getH(), measure);
+          child.measure(context, childWidth, childWidth, 0, selfHeight, measure);
         }
       }
       let childrenWidth = 0;
@@ -11158,7 +11165,7 @@ ${inner}`;
             if (hIn.getMax() >= 0) childHeight = Math.min(hIn.getMax() * dp, childHeight);
           }
           cm.setH(childHeight);
-          child.measure(context, cm.getW(), cm.getW(), cm.getH(), cm.getH(), measure);
+          child.measure(context, 0, selfWidth, childHeight, childHeight, measure);
         }
       }
       let childrenWidth = 0;

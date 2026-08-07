@@ -754,7 +754,23 @@ runs:
         path: |
           **/build/reports/tests/composePreviewRender/
           **/build/test-results/composePreviewRender/
+          _compose_render_errors/
           _previews.json
+        # `_compose_render_errors/` is the compose pipeline's snapshot of the
+        # per-preview `.error.json` sidecars — the diagnostic of record for a
+        # render failure, which the renderer writes next to where each PNG would
+        # have gone and the task's own message points at by name. The two
+        # `composePreviewRender` test-report globs above date from when the render
+        # ran as a test task; nothing writes them now, so this artifact used to
+        # match only `_previews.json` — which a failed render leaves empty — and
+        # uploaded as a 144-byte empty zip. The failure message told you to
+        # download it for "full test output" and it contained nothing.
+        #
+        # The snapshot is taken in `pipelines/compose.sh` rather than globbed live
+        # from `**/build/compose-previews/` here, because this step runs after
+        # every pipeline: `notifications` re-renders into the same tree and the
+        # renderer deletes each stale sidecar before its next attempt, so a live
+        # glob would upload a later pipeline's errors, or nothing at all.
         if-no-files-found: ignore
         retention-days: 14
 
