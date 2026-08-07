@@ -34,12 +34,24 @@
   // constrain the value to the only shape a GitHub `owner/name` can take before it can reach a URL.
   // A value that does not match cannot be made safe by escaping, so the strip is simply not drawn.
   if (repo && !/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(repo)) return;
-  // The same treatment for the local template, and for the same reason: it reaches an href. Only a
-  // site-relative path is accepted — a leading "//" is a protocol-relative URL to another host, so
-  // it is rejected rather than escaped — and it must carry the placeholder, since a template
-  // without one would point every version at the same render.
-  if (blobUrl && (blobUrl.charAt(0) !== "/" || blobUrl.charAt(1) === "/")) return;
-  if (blobUrl && blobUrl.indexOf("{blob}") === -1) return;
+  // The same treatment for the local template, and for the same reason: it reaches an href. One
+  // anchored pattern rather than a series of charAt/indexOf checks, because the whole shape is
+  // known — this server emits it — and because a pattern that describes the *entire* accepted
+  // string is what makes the guard legible to a reader and to CodeQL alike (piecemeal checks are
+  // neither):
+  //   `/` not followed by `/`   — site-relative only. The character class excludes `:`, so no
+  //                                `javascript:` URL can match, and the lookahead is what stops a
+  //                                protocol-relative `//host/…` — which the class alone would
+  //                                happily accept, since it has to allow `/` as a separator;
+  //   `{blob}.png`               — the placeholder is mandatory (a template without one would
+  //                                point every version at the same render) and the extension is
+  //                                fixed;
+  //   an optional query          — the session token, whose base64url alphabet plus `&`/`=`/`%` is
+  //                                all this allows.
+  // Nothing matching this can carry an HTML meta-character into the href. A value that does not
+  // match cannot be made safe by escaping, so the strip is not drawn at all.
+  var BLOB_URL = /^\/(?!\/)[A-Za-z0-9._~%/-]*\{blob\}\.png(\?[A-Za-z0-9._~%&=-]*)?$/;
+  if (blobUrl && !BLOB_URL.test(blobUrl)) return;
   if (!repo && !blobUrl) return;
   // Whether the strip describes renders this page is *not* showing. In project mode the stage comes
   // from the working tree while the timeline comes from the published baselines, so the newest
