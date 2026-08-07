@@ -102,6 +102,7 @@ internal object CliFlags {
       "--wasm-dir",
       "--rc-player-wasm-dir",
       "--revisions-allow",
+      "--history-branch",
       "--live-seats",
       // bundle sign / verify / keygen (producer trust)
       "--key",
