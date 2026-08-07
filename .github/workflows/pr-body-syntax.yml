@@ -1,0 +1,113 @@
+name: PR Body Syntax
+
+# Repairs the mangled-backtick markdown that agent-written PR descriptions keep
+# arriving with, so the visual evidence actually renders.
+#
+# The shape, seen verbatim in real PR bodies here:
+#
+#   ![before: one lane](``https://raw.githubusercontent.com/.../before.png)``
+#
+# GitHub renders that as literal text and a stray code span — no image. The repo
+# PR rules require the pixels to be *viewable inline* in the body, so a PR that
+# did the expensive part right (rendered the evidence, committed the PNGs, wrote
+# the URLs) still fails its own bar over two stray backticks. Cheaper to fix the
+# body than to ask for a re-edit every time.
+#
+# Detection and repair live in .github/scripts/fix-pr-body-markdown.mjs, which
+# only strips backticks ADJACENT TO A LINK DESTINATION — a destination can never
+# legally start with a backtick, so there is nothing to guess. Code spans, fenced
+# blocks, and every other backtick on the line are left alone. The script has its
+# own tests (the `selftest` job), because this edits descriptions unattended:
+# over-reach silently rewrites someone's prose, under-reach silently leaves the
+# images broken, and neither is visible without tests.
+#
+# Trigger notes:
+#   • `pull_request`, NOT `pull_request_target`. This never needs PR-head code —
+#     it reads the body from the event payload and writes it back through the
+#     API — so there is no reason to take on the `pull_request_target` footgun.
+#     The cost is that a fork PR's token is read-only, hence the same-repo guard
+#     on the `fix` job; PRs here come from `agent/…` branches on this repo.
+#   • The PATCH re-fires `edited`, so this workflow triggers itself exactly once
+#     more. That run finds nothing to change (the repair is idempotent) and
+#     stops. The concurrency group keeps the pair ordered rather than racing.
+#   • The body is untrusted text: it goes through `env:` into a file, never into
+#     a shell interpolation, per the repo zizmor policy.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/fix-pr-body-markdown*.mjs'
+      - '.github/workflows/pr-body-syntax.yml'
+
+permissions: {}
+
+concurrency:
+  group: pr-body-syntax-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    name: Fix backticked link destinations
+    # Fork PRs get a read-only token, so the PATCH would 403. Skip rather than
+    # fail red on a PR whose author cannot be helped by this job anyway.
+    if: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Repair the description
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+
+          printf '%s' "${PR_BODY:-}" > body.md
+          node .github/scripts/fix-pr-body-markdown.mjs body.md > fixed.md
+
+          if cmp -s body.md fixed.md; then
+            echo "Description is clean — nothing to fix."
+            exit 0
+          fi
+
+          echo "Repairing backticked link destinations:"
+          diff -u body.md fixed.md || true
+
+          gh api --method PATCH "repos/${REPO}/pulls/${PR_NUMBER}" \
+            -F body=@fixed.md >/dev/null
+
+          {
+            echo "### PR body repaired"
+            echo
+            echo "Removed backticks wrapping a markdown link destination, so the"
+            echo "linked images render inline. See"
+            echo '`.github/scripts/fix-pr-body-markdown.mjs`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  selftest:
+    # The repair runs unattended against real PR descriptions, so its matcher
+    # gets tests on every PR and on every push that touches it.
+    name: Repair self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the PR-body repair self-test
+        run: node --test .github/scripts/fix-pr-body-markdown.test.mjs
