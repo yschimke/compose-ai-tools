@@ -724,3 +724,63 @@ test("contract · snapshot overrides stay composed with a declared theme", async
         { orientation: "landscape" },
     );
 });
+
+// Clearing a string knob is an EDIT, not an absence. The viewer used to drop any empty knob value
+// before it ever reached the URL, so emptying a label silently re-rendered the author default —
+// and an `@OverrideVariant` seeded to "" (`strings = ["label="]`, which discovery preserves) opened
+// its control empty and then mounted the primary. A knob whose kind can't parse "" (this fixture's
+// colour) still has nothing to send, and must stay absent rather than becoming `knob.iconColor=`.
+test("contract · an emptied string knob is sent, an emptied typed knob is not", async ({
+    page,
+}) => {
+    const requests = [];
+    for (const [name, contentType] of SERVE_ASSETS) {
+        await page.route(`**/assets/serve/**/${name}`, (route) =>
+            route.fulfill({
+                path: resolve(serveAssetsDir, name),
+                contentType,
+            }),
+        );
+    }
+    await page.route("**/render/**", async (route) => {
+        requests.push(new URL(route.request().url()));
+        await route.fulfill({
+            path: renderPlaceholder,
+            contentType: "image/png",
+        });
+    });
+    await page.goto(
+        "/preview-harness/fixtures/pages/serve-viewer-catalog-knobs.html",
+    );
+    await expect.poll(() => requests.length).toBeGreaterThan(0);
+    // The knob controls live in the collapsed Overrides drawer; open it so they are editable.
+    await page
+        .locator('details[data-cp-group="overrides"]')
+        .evaluate((details) => {
+            details.open = true;
+        });
+
+    const clear = async (key) => {
+        const before = requests.length;
+        const input = page.locator(`.cp-knob[data-knob-key="${key}"]`);
+        await input.fill("");
+        await input.press("Tab");
+        await expect
+            .poll(() => requests.length, { timeout: 5_000 })
+            .toBeGreaterThan(before);
+        await page.waitForTimeout(100);
+        return requests.at(-1).searchParams;
+    };
+
+    // `has` rather than `get(...) === ""`: the distinction under test is present-and-empty versus
+    // absent, and `get` answers null for both an absent param and one this assertion would miss.
+    const afterLabel = await clear("label");
+    expect(afterLabel.has("knob.label")).toBe(true);
+    expect(afterLabel.get("knob.label")).toBe("");
+
+    const afterColor = await clear("iconColor");
+    expect(afterColor.has("knob.iconColor")).toBe(false);
+    // The string knob stays cleared across the second edit — the collector rebuilds the whole
+    // query each time, so a regression that dropped empties would lose it here too.
+    expect(afterColor.get("knob.label")).toBe("");
+});

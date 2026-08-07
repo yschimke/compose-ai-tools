@@ -181,6 +181,13 @@
     Object.keys(size).forEach(function (k) { o[k] = size[k]; });
     return o;
   }
+  // A knob control's declared kind (`string` / `int` / `float` / `bool` / `color`), from the row
+  // the server rendered. Only the empty-value rules in the collectors below consult it — everything
+  // else sends the control's text verbatim and lets the server type it from the same declaration.
+  // Defaults to `string`, which is what an undeclared knob parses as server-side.
+  function knobKind(el) {
+    return el.getAttribute("data-knob-kind") || "string";
+  }
   // The live-stream override map: the display fields PLUS the author-declared knob values as
   // `knob.<key>=<value>` entries (the daemon's setOverrides parses the same map /render does,
   // typing each from the preview's declaration). Kept separate from overrides() so query() and
@@ -195,7 +202,11 @@
       var key = el.getAttribute("data-knob-key");
       if (!key) return;
       var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
-      if (val === "") return;
+      // An empty STRING knob is a real value (a cleared label, or a variant seeded to ""), so it
+      // is sent; the server keeps it for a string knob and skips it for a kind that can't parse
+      // it. An emptied number field has nothing to send, and this map REPLACES the daemon's whole
+      // override bag, so sending `knob.count=` would be indistinguishable from clearing it.
+      if (val === "" && knobKind(el) !== "string") return;
       o["knob." + key] = val;
     });
     // Remote Compose knobs carry their own `<kind>:` tag: `rc.<name>=<kind>:<value>`. Sent for
@@ -260,7 +271,8 @@
       var key = el.getAttribute("data-knob-key");
       if (!key) return;
       var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
-      if (val === "") return;
+      // See liveOverrides(): "" is a value for a string knob and a no-op for every other kind.
+      if (val === "" && knobKind(el) !== "string") return;
       if (val === (el.getAttribute("data-knob-initial") || "")) return;
       parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(val));
     });
@@ -848,7 +860,12 @@
       var key = el.getAttribute("data-knob-key");
       if (!key) return;
       var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
-      if (val === "") return;
+      // See liveOverrides(): "" is a value for a string knob and a no-op for every other kind.
+      // This one matters most — an @OverrideVariant seeding `label=` opens the control empty, and
+      // wasmAppSrc has already stripped the variant axis off the id, so dropping the seed here
+      // mounts the PRIMARY under a sticker that says otherwise, with no baked artifact to fall
+      // back on.
+      if (val === "" && knobKind(el) !== "string") return;
       // Older pages carry no `data-knob-default`; fall back to the initial so they behave as before
       // rather than sending every knob.
       var authorDefault = el.getAttribute("data-knob-default");
