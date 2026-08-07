@@ -17,6 +17,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.fail
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -1345,52 +1346,57 @@ class ServeWebFixtureTest {
           ),
       )
 
+    // The page goldens, named once: the same list backs both the `UPDATE_SERVE_WEB_FIXTURES=true`
+    // regeneration below and the sync assertion further down, so a fixture can never be written
+    // by one and forgotten by the other.
+    val goldens =
+      listOf(
+        "serve-landing.html" to landing,
+        "serve-landing-public.html" to landingPublic,
+        "serve-home-index.html" to homeIndex,
+        "serve-viewer.html" to viewer,
+        "serve-viewer-history.html" to viewerHistory,
+        "serve-viewer-wasm.html" to wasmViewer,
+        "serve-viewer-wasm-live.html" to wasmViewerLive,
+        "serve-viewer-signin.html" to viewerSignIn,
+        "serve-viewer-catalog-knobs.html" to viewerCatalogKnobs,
+        "serve-viewer-themes.html" to viewerThemes,
+        "serve-viewer-focus.html" to viewerFocus,
+        "serve-viewer-gestures.html" to viewerGestures,
+        "serve-landing-path.html" to landingPath,
+        "serve-viewer-path.html" to viewerPath,
+        "serve-viewer-wear-screen.html" to viewerWearScreen,
+        "serve-landing-themed.html" to landingThemed,
+        "serve-landing-catalog-palette.html" to landingCatalogPalette,
+        "serve-viewer-catalog-palette.html" to viewerCatalogPalette,
+        "serve-format-compare.html" to formatComparison,
+        "serve-reference-compare.html" to referenceComparison,
+        "serve-landing-declared-themes.html" to landingDeclaredThemes,
+        "serve-landing-live.html" to landingLive,
+        "serve-landing-states.html" to landingStates,
+        "serve-landing-sections.html" to landingSections,
+        "serve-viewer-states.html" to viewerStates,
+        "serve-status.html" to serveStatus,
+        "serve-landing-variants.html" to landingVariants,
+        "serve-viewer-variants.html" to viewerVariants,
+        "serve-landing-grouped.html" to landingGrouped,
+        "serve-viewer-nav-collapsed.html" to viewerNavCollapsed,
+        "serve-notfound.html" to notFound,
+        "serve-docs-upload.html" to docUpload,
+        "serve-playground.html" to playground,
+        "serve-doc-lottie.html" to docLottie,
+        "serve-doc-remotecompose.html" to docRemoteCompose,
+      )
+
     if (update) {
       pagesDir.mkdirs()
-      File(pagesDir, "serve-landing.html").writeText(landing)
-      File(pagesDir, "serve-landing-public.html").writeText(landingPublic)
-      File(pagesDir, "serve-home-index.html").writeText(homeIndex)
-      File(pagesDir, "serve-viewer.html").writeText(viewer)
-      File(pagesDir, "serve-viewer-history.html").writeText(viewerHistory)
-      File(pagesDir, "serve-viewer-wasm.html").writeText(wasmViewer)
-      File(pagesDir, "serve-viewer-wasm-live.html").writeText(wasmViewerLive)
-      File(pagesDir, "serve-viewer-signin.html").writeText(viewerSignIn)
-      File(pagesDir, "serve-viewer-catalog-knobs.html").writeText(viewerCatalogKnobs)
-      File(pagesDir, "serve-viewer-themes.html").writeText(viewerThemes)
-      File(pagesDir, "serve-viewer-focus.html").writeText(viewerFocus)
-      File(pagesDir, "serve-viewer-gestures.html").writeText(viewerGestures)
-      File(pagesDir, "serve-landing-path.html").writeText(landingPath)
-      File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
-      File(pagesDir, "serve-viewer-wear-screen.html").writeText(viewerWearScreen)
-      File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
-      File(pagesDir, "serve-landing-catalog-palette.html").writeText(landingCatalogPalette)
-      File(pagesDir, "serve-viewer-catalog-palette.html").writeText(viewerCatalogPalette)
-      File(pagesDir, "serve-format-compare.html").writeText(formatComparison)
-      File(pagesDir, "serve-reference-compare.html").writeText(referenceComparison)
-      File(pagesDir, "serve-landing-declared-themes.html").writeText(landingDeclaredThemes)
-      File(pagesDir, "serve-landing-live.html").writeText(landingLive)
-      File(pagesDir, "serve-landing-states.html").writeText(landingStates)
-      File(pagesDir, "serve-landing-sections.html").writeText(landingSections)
-      File(pagesDir, "serve-viewer-states.html").writeText(viewerStates)
-      File(pagesDir, "serve-status.html").writeText(serveStatus)
-      File(pagesDir, "serve-landing-variants.html").writeText(landingVariants)
-      File(pagesDir, "serve-viewer-variants.html").writeText(viewerVariants)
-      File(pagesDir, "serve-landing-grouped.html").writeText(landingGrouped)
-      File(pagesDir, "serve-viewer-nav-collapsed.html").writeText(viewerNavCollapsed)
-      File(pagesDir, "serve-notfound.html").writeText(notFound)
-      File(pagesDir, "serve-docs-upload.html").writeText(docUpload)
-      File(pagesDir, "serve-playground.html").writeText(playground)
-      File(pagesDir, "serve-doc-lottie.html").writeText(docLottie)
-      File(pagesDir, "serve-doc-remotecompose.html").writeText(docRemoteCompose)
+      goldens.forEach { (name, html) -> File(pagesDir, name).writeText(html) }
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       File(pagesDir, "_render-placeholder.svg").writeText(renderPlaceholderSvg())
       return
     }
 
-    assertGolden(File(pagesDir, "serve-landing.html"), landing)
-    assertGolden(File(pagesDir, "serve-landing-public.html"), landingPublic)
-    assertGolden(File(pagesDir, "serve-home-index.html"), homeIndex)
-    assertGolden(File(pagesDir, "serve-viewer.html"), viewer)
+    assertGoldensInSync(pagesDir, goldens)
     // The overrides drawer defaults OPEN (`cp-controls-open` on the viewer, its toggle expanded)…
     assertTrue(
       viewer.contains("class=\"cp-viewer cp-controls-open\"") &&
@@ -1428,11 +1434,6 @@ class ServeWebFixtureTest {
         "a single-preview session shows no component nav drawer",
       )
     }
-    assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
-    assertGolden(File(pagesDir, "serve-viewer-wasm-live.html"), wasmViewerLive)
-    assertGolden(File(pagesDir, "serve-viewer-history.html"), viewerHistory)
-    assertGolden(File(pagesDir, "serve-viewer-signin.html"), viewerSignIn)
-    assertGolden(File(pagesDir, "serve-viewer-catalog-knobs.html"), viewerCatalogKnobs)
     // The declared Remote Compose knobs render as their own "Remote Compose" control group, one
     // `.cp-rc-knob` per knob carrying its name + wire kind (a `color` swatch value + a `string`),
     // separate from the plain-Compose Overrides panel.
@@ -1456,8 +1457,6 @@ class ServeWebFixtureTest {
       viewerThemes.contains("data-cp-group=\"remotecompose\""),
       "a preview without RC knobs shows no Remote Compose control group",
     )
-    assertGolden(File(pagesDir, "serve-viewer-themes.html"), viewerThemes)
-    assertGolden(File(pagesDir, "serve-viewer-focus.html"), viewerFocus)
     // The detected-feature control shows for a focus-supporting preview…
     assertTrue(
       viewerFocus.contains("id=\"cp-focus\"") && viewerFocus.contains("Keyboard focus"),
@@ -1468,7 +1467,6 @@ class ServeWebFixtureTest {
       viewerThemes.contains("id=\"cp-focus\""),
       "a preview without @FocusedPreview shows no Keyboard focus control",
     )
-    assertGolden(File(pagesDir, "serve-viewer-gestures.html"), viewerGestures)
     // The gesture control shows for a gesture-supporting preview on an Android-backed session…
     assertTrue(
       viewerGestures.contains("id=\"cp-gestures\"") &&
@@ -1481,12 +1479,6 @@ class ServeWebFixtureTest {
       viewerGesturesDesktop.contains("id=\"cp-gestures\""),
       "a gesture-supporting preview shows no gesture control on a desktop session",
     )
-    assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
-    assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
-    assertGolden(File(pagesDir, "serve-viewer-wear-screen.html"), viewerWearScreen)
-    assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
-    assertGolden(File(pagesDir, "serve-landing-catalog-palette.html"), landingCatalogPalette)
-    assertGolden(File(pagesDir, "serve-viewer-catalog-palette.html"), viewerCatalogPalette)
     // The projected palette is inlined AFTER serve.css, so it wins at equal specificity — and it
     // carries both modes, so a dark-mode visitor to a light-first catalog still gets its brand.
     assertTrue(
@@ -1522,8 +1514,6 @@ class ServeWebFixtureTest {
     for ((name, html) in inCatalogPages) {
       assertTrue(html.contains("--cp-accent: #bf0031;"), "the $name page carries the palette")
     }
-    assertGolden(File(pagesDir, "serve-format-compare.html"), formatComparison)
-    assertGolden(File(pagesDir, "serve-reference-compare.html"), referenceComparison)
     assertTrue(
       landingThemed.contains("class=\"cp-format-link\" href=\"/compare?session=compose-m3\"") &&
         landingThemed.contains(">compare formats</a>"),
@@ -1667,8 +1657,6 @@ class ServeWebFixtureTest {
         !sizedComparisonIds[1].contains("__compact"),
       "expanded aliases fold state and props without selecting the compact comparison row",
     )
-    assertGolden(File(pagesDir, "serve-landing-declared-themes.html"), landingDeclaredThemes)
-    assertGolden(File(pagesDir, "serve-landing-live.html"), landingLive)
     // Long-press a card and its preview streams from the daemon in place. The page carries the
     // gesture's configuration — each card's streamable ids, emitted in document order rather than
     // read back off the DOM — plus the header note that says the lane exists at all.
@@ -1803,10 +1791,6 @@ class ServeWebFixtureTest {
         ),
       "a theme-neutral module with declared themes gets a Default chip plus the declared themes",
     )
-    assertGolden(File(pagesDir, "serve-landing-states.html"), landingStates)
-    assertGolden(File(pagesDir, "serve-landing-sections.html"), landingSections)
-    assertGolden(File(pagesDir, "serve-viewer-states.html"), viewerStates)
-    assertGolden(File(pagesDir, "serve-status.html"), serveStatus)
     // The status page leads with the header health badge, links to the machine-readable JSON, and
     // renders the catalog / running-daemon / failure tables. A recent failure ⇒ the amber
     // "degraded" badge; a live+running catalog reads "live · running"; a baked one shows its
@@ -1834,8 +1818,6 @@ class ServeWebFixtureTest {
         serveStatus.contains("design-parity <code>0.1.25</code>"),
       "catalog status links its delivery branch and shows friendly build provenance",
     )
-    assertGolden(File(pagesDir, "serve-landing-variants.html"), landingVariants)
-    assertGolden(File(pagesDir, "serve-viewer-variants.html"), viewerVariants)
     // The variant landing folds the component's props-axis renders out: eight renders yield ONE
     // (default) swap card, and no RTL / locale / fontscale variant is emitted as its own card.
     assertEquals(
@@ -1944,7 +1926,6 @@ class ServeWebFixtureTest {
         statesNav.contains("/p/checkbox__ideal__unchecked__light"),
       "the viewer state switcher marks Default active and links the same-theme sibling",
     )
-    assertGolden(File(pagesDir, "serve-landing-grouped.html"), landingGrouped)
     // A section-less catalog gains SYNTHESIZED family sub-group dividers (as <h2 cp-group-head>)
     // over
     // a flat grid — no tab bar — so a large ungrouped catalog reads as clustered families.
@@ -1959,7 +1940,6 @@ class ServeWebFixtureTest {
       landingGrouped.contains("role=\"tablist\""),
       "synthesized family grouping renders no tab bar (it is a flat grouped grid, not tabs)",
     )
-    assertGolden(File(pagesDir, "serve-viewer-nav-collapsed.html"), viewerNavCollapsed)
     // The component nav collapses to ONE entry per component: button-filled's ~8 baked variants +
     // checkbox/radiobutton states yield exactly three nav items, button-filled listed once.
     val collapsedNav =
@@ -1991,9 +1971,6 @@ class ServeWebFixtureTest {
         !darkNav.contains("/p/radiobutton__ideal__default__light"),
       "the collapsed nav preserves the viewer's theme (a dark preview links dark siblings)",
     )
-    assertGolden(File(pagesDir, "serve-notfound.html"), notFound)
-    assertGolden(File(pagesDir, "serve-docs-upload.html"), docUpload)
-    assertGolden(File(pagesDir, "serve-playground.html"), playground)
     // The editor page carries its three DOM hooks the run script + the Playwright e2e drive: the
     // source box, the mode selector with all three modes, and the Run button.
     assertTrue(
@@ -2041,8 +2018,6 @@ class ServeWebFixtureTest {
       playground.contains("setStatus(\"Done.\", false)"),
       "a successful run still ends on the terminal status the e2e keys on",
     )
-    assertGolden(File(pagesDir, "serve-doc-lottie.html"), docLottie)
-    assertGolden(File(pagesDir, "serve-doc-remotecompose.html"), docRemoteCompose)
     // The upload page names every format it accepts and states the expiry up front, so a visitor
     // knows what to drop and how long the resulting link lives before they share it.
     for (format in ServeDocFormats.ALL) {
@@ -3882,16 +3857,57 @@ class ServeWebFixtureTest {
     )
   }
 
-  private fun assertGolden(file: File, rendered: String) {
-    assertTrue(
-      file.isFile,
-      "missing fixture ${file.name} — regenerate with UPDATE_SERVE_WEB_FIXTURES=true",
-    )
-    assertEquals(
-      file.readText(),
-      rendered,
-      "${file.name} is stale vs ServeWeb — regenerate with UPDATE_SERVE_WEB_FIXTURES=true",
-    )
+  /**
+   * Compare every page golden against what `ServeWeb` renders now, and report **all** of the drift
+   * in one failure rather than aborting on the first mismatch.
+   *
+   * Asserting per fixture (the previous shape) surfaced one file at a time and, in the console log
+   * CI prints, only a line number inside the helper — so a run that moved twenty pages looked
+   * identical to one that moved a single unrelated page, and the reported line pointed at whatever
+   * assertion happened to sit there. That is what makes this check easy to regenerate past instead
+   * of read (#3442): the output never says what actually moved.
+   *
+   * The message names each drifted fixture with the first line that differs, which distinguishes
+   * the two causes that look the same from the outside — a deliberate `ServeWeb` change whose
+   * goldens want regenerating (drift concentrated in the pages you touched) versus goldens
+   * regenerated on a branch *before* merging `main`, where `main` then changed the markup for
+   * everything (drift across unrelated pages, on a line nobody on the branch edited).
+   */
+  private fun assertGoldensInSync(pagesDir: File, goldens: List<Pair<String, String>>) {
+    val missing = goldens.filterNot { (name, _) -> File(pagesDir, name).isFile }.map { it.first }
+    val drifted =
+      goldens
+        .filter { (name, _) -> File(pagesDir, name).isFile }
+        .mapNotNull { (name, rendered) ->
+          val golden = File(pagesDir, name).readText()
+          if (golden == rendered) null else name to firstDifference(golden, rendered)
+        }
+    if (missing.isEmpty() && drifted.isEmpty()) return
+
+    val report = buildString {
+      append("serve web page fixtures are out of sync with ServeWeb")
+      append(" (${drifted.size} stale, ${missing.size} missing of ${goldens.size}).")
+      if (missing.isNotEmpty()) append("\n  missing: ${missing.joinToString(", ")}")
+      drifted.forEach { (name, where) -> append("\n  $name: $where") }
+      append(
+        "\n\nRegenerate with UPDATE_SERVE_WEB_FIXTURES=true — but read the list first. Drift across " +
+          "pages this branch never touched usually means the goldens were regenerated before " +
+          "merging main and main has since changed the markup, not that ServeWeb is broken; " +
+          "re-merge and regenerate again rather than assuming the check is flaky."
+      )
+    }
+    fail(report)
+  }
+
+  /** `line N: golden … | rendered …` for the first line where the two texts diverge. */
+  private fun firstDifference(golden: String, rendered: String): String {
+    val a = golden.lines()
+    val b = rendered.lines()
+    val index = (0 until maxOf(a.size, b.size)).firstOrNull { a.getOrNull(it) != b.getOrNull(it) }
+    if (index == null) return "differs only in trailing newline"
+    fun show(line: String?) = line?.trim()?.take(120) ?: "<end of file>"
+    return "line ${index + 1}: golden ${show(a.getOrNull(index))} | rendered " +
+      show(b.getOrNull(index))
   }
 
   /** Walk up from the test working dir (the `:cli` project dir) to the repo root. */
