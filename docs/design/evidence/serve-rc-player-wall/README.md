@@ -11,7 +11,14 @@ branch (`rc/`, `rc-embedded/`, `rc-embedded-jvm/`, `rc-cmp-wasm/`, their `-diff/
 `rc-compare-summary.json`). The page now replays that: one column per player, and a diff appears
 *inside* a player's column once you pick a reference column.
 
-## All players, nothing diffed
+## Before — one lane, rendered in the browser
+
+The same catalog on `main`: the baked PNG, one player, and an SSIM score per row, each cell waiting
+on a `.rc` fetch and a canvas render.
+
+![before: PNG next to a single browser-rendered lane](serve-rc-before-single-lane.png)
+
+## After — all players, nothing diffed
 
 `remote-m3` served locally from its real delivery branch. Five columns, 24 previews, and the
 divergences are readable without diffing anything: the JS player draws `icon` at a fraction of the
