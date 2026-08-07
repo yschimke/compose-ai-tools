@@ -261,7 +261,7 @@ if (EMBEDDED_JVM) {
  * `referenceBlank` suppresses the percentage (the images are still written, so the blank reference
  * is visible on the page) — see `isFullyTransparent`.
  */
-function embeddedFor(id, baked, width, height, referenceBlank) {
+function embeddedFor(id, baked, bakedUnflattened, width, height, referenceBlank) {
   if (!EMBEDDED) return {};
   const png = path.join(EMBEDDED, `${id}.png`);
   if (!fs.existsSync(png)) {
@@ -280,7 +280,12 @@ function embeddedFor(id, baked, width, height, referenceBlank) {
       embeddedDiff: "",
     };
   }
-  const emb = flattenOnto(PNG.sync.read(fs.readFileSync(png)), BG);
+  const embRaw = PNG.sync.read(fs.readFileSync(png));
+  const embCoverage =
+    embRaw.width === width && embRaw.height === height
+      ? splitCoverage(bakedUnflattened, embRaw.data, width, height)
+      : null;
+  const emb = flattenOnto(embRaw, BG);
   if (emb.width !== width || emb.height !== height) {
     return {
       embeddedRendered: false,
@@ -298,6 +303,8 @@ function embeddedFor(id, baked, width, height, referenceBlank) {
   return {
     embeddedRendered: true,
     embeddedMismatchPct: referenceBlank ? null : (100 * px) / (width * height),
+    embeddedCoverageDeltaPct: referenceBlank ? null : (embCoverage?.coverageDeltaPct ?? null),
+    embeddedContentMismatchPct: referenceBlank ? null : (embCoverage?.contentMismatchPct ?? null),
     embeddedMismatchPx: referenceBlank ? null : px,
     embedded: `rc-embedded/${id}.png`,
     embeddedDiff: `rc-embedded-diff/${id}.png`,
@@ -311,7 +318,7 @@ function embeddedFor(id, baked, width, height, referenceBlank) {
  * the *same* embedded interpreter as the Android lane, run off Android over Skiko — so this is a
  * second view of embedded parity, not a fourth renderer.
  */
-function embeddedJvmFor(id, baked, width, height, referenceBlank) {
+function embeddedJvmFor(id, baked, bakedUnflattened, width, height, referenceBlank) {
   if (!EMBEDDED_JVM) return {};
   const png = path.join(EMBEDDED_JVM, `${id}.png`);
   if (!fs.existsSync(png)) {
@@ -328,7 +335,12 @@ function embeddedJvmFor(id, baked, width, height, referenceBlank) {
       embeddedJvmDiff: "",
     };
   }
-  const emb = flattenOnto(PNG.sync.read(fs.readFileSync(png)), BG);
+  const embRaw = PNG.sync.read(fs.readFileSync(png));
+  const embCoverage =
+    embRaw.width === width && embRaw.height === height
+      ? splitCoverage(bakedUnflattened, embRaw.data, width, height)
+      : null;
+  const emb = flattenOnto(embRaw, BG);
   if (emb.width !== width || emb.height !== height) {
     return {
       embeddedJvmRendered: false,
@@ -346,6 +358,8 @@ function embeddedJvmFor(id, baked, width, height, referenceBlank) {
   return {
     embeddedJvmRendered: true,
     embeddedJvmMismatchPct: referenceBlank ? null : (100 * px) / (width * height),
+    embeddedJvmCoverageDeltaPct: referenceBlank ? null : (embCoverage?.coverageDeltaPct ?? null),
+    embeddedJvmContentMismatchPct: referenceBlank ? null : (embCoverage?.contentMismatchPct ?? null),
     embeddedJvmMismatchPx: referenceBlank ? null : px,
     embeddedJvm: `rc-embedded-jvm/${id}.png`,
     embeddedJvmDiff: `rc-embedded-jvm-diff/${id}.png`,
@@ -402,7 +416,7 @@ async function startCmpWasmServer(dir) {
   };
 }
 
-async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank, previewParams) {
+async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, referenceBlank, previewParams) {
   if (!CMP_WASM) return {};
   try {
     const density = previewParams?.density ?? 1;
@@ -429,7 +443,12 @@ async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank, previ
     }));
     const firstFrameMs = performance.now() - startedAt;
     if (state.state !== "ready") throw new Error(state.error || "player reported an error");
-    const png = flattenOnto(PNG.sync.read(await cmpWasmPage.screenshot({ omitBackground: true })), BG);
+    const pngRaw = PNG.sync.read(await cmpWasmPage.screenshot({ omitBackground: true }));
+    const wasmCoverage =
+      pngRaw.width === width && pngRaw.height === height
+        ? splitCoverage(bakedUnflattened, pngRaw.data, width, height)
+        : null;
+    const png = flattenOnto(pngRaw, BG);
     if (cmpWasmConsoleErrors.length) {
       throw new Error(`unexpected console error: ${cmpWasmConsoleErrors.join(" | ")}`);
     }
@@ -443,6 +462,8 @@ async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank, previ
     return {
       cmpWasmRendered: true,
       cmpWasmMismatchPct: referenceBlank ? null : (100 * px) / (width * height),
+      cmpWasmCoverageDeltaPct: referenceBlank ? null : (wasmCoverage?.coverageDeltaPct ?? null),
+      cmpWasmContentMismatchPct: referenceBlank ? null : (wasmCoverage?.contentMismatchPct ?? null),
       cmpWasmMismatchPx: referenceBlank ? null : px,
       cmpWasmFirstFrameMs: firstFrameMs,
       cmpWasmStartup: startup,
@@ -550,12 +571,13 @@ for (const id of rcIds) {
 
   // Embedded lane, computed independently of whether the JS player managed this document — either
   // player can render one the other chokes on, and the page scores them separately.
-  const embedded = embeddedFor(id, baked, width, height, referenceBlank);
-  const embeddedJvm = embeddedJvmFor(id, baked, width, height, referenceBlank);
+  const embedded = embeddedFor(id, baked, bakedUnflattened, width, height, referenceBlank);
+  const embeddedJvm = embeddedJvmFor(id, baked, bakedUnflattened, width, height, referenceBlank);
   const cmpWasm = await cmpWasmFor(
     id,
     entries.get(`ir/${id}.rc`)(),
     baked,
+    bakedUnflattened,
     width,
     height,
     referenceBlank,
@@ -676,6 +698,11 @@ const meanOf = (pick) => {
 };
 const meanCoverageDeltaPct = meanOf((r) => r.coverageDeltaPct);
 const meanContentMismatchPct = meanOf((r) => r.contentMismatchPct);
+/** Same split for the other player lanes, so every lane is judged on the same two axes. */
+const laneSplit = (prefix) => ({
+  meanCoverageDeltaPct: meanOf((r) => r[`${prefix}CoverageDeltaPct`]),
+  meanContentMismatchPct: meanOf((r) => r[`${prefix}ContentMismatchPct`]),
+});
 let cmpWasmGate = null;
 if (REQUIRE_CMP_WASM) {
   try {
@@ -724,6 +751,7 @@ fs.writeFileSync(
               const ok = rows.filter((r) => r.embeddedRendered && !r.referenceBlank);
               return ok.length ? ok.reduce((s, r) => s + r.embeddedMismatchPct, 0) / ok.length : null;
             })(),
+            ...laneSplit("embedded"),
           }
         : null,
       embeddedJvm: EMBEDDED_JVM
@@ -736,6 +764,7 @@ fs.writeFileSync(
                 ? ok.reduce((s, r) => s + r.embeddedJvmMismatchPct, 0) / ok.length
                 : null;
             })(),
+            ...laneSplit("embeddedJvm"),
           }
         : null,
       cmpWasm: CMP_WASM
@@ -748,6 +777,7 @@ fs.writeFileSync(
                 ? ok.reduce((s, r) => s + r.cmpWasmMismatchPct, 0) / ok.length
                 : null;
             })(),
+            ...laneSplit("cmpWasm"),
             firstFrame: (() => {
               const summarize = (kind) => {
                 const values = rows
