@@ -889,21 +889,49 @@ runs:
           --baselines "$stage/baselines.json" \
           --output "$stage/history.json"
 
-        # Second commit, carrying the full tree plus history.json. It has to follow the render push
-        # rather than ride along with it: computed beforehand, the manifest could not describe the
-        # very publish it ships with, so the newest render would be missing from its own timeline.
-        # The extractor filters on the `renders` pathspec, so this commit is invisible to the next
-        # run's history and cannot pollute it.
-        export MSG="Update preview history from ${GITHUB_SHA::8}"
-        export TARGET_BRANCH="$BASELINE_BRANCH"
-        export SKIP_IF_UNCHANGED=1
-        export SHA_OUTPUT_FILE=""
-        # The render push already ran `git init` + `git remote add origin` in here, and
-        # push-branch.sh does both unconditionally — a second run would die on "remote origin
-        # already exists". The staging repo is throwaway, so drop it and let the helper rebuild.
-        rm -rf "$stage/.git"
-        cd "$stage"
-        bash "$ACTION_PATH/lib/push-branch.sh"
+        # Second commit, following the render push rather than riding along with it: computed
+        # beforehand, the manifest could not describe the very publish it ships with, so the newest
+        # render would be missing from its own timeline. The extractor filters on the `renders`
+        # pathspec, so this commit is invisible to the next run's history and cannot pollute it.
+        #
+        # Built as a genuine delta — the tip's tree with one path replaced — NOT via
+        # push-branch.sh. That helper snapshots a directory into a fixed tree and re-parents it onto
+        # whatever the current tip is, so pushing a staging dir that was staged earlier silently
+        # reverts anything published in between: a concurrent baseline run's renders and
+        # baselines.json would be overwritten by this run's older copies. Touching only history.json
+        # makes that impossible regardless of how the runs interleave.
+        #
+        # read-tree/write-tree work in the blob:none clone because they only need tree objects and
+        # the one new blob; the renders' contents are never fetched.
+        MSG="Update preview history from ${GITHUB_SHA::8}"
+        cd _history_repo
+        attempt=1
+        while :; do
+          PARENT=$(git rev-parse FETCH_HEAD)
+          NEW_BLOB=$(git hash-object -w "$GITHUB_WORKSPACE/$stage/history.json")
+          OLD_BLOB=$(git rev-parse --quiet --verify "FETCH_HEAD:history.json" 2>/dev/null || true)
+          if [ "$NEW_BLOB" = "$OLD_BLOB" ]; then
+            echo "history manifest: history.json unchanged on ${BASELINE_BRANCH}; nothing to push."
+            break
+          fi
+          git read-tree "$PARENT"
+          git update-index --add --cacheinfo "100644,${NEW_BLOB},history.json"
+          TREE=$(git write-tree)
+          COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
+          if git push --quiet origin "${COMMIT}:refs/heads/${BASELINE_BRANCH}" 2>&1; then
+            echo "history manifest: published ${COMMIT} to ${BASELINE_BRANCH}."
+            break
+          fi
+          if [ "$attempt" -ge 5 ]; then
+            echo "::warning::history manifest: lost the push race ${attempt}x; skipping history.json this run."
+            break
+          fi
+          echo "history manifest: lost the push race; retry ${attempt}/5."
+          attempt=$((attempt + 1))
+          sleep $((attempt * 2))
+          # Re-fetch so the retry re-parents onto (and re-reads) the new tip.
+          git fetch --quiet --filter=blob:none origin "$BASELINE_BRANCH" || true
+        done
 
     - name: Push resource baseline / PR renders
       if: steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.resources == '1'
