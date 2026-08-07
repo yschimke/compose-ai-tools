@@ -538,6 +538,40 @@ public class RcPlayerState(
     values.copyInto(target)
   }
 
+  /**
+   * Applies the data/text operations a layout container carries alongside its child components.
+   *
+   * AndroidX executes a document's operations in order as it walks the layout, so a `CoreText`
+   * reading id 70 sees the `TEXT_LOOKUP_INT` that published it two operations earlier. The layout
+   * tree keeps components and drops everything else, so without this replay those ids were never
+   * computed and the text rendered empty. [beginFrame] resets derived text every frame, so this
+   * must run per frame rather than once at load.
+   *
+   * Anything that is not a state operation — draw commands, modifiers, actions, nested containers —
+   * is left to the renderer that owns it.
+   */
+  public fun applyContentStateOperations(children: List<RcLinkedNode>) {
+    children.forEach { child ->
+      when (val operation = (child as? RcLinkedNode.Operation)?.operation) {
+        // Float producers run before the text operations that reference them: a TEXT_FROM_FLOAT
+        // reading an id no expression has computed resolves to the reference's own NaN bits and
+        // formats as garbage. Wire order is the document's order, so one pass suffices.
+        is RcFloatExpression -> applyFloatExpression(operation)
+        is RcIntegerExpression -> applyIntegerExpression(operation)
+        is RcIdLookup,
+        is RcDataMapLookup -> applyDataOperation(operation)
+        is RcTextMerge,
+        is RcTextLength,
+        is RcTextSubtext,
+        is RcTextTransform,
+        is RcTextFromFloat,
+        is RcTextLookup,
+        is RcTextLookupInt -> applyTextOperation(operation)
+        else -> Unit
+      }
+    }
+  }
+
   public fun executeLayoutCompute(children: List<RcLinkedNode>) {
     children.forEach { child ->
       val operation =
