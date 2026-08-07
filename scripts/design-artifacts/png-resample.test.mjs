@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { isRoundingDelta, resampleRgba } from "./png-resample.mjs";
+import { fitBox, fitRgba, isRoundingDelta, resampleRgba } from "./png-resample.mjs";
 
 /** An RGBA buffer whose pixels are produced by `fn(x, y)` returning `[r,g,b,a]`. */
 function raster(width, height, fn) {
@@ -79,4 +79,49 @@ test("bad dimensions throw rather than emitting a malformed buffer", () => {
 test("isRoundingDelta separates a density correction from a rescale", () => {
   assert.equal(isRoundingDelta(1079, 2399, 1078, 2399), true);
   assert.equal(isRoundingDelta(2156, 4798, 1078, 2399), false);
+});
+
+test("fitBox keeps the source aspect ratio and centres what is left over", () => {
+  // Taller than the target: width is the slack axis, so the artwork is pillarboxed.
+  assert.deepEqual(fitBox(200, 400, 400, 400), { width: 200, height: 400, x: 100, y: 0 });
+  // Wider than the target: letterboxed instead.
+  assert.deepEqual(fitBox(400, 200, 400, 400), { width: 400, height: 200, x: 0, y: 100 });
+  // Same proportions — fills the box, nothing to centre.
+  assert.deepEqual(fitBox(100, 100, 400, 400), { width: 400, height: 400, x: 0, y: 0 });
+});
+
+test("fitBox never exceeds the target box", () => {
+  // Rounding a scaled edge up must not push the artwork outside the canvas it is pasted into.
+  for (const [w, h] of [[893, 924], [1078, 2399], [7, 999], [999, 7]]) {
+    const box = fitBox(w, h, 400, 300);
+    assert.ok(box.width <= 400 && box.height <= 300, `${w}x${h} overflowed: ${JSON.stringify(box)}`);
+    assert.ok(box.x >= 0 && box.y >= 0);
+    assert.ok(box.x + box.width <= 400 && box.y + box.height <= 300);
+  }
+});
+
+test("fitRgba pads with transparency instead of distorting the artwork", () => {
+  // A solid 2x1 source into a square target: it must stay 2:1 and the rest must be transparent,
+  // because a stretched reference republishes the design at proportions nobody drew.
+  const data = raster(2, 1, () => [10, 20, 30, 255]);
+  const { data: out, box } = fitRgba(data, 2, 1, 4, 4);
+  assert.deepEqual(box, { width: 4, height: 2, x: 0, y: 1 });
+  assert.equal(out.length, 4 * 4 * 4);
+  const alphaAt = (x, y) => out[(y * 4 + x) * 4 + 3];
+  assert.equal(alphaAt(0, 0), 0, "the padded row above the artwork must be transparent");
+  assert.equal(alphaAt(0, 3), 0, "the padded row below the artwork must be transparent");
+  assert.equal(alphaAt(0, 1), 255, "the artwork row must be opaque");
+  assert.equal(out[(1 * 4 + 0) * 4], 10, "artwork colour must survive the paste");
+});
+
+test("fitRgba is a plain resample when the proportions already agree", () => {
+  const data = raster(2, 2, () => [1, 2, 3, 255]);
+  const { data: out, box } = fitRgba(data, 2, 2, 4, 4);
+  assert.deepEqual(box, { width: 4, height: 4, x: 0, y: 0 });
+  assert.deepEqual(out, resampleRgba(data, 2, 2, 4, 4));
+});
+
+test("fitRgba rejects bad dimensions rather than emitting a malformed buffer", () => {
+  const data = raster(2, 2, () => [0, 0, 0, 255]);
+  assert.throws(() => fitRgba(data, 2, 2, 0, 4), /bad dimensions/);
 });
