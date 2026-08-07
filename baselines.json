@@ -637,6 +637,18 @@
       "sha256": "5ed1461d243efd9850b6c7b5b1d3528581432411cf68465fb962659e7cbc62e3",
       "size": 41499
     },
+    "serve-viewer-history-local.dark.png": {
+      "fixture": "serve-viewer-history-local",
+      "theme": "dark",
+      "sha256": "e73f36faf94127d921f8ef8fb5bf604b3dfe76fce9cf4c5fd56610b741a50e16",
+      "size": 61867
+    },
+    "serve-viewer-history-local.light.png": {
+      "fixture": "serve-viewer-history-local",
+      "theme": "light",
+      "sha256": "05a8a105d8a7e03aff567f2929725e3b451195517b8ce711b458396191c568e6",
+      "size": 61602
+    },
     "serve-viewer-history.dark.png": {
       "fixture": "serve-viewer-history",
       "theme": "dark",
