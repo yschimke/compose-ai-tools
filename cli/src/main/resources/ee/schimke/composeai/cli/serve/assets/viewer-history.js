@@ -25,6 +25,11 @@
   var previewId = root.getAttribute("data-preview-id");
   var bar = document.querySelector(".cp-viewer-bar");
   if (!repo || !previewId || !bar) return;
+  // `repo` is DOM text and is interpolated into every link's href below. Linking out rather than
+  // swapping the stage moved that sink from `img.src` to `a.href` — it did not remove it — so
+  // constrain the value to the only shape a GitHub `owner/name` can take before it can reach a URL.
+  // A value that does not match cannot be made safe by escaping, so the strip is simply not drawn.
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(repo)) return;
 
   // Mirrors ServeUrls.historicalRenderUrl, and rejects the same inputs for the same reason: the
   // manifest records shas, so accepting a ref would let a malformed manifest point the viewer at an
