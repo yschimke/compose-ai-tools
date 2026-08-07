@@ -41,6 +41,15 @@ object ComposeFigmaSvgDataProducer {
   const val RASTER_DIR: String = "figma-raster"
 
   /**
+   * Opt back into injecting the preview's declared background as the export's bottom layer
+   * (`-Dcomposeai.svg.background=true`). Off by default: the export exists to produce editable
+   * layers, and the injected fill is an opaque rect/circle spanning the whole canvas that a
+   * designer has to delete before the import works on their own canvas — while the tree that
+   * declared `showBackground` almost always paints that same colour itself anyway.
+   */
+  const val PROP_BACKGROUND: String = "composeai.svg.background"
+
+  /**
    * Writes `compose-figma.svg` under `<rootDir>/<previewId>/`.
    *
    * When [frameImage] is supplied (the render's already-captured frame PNG), the export runs in
@@ -83,6 +92,15 @@ object ComposeFigmaSvgDataProducer {
     fileSystem: FileSystem = SystemFileSystem,
   ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
+    // Background injection is **off by default**. This export's job is editable layers, and an
+    // injected fill is the opposite: an opaque rect/circle under the whole tree that a designer has
+    // to find and delete before the import is usable on any canvas but the one it was baked for.
+    // It is also redundant in practice — a preview that declares `showBackground` is almost always
+    // a screen whose own root already paints that colour, so the injected layer sits directly on
+    // top of an identical one the tree drew itself (a Wear device export carries a black `<circle>`
+    // over the root's own black `<rect>`). Opt back in with `composeai.svg.background=true`.
+    val paintBackground = System.getProperty(PROP_BACKGROUND)?.lowercase() == "true"
+    val background = deviceBackground?.takeIf { paintBackground }
     val frame = frameImage?.takeIf { it.exists() }
     // The frame PNG's pixel size is the exact area a maskless `showBackground` preview fills, so
     // hand it to the model — a thin/short child no longer shrink-wraps the background to itself
@@ -108,10 +126,11 @@ object ComposeFigmaSvgDataProducer {
         // mask the export to the same circle so its square full-frame background doesn't paint the
         // corners the render leaves clear.
         roundClip = roundClip,
-        // A device preview opts into painting its screen background (the black watch face) behind
-        // the
-        // tree, clipped to the device mask; component previews pass null and stay background-free.
-        deviceBackground = deviceBackground,
+        // Null unless `composeai.svg.background=true` — see [paintBackground] above. When opted in,
+        // a device preview paints its screen background (the black watch face) behind the tree,
+        // clipped to the device mask; component previews pass null and stay background-free either
+        // way.
+        deviceBackground = background,
       )
     val fonts = fontResolver?.let { resolveFonts(model, it, fileSystem) }
     // Everything this export can put a real name to: the faces it embedded, the captured→emitted

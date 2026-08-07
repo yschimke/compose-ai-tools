@@ -1452,7 +1452,9 @@ class RenderEngine(
         }
 
     // Bake the stitched trees to SVG in a scratch export dir, then copy the artefact (+ its hybrid
-    // raster crops) into the long subdir the registry serves. Black device face, capsule clip.
+    // raster crops) into the long subdir the registry serves. Capsule clip; the black device face
+    // rides the shared opt-in (`composeai.svg.background`) rather than being forced on here, so a
+    // scrolled Wear export is as background-free as every other one by default.
     val exportDir = File(workDir, "export")
     ComposeFigmaSvgDataProducer.writeSvg(
       rootDir = exportDir,
@@ -2119,7 +2121,12 @@ class RenderEngine(
     /** Output-base suffix isolating the tall render so it can't clobber the preview's products. */
     private const val SCROLL_SVG_TMP_SUFFIX: String = "__figma_svg_long"
 
-    /** Black watch face painted behind the round Wear slice-stitch capsule (opt-in device bg). */
+    /**
+     * Black watch face offered behind the round Wear slice-stitch capsule. Painted only when the
+     * export's background opt-in is on (`composeai.svg.background=true`); otherwise the capsule
+     * exports background-free like every other sticker, and the stitched tree's own root fill —
+     * which is already this same black — is what shows.
+     */
     private const val WEAR_DEVICE_FACE: String = "#FF000000"
 
     /**

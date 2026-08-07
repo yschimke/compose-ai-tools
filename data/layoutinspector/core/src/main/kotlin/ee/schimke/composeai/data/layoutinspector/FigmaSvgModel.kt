@@ -437,11 +437,12 @@ data class FigmaSvgModel(
   /**
    * The device screen background painted behind the whole tree, clipped to the device mask
    * ([roundClip]/[capsuleClip]) — the black watch face a Wear **device** preview sits on. Only set
-   * for a device frame that opted in (a `deviceBackground` was passed to [from]); component
-   * previews (no device mask) never carry one, so their export stays transparent behind the
-   * content. Without it a device export is transparent between rows and behind light-on-dark
-   * chrome, so the light `TimeText`/header vanish on a light canvas (Figma) — the fill gives them
-   * the dark face to read against while the corners outside the mask stay transparent.
+   * when a `deviceBackground` was passed to [from], which the shipped producers do **only** under
+   * the `composeai.svg.background` opt-in: an injected fill is an opaque layer spanning the canvas
+   * that a designer has to delete before the import works anywhere but the surface it was baked
+   * for, and a tree that declared `showBackground` generally paints that same colour itself (a Wear
+   * device export carried this black circle directly over the root's own identical black rect).
+   * Component previews (no device mask) never carry one either way.
    */
   val deviceBackground: FigmaSvgColor? = null,
   /**

@@ -179,16 +179,51 @@ flips.
 | --- | --- |
 | ![compose-m3 Button — snapshot vs Wasm: a surface panel appears](../renders/lane-parity/compose-m3-button-snapshot-vs-wasm.png) | ![compose-m3 Button — snapshot vs Wasm: identical but for glyph antialiasing](../renders/lane-parity/compose-m3-button-snapshot-vs-wasm-after.png) |
 
-## Known remaining gap
+## Correction: the Android export is not frameless
 
-The Android figma-svg export is **frameless**: `ComposeFigmaSvgExtension` runs in the capture
-phase, before the PNG exists, so `RenderArtifactContextKeys.OutputPng` resolves to a file that
-isn't there yet and `frameWidthPx` is null. Component stickers are unaffected in practice
-(their drawn extent + 16 px happens to equal the frame at Wear's 8 dp padding / density 2.0)
-and device previews are covered by the mask anchor, but the export also loses hybrid rastering
-on Android — an `Icon` sticker exports vector-only rather than as an `<image>` crop. Moving the
-extension after the capture would fix both; it changes rastering behaviour broadly, so it is
-deliberately not bundled with the parity work.
+An earlier revision of this page claimed the Android figma-svg export runs before the PNG exists
+and therefore never sees `frameWidthPx`. **That was wrong.** `ComposeFigmaSvgExtension` runs after
+the capture has been written and cropped, so the Android export is frame-anchored exactly like the
+desktop one.
+
+Measured, rather than inferred from canvas sizes: packing `:samples:design-catalog-m3-android`
+with `--with-semantics` and reading the emitted `previews/<id>.figma.svg` gives a **351×210** canvas
+with `translate(0, 0)` against a **351×210** PNG. A frameless export would have shrink-wrapped to
+the drawn extent plus a margin — 299 px wide. Hybrid rastering works there too.
+
+The original claim came from reading two coincidences as evidence: a Wear component sticker's
+frameless canvas would have been `content + 32 px`, which at Wear's 8 dp padding and density 2.0 is
+*exactly* the frame, and a vector `Icon` is vectorised rather than rastered, so its missing
+`<image>` meant nothing. Neither observation could distinguish the two cases; the size table above
+is the reliable check, and it agrees in every lane.
+
+## The SVG export is background-free
+
+`compose/figma-svg` used to inject the preview's declared `showBackground` colour as the export's
+bottom layer — a full-canvas rect, or a device-mask circle for a Wear screen. That is off by
+default now (`-Dcomposeai.svg.background=true` restores it).
+
+The export's product is editable layers, and an injected fill is the opposite: an opaque shape
+spanning the whole canvas that a designer has to find and delete before the import works anywhere
+but the surface it was baked for. It was also usually invisible. The `compose-m3-android`
+supplement's sticker is the clearest case — its SVG carried two stacked full-frame rects, the
+injected `#FFFFFF` sitting *underneath* the tree's own `#FEF7FF` `Surface`:
+
+```
+before:  <rect ... fill="#FFFFFF"/>        <- injected, fully occluded
+         <g id="Root"><rect ... fill="#FEF7FF"/>   <- the sticker's own Surface
+after:   <g id="Root"><rect ... fill="#FEF7FF"/>
+```
+
+Rendering is unchanged there; the import is one dead layer lighter.
+
+**The one export that loses something** is the Wear scroll capsule, whose slice-stitched tree
+paints no fill of its own. Below: before/after on a light canvas, then before/after on dark. The
+cards, their text and the button all carry their own fills and are untouched — what gets hard to
+read is the light-grey `TimeText` clock, and only against a light canvas. On dark, before and after
+are indistinguishable.
+
+![Wear scroll capsule with and without the injected background, on a light and a dark canvas](../renders/lane-parity/figma-svg-background-off-capsule.png)
 
 ## Reproducing
 
