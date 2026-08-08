@@ -2407,6 +2407,22 @@
     "sha256": "b6c517f8d6c4f43178e9513cf3569dc9261da66683bd6958870eb782e6421374",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt"
   },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogI18nKt.SlottedCardArabic_Dark": {
+    "captureLabel": "",
+    "functionName": "SlottedCardArabic",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SlottedCardArabic_Dark.png",
+    "sha256": "717438a5cf3dd18ddaff6ee1ef59562a39678e386a06d6df08a093841a02601c",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt"
+  },
+  "samples:design-catalog-m3/com.example.designcatalogm3.CatalogI18nKt.SlottedCardArabic_Light": {
+    "captureLabel": "",
+    "functionName": "SlottedCardArabic",
+    "module": "samples:design-catalog-m3",
+    "renderBasename": "SlottedCardArabic_Light.png",
+    "sha256": "cf8a8f9ac455dd0a6bd07dc69ef077280046375cf29adc42cc2a5b1ca6e40b56",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt"
+  },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogI18nKt.SwitchOnLargeFont_Dark": {
     "captureLabel": "",
     "functionName": "SwitchOnLargeFont",
@@ -2964,7 +2980,7 @@
     "functionName": "VariableWeightRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "VariableWeightRemote_width_320dp_height_240dp_dpi_320.png",
-    "sha256": "9d81ededa08e3a0f0952a39de6175f471bab4696c583f7c8f8e2709e80ff2ee4",
+    "sha256": "7dd45a1816271e1fe42fdb89bc241868f0b0d1b45ea71fb9d0a5f7443446bece",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWidthRemote_width=320dp,height=240dp,dpi=320": {
@@ -2972,7 +2988,7 @@
     "functionName": "VariableWidthRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "VariableWidthRemote_width_320dp_height_240dp_dpi_320.png",
-    "sha256": "5cf32242f265ca6d1b05b3d5baffee6ac28e4896b3677ee4317d87b027bb7bab",
+    "sha256": "e2e25db67db4ec17c82d99cb78e4159ac2b145c6ed75d8a70d7ed6c23458a16f",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.WatchScreenRemote_width=227dp,height=227dp,dpi=320": {
