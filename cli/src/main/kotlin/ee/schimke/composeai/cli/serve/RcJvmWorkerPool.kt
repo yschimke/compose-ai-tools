@@ -93,6 +93,17 @@ internal class RcJvmWorkerPool(
 
   private val permits = Semaphore(maxWorkers, /* fair= */ true)
   private val idle = ArrayDeque<Worker>()
+
+  /**
+   * Every worker this pool has started and not yet discarded — **including** the ones currently
+   * checked out to a render thread.
+   *
+   * [idle] alone is not enough to shut down: a worker that is mid-render is absent from it, so
+   * closing only the parked ones would leave its child JVM alive and its caller blocked on a pipe
+   * read that nothing will ever complete (shutting the watchdog down drops the scheduled kill that
+   * would otherwise free it).
+   */
+  private val liveWorkers = LinkedHashSet<Worker>()
   private val lock = Any()
   private val requestIds = AtomicInteger(0)
   private var startFailures = 0
@@ -108,6 +119,11 @@ internal class RcJvmWorkerPool(
     spec: RcJvmRenderSpec,
     seedsText: String,
     format: RcJvmServerRenderer.Format,
+    /**
+     * Budget for this render, so the caller can bound pool-attempt + fallback together rather than
+     * letting each lane spend the full timeout in turn. Defaults to the pool's own timeout.
+     */
+    timeoutSeconds: Long = renderTimeoutSeconds,
   ): PoolResult {
     synchronized(lock) {
       disabledReason?.let {
@@ -121,15 +137,24 @@ internal class RcJvmWorkerPool(
     try {
       worker =
         takeIdle()
-          ?: when (val started = startWorker()) {
+          ?: when (val started = startWorker(timeoutSeconds)) {
             is StartOutcome.Started -> started.worker
             is StartOutcome.Failed -> return PoolResult.Unusable(started.reason)
           }
 
-      val result = worker.render(docBytes, spec, seedsText, format, requestIds.incrementAndGet())
+      val result =
+        worker.render(
+          docBytes,
+          spec,
+          seedsText,
+          format,
+          requestIds.incrementAndGet(),
+          timeoutSeconds,
+        )
       if (result is PoolResult.Unusable) {
         // The worker broke mid-request (wedged, died, desynchronised). It is already destroyed;
         // dropping it here means the next caller spawns a fresh one.
+        discard(worker)
         worker = null
       }
       return result
@@ -137,7 +162,7 @@ internal class RcJvmWorkerPool(
       val finished = worker
       if (finished != null) {
         if (finished.shouldRetire(clock(), maxRendersPerWorker, maxWorkerAgeMillis)) {
-          finished.close()
+          discard(finished)
         } else {
           returnIdle(finished)
         }
@@ -169,12 +194,33 @@ internal class RcJvmWorkerPool(
         }
         picked
       }
-    doomed.forEach { it.close() }
+    doomed.forEach { discard(it) }
     return chosen
   }
 
-  private fun returnIdle(worker: Worker) =
-    synchronized(lock) { if (closed || !worker.isAlive()) worker.close() else idle.addLast(worker) }
+  private fun returnIdle(worker: Worker) {
+    val parked =
+      synchronized(lock) {
+        if (closed || !worker.isAlive()) false
+        else {
+          idle.addLast(worker)
+          true
+        }
+      }
+    if (!parked) discard(worker)
+  }
+
+  /**
+   * Forget a worker and destroy its process. Idempotent, so the races that can double-discard one —
+   * [close] running while a render thread is finishing with it, say — are harmless.
+   */
+  private fun discard(worker: Worker) {
+    synchronized(lock) {
+      liveWorkers.remove(worker)
+      idle.remove(worker)
+    }
+    worker.close()
+  }
 
   private sealed interface StartOutcome {
     class Started(val worker: Worker) : StartOutcome
@@ -182,7 +228,7 @@ internal class RcJvmWorkerPool(
     class Failed(val reason: String) : StartOutcome
   }
 
-  private fun startWorker(): StartOutcome {
+  private fun startWorker(timeoutSeconds: Long): StartOutcome {
     val command = buildList {
       add(javaBin)
       addAll(extraJvmArgs)
@@ -191,10 +237,21 @@ internal class RcJvmWorkerPool(
       add(workerMainClass)
     }
     return try {
-      val worker = Worker(command, watchdog, renderTimeoutSeconds, clock())
-      worker.handshake(HANDSHAKE_TIMEOUT_SECONDS)
-      synchronized(lock) { startFailures = 0 }
-      StartOutcome.Started(worker)
+      val worker = Worker(command, watchdog, clock())
+      worker.handshake(minOf(HANDSHAKE_TIMEOUT_SECONDS, timeoutSeconds.coerceAtLeast(1)))
+      val registered =
+        synchronized(lock) {
+          startFailures = 0
+          // `close()` may have run while this worker was booting. Registering it now would leak a
+          // child JVM that nothing will ever reap.
+          if (closed) false else liveWorkers.add(worker)
+        }
+      if (!registered) {
+        worker.close()
+        StartOutcome.Failed("cmp-jvm worker pool is closed")
+      } else {
+        StartOutcome.Started(worker)
+      }
     } catch (e: Exception) {
       val reason = "cmp-jvm worker pool could not start a worker: ${e.message}"
       synchronized(lock) {
@@ -213,8 +270,13 @@ internal class RcJvmWorkerPool(
     val doomed =
       synchronized(lock) {
         closed = true
-        idle.toList().also { idle.clear() }
+        idle.clear()
+        liveWorkers.toList().also { liveWorkers.clear() }
       }
+    // Every worker, not just the parked ones. Destroying a checked-out worker's process is what
+    // unblocks the render thread waiting on its pipe — and it has to happen *before* the watchdog
+    // stops, because `shutdownNow()` drops the scheduled kill that is the only other way out of
+    // that read.
     doomed.forEach { it.close() }
     watchdog.shutdownNow()
   }
@@ -225,7 +287,6 @@ internal class RcJvmWorkerPool(
   private class Worker(
     command: List<String>,
     private val watchdog: java.util.concurrent.ScheduledExecutorService,
-    private val renderTimeoutSeconds: Long,
     private val bornAtMillis: Long,
   ) {
     private val process = ProcessBuilder(command).redirectErrorStream(false).start()
@@ -292,6 +353,7 @@ internal class RcJvmWorkerPool(
       seedsText: String,
       format: RcJvmServerRenderer.Format,
       requestId: Int = 0,
+      renderTimeoutSeconds: Long,
     ): PoolResult {
       val guard = armWatchdog(renderTimeoutSeconds)
       var timedOut = false

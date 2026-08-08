@@ -129,6 +129,39 @@ class RcJvmWorkerPoolTest {
   }
 
   @Test
+  fun closingThePoolReleasesAWorkerThatIsMidRender() {
+    // A checked-out worker is absent from the idle set, so a shutdown that only drains `idle`
+    // leaves its child JVM alive and its caller blocked on a pipe read forever — and stopping the
+    // watchdog removes the scheduled kill that was the only other way out. Destroying every live
+    // worker, before the watchdog stops, is what makes shutdown terminate.
+    val pool = pool(mode = "hang", renderTimeoutSeconds = 600)
+    val outcome = java.util.concurrent.ArrayBlockingQueue<RcJvmWorkerPool.PoolResult>(1)
+    val renderThread = Thread {
+      outcome.add(pool.render(DOC, SPEC, "", RcJvmServerRenderer.Format.PNG))
+    }
+    renderThread.start()
+
+    // Wait until the worker is genuinely mid-render rather than still booting, so the test covers
+    // the checked-out case instead of accidentally closing an empty pool.
+    val spawned = System.currentTimeMillis()
+    while (
+      renderThread.state == Thread.State.NEW && System.currentTimeMillis() - spawned < 30_000
+    ) {
+      Thread.sleep(20)
+    }
+    Thread.sleep(2_000)
+
+    pool.close()
+
+    val result =
+      outcome.poll(60, java.util.concurrent.TimeUnit.SECONDS)
+        ?: error("closing the pool left a mid-render caller blocked — it never returned")
+    assertIs<RcJvmWorkerPool.PoolResult.Unusable>(result)
+    renderThread.join(10_000)
+    assertTrue(!renderThread.isAlive, "render thread did not finish after shutdown")
+  }
+
+  @Test
   fun repeatedStartFailuresDisableThePoolSoTheCostIsPaidOnce() {
     pool(workerMainClass = "ee.schimke.composeai.cli.serve.NoSuchWorkerMain").use { pool ->
       val reasons =

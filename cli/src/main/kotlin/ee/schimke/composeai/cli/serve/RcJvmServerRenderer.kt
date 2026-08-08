@@ -42,6 +42,13 @@ internal object RcJvmServerRenderer {
 
   private const val MAIN_CLASS = "ee.schimke.composeai.rcembedded.jvm.RcJvmRenderMainKt"
   private const val RENDER_TIMEOUT_SECONDS = 120L
+
+  /**
+   * Least budget worth starting a cold one-shot render with. Below this the retry cannot finish (a
+   * fresh JVM needs ~2.3s just to boot Compose + Skiko before it draws anything), so spending the
+   * remainder on a render that is going to be killed anyway only delays the failure.
+   */
+  private const val MIN_FALLBACK_SECONDS = 10L
   private const val DRAIN_FLUSH_MILLIS = 1000L
 
   /**
@@ -78,19 +85,40 @@ internal object RcJvmServerRenderer {
     val cp = classpath()
     if (cp.isEmpty()) return RenderResult.Unavailable(unavailableReason())
 
+    // One budget for the whole request, spent across both lanes. Without this a pooled worker could
+    // burn its full watchdog and *then* hand a fresh one-shot render another full timeout, so a
+    // request that used to fail at 120s would hold its caller's render-semaphore slot for ~240s and
+    // starve unrelated renders.
+    val startNanos = System.nanoTime()
+    fun secondsLeft(): Long =
+      RENDER_TIMEOUT_SECONDS - (System.nanoTime() - startNanos) / 1_000_000_000L
+
     // Warm path: a pooled worker draws this on an already-booted JVM (~85 ms) instead of paying
     // Compose Desktop + Skiko startup again (~2.3 s). Only `Unusable` falls through to the one-shot
     // path below — a `Failed` is the player's real answer about this document, and re-rendering it
     // cold would double the cost of every document that cannot be drawn.
     pool(cp)?.let { pool ->
-      when (val pooled = pool.render(docBytes, spec, seedLines(seeds).joinToString("\n"), format)) {
+      val pooled =
+        pool.render(docBytes, spec, seedLines(seeds).joinToString("\n"), format, secondsLeft())
+      when (pooled) {
         is RcJvmWorkerPool.PoolResult.Ok -> return RenderResult.Ok(pooled.bytes)
         is RcJvmWorkerPool.PoolResult.Failed -> return RenderResult.Failed(pooled.reason)
-        is RcJvmWorkerPool.PoolResult.Unusable -> Unit
+        is RcJvmWorkerPool.PoolResult.Unusable -> {
+          // A pool that declined instantly (disabled, stale sidecar, spawn refused) leaves the
+          // budget intact and the cold retry is free to use it. A pool that declined by *timing
+          // out* has already spent it — retrying cold would only blow through the deadline the
+          // caller is holding a semaphore permit against, so report the failure instead.
+          if (secondsLeft() < MIN_FALLBACK_SECONDS) {
+            return RenderResult.Failed(
+              "${pooled.reason}; no time left in the ${RENDER_TIMEOUT_SECONDS}s render budget " +
+                "for a one-shot retry"
+            )
+          }
+        }
       }
     }
 
-    return renderOneShot(cp, docBytes, spec, seeds, format)
+    return renderOneShot(cp, docBytes, spec, seeds, format, secondsLeft())
   }
 
   /**
@@ -105,6 +133,7 @@ internal object RcJvmServerRenderer {
     spec: RcJvmRenderSpec,
     seeds: Map<String, RemoteNamedValue>,
     format: Format,
+    timeoutSeconds: Long = RENDER_TIMEOUT_SECONDS,
   ): RenderResult {
     val input = File.createTempFile("rcjvm-in-", ".rc")
     val output = File.createTempFile("rcjvm-out-", ".${format.wire}")
@@ -152,11 +181,11 @@ internal object RcJvmServerRenderer {
             isDaemon = true
             start()
           }
-      val finished = process.waitFor(RENDER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+      val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
       if (!finished) {
         process.destroyForcibly()
         drain.join(DRAIN_FLUSH_MILLIS)
-        return RenderResult.Failed("cmp-jvm render timed out after ${RENDER_TIMEOUT_SECONDS}s")
+        return RenderResult.Failed("cmp-jvm render timed out after ${timeoutSeconds}s")
       }
       // The process exited, so the reader has hit EOF; this join just flushes the last lines.
       drain.join(DRAIN_FLUSH_MILLIS)
