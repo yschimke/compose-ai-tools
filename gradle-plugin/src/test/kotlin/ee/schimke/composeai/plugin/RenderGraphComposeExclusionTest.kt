@@ -36,13 +36,27 @@ class RenderGraphComposeExclusionTest {
 
   private fun project() = ProjectBuilder.builder().build()
 
+  /**
+   * A render configuration shaped like a Compose consumer's: it `extendsFrom` the unit-test
+   * classpath, and that classpath carries the consumer's own Compose. Rule 3 only applies to a
+   * consumer that has Compose of its own to defer to.
+   */
+  private fun composeConsumerRenderConfiguration(project: org.gradle.api.Project) =
+    project.configurations.create("composePreviewAndroidRendererDebug").apply {
+      val unitTest =
+        project.configurations.create("debugUnitTestRuntimeClasspath").apply {
+          project.dependencies.add(name, "androidx.compose.ui:ui:1.10.6")
+        }
+      extendsFrom(unitTest)
+    }
+
   @Test
   fun `our own render dependency excludes the compose multiplatform families that alias androidx`() {
     // These six publish Android variants with NO files — they exist only to depend on the matching
     // `androidx.compose.*` artifact, so dropping them from OUR subtree removes version pressure
     // and zero classes.
     val project = project()
-    val configuration = project.configurations.create("composePreviewAndroidRendererDebug")
+    val configuration = composeConsumerRenderConfiguration(project)
 
     val dependency =
       AndroidPreviewSupport.addRenderGraphDependency(
@@ -113,7 +127,7 @@ class RenderGraphComposeExclusionTest {
     // The consumer's own Compose is exactly what the rule exists to preserve. Excluding any
     // `androidx.compose.*` group would empty the render classpath instead of deferring to it.
     val project = project()
-    val configuration = project.configurations.create("composePreviewAndroidRendererDebug")
+    val configuration = composeConsumerRenderConfiguration(project)
 
     val dependency =
       AndroidPreviewSupport.addRenderGraphDependency(
@@ -126,5 +140,45 @@ class RenderGraphComposeExclusionTest {
         dependency.excludeRules.mapNotNull { it.group }.filter { it.startsWith("androidx.") }
       )
       .isEmpty()
+  }
+
+  @Test
+  fun `a consumer with no compose of its own keeps ours on the render graph`() {
+    // Issue #3484. Rule 3 says "the consumer's Compose wins" — a consumer that HAS none wins
+    // nothing, and excluding ours leaves the render classpath with no Compose at all. That is
+    // `wear-os-samples/WearTilesKotlin`: a protolayout-tiles app whose previews are tiles, whose
+    // dependencies are `androidx.wear.tiles` / `androidx.wear.protolayout.*`, and which lost all
+    // 188 renders the moment our own Compose Multiplatform transitives were dropped.
+    val project = project()
+    val configuration =
+      project.configurations.create("composePreviewAndroidRendererDebug").apply {
+        val unitTest =
+          project.configurations.create("debugUnitTestRuntimeClasspath").apply {
+            project.dependencies.add(name, "androidx.wear.protolayout:protolayout-material3:1.4.0")
+          }
+        extendsFrom(unitTest)
+      }
+
+    val dependency =
+      AndroidPreviewSupport.addRenderGraphDependency(
+        project,
+        configuration.name,
+        "ee.schimke.composeai:renderer-android:0.0.0",
+      ) as ModuleDependency
+
+    assertThat(dependency.excludeRules).isEmpty()
+  }
+
+  @Test
+  fun `a consumer's compose reached only through extendsFrom still counts`() {
+    // The consumer's Compose sits on the unit-test classpath the render configuration extends, not
+    // on the render configuration itself, so the probe has to walk `extendsFrom` to see it.
+    // Reading only the render configuration's own dependencies would classify every Compose
+    // consumer as Compose-less and turn Rule 3 off exactly where it is needed.
+    val project = project()
+    val configuration = composeConsumerRenderConfiguration(project)
+
+    assertThat(AndroidPreviewSupport.consumerBringsOwnCompose(project, configuration)).isTrue()
+    assertThat(configuration.dependencies).isEmpty()
   }
 }

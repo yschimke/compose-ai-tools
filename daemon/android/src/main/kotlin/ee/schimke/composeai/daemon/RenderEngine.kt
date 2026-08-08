@@ -245,6 +245,18 @@ class RenderEngine(
     val trace = PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "android")
     val slotTableCapture = PreviewSlotTableCapture()
     val themeFallbackCapture = MaterialThemeFallbackCapture()
+    // Material 3 is `compileOnly` here on purpose (mitigation #1 in
+    // `docs/RENDERER_COMPATIBILITY.md`) — the consumer's own copy is what a preview composes
+    // against. A consumer that never uses it does not have one: a Wear app themes with
+    // `androidx.wear.compose.material3`, and `androidx.compose.material3` is nowhere on its unit
+    // test classpath. Rule 3 keeps our own Compose Multiplatform transitives off that graph
+    // (see `AndroidPreviewSupport.applyRenderGraphResolutionRules`), so it is no longer smuggled
+    // in behind the consumer's back either. Probe rather than assume: an unguarded
+    // `CaptureMaterialTheme` fails EVERY preview in such a module with `NoClassDefFoundError:
+    // androidx/compose/material3/ColorScheme` before user code runs. `renderers/android` has
+    // always taken this shape (`WearMaterialTheme` reads Wear's theme reflectively, and the
+    // Material 3 reads sit behind theme-catalog render modes) — this brings the daemon in line.
+    val hasMaterial3 = material3OnClasspath(classLoader)
     // Opt-in (serve / bundle-daemon set it) — see [PLACEHOLDER_MISSING_RESOURCES_PROP]. Off for the
     // pack semantics daemon so a missing resource fails loudly instead of baking a placeholder.
     val placeholderMissingResources =
@@ -439,9 +451,15 @@ class RenderEngine(
                     }
                     .toTypedArray()
                 CompositionLocalProvider(*provided) {
-                  CaptureMaterialTheme { _, typography, shapes, payload ->
-                    themeFallbackCapture.capture(typography, shapes)
-                    themeFallbackCapture.capture(payload)
+                  // Skipped entirely when the consumer has no Material 3 (see
+                  // [material3OnClasspath], probed at the top of `render`); the capture's fields
+                  // are all nullable and the payload below falls back to `null`, which is what a
+                  // Material-3-less preview should report anyway.
+                  if (hasMaterial3) {
+                    CaptureMaterialTheme { _, typography, shapes, payload ->
+                      themeFallbackCapture.capture(typography, shapes)
+                      themeFallbackCapture.capture(payload)
+                    }
                   }
                   val content: @Composable () -> Unit = {
                     ComposeDataExtensionPipeline.Apply(
@@ -1025,12 +1043,16 @@ class RenderEngine(
         .parameterInformationCollected()
         .addSlotTables(slotTables)
         .build()
+    // `themePayloadFromPreviewContext` reads Material 3 objects out of the slot tables, so it is
+    // only callable when the consumer has Material 3 at all — same guard as the capture above.
     val baseThemePayload =
-      themePayloadFromPreviewContext(
-        context = rawPreviewContext,
-        fallbackTypography = themeFallbackCapture.typography,
-        fallbackShapes = themeFallbackCapture.shapes,
-      ) ?: themeFallbackCapture.payload
+      if (!hasMaterial3) null
+      else
+        themePayloadFromPreviewContext(
+          context = rawPreviewContext,
+          fallbackTypography = themeFallbackCapture.typography,
+          fallbackShapes = themeFallbackCapture.shapes,
+        ) ?: themeFallbackCapture.payload
     // Attribute consumers (#1847) against the facts captured while the scene was alive, keyed by
     // SemanticsNode id (matching `compose/semantics`) against the reported tokens.
     val materialThemePayload = baseThemePayload?.let { payload ->
@@ -2472,6 +2494,18 @@ private fun loadWrapperByFqnOrNull(wrapperFqn: String): Pair<ComposableMethod, A
       )
     }
     .getOrNull()
+
+/**
+ * Whether `androidx.compose.material3` is on [loader], i.e. whether the consumer whose classes we
+ * are about to compose has Material 3 at all.
+ *
+ * Not initialised (`false` to `Class.forName`) on purpose: the probe must not run Material 3's
+ * static initialisers, only answer whether the class is resolvable. Everything the daemon reads
+ * from Material 3 — the theme capture and the `compose/theme` payload — is optional metadata, so a
+ * `false` here degrades the render to "no Material 3 theme reported" rather than failing it.
+ */
+internal fun material3OnClasspath(loader: ClassLoader): Boolean =
+  runCatching { Class.forName("androidx.compose.material3.MaterialTheme", false, loader) }.isSuccess
 
 @Composable
 private fun CaptureMaterialTheme(

@@ -217,6 +217,12 @@ internal object AndroidPreviewSupport {
    * Applied to every dependency the plugin contributes, not just the Compose-carrying ones: the
    * excludes are inert on a subtree that has no `org.jetbrains.compose.*` in it, and a uniform rule
    * cannot be defeated by a future connector quietly gaining an `api(…)` edge to one.
+   *
+   * …but only when there IS a consumer Compose to defer to — see [consumerBringsOwnCompose]. Rule 3
+   * is "the consumer's Compose wins", which presumes the consumer has one. Applied to a module that
+   * doesn't, it wins nothing and empties the render classpath instead (issue #3484 —
+   * `wear-os-samples/WearTilesKotlin`, a protolayout-tiles app with no `androidx.compose.*` on its
+   * graph at all, lost all 188 previews once Rule 3 dropped the only Compose there was: ours).
    */
   internal fun addRenderGraphDependency(
     project: Project,
@@ -224,7 +230,8 @@ internal object AndroidPreviewSupport {
     notation: Any,
   ): Dependency {
     val dependency = if (notation is Dependency) notation else project.dependencies.create(notation)
-    if (dependency is ModuleDependency) {
+    val configuration = project.configurations.findByName(configurationName)
+    if (dependency is ModuleDependency && consumerBringsOwnCompose(project, configuration)) {
       COMPOSE_MULTIPLATFORM_ANDROID_ALIAS_GROUPS.forEach { group ->
         dependency.exclude(mapOf("group" to group))
       }
@@ -232,6 +239,66 @@ internal object AndroidPreviewSupport {
     project.dependencies.add(configurationName, dependency)
     return dependency
   }
+
+  /**
+   * Whether the consumer has Compose of its own on [configuration]'s graph — the precondition for
+   * Rule 3 (see [addRenderGraphDependency]).
+   *
+   * Two signals, either sufficient, both readable without resolving anything:
+   * * a declared `androidx.compose.*` / `org.jetbrains.compose.*` dependency anywhere in the
+   *   configuration's `extendsFrom` hierarchy, which is where the consumer's unit-test classpath
+   *   sits — `wear-os-samples/ComposeStarter` declares the Compose BOM plus `ui-tooling`, and a
+   *   Compose Multiplatform consumer declares `implementation(compose.material3)`;
+   * * the Compose compiler plugin, which every module holding a `@Composable @Preview` must apply
+   *   and which a Wear-tiles module (whose previews are protolayout, not Compose) does not.
+   *
+   * A module matching neither has no Compose to defer to. Rule 3 stays off there and our own
+   * Compose Multiplatform transitives stay on the graph — they are the render classpath's only
+   * Compose, and with nothing to conflict against there is no version pressure to remove.
+   *
+   * Read eagerly: every caller runs from the Android registration's `afterEvaluate`, so the
+   * consumer's build script has already declared its dependencies and applied its plugins.
+   */
+  internal fun consumerBringsOwnCompose(project: Project, configuration: Configuration?): Boolean {
+    if (COMPOSE_COMPILER_PLUGIN_IDS.any(project.plugins::hasPlugin)) return true
+    // Walk `extendsFrom` ourselves rather than calling `Configuration.getHierarchy()`, which is on
+    // the Gradle 10 removal list; the closure is tiny and cycles are impossible in Gradle's own
+    // model, but `seen` keeps this total either way.
+    val seen = mutableSetOf<Configuration>()
+    val pending = ArrayDeque(listOfNotNull(configuration))
+    while (pending.isNotEmpty()) {
+      val candidate = pending.removeFirst()
+      if (!seen.add(candidate)) continue
+      val declaresCompose =
+        candidate.dependencies.any { dependency ->
+          val group = dependency.group.orEmpty()
+          // Bare `androidx.compose` too: that is the BOM's group (`androidx.compose:compose-bom`),
+          // which is often the only Compose coordinate a consumer names directly.
+          COMPOSE_CONSUMER_GROUP_PREFIXES.any { prefix ->
+            group == prefix || group.startsWith("$prefix.")
+          }
+        }
+      if (declaresCompose) return true
+      pending.addAll(candidate.extendsFrom)
+    }
+    return false
+  }
+
+  /**
+   * Compose compiler plugin ids — the Kotlin 2.x plugin every consumer with `@Composable` code
+   * applies, and the legacy AndroidX id for older consumers. Used by [consumerBringsOwnCompose].
+   */
+  private val COMPOSE_COMPILER_PLUGIN_IDS =
+    listOf("org.jetbrains.kotlin.plugin.compose", "androidx.compose.compiler")
+
+  /**
+   * Dependency-group roots that mean "this consumer has Compose of its own". Matched exactly or as
+   * a `<prefix>.` parent, so `androidx.compose` (the BOM) counts alongside `androidx.compose.ui`.
+   * Deliberately NOT `androidx.wear.compose`: Wear Compose is additive on top of `androidx.compose`
+   * rather than a substitute for it, so a module that has it also has the real thing and is caught
+   * by these roots anyway.
+   */
+  private val COMPOSE_CONSUMER_GROUP_PREFIXES = listOf("androidx.compose", "org.jetbrains.compose")
 
   internal fun kmpAndroidSiblingName(group: String, name: String): String? {
     if (!group.startsWith("androidx.") && !group.startsWith("org.jetbrains.compose.")) {
