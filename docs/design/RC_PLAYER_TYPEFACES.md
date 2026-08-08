@@ -23,6 +23,7 @@ question:
 | **CMP Wasm** (this repo's player, in-browser) | ✅ from the host manifest | ✅ if the manifest carries it | ⚠️ manifest only — no fetch | ✅ `decodeInlineFonts` |
 | **CMP Wasm** — font-variation axes | ✅ layout ops (`CoreText`) | — | — | ❌ canvas ops (reported, not silent) |
 | **Java** (AOSP `remote-player-view`, server-side) | ✅ framework typefaces | ⚠️ `/system/fonts/` filename scan | ✅ served by `RcGoogleFontTypefaceResolver` | ✅ `Font.Builder(ByteBuffer)` |
+| **Java** — font-variation axes | ❌ stock `SimpleFontInstance` ignores them | ⚠️ only if the scanned file is variable | ✅ `loadVariable` + `Typeface.Builder(file).setFontVariationSettings(…)` | ✅ `Font.Builder` rebuilt with the axes |
 | **CMP Android** (vendored embedded player, server-side) | ✅ framework typefaces | ⚠️ `Typeface.create(name)` | ✅ `FontsContractCompat` | ❌ ignored |
 | **CMP Android** — font-variation axes | ✅ layout ops, on the family's variable file | — | ✅ `loadVariable` + `Font(File, …, variationSettings)` | ❌ canvas ops |
 | **CMP JVM** (embedded player over Skiko, server-side) | ✅ | ⚠️ host families, else nearest standard | ✅ downloaded via `GoogleFontTypefaceResolver` | ❌ ignored |
@@ -90,7 +91,10 @@ therefore the ceiling on what any of those lanes can draw, and it has two shapes
 
 So a lane wanting to *vary* a family asks for the second and a lane wanting to *draw* it at a fixed
 weight asks for the first; they are different files and both are cached, the variable one under a
-weight-free name because one file serves every instance.
+weight-free name because one file serves every instance. **Asking the wrong one is silent** — a
+static instance has no axes to reject, so it answers every `wdth` value with the same face and the
+render simply comes out flat. That is what the `java` lane did for the two variable-font specimens,
+and it is worth checking first whenever axes land correct-but-invisible in a lane resolving here.
 
 ## Lane detail
 
@@ -176,15 +180,19 @@ are the same cached typeface and a `wght` ramp would draw every line at the firs
 Canvas text ops (`DrawText…`, paint-bundle axes) still map only `wght`/`ital`/`slnt`, and the support
 report says so (`font axis wdth is not implemented`) rather than dropping them silently.
 
-**That support is why the lane fails `remote-m3`'s strict pixel gate, and the gate's reference is
-the side without it.** The gate scores each wasm render against the catalog's **baked** PNG, and the
-baked PNG comes from `RemoteOverridablePreview`, whose player defaults to
-`RemoteComposePlayerKind.VIEW` — the AOSP view player, i.e. the **Java** row of the matrix above. The
-two rows disagree in exactly one place, and `VariableWeightRemote` / `VariableWidthRemote` are made
-of nothing else: both carry their axes as `CoreText` style properties, the wasm player instances
-Roboto Flex at them, and the AOSP CoreText renderer does not route them into the paint's variation
-settings — so the *reference* draws four identical weights and three identical widths while the lane
-under test draws the ramps. The lane under test is the one applying the axes.
+**That support is why the lane failed `remote-m3`'s strict pixel gate — the gate's reference was the
+side without it, and the reason was not the one first recorded here.** The gate scores each wasm
+render against the catalog's **baked** PNG, and the baked PNG comes from `RemoteOverridablePreview`,
+whose player defaults to `RemoteComposePlayerKind.VIEW` — the AOSP view player, i.e. the **Java** row
+of the matrix above. `VariableWeightRemote` / `VariableWidthRemote` are made of nothing but axes, and
+the reference drew four identical weights and three identical widths while the lane under test drew
+the ramps. This document read that as the AOSP `CoreText` renderer dropping style-carried axes; it
+does not. `CoreText.paintingComponent` writes them with `PaintBundle.setTextAxis`, and
+`AndroidPaintContext` applies them through `FontInstance.applyVariationSettings`. The gap was in this
+repo: the connector's resolver instanced the axes on the file the **CSS API** served, which is a
+baked instance with no `fvar` table, so every axis value came back as the same face. Fixed by
+resolving the family's variable file for the axis path (see the Java section); the two lanes agree on
+these previews under the strict default.
 
 The baked/wasm/diff images are in
 [`evidence/rc-remote-m3-variable-axes/`](evidence/rc-remote-m3-variable-axes/README.md), reproduced
@@ -199,11 +207,9 @@ halo — glyph edges, no displacement, no substituted face. It is the `WatchScre
 residual, reading high only because four lines of 22sp display text on an empty 640×480 are almost
 all edge. Three failures on one lane looked like one cause and were two.
 
-Closing the axis pair means routing `CoreText` axes into the paint's variation settings on the AOSP
-side (upstream plumbing — the connector's `RcGoogleFontTypefaceResolver.FontInstance` already
-implements `applyVariationSettings`, nothing calls it for a style-carried axis); until that lands the
-two previews cannot be pixel-equal, and a reviewed tolerance for them is a statement about the
-reference, not about the wasm player. Tracked in #3469.
+Closing the axis pair turned out to be one line of file selection in the connector's resolver, not
+upstream plumbing: `applyVariationSettings` was already wired end to end, it was simply rebuilding
+the face from a file with no axes left in it. #3478.
 
 There is no network fetch for a `google:` name — the prefix is stripped and looked up in the same
 manifest. And unlike every other lane, an unsatisfiable family is **fatal rather than substituted**:
@@ -231,12 +237,28 @@ use — delegating everything else to `DefaultTypefaceResolver` so generics, `/s
 inline `FontData` behave exactly as before. Nothing is installed when the render was given no cache
 directory, so the lane degrades to its previous behaviour rather than failing.
 
-Its `FontInstance` also implements `applyVariationSettings`, rebuilding the face from the cached file
-with `Typeface.Builder(file).setFontVariationSettings(…)` — the same thing the platform resolver does
-for a `/system/fonts/` face — so a paint bundle carrying axes gets a real variable-font instance. The
-catalog's `wght`/`wdth` specimens still draw flat in this lane: they carry their axes as `CoreText`
-*style* properties, and the AOSP CoreText renderer does not route those into the paint's variation
-settings. That is upstream plumbing, not a resolver gap.
+Its `FontInstance` also implements `applyVariationSettings`, rebuilding the face with
+`Typeface.Builder(file).setFontVariationSettings(…)` — the same thing the platform resolver does for
+a `/system/fonts/` face — so a document carrying axes gets a real variable-font instance. **Which
+file it rebuilds is the whole of it**, and it is the one thing this lane got wrong for longer than
+the others: the base face comes from `GoogleFontSource.load`, i.e. the CSS API, and that is a *baked
+instance* with no `fvar` table (see [Where the files come from](#where-the-files-come-from)). Asking
+it for `wdth 25` returns a typeface identical to the base one, silently — which is why the catalog's
+`wght`/`wdth` specimens drew flat here while the `cmp-android`, `cmp-jvm` and browser lanes, all of
+which reach for `loadVariable`, drew the ramps. The axis instancing now resolves the family's
+variable file the same way, lazily (a document with no axes never pays the ~1.7 MB) and keyed by
+`(family, italic)` because one file serves every weight, falling back to the static file for a
+family that has no variable face at all. A document that names axes but no `wght` also gets the
+paint's weight appended as one, because the variable file's own default is 400 while the static file
+encoded its weight in the bytes.
+
+The routing above it is upstream and works: `CoreText` reads its style-carried axes (properties
+20/21) and writes them into the paint bundle with `setTextAxis`, `PaintBundle` replays that as
+`FONT_AXIS`, and `AndroidPaintContext.setFontVariationAxes` hands them to whatever `FontInstance` the
+resolver returned. What the *stock* resolver returns for a built-in family is a `SimpleFontInstance`
+whose `applyVariationSettings` is a documented no-op returning the base typeface — so a document that
+varies axes on `sans-serif` rather than on a named family still draws flat in this lane, and that one
+is genuinely upstream.
 
 ### CMP Android — vendored embedded player, server-side
 

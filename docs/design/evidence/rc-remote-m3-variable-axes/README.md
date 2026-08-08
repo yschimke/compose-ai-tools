@@ -1,4 +1,30 @@
-# remote-m3 CMP/Wasm parity — the three font previews (#3469)
+# remote-m3 CMP/Wasm parity — the three font previews (#3469, #3478)
+
+> **Resolved, and not where this file first said.** The two axis previews below diverged because the
+> `java` lane instanced their axes on the file the Google Fonts **CSS API** served — a baked
+> instance with no `fvar` table — so every axis value rebuilt the same face. Not, as recorded here
+> and in `RC_PLAYER_TYPEFACES.md`, because the AOSP `CoreText` renderer drops style-carried axes: it
+> routes them all the way to `FontInstance.applyVariationSettings`. Resolving the family's
+> **variable** file for that path fixes both previews in the reference lane (#3478). The
+> baked-vs-wasm images further down are kept as the record of the divergence; the before/after pair
+> here is the fix.
+
+## The fix, in the reference lane
+
+Baked **before** | baked **after** | changed pixels, both rendered from this repo with
+`:samples:design-catalog-remote-m3:composePreviewRenderAll` (the renders are white text on
+transparent; composited on grey here to be legible).
+
+![VariableWeightRemote before, after, changed pixels](variable-weight-baked-before-after.png)
+
+![VariableWidthRemote before, after, changed pixels](variable-width-baked-before-after.png)
+
+`VariableWeightRemote` goes from four identical weights to a real 100 → 1000 ramp (3.83% of pixels
+move); `VariableWidthRemote` from three identical widths to a real 25 → 151 ramp (5.89%).
+`TypefaceSpecimenRemote` re-renders **byte-identical** across the same change, which is the control:
+it carries no axes, so a fix to axis instancing must not touch it.
+
+## The divergence, as it was measured
 
 Baked reference | CMP/Wasm render | `pixelmatch` diff, for the three previews that were failing the
 strict 1% CMP/Wasm gate on `design-artifacts → remote-m3`. All three are reproduced locally from
@@ -16,9 +42,8 @@ The baked reference is the **AOSP view player**: `RemoteSticker` captures throug
 
 The reference draws `wdth` 25 / 100 / 151 at **one** set width; the wasm player instances Roboto Flex
 at each. The diff is the horizontal displacement that follows, on every glyph of every line — a
-reference-lane gap, not a wasm fault. See
-[`RC_PLAYER_TYPEFACES.md`](../../RC_PLAYER_TYPEFACES.md): the AOSP CoreText renderer does not route a
-style-carried font-variation axis into the paint's variation settings.
+reference-lane gap, not a wasm fault — see the note at the top for what the gap actually was, and
+[`RC_PLAYER_TYPEFACES.md`](../../RC_PLAYER_TYPEFACES.md) for the corrected lane detail.
 
 ## `VariableWeightRemote` — 1.82%
 

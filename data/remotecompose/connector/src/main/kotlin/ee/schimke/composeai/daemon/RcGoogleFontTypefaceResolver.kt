@@ -56,6 +56,9 @@ internal class RcGoogleFontTypefaceResolver(
    */
   private val instances = HashMap<GoogleFontKey, FontInstance?>()
 
+  /** The family's variable file, resolved on first axis request and remembered per family. */
+  private val variableFiles = GoogleVariableFiles(fonts)
+
   override fun resolve(
     fontType: Int,
     weight: Int,
@@ -112,9 +115,27 @@ internal class RcGoogleFontTypefaceResolver(
     // otherwise re-attempt the (network-backed) fetch for every run in the document. Storing null
     // makes it one attempt per key, and the caller falls back to `DefaultTypefaceResolver` as fast
     // as it did the first time.
+    // The static instance is the right base face — it is the family at this exact weight, already
+    // baked. But a *miss* on it does not mean the family is unavailable: an offline render whose
+    // shared cache was warmed by a `cmp-android` / `cmp-jvm` axis pass holds the variable file and
+    // no weight-specific static one, because those lanes ask `loadVariable` first. Falling through
+    // to the delegate there would substitute a platform face while the correct bytes sat in the
+    // cache. `Typeface.create(base, weight, italic)` instances the `wght` axis of a variable file,
+    // so the variable file serves as a base too.
+    val file = fonts.load(key) ?: variableFiles.fileFor(key)
     val instance =
-      fonts.load(key)?.let { file ->
-        typefaceLoader(file, weight, italic)?.let { VariableFontInstance(it, file, weight, italic) }
+      file?.let {
+        typefaceLoader(it, weight, italic)?.let { typeface ->
+          VariableFontInstance(
+            typeface = typeface,
+            file = it,
+            // Resolved lazily, and only if the document actually names an axis: the variable file
+            // is ~1.7 MB and a document that draws this family at a fixed weight never needs it.
+            variableFile = { variableFiles.fileFor(key) },
+            weight = weight,
+            italic = italic,
+          )
+        }
       }
     instances[key] = instance
     return instance
@@ -130,12 +151,19 @@ internal class RcGoogleFontTypefaceResolver(
    * resolver does for a `/system/fonts/` face. Returning the base typeface instead (the obvious
    * no-op) is what makes a `wght` ramp draw every line at one weight.
    *
+   * **Which file is rebuilt is the whole of it.** [file] is what the CSS API served, and that is a
+   * baked instance with no `fvar` table — asking it for `wdth 25` yields a typeface identical to
+   * [typeface], silently. [variableFile] is the family's pre-instancing original, and only it can
+   * answer. Falling back to [file] when there is no variable face keeps a static-only family
+   * (Lobster Two) rendering exactly as before rather than failing.
+   *
    * Instances are cached per axis string: the paint layer re-applies the same settings on every
    * text op, and re-parsing a font file per op would be visible on a text-heavy document.
    */
   private class VariableFontInstance(
     private val typeface: Typeface,
     private val file: File,
+    private val variableFile: () -> File?,
     private val weight: Int,
     private val italic: Boolean,
   ) : FontInstance {
@@ -144,20 +172,26 @@ internal class RcGoogleFontTypefaceResolver(
     override fun getTypeface(): Typeface = typeface
 
     override fun applyVariationSettings(tags: Array<String>, values: FloatArray): Typeface {
-      val settings = variationSettings(tags, values) ?: return typeface
-      variations[settings]?.let {
+      val requested = variationSettings(tags, values) ?: return typeface
+      variations[requested]?.let {
         return it
       }
+      // The variable file's own default is `wght 400`, and the axes a document carries need not
+      // mention weight at all (a `wdth`-only ramp doesn't). Without this, drawing this family at
+      // weight 700 *and* a `wdth` value would come back at 400 — the static file the base typeface
+      // is built from encodes its weight in the file, the variable one has to be told.
+      val settings = withWeightAxis(requested, weight)
+      val source = runCatching { variableFile() }.getOrNull() ?: file
       val instance =
         runCatching {
-            Typeface.Builder(file)
+            Typeface.Builder(source)
               .setFontVariationSettings(settings)
               .setWeight(weight)
               .setItalic(italic)
               .build()
           }
           .getOrNull() ?: typeface
-      variations[settings] = instance
+      variations[requested] = instance
       return instance
     }
 
@@ -199,6 +233,18 @@ internal class RcGoogleFontTypefaceResolver(
       return axes.takeIf { it.isNotEmpty() }?.joinToString(",")
     }
 
+    /** The one axis that also selects a *file*: Google Fonts serves a static instance per weight. */
+    private const val WEIGHT_AXIS = "wght"
+
+    /**
+     * [settings] with `'wght' <weight>` appended when the document named no weight axis itself.
+     *
+     * A document's own `wght` always wins — it is the more specific request, and re-stating the
+     * paint's weight over it would flatten exactly the ramp this path exists to draw.
+     */
+    fun withWeightAxis(settings: String, weight: Int): String =
+      if (settings.contains("'$WEIGHT_AXIS'")) settings else "$settings,'$WEIGHT_AXIS' $weight"
+
     fun googleFontKey(family: String?, weight: Int, italic: Boolean): GoogleFontKey? {
       val name = family?.trim() ?: return null
       if (!name.startsWith(GOOGLE_PREFIX, ignoreCase = true)) return null
@@ -206,6 +252,34 @@ internal class RcGoogleFontTypefaceResolver(
       if (bare.isEmpty()) return null
       return GoogleFontKey(bare, weight, italic)
     }
+  }
+}
+
+/**
+ * The **variable** file for a family — the one that still carries an `fvar` table — resolved once
+ * per family and remembered, misses included.
+ *
+ * A different file from the [GoogleFontSource.load] one the base typeface is built from, and that
+ * difference is the whole point: `load` resolves through the CSS API, which serves a *baked
+ * instance* even for the `wght@100..1000` range query (88 KB of frozen Roboto Flex, no `fvar`
+ * table), so `Typeface.Builder(…).setFontVariationSettings(…)` over it has nothing left to vary and
+ * draws every axis value identically — a `wdth` ramp rendered flat with no error anywhere to
+ * explain it. Only [GoogleFontSource.loadVariable] reaches the pre-instancing original, which is
+ * what the `cmp-android` and `cmp-jvm` lanes already ask for.
+ *
+ * Keyed by `(family, italic)` and not by the weight-carrying [GoogleFontKey]: one variable file
+ * serves every weight, so keying per weight would probe (and download) the same ~1.7 MB once per
+ * line of a `wght` ramp.
+ */
+internal class GoogleVariableFiles(private val fonts: GoogleFontSource) {
+  private val files = HashMap<Pair<String, Boolean>, File?>()
+
+  fun fileFor(key: GoogleFontKey): File? {
+    val cacheKey = key.name to key.italic
+    if (files.containsKey(cacheKey)) return files[cacheKey]
+    val file = runCatching { fonts.loadVariable(key.name, key.italic) }.getOrNull()
+    files[cacheKey] = file
+    return file
   }
 }
 
