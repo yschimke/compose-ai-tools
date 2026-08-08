@@ -15,6 +15,7 @@ import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.node.RootForTest
@@ -100,6 +101,23 @@ class FigmaSvgGradientPaintGrowthRenderTest {
         )
       }
     assertEquals("gradient rect geometry:\n$svg", Rect(16, 16, 88, 48), gradientRect(svg))
+  }
+
+  @Test
+  fun `a shadow ahead of the padding keeps the layer on its outer box`() {
+    // A positive elevation paints, unlike a clip: Compose draws this shadow at the outer 120×80
+    // box. The exported layer carries one rect for both the fill and its `feDropShadow`, so this
+    // chain cannot satisfy both — the outer box wins, which is what the export did before #3569.
+    val svg =
+      exportSvg("shadow-then-padding-then-brush") {
+        Box(
+          Modifier.size(120.dp, 80.dp)
+            .shadow(8.dp, RoundedCornerShape(12.dp))
+            .padding(16.dp)
+            .background(brush, RoundedCornerShape(12.dp))
+        )
+      }
+    assertEquals("gradient rect geometry:\n$svg", Rect(0, 0, 120, 80), gradientRect(svg))
   }
 
   private data class Rect(val x: Int, val y: Int, val width: Int, val height: Int)
