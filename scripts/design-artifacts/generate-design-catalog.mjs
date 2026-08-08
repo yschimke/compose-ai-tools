@@ -61,6 +61,10 @@ import {
   mergeCatalogGroups,
 } from "./catalog-inventory.mjs";
 import { variantStateFromId } from "./variant-state.mjs";
+import {
+  applyVariantAxisProps,
+  overridesByPreviewId,
+} from "./variant-axis-props.mjs";
 import { renderIndexHtml } from "./render-index-html.mjs";
 import { renderCompareHtml } from "./render-compare-html.mjs";
 import { renderCrossSystemHtml } from "./render-cross-system-html.mjs";
@@ -212,9 +216,23 @@ async function loadCandidates(path, breakpoints) {
   // live catalog server (`ServeCatalogStore` → `variants.json` → `ServeWeb`) both fold off, so no
   // downstream change is needed. Mirrors the spec-driven `foldVariants` state tag for the
   // hand-written pressed/disabled state variants.
+  //
+  // A `@PreviewAxis` cell is the exception: its spec carries the full axis assignment, so it
+  // publishes structured `props` instead of an opaque `state` — matching a reference by property
+  // rather than by whether a hand-typed name coincides with the kit's naming. Props win over state
+  // for such a cell (stamping both would double-count one render), so the axis pass runs first and
+  // the state pass skips any image it claimed.
+  const axisProps = applyVariantAxisProps(candidates, overridesByPreviewId(candidateBundle));
+  if (axisProps.stamped > 0) {
+    console.log(`[${basename(path)}] stamped @PreviewAxis props on ${axisProps.stamped} image(s)`);
+  }
   for (const candidate of candidates) {
     const state = variantStateFromId(candidate.previewId ?? candidate.id);
-    if (state) for (const image of candidate.images ?? []) image.state = state;
+    if (state) {
+      for (const image of candidate.images ?? []) {
+        if (!axisProps.claimed.has(image)) image.state = state;
+      }
+    }
   }
   // Candidate images retain width-derived size but not `PreviewParams.fontScale`. Promote a
   // non-default scale to a props axis before candidates sharing one function are folded, and remove

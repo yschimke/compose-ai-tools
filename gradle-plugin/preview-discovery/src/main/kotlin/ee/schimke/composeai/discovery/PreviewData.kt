@@ -858,7 +858,26 @@ data class OverrideSeed(
  * composing, so the same preview function renders once more with the knob(s) flipped. [name] is the
  * `_VARIANT_<name>` render-output tag and the variant's catalog `state`.
  */
-@Serializable data class OverrideVariantSpec(val name: String, val seeds: List<OverrideSeed>)
+@Serializable
+data class OverrideVariantSpec(
+  val name: String,
+  val seeds: List<OverrideSeed>,
+  /**
+   * The **full axis assignment** this variant represents, when it came from a `@PreviewAxis` cross
+   * product rather than a hand-written `@OverrideVariant` — `[size=xs, shape=square]`.
+   *
+   * Empty for a hand-written variant, which has only a [name] to describe itself. That difference
+   * is the point of declaring axes: the export publishes a named variant as an opaque `state`
+   * string, so pairing it against a design kit's component set means hoping the hand-typed name
+   * matches the kit's property naming. A cell that knows its own properties publishes them as
+   * `props`, and pairs by construction.
+   *
+   * Carries **every** axis, defaults included — `size=s` is as much part of what a cell is as
+   * `shape=square` — even though [seeds] holds only the non-default values, since seeding a knob
+   * with the value it already resolves to is a no-op.
+   */
+  val props: List<CatalogVariantProp> = emptyList(),
+)
 
 @Serializable
 data class PreviewInfo(
