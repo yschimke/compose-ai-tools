@@ -119,6 +119,23 @@ class ServePageThemeTest {
   }
 
   @Test
+  fun `Back and Forward repaint the chrome with the entry they restore`() {
+    // Every pop path restores its theme by ASSIGNING the control's value, which fires no `change`
+    // — so each one has to hand the restored choice over itself. Missing this left Back from Dark
+    // to a Light entry re-rendering the preview light inside a page still pinned dark.
+    val viewerJs = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
+    assertTrue(
+      viewerJs.contains("window.cpPageTheme.follow(themeChoice.value)"),
+      "the viewer's Back/Forward hydrate must repaint the chrome",
+    )
+    val compare = ServeWebAssets.load("format-compare.js")!!.bytes.decodeToString()
+    assertTrue(
+      compare.substringAfter("cpUrlState.onPop").contains("window.cpPageTheme.follow(theme)"),
+      "so must the comparison page's",
+    )
+  }
+
+  @Test
   fun `the stylesheet resolves both modes from color-scheme alone`() {
     // The setting is implemented as `color-scheme` on <html>, which can only re-resolve values
     // written as `light-dark()` pairs. A `prefers-color-scheme` block anywhere in the sheet would

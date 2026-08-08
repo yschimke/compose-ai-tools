@@ -2249,6 +2249,12 @@
       themeChoice.value = offered ? choice : initialTheme;
       themeChoice.setAttribute("data-theme-active", offered ? "1" : initialThemeActive);
       syncThemeBar();
+      // …and the page around the stage, when the Page theme setting says to follow the choice.
+      // Setting `.value` fires no `change`, so the sticky script's handler — which is what keeps
+      // the chrome in step when a theme is PICKED — never runs on this path. Without this, going
+      // Back from Dark to a Light entry re-rendered the preview light inside a page still pinned
+      // dark. The same call the format-comparison pop handler already makes.
+      if (window.cpPageTheme) window.cpPageTheme.follow(themeChoice.value);
     }
     // The Remote Compose player pick already rode the URL as `rcPlayer=<wire>` (query() emits it,
     // URL_STATE_PARAMS owns it) but nothing ever read it back, so a shared `?rcPlayer=cmp-android`
