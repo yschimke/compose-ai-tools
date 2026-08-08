@@ -616,15 +616,24 @@ const DOM_CODE_TO_ANDROID_KEYCODE: ReadonlyMap<string, number> = new Map([
  *
  * `KeyboardEvent.key` is the character for a printable key and a *name* for everything else
  * (`"Shift"`, `"ArrowLeft"`, `"Backspace"`) — hence the single-character test, which also lets an
- * astral character such as an emoji through as the one character it is. Modified keystrokes are
- * shortcuts rather than typing, so they carry no text.
+ * astral character such as an emoji through as the one character it is.
+ *
+ * Modified keystrokes are shortcuts rather than typing — with one exception that matters a great
+ * deal to the non-US layouts this exists to support. AltGraph *is* how those layouts reach their
+ * extra characters (`€` is AltGr+E on many of them), and Windows and Linux conventionally surface
+ * AltGr as Ctrl+Alt — so rejecting on `ctrlKey`/`altKey` alone would drop exactly the characters
+ * that motivated carrying text in the first place, while a plain Alt+key shortcut would sail
+ * through and get typed. `getModifierState("AltGraph")` separates the two.
  *
  * Sent for both press and release: a backend that suppresses the physical key event over a
  * focused text field (so the character is not typed twice) has to suppress both halves, or the
  * composition sees a release whose press never happened.
  */
 function typedText(evt: KeyboardEvent): string | null {
-    if (evt.ctrlKey || evt.metaKey) return null;
+    const altGraph = evt.getModifierState?.("AltGraph") === true;
+    if (!altGraph && (evt.ctrlKey || evt.metaKey || evt.altKey)) return null;
+    // Cmd is never part of an AltGr combination, so it stays a shortcut regardless.
+    if (evt.metaKey) return null;
     const key = evt.key;
     if (typeof key !== "string" || Array.from(key).length !== 1) return null;
     // Control characters are not typing even when they arrive as one "character".

@@ -273,6 +273,26 @@ describe("attachInteractiveInputHandlers wheel — streaming mode", () => {
     });
 });
 
+/**
+ * A keyboard event with an explicit `getModifierState`.
+ *
+ * happy-dom reports `getModifierState("AltGraph") === true` for *any* `altKey`, which a real
+ * browser does not — it reports AltGraph only for a genuine AltGr press. Stating the modifier
+ * outright is what lets these tests tell "AltGr typed a character" apart from "Alt is a menu
+ * accelerator", which is the whole distinction under test.
+ */
+function keyEventWithModifiers(
+    type: string,
+    init: KeyboardEventInit,
+    modifiers: Record<string, boolean>,
+): KeyboardEvent {
+    const evt = new KeyboardEvent(type, { bubbles: true, ...init });
+    (
+        evt as KeyboardEvent & { getModifierState: (k: string) => boolean }
+    ).getModifierState = (k: string) => modifiers[k] === true;
+    return evt;
+}
+
 function pointerEvent(
     type: string,
     opts: {
@@ -891,7 +911,8 @@ describe("attachInteractiveInputHandlers keyboard (issue #1203)", () => {
                 bubbles: true,
             }),
         );
-        // A modified keystroke is a shortcut, not typing.
+        // A modified keystroke is a shortcut, not typing — including plain Alt, which is a menu
+        // accelerator on every desktop platform.
         card.dispatchEvent(
             new KeyboardEvent("keydown", {
                 code: "KeyA",
@@ -900,6 +921,13 @@ describe("attachInteractiveInputHandlers keyboard (issue #1203)", () => {
                 bubbles: true,
             }),
         );
+        card.dispatchEvent(
+            keyEventWithModifiers(
+                "keydown",
+                { code: "KeyA", key: "a", altKey: true },
+                { Alt: true },
+            ),
+        );
 
         assert.deepStrictEqual(
             posted.map((m) => ({ keyCode: m["keyCode"], text: m["text"] })),
@@ -907,7 +935,35 @@ describe("attachInteractiveInputHandlers keyboard (issue #1203)", () => {
                 { keyCode: "59", text: undefined },
                 { keyCode: "21", text: undefined },
                 { keyCode: "29", text: undefined },
+                { keyCode: "29", text: undefined },
             ],
+        );
+    });
+
+    it("types an AltGraph character even though it arrives as Ctrl+Alt", () => {
+        const { card } = buildLiveCard("p1");
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            supportsControl: () => true,
+            vscode: api,
+        });
+
+        // AltGr is how non-US layouts reach their extra characters — `€` is AltGr+E on many of
+        // them — and Windows and Linux conventionally surface AltGr as Ctrl+Alt. Rejecting on
+        // those modifiers alone would drop exactly the characters that motivated carrying text
+        // at all, so the AltGraph modifier state is what separates it from a real shortcut.
+        card.dispatchEvent(
+            keyEventWithModifiers(
+                "keydown",
+                { code: "KeyE", key: "€", ctrlKey: true, altKey: true },
+                { AltGraph: true, Control: true, Alt: true },
+            ),
+        );
+
+        assert.deepStrictEqual(
+            posted.map((m) => m["text"]),
+            ["€"],
         );
     });
 });
