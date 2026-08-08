@@ -280,6 +280,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `WallpaperDemoPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/WallpaperDemoPreview_Wallpaper_Demo.png" width="150" /> |
 | `CmpPseudoBidi` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/CmpPseudoBidi_bidi.png" width="150" /> |
 | `CmpPseudoDefault` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/CmpPseudoDefault_default.png" width="150" /> |
+| `ScrollToEndPreview · scroll top` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ScrollToEndPreview_Scroll_To_End_SCROLL_top.png" width="150" /> |
+| `ScrollToEndPreview · scroll end` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ScrollToEndPreview_Scroll_To_End_SCROLL_end.png" width="150" /> |
 | `ScrollingListPreview · scroll long` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ScrollingListPreview_Scrolling_List_SCROLL_long.png" width="150" /> |
 | `ScrollingListPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ScrollingListPreview_Scrolling_List_SCROLL_gif.gif" width="150" /> |
 | `ShaderFbmAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShaderFbmAnimatedPreview_Shader_Gallery_fBm_Clouds_animated.gif" width="150" /> |

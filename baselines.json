@@ -1967,6 +1967,22 @@
     "sha256": "70f05e2849dcf14fcb19afaf23a17a645dd9b4dcdf81f99361c531fbb5d5679e",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt"
   },
+  "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollToEndPreview_Scroll To End": {
+    "captureLabel": "scroll top",
+    "functionName": "ScrollToEndPreview",
+    "module": "samples:cmp",
+    "renderBasename": "ScrollToEndPreview_Scroll_To_End_SCROLL_top.png",
+    "sha256": "ba0d37a28579c23bcbe7668441cc464a3cb374993441e9bb70cfd041739606e6",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollToEndPreview_Scroll To End#1": {
+    "captureLabel": "scroll end",
+    "functionName": "ScrollToEndPreview",
+    "module": "samples:cmp",
+    "renderBasename": "ScrollToEndPreview_Scroll_To_End_SCROLL_end.png",
+    "sha256": "dffebb86ff4fab153ae7d79b8df7850e6ae78212d8ed8a6390b7c767329e3894",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
+  },
   "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List": {
     "captureLabel": "scroll long",
     "functionName": "ScrollingListPreview",
