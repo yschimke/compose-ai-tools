@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  anchoredExclusions,
   deferredPreviewIds,
   previewsFromJson,
   specPreviewFunctions,
@@ -225,4 +226,29 @@ test("previewsFromJson accepts every shape the pipeline produces", () => {
   assert.deepEqual(previewsFromJson({ previews: rows }), rows);
   assert.deepEqual(previewsFromJson({ results: rows }), rows);
   assert.deepEqual(previewsFromJson({ nothing: true }), []);
+});
+
+test("the CLI form of a deferred id is anchored, so its variants are not deferred with it", () => {
+  // Deferral is an exclusion, and on the exclusion axis over-matching silently deletes work: an
+  // unanchored `Switch_Dark` also matches `Switch_Dark_VARIANT_off`, a preview the spec never
+  // deferred. Its absence surfaces as a completeness-gate failure naming a component, with nothing
+  // pointing back at the mode filter (#3559).
+  assert.deepEqual(anchoredExclusions(["Switch_Dark", "Card_Dark"]), ["=Switch_Dark", "=Card_Dark"]);
+  assert.deepEqual(anchoredExclusions(["=Already"]), ["=Already"], "idempotent");
+  assert.deepEqual(anchoredExclusions([]), []);
+  assert.deepEqual(anchoredExclusions(undefined), []);
+});
+
+test("the plain ids stay plain, because the sharder matches them by set membership", () => {
+  // `--out` feeds shard-preview-ids.mjs, which removes deferred ids from the partition with
+  // `Set.has`. Anchoring there would miss every one of them and hand the shards a share of previews
+  // that are then excluded in each — the deferral and the partition competing for slots, which is
+  // the exact arrangement `deferred ids are removed BEFORE partitioning` exists to prevent.
+  const previews = [
+    { id: "FilledButtonPreview_Light", functionName: "FilledButtonPreview" },
+    { id: "FilledButtonPreview_Dark", functionName: "FilledButtonPreview" },
+  ];
+  const { ids } = deferredPreviewIds(spec, previews);
+  assert.deepEqual(ids, ["FilledButtonPreview_Dark"]);
+  assert.ok(ids.every((id) => !id.startsWith("=")));
 });

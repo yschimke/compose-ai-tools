@@ -323,8 +323,13 @@ jobs:
             --spec "${{ matrix.spec }}" \
             --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
             --out "$GITHUB_WORKSPACE/mode-filter.txt" \
+            --anchored-out "$GITHUB_WORKSPACE/mode-filter-cli.txt" \
             --rows-out "$GITHUB_WORKSPACE/mode-filter-rows.txt"
-          echo "exclude-ids=$(cat "$GITHUB_WORKSPACE/mode-filter.txt")" >> "$GITHUB_OUTPUT"
+          # The ANCHORED file. `--exclude-preview-id` matches a plain pattern by equality OR
+          # substring, and ids are hierarchical, so deferring `Switch_Dark` unanchored also defers
+          # `Switch_Dark_VARIANT_off` — never deferred by the spec, and missing from the sheet with
+          # nothing pointing back at this step (#3559).
+          echo "exclude-ids=$(cat "$GITHUB_WORKSPACE/mode-filter-cli.txt")" >> "$GITHUB_OUTPUT"
           # Modes that carry no discovered id are a @PreviewParameter row axis — skipped by label
           # inside the render instead, since discovery never sees those rows.
           echo "exclude-rows=$(cat "$GITHUB_WORKSPACE/mode-filter-rows.txt")" >> "$GITHUB_OUTPUT"

@@ -333,17 +333,32 @@ jobs:
           catalog-path: ${{ inputs.catalog-path }}
           github-token: ${{ github.token }}
 
-      - name: Check the CLI can merge shard renders
+      # Two capabilities, one probe, because a CLI can have the first without the second and each
+      # failure mode is silent in its own way:
+      #
+      #  - `bundle merge` reassembles the shard bundles. Without it the fan-out runs to completion
+      #    and dies at the last step, having burned every shard's ~20 minutes.
+      #  - `=<id>` anchored exclusions (#3561) are what make a generated exclusion list safe. Without
+      #    them `--exclude-preview-id` falls back to substring matching, and since ids are
+      #    hierarchical each shard also deletes the variants of every id it excluded — m3-catalog
+      #    captured 267 of 1095 assigned previews that way, on a GREEN run. An old CLI here does not
+      #    fail; it silently publishes a three-quarters-empty catalog, which is strictly worse than
+      #    refusing to start, hence the hard error rather than a warning.
+      - name: Check the CLI can shard and merge
         if: ${{ inputs.cli-source == 'released' }}
         run: |
           set -euo pipefail
           version="$(compose-preview --version | head -1)"
-          if compose-preview bundle help 2>&1 | grep -q 'bundle merge'; then
-            echo "✓ $version supports 'bundle merge'."
-            exit 0
+          help="$(compose-preview bundle help 2>&1 || true)"
+          if ! grep -q 'bundle merge' <<<"$help"; then
+            echo "::error title=CLI too old for render-shards::${version} has no 'compose-preview bundle merge', which the sharded render needs to reassemble the shard bundles. Raise cli-version (or, with cli-version: catalog, the ${{ inputs.catalog-key }} pin in ${{ inputs.catalog-path }}) to a release that carries it, or set render-shards: 1."
+            exit 1
           fi
-          echo "::error title=CLI too old for render-shards::${version} has no 'compose-preview bundle merge', which the sharded render needs to reassemble the shard bundles. Raise cli-version (or, with cli-version: catalog, the ${{ inputs.catalog-key }} pin in ${{ inputs.catalog-path }}) to a release that carries it, or set render-shards: 1."
-          exit 1
+          if ! grep -q '=<id>' <<<"$help"; then
+            echo "::error title=CLI too old for render-shards::${version} has no '=<id>' anchored --exclude-preview-id matching, so each shard's exclusion list would also drop the variants of every id it excludes — the shards would publish a fraction of the catalog without failing. Raise cli-version (or, with cli-version: catalog, the ${{ inputs.catalog-key }} pin in ${{ inputs.catalog-path }}) to a release that carries it, or set render-shards: 1."
+            exit 1
+          fi
+          echo "✓ $version supports 'bundle merge' and anchored '=<id>' exclusions."
 
   render-shard:
     name: ${{ inputs.system }} · shard ${{ matrix.shard }}/${{ inputs.render-shards }}
@@ -725,10 +740,24 @@ jobs:
             --spec "$GITHUB_WORKSPACE/$SPEC" \
             --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
             --out "$GITHUB_WORKSPACE/mode-filter.txt" \
+            --anchored-out "$GITHUB_WORKSPACE/mode-filter-cli.txt" \
             --rows-out "$GITHUB_WORKSPACE/mode-filter-rows.txt"
           # Exclusion polarity: a pattern that matches nothing renders MORE, never less, so a spec
           # that has drifted ahead of the code wastes time instead of dropping a sticker.
-          echo "exclude-ids=$(cat "$GITHUB_WORKSPACE/mode-filter.txt")" >> "$GITHUB_OUTPUT"
+          #
+          # The ANCHORED file, not the plain one. `--exclude-preview-id` matches a plain pattern by
+          # equality or substring, and ids are hierarchical, so deferring `Switch_Dark` unanchored
+          # also defers `Switch_Dark_VARIANT_off` — which the spec never deferred, and whose absence
+          # surfaces as a completeness-gate failure naming a component rather than as anything
+          # pointing at the mode filter (#3559).
+          echo "exclude-ids=$(cat "$GITHUB_WORKSPACE/mode-filter-cli.txt")" >> "$GITHUB_OUTPUT"
+          # A CLI predating anchored matching reads `=Switch_Dark` as a literal substring, matches
+          # nothing, and renders the deferred modes too. That is the safe direction — every sticker
+          # is still baked, the run is just slower — but it is invisible, so say it out loud rather
+          # than let a catalog quietly stop getting the saving it configured.
+          if ! compose-preview bundle help 2>&1 | grep -q '=<id>'; then
+            echo "::warning title=Mode deferral not applied::$(compose-preview --version | head -1) has no '=<id>' anchored --exclude-preview-id matching, so this run renders the deferred modes as well. Every preview is still baked; the render is just as slow as an undeferred one. Raise cli-version to restore the saving."
+          fi
           # A mode that carries no discovered id is a @PreviewParameter row axis: discovery never
           # sees those rows (the renderer expands the provider), so they're skipped by LABEL instead.
           echo "exclude-rows=$(cat "$GITHUB_WORKSPACE/mode-filter-rows.txt")" >> "$GITHUB_OUTPUT"

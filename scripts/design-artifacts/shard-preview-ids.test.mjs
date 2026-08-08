@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  ANCHOR,
+  anchorExclusions,
   parseIdList,
   partitionPreviewIds,
   previewNameMatches,
@@ -57,9 +59,9 @@ test("each shard excludes exactly the previews the other shards render", () => {
   assert.equal(plan.total, 2);
   assert.equal(plan.renderable, 4);
   assert.deepEqual(plan.shards[0].previews, ["a", "c"]);
-  assert.deepEqual(plan.shards[0].exclude, ["b", "d"]);
+  assert.deepEqual(plan.shards[0].exclude, ["=b", "=d"]);
   assert.deepEqual(plan.shards[1].previews, ["b", "d"]);
-  assert.deepEqual(plan.shards[1].exclude, ["a", "c"]);
+  assert.deepEqual(plan.shards[1].exclude, ["=a", "=c"]);
   // Union of what the shards render is the whole renderable set — nothing is silently dropped.
   assert.deepEqual(plan.shards.flatMap((s) => s.previews).sort(), ["a", "b", "c", "d"]);
 });
@@ -74,17 +76,17 @@ test("deferred ids are excluded in EVERY shard and take no share of the partitio
   assert.deepEqual(plan.shards[0].previews, ["a_Light"]);
   assert.deepEqual(plan.shards[1].previews, ["b_Light"]);
   for (const shard of plan.shards) {
-    assert.ok(shard.exclude.includes("a_Dark"), `shard ${shard.index} defers a_Dark`);
-    assert.ok(shard.exclude.includes("b_Dark"), `shard ${shard.index} defers b_Dark`);
+    assert.ok(shard.exclude.includes("=a_Dark"), `shard ${shard.index} defers a_Dark`);
+    assert.ok(shard.exclude.includes("=b_Dark"), `shard ${shard.index} defers b_Dark`);
   }
-  assert.deepEqual(plan.shards[0].exclude, ["a_Dark", "b_Dark", "b_Light"]);
+  assert.deepEqual(plan.shards[0].exclude, ["=a_Dark", "=b_Dark", "=b_Light"]);
 });
 
 test("a deferred id discovery never saw is still excluded", () => {
   // Exclusion polarity: a pattern matching nothing renders more, never less. A spec that has drifted
   // ahead of the code must not fail the plan.
   const plan = shardRenderPlan(["a", "b"].map(preview), 2, ["ghost"]);
-  assert.ok(plan.shards.every((s) => s.exclude.includes("ghost")));
+  assert.ok(plan.shards.every((s) => s.exclude.includes("=ghost")));
   assert.equal(plan.renderable, 2);
 });
 
@@ -92,7 +94,7 @@ test("one shard means one exclusion list holding only the deferred ids", () => {
   const plan = shardRenderPlan(["a", "b"].map(preview), 1, ["c"]);
   assert.equal(plan.total, 1);
   assert.deepEqual(plan.shards[0].previews, ["a", "b"]);
-  assert.deepEqual(plan.shards[0].exclude, ["c"]);
+  assert.deepEqual(plan.shards[0].exclude, ["=c"]);
 });
 
 test("de-duplicates ids discovery reported twice", () => {
@@ -231,7 +233,7 @@ test("the render filter drops non-required functions BEFORE the partition is dra
   assert.equal(plan.filteredOut, 2);
   assert.deepEqual(plan.shards.flatMap((s) => s.previews).sort(), ["Keep_Dark", "Keep_Light"]);
   for (const shard of plan.shards) {
-    assert.equal(shard.exclude.some((id) => id.startsWith("Drop_")), false,
+    assert.equal(shard.exclude.some((id) => id.startsWith("=Drop_")), false,
       "a filtered-out id needs no exclusion — the name filter already drops it");
   }
 });
@@ -256,7 +258,7 @@ test("the render filter and modePriority deferral compose", () => {
   const plan = shardRenderPlan(previews, 2, ["Keep_Dark"], ["KeepPreview"]);
   assert.equal(plan.renderable, 1);
   assert.deepEqual(plan.shards[0].previews, ["Keep_Light"]);
-  assert.deepEqual(plan.shards[0].exclude, ["Keep_Dark"]);
+  assert.deepEqual(plan.shards[0].exclude, ["=Keep_Dark"]);
 });
 
 // --- discovered-set agreement, not just cardinality -----------------------------------------
@@ -286,4 +288,57 @@ test("verifyShardPlans rejects plans with no digest at all", () => {
   const { ok, problems } = verifyShardPlans(plans);
   assert.equal(ok, false);
   assert.match(problems.join("\n"), /no renderable digest/);
+});
+
+test("every emitted exclusion is anchored, so a shard cannot delete its own variants", () => {
+  // The bug that pinned `render-shards` back to 1. Ids are hierarchical, and
+  // `--exclude-preview-id` matches a plain pattern by equality OR substring — so shard 1 excluding
+  // shard 2's `SwitchOn_Light` also matched `SwitchOn_Light_VARIANT_off`, which shard 1 was itself
+  // assigned. m3-catalog captured 267 of 1095 assigned previews that way, on a green run.
+  const ids = [
+    "SwitchOn_Light",
+    "SwitchOn_Light_VARIANT_off",
+    "SwitchOff_Light",
+    "SwitchOff_Light_VARIANT_on",
+  ];
+  const plan = shardRenderPlan(ids.map(preview), 2);
+
+  const mine = new Set(plan.shards[0].previews);
+  for (const pattern of plan.shards[0].exclude) {
+    assert.ok(pattern.startsWith("="), `${pattern} is not anchored`);
+    // The property that matters, stated as the matcher sees it: an anchored pattern matches the one
+    // id after the `=` and nothing else, so no id this shard renders can be caught by it.
+    assert.equal(mine.has(pattern.slice(1)), false, `${pattern} would delete this shard's own work`);
+  }
+  // Concretely: the ids sort so that shard 1 gets the two `SwitchO*_Light` bases and shard 2 the two
+  // `_VARIANT_` leaves. Unanchored, shard 2's list ("SwitchOff_Light", "SwitchOn_Light") is a
+  // substring of both of its own ids and it would render nothing at all.
+  const shardTwo = plan.shards[1];
+  assert.deepEqual(shardTwo.previews, ["SwitchOff_Light_VARIANT_on", "SwitchOn_Light_VARIANT_off"]);
+  assert.deepEqual(shardTwo.exclude, ["=SwitchOff_Light", "=SwitchOn_Light"]);
+  const unanchored = shardTwo.exclude.map((p) => p.slice(1));
+  assert.ok(
+    shardTwo.previews.every((id) => unanchored.some((p) => id.includes(p))),
+    "the unanchored form really would have matched every id this shard renders",
+  );
+});
+
+test("anchorExclusions is idempotent and drops nothing", () => {
+  assert.deepEqual(anchorExclusions(["a", "=b"]), ["=a", "=b"]);
+  assert.deepEqual(anchorExclusions([]), []);
+  assert.deepEqual(anchorExclusions(undefined), []);
+  assert.equal(ANCHOR, "=");
+});
+
+test("the plan's previews stay PLAIN ids while its exclusions are patterns", () => {
+  // The two shapes are consumed by different things: `previews` is compared and counted by
+  // `verifyShardPlans` (an anchored id would never match a discovered one), `exclude` is handed to a
+  // matcher. Anchoring both would break the merge-side cross-check.
+  const plan = shardRenderPlan(["a", "b"].map(preview), 2);
+  assert.ok(plan.shards.every((s) => s.previews.every((id) => !id.startsWith("="))));
+  assert.ok(plan.shards.every((s) => s.exclude.every((p) => p.startsWith("="))));
+  assert.deepEqual(
+    verifyShardPlans(plan.shards.map((s) => ({ ...s, total: plan.total, renderable: plan.renderable, digest: plan.digest }))),
+    { ok: true, problems: [] },
+  );
 });
