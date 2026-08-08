@@ -119,33 +119,10 @@ private const val FORMAT_SVG = "svg"
 private const val DEFAULT_DENSITY = 2f
 
 /**
- * Read the knob-seed file the serve side wrote: one seed per line, space-separated `<kind>
- * <base64Name> <value>`, where `kind` is `str` / `float` / `int` / `color`. The name is base64 (it
- * may contain any character); for `str` the value is base64 too, for the numeric kinds it is a
- * plain decimal (`color` is a decimal ARGB int). Unknown kinds / malformed lines are skipped.
+ * Read the knob-seed file the serve side wrote. The format — and the skip-don't-fail posture for
+ * malformed lines — is documented on [parseSeedText], which the pooled worker shares.
  */
-private fun readSeeds(file: File): Map<String, RcSeed> {
-  val decoder = java.util.Base64.getDecoder()
-  fun decode(s: String) = String(decoder.decode(s), Charsets.UTF_8)
-  val seeds = LinkedHashMap<String, RcSeed>()
-  file.readLines().forEach { line ->
-    if (line.isBlank()) return@forEach
-    val parts = line.split(' ')
-    if (parts.size < 3) return@forEach
-    val (kind, nameB64, rawValue) = Triple(parts[0], parts[1], parts[2])
-    val name = decode(nameB64)
-    val seed =
-      when (kind) {
-        "str" -> RcSeed.StringValue(decode(rawValue))
-        "float" -> rawValue.toFloatOrNull()?.let { RcSeed.FloatValue(it) }
-        "int" -> rawValue.toIntOrNull()?.let { RcSeed.IntValue(it) }
-        "color" -> rawValue.toIntOrNull()?.let { RcSeed.ColorValue(it) }
-        else -> null
-      }
-    if (seed != null) seeds[name] = seed
-  }
-  return seeds
-}
+private fun readSeeds(file: File): Map<String, RcSeed> = parseSeedText(file.readText())
 
 /**
  * Parse `--flag value` pairs; unknown or dangling flags are ignored (the caller controls the argv).
