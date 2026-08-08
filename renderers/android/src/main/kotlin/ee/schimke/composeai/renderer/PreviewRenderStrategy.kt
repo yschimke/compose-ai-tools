@@ -4,12 +4,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.ColorScheme
@@ -25,12 +28,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import java.util.Locale
+import kotlin.math.ceil
+import kotlin.math.max
 
 /**
  * Produces the composition body for a single [RenderPreviewEntry]. Selection happens through
@@ -435,8 +444,12 @@ private fun WearThemeSpecimen(previewId: String, themeName: String, loader: Clas
         "secondary",
         "secondaryDim",
         "secondaryContainer",
+        "onSecondary",
+        "onSecondaryContainer",
         "tertiary",
         "tertiaryContainer",
+        "onTertiary",
+        "onTertiaryContainer",
         "background",
         "onBackground",
         "surfaceContainerLow",
@@ -447,7 +460,9 @@ private fun WearThemeSpecimen(previewId: String, themeName: String, loader: Clas
         "outline",
         "outlineVariant",
         "error",
+        "errorContainer",
         "onError",
+        "onErrorContainer",
       )
       .mapNotNull { role -> WearMaterialTheme.role(scheme, role)?.let { role to it } }
   val types =
@@ -464,12 +479,30 @@ private fun WearThemeSpecimen(previewId: String, themeName: String, loader: Clas
         types.map { (label, style) -> CatalogTokenSidecar.ResolvedToken.Type(label, style) },
     )
   }
-  Box(Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(16.dp)) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-      for ((label, color) in roles) CatalogSwatchRow(label = label, color = color)
-      for ((label, style) in types) CatalogTypeRow(label = label, style = style)
-    }
-  }
+  // Chips are grouped so each family reads as a block: the base role on its own row, then its
+  // variants sharing the next one. Wear's `*Dim` roles only mean anything next to the base they
+  // dim, and a container only next to the role it contains.
+  val resolved = roles.toMap()
+  fun chip(role: String, on: String?): ColourChip? =
+    resolved[role]?.let { ColourChip(role, it, on?.let(resolved::get)) }
+  val chipRows =
+    listOf(
+        listOfNotNull(chip("primary", "onPrimary")),
+        listOfNotNull(chip("primaryDim", "onPrimary"), chip("primaryContainer", "onPrimaryContainer")),
+        listOfNotNull(chip("secondary", "onSecondary")),
+        listOfNotNull(
+          chip("secondaryDim", "onSecondary"),
+          chip("secondaryContainer", "onSecondaryContainer"),
+        ),
+        listOfNotNull(chip("tertiary", "onTertiary"), chip("tertiaryContainer", "onTertiaryContainer")),
+        listOfNotNull(chip("error", "onError"), chip("errorContainer", "onErrorContainer")),
+        listOfNotNull(chip("background", "onBackground")),
+        listOfNotNull(chip("surfaceContainerLow", "onSurface"), chip("surfaceContainer", "onSurface")),
+        listOfNotNull(chip("surfaceContainerHigh", "onSurface"), chip("onSurfaceVariant", null)),
+        listOfNotNull(chip("outline", null), chip("outlineVariant", null)),
+      )
+      .filter { it.isNotEmpty() }
+  CatalogSpecimenSheet(colours = chipRows.map { chipRowCell(it) }, types = types, shapes = emptyList())
 }
 
 /**
@@ -489,15 +522,46 @@ private fun ThemeSpecimen(previewId: String, themeName: String) {
       "primary" to scheme.primary,
       "onPrimary" to scheme.onPrimary,
       "primaryContainer" to scheme.primaryContainer,
+      "onPrimaryContainer" to scheme.onPrimaryContainer,
       "secondary" to scheme.secondary,
+      "onSecondary" to scheme.onSecondary,
       "secondaryContainer" to scheme.secondaryContainer,
+      "onSecondaryContainer" to scheme.onSecondaryContainer,
       "tertiary" to scheme.tertiary,
+      "onTertiary" to scheme.onTertiary,
+      "tertiaryContainer" to scheme.tertiaryContainer,
+      "onTertiaryContainer" to scheme.onTertiaryContainer,
       "error" to scheme.error,
+      "onError" to scheme.onError,
+      "errorContainer" to scheme.errorContainer,
+      "onErrorContainer" to scheme.onErrorContainer,
       "surface" to scheme.surface,
       "onSurface" to scheme.onSurface,
       "surfaceVariant" to scheme.surfaceVariant,
+      "onSurfaceVariant" to scheme.onSurfaceVariant,
       "outline" to scheme.outline,
+      "outlineVariant" to scheme.outlineVariant,
     )
+  // Same family grouping as the Wear sheet: base role on its own row, its container beside it.
+  val byName = roles.toMap()
+  fun chip(role: String, on: String?) =
+    byName[role]?.let { ColourChip(role, it, on?.let(byName::get)) }
+  val chipRows =
+    listOf(
+        listOfNotNull(chip("primary", "onPrimary"), chip("primaryContainer", "onPrimaryContainer")),
+        listOfNotNull(
+          chip("secondary", "onSecondary"),
+          chip("secondaryContainer", "onSecondaryContainer"),
+        ),
+        listOfNotNull(
+          chip("tertiary", "onTertiary"),
+          chip("tertiaryContainer", "onTertiaryContainer"),
+        ),
+        listOfNotNull(chip("error", "onError"), chip("errorContainer", "onErrorContainer")),
+        listOfNotNull(chip("surface", "onSurface"), chip("surfaceVariant", "onSurfaceVariant")),
+        listOfNotNull(chip("outline", null), chip("outlineVariant", null)),
+      )
+      .filter { it.isNotEmpty() }
   val types =
     listOf(
       "displaySmall" to typography.displaySmall,
@@ -530,13 +594,7 @@ private fun ThemeSpecimen(previewId: String, themeName: String) {
         shapeRoles.map { (label, shape) -> CatalogTokenSidecar.ResolvedToken.ShapeToken(label, shape) },
     )
   }
-  Box(Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(16.dp)) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-      for ((label, color) in roles) CatalogSwatchRow(label = label, color = color)
-      for ((label, style) in types) CatalogTypeRow(label = label, style = style)
-      for ((label, shape) in shapeRoles) CatalogShapeRow(label = label, shape = shape)
-    }
-  }
+  CatalogSpecimenSheet(colours = chipRows.map { chipRowCell(it) }, types = types, shapes = shapeRoles)
 }
 
 /** A resolved catalog row — a colour swatch, a type specimen, or a shape — ready to lay out. */
@@ -719,12 +777,373 @@ private fun CatalogShapeRow(label: String, shape: Shape) {
 /** Sample text for type specimens — the canonical pangram, so ascenders/descenders/kerning show. */
 private const val CATALOG_TYPE_SAMPLE = "The quick brown fox"
 
+/**
+ * One row of a specimen sheet, carrying the height [CatalogSpecimenSheet] packs it by.
+ *
+ * The height is an *estimate*, not a measurement — the sheet has to decide column breaks before it
+ * can measure, and a row's real height only settles once its text has laid out. Estimating high is
+ * the safe direction: it starts a new column early and leaves slack at the bottom, where being
+ * wrong the other way would clip, which is the bug this whole type exists to remove.
+ */
+internal class SpecimenCell(
+  val height: Dp,
+  /** True for a section heading, which must never be the last row in a column. */
+  val keepWithNext: Boolean = false,
+  val content: @Composable () -> Unit,
+)
+
+/**
+ * Lays specimen rows out in **as many columns as the canvas needs**, left to right.
+ *
+ * A single `Column` is what these sheets used to be, and it silently truncated: the canvas is fixed,
+ * so every row past the bottom edge was simply not drawn. That cost the Wear sheet all six of its
+ * type rows (21 colour swatches alone overflow a 768dp content box) and the mobile sheet four of its
+ * five shape rows — in both cases the *last* section, which is the one a reader is least likely to
+ * notice is missing. Neither sheet reported anything; the PNG just ended.
+ *
+ * Packing is greedy and order-preserving, so a sheet still reads colours → type → shapes, top to
+ * bottom then left to right. Columns share the width evenly via `weight`, which keeps the swatch
+ * labels and hex codes on one line at the canvas sizes discovery assigns these sheets.
+ */
+@Composable
+private fun CatalogSpecimenSheet(
+  colours: List<SpecimenCell>,
+  types: List<Pair<String, TextStyle>>,
+  shapes: List<Pair<String, Shape>>,
+) {
+  BoxWithConstraints(
+    Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(CATALOG_SHEET_PADDING)
+  ) {
+    // The block layout is the *designed* sheet, but it is only reachable when the content fits the
+    // canvas — a theme is free to declare type roles tall enough that colour + type + shape exceeds
+    // it, and a fixed-height `Column` answers that by clipping, which is the bug this file exists to
+    // remove. So the fit is checked against the same estimates the packer uses, and the fallback is
+    // the generic multi-column packing, which cannot clip because it adds columns instead.
+    if (blockLayoutFits(colours, types, shapes, maxHeight.value)) {
+      BlockSpecimenLayout(colours, types, shapes)
+    } else {
+      PackedSpecimenLayout(specimenCells(colours, types, shapes), maxHeight.value)
+    }
+  }
+}
+
+/** Every row of the sheet as a packable cell, in reading order — the fallback layout's input. */
+private fun specimenCells(
+  colours: List<SpecimenCell>,
+  types: List<Pair<String, TextStyle>>,
+  shapes: List<Pair<String, Shape>>,
+): List<SpecimenCell> = buildList {
+  if (colours.isNotEmpty()) {
+    add(sectionCell("Colour"))
+    addAll(colours)
+  }
+  if (types.isNotEmpty()) {
+    add(sectionCell("Type"))
+    types.forEach { (label, style) -> add(typeCell(label, style)) }
+  }
+  if (shapes.isNotEmpty()) {
+    add(sectionCell("Shape"))
+    shapes.forEach { (label, shape) -> add(shapeCell(label, shape)) }
+  }
+}
+
+/**
+ * Whether the designed block layout fits [available] dp of content height.
+ *
+ * The colour block costs its *tallest* column (they run side by side); type costs the sum of its
+ * rows, because they stack at full width; shapes cost one row whatever their count, because they
+ * run across. Section headings are counted per block that exists.
+ */
+private fun blockLayoutFits(
+  colours: List<SpecimenCell>,
+  types: List<Pair<String, TextStyle>>,
+  shapes: List<Pair<String, Shape>>,
+  available: Float,
+): Boolean {
+  val colourHeight =
+    balanceColumns(colours, CATALOG_COLOUR_COLUMNS)
+      .maxOfOrNull { column -> column.fold(0f) { sum, cell -> sum + cell.height.value } } ?: 0f
+  val typeHeight = types.fold(0f) { sum, (_, style) -> sum + catalogTypeRowHeight(style).value }
+  val shapeHeight = if (shapes.isEmpty()) 0f else CATALOG_SWATCH_ROW_HEIGHT.value
+  val headings =
+    listOf(colours.isNotEmpty(), types.isNotEmpty(), shapes.isNotEmpty()).count { it } *
+      CATALOG_SECTION_HEIGHT.value
+  return colourHeight + typeHeight + shapeHeight + headings <= available
+}
+
+/** The designed sheet: colour in two columns, type at full width, shapes across one row. */
+@Composable
+private fun BlockSpecimenLayout(
+  colours: List<SpecimenCell>,
+  types: List<Pair<String, TextStyle>>,
+  shapes: List<Pair<String, Shape>>,
+) {
+  Column(verticalArrangement = Arrangement.spacedBy(CATALOG_ROW_GAP)) {
+    if (colours.isNotEmpty()) {
+      CatalogSectionHeader("Colour")
+      Row(horizontalArrangement = Arrangement.spacedBy(CATALOG_COLUMN_GAP)) {
+        for (column in balanceColumns(colours, CATALOG_COLOUR_COLUMNS)) {
+          Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(CATALOG_ROW_GAP),
+          ) {
+            for (cell in column) cell.content()
+          }
+        }
+      }
+    }
+    if (types.isNotEmpty()) {
+      CatalogSectionHeader("Type")
+      // Full sheet width, deliberately: a type specimen is judged on a real line of text, and a
+      // half-width column wraps the pangram mid-phrase.
+      for ((label, style) in types) CatalogTypeRow(label = label, style = style)
+    }
+    if (shapes.isNotEmpty()) {
+      CatalogSectionHeader("Shape")
+      // One row across the sheet — the corner scale reads as a progression, which a vertical list
+      // of five separate rows hides.
+      Row(horizontalArrangement = Arrangement.spacedBy(CATALOG_COLUMN_GAP)) {
+        for ((label, shape) in shapes) {
+          Column(modifier = Modifier.weight(1f)) { CatalogShapeChip(label = label, shape = shape) }
+        }
+      }
+    }
+  }
+}
+
+/** Fallback for content the block layout can't hold: every row packed into as many columns as fit. */
+@Composable
+private fun PackedSpecimenLayout(cells: List<SpecimenCell>, available: Float) {
+  Row(horizontalArrangement = Arrangement.spacedBy(CATALOG_COLUMN_GAP)) {
+    for (column in packColumns(cells, available)) {
+      Column(
+        modifier = Modifier.weight(1f),
+        verticalArrangement = Arrangement.spacedBy(CATALOG_ROW_GAP),
+      ) {
+        for (cell in column) cell.content()
+      }
+    }
+  }
+}
+
+/**
+ * Packs [cells] into the fewest balanced columns that keep every column within [available].
+ *
+ * Balanced rather than filled — packing to capacity leaves whatever spills over alone in the last
+ * column — but capacity still wins: a column may exceed the balanced share rather than let a row
+ * fall off the canvas. A heading reserves room for the row it introduces, so a column never ends on
+ * a heading whose section starts in the next one.
+ */
+internal fun packColumns(cells: List<SpecimenCell>, available: Float): List<List<SpecimenCell>> {
+  if (cells.isEmpty()) return emptyList()
+  val total = cells.fold(0f) { sum, cell -> sum + cell.height.value }
+  val count = max(1, ceil(total / available).toInt())
+  val target = total / count
+  val columns = mutableListOf<List<SpecimenCell>>()
+  var current = mutableListOf<SpecimenCell>()
+  var used = 0f
+  for ((index, cell) in cells.withIndex()) {
+    val needed =
+      cell.height.value +
+        if (cell.keepWithNext) cells.getOrNull(index + 1)?.height?.value ?: 0f else 0f
+    val overCanvas = used + needed > available
+    val overShare = used + cell.height.value > target && columns.size < count - 1
+    if (current.isNotEmpty() && (overCanvas || overShare)) {
+      columns += current
+      current = mutableListOf()
+      used = 0f
+    }
+    current += cell
+    used += cell.height.value
+  }
+  if (current.isNotEmpty()) columns += current
+  return columns
+}
+
+/**
+ * Splits [cells] into [preferred] balanced columns, in order, by estimated height.
+ *
+ * Balanced rather than filled: packing each column to capacity leaves whatever spills over alone in
+ * the last one, and one orphan row beside a full column reads as a mistake rather than a layout.
+ */
+private fun balanceColumns(cells: List<SpecimenCell>, preferred: Int): List<List<SpecimenCell>> {
+  val count = max(1, preferred)
+  if (count == 1 || cells.size <= 1) return listOf(cells)
+  val total = cells.fold(0f) { sum, cell -> sum + cell.height.value }
+  val target = total / count
+  val columns = mutableListOf<List<SpecimenCell>>()
+  var current = mutableListOf<SpecimenCell>()
+  var used = 0f
+  for (cell in cells) {
+    if (current.isNotEmpty() && used + cell.height.value > target && columns.size < count - 1) {
+      columns += current
+      current = mutableListOf()
+      used = 0f
+    }
+    current += cell
+    used += cell.height.value
+  }
+  if (current.isNotEmpty()) columns += current
+  return columns
+}
+
+/** A shape token drawn as a chip: the clipped box with its name beside it. */
+@Composable
+private fun CatalogShapeChip(label: String, shape: Shape) {
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    Box(
+      modifier =
+        Modifier.size(40.dp)
+          .clip(shape)
+          .background(CATALOG_SHAPE_FILL)
+          .border(1.dp, CATALOG_SWATCH_BORDER, shape)
+    )
+    Box(modifier = Modifier.padding(start = 8.dp)) {
+      BasicText(text = label, style = CATALOG_LABEL_STYLE)
+    }
+  }
+}
+
+/** A section heading, so a multi-column sheet still says which scale each block belongs to. */
+@Composable
+private fun CatalogSectionHeader(label: String) {
+  BasicText(text = label.uppercase(Locale.ROOT), style = CATALOG_SECTION_STYLE)
+}
+
+/** Cell for a colour role. Fixed geometry: the 40dp swatch plus its row padding and the row gap. */
+private fun swatchCell(label: String, color: Color) =
+  SpecimenCell(CATALOG_SWATCH_ROW_HEIGHT) { CatalogSwatchRow(label = label, color = color) }
+
+/**
+ * A colour role drawn as a chip that **sets its own name in the role it pairs with** — `primary`
+ * lettered in `onPrimary`, `surfaceContainer` in `onSurface`.
+ *
+ * This is the difference between a sheet that lists a palette and one that demonstrates it. A pair
+ * of hex codes on separate rows asserts that `onPrimary` goes on `primary`; a chip that draws the
+ * name in it *shows* whether the pair is actually legible, which is the question a reviewer has
+ * about a theme. A role with no counterpart (`outline`) falls back to black or white by luminance,
+ * so it still reads rather than being a blank tile.
+ */
+private class ColourChip(val label: String, val base: Color, val on: Color?)
+
+/** Cell for a row of colour chips, sharing the column width evenly. */
+private fun chipRowCell(chips: List<ColourChip>) =
+  SpecimenCell(CATALOG_CHIP_ROW_HEIGHT) { CatalogChipRow(chips) }
+
+/**
+ * Black or white, whichever contrasts with [base] — the fallback for a role that pairs with nothing.
+ * Uses relative luminance rather than a naive average so mid-tone yellows and cyans land correctly.
+ */
+private fun readableOn(base: Color): Color =
+  if (base.luminance() > 0.5f) Color(0xFF1B1B1F) else Color.White
+
+/** One row of colour chips. Each chip fills its share of the row and letters its own name. */
+@Composable
+private fun CatalogChipRow(chips: List<ColourChip>) {
+  Row(
+    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    for (chip in chips) {
+      val ink = chip.on ?: readableOn(chip.base)
+      Column(
+        modifier =
+          Modifier.weight(1f)
+            .height(CATALOG_CHIP_HEIGHT)
+            .clip(RoundedCornerShape(6.dp))
+            .background(chip.base)
+            .border(1.dp, CATALOG_SWATCH_BORDER, RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+      ) {
+        BasicText(text = chip.label, style = CATALOG_CHIP_LABEL_STYLE.copy(color = ink))
+        BasicText(
+          text = catalogHex(chip.base),
+          style = CATALOG_CHIP_HEX_STYLE.copy(color = ink.copy(alpha = 0.75f)),
+        )
+      }
+    }
+  }
+}
+
+/** Cell for a shape token — same fixed geometry as a swatch row. */
+private fun shapeCell(label: String, shape: Shape) =
+  SpecimenCell(CATALOG_SWATCH_ROW_HEIGHT) { CatalogShapeRow(label = label, shape = shape) }
+
+/**
+ * Cell for a type role. Height scales with the style's own size, because a `displaySmall` sample is
+ * several times the height of a `labelSmall` one and packing by a single average would either waste
+ * a column or overflow it.
+ */
+private fun typeCell(label: String, style: TextStyle) =
+  SpecimenCell(catalogTypeRowHeight(style)) { CatalogTypeRow(label = label, style = style) }
+
+private fun sectionCell(label: String) =
+  SpecimenCell(CATALOG_SECTION_HEIGHT, keepWithNext = true) { CatalogSectionHeader(label) }
+
+/**
+ * Estimated height of a [CatalogTypeRow]: the caption, the sample, and the row's padding plus the
+ * sheet's row gap.
+ *
+ * The line box comes from the style's **declared `lineHeight`** where it has one, because
+ * [CatalogTypeRow] draws the style unchanged and a design system is free to declare a line height
+ * far larger than its font size — `bodyLarge` at 16sp with `lineHeight = 100.sp` is a legal theme,
+ * and budgeting `1.5 x fontSize` for it would under-count by 76dp and clip the row, which is the
+ * failure this layout exists to remove. `sp` is taken as-is, `em` is multiplied by the font size,
+ * and an unspecified line height falls back to `1.5x`. That `1.5x` is also a *floor*, so a style
+ * declaring an unusually tight line height still gets descender slack.
+ *
+ * A display-sized sample **wraps** in a column — the pangram at 36sp does not fit ~300dp — so
+ * anything above [CATALOG_TYPE_WRAP_SP] is budgeted at two lines. Guessing high is deliberate
+ * throughout: the cost is slack at the bottom of a column, where guessing low is a clipped row.
+ */
+internal fun catalogTypeRowHeight(style: TextStyle): Dp {
+  val fontSize = style.fontSize
+  val size = if (fontSize.isSpecified && fontSize.value > 0f) fontSize.value else 16f
+  val declared = style.lineHeight
+  val lineBox =
+    when {
+      !declared.isSpecified || declared.value <= 0f -> size * CATALOG_TYPE_LINE_FACTOR
+      declared.isSp -> declared.value
+      declared.isEm -> size * declared.value
+      else -> size * CATALOG_TYPE_LINE_FACTOR
+    }
+  val line = maxOf(lineBox, size * CATALOG_TYPE_LINE_FACTOR)
+  val lines = if (size > CATALOG_TYPE_WRAP_SP) 2 else 1
+  return (CATALOG_TYPE_CAPTION_DP + line * lines + CATALOG_ROW_PADDING_DP + CATALOG_ROW_GAP_DP).dp
+}
+
+/** Sheet padding, column gap and row gap — shared by the layout and by the height estimates. */
+private val CATALOG_SHEET_PADDING: Dp = 16.dp
+private val CATALOG_COLUMN_GAP: Dp = 20.dp
+private const val CATALOG_ROW_GAP_DP: Float = 4f
+private val CATALOG_ROW_GAP: Dp = CATALOG_ROW_GAP_DP.dp
+/** `CatalogSwatchRow` / `CatalogShapeRow`: a 40dp box, 2dp padding either side, plus the row gap. */
+private val CATALOG_SWATCH_ROW_HEIGHT: Dp = (40f + 4f + CATALOG_ROW_GAP_DP).dp
+private const val CATALOG_ROW_PADDING_DP: Float = 4f
+private const val CATALOG_TYPE_CAPTION_DP: Float = 16f
+/** Above this sample size the pangram wraps to a second line in a sheet column. */
+private const val CATALOG_TYPE_WRAP_SP: Float = 24f
+/** Fallback (and floor) line box as a multiple of font size, covering default leading + descenders. */
+private const val CATALOG_TYPE_LINE_FACTOR: Float = 1.5f
+private val CATALOG_SECTION_HEIGHT: Dp = 24.dp
+/** A colour chip: two lines of text with 6dp padding above and below. */
+/** Colour roles run in two columns; type and shape get the full sheet width below them. */
+private const val CATALOG_COLOUR_COLUMNS: Int = 2
+private val CATALOG_CHIP_HEIGHT: Dp = 44.dp
+private val CATALOG_CHIP_ROW_HEIGHT: Dp = CATALOG_CHIP_HEIGHT + 4.dp + CATALOG_ROW_GAP
+
 private val CATALOG_SHEET_BACKGROUND: Color = Color(0xFFFFFFFF)
 private val CATALOG_SWATCH_BORDER: Color = Color(0xFF9E9E9E)
 private val CATALOG_SHAPE_FILL: Color = Color(0xFFE3E1EC)
 private val CATALOG_LABEL_STYLE: TextStyle = TextStyle(color = Color(0xFF1B1B1F), fontSize = 13.sp)
 private val CATALOG_HEX_STYLE: TextStyle =
   TextStyle(color = Color(0xFF5F5F66), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+private val CATALOG_CHIP_LABEL_STYLE: TextStyle =
+  TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold)
+private val CATALOG_CHIP_HEX_STYLE: TextStyle =
+  TextStyle(fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+private val CATALOG_SECTION_STYLE: TextStyle =
+  TextStyle(color = Color(0xFF5F5F66), fontSize = 11.sp, letterSpacing = 1.sp)
 
 /**
  * Reads design-token property *values* off the consumer's loaded classes at render time. A
