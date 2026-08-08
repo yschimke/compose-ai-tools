@@ -56,6 +56,41 @@ class DesktopRenderWorkerPoolTest {
   }
 
   @Test
+  fun workersStartInTheTaskProjectDirectory() {
+    // `javaexec` defaulted its working directory to the task's project, so a preview reading a
+    // relative path resolved it there. A worker inheriting the Gradle daemon's directory instead
+    // would resolve the same path somewhere else — a difference between the warm and forked lanes.
+    val projectDir = tempFolder.newFolder("subproject")
+    pool(workingDir = projectDir).use { pool ->
+      val marker = File(projectDir, "cwd.txt")
+      // A *relative* output path: it can only land in `projectDir` if the worker started there.
+      assertOk(pool.render(listOf("ignored.ClassKt", "cwd.txt"), null))
+      assertTrue("worker did not run in the task project directory", marker.isFile)
+    }
+  }
+
+  @Test
+  fun rendererDiagnosticsFromASuccessfulCaptureReachTheSink() {
+    // Most renderer diagnostics ride a *successful* request — the renderer handles the problem and
+    // returns normally — so a pool that kept stderr only for its own failure messages would drop
+    // exactly the output the forked lane used to surface.
+    val seen = java.util.Collections.synchronizedList(mutableListOf<String>())
+    pool(mode = "chatty", stderrSink = { seen.add(it) }).use { pool ->
+      assertOk(pool.render(argsFor(tempFolder.newFile("x.txt")), null))
+      val deadline = System.currentTimeMillis() + 10_000
+      while (
+        seen.none { it.contains("stub diagnostic") } && System.currentTimeMillis() < deadline
+      ) {
+        Thread.sleep(20)
+      }
+      assertTrue(
+        "renderer stderr never reached the sink: $seen",
+        seen.any { it.contains("stub diagnostic") },
+      )
+    }
+  }
+
+  @Test
   fun aCaptureTheRendererRejectsIsFailedNotUnusable() {
     pool(mode = "failed").use { pool ->
       val result = pool.render(argsFor(tempFolder.newFile("x.txt")), null)
@@ -151,6 +186,8 @@ class DesktopRenderWorkerPoolTest {
     mode: String = "ok",
     maxRendersPerWorker: Int = 100,
     workerMainClass: String = STUB_MAIN_CLASS,
+    workingDir: File = tempFolder.root,
+    stderrSink: (String) -> Unit = {},
   ) =
     DesktopRenderWorkerPool(
       classpath = System.getProperty("java.class.path").split(File.pathSeparator).map(::File),
@@ -162,6 +199,8 @@ class DesktopRenderWorkerPoolTest {
       maxWorkers = 1,
       maxRendersPerWorker = maxRendersPerWorker,
       renderTimeoutSeconds = 60,
+      workingDir = workingDir,
+      stderrSink = stderrSink,
       workerMainClass = workerMainClass,
     )
 

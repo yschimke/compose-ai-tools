@@ -17,8 +17,9 @@ import kotlin.system.exitProcess
  * start at all.
  *
  * `stub.mode` selects the behaviour: `ok` (default) writes the file named by the last argv entry
- * and reports success, `failed` reports a render failure, `hang` never answers, `crash` exits
- * mid-request, and `badVersion` sends an unrecognised protocol version.
+ * and reports success, `chatty` also writes a line to stderr on a *successful* request (the case
+ * real renderer diagnostics arrive in), `failed` reports a render failure, `hang` never answers,
+ * `crash` exits mid-request, and `badVersion` sends an unrecognised protocol version.
  *
  * On success it writes `"<argc>:<seed>#<n>"` into the output file, where `n` counts the requests
  * this process has served — which is how a test tells a reused warm worker from a fresh one.
@@ -57,6 +58,8 @@ object DesktopRenderWorkerPoolStub {
         "hang" -> Thread.sleep(Long.MAX_VALUE)
         "crash" -> exitProcess(9)
       }
+
+      if (mode == "chatty") System.err.println("stub diagnostic for request $requestId")
 
       served++
       var status = DesktopRenderWorkerPool.STATUS_OK

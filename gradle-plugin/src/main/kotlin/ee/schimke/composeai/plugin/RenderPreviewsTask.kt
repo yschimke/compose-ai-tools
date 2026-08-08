@@ -24,6 +24,16 @@ import org.gradle.process.ExecOperations
 @CacheableTask
 abstract class RenderPreviewsTask : DefaultTask() {
 
+  /**
+   * The task's project directory — the working directory a render runs in.
+   *
+   * `ExecOperations.javaexec` defaults to it, so a preview reading a relative path has always
+   * resolved it against its own subproject. The worker pool starts its processes here for the same
+   * reason; `@Internal` because it affects where a render *runs*, not what it produces, and making
+   * it an input would key every module's cache on its own absolute path.
+   */
+  @get:org.gradle.api.tasks.Internal abstract val projectDirectory: DirectoryProperty
+
   @get:InputFile
   @get:PathSensitive(PathSensitivity.NONE)
   abstract val previewsJson: RegularFileProperty
@@ -658,6 +668,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
     if (!DesktopRenderWorkerPool.isEnabled()) return null
     val cp = renderClasspath.files.toList()
     if (cp.isEmpty()) return null
+    // A registration that never wired the project directory forks rather than guessing one: a
+    // worker started in the wrong directory would resolve a preview's relative paths differently
+    // from the lane it replaces, which is worse than not pooling.
+    val workingDir = projectDirectory.orNull?.asFile ?: return null
     return DesktopRenderWorkerPool(
       classpath = cp,
       javaExecutable = renderJavaExecutable.orNull ?: defaultJavaExecutable(),
@@ -665,6 +679,15 @@ abstract class RenderPreviewsTask : DefaultTask() {
       maxWorkers = DesktopRenderWorkerPool.configuredWorkers(),
       maxRendersPerWorker = DesktopRenderWorkerPool.configuredMaxRenders(),
       renderTimeoutSeconds = DesktopRenderWorkerPool.RENDER_GUARD_SECONDS,
+      // `javaexec` defaulted the working directory to the task's project, so a preview reading a
+      // relative path resolved it against that subproject. A worker must start there too, or the
+      // warm and forked lanes would disagree about what `File("src/main/resources/…")` means.
+      workingDir = workingDir,
+      // The forked lane let the renderer's diagnostics through to the build log. Most of them ride
+      // a *successful* request — a missing `@PreviewParameter` provider, a device-frame failure,
+      // the `Render failed …` line beside an error sidecar — so without this they would vanish the
+      // moment a capture went warm.
+      stderrSink = { line -> logger.lifecycle("composePreviewRender: $line") },
     )
   }
 

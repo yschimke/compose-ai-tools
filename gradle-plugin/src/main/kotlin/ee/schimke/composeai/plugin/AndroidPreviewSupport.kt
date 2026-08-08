@@ -2904,6 +2904,7 @@ internal object AndroidPreviewSupport {
         group = "compose preview"
         description = "Render kind=LOTTIE previews via the desktop Compottie renderer"
         onlyIf { extension.enabled.get() }
+        projectDirectory.set(project.layout.projectDirectory)
         previewsJson.set(previewOutputDir.map { it.file("previews.json") })
         renderBackend.set("desktop")
         tier.set(resolveTier(project))
@@ -2951,6 +2952,7 @@ internal object AndroidPreviewSupport {
         group = "compose preview"
         description = "Render kind=SVG previews via the desktop Skia renderer"
         onlyIf { extension.enabled.get() }
+        projectDirectory.set(project.layout.projectDirectory)
         previewsJson.set(previewOutputDir.map { it.file("previews.json") })
         renderBackend.set("desktop")
         tier.set(resolveTier(project))

@@ -67,6 +67,22 @@ internal class DesktopRenderWorkerPool(
   private val maxWorkers: Int,
   private val maxRendersPerWorker: Int,
   private val renderTimeoutSeconds: Long,
+  /**
+   * Working directory for every worker, which must be the **task project's** directory:
+   * `ExecOperations.javaexec` defaulted to it, so a preview reading a relative path resolved it
+   * against the subproject. A bare `ProcessBuilder` would inherit the Gradle daemon's directory
+   * instead and quietly resolve the same path somewhere else — a difference between the warm and
+   * forked lanes, which is exactly what this pool must never introduce.
+   */
+  private val workingDir: File,
+  /**
+   * Where a worker's stderr goes. The forked lane let the renderer's own diagnostics through to the
+   * build log — missing `@PreviewParameter` providers, device-frame and display-filter failures,
+   * the `Render failed …` line that accompanies an error sidecar. Those arrive on *successful*
+   * requests (the renderer handles them and returns normally), so a pool that only kept stderr for
+   * its own failure messages would silently swallow them.
+   */
+  private val stderrSink: (String) -> Unit,
   private val workerMainClass: String = WORKER_MAIN_CLASS,
 ) : AutoCloseable {
 
@@ -187,17 +203,22 @@ internal class DesktopRenderWorkerPool(
       add(workerMainClass)
     }
     return try {
-      val worker = Worker(command, watchdog)
-      worker.handshake(HANDSHAKE_TIMEOUT_SECONDS)
-      val registered =
-        synchronized(lock) {
-          startFailures = 0
-          // `close()` may have run while this worker was booting; registering it now would leak a
-          // process nothing will reap.
-          if (closed) false else liveWorkers.add(worker)
-        }
-      if (!registered) {
+      // Registered BEFORE the handshake, not after. A worker waiting for its hello frame is a live
+      // child process; if `close()` ran while it booted it would be invisible to shutdown, and
+      // `watchdog.shutdownNow()` would then drop the handshake kill-switch — leaving the read
+      // blocked forever with the JVM still up. Registering first means `close()` can always reap
+      // it, and a pool that closed underneath us is detected right after.
+      val worker = Worker(command, watchdog, workingDir, stderrSink)
+      val tracked =
+        synchronized(lock) { if (closed) false else liveWorkers.add(worker) }
+      if (!tracked) {
         worker.close()
+        return StartOutcome.Failed("render worker pool is closed")
+      }
+      worker.handshake(HANDSHAKE_TIMEOUT_SECONDS)
+      synchronized(lock) { startFailures = 0 }
+      if (synchronized(lock) { closed }) {
+        discard(worker)
         StartOutcome.Failed("render worker pool is closed")
       } else {
         StartOutcome.Started(worker)
@@ -230,8 +251,14 @@ internal class DesktopRenderWorkerPool(
     watchdog.shutdownNow()
   }
 
-  private class Worker(command: List<String>, private val watchdog: ScheduledExecutorService) {
-    private val process = ProcessBuilder(command).redirectErrorStream(false).start()
+  private class Worker(
+    command: List<String>,
+    private val watchdog: ScheduledExecutorService,
+    workingDir: File,
+    private val stderrSink: (String) -> Unit,
+  ) {
+    private val process =
+      ProcessBuilder(command).directory(workingDir).redirectErrorStream(false).start()
     private val toWorker = DataOutputStream(process.outputStream.buffered())
     private val fromWorker = DataInputStream(process.inputStream.buffered())
     private val stderrTail = ArrayDeque<String>()
@@ -245,6 +272,10 @@ internal class DesktopRenderWorkerPool(
                 stderrTail.addLast(line)
                 while (stderrTail.size > STDERR_TAIL_LINES) stderrTail.pollFirst()
               }
+              // Forwarded as well as buffered: the tail exists for the pool's own failure
+              // messages, but most renderer diagnostics ride a *successful* request and would
+              // otherwise never be seen.
+              stderrSink(line)
             }
           } catch (_: IOException) {
             // Process went away; nothing to drain.
