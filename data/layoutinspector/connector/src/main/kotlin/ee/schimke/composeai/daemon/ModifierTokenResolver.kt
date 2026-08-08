@@ -186,9 +186,13 @@ internal object ModifierTokenResolver {
         if (PlaceholderModifiers.isPlaceholderModifier(name, simpleName)) null
         else shapeOf(mod, elements)
       if (nodeShape != null) {
-        // A shape-bearing `clip`/`background`/`border` is a paint modifier, so a padding after it
-        // no longer insets the drawn shape (issue #2852).
-        sawPaint = true
+        // Deliberately NOT `sawPaint = true`. A shape alone paints nothing: a `clip(shape)` (or a
+        // `shadow(elevation, shape)`) only masks, so a `padding` behind it still insets the fill
+        // that follows — `clip(shape).padding(16.dp).background(brush)` really does draw in the
+        // padded box, and reading the clip as paint left that padding uncaptured and the fill grown
+        // back out to the node's measured size (issue #3569). The shape-bearing modifiers that *do*
+        // paint — `background`/`paint`/`border` — set the flag in their own branches above, which
+        // is what stops a trailing content `padding` from being read as a paint inset (#2852).
         val effectiveShape = nodeShape.effectiveCornerShape()
         if (cornerRadius == null) cornerRadius = effectiveShape.cornerRadiusWire(minSidePx, density)
         // A `RoundedCornerShape(<px>f)` has no dp `cornerRadius`; capture its raw-pixel radii so
