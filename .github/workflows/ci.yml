@@ -92,13 +92,19 @@ jobs:
   # the chain is one job deeper for it alone while the other ~11 start as soon
   # as the cheap classifier lands.
   #
-  # Skipped entirely when Module Unit Tests is out of scope: its sole consumer
-  # is gated on the same condition, and a skipped `needs:` skips the dependent,
-  # which is the intended outcome there.
+  # PRs only, and that restriction is the whole point. Only a PR narrows the
+  # suite; on push and schedule the answer is unconditionally `full`. Since
+  # `path-scope.py` enables every group on non-PR events, gating this job on
+  # `module_unit_tests` alone would schedule it on EVERY push to `main` purely
+  # to echo a constant — and because Module Unit Tests `needs:` it, that job
+  # could not enter the runner queue until this one had queued and finished
+  # too. On a saturated queue that is another 40-70 min in front of post-merge
+  # module coverage: the exact cost this split exists to remove. Non-PR events
+  # skip the job and the consumer defaults to `full` directly.
   module-test-scope:
     name: Resolve affected module tests
     needs: changes
-    if: ${{ needs.changes.outputs.module_unit_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.module_unit_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     outputs:
       tasks: ${{ steps.test-scope.outputs.tasks }}
@@ -106,26 +112,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # `changes` fetched this into its own checkout; the split means this job
+      # has to fetch it again for `affected-gradle-tests.py` to diff against.
       - name: Fetch the PR base commit
-        if: github.event_name == 'pull_request'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
-      # Only a PR narrows the suite, and only then is the Gradle model needed.
       - uses: ./.github/actions/setup
-        if: github.event_name == 'pull_request'
       - name: Resolve affected Gradle tests
         id: test-scope
         env:
-          EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.sha }}
         run: |
-          if [ "$EVENT_NAME" != "pull_request" ]; then
-            tasks=full
-          else
-            tasks=$(python3 .github/ci/affected-gradle-tests.py)
-          fi
+          tasks=$(python3 .github/ci/affected-gradle-tests.py)
           echo "tasks=$tasks" >> "$GITHUB_OUTPUT"
 
   plugin-tests:
@@ -294,7 +294,21 @@ jobs:
     # `affected-gradle-tests.py` reads `gradle-test-scope.json`, where e.g. `.github/**` is
     # ignored — so a PR touching only such a path enabled the job with `tasks=none` and it died
     # on `gradlew none` ("Task 'none' not found"). `none` means there is nothing to run: skip.
-    if: ${{ needs.changes.outputs.module_unit_tests == 'true' && needs.module-test-scope.outputs.tasks != 'none' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    # It is scoped to `pull_request` because that is the only event that produces it.
+    #
+    # `!cancelled()` is required, not decoration: `module-test-scope` deliberately does not run
+    # on push/schedule, and a skipped `needs:` skips the dependent by default — which would
+    # silently delete post-merge and nightly module coverage. The explicit
+    # `needs.changes.result == 'success'` and `module-test-scope.result != 'failure'` restore
+    # the propagation that `!cancelled()` switches off, so a broken scope job still stops this
+    # one rather than running it against an empty task list.
+    if: >-
+      ${{ !cancelled()
+          && needs.changes.result == 'success'
+          && needs.changes.outputs.module_unit_tests == 'true'
+          && needs.module-test-scope.result != 'failure'
+          && (github.event_name != 'pull_request' || needs.module-test-scope.outputs.tasks != 'none')
+          && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -307,7 +321,8 @@ jobs:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run affected module tests (full suite off PRs)
         env:
-          TEST_TASKS: ${{ needs.module-test-scope.outputs.tasks }}
+          # Non-PR events skip the resolver job, so default to the full suite here.
+          TEST_TASKS: ${{ github.event_name == 'pull_request' && needs.module-test-scope.outputs.tasks || 'full' }}
         run: |
           if [ "$TEST_TASKS" = full ]; then
             ./gradlew test --continue \
