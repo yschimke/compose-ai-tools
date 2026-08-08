@@ -452,6 +452,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-path-spec-lane/dark](renders/serve-viewer-path-spec-lane.dark.png) |
 | `light` | ![serve-viewer-path-spec-lane/light](renders/serve-viewer-path-spec-lane.light.png) |
 
+## serve-viewer-rc-players
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-rc-players/dark](renders/serve-viewer-rc-players.dark.png) |
+| `light` | ![serve-viewer-rc-players/light](renders/serve-viewer-rc-players.light.png) |
+
+## serve-viewer-rc-players-player-cmp-android
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-rc-players-player-cmp-android/dark](renders/serve-viewer-rc-players-player-cmp-android.dark.png) |
+| `light` | ![serve-viewer-rc-players-player-cmp-android/light](renders/serve-viewer-rc-players-player-cmp-android.light.png) |
+
 ## serve-viewer-signin
 
 | Theme | Capture |
