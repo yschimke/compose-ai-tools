@@ -111,7 +111,12 @@ export async function reapPrRuns({
         head: `${headRepo.split('/')[0]}:${headRef}`,
         per_page: 100,
       })
-      ambiguousHead = openOnSameHead.some((p) => p.number !== prNumber)
+      // ANY open PR here means stop, including this one. A closed PR cannot
+      // appear in a `state: open` listing, so seeing our own number is not a
+      // self-match to filter out — it is this PR having been reopened since the
+      // `pulls.get` above, and its runs are live again. This query is the most
+      // recent word we have on that.
+      ambiguousHead = openOnSameHead.length > 0
     } catch (error) {
       core.warning(`Could not check for other open PRs on ${headRef}: ${error.message}`)
     }
@@ -129,8 +134,19 @@ export async function reapPrRuns({
   // deployment gate after being queued. A single snapshot has no gaps to
   // reason about.
   //
-  // The cost is paging past this branch's completed runs. That is bounded in
-  // practice — one PR head branch, and this job runs once per close.
+  // The cost is paging past this branch's completed runs, and it is not free:
+  // the Actions list endpoint stops at 1000 results however far you page. For a
+  // normal PR branch that is nowhere near binding. For a long-lived branch used
+  // as a PR head — merging the default branch forward into a release branch —
+  // its own push history can fill the window, and a genuinely stuck run older
+  // than that falls outside it and survives.
+  //
+  // Detected rather than silently tolerated: reaping fewer runs than expected
+  // is the safe direction, but it should say so instead of reporting success
+  // over a truncated view. Narrowing the query per status would dodge the cap
+  // at the cost of reintroducing the transition gap above, which is a real
+  // trade rather than a strict improvement — so it is left to a human.
+  const RESULT_WINDOW = 1000
   let runs = []
   try {
     runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
@@ -138,6 +154,12 @@ export async function reapPrRuns({
       branch: headRef,
       per_page: 100,
     })
+    if (runs.length >= RESULT_WINDOW) {
+      core.warning(
+        `Listed ${runs.length} runs for ${headRef}, at or beyond the ${RESULT_WINDOW}-result ` +
+          'API window. Older leftovers may not be visible and will not be reaped.',
+      )
+    }
   } catch (error) {
     // Listing is as fallible as cancelling. Letting this escape would fail
     // the workflow and put a red check on an already-merged PR, which is

@@ -222,16 +222,28 @@ test('will not use the fork fallback while another PR shares the head', async ()
   assert.deepEqual(calls.headQueries, ['someone-else:agent/some-branch'])
 })
 
-test('this PR appearing in the head query does not block the fallback', async () => {
-  // The closed PR itself can still come back from the open-PR listing mid-race;
-  // only a *different* PR makes the head ambiguous.
+test('this PR appearing in the head query means it was reopened', async () => {
+  // A closed PR cannot appear in a `state: open` listing, so our own number
+  // coming back is not a self-match to filter out — it is a reopen that landed
+  // after the pulls.get above, and the runs are live again.
   const FORK = 'someone-else/compose-ai-tools'
   const { github, core, calls } = harness({
     runs: [run(1, 'CI', 'queued', { pull_requests: [], head_repository: { full_name: FORK } })],
     openOnSameHead: [{ number: 42 }],
   })
   await reapPrRuns({ ...BASE, headRepo: FORK, github, core })
-  assert.deepEqual(calls.cancelled, [1])
+  assert.deepEqual(calls.cancelled, [])
+})
+
+test('warns when the listing hits the API result window', async () => {
+  // Reaping less than expected is the safe direction, but a truncated view must
+  // not be reported as a clean sweep.
+  const many = Array.from({ length: 1000 }, (_, i) => run(i + 1, 'CI', 'completed'))
+  many.push(run(9999, 'CI', 'queued'))
+  const { github, core, calls, warnings } = harness({ runs: many })
+  await reapPrRuns({ ...BASE, github, core })
+  assert.deepEqual(calls.cancelled, [9999])
+  assert.equal(warnings.filter((w) => w.includes('1000-result')).length, 1)
 })
 
 test('assumes ambiguity when the open-PR check fails', async () => {
