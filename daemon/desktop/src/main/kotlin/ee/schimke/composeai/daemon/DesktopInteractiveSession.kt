@@ -191,7 +191,7 @@ class DesktopInteractiveSession(
       }
       InteractiveInputKind.KEY_DOWN -> {
         val key = androidKeycodeToComposeKey(input.keyCode)
-        val typed = printableChar(input.text)
+        val typed = printableText(input.text)
         // A key the table doesn't know AND no printable text is nothing we can dispatch — drop it
         // silently, same forward-compat contract as before.
         if (key == null && typed == null) return
@@ -209,7 +209,10 @@ class DesktopInteractiveSession(
         // drive the *command* keys (arrows, Backspace, Delete, Home/End) that map off `Key` alone.
         // That asymmetry is exactly why caret movement and deletion worked on the live lanes while
         // typing did nothing (issue #3491).
-        if (typed != null) state.scene.sendKeyEvent(typedKeyEvent(key, typed))
+        // One event per UTF-16 unit: an AWT `KEY_TYPED` carries a single `char`, so an astral
+        // code point (an emoji) travels as its surrogate pair, which is exactly how AWT delivers
+        // one. Compose appends each unit and the pair lands as the one character it is.
+        typed?.forEach { state.scene.sendKeyEvent(typedKeyEvent(key, it)) }
       }
       InteractiveInputKind.KEY_UP -> {
         val key = androidKeycodeToComposeKey(input.keyCode) ?: return
@@ -440,21 +443,23 @@ class DesktopInteractiveSession(
       }
 
     /**
-     * The single character [text] types, or `null` when there is nothing typeable in it — absent,
-     * empty, more than one code point, or a non-printing code point (control characters, the
-     * `Shift` / `ArrowLeft` style key names the browser also puts in `KeyboardEvent.key`).
+     * The text [text] types, or `null` when there is nothing typeable in it — absent, empty, more
+     * than one code point, or a non-printing one (control characters, and the `Shift` / `ArrowLeft`
+     * style key *names* the browser also puts in `KeyboardEvent.key`).
      *
-     * Deliberately narrower than "any string": this feeds a synthetic AWT `KEY_TYPED`, which
-     * carries exactly one `char`. Astral-plane input (a code point above the BMP, so two chars)
-     * would need a surrogate pair per event and no client sends it yet, so it is dropped rather
-     * than silently mangled into half a character.
+     * One *code point*, which is not the same as one `Char`: an emoji is a single character the
+     * client will happily send (its `Array.from(key).length` is 1) but two UTF-16 units, and
+     * measuring in `Char`s would drop it on the floor here while the Android lane inserted it. The
+     * returned string is one code point, so it is either one `Char` or a surrogate pair.
      */
-    internal fun printableChar(text: String?): Char? {
-      val single = text?.singleOrNull() ?: return null
-      if (Character.isISOControl(single)) return null
-      val block = Character.UnicodeBlock.of(single)
+    internal fun printableText(text: String?): String? {
+      if (text.isNullOrEmpty()) return null
+      if (text.codePointCount(0, text.length) != 1) return null
+      val codePoint = text.codePointAt(0)
+      if (Character.isISOControl(codePoint)) return null
+      val block = Character.UnicodeBlock.of(codePoint)
       if (block == null || block == Character.UnicodeBlock.SPECIALS) return null
-      return single
+      return text
     }
 
     /**
