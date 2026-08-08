@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.19.51](https://github.com/yschimke/compose-ai-tools/compare/v0.19.50...v0.19.51) (2026-08-08)
+
+
+### Features
+
+* **catalog:** record WHY a component has no design reference ([#3532](https://github.com/yschimke/compose-ai-tools/issues/3532)) ([5733ad8](https://github.com/yschimke/compose-ai-tools/commit/5733ad89fdac9710e3717a96a7976058fa0664f4))
+* **renderer:** redesign the theme specimen sheets, and stop them truncating ([#3541](https://github.com/yschimke/compose-ai-tools/issues/3541)) ([023818b](https://github.com/yschimke/compose-ai-tools/commit/023818b6ae61e87605a1dfccbdf01e753010f52f))
+
+
+### Bug Fixes
+
+* **daemon:** let recordings type printable text and mouse-select ([#3551](https://github.com/yschimke/compose-ai-tools/issues/3551)) ([d30c0fe](https://github.com/yschimke/compose-ai-tools/commit/d30c0fe4577a704302ded6c7bb97ee5fd9849cad))
+* **daemon:** rotate the device frame when orientation asks for it ([#3552](https://github.com/yschimke/compose-ai-tools/issues/3552)) ([9a200c2](https://github.com/yschimke/compose-ai-tools/commit/9a200c23623a0add395a0401e620ea0ad764da50))
+* **design-artifacts:** carry noReference and referenceSet to the published catalog ([#3543](https://github.com/yschimke/compose-ai-tools/issues/3543)) ([135326d](https://github.com/yschimke/compose-ai-tools/commit/135326d9f8edbd5c5f58dd971f2d46c31d137854))
+* **plugin:** resolve the render worker launcher from the running JVM ([#3554](https://github.com/yschimke/compose-ai-tools/issues/3554)) ([68b336f](https://github.com/yschimke/compose-ai-tools/commit/68b336f70b310b310221e36e66a9426ce828f57c))
+* **renderer-desktop:** give driven END captures the framing an ordinary render gets ([#3553](https://github.com/yschimke/compose-ai-tools/issues/3553)) ([ea7ccb7](https://github.com/yschimke/compose-ai-tools/commit/ea7ccb78cb5dbdaf1ef5b8ffb8867e5509336601))
+* **renderer-desktop:** reset override seeds per render, and gate JVM reuse across captures ([#3540](https://github.com/yschimke/compose-ai-tools/issues/3540)) ([d8afc09](https://github.com/yschimke/compose-ai-tools/commit/d8afc09a194120d62205dcb12ff16492fc4a8069))
+* **renderer:** pin the preview wall clock so clock-bearing renders stop diffing ([#3547](https://github.com/yschimke/compose-ai-tools/issues/3547)) ([ceef2f5](https://github.com/yschimke/compose-ai-tools/commit/ceef2f5a667b79b1035036a7e8a375180c7ace05))
+* **serve:** drop the viewer's duplicate Background override ([#3549](https://github.com/yschimke/compose-ai-tools/issues/3549)) ([579de78](https://github.com/yschimke/compose-ai-tools/commit/579de78382ae77faf814fbc073183bc3faffb17a))
+* **serve:** hide the playground handoff for catalogs this host cannot compile ([#3550](https://github.com/yschimke/compose-ai-tools/issues/3550)) ([b615d48](https://github.com/yschimke/compose-ai-tools/commit/b615d485e8e015934f179f3f6eb2cbb2ba7a165e))
+* **serve:** keep the viewer chrome and fit cap honest after the page moves ([#3544](https://github.com/yschimke/compose-ai-tools/issues/3544)) ([75c5272](https://github.com/yschimke/compose-ai-tools/commit/75c5272d70b24d099e9c1dcd7b072393a6d24ecd))
+* **serve:** repaint the viewer chrome on Back and Forward ([#3539](https://github.com/yschimke/compose-ai-tools/issues/3539)) ([3c56b04](https://github.com/yschimke/compose-ai-tools/commit/3c56b042e6d744b31ea931405231e96487a55ce1))
+
+
+### Performance Improvements
+
+* **plugin:** draw captures on a warm renderer instead of forking a JVM each time ([#3548](https://github.com/yschimke/compose-ai-tools/issues/3548)) ([59bed74](https://github.com/yschimke/compose-ai-tools/commit/59bed74e9898c8947f0a7413fff105a10c753ec2))
+
 ## [0.19.50](https://github.com/yschimke/compose-ai-tools/compare/v0.19.49...v0.19.50) (2026-08-08)
 
 
