@@ -733,17 +733,53 @@
       "sha256": "e6ee657d0924f6bb1c99b439286b45417e4ca141266a8620f76860cbb7ca9e8d",
       "size": 69038
     },
+    "serve-viewer-path-spec-diff.dark.png": {
+      "fixture": "serve-viewer-path-spec-diff",
+      "theme": "dark",
+      "sha256": "f81933fa52a7904f88deef7d71fc71fd1bb64b1192759b7c72b70e0d1ddd0e07",
+      "size": 81538
+    },
+    "serve-viewer-path-spec-diff.light.png": {
+      "fixture": "serve-viewer-path-spec-diff",
+      "theme": "light",
+      "sha256": "25b968d174a4366cdb910d4c69e2342172841ccd7208f6e7163e99c7ce402e38",
+      "size": 78846
+    },
     "serve-viewer-path-spec-lane.dark.png": {
       "fixture": "serve-viewer-path-spec-lane",
       "theme": "dark",
-      "sha256": "981d28f49eebdf3480180a0a1f990f6b4159f76a6076b7275856ecf04a72fde5",
-      "size": 72073
+      "sha256": "ecfecfc3afa5e7c42a1b8fc2cce4996bf093d9b88321e3364d8ea6b4653c4f56",
+      "size": 75873
     },
     "serve-viewer-path-spec-lane.light.png": {
       "fixture": "serve-viewer-path-spec-lane",
       "theme": "light",
-      "sha256": "f2dae6983bba08d68a2e71757d8189e02940a16975c581f63df59c92b7912dac",
-      "size": 69494
+      "sha256": "7e57be9cf0b820caa09f669f9e4aaf32fe289d5f4826ea7329119de3a29b73bb",
+      "size": 73121
+    },
+    "serve-viewer-path-spec-slider.dark.png": {
+      "fixture": "serve-viewer-path-spec-slider",
+      "theme": "dark",
+      "sha256": "630adc31066ea97a1fe8d32ba7d082c16804799944f7bb67dce6b03a0018d74a",
+      "size": 81101
+    },
+    "serve-viewer-path-spec-slider.light.png": {
+      "fixture": "serve-viewer-path-spec-slider",
+      "theme": "light",
+      "sha256": "ecf24cbae6337a865f3d8273bb0f0ff141636ee07cac3724b8c155bb31d7f2d9",
+      "size": 78308
+    },
+    "serve-viewer-path-spec-triptych.dark.png": {
+      "fixture": "serve-viewer-path-spec-triptych",
+      "theme": "dark",
+      "sha256": "fde9d2bb9a6052916eef3ed6a95c0ada530c827f8c548510e6e7920dc32350b0",
+      "size": 92183
+    },
+    "serve-viewer-path-spec-triptych.light.png": {
+      "fixture": "serve-viewer-path-spec-triptych",
+      "theme": "light",
+      "sha256": "54597a23e466e6d9c7da1c504ad50fc8165ac7e08128647a5bac202d891ea4ea",
+      "size": 88910
     },
     "serve-viewer-path.dark.png": {
       "fixture": "serve-viewer-path",

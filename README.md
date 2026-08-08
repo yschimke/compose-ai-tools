@@ -445,12 +445,33 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-path/dark](renders/serve-viewer-path.dark.png) |
 | `light` | ![serve-viewer-path/light](renders/serve-viewer-path.light.png) |
 
+## serve-viewer-path-spec-diff
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-path-spec-diff/dark](renders/serve-viewer-path-spec-diff.dark.png) |
+| `light` | ![serve-viewer-path-spec-diff/light](renders/serve-viewer-path-spec-diff.light.png) |
+
 ## serve-viewer-path-spec-lane
 
 | Theme | Capture |
 | --- | --- |
 | `dark` | ![serve-viewer-path-spec-lane/dark](renders/serve-viewer-path-spec-lane.dark.png) |
 | `light` | ![serve-viewer-path-spec-lane/light](renders/serve-viewer-path-spec-lane.light.png) |
+
+## serve-viewer-path-spec-slider
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-path-spec-slider/dark](renders/serve-viewer-path-spec-slider.dark.png) |
+| `light` | ![serve-viewer-path-spec-slider/light](renders/serve-viewer-path-spec-slider.light.png) |
+
+## serve-viewer-path-spec-triptych
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-path-spec-triptych/dark](renders/serve-viewer-path-spec-triptych.dark.png) |
+| `light` | ![serve-viewer-path-spec-triptych/light](renders/serve-viewer-path-spec-triptych.light.png) |
 
 ## serve-viewer-rc-players
 
