@@ -249,4 +249,14 @@ class PreviewFilterTest {
   fun rowExcludePropertyIsTheWireContractWithThePlugin() {
     assertEquals("composeai.preview.rowExclude", PreviewFilter.ROW_EXCLUDE_PROPERTY)
   }
+
+  @Test
+  fun `an anchored pattern matches the exact id only`() {
+    // Mirrors `SelectPreviewIdsTest` in the plugin — the two matchers must agree, and the anchor is
+    // what makes a generated exclusion list safe (issue #3559).
+    assertTrue(PreviewFilter.matchesId(listOf("=Foo_Light"), "Foo_Light"))
+    assertFalse(PreviewFilter.matchesId(listOf("=Foo_Light"), "Foo_Light_VARIANT_off"))
+    // Unanchored keeps its documented substring behaviour.
+    assertTrue(PreviewFilter.matchesId(listOf("Foo_Light"), "Foo_Light_VARIANT_off"))
+  }
 }

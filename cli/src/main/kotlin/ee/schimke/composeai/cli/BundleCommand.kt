@@ -130,8 +130,11 @@ class BundleCommand(args: List<String>) : Command(args) {
         --id <preview-id>   Preview to include. Repeatable. First is the cover. Default: all.
         --exclude-preview-id <id|glob>
                             Skip rendering (and semantics-capturing) previews whose discovered id
-                            matches. Repeatable and comma-separated; '*'/'?' globs or a plain
-                            substring, matching composePreviewRender --exclude-preview-id.
+                            matches. Repeatable and comma-separated; '*'/'?' globs, a plain
+                            substring, or '=<id>' for an exact match, matching
+                            composePreviewRender --exclude-preview-id. Prefer '=' for a GENERATED
+                            list (a render sharder's "everything not mine"): ids are hierarchical,
+                            so the plain substring form drops a base id's variants too.
                             Unlike --id (which selects whole previews to PACK) this thins the RENDER
                             of one function's multipreview / multi-annotation fan-out — a design
                             catalog deferring a palette to its live server passes the deferred ids

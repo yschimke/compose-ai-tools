@@ -76,8 +76,17 @@ internal object PackPreviewIdExclusions {
   }
 
   private fun matches(pattern: String, id: String): Boolean =
-    if (pattern.any { it == '*' || it == '?' }) globToRegex(pattern).matches(id)
-    else id == pattern || id.contains(pattern)
+    when {
+      // Exact, deliberately not substring: a base id is a substring of its own fan-out members, so
+      // `FilledButton_Light` would otherwise also drop `FilledButton_Light_VARIANT_off`. See
+      // `PreviewNameFilter.ANCHOR`.
+      pattern.startsWith(ANCHOR) -> id == pattern.substring(ANCHOR.length)
+      pattern.any { it == '*' || it == '?' } -> globToRegex(pattern).matches(id)
+      else -> id == pattern || id.contains(pattern)
+    }
+
+  /** Mirror of `PreviewNameFilter.ANCHOR`. */
+  const val ANCHOR: String = "="
 
   /**
    * Anchored regex for a `*`/`?` glob, escaping every other character so a `.` in a

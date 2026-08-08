@@ -137,10 +137,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
   @Option(
     option = "exclude-preview-id",
     description =
-      "Skip previews whose discovered id matches this pattern (repeatable; '*'/'?' globs or a " +
-        "plain substring), rendering everything else. The polarity a deferred catalog palette " +
-        "needs. Applied after --preview-id. Excluding every preview fails the task. Overrides " +
-        "-PcomposePreview.idExclude.",
+      "Skip previews whose discovered id matches this pattern (repeatable; '*'/'?' globs, a " +
+        "plain substring, or '=<id>' for an exact match), rendering everything else. Use '=' for " +
+        "a generated list: ids are hierarchical, so a plain base id also drops its variants. The " +
+        "polarity a deferred catalog palette needs. Applied after --preview-id. Excluding every " +
+        "preview fails the task. Overrides -PcomposePreview.idExclude.",
   )
   fun setPreviewIdExcludeOption(values: List<String>) {
     previewIdExcludes.set(values)
