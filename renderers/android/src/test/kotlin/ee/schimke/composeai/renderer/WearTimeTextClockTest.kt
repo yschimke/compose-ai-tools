@@ -43,7 +43,6 @@ class WearTimeTextClockTest {
   @After
   fun restoreGlobals() {
     System.clearProperty(PreviewClock.PROPERTY)
-    PreviewClock.clearCache()
   }
 
   /**
@@ -60,7 +59,6 @@ class WearTimeTextClockTest {
   @Test
   fun `an explicit fixedTime is what TimeText paints`() {
     System.setProperty(PreviewClock.PROPERTY, "09:41")
-    PreviewClock.clearCache()
 
     assertEquals("9:41", paintedTime())
   }
@@ -74,7 +72,6 @@ class WearTimeTextClockTest {
   @Test
   fun `off hands back the host wall clock rather than a different fixed time`() {
     System.setProperty(PreviewClock.PROPERTY, "off")
-    PreviewClock.clearCache()
 
     val before = System.currentTimeMillis()
     val wear = wearCurrentTimeMillis()

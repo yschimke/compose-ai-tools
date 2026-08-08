@@ -97,14 +97,6 @@ object PreviewClock {
   private val OFF_VALUES = setOf("off", "false", "none", "disabled")
 
   /**
-   * Memoized resolution, keyed by the raw property value so a test (or a daemon whose launcher
-   * changed the property between renders) re-resolves instead of serving a stale instant. `resolve`
-   * is cheap, but this runs inside composition on every `TimeText` recomposition and every
-   * `ACTION_TIME_TICK`.
-   */
-  @Volatile private var cache: Pair<String?, Long?>? = null
-
-  /**
    * The wall clock a render should see: the pinned instant, or the host's real clock when pinning
    * is switched off. This is what [ShadowWearTimeSource] hands back in place of
    * `System.currentTimeMillis()`.
@@ -115,19 +107,16 @@ object PreviewClock {
   /**
    * Epoch millis this render pins to, or `null` when pinning is switched off. Resolved from
    * [PROPERTY] against the JVM's default zone.
+   *
+   * Deliberately **not** memoized. Both of its inputs are process-global mutable state — the system
+   * property (a long-lived daemon JVM renders for many launches) and the default `TimeZone` (which
+   * a consumer or a preview can call `TimeZone.setDefault` on) — so any cache has to be keyed on
+   * both or it serves a stale instant, and a `10:10` resolved under the old zone then paints a
+   * different hour. Resolving costs a `getProperty` and a few allocations, against a call site that
+   * runs once per `TimeText` composition and once per `ACTION_TIME_TICK`; correctness is worth
+   * more than that here.
    */
-  fun pinnedTimeMillis(): Long? {
-    val raw = System.getProperty(PROPERTY)
-    cache?.let { (cachedRaw, cachedMillis) ->
-      if (cachedRaw == raw) return cachedMillis
-    }
-    return resolve(raw, ZoneId.systemDefault()).also { cache = raw to it }
-  }
-
-  /** Drops the memoized resolution. For tests that move [PROPERTY] around within one JVM. */
-  internal fun clearCache() {
-    cache = null
-  }
+  fun pinnedTimeMillis(): Long? = resolve(System.getProperty(PROPERTY), ZoneId.systemDefault())
 
   /**
    * Pure resolution of [raw] against [zone] — `null` means "don't pin".

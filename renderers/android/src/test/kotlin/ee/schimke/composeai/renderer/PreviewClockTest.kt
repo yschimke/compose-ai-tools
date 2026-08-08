@@ -4,6 +4,7 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.TimeZone
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -20,10 +21,12 @@ class PreviewClockTest {
 
   private val utc = ZoneOffset.UTC
 
+  private val originalZone: TimeZone = TimeZone.getDefault()
+
   @After
   fun restoreGlobals() {
     System.clearProperty(PreviewClock.PROPERTY)
-    PreviewClock.clearCache()
+    TimeZone.setDefault(originalZone)
   }
 
   @Test
@@ -110,7 +113,6 @@ class PreviewClockTest {
   @Test
   fun `off makes currentTimeMillis follow the host clock`() {
     System.setProperty(PreviewClock.PROPERTY, "off")
-    PreviewClock.clearCache()
 
     val before = System.currentTimeMillis()
     val reported = PreviewClock.currentTimeMillis()
@@ -123,14 +125,13 @@ class PreviewClockTest {
   @Test
   fun `currentTimeMillis reports the configured instant`() {
     System.setProperty(PreviewClock.PROPERTY, "1700000000000")
-    PreviewClock.clearCache()
 
     assertEquals(1_700_000_000_000L, PreviewClock.currentTimeMillis())
   }
 
   /**
-   * The memo is keyed by the raw property value, not merely populated once — a daemon JVM outlives
-   * many renders and a launcher may change the property between them.
+   * Both inputs are process-global mutable state, and a daemon JVM outlives many renders — so
+   * neither may be cached past a change. The property first.
    */
   @Test
   fun `changing the property re-resolves rather than serving a stale instant`() {
@@ -140,6 +141,27 @@ class PreviewClockTest {
     System.setProperty(PreviewClock.PROPERTY, "1800000000000")
 
     assertEquals(1_800_000_000_000L, PreviewClock.currentTimeMillis())
+  }
+
+  /**
+   * And the default zone, which a consumer or a preview can move with `TimeZone.setDefault`. A
+   * resolution held across that change would keep the old instant, and `TimeText` — formatting
+   * through `Calendar.getInstance()` in the *new* zone — would paint an hour that is neither the
+   * configured one nor the host's.
+   */
+  @Test
+  fun `changing the default zone re-resolves so the rendered hour stays as configured`() {
+    System.setProperty(PreviewClock.PROPERTY, "10:10")
+
+    TimeZone.setDefault(TimeZone.getTimeZone("Asia/Tokyo"))
+    val inTokyo = PreviewClock.currentTimeMillis()
+    TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"))
+    val inNewYork = PreviewClock.currentTimeMillis()
+
+    assertEquals(PreviewClock.resolve("10:10", ZoneId.of("Asia/Tokyo")), inTokyo)
+    assertEquals(PreviewClock.resolve("10:10", ZoneId.of("America/New_York")), inNewYork)
+    // Both really are 10:10 locally, which is the property that makes the render reproducible.
+    assertEquals(14 * 60 * 60 * 1000L, inNewYork - inTokyo)
   }
 
   /**
