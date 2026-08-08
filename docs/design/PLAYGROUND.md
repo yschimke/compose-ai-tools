@@ -757,10 +757,34 @@ visitor can name is a preview that doesn't exist, which resolves to null.
 
 **Everything fails soft.** No source path recorded, a fetch that 404s or times
 out, a file over the 256 KB cap, bytes that aren't UTF-8 — each opens the
-ordinary sample and logs the reason. A link is only rendered when this host has
-the lane *and* the preview records a source path, so the affordance is absent
-rather than dead. Seeds are cached, and the cache is bounded (256) so a crawler
-walking every preview cannot grow it.
+ordinary sample and logs the reason. Seeds are cached, and the cache is bounded
+(256) so a crawler walking every preview cannot grow it.
+
+**A link is only rendered when this host can compile *that catalog*.** Not merely
+"the lane exists and the preview records a source path" — that was the original
+condition and it was too weak by a wide margin. A serve host browses far more
+catalogs than its playground compiles: `--playground-bundle compose-m3` pins
+exactly one, and a host without the Robolectric sidecar (`lib-daemon-android` +
+`android.jar`) resolves **no Android mode at all**, which on the public
+deployment is every Wear and app catalog it serves. The link was offered anyway,
+so `/playground?from=horologist/mediacontrolbuttonsplaying…` opened Horologist's
+Kotlin, silently retargeted the compile at whichever catalog happened to be first
+in the selector, and answered Run with a screen of unresolved references against
+a design system the visitor never chose. That reads as "the playground is
+broken"; what actually happened is the link should never have been there.
+
+`PlaygroundCompileService.compilesCatalog(system)` is the single predicate —
+true when the system is one of the runtime selector's entries *with a mode*, or
+when the host's pinned default **is** that catalog (the selector reports a pin
+under the anonymous id `""`, so `pinnedCatalogSystems` carries the system id the
+pin actually named). `ServeHttpServer` omits both handoffs when it is false, so
+the affordance is absent rather than dead — and `playgroundPage` says so outright
+for a link that outlived the answer (a bookmark, a shared URL, a catalog whose
+backend stopped being renderable here) instead of silently retargeting the
+buffer. The startup-window case where nothing has loaded yet keeps its own,
+better-worded note (`#pg-empty`) rather than getting both.
+
+![The playground explaining that this host cannot compile against horologist, rather than silently retargeting the buffer](../images/serve-playground-uncompilable-light.png)
 
 **What it is not:** a trimmed snippet. It is the file the preview is declared in,
 which for a catalog that declares many previews in one `CatalogPreviews.kt` is

@@ -21,6 +21,7 @@ class ServeWebPlaygroundCatalogTest {
     catalogSelectorEnabled: Boolean = false,
     seed: PlaygroundSeed? = null,
     preselectCatalog: String? = null,
+    pinnedCatalogSystems: Set<String> = emptySet(),
   ) =
     ServeWeb.playgroundPage(
       token = "t",
@@ -29,6 +30,7 @@ class ServeWebPlaygroundCatalogTest {
       catalogSelectorEnabled = catalogSelectorEnabled,
       seed = seed,
       preselectCatalog = preselectCatalog,
+      pinnedCatalogSystems = pinnedCatalogSystems,
     )
 
   private val previewSeed =
@@ -101,6 +103,48 @@ class ServeWebPlaygroundCatalogTest {
     assertTrue(html.contains("""<option value="" selected>Server default</option>"""))
     // The source is still opened — that half of the handoff works regardless of the selector.
     assertTrue(html.contains("fun FilledButtonPreview()"))
+  }
+
+  @Test
+  fun `a seed naming a catalog this host cannot compile says so before the visitor presses Run`() {
+    // The page's half of the fix for a `/playground?from=horologist/…` bookmark on a host that
+    // browses Android catalogs but only renders desktop. Falling back silently pointed the buffer
+    // at somebody else's design system and let Run answer with a screen of unresolved references.
+    val html = page(listOf(m3), seed = previewSeed.copy(catalog = "horologist"))
+    assertTrue(html.contains("""id="pg-catalog-unavailable""""))
+    assertTrue(html.contains("compile against <code>horologist</code>.</strong>"))
+    // It names what the editor fell back TO, so "why don't my imports resolve" is answered up
+    // front.
+    assertTrue(html.contains("open on <code>compose-m3</code> instead"))
+    // …and the buffer is still there to edit from, which is the whole reason this is a note and not
+    // an error page.
+    assertTrue(html.contains("fun FilledButtonPreview()"))
+  }
+
+  @Test
+  fun `a pinned host recognises a handoff naming the catalog it is pinned to`() {
+    // The selector reports a pin under the anonymous id "", so matching on the option list alone
+    // would flag the ONE catalog this host genuinely compiles as unavailable.
+    val html =
+      page(listOf(pinnedDefault), seed = previewSeed, pinnedCatalogSystems = setOf("compose-m3"))
+    assertFalse(html.contains("""id="pg-catalog-unavailable""""), "the pin IS compose-m3")
+    assertTrue(html.contains("""<option value="compose-cmp" selected>"""))
+  }
+
+  @Test
+  fun `a catalog-only handoff this host cannot compile is explained too`() {
+    val html = page(listOf(pinnedDefault, m3), preselectCatalog = "horologist")
+    assertTrue(html.contains("""id="pg-catalog-unavailable""""))
+    assertTrue(html.contains("Hello, Compose!"), "no seed, so the sample is untouched")
+  }
+
+  @Test
+  fun `a startup-time page with no catalogs yet explains that once, not twice`() {
+    // Nothing has loaded, so the seed's catalog is unavailable too — but that is the transient
+    // state `pg-empty` already describes, and better ("this usually clears on its own").
+    val html = page(emptyList(), seed = previewSeed.copy(catalog = "horologist"))
+    assertTrue(html.contains("""id="pg-empty""""))
+    assertFalse(html.contains("""id="pg-catalog-unavailable""""))
   }
 
   @Test

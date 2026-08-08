@@ -1472,6 +1472,20 @@ class ServeCommand(args: List<String>) : Command(args) {
             PlaygroundMode.REMOTE_COMPOSE -> null
           }
         },
+        // Which served catalog each pinned mode compiles against, so the browsing surfaces can ask
+        // "does this host compile <system>?" and get a true answer on a pin-only host — where the
+        // selector reports the pin under the anonymous id `""`. A `--playground-bundle` naming a
+        // local file has no system id and answers null, which is correct: nothing on the site can
+        // claim to be that bundle's catalog.
+        pinnedCatalogSystem = { mode ->
+          val source =
+            when (mode) {
+              PlaygroundMode.CMP -> cmpBundle
+              PlaygroundMode.ANDROID,
+              PlaygroundMode.REMOTE_COMPOSE -> androidBundle
+            }
+          (source as? PlaygroundBundleSource.ServedCatalog)?.system
+        },
         captureRemoteDocument = { snippet -> rcCapture?.capture(snippet) },
         publishRemoteDocument = { name, bytes, checked ->
           (docStore?.add(name, bytes, isSecurityChecked = checked) as? ServeDocStore.Result.Ok)

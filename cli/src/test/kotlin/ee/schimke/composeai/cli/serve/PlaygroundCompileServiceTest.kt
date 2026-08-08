@@ -165,6 +165,57 @@ class PlaygroundCompileServiceTest {
   }
 
   @Test
+  fun `compilesCatalog answers for the selector's entries and for the pinned catalog`() {
+    // What the browsing surfaces ask before offering a `?from=` handoff. A serve host browses far
+    // more catalogs than its playground compiles, and offering the link for the rest is what made
+    // "the playground doesn't work for Android" look like a playground bug: the editor opened an
+    // Android preview's Kotlin and quietly retargeted it at a desktop design system.
+    val svc =
+      PlaygroundCompileService(
+        catalogClasspath = { mode, catalog ->
+          if (catalog == null && mode == PlaygroundMode.CMP) cmpClasspath else null
+        },
+        compiler = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() },
+        discoverer = PlaygroundCompileService.PreviewDiscoverer { _, _ -> listOf("x") },
+        tokenStore = tokenStore,
+        newWorkDir = { "/work/run".toPath() },
+        fileSystem = fs,
+        catalogTargets = {
+          listOf(
+            PlaygroundCatalogTarget("m3", "desktop", listOf(PlaygroundMode.CMP), resolved = true),
+            // An Android catalog on a host with no Robolectric sidecar: served and browsable, but
+            // it offers no mode, so it is not a compile target.
+            PlaygroundCatalogTarget("horologist", "android", emptyList(), resolved = false),
+          )
+        },
+        pinnedCatalogSystem = { mode ->
+          if (mode == PlaygroundMode.CMP) "compose-m3" else "wear-m3"
+        },
+      )
+
+    assertTrue(svc.compilesCatalog("m3"), "a selector entry with modes")
+    assertFalse(svc.compilesCatalog("horologist"), "served and browsable, but no mode here")
+    assertTrue(svc.compilesCatalog("compose-m3"), "the pinned default IS this catalog")
+    assertFalse(
+      svc.compilesCatalog("wear-m3"),
+      "the Android pin's modes never resolved, so it is not in pinnedCatalogSystems",
+    )
+    assertFalse(svc.compilesCatalog("unknown"))
+    // "" is the selector's id for the pin, not a system id — it must never match a catalog page.
+    assertFalse(svc.compilesCatalog(""))
+    assertEquals(setOf("compose-m3"), svc.pinnedCatalogSystems)
+  }
+
+  @Test
+  fun `a host that pins a local bundle claims no catalog`() {
+    // `--playground-bundle /config/x.bundle` has no system id, so nothing on the site can claim to
+    // be its catalog — every `?from=` handoff is correctly withheld.
+    val svc = service()
+    assertEquals(emptySet(), svc.pinnedCatalogSystems)
+    assertFalse(svc.compilesCatalog("compose-m3"))
+  }
+
+  @Test
   fun `a clean compile mints a token pointing at the discovered preview`() {
     var compiledClasspath: List<Path>? = null
     val svc =

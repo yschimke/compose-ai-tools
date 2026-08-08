@@ -195,9 +195,17 @@ const STYLED_FIXTURES = new Set([
     // simplification would move a baseline. `viewer.js` is needed too, for the `player-cmp-android`
     // state below.
     "serve-viewer-rc-players",
+    // The playground handoff this host cannot honour. Its whole claim is a NOTICE — an
+    // error-container panel that says "this server cannot compile against <catalog>" before the
+    // visitor spends a compile finding out — and captured bare that is an ordinary paragraph in
+    // which neither the panel treatment nor its prominence above the buffer moves a baseline.
+    // Deliberately only this fixture and not `serve-playground`: adding the stylesheet there would
+    // rewrite an unrelated baseline wholesale for no claim this change makes.
+    "serve-playground-uncompilable",
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
+    ["playground.css", "text/css"],
     ["url-state.js", "text/javascript"],
     ["page-theme.js", "text/javascript"],
     ["bg-toggle.js", "text/javascript"],

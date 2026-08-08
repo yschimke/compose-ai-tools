@@ -1,0 +1,429 @@
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Playground — compose-preview</title>
+        <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||p.get("uiMode"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+      </head>
+      <body>
+        <header class="cp-site-header">
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span>compose-preview</span>
+    </a>
+  </div>
+  <div class="cp-site-status">
+    <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
+  </div>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <a href="/?token=demo-token-fixture">Catalogs</a>
+    <a href="/status?token=demo-token-fixture">Status</a>
+    <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+    <details class="cp-settings">
+      <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+        <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+      </summary>
+      <div class="cp-settings-panel">
+        <fieldset class="cp-settings-group">
+          <legend class="cp-settings-legend">Page theme</legend>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+            <span>Match the preview theme</span>
+          </label>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+            <span>Follow my system</span>
+          </label>
+          <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+            match. Turn it off to keep the page on your operating system's setting.</p>
+        </fieldset>
+      </div>
+    </details>
+  </nav>
+</header>
+        <main class="cp-main">
+                <link rel="stylesheet" href="/assets/serve/fixture/codemirror.css">
+        <link rel="stylesheet" href="/assets/serve/fixture/playground.css">
+        <h1 class="cp-head">Playground</h1>
+        <p class="cp-sub">Write a Compose snippet, compile it against the live catalog, and open a
+          preview. This lane runs your code on the server, so it stays behind your token.</p>
+        <div class="cp-pg">
+
+          <p id="pg-catalog-unavailable" class="cp-sub cp-pg-warn"><strong>This server cannot
+            compile against <code>horologist</code>.</strong> The
+            playground compiles a snippet against one catalog's own classpath and renders it on that
+            catalog's backend, and this host offers neither for that design system — most often
+            because it serves Android and Wear catalogs for browsing while running only the desktop
+            (Skiko) render backend, which is what an Android catalog's previews need. The editor is
+            open on <code>compose-m3</code> instead, so anything below that names
+            <code>horologist</code>'s own types will not resolve.
+            Pick another catalog above, or start from the sample.</p>
+
+          <p id="pg-seed" class="cp-sub">Opened from <a class="cp-source-link" href="https://github.com/google/horologist/blob/main/media-ui/src/main/java/com/google/android/horologist/media/ui/components/MediaControlButtons.kt">MediaControlButtons.kt</a> — the declaration of
+            <code>mediacontrolbuttonsplaying__ideal__default__compact</code>, plus that file's imports, from
+            <code>horologist</code>. Just this one composable, not the
+            whole file, but otherwise its source verbatim — so anything it pulls in from elsewhere
+            in its own module shows up as an unresolved reference to delete.</p>
+          <div class="cp-pg-bar">
+            <label class="cp-pg-modelabel" for="pg-catalog">Catalog</label>
+            <select id="pg-catalog" class="cp-pg-mode">
+              <option value="compose-m3" selected>compose-m3 (desktop)</option>
+            </select>
+            <label class="cp-pg-modelabel" for="pg-mode">Mode</label>
+            <select id="pg-mode" class="cp-pg-mode">
+              <option value="compose-cmp" selected>Compose (Desktop)</option>
+            </select>
+            <button id="pg-run" class="cp-doc-btn cp-pg-run" type="button">Run</button>
+          </div>
+          <div id="pg-files" class="cp-pg-files" role="tablist" aria-label="Snippet files">
+            <button class="cp-pg-file" type="button" role="tab" aria-current="true"
+              data-pg-file="MediaControlButtons.kt">MediaControlButtons.kt</button>
+            <button id="pg-add-file" class="cp-pg-filebtn" type="button">+ file</button>
+            <button id="pg-remove-file" class="cp-pg-filebtn" type="button" hidden>Remove file</button>
+          </div>
+          <textarea id="pg-source" class="cp-pg-source" spellcheck="false"
+            aria-label="Kotlin source">package com.google.android.horologist.media.ui.components
+
+@Preview
+@Composable
+fun MediaControlButtonsPlaying() {
+  MediaControlButtons(onPlayButtonClick = {}, playing = true)
+}</textarea>
+          <div id="pg-status" class="cp-pg-status" hidden></div>
+          <ul id="pg-diagnostics" class="cp-pg-diags" hidden></ul>
+          <div id="pg-result" class="cp-doc-result cp-pg-result" hidden>
+            <p id="pg-preview-note" class="cp-pg-status" hidden></p>
+            <img id="pg-image" class="cp-pg-image" alt="Rendered first frame" hidden>
+            <p id="pg-open-row" hidden>
+              <a id="pg-open" class="cp-doc-btn" href="#" rel="noopener">Open preview →</a>
+            </p>
+            <ul id="pg-previews" class="cp-pg-diags" hidden
+              aria-label="Previews declared by this snippet"></ul>
+          </div>
+        </div>
+        <script src="/assets/serve/fixture/codemirror.js"></script>
+        <script>(function () {
+  var source = document.getElementById("pg-source");
+  var mode = document.getElementById("pg-mode");
+  var catalog = document.getElementById("pg-catalog");
+  var run = document.getElementById("pg-run");
+  var fileBar = document.getElementById("pg-files");
+  var addFile = document.getElementById("pg-add-file");
+  var removeFile = document.getElementById("pg-remove-file");
+  var statusEl = document.getElementById("pg-status");
+  var diags = document.getElementById("pg-diagnostics");
+  var result = document.getElementById("pg-result");
+  var image = document.getElementById("pg-image");
+  var openRow = document.getElementById("pg-open-row");
+  var openLink = document.getElementById("pg-open");
+  var note = document.getElementById("pg-preview-note");
+  var previewList = document.getElementById("pg-previews");
+  var suffix = "?token=demo-token-fixture";
+  // The catalog selector. Each entry carries its own mode list because a catalog's bundle
+  // backend picks the renderer — selecting `compose-m3` (desktop) and selecting an Android
+  // catalog are not the same choice with a different classpath, they are different modes.
+  var catalogs = JSON.parse("{\"catalogs\":[{\"id\":\"compose-m3\",\"label\":\"compose-m3 (desktop)\",\"backend\":\"desktop\",\"modes\":[\"compose-cmp\"],\"resolved\":true}]}").catalogs || [];
+  var modeLabels = {"compose-cmp": "Compose (Desktop)", "compose-android": "Compose (Android)", "remote-compose": "Remote Compose"};
+  function selectedCatalog() {
+    var id = catalog ? catalog.value : "";
+    for (var i = 0; i < catalogs.length; i++) if (catalogs[i].id === id) return catalogs[i];
+    return catalogs.length ? catalogs[0] : null;
+  }
+  // Repopulate Mode from the selected catalog, keeping the current mode when that catalog still
+  // offers it — switching between two desktop catalogs must not silently reset the mode.
+  function syncModes() {
+    var entry = selectedCatalog();
+    var wanted = mode.value;
+    var offered = entry ? (entry.modes || []) : [];
+    mode.innerHTML = "";
+    offered.forEach(function (m) {
+      var opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = modeLabels[m] || m;
+      mode.appendChild(opt);
+    });
+    if (offered.indexOf(wanted) >= 0) mode.value = wanted;
+    mode.disabled = offered.length === 0;
+    run.disabled = offered.length === 0;
+  }
+  // Catalogs are fetched in the BACKGROUND after the server starts, so a page opened during
+  // startup legitimately renders a short (or empty) list. Re-ask rather than making the visitor
+  // guess that a reload would help.
+  //
+  // ONE fetch is not enough: on a host with nothing pinned the editor commonly loads before the
+  // initial catalog loader has published anything, so the single reply is empty too and nothing
+  // would ever ask again — a permanently disabled Run on a host that came up fine seconds later.
+  // So poll while the answer is still empty, bounded (a host that genuinely serves no compilable
+  // catalog must not poll forever), and stop the moment something is offered.
+  var emptyPolls = 0;
+  var MAX_EMPTY_POLLS = 12;
+  var POLL_MS = 2500;
+  function refreshCatalogs() {
+    fetch("/api/1/compiler/catalogs" + suffix, { headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) {
+        if (!res || !res.catalogs) return;
+        var previous = catalog ? catalog.value : "";
+        catalogs = res.catalogs;
+        if (catalog) {
+          catalog.innerHTML = "";
+          catalogs.forEach(function (c) {
+            var opt = document.createElement("option");
+            opt.value = c.id;
+            opt.textContent = c.label;
+            catalog.appendChild(opt);
+          });
+          if (!catalogs.length) {
+            var none = document.createElement("option");
+            none.value = ""; none.disabled = true; none.selected = true;
+            none.textContent = "No catalogs available yet…";
+            catalog.appendChild(none);
+          } else {
+            var keep = false;
+            for (var i = 0; i < catalogs.length; i++) {
+              if (catalogs[i].id === previous) keep = true;
+            }
+            catalog.value = keep ? previous : catalogs[0].id;
+          }
+        }
+        var empty = document.getElementById("pg-empty");
+        if (empty) empty.hidden = catalogs.length > 0;
+        syncModes();
+        if (!catalogs.length && ++emptyPolls < MAX_EMPTY_POLLS) {
+          window.setTimeout(refreshCatalogs, POLL_MS);
+        }
+      })
+      .catch(function () { /* the baked-in list still stands */ });
+  }
+  if (catalog) {
+    catalog.addEventListener("change", syncModes);
+    // Opening the dropdown is the one moment a stale list actually costs the visitor something,
+    // and it's a cheap place to catch catalogs that finished loading after the poll gave up.
+    catalog.addEventListener("focus", refreshCatalogs);
+  }
+  syncModes();
+  // Unconditional, not just when there is a selector: a page opened before the host's own pinned
+  // bundle finished resolving renders with no modes at all, and the refresh is what recovers it
+  // without asking the visitor to reload.
+  refreshCatalogs();
+  // CodeMirror over the textarea when the vendored bundle loaded, plain textarea when it
+  // didn't. Every read/write of the buffer goes through readSource/writeSource, so a failed
+  // asset fetch degrades to exactly the pre-editor behaviour instead of a dead page — the
+  // editor is a convenience, and the compile lane is the feature.
+  var editor = null;
+  if (window.CodeMirror) {
+    editor = window.CodeMirror.fromTextArea(source, {
+      mode: "text/x-kotlin",
+      lineNumbers: true,
+      // `fromTextArea` hides the original textarea, which takes its aria-label out of the
+      // accessibility tree with it. CodeMirror only names its own generated input through
+      // this option, so without it a screen reader announces an unlabelled edit box.
+      screenReaderLabel: "Kotlin source",
+      indentUnit: 4,
+      // Kotlin is space-indented; without this Tab inserts a literal tab that the compiler
+      // accepts but nobody wants pasted back into a file.
+      indentWithTabs: false,
+      matchBrackets: true,
+      viewportMargin: Infinity,
+    });
+    // Tab as INDENT, not focus-escape. A code box that swallows Tab is a keyboard trap, so
+    // Esc first moves focus out — the standard escape hatch (WCAG 2.1.2).
+    editor.setOption("extraKeys", {
+      Tab: function (cm) { cm.execCommand("indentMore"); },
+      "Shift-Tab": function (cm) { cm.execCommand("indentLess"); },
+      Esc: function (cm) { cm.getInputField().blur(); },
+      "Ctrl-Enter": function () { run.click(); },
+      "Cmd-Enter": function () { run.click(); },
+    });
+  }
+  function readSource() { return editor ? editor.getValue() : source.value; }
+  function writeSource(text) {
+    if (editor) editor.setValue(text); else source.value = text;
+  }
+  // The snippet is a LIST of files compiled as one module, not one file: `files` holds every
+  // buffer, `active` is the one the textarea is showing. A single-file snippet keeps exactly
+  // the old shape, so nothing about the common case changes.
+  var files = [{ name: "MediaControlButtons.kt", text: readSource() }];
+  var active = 0;
+  function uniqueName(name) {
+    var taken = {}; files.forEach(function (f) { taken[f.name.toLowerCase()] = true; });
+    if (!taken[name.toLowerCase()]) return name;
+    var stem = name.replace(/\.kt$/, "");
+    for (var i = 1; ; i++) {
+      var candidate = stem + "_" + i + ".kt";
+      if (!taken[candidate.toLowerCase()]) return candidate;
+    }
+  }
+  function renderFiles() {
+    // Rebuild the tab strip from `files`; the +/- buttons are kept, not recreated.
+    var tabs = fileBar.querySelectorAll("[data-pg-file]");
+    for (var i = 0; i < tabs.length; i++) fileBar.removeChild(tabs[i]);
+    files.forEach(function (f, i) {
+      var tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = "cp-pg-file";
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("data-pg-file", f.name);
+      tab.setAttribute("aria-current", i === active ? "true" : "false");
+      tab.textContent = f.name;
+      tab.addEventListener("click", function () { showFile(i); });
+      fileBar.insertBefore(tab, addFile);
+    });
+    removeFile.hidden = files.length < 2;
+  }
+  addFile.addEventListener("click", function () {
+    files[active].text = readSource();
+    // Auto-named rather than prompted: Kotlin does not tie declarations to a file name, so the
+    // name only ever shows up in diagnostics — not worth a modal dialog on every added file.
+    var name = uniqueName("File" + (files.length + 1) + ".kt");
+    files.push({ name: name, text: "" });
+    active = files.length - 1;
+    writeSource("");
+    renderFiles();
+    if (editor) editor.focus(); else source.focus();
+  });
+  removeFile.addEventListener("click", function () {
+    if (files.length < 2) return;
+    files.splice(active, 1);
+    active = Math.min(active, files.length - 1);
+    writeSource(files[active].text);
+    renderFiles();
+  });
+  renderFiles();
+  function setStatus(text, isError) {
+    statusEl.hidden = false;
+    statusEl.className = "cp-pg-status" + (isError ? " cp-doc-error" : "");
+    statusEl.textContent = text;
+  }
+  function clearOut() {
+    diags.hidden = true; diags.innerHTML = "";
+    result.hidden = true; image.hidden = true; image.removeAttribute("src"); openRow.hidden = true;
+    note.hidden = true; note.textContent = "";
+    previewList.hidden = true; previewList.innerHTML = "";
+  }
+  function indexOfFile(name) {
+    for (var i = 0; i < files.length; i++) if (files[i].name === name) return i;
+    return -1;
+  }
+  function showFile(i) {
+    if (i < 0 || i === active) return;
+    files[active].text = readSource();
+    active = i;
+    writeSource(files[active].text);
+    renderFiles();
+  }
+  function renderDiags(list) {
+    if (!list || !list.length) return;
+    diags.hidden = false;
+    list.forEach(function (d) {
+      var li = document.createElement("li");
+      li.className = "cp-pg-diag cp-pg-" + (d.severity || "info");
+      // With several buffers open, "unresolved reference at line 5" is useless without the
+      // file — the server keys diagnostics by basename, so name it and, when that file is one
+      // of ours, make the entry jump to its tab.
+      var owner = indexOfFile(d.file || "");
+      var where = (d.file ? d.file : "") + ((d.line != null) ? (":" + (d.line + 1)) : "");
+      var loc = where ? (" (" + where + ")") : "";
+      li.textContent = (d.severity || "info") + ": " + d.message + loc;
+      if (owner >= 0) {
+        li.style.cursor = "pointer";
+        li.title = "Show " + d.file;
+        li.addEventListener("click", function () { showFile(owner); });
+      }
+      diags.appendChild(li);
+    });
+  }
+  // A monotonic id fences stale runs: only the newest click updates the DOM, and Run is disabled
+  // while a compile is in flight so a burst can't double-submit (each submit mints a token).
+  var reqId = 0;
+  run.addEventListener("click", function () {
+    var myId = ++reqId;
+    run.disabled = true;
+    clearOut();
+    setStatus("Compiling…", false);
+    files[active].text = readSource();
+    var body = JSON.stringify({
+      confType: mode.value,
+      catalog: catalog ? catalog.value : "",
+      files: files
+    });
+    fetch("/api/1/compiler/run" + suffix, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body
+    })
+      .then(function (r) {
+        return r.text().then(function (t) {
+          if (!r.ok) throw new Error(t || ("run failed (" + r.status + ")"));
+          return JSON.parse(t);
+        });
+      })
+      .then(function (res) {
+        if (myId !== reqId) return;
+        run.disabled = false;
+        renderDiags(res.diagnostics);
+        var hasError = (res.diagnostics || []).some(function (d) { return d.severity === "error"; });
+        if (res.exception) { setStatus(res.exception, true); return; }
+        if (hasError) { setStatus("Compilation failed.", true); return; }
+        result.hidden = false;
+        if (res.image) { image.hidden = false; image.src = res.image; }
+        var link = res.documentUrl || res.previewUrl;
+        if (link) {
+          openRow.hidden = false;
+          openLink.href = link + suffix;
+          openLink.textContent = res.documentUrl ? "Open document →" : "Open live preview →";
+        }
+        // A snippet routinely declares more than one @Preview, and only the first drives the
+        // still frame. The rest are compiled and live in the same session, so list every one as
+        // its own link — `?preview=<id>` opens the session on it — rather than naming the drawn
+        // one and leaving the others unreachable. Kept out of the status line, which stays the
+        // terminal "Done." the e2e keys on.
+        var all = res.previews || [];
+        if (res.previewId && all.length > 1) {
+          note.hidden = false;
+          note.textContent =
+            "Rendered " + res.previewId + " — " + all.length + " previews in this snippet.";
+        }
+        // Only the live-preview lane can open on a chosen preview; a documentUrl addresses a
+        // rendered document, which `?preview=` means nothing to. So the per-preview links hang
+        // off res.previewUrl specifically rather than the `link` that may be either.
+        if (res.previewUrl && all.length > 1) {
+          previewList.hidden = false;
+          previewList.innerHTML = "";
+          all.forEach(function (id) {
+            var li = document.createElement("li");
+            li.className = "cp-pg-diag cp-pg-info";
+            var a = document.createElement("a");
+            // Same `/pg/<token>` redemption the main link uses, plus the preview to open on.
+            // The token rides in `suffix`, so `?`/`&` depends on whether it is already there.
+            a.href = res.previewUrl + suffix + (suffix ? "&" : "?") +
+              "preview=" + encodeURIComponent(id);
+            a.rel = "noopener";
+            a.textContent = id === res.previewId ? (id + " (shown above)") : id;
+            li.appendChild(a);
+            previewList.appendChild(li);
+          });
+        }
+        setStatus("Done.", false);
+      })
+      .catch(function (e) {
+        if (myId !== reqId) return;
+        run.disabled = false;
+        setStatus(e.message || "run failed", true);
+      });
+  });
+})();</script>
+        </main>
+        <footer class="cp-site-footer">
+          <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
+          <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
+        </footer>
+        <script src="/assets/serve/fixture/page-theme.js"></script>
+      </body>
+    </html>

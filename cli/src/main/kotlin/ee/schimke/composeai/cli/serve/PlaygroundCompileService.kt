@@ -83,6 +83,18 @@ class PlaygroundCompileService(
    * catalogs permanently without the control it was configured to have.
    */
   private val catalogTargets: (() -> List<PlaygroundCatalogTarget>)? = null,
+  /**
+   * The served-catalog system id a **pinned** mode compiles against, when its `--playground-bundle`
+   * named one (`--playground-bundle compose-m3`) rather than a local file. Null for a local path,
+   * an unconfigured mode, or a host that pins nothing.
+   *
+   * Exists so [compilesCatalog] can answer for the pinned entry too. The selector reports a pinned
+   * default under the id `""` ([catalogChoices]) — it deliberately has no system id on the wire,
+   * because a request names a mode rather than the pin — but "does this host compile `compose-m3`"
+   * is exactly the question the browsing surfaces have to answer before offering a handoff, and on
+   * a pin-only host the answer is yes for precisely this system and no for every other one.
+   */
+  private val pinnedCatalogSystem: (PlaygroundMode) -> String? = { null },
 ) {
 
   /**
@@ -140,6 +152,38 @@ class PlaygroundCompileService(
           resolved = it.resolved,
         )
       }
+  }
+
+  /**
+   * The served-catalog system ids this host's **pinned** default compiles against — one per mode
+   * whose pin named a catalog and resolved. Empty on a host that pins nothing (the runtime
+   * selector's own entries carry their system id in [catalogChoices]) or that pins local files.
+   */
+  val pinnedCatalogSystems: Set<String>
+    get() = availableModes.mapNotNull { pinnedCatalogSystem(it) }.toSet()
+
+  /**
+   * Whether a snippet belonging to [system]'s catalog can actually be **compiled here** — as one of
+   * the runtime selector's entries, or because this host's pinned default *is* that catalog.
+   *
+   * This is what the browsing surfaces ask before offering a "open this preview in the playground"
+   * handoff, and getting it wrong is not cosmetic. Every catalog page can build a `?from=` link,
+   * but only the catalogs in this set have a classpath here — so on a host pinned to `compose-m3`,
+   * or one with no Robolectric sidecar and therefore no Android modes at all, the handoff from a
+   * Wear/Android catalog used to open the editor on that preview's Kotlin and silently retarget it
+   * at *someone else's* design system, where every reference in the buffer is unresolved. That
+   * reads as "the playground is broken", when what actually happened is that the link should never
+   * have been offered. Absent beats dead: [ServeHttpServer] omits the link when this is false, and
+   * [ServeWeb.playgroundPage] says so outright for a link that was built before the answer changed.
+   *
+   * Note the asymmetry with [PlaygroundCatalogTargets.classpath]: this asks only whether the
+   * pairing is *offerable*, never resolving a bundle to find out. A catalog that is offered and
+   * then fails to resolve still answers "not available" per request, as it always did.
+   */
+  fun compilesCatalog(system: String): Boolean {
+    if (system.isBlank()) return false
+    if (catalogChoices().any { it.id == system && it.modes.isNotEmpty() }) return true
+    return system in pinnedCatalogSystems
   }
 
   /**
