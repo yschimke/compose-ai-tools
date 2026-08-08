@@ -3167,21 +3167,24 @@ class ServeWebFixtureTest {
     // alike — is one `<a class="cp-card">` wrapping an image and several lines of metadata. The
     // sheet's global `a:hover { text-decoration: underline }` therefore underlined ALL of that
     // metadata at once, which reads as four stacked links rather than one target. The card must
-    // suppress that and answer as an object instead (lift + shadow + accent rim + top-edge wipe),
-    // and the same treatment must be reachable from the keyboard.
+    // suppress that and answer as an object instead — in Material 3 terms, by rising an elevation
+    // level and taking a `primary` state layer — and the same treatment must be reachable from the
+    // keyboard.
     val css = assetText("serve.css")
     assertTrue(
       css.contains(".cp-card:hover, .cp-card:focus-visible {") &&
-        css.contains(
-          "transform: translateY(-3px); border-color: var(--cp-accent-ring); text-decoration: none;"
-        ),
-      "hovering a card lifts and rims it instead of underlining its text",
+        css.contains("transform: translateY(-2px); text-decoration: none;") &&
+        css.contains("box-shadow: var(--md-sys-elevation-level3);"),
+      "hovering a card lifts it to a higher elevation instead of underlining its text",
     )
+    // The M3 state layer: the card's own content colour composited over it at the spec's hover /
+    // focus opacities, rather than a bespoke fill or rim.
     assertTrue(
-      css.contains(
-        ".cp-card:hover::after, .cp-card:focus-visible::after { transform: scaleX(1); }"
-      ),
-      "the accent bar wipes along the card's top edge on hover",
+      css.contains(".cp-card:hover::after { opacity: var(--md-sys-state-hover-opacity); }") &&
+        css.contains(
+          ".cp-card:focus-visible::after { opacity: var(--md-sys-state-focus-opacity); }"
+        ),
+      "a state layer covers the card under the pointer and under keyboard focus",
     )
     assertTrue(
       css.contains(
@@ -3191,9 +3194,9 @@ class ServeWebFixtureTest {
     )
     assertTrue(
       css.contains(
-        ".cp-card:focus-visible { outline: 2px solid var(--cp-accent-ring); outline-offset: 2px; }"
+        ".cp-card:focus-visible { outline: 3px solid var(--md-sys-color-secondary); outline-offset: 2px; }"
       ),
-      "keyboard focus gets the card treatment plus a visible ring",
+      "keyboard focus gets the card treatment plus M3's own focus indicator",
     )
     // Motion is an enhancement, never the affordance: a visitor who asked for less motion still
     // gets the rim, the shadow and the wipe target — just no travel.

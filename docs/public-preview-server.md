@@ -254,6 +254,48 @@ Long-pressing under a selected app-declared theme keeps that theme: the socket c
 `themeProvider` the grid is showing, so the live session opens on the palette on screen rather than
 snapping back to the catalog's baked one.
 
+## The chrome is Material 3
+
+The server exists to show Material design systems, so the page around them is one too. The web
+chrome is built on **Material 3** (Material You) — the same design language `@material/web` ships —
+expressed as a token layer at the top of
+[`serve.css`](../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/serve.css): the
+`--md-sys-color-*` role set (the primary/secondary/tertiary/error families, the surface-container
+ladder, the outline pair), the shape scale, the six elevation levels, the state-layer opacities, the
+motion easings, and the type scale. The `--cp-*` properties the sheet was already written against
+are now **aliases onto those roles** rather than a second palette, so there is exactly one place a
+colour is decided.
+
+Nothing is imported to do it. A published artifact is served under a strict CSP with no CDN and no
+web-font fetch, so the M3 **baseline** scheme is inlined rather than pulled from a package, and
+Roboto is asked for but never downloaded — the stack falls back to the platform UI face where it is
+absent.
+
+What changed on screen, component by component: cards became M3 *elevated cards* (tonal fill,
+elevation 1 at rest, rising to elevation 3 with a `primary` state layer under the pointer — no
+keyline); the section tabs became M3 *primary tabs* with a 3dp active indicator; every chip and
+toggle took M3's selected language (a `secondary-container` tonal fill instead of a tinted border);
+the filter field became an M3 *search bar*; panels (about, provenance, override groups, the export
+card, the component drawer) became *filled cards* separated from the page by tone rather than by a
+1px border; and focus is M3's own 3dp `secondary` indicator everywhere.
+
+| Before — the built-in indigo shell | After — Material 3 |
+| --- | --- |
+| ![The front door before Material 3](images/serve-material3-home-before.png) | ![The front door in Material 3](images/serve-material3-home-after.png) |
+| ![A catalog page before Material 3](images/serve-material3-catalog-before.png) | ![The same catalog page in Material 3](images/serve-material3-catalog-after.png) |
+| ![The viewer before Material 3](images/serve-material3-viewer-before.png) | ![The viewer in Material 3](images/serve-material3-viewer-after.png) |
+| ![A catalog page on a dark surface, before](images/serve-material3-catalog-dark-before.png) | ![The same page in Material 3's dark scheme](images/serve-material3-catalog-dark-after.png) |
+
+The dark scheme is the M3 baseline's own dark half. Because the aliases are `var()` references, it
+re-declares only the **roles** — the long list of per-rule dark overrides the sheet used to carry
+(re-pointing a border, a surface, a muted text colour at its dark twin) is gone with them. What
+survives is what a token layer genuinely cannot express: the **semantic** colour pairs (trust
+badges, good/warn/bad scores, the code/design parity lanes, the live-lane green), which are literal
+by design because they must mean the same thing in every design system — they keep M3's
+*container / on-container* relationship but not its palette.
+
+The next section is why the role family matters as much as the alias family.
+
 ## The page wears the catalog's own palette
 
 The Theme selector above re-renders the *previews*. The **page around them** is themed from the same
@@ -262,7 +304,18 @@ place: every `design-artifacts/<system>` branch publishes a `tokens.dtcg.json` b
 lifted from the render's `compose/theme` data product), and the server projects it onto the CSS
 custom properties the site chrome is painted from. So `/wear-m3/` is framed in Wear M3's cyan on its
 own near-black surface, `/jetnews/` in JetNews's crimson — instead of every design system arriving
-inside the same fixed indigo-on-white shell.
+inside the same fixed baseline shell.
+
+The projection covers **both** families the token layer declares — the `--md-sys-color-*` M3 roles
+*and* the `--cp-*` aliases — produced together from the same resolved values. Emitting only the
+aliases would leave everything painted from a role (a tonal chip, a state layer, an error container)
+stuck on the M3 baseline scheme while the rest of the page re-themed. `ServeThemeCss` derives the
+roles from the values it has already contrast-checked rather than reading the token file twice, so
+the two families can never disagree about the same colour; a test asserts both that every role the
+sheet declares is themed and that the overlapping ones match exactly. The roles the chrome has no
+alias for — the secondary/tertiary/error families and the container ladder — come from the catalog
+when it publishes them **and** the mode being painted is the one it baked, and are derived
+otherwise, so a light-first catalog never paints a light error container onto a dark page.
 
 | Before — one fixed chrome for every system | After — `/jetnews/` in JetNews's own palette |
 | --- | --- |
