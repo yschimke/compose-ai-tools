@@ -311,6 +311,125 @@ class PreviewIndexTest {
     }
   }
 
+  /**
+   * `@ScrollingPreview` splits across two places in `previews.json`: `LONG`/`GIF` become
+   * `dataProducts` (above), while `TOP`/`END` become ordinary `captures` carrying a `scroll` block.
+   * The daemon used to parse only the former, so an `END` sticker rendered its unscrolled resting
+   * frame — a Wear `EdgeButton` sticker whose PNG showed the settled bottom while the daemon's
+   * semantics / layout / figma-svg sidecars described the top.
+   */
+  @Test
+  fun `staticScrollFor resolves the END drive from captures`() {
+    val tmp = Files.createTempFile("previews-static-scroll", ".json")
+    Files.writeString(
+      tmp,
+      """
+      {
+        "previews": [
+          {
+            "id": "EndPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "End",
+            "captures": [
+              {
+                "renderOutput": "renders/End.png",
+                "cost": 3.0,
+                "scroll": {
+                  "mode": "END",
+                  "axis": "VERTICAL",
+                  "maxScrollPx": 0,
+                  "reduceMotion": true,
+                  "frameIntervalMs": 80,
+                  "atEnd": false,
+                  "reachedPx": null
+                }
+              }
+            ]
+          },
+          {
+            "id": "TopPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "Top",
+            "captures": [{ "scroll": { "mode": "TOP", "axis": "VERTICAL" } }]
+          },
+          {
+            "id": "PlainPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "Plain",
+            "captures": [{ "renderOutput": "renders/Plain.png" }]
+          },
+          {
+            "id": "TopAndEndPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "TopAndEnd",
+            "captures": [
+              {
+                "renderOutput": "renders/TopAndEnd_SCROLL_top.png",
+                "scroll": { "mode": "TOP", "axis": "VERTICAL" }
+              },
+              {
+                "renderOutput": "renders/TopAndEnd_SCROLL_end.png",
+                "scroll": { "mode": "END", "axis": "VERTICAL" }
+              }
+            ]
+          },
+          {
+            "id": "EndTimedPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "EndTimed",
+            "captures": [
+              {
+                "renderOutput": "renders/EndTimed_TIME_100ms.png",
+                "scroll": { "mode": "END", "axis": "HORIZONTAL", "maxScrollPx": 400 }
+              },
+              {
+                "renderOutput": "renders/EndTimed_TIME_500ms.png",
+                "scroll": { "mode": "END", "axis": "HORIZONTAL", "maxScrollPx": 400 }
+              }
+            ]
+          },
+          {
+            "id": "EndPlusGifPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "EndPlusGif",
+            "captures": [
+              {
+                "renderOutput": "renders/EndPlusGif.png",
+                "scroll": { "mode": "END", "axis": "VERTICAL" }
+              },
+              { "renderOutput": "renders/EndPlusGif_anim.gif" }
+            ]
+          }
+        ]
+      }
+      """
+        .trimIndent(),
+    )
+    try {
+      val index = PreviewIndex.loadFromFile(tmp)
+      val end = index.staticScrollFor("EndPreview_1")
+      assertNotNull("an END capture must resolve a drive", end)
+      assertEquals("END", end!!.mode)
+      assertEquals("VERTICAL", end.axis)
+      // TOP is already what an undriven render produces, so it asks for no drive.
+      assertNull(index.staticScrollFor("TopPreview_1"))
+      assertNull(index.staticScrollFor("PlainPreview_1"))
+      assertNull(index.staticScrollFor("DoesNotExist"))
+      // TOP + END plans two PNGs under one id; the daemon renders one frame per id, so it must not
+      // pick a side.
+      assertNull(index.staticScrollFor("TopAndEndPreview_1"))
+      // A time fan-out repeats the SAME END intent across captures — unanimous, so it resolves.
+      val timed = index.staticScrollFor("EndTimedPreview_1")
+      assertNotNull("unanimous END captures must resolve a drive", timed)
+      assertEquals("HORIZONTAL", timed!!.axis)
+      assertEquals(400, timed.maxScrollPx)
+      // A scroll-less GIF capture beside the END one is a separate output, not a rival frame.
+      assertEquals("END", index.staticScrollFor("EndPlusGifPreview_1")?.mode)
+    } finally {
+      Files.deleteIfExists(tmp)
+    }
+  }
+
   @Test
   fun `loadFromFile ignores unknown dataProducts fields so plugin-side schema additions don't break`() {
     val tmp = Files.createTempFile("previews-scroll-extra", ".json")

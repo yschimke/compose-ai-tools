@@ -128,6 +128,39 @@ class PreviewIndexDiffTest {
   }
 
   @Test
+  fun `a captures-less rescan keeps the scrolling-preview drive`() {
+    // `captures` is unrecoverable from the class file for the same reason `params` is, and it
+    // carries the `@ScrollingPreview(END)` drive. Losing it on a save would silently turn an
+    // EdgeButton sticker back into its unscrolled resting frame until the next full rediscovery —
+    // and re-report the preview as `changed` on every keystroke-save on the way there.
+    val prior =
+      PreviewInfoDto(
+        id = "Scrolled",
+        className = "com.example.ScrolledKt",
+        methodName = "Scrolled",
+        sourceFile = "Scrolled.kt",
+        captures = listOf(PreviewCaptureDto(scroll = ScrollCaptureDto(mode = "END"))),
+      )
+    val fresh = prior.copy(captures = emptyList())
+    val index = PreviewIndex.fromMap(path = null, byId = mapOf("Scrolled" to prior))
+    val diff = index.diff(setOf(fresh), Path.of("Scrolled.kt"))
+    assertTrue(
+      "a captures-only empty rescan must not be reported as changed",
+      diff.changed.isEmpty(),
+    )
+    index.applyDiff(diff)
+    assertEquals("END", index.staticScrollFor("Scrolled")?.mode)
+
+    // A genuine edit alongside the empty captures still lands, drive intact.
+    val renamed = prior.copy(displayName = "Y", captures = emptyList())
+    val realDiff = index.diff(setOf(renamed), Path.of("Scrolled.kt"))
+    assertEquals(listOf("Scrolled"), realDiff.changed.map { it.id })
+    index.applyDiff(realDiff)
+    assertEquals("Y", index.byId("Scrolled")?.displayName)
+    assertEquals("END", index.staticScrollFor("Scrolled")?.mode)
+  }
+
+  @Test
   fun `a real field change with null params is still reported and preserves params`() {
     // A genuine change (displayName) alongside the incremental scan's null params IS a change — and
     // applyDiff still carries the prior params forward, so the real edit lands without losing size.
