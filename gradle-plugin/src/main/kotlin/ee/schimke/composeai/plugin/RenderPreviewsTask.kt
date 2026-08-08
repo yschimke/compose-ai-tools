@@ -410,6 +410,34 @@ abstract class RenderPreviewsTask : DefaultTask() {
       )
     }
 
+    // One warm renderer for this whole task execution, closed before the action returns so no
+    // process outlives the build. Created here rather than held on the task so nothing
+    // process-shaped is on a field the configuration cache would try to store.
+    val lane = RenderLane(openWorkerPool())
+    try {
+      renderCaptures(manifest, manifestOutputFiles, previewsRoot, outDir, mainClass, lane)
+    } finally {
+      lane.pool?.let { pool ->
+        pool.close()
+        val warm = pool.servedWarm.get()
+        if (warm > 0) {
+          logger.lifecycle(
+            "composePreviewRender: $warm capture(s) drawn on a warm renderer " +
+              "(no per-capture JVM fork)."
+          )
+        }
+      }
+    }
+  }
+
+  private fun renderCaptures(
+    manifest: PreviewManifest,
+    manifestOutputFiles: List<java.io.File>,
+    previewsRoot: java.io.File,
+    outDir: java.io.File,
+    mainClass: String,
+    lane: RenderLane,
+  ) {
     for (preview in manifest.previews) {
       val spec =
         DeviceDimensions.resolveForRender(
@@ -468,6 +496,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
           scroll = capture.scroll,
           animation = capture.animation,
           fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
+          lane = lane,
         )
       }
 
@@ -490,6 +519,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
           outputFile = outputFile,
           scroll = product.scroll,
           fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
+          lane = lane,
         )
       }
     }
@@ -506,7 +536,46 @@ abstract class RenderPreviewsTask : DefaultTask() {
     scroll: ScrollCapture?,
     animation: AnimationCapture? = null,
     fanoutSiblingStems: List<String> = emptyList(),
+    lane: RenderLane,
   ) {
+    val rendererArgs =
+      rendererArgs(
+        preview = preview,
+        spec = spec,
+        density = density,
+        widthPx = widthPx,
+        heightPx = heightPx,
+        outputFile = outputFile,
+        scroll = scroll,
+        animation = animation,
+        fanoutSiblingStems = fanoutSiblingStems,
+      )
+    val overridesSeed =
+      preview.overrides?.let { OVERRIDES_JSON.encodeToString(OverrideVariantSpec.serializer(), it) }
+
+    // Warm path: a pooled worker draws this on an already-booted JVM instead of paying JVM +
+    // Compose Desktop + Skiko startup again for one capture. It calls the renderer's own `main()`,
+    // so a pooled capture runs identical code to a forked one. Only `Unusable` falls through to the
+    // fork below — a `Failed` is the renderer's real answer about this capture, and re-running it
+    // cold would double the cost of every capture that cannot be drawn.
+    lane.pool?.let { pool ->
+      when (val pooled = pool.render(rendererArgs, overridesSeed)) {
+        is DesktopRenderWorkerPool.WorkerResult.Ok -> return
+        is DesktopRenderWorkerPool.WorkerResult.Failed ->
+          throw GradleException(
+            "composePreviewRender: ${preview.className}#${preview.functionName} — ${pooled.reason}"
+          )
+        is DesktopRenderWorkerPool.WorkerResult.Unusable -> {
+          if (lane.fallbackNoticePrinted.compareAndSet(false, true)) {
+            logger.info(
+              "composePreviewRender: render worker unavailable (${pooled.reason}); " +
+                "forking per capture as before."
+            )
+          }
+        }
+      }
+    }
+
     execOperations.javaexec {
       // Fork on a JDK new enough for the consumer's bytecode when the plugin raised it (see
       // [RenderJvmSelection]); otherwise leave the default (Gradle daemon JVM).
@@ -563,8 +632,90 @@ abstract class RenderPreviewsTask : DefaultTask() {
           OVERRIDES_JSON.encodeToString(OverrideVariantSpec.serializer(), it),
         )
       }
-      args =
-        listOf(
+      args = rendererArgs
+    }
+  }
+
+  /**
+   * The warm renderer for one task execution, plus the one-shot notice flag so a pool that cannot
+   * serve says so once rather than per capture. Passed down the render loop rather than held on the
+   * task: a live pool on a task field is exactly the kind of state the configuration cache cannot
+   * store.
+   */
+  private class RenderLane(val pool: DesktopRenderWorkerPool?) {
+    val fallbackNoticePrinted = java.util.concurrent.atomic.AtomicBoolean(false)
+  }
+
+  /**
+   * Spin up the render worker pool for this execution, or null to keep forking per capture.
+   *
+   * Null whenever the pool cannot be trusted to behave exactly like the fork it replaces: switched
+   * off explicitly, or a renderer classpath that could not be resolved. Everything else — a worker
+   * that fails to start or speaks the wrong protocol — is handled per capture inside the pool,
+   * which reports `Unusable` and lets the caller fork that one.
+   */
+  private fun openWorkerPool(): DesktopRenderWorkerPool? {
+    if (!DesktopRenderWorkerPool.isEnabled()) return null
+    val cp = renderClasspath.files.toList()
+    if (cp.isEmpty()) return null
+    return DesktopRenderWorkerPool(
+      classpath = cp,
+      javaExecutable = renderJavaExecutable.orNull ?: defaultJavaExecutable(),
+      jvmArgs = workerJvmArgs(),
+      maxWorkers = DesktopRenderWorkerPool.configuredWorkers(),
+      maxRendersPerWorker = DesktopRenderWorkerPool.configuredMaxRenders(),
+      renderTimeoutSeconds = DesktopRenderWorkerPool.RENDER_GUARD_SECONDS,
+    )
+  }
+
+  private fun defaultJavaExecutable(): String {
+    val candidate = java.io.File(System.getProperty("java.home"), "bin/java")
+    return if (candidate.canExecute()) candidate.absolutePath else "java"
+  }
+
+  /**
+   * The `-D` flags a worker boots under — the per-execution half of what the per-capture
+   * `javaexec` sets inline.
+   *
+   * Deliberately the same set, and deliberately *only* the constant ones: every property here is
+   * fixed for the whole task, so it can live on the worker's command line. The one genuinely
+   * per-capture property (`composeai.overrides.seed`) rides the request frame instead, because a
+   * worker that inherited one preview's variant seed would draw the next preview with it.
+   */
+  private fun workerJvmArgs(): List<String> = buildList {
+    add("-Dapple.awt.UIElement=true")
+    add("-Dcomposeai.displayfilter.filters=${displayFilterFilters.get()}")
+    add("-Dcomposeai.deviceframe.device=${deviceFrameDevice.get()}")
+    if (deviceFrameDevice.get().isNotBlank()) {
+      add("-Dcomposeai.deviceframe.cacheDir=${DeviceArtPrefetch.defaultCacheDir().absolutePath}")
+    }
+    previewRowExcludes
+      .getOrElse(emptyList())
+      .filter { it.isNotBlank() }
+      .let { rows ->
+        if (rows.isNotEmpty()) {
+          add("-Dcomposeai.preview.rowExclude=${rows.joinToString(",")}")
+        }
+      }
+  }
+
+  /**
+   * The renderer's positional argv for one capture — the single source of truth for both the pooled
+   * worker and the per-capture fork, so the two lanes can never drift into passing different
+   * arguments for the same preview.
+   */
+  private fun rendererArgs(
+    preview: PreviewInfo,
+    spec: DeviceDimensions.SizeSpec,
+    density: Float,
+    widthPx: Int,
+    heightPx: Int,
+    outputFile: java.io.File,
+    scroll: ScrollCapture?,
+    animation: AnimationCapture?,
+    fanoutSiblingStems: List<String>,
+  ): List<String> =
+    listOf(
           preview.className,
           preview.functionName,
           widthPx.toString(),
@@ -647,8 +798,6 @@ abstract class RenderPreviewsTask : DefaultTask() {
           // own fan-out and deletes the sibling's renders. Empty string signals "no siblings".
           fanoutSiblingStems.joinToString("|"),
         )
-    }
-  }
 }
 
 private fun Float.roundHalfUpPx(): Int = kotlin.math.floor(this + 0.5f).toInt().coerceAtLeast(1)
