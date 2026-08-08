@@ -40,9 +40,29 @@ The manifest type was historically named `RenderPreviewDataProduct`, which read 
 sense (1). It is now `RenderPreviewArtifact`. The Kotlin class name isn't serialized,
 so the rename is wire-neutral; the field name stays `dataProducts` for back-compat.
 
+3. **Foreign reference data** *(consumed, never produced here)* — structured design
+   data that some **other** tool emits and we only read. Today that is
+   [`PageBackdropManifest`](../api/preview-data-api/src/main/kotlin/ee/schimke/composeai/designparity/PageBackdrop.kt):
+   a design page imported from Figma with every component instance on it linked back
+   to the code that implements it, produced by design-parity's
+   `@design-parity/page-backdrop` and published to npm on its own cadence.
+
+   It is neither of the other two — not the daemon's JSON analysis of a preview, and
+   not a secondary image a render emitted. It comes from outside, and **nothing in
+   this repo should ever produce one**. Our role is consumer: we hold a hand-written
+   Kotlin mirror pinned to the producer's fixture by `PageBackdropParseTest`, and we
+   use its `previewId`s to render components ourselves at the size the design places
+   them — which is the whole reason to consume the data rather than the baked HTML
+   viewer the producer also ships.
+
 ## Don't regress this
 
 - **Don't teach the renderer or the Gradle plugin to produce structured (sense-1)
   data products.** That's the daemon's job. Keeping it there is what lets the cold
   render path stay lean and dependency-light — see the renderer-compatibility notes
   in [RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md).
+- **Don't teach anything here to produce sense-3 data.** A page backdrop needs a
+  Figma read API and a design→code correspondence layer; both are design-parity's
+  job, and importing that domain here would duplicate it. If the shape is
+  inconvenient, change it upstream — the schema lives in that repo on purpose, since
+  we are one consumer of it among several.
