@@ -1983,6 +1983,22 @@
     "sha256": "dffebb86ff4fab153ae7d79b8df7850e6ae78212d8ed8a6390b7c767329e3894",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
   },
+  "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollToEndThemedPreview_Scroll To End Day": {
+    "captureLabel": "scroll end",
+    "functionName": "ScrollToEndThemedPreview",
+    "module": "samples:cmp",
+    "renderBasename": "ScrollToEndThemedPreview_Scroll_To_End_Day.png",
+    "sha256": "3374efb0f80309ac911df0bc1990ce95b00de977488d1561c2dfe9bf727ed640",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollToEndThemedPreview_Scroll To End Night": {
+    "captureLabel": "scroll end",
+    "functionName": "ScrollToEndThemedPreview",
+    "module": "samples:cmp",
+    "renderBasename": "ScrollToEndThemedPreview_Scroll_To_End_Night.png",
+    "sha256": "d77264b454271e4596195f34490d71e95ca89daa685269f149b6081cf8411940",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
+  },
   "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List": {
     "captureLabel": "scroll long",
     "functionName": "ScrollingListPreview",
@@ -4062,6 +4078,14 @@
     "renderBasename": "SettingsMainScreenLongPreview_Devices_Large_Round.png",
     "sha256": "e6daa47e7168a43bb2a7557d2fee98b90d8cb5d88a705cabbfe59477504a526e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
+  },
+  "samples:wear/com.example.samplewear.SystemClockPreviewsKt.WearAppSystemClockPreview_Devices - Large Round": {
+    "captureLabel": "",
+    "functionName": "WearAppSystemClockPreview",
+    "module": "samples:wear",
+    "renderBasename": "WearAppSystemClockPreview_Devices_Large_Round.png",
+    "sha256": "5f9e73b11f71a8d76888048dd99ca061f6ecada4c065605fab3fbe42305c6c16",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/SystemClockPreviews.kt"
   },
   "samples:wear/com.example.samplewear.TileImagePreviewsKt.DrawableImageTilePreview_Drawable Image": {
     "captureLabel": "",
