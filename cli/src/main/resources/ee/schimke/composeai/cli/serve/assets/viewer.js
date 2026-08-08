@@ -109,6 +109,43 @@
     var value = activeThemeChoice();
     return value.indexOf("theme:") === 0 ? value.substring(6) : "";
   }
+  // The Theme bar: the visible face of #cp-theme, which is in the DOM but visually removed. The
+  // chips carry the select's own option values, so driving one from the other is a straight
+  // assignment plus the `change` every existing lane already listens for — no second code path
+  // for themed rendering, and none of the enabled-state logic below is duplicated: syncThemeBar
+  // simply mirrors what syncServerControls has just decided about the select and its options.
+  var themeBarBtns = document.querySelectorAll(".cp-theme-bar .cp-theme-btn");
+  function themeOptionFor(value) {
+    var found = null;
+    if (themeChoice) {
+      Array.prototype.forEach.call(themeChoice.options, function (o) {
+        if (o.value === value) found = o;
+      });
+    }
+    return found;
+  }
+  function syncThemeBar() {
+    if (!themeChoice) return;
+    themeBarBtns.forEach(function (b) {
+      var value = b.getAttribute("data-theme-choice");
+      var option = themeOptionFor(value);
+      b.disabled = themeChoice.disabled || !option || option.disabled;
+      // Pressed tracks what the select DISPLAYS, not activeThemeChoice(): before the first pick
+      // the select still shows the preview's baked theme (data-theme-active="0"), and a bar with
+      // nothing pressed would read as "no theme" over pixels that plainly have one.
+      b.setAttribute("aria-pressed", themeChoice.value === value ? "true" : "false");
+    });
+  }
+  themeBarBtns.forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (!themeChoice || b.disabled) return;
+      var value = b.getAttribute("data-theme-choice");
+      if (themeChoice.value === value) return;
+      themeChoice.value = value;
+      themeChoice.dispatchEvent(new Event("change", { bubbles: true }));
+      syncThemeBar();
+    });
+  });
   // The snapshot lane serves either the raster PNG or the vector SVG through the same <img>.
   // The render-mode radio flips this (".png" default, ".svg" in SVG mode); refreshSnapshot and
   // the copyable links read it so a re-render / copied URL matches the on-screen format.
@@ -1474,6 +1511,9 @@
       });
       themeChoice.disabled = !canDefaultTheme && !canProviderTheme;
     }
+    // The bar is the select's visible face, so it is reconciled from the same pass that just
+    // decided what the select and each of its options may offer in this lane.
+    syncThemeBar();
     // Remote Compose knobs are LIVE in the RC canvas lane — an edit applies client-side via
     // setNamed*Override + repaint (onRcKnobChanged), no daemon needed — so enable them whenever
     // that lane is active. The CMP/Wasm lane applies the same typed values while reloading its
@@ -1665,7 +1705,7 @@
         wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
       }
     });
-    // The page's Background/Transparent toggle (owned by the landing script, which flips
+    // The page's Background/Transparent toggle (owned by bg-toggle.js, which flips
     // `cp-bg-transparent` on <html>) changes what the stage paints — and the app mirrors that
     // backdrop, so it has to hear about it. Watching the class beats reaching across to that
     // script's click handler: the stage also changes with the render theme, and both land here.
@@ -1777,6 +1817,7 @@
   }
   if (themeChoice) themeChoice.addEventListener("change", function () {
     themeChoice.setAttribute("data-theme-active", "1");
+    syncThemeBar();
     // Like a lane switch: a picked theme earns its own history entry.
     urlPush = true;
     if (chosenThemeProvider()) onKnobChanged();
@@ -1924,6 +1965,7 @@
       });
       themeChoice.value = offered ? choice : initialTheme;
       themeChoice.setAttribute("data-theme-active", offered ? "1" : initialThemeActive);
+      syncThemeBar();
     }
   }
   hydrateFromUrl(false);
