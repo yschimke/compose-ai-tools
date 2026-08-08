@@ -315,6 +315,26 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Compose Multiplatform 1.11's `ui-uikit` links against iOS 26 SDK symbols — `CMPLayoutRegion`
+      # references `UIViewLayoutRegion`, which does not exist before iOS 26. The `macos-15` image
+      # ships several Xcode 26.x alongside 16.4 but still *defaults* to 16.4 (iOS 18.5 SDK), so
+      # `:rc-player-compose:linkDebugTestIosSimulatorArm64` dies with
+      # `Undefined symbols for architecture arm64: "_OBJC_CLASS_$_UIViewLayoutRegion"` — the whole
+      # job, ~17 min in, on every push since the CMP 1.11.1 bump. Select the newest installed
+      # Xcode 26 rather than pinning one, so an image refresh that retires a point release doesn't
+      # take the job with it.
+      - name: Select an Xcode with the iOS 26 SDK
+        run: |
+          set -euo pipefail
+          xcode="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$xcode" ]; then
+            echo "No Xcode 26 on this image; Compose Multiplatform's iOS targets need its SDK." >&2
+            ls -d /Applications/Xcode*.app >&2
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode/Contents/Developer"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphonesimulator
       # `:rc-player-compose` has no `iosX64` compile task: it is the only `:rc-player-*` module that
       # depends on Compose Multiplatform, and CMP 1.11 dropped the Intel-iOS-simulator variant (see
       # that module's build.gradle.kts). Its non-Compose siblings still declare `iosX64()`, so they

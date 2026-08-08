@@ -207,6 +207,9 @@ jobs:
           # reason as the scripts above: the matrix legs that call it have no
           # checkout of this repo, so it has to ride in via the bundle.
           cp .github/ci/android-all-cache-key.py bundle/ci/
+          # Turns a wall of `*.error.json` paths into the actual exceptions when
+          # a render leg produces no PNGs. Same no-checkout reason as above.
+          cp .github/ci/summarize-render-errors.py bundle/ci/
           # Ship consumer patches (e.g. the adaptive-apps-samples XR
           # androidx.xr.compose upgrade) so the integration matrix can apply them to
           # the checked-out external repo before Gradle configures it.
@@ -1073,8 +1076,16 @@ jobs:
             echo "::error::composePreviewRender ran but no PNG files were produced."
             mapfile -t sidecars < <(find . -path '*/build/compose-previews/renders/*.error.json' -not -path '*/external/build/*' 2>/dev/null)
             if [ "${#sidecars[@]}" -gt 0 ]; then
-              echo "Render error sidecars:"
-              printf '  %s\n' "${sidecars[@]}"
+              # Print the exceptions, not just the paths — see the script's
+              # docstring for why the filename-only listing was a dead end.
+              # Ships in the bundle; these legs have no checkout of this repo.
+              summarize="$GITHUB_WORKSPACE/bundle/ci/summarize-render-errors.py"
+              if [ -f "$summarize" ]; then
+                python3 "$summarize" "${sidecars[@]}"
+              else
+                echo "Render error sidecars:"
+                printf '  %s\n' "${sidecars[@]}"
+              fi
             fi
             exit 1
           fi
@@ -1739,8 +1750,13 @@ jobs:
             echo "::error::composePreviewRender ran but no PNG files were produced."
             mapfile -t sidecars < <(find . -path '*/build/compose-previews/renders/*.error.json' 2>/dev/null)
             if [ "${#sidecars[@]}" -gt 0 ]; then
-              echo "Render error sidecars:"
-              printf '  %s\n' "${sidecars[@]}"
+              summarize="$GITHUB_WORKSPACE/bundle/ci/summarize-render-errors.py"
+              if [ -f "$summarize" ]; then
+                python3 "$summarize" "${sidecars[@]}"
+              else
+                echo "Render error sidecars:"
+                printf '  %s\n' "${sidecars[@]}"
+              fi
             fi
             exit 1
           fi

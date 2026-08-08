@@ -36,13 +36,27 @@ class RenderGraphComposeExclusionTest {
 
   private fun project() = ProjectBuilder.builder().build()
 
+  /**
+   * A render configuration shaped like a Compose consumer's: it `extendsFrom` the unit-test
+   * classpath, and that classpath carries the consumer's own Compose. Rule 3 only applies to a
+   * consumer that has Compose of its own to defer to.
+   */
+  private fun composeConsumerRenderConfiguration(project: org.gradle.api.Project) =
+    project.configurations.create("composePreviewAndroidRendererDebug").apply {
+      val unitTest =
+        project.configurations.create("debugUnitTestRuntimeClasspath").apply {
+          project.dependencies.add(name, "androidx.compose.ui:ui:1.10.6")
+        }
+      extendsFrom(unitTest)
+    }
+
   @Test
   fun `our own render dependency excludes the compose multiplatform families that alias androidx`() {
     // These six publish Android variants with NO files — they exist only to depend on the matching
     // `androidx.compose.*` artifact, so dropping them from OUR subtree removes version pressure
     // and zero classes.
     val project = project()
-    val configuration = project.configurations.create("composePreviewAndroidRendererDebug")
+    val configuration = composeConsumerRenderConfiguration(project)
 
     val dependency =
       AndroidPreviewSupport.addRenderGraphDependency(
@@ -113,7 +127,7 @@ class RenderGraphComposeExclusionTest {
     // The consumer's own Compose is exactly what the rule exists to preserve. Excluding any
     // `androidx.compose.*` group would empty the render classpath instead of deferring to it.
     val project = project()
-    val configuration = project.configurations.create("composePreviewAndroidRendererDebug")
+    val configuration = composeConsumerRenderConfiguration(project)
 
     val dependency =
       AndroidPreviewSupport.addRenderGraphDependency(
@@ -126,5 +140,177 @@ class RenderGraphComposeExclusionTest {
         dependency.excludeRules.mapNotNull { it.group }.filter { it.startsWith("androidx.") }
       )
       .isEmpty()
+  }
+
+  @Test
+  fun `a consumer with no compose of its own keeps ours on the render graph`() {
+    // Issue #3484. Rule 3 says "the consumer's Compose wins" — a consumer that HAS none wins
+    // nothing, and excluding ours leaves the render classpath with no Compose at all. That is
+    // `wear-os-samples/WearTilesKotlin`: a protolayout-tiles app whose previews are tiles, whose
+    // dependencies are `androidx.wear.tiles` / `androidx.wear.protolayout.*`, and which lost all
+    // 188 renders the moment our own Compose Multiplatform transitives were dropped.
+    val project = project()
+    val configuration =
+      project.configurations.create("composePreviewAndroidRendererDebug").apply {
+        val unitTest =
+          project.configurations.create("debugUnitTestRuntimeClasspath").apply {
+            project.dependencies.add(name, "androidx.wear.protolayout:protolayout-material3:1.4.0")
+          }
+        extendsFrom(unitTest)
+      }
+
+    val dependency =
+      AndroidPreviewSupport.addRenderGraphDependency(
+        project,
+        configuration.name,
+        "ee.schimke.composeai:renderer-android:0.0.0",
+      ) as ModuleDependency
+
+    assertThat(dependency.excludeRules).isEmpty()
+  }
+
+  @Test
+  fun `our own injected compose floor does not make a consumer look like a compose consumer`() {
+    // The regression that made the first version of this gate a no-op. The plugin injects
+    // `androidx.compose.ui:ui` / `foundation` at the renderer's floor onto a tile-only consumer's
+    // main variant *because* it has no Compose — the merged unit-test resource APK needs those R
+    // classes. A probe that counts them concludes "this consumer brings its own Compose", keeps
+    // Rule 3 on, and drops the Compose Multiplatform transitives that carry compose-ui 1.11.x —
+    // leaving the render classpath on the 1.9.5 floor, which the renderer's own bytecode does not
+    // link against:
+    //
+    //   NoSuchMethodError: androidx.compose.ui.node.ComposeUiNode$Companion
+    //     .getApplyOnDeactivatedNodeAssertion()
+    //
+    // (issue #3484 — all 188 `wear-os-samples/WearTilesKotlin` previews, unchanged by the gate.)
+    val project = project()
+    val unitTest = project.configurations.create("debugUnitTestRuntimeClasspath")
+    val configuration =
+      project.configurations.create("composePreviewAndroidRendererDebug").apply {
+        extendsFrom(unitTest)
+      }
+    // Exactly what the plugin contributes for a tile-only consumer.
+    AndroidPreviewSupport.addPluginDependency(
+      project,
+      unitTest.name,
+      "androidx.compose.ui:ui:${AndroidPreviewSupport.RENDERER_COMPOSE_FLOOR_VERSION}",
+    )
+    AndroidPreviewSupport.addPluginDependency(
+      project,
+      unitTest.name,
+      "androidx.compose.foundation:foundation:" +
+        AndroidPreviewSupport.RENDERER_COMPOSE_FLOOR_VERSION,
+    )
+
+    assertThat(AndroidPreviewSupport.consumerBringsOwnCompose(project, configuration)).isFalse()
+
+    val dependency =
+      AndroidPreviewSupport.addRenderGraphDependency(
+        project,
+        configuration.name,
+        "ee.schimke.composeai:renderer-android:0.0.0",
+      ) as ModuleDependency
+    assertThat(dependency.excludeRules).isEmpty()
+  }
+
+  @Test
+  fun `a real compose consumer still counts with our floor alongside it`() {
+    // The other side of the skip: our floor pins land on a Compose consumer too, so skipping them
+    // must not blind the probe to the Compose that consumer actually declared. This is the
+    // `ComposeStarter` shape — its own Compose at a different version than our floor — and Rule 3
+    // has to stay on for it, which is what keeps the R$id skew of #3447 fixed.
+    val project = project()
+    val unitTest = project.configurations.create("debugUnitTestRuntimeClasspath")
+    val configuration =
+      project.configurations.create("composePreviewAndroidRendererDebug").apply {
+        extendsFrom(unitTest)
+      }
+    AndroidPreviewSupport.addPluginDependency(
+      project,
+      unitTest.name,
+      "androidx.compose.ui:ui:${AndroidPreviewSupport.RENDERER_COMPOSE_FLOOR_VERSION}",
+    )
+    project.dependencies.add(unitTest.name, "androidx.compose.ui:ui:1.10.6")
+
+    assertThat(AndroidPreviewSupport.consumerBringsOwnCompose(project, configuration)).isTrue()
+
+    val dependency =
+      AndroidPreviewSupport.addRenderGraphDependency(
+        project,
+        configuration.name,
+        "ee.schimke.composeai:renderer-android:0.0.0",
+      ) as ModuleDependency
+    assertThat(dependency.excludeRules.mapNotNull { it.group })
+      .containsAtLeastElementsIn(aliasGroups)
+  }
+
+  @Test
+  fun `a consumer declaring exactly our floor coordinate collapses onto ours`() {
+    // Documents a real limit rather than asserting around it. Gradle's `DependencySet` collapses
+    // equal dependencies, so a consumer declaring the identical coordinate AND version we inject
+    // leaves exactly one instance — the one we registered — and the probe reads it as ours.
+    //
+    // Deliberately left this way: that consumer's only Compose would be the 1.9.5 floor, and Rule 3
+    // ON would strip our Compose Multiplatform transitives and leave the renderer's own bytecode
+    // unlinkable against it (the `getApplyOnDeactivatedNodeAssertion` NoSuchMethodError above).
+    // Answering "no consumer Compose" here keeps the render classpath on a version the renderer can
+    // actually run against, which is the safe direction for the ambiguous case.
+    val project = project()
+    val unitTest = project.configurations.create("debugUnitTestRuntimeClasspath")
+    val configuration =
+      project.configurations.create("composePreviewAndroidRendererDebug").apply {
+        extendsFrom(unitTest)
+      }
+    AndroidPreviewSupport.addPluginDependency(
+      project,
+      unitTest.name,
+      "androidx.compose.ui:ui:${AndroidPreviewSupport.RENDERER_COMPOSE_FLOOR_VERSION}",
+    )
+    project.dependencies.add(
+      unitTest.name,
+      "androidx.compose.ui:ui:${AndroidPreviewSupport.RENDERER_COMPOSE_FLOOR_VERSION}",
+    )
+
+    assertThat(AndroidPreviewSupport.consumerBringsOwnCompose(project, configuration)).isFalse()
+  }
+
+  @Test
+  fun `a consumer's compose reached only through extendsFrom still counts`() {
+    // The consumer's Compose sits on the unit-test classpath the render configuration extends, not
+    // on the render configuration itself, so the probe has to walk `extendsFrom` to see it.
+    // Reading only the render configuration's own dependencies would classify every Compose
+    // consumer as Compose-less and turn Rule 3 off exactly where it is needed.
+    val project = project()
+    val configuration = composeConsumerRenderConfiguration(project)
+
+    assertThat(AndroidPreviewSupport.consumerBringsOwnCompose(project, configuration)).isTrue()
+    assertThat(configuration.dependencies).isEmpty()
+  }
+
+  @Test
+  fun `main-variant compose pin follows whichever compose actually runs`() {
+    // The second face of the #3484 failure. With Rule 3 correctly OFF for a tile-only consumer, the
+    // render classpath's compose-ui is OURS (1.11.2, via Compose Multiplatform) — but the merged
+    // unit-test resource APK is built from the consumer's MAIN variant, so pinning that at the
+    // 1.9.5 floor leaves newer classes reading an older R class:
+    //
+    //   NoSuchFieldError: Class androidx.compose.ui.R$id does not have member field
+    //     'int androidx_compose_ui_view_compose_view_context'
+    //       at ComposeView_androidKt.getComposeViewContext
+    //
+    // Verified against the published artifacts: ui-android 1.9.5's R.txt has no such id, 1.11.2's
+    // does. So the pin has to follow whichever Compose actually runs.
+    val tileOnly = project()
+    tileOnly.configurations.create("debugUnitTestRuntimeClasspath")
+    assertThat(AndroidPreviewSupport.mainVariantComposeVersion(tileOnly, "debug"))
+      .isEqualTo(AndroidPreviewSupport.RENDERER_COMPOSE_CMP_RUNTIME_VERSION)
+
+    // A Compose consumer keeps Rule 3, so its own Compose runs and its BOM wins over our floor —
+    // raising the floor there would push it off its own Compose line for no reason.
+    val composeApp = project()
+    val unitTest = composeApp.configurations.create("debugUnitTestRuntimeClasspath")
+    composeApp.dependencies.add(unitTest.name, "androidx.compose.ui:ui:1.10.6")
+    assertThat(AndroidPreviewSupport.mainVariantComposeVersion(composeApp, "debug"))
+      .isEqualTo(AndroidPreviewSupport.RENDERER_COMPOSE_FLOOR_VERSION)
   }
 }
