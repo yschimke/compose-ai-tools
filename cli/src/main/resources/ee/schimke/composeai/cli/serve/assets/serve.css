@@ -1294,12 +1294,14 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    grids, size rows and copyable link rows to fit a ~320px screen without horizontal scrolling. */
 @media (max-width: 640px) {
   body { padding: 14px; }
-  /* Too narrow for three slots on one line: brand and nav keep their edges and the status badge
-     drops to its own centred row beneath them, rather than squeezing between the two. */
-  .cp-site-header { margin-bottom: 18px; grid-template-columns: 1fr auto; row-gap: 6px; }
-  .cp-site-brand { grid-area: 1 / 1; }
-  .cp-site-nav { grid-area: 1 / 2; }
-  .cp-site-status { grid-area: 2 / 1 / auto / -1; }
+  /* Three slots don't fit on one line here, so the bar becomes a single left-aligned column —
+     brand, then the status badge, then the nav — in DOM order. A ~320px screen can't hold the
+     brand plus Catalogs/Status side by side (let alone with "Signed in as …" on the OAuth home
+     page), so keeping them on one row would overflow the viewport; the nav wraps internally too,
+     for the longest sign-in labels. */
+  .cp-site-header { margin-bottom: 18px; grid-template-columns: minmax(0, 1fr); row-gap: 4px; }
+  .cp-site-brand, .cp-site-status { justify-self: start; }
+  .cp-site-nav { justify-self: start; flex-wrap: wrap; }
   .cp-site-mark { width: 22px; height: 22px; }
   .cp-site-nav { gap: 12px; }
   .cp-site-nav > a[href^="https://github.com/"] { display: none; }
