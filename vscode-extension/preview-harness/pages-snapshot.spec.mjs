@@ -322,6 +322,32 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // Going BACK to a history entry on which no theme was ever picked. The viewer opens showing
+        // the preview's baked theme with `data-theme-active="0"` — displayed, not chosen — so the
+        // chrome follows the OS. Picking a theme pins it; returning to that first entry has to
+        // un-pin it again, and nothing else in this spec shoots a popstate, so a regression here
+        // would move no baseline at all.
+        //
+        // Captured under both emulated OS preferences on purpose: "followed the OS" is only
+        // distinguishable from "pinned to the baked default" when the two shots disagree with each
+        // other. On the unfixed code they agree — both pinned dark — which is what the diff shows.
+        fixture: "serve-viewer-themes",
+        suffix: "theme-back-unpinned",
+        apply: async (page) => {
+            // Light, because this fixture's baked default is already dark: picking dark is a no-op
+            // the bar handler drops, and would shoot the page that was there anyway.
+            await page.click('[data-theme-choice="light"]');
+            await page.waitForFunction(() =>
+                document.documentElement.classList.contains("cp-scheme-light"),
+            );
+            await page.goBack();
+            // Settle rather than wait for the un-pinned state. Waiting on the FIXED behaviour would
+            // time out when the bot renders the base branch, turning a visual diff into a harness
+            // error — and the whole point is that both sides capture so the pixels can disagree.
+            await page.waitForTimeout(300);
+        },
+    },
+    {
         // The page theme following the SELECTED PREVIEW THEME (the "Page theme" setting, on by
         // default). Picking Dark repaints the chrome as well as the grid, and the claim is
         // invisible to the two ordinary shots: they are captured under an emulated OS preference,
