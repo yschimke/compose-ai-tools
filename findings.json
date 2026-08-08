@@ -3603,6 +3603,16 @@
       "variant": "wearos_large_round"
     },
     {
+      "annotatedBasename": "WearAppSystemClockPreview_Devices_Large_Round.a11y.png",
+      "cleanBasename": "WearAppSystemClockPreview_Devices_Large_Round.png",
+      "findings": [],
+      "functionName": "WearAppSystemClockPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.SystemClockPreviewsKt.WearAppSystemClockPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/SystemClockPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
       "annotatedBasename": "WearDeviceMatrixPreview_Large_Round_227dp.a11y.png",
       "cleanBasename": "WearDeviceMatrixPreview_Large_Round_227dp.png",
       "findings": [],
