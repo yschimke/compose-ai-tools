@@ -44,6 +44,7 @@ import { chromium } from "playwright";
 
 import { renderRcCompareHtml } from "./render-rc-compare-html.mjs";
 import { CHROMIUM_LAUNCH_ARGS } from "./rc-chromium.mjs";
+import { settledScreenshot } from "./rc-settle.mjs";
 import {
   applyCmpWasmPerformanceBudgets,
   evaluateCmpWasmGate,
@@ -426,22 +427,44 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
     // `cold`/`warm` describes *this browser context*, and contexts are keyed by density (see
     // `cmpWasmPageFor`) — so a catalog whose previews span two densities legitimately reports two
     // cold rows, the second of them partway through the run. Both are recorded with their density
-    // so a slow row can be attributed instead of guessed at.
+    // so a slow row can be attributed instead of guessed at. Since the renders after the first are
+    // document swaps into a live player rather than navigations, the two labels now separate two
+    // genuinely different costs: `cold` boots the player, `warm` only decodes and draws.
     const contextRender = pageState.renders++;
     const startup = contextRender === 0 ? "cold" : "warm";
     cmpWasmConsoleErrors.length = 0;
     cmpWasmServer.setDocument(bytes);
     await cmpWasmPage.setViewportSize({ width: viewportWidth, height: viewportHeight });
+    if (startup === "warm") {
+      // A swap draws into the canvas the resize produced, so wait for the resize to actually land
+      // first. Compose sizes the canvas from the window, independently of which document is loaded,
+      // so this settles on the outgoing render and costs nothing once it has.
+      await cmpWasmPage.waitForFunction(
+        ({ w, h }) => window.innerWidth === w && window.innerHeight === h,
+        { w: viewportWidth, h: viewportHeight },
+        { timeout: 30_000 },
+      );
+    }
     const startedAt = performance.now();
+    // The first render in a context navigates; every one after it hands the running player a new
+    // document through `window.rcPlayerLoad` (see the wasm player's `installDocumentSwap`). A
+    // navigation would discard the instantiated Wasm module, the Compose runtime and the host fonts
+    // and rebuild all three to draw a document of a few dozen operations — measured at ~0.5 s per
+    // preview against ~0.15 s for a swap, which is minutes across a large catalog. The player drops
+    // the outgoing document before fetching the next, so nothing carries across but the fonts.
+    //
     // `handoffDelayMs=0` drops the player's cold-start tail — 1.5 s it holds back `ready` so a host
     // that reveals it on that signal cannot show a blank surface. This lane is not such a host: the
     // screenshot below goes through CDP, which drives its own compositor frame, and every pixel of
-    // the result is then checked against the baked reference. Measured over a full 27-preview
-    // remote-m3 run, dropping it leaves every rendered PNG byte-for-byte identical and takes the
-    // per-preview cost from ~2.0 s to ~0.5 s. The viewer keeps the default.
-    await cmpWasmPage.goto(
-      `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}&handoffDelayMs=0`,
-    );
+    // the result is then checked against the baked reference. The viewer keeps the default. Set on
+    // the navigation, it holds for the swaps too — the player re-reads it from the page's URL.
+    if (startup === "cold") {
+      await cmpWasmPage.goto(
+        `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}&handoffDelayMs=0`,
+      );
+    } else {
+      await cmpWasmPage.evaluate((src) => window.rcPlayerLoad(src), "/document.rc");
+    }
     await cmpWasmPage.waitForFunction(
       () => ["ready", "error"].includes(document.documentElement.dataset.rcPlayerState),
       null,
@@ -453,7 +476,14 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
     }));
     const firstFrameMs = performance.now() - startedAt;
     if (state.state !== "ready") throw new Error(state.error || "player reported an error");
-    const pngRaw = PNG.sync.read(await cmpWasmPage.screenshot({ omitBackground: true }));
+    // `ready` is three frames, not a settled render: Compose resolves the host fonts asynchronously
+    // and a text row redraws after them. Capturing on convergence instead of on the marker took the
+    // corpus mean mismatch from 0.79% to 0.49% and made every rendered PNG reproducible run to run
+    // (see `rc-settle.mjs`); it also replaces the player's flat 1,500 ms tail, which is the other
+    // way to get a settled capture and costs three times as much.
+    const settled = await settledScreenshot(cmpWasmPage);
+    const settleMs = settled.settleMs;
+    const pngRaw = PNG.sync.read(settled.buffer);
     const wasmCoverage =
       pngRaw.width === width && pngRaw.height === height
         ? splitCoverage(bakedUnflattened, pngRaw.data, width, height)
@@ -476,6 +506,7 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
       cmpWasmContentMismatchPct: referenceBlank ? null : (wasmCoverage?.contentMismatchPct ?? null),
       cmpWasmMismatchPx: referenceBlank ? null : px,
       cmpWasmFirstFrameMs: firstFrameMs,
+      cmpWasmSettleMs: settleMs,
       cmpWasmStartup: startup,
       cmpWasmDensity: density,
       cmpWasmContextRender: contextRender,
@@ -843,6 +874,7 @@ fs.writeFileSync(
         cmpWasmContentMismatchPct: r.cmpWasmContentMismatchPct ?? null,
         cmpWasmMismatchPx: r.cmpWasmMismatchPx ?? null,
         cmpWasmFirstFrameMs: r.cmpWasmFirstFrameMs ?? null,
+        cmpWasmSettleMs: r.cmpWasmSettleMs ?? null,
         cmpWasmStartup: r.cmpWasmStartup ?? null,
         cmpWasmDensity: r.cmpWasmDensity ?? null,
         cmpWasmContextRender: r.cmpWasmContextRender ?? null,
