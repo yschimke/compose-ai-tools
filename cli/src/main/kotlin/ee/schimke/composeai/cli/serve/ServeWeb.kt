@@ -222,40 +222,12 @@ object ServeWeb {
 
   /**
    * Public-mode "about" intro: a short, static explanation of what the host is and its safety
-   * model, shown on public catalog landing pages. The home page uses [homeAboutSection], keeping
-   * build links in [homeFooter].
+   * model. It sits at the **bottom** of the page it appears on (below the catalog grid / the home
+   * index), directly above [siteFooter] — the page's own content leads, and the explanation is
+   * there for whoever scrolls to it. Build and source links are NOT repeated here: [siteFooter]
+   * carries them on every page.
    */
-  private fun aboutSection(version: String?): String {
-    val ver =
-      version
-        ?.takeIf { it.isNotBlank() }
-        ?.let {
-          " · <span class=\"cp-about-ver\" title=\"running preview-server build\">" +
-            "server v${WebEscaping.htmlEscape(it)}</span>"
-        } ?: ""
-    return """
-    <details class="cp-about cp-disclosure">
-      <summary>
-        <span class="cp-about-title">About this preview server</span>
-        <span class="cp-disclosure-hint">How previews run and catalogs are trusted</span>
-      </summary>
-      <div class="cp-disclosure-body">
-        <p class="cp-about-body">Compose Multiplatform components can run <strong>in your browser</strong>
-          using sandboxed Kotlin/Wasm; other previews are published as pre-rendered snapshots. The
-          server never re-runs untrusted code. Catalogs are trusted by signature or their published
-          <code>design-artifacts</code> branch, and anything unverified is badged.</p>
-        <p class="cp-about-links">
-          <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON source</a> ·
-          <a href="/version">/version</a>$ver
-        </p>
-      </div>
-    </details>
-    """
-      .trimIndent()
-  }
-
-  /** Home-page safety explanation without account or build metadata. */
-  private fun homeAboutSection(): String =
+  private fun aboutSection(): String =
     """
     <details class="cp-about cp-disclosure">
       <summary>
@@ -289,8 +261,13 @@ object ServeWeb {
     }
   }
 
-  /** Source and running-build metadata at the bottom of the public home page. */
-  private fun homeFooter(version: String?): String {
+  /**
+   * The minimal site footer — source, `/version`, and the running build — rendered by [document] at
+   * the bottom of **every** browser-facing page, below the body (and so below the bottom-of-page
+   * [aboutSection] on the pages that carry one). [version] null/blank just drops the build span;
+   * the source and `/version` links stay, so the footer is never empty.
+   */
+  private fun siteFooter(version: String?): String {
     val ver =
       version
         ?.takeIf { it.isNotBlank() }
@@ -2155,18 +2132,20 @@ object ServeWeb {
     token: String,
     isPublic: Boolean = false,
     /**
-     * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the home footer beside the
-     * source/`/version` links so the live build is visible on the front door. Null omits it; the
-     * fixture golden passes a fixed string so a release never churns the committed HTML.
+     * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the minimal footer beside
+     * the source/`/version` links so the live build is visible on the front door. Null omits it;
+     * the fixture golden passes a fixed string so a release never churns the committed HTML.
      */
     version: String? = null,
     /** Absolute page + representative hero URLs for Open Graph/Twitter link previews. */
     unfurl: UnfurlMetadata? = null,
     githubAuth: GitHubAuthStatus? = null,
   ): String {
-    val about = if (isPublic) homeAboutSection() + "\n" else ""
+    // The "about" intro sits at the BOTTOM of the front door (below the catalog cards, above the
+    // footer) so the systems this server publishes lead the page; it still appears only for the
+    // public server.
+    val about = if (isPublic) "\n" + aboutSection() else ""
     val headerAction = githubAuthControl(githubAuth)
-    val footer = if (isPublic) homeFooter(version) else ""
     // Public routes are open — no token param on the cards; a token-gated box keeps it.
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     fun card(s: HomeSystem): String {
@@ -2252,12 +2231,8 @@ object ServeWeb {
       unfurl = unfurl,
       navSuffix = suffix,
       headerAction = headerAction,
-      footer = footer,
-      body =
-        """
-        $about$body
-        """
-          .trimIndent(),
+      version = version,
+      body = body + about,
     )
   }
 
@@ -2331,12 +2306,18 @@ object ServeWeb {
     token: String,
     isPublic: Boolean,
     unfurl: UnfurlMetadata? = null,
+    /**
+     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * span.
+     */
+    version: String? = null,
   ): String {
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     return document(
       title = "Not found — compose-preview",
       unfurlDescription = message,
       unfurl = unfurl,
+      version = version,
       navSuffix = suffix,
       body =
         """
@@ -2398,6 +2379,11 @@ object ServeWeb {
      */
     preselectCatalog: String? = null,
     unfurl: UnfurlMetadata? = null,
+    /**
+     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * span.
+     */
+    version: String? = null,
   ): String {
     val suffix = querySuffix(queryString(token, sessionId = null, isPublic = isPublic))
     val sample = WebEscaping.htmlEscape(seed?.text ?: PLAYGROUND_SAMPLE)
@@ -2500,6 +2486,7 @@ object ServeWeb {
       title = "Playground — compose-preview",
       unfurlDescription = "Compile a Compose snippet against the live catalog and open a preview.",
       unfurl = unfurl,
+      version = version,
       navSuffix = suffix,
       body =
         """
@@ -2879,12 +2866,18 @@ object ServeWeb {
     token: String,
     isPublic: Boolean,
     unfurl: UnfurlMetadata? = null,
+    /**
+     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * span.
+     */
+    version: String? = null,
   ): String {
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     return document(
       title = "Playground unavailable — compose-preview",
       unfurlDescription = "The playground is not enabled on this server.",
       unfurl = unfurl,
+      version = version,
       navSuffix = suffix,
       body =
         """
@@ -2955,6 +2948,11 @@ object ServeWeb {
     /** Whether `?url=` fetches are permitted here (the SSRF allowlist is non-empty). */
     urlUploadAllowed: Boolean,
     unfurl: UnfurlMetadata? = null,
+    /**
+     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * span.
+     */
+    version: String? = null,
   ): String {
     val query = queryString(token, sessionId = null, isPublic = isPublic)
     val suffix = querySuffix(query)
@@ -2975,6 +2973,7 @@ object ServeWeb {
       title = "Share a document — compose-preview",
       unfurlDescription = "Upload a Remote Compose or Lottie document and get an expiring link.",
       unfurl = unfurl,
+      version = version,
       navSuffix = suffix,
       body =
         """
@@ -3079,6 +3078,11 @@ object ServeWeb {
     token: String,
     isPublic: Boolean,
     unfurl: UnfurlMetadata? = null,
+    /**
+     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * span.
+     */
+    version: String? = null,
   ): String {
     val suffix = querySuffix(queryString(token, sessionId = null, isPublic = isPublic))
     val facts =
@@ -3096,6 +3100,7 @@ object ServeWeb {
       title = "${doc.name} — compose-preview",
       unfurlDescription = "A shared ${doc.formatLabel} document, played back in your browser.",
       unfurl = unfurl,
+      version = version,
       navSuffix = suffix,
       body =
         """
@@ -3305,7 +3310,13 @@ object ServeWeb {
    * 404; a `--public` server drops it (the routes need none). The always-ungated `/version` /
    * `/healthz` links stay bare either way.
    */
-  fun statusPage(view: StatusView, token: String, unfurl: UnfurlMetadata? = null): String {
+  fun statusPage(
+    view: StatusView,
+    token: String,
+    unfurl: UnfurlMetadata? = null,
+    /** Running server version (`BUNDLE_VERSION`), shown in the minimal footer. */
+    version: String? = null,
+  ): String {
     fun esc(s: String) = WebEscaping.htmlEscape(s)
     // Gated-link suffix: token-gated ⇒ carry the token; public ⇒ nothing (routes are open).
     val suffix = if (view.public) "" else "?token=" + WebEscaping.urlEncodeSegment(token)
@@ -3501,6 +3512,7 @@ object ServeWeb {
       unfurlDescription =
         "Live catalog, render-daemon, and deployment status for this compose-preview server.",
       unfurl = unfurl,
+      version = version,
       navSuffix = suffix,
     )
   }
@@ -3757,9 +3769,9 @@ object ServeWeb {
      */
     presenceUrl: String = "",
     /**
-     * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the (now bottom-of-page)
-     * about box beside the source/`/version` links. Null omits it; the fixture golden passes a
-     * fixed string so a release never churns the committed HTML.
+     * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the minimal footer beside
+     * the source/`/version` links. Null omits it; the fixture golden passes a fixed string so a
+     * release never churns the committed HTML.
      */
     version: String? = null,
     /**
@@ -4050,7 +4062,7 @@ object ServeWeb {
       }
     // The "about" intro now sits at the BOTTOM of a catalog page (below the grid) so the catalog's
     // own content leads; it still appears only for the public server.
-    val about = if (isPublic) "\n" + aboutSection(version) else ""
+    val about = if (isPublic) "\n" + aboutSection() else ""
     // A catalog page links HOME (the front-door index) rather than sideways to its siblings: the
     // old design-systems nav row is replaced by a single back button, shown whenever this server
     // publishes catalogs (i.e. a home index exists to go back to).
@@ -4145,6 +4157,7 @@ object ServeWeb {
       unfurlDescription = "${previews.size} Compose previews in $heading",
       unfurl = unfurl,
       navSuffix = navSuffix,
+      version = version,
       themeCss = themeCss,
       body =
         """
@@ -4185,6 +4198,11 @@ object ServeWeb {
     rcCompare: RcCompareManifest? = null,
     referencesFor: (String) -> List<DesignReference> = { emptyList() },
     unfurl: UnfurlMetadata? = null,
+    /**
+     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * span.
+     */
+    version: String? = null,
     displayTitle: String? = null,
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -4346,6 +4364,7 @@ object ServeWeb {
       unfurlTitle = "$heading format comparison",
       unfurlDescription = "Compare rendered PNG, SVG, and Remote Compose output for $heading",
       unfurl = unfurl,
+      version = version,
       navSuffix = navSuffix,
       themeCss = themeCss,
       body =
@@ -4544,6 +4563,11 @@ $rows
      */
     themeCss: String = "",
     unfurl: UnfurlMetadata? = null,
+    /**
+     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * span.
+     */
+    version: String? = null,
     displayTitle: String? = null,
     /**
      * Typography / layout annotations for the reference raster and the rendered frame. Either side
@@ -4626,6 +4650,7 @@ $rows
       unfurlTitle = "$heading design comparison",
       unfurlDescription = "Reference, diff, and Compose output for ${preview.id}",
       unfurl = unfurl,
+      version = version,
       navSuffix = navSuffix,
       themeCss = themeCss,
       body =
@@ -4686,6 +4711,11 @@ $rows
     trust: String? = null,
     themeCss: String = "",
     unfurl: UnfurlMetadata? = null,
+    /**
+     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * span.
+     */
+    version: String? = null,
     displayTitle: String? = null,
     /** Whether a preview carries a design reference — decides "compare" vs "open" on a link. */
     hasReferenceFor: (String) -> Boolean = { false },
@@ -4990,6 +5020,7 @@ $rows
       unfurlDescription =
         "${coverage.mapped} of ${coverage.components} components in $heading are mapped to a design reference.",
       unfurl = unfurl,
+      version = version,
       navSuffix = navSuffix,
       themeCss = themeCss,
       body =
@@ -5155,6 +5186,11 @@ $rows
     engagement: PreviewEngagement = PreviewEngagement(),
     /** Absolute viewer + PNG URLs for Open Graph/Twitter link previews. */
     unfurl: UnfurlMetadata? = null,
+    /**
+     * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
+     * span.
+     */
+    version: String? = null,
     /**
      * Fully-formed GitHub link to this preview's source file, when it resolves — the caller builds
      * it from the session's delivery provenance (repo + branch) and the preview's `sourceFile` via
@@ -5975,6 +6011,7 @@ $rows
       unfurlTitle = displayName,
       unfurlDescription = "Compose preview for $displayName",
       unfurl = unfurl,
+      version = version,
       navSuffix = navSuffix,
       themeCss = themeCss,
     )
@@ -6061,7 +6098,12 @@ $rows
     unfurl: UnfurlMetadata? = null,
     navSuffix: String = "",
     headerAction: String = "",
-    footer: String = "",
+    /**
+     * Running server version (the CLI's `BUNDLE_VERSION`), shown in the minimal [siteFooter] every
+     * page ends with. Null omits just the build span; the fixture goldens pass a fixed string so a
+     * release never churns the committed HTML.
+     */
+    version: String? = null,
     /**
      * The served catalog's own palette, projected onto the chrome's custom properties by
      * [ServeThemeCss] and inlined after `serve.css` so it wins at equal specificity. Empty for a
@@ -6109,8 +6151,7 @@ $rows
           .trimIndent()
       }
     val unfurlBlock = if (unfurlHtml.isEmpty()) "" else "\n${unfurlHtml.prependIndent("        ")}"
-    val footerBlock =
-      footer.takeIf { it.isNotBlank() }?.let { "\n${it.prependIndent("        ")}" } ?: ""
+    val footerBlock = "\n${siteFooter(version).prependIndent("        ")}"
     val themeBlock =
       themeCss
         .takeIf { it.isNotBlank() }
