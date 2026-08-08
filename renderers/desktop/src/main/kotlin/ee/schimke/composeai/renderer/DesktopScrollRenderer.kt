@@ -78,7 +78,9 @@ enum class DesktopScrollMode {
  * Returns `true` when [outputFile] was written; `false` for "no scrollable found" / "encoder
  * declined". Throws — propagated by the caller — when reflective composable invocation fails.
  */
-@OptIn(ExperimentalTestApi::class)
+// `InternalComposeUiApi` for `LocalSystemTheme`, the same opt-in [renderPreview] carries for the
+// same local — it is how Compose Desktop's `isSystemInDarkTheme()` is driven.
+@OptIn(ExperimentalTestApi::class, androidx.compose.ui.InternalComposeUiApi::class)
 fun renderScrollPreview(
   className: String,
   functionName: String,
@@ -101,6 +103,26 @@ fun renderScrollPreview(
    * single-frame [renderPreview] path. `1.0f` is the no-op default.
    */
   fontScale: Float = 1.0f,
+  /**
+   * `@Preview(uiMode = ...)`. The night bit drives `LocalSystemTheme` (so `isSystemInDarkTheme()`
+   * reports dark and the composition renders its dark colours) and the background resolution, the
+   * same two things [renderPreview] does with it. Without it a `UI_MODE_NIGHT_YES` scroll capture
+   * came back as light content on a white ground, disagreeing with the ordinary capture of the very
+   * same preview.
+   */
+  uiMode: Int = 0,
+  /**
+   * `@Preview(showSystemUi = true)`. END only — see [captureEnd]. A stitched LONG image or a GIF
+   * would repeat the synthetic status/nav chrome in every slice, which is not what the flag asks
+   * for.
+   */
+  showSystemUi: Boolean = false,
+  /**
+   * `@Preview(device = ...)`. Used for the round-device clip and to suppress system bars on a round
+   * device, matching [renderPreview]. END only, for the same reason as [showSystemUi]: a round clip
+   * belongs on a single framed capture, not on a tall stitched strip.
+   */
+  device: String? = null,
   /**
    * Classloader used to resolve [className] (and any `@PreviewWrapper` provider). B2.0 — the daemon
    * (`:daemon:desktop`'s `RenderEngine.runScrollScenario`) loads user previews from a disposable
@@ -125,6 +147,13 @@ fun renderScrollPreview(
   val rtl = rendersRightToLeft(localeTag)
   var captured = false
 
+  // Arm the named-override capture, exactly as [renderPreview] does: drop whatever a previous
+  // preview declared so this one's `previewOverride*` lookups accumulate a clean set. Without this
+  // an END capture either shipped no `.overrides.json` at all or kept the previous render's — and
+  // because END reports `didCapture = true`, the caller skips the fallback that would have written
+  // the right one.
+  ee.schimke.composeai.overrides.PreviewOverrideController.clearDeclarations()
+
   val sceneDensity = Density(density, fontScale)
   runSkikoComposeUiTest(
     size = Size(widthPx.toFloat(), heightPx.toFloat()),
@@ -140,18 +169,29 @@ fun renderScrollPreview(
     // / fling decays can't hang capture.
     mainClock.autoAdvance = false
 
+    // `@Preview(uiMode = 32)` (`UI_MODE_NIGHT_YES`) has to flip the composition to dark, exactly as
+    // it does on the single-frame path: Compose Desktop's `isSystemInDarkTheme()` reads
+    // `LocalSystemTheme.current`, so a scroll capture that never provided it rendered a dark
+    // preview's content in light colours.
+    val systemTheme = systemThemeFromUiMode(uiMode)
     setContent {
+      // Shared with [renderPreview] via `PreviewBackground` so both paths agree — in particular
+      // `showBackground = true` on a night preview is NOT white, which is what the local
+      // `Color.White` here used to make it.
       val bgColor =
-        when {
-          backgroundColor != 0L -> Color(backgroundColor.toInt())
-          showBackground -> Color.White
-          else -> Color.Transparent
-        }
+        Color(
+          ee.schimke.composeai.data.render.PreviewBackground.resolveArgbForUiMode(
+            showBackground = showBackground,
+            backgroundColor = backgroundColor,
+            uiMode = uiMode,
+          )
+        )
       val baseProviders: @Composable (@Composable () -> Unit) -> Unit = { inner ->
         if (rtl) {
           CompositionLocalProvider(
             LocalInspectionMode provides true,
             LocalDensity provides sceneDensity,
+            androidx.compose.ui.LocalSystemTheme provides systemTheme,
             androidx.compose.ui.platform.LocalLayoutDirection provides
               androidx.compose.ui.unit.LayoutDirection.Rtl,
           ) {
@@ -161,6 +201,7 @@ fun renderScrollPreview(
           CompositionLocalProvider(
             LocalInspectionMode provides true,
             LocalDensity provides sceneDensity,
+            androidx.compose.ui.LocalSystemTheme provides systemTheme,
           ) {
             inner()
           }
@@ -172,10 +213,24 @@ fun renderScrollPreview(
             InvokeScrollComposable(composableMethod, null, previewArgs)
           }
         }
-        if (wrapperClassName != null) {
-          InvokeScrollWrappedComposable(wrapperClassName, classLoader, body)
+        val wrapped: @Composable () -> Unit = {
+          if (wrapperClassName != null) {
+            InvokeScrollWrappedComposable(wrapperClassName, classLoader, body)
+          } else {
+            body()
+          }
+        }
+        // END only. It is the one scroll mode whose product is an ordinary preview PNG (see
+        // [captureEnd]), so it is the one where `showSystemUi` means what it means everywhere else.
+        // On LONG/GIF the same frame is captured repeatedly and stitched, so the synthetic chrome
+        // would appear once per slice down the strip.
+        if (
+          scrollMode == DesktopScrollMode.END &&
+            shouldApplySystemBars(showSystemUi, device, kind = null)
+        ) {
+          SystemBarsFrame(uiMode = uiMode) { wrapped() }
         } else {
-          body()
+          wrapped()
         }
       }
     }
@@ -217,9 +272,19 @@ fun renderScrollPreview(
             viewportPx = if (axis == ScrollAxis.HORIZONTAL) widthPx else heightPx,
             maxScrollPx = maxScrollPx,
             outputFile = outputFile,
+            device = device,
             fileSystem = fileSystem,
           )
       }
+  }
+
+  // The knobs this preview declared, drained beside the PNG — the same lifecycle [renderPreview]
+  // closes with. END only: it is the only mode that writes an ordinary preview PNG, and only a
+  // successful capture has a render to describe. A declined END (`captured == false`) falls through
+  // to `renderPreview`, which writes the sidecar itself; writing one here as well would leave the
+  // fallback's own `clearDeclarations()` racing an already-drained set.
+  if (captured && scrollMode == DesktopScrollMode.END) {
+    writePreviewOverridesSidecar(outputFile, fileSystem)
   }
   return captured
 }
@@ -357,6 +422,7 @@ private fun captureEnd(
   viewportPx: Int,
   maxScrollPx: Int,
   outputFile: File,
+  device: String? = null,
   fileSystem: FileSystem = SystemFileSystem,
 ): Boolean {
   if (!axisHasScrollable(host, axis)) {
@@ -394,10 +460,31 @@ private fun captureEnd(
   repeat(settleFrames) { host.mainClock.advanceTimeByFrame() }
 
   captureRootFrame(host, outputFile, fileSystem)
+  // A round device clips its capture to the circle. `renderPreview` does this to every ordinary
+  // PNG and END is one, so without it a Wear END capture shipped as an unclipped square next to
+  // clipped siblings from the very same catalog — the corners being exactly where a round screen
+  // has no pixels.
+  applyRoundClipInPlace(outputFile, device, fileSystem)
   System.err.println(
     "@ScrollingPreview(END) on $outputFile: scrolled ${scrolledPx.toInt()}px to the content end."
   )
   return true
+}
+
+/**
+ * Re-read the just-written END capture, clip it to the round-device circle, and write it back.
+ *
+ * Post-processing rather than a composition-time clip so it is literally [renderPreview]'s
+ * treatment — same helper, same result — instead of a second implementation that could round
+ * differently at the edge. A no-op for every non-round device, which is the common case.
+ */
+private fun applyRoundClipInPlace(outputFile: File, device: String?, fileSystem: FileSystem) {
+  if (!isRoundPreviewDevice(device)) return
+  val decoded =
+    ImageIO.read(fileSystem.read(outputFile.path.toPath()) { readByteArray() }.inputStream())
+      ?: return
+  val clipped = applyRoundClip(decoded)
+  fileSystem.write(outputFile.path.toPath()) { ImageIO.write(clipped, "PNG", outputStream()) }
 }
 
 @OptIn(ExperimentalTestApi::class)
