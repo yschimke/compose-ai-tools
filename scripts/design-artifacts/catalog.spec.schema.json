@@ -145,6 +145,10 @@
           "type": "string",
           "description": "Optional seed-kit handle (Figma node etc.) for the one-off import."
         },
+        "referenceSet": {
+          "type": "string",
+          "description": "Optional handle of the component family `reference` is one variant of (a Figma component set). `reference` names the single node a parity run diffs this sticker against; `referenceSet` names the family, so an instance found on a whole screen — which reports its own variant, rarely the one the catalog pictured — still matches back to this component."
+        },
         "parallel": {
           "type": "string",
           "description": "Optional componentId of the counterpart in the `compareWith` sibling system, paired side-by-side on the cross-system compare page."
