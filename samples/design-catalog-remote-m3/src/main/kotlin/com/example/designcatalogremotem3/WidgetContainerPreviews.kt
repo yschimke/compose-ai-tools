@@ -106,20 +106,27 @@ private val largeWidgetParams =
 // component stickers. These previews bypass `RemoteSticker` entirely (the Glance Wear preview path
 // owns its own capture), so without this the module-wide Theme select would silently skip the three
 // widget cards — most visibly on [WidgetContainerLargeRemote], which draws through
-// `RemoteMaterialTheme.typography`. Absent a theme provider nothing is installed and the capture is
-// byte-for-byte unchanged.
+// `RemoteMaterialTheme.typography`. Absent a theme provider nothing is installed, and all three
+// widget captures stay byte-for-byte unchanged — both the PNG and the `.rc` sidecar, verified
+// against `origin/main`.
 @Composable
 private fun CenteredWidgetContent(content: @Composable @RemoteComposable () -> Unit) {
   val themeFont = LocalRemoteCatalogFont.current
-  val centred: @Composable @RemoteComposable () -> Unit = {
+  if (themeFont == null) {
     RemoteBox(
       modifier = RemoteModifier.fillMaxSize(),
       contentAlignment = RemoteAlignment.Center,
       content = content,
     )
+  } else {
+    RemoteMaterialTheme(typography = remoteCatalogTypography(themeFont)) {
+      RemoteBox(
+        modifier = RemoteModifier.fillMaxSize(),
+        contentAlignment = RemoteAlignment.Center,
+        content = content,
+      )
+    }
   }
-  if (themeFont == null) centred()
-  else RemoteMaterialTheme(typography = remoteCatalogTypography(themeFont), content = centred)
 }
 
 /**

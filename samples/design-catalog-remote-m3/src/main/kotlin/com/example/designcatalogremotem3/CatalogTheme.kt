@@ -34,21 +34,38 @@ import ee.schimke.composeai.daemon.RemoteOverridablePreview
  * `RemoteMaterialTheme` is `@RemoteComposable`, so it can only be installed here, inside the remote
  * scope — the theme provider wraps the whole `@Preview`, which is outside it, and hands its choice
  * over as [LocalRemoteCatalogFont]. Absent a provider the local is null and nothing is installed,
- * so an un-themed render is byte-for-byte what it was before the themes existed.
+ * so every un-themed render is pixel-identical to what it was before the themes existed — all 27
+ * PNGs verified byte-for-byte against `origin/main`.
+ *
+ * **One document does change**, with no pixel change: `CircularProgressRemote`'s `.rc` sidecar
+ * differs from `main` in a handful of id bytes (its PNG does not). Adding the branch below is what
+ * moves it — id allocation in the emitted document is sensitive to the composition around it, and
+ * that sticker is the one whose named value (`rememberOverridableRemoteFloat("progress")`) lands in
+ * the shifted range. Confirmed by rendering `origin/main` in this same tree, which reproduces the
+ * baseline bytes exactly, so it is this change and not capture nondeterminism. Two other shapes were
+ * tried — hoisting the branch outside `RemoteOverridablePreview`, and a static CompositionLocal —
+ * and neither removes it. The document is semantically unchanged (same ops, same named value, same
+ * raster), so the delta is accepted rather than worked around.
  */
 @Composable
 fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
   val themeFont = LocalRemoteCatalogFont.current
   RemoteOverridablePreview(profile = RcPlatformProfiles.ANDROIDX) {
-    val body: @Composable @RemoteComposable () -> Unit = {
+    if (themeFont == null) {
       RemoteBox(
         modifier = RemoteModifier.fillMaxSize(),
         contentAlignment = RemoteAlignment.Center,
         content = content,
       )
+    } else {
+      RemoteMaterialTheme(typography = remoteCatalogTypography(themeFont)) {
+        RemoteBox(
+          modifier = RemoteModifier.fillMaxSize(),
+          contentAlignment = RemoteAlignment.Center,
+          content = content,
+        )
+      }
     }
-    if (themeFont == null) body()
-    else RemoteMaterialTheme(typography = remoteCatalogTypography(themeFont), content = body)
   }
 }
 
