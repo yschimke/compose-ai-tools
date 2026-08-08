@@ -373,6 +373,10 @@ order matches the theme itself — `?theme=` / `?uiMode=` on the URL first, then
 remembered choice — and it is applied by a pre-paint script in the page `<head>`, so a page opened
 under `?theme=dark` never flashes light first.
 
+Back and Forward carry it too: every pop path restores its theme by assigning the control's value,
+which fires no `change` event, so each one hands the restored choice over explicitly — otherwise
+Back from Dark to a Light entry re-rendered the preview light inside a page still pinned dark.
+
 Mechanically the whole feature is one CSS property. `serve.css` and the emitted catalog palette both
 write every mode-dependent value as a **`light-dark(<light>, <dark>)` pair** instead of a `:root`
 block plus a `prefers-color-scheme` block, so pinning the mode is `color-scheme: dark` on `<html>`
