@@ -1988,7 +1988,7 @@
     "functionName": "ScrollingListPreview",
     "module": "samples:cmp",
     "renderBasename": "ScrollingListPreview_Scrolling_List_SCROLL_long.png",
-    "sha256": "a7207b4bb0093392ba042b0d5d973afba729742a49dfe0c8a0e6803b6a45fc32",
+    "sha256": "3e06326f512d99c1fb8b30235f716661a9c3577d047f505a14b933a2f200bf62",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List#1": {
@@ -1996,7 +1996,7 @@
     "functionName": "ScrollingListPreview",
     "module": "samples:cmp",
     "renderBasename": "ScrollingListPreview_Scrolling_List_SCROLL_gif.gif",
-    "sha256": "df71c44b8ee4bd79dc28aa517a31d64a10936e8a108056ca9d774993a667a057",
+    "sha256": "3ccdbb8ec3edc2bd335db90dd35264769553b89082ead162bffbd15e65a2f643",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderFbmAnimatedPreview_Shader Gallery \u2014 fBm Clouds (animated)": {
@@ -3038,6 +3038,22 @@
     "renderBasename": "WidgetContainerSmallRemote.png",
     "sha256": "8c838ebdc9d0f2cc7572293463dbcb9480c273394feb8f1c9eb7c6584b43fb9b",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/wearthemecatalog__Google_Sans_Flex": {
+    "captureLabel": "",
+    "functionName": "Google Sans Flex theme",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "wearthemecatalog__Google_Sans_Flex.png",
+    "sha256": "ee941f4e63f2d982dae61714e1054e591d891cfb136d336ccbb81d24a59284d6",
+    "sourceFile": null
+  },
+  "samples:design-catalog-remote-m3/wearthemecatalog__Roboto_Flex": {
+    "captureLabel": "",
+    "functionName": "Roboto Flex theme",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "wearthemecatalog__Roboto_Flex.png",
+    "sha256": "ee941f4e63f2d982dae61714e1054e591d891cfb136d336ccbb81d24a59284d6",
+    "sourceFile": null
   },
   "samples:design-catalog-wear-m3/colorcatalog__Wear_palette": {
     "captureLabel": "",

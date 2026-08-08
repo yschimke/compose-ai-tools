@@ -436,6 +436,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `WidgetContainerGradientRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/WidgetContainerGradientRemote.png" width="150" /> |
 | `WidgetContainerLargeRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/WidgetContainerLargeRemote.png" width="150" /> |
 | `WidgetContainerSmallRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/WidgetContainerSmallRemote.png" width="150" /> |
+| `Google Sans Flex theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/wearthemecatalog__Google_Sans_Flex.png" width="150" /> |
+| `Roboto Flex theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/wearthemecatalog__Roboto_Flex.png" width="150" /> |
 
 ## samples:design-catalog-wear-m3
 
