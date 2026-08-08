@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "b70e7630bc3f7c3d6c730133221f84118e06879f",
+    "generatedFrom": "08407d5b17d15a41557c398fef823c03c8a48d9f",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
@@ -4336,6 +4336,36 @@
                 }
             ],
             "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollToEndPreview_Scroll To End": {
+            "path": "renders/samples:cmp/ScrollToEndPreview_Scroll_To_End_SCROLL_top.png",
+            "versions": [
+                {
+                    "blob": "3b6adf5ee7948f75e1af0ffeca5e0f2a57c923bd",
+                    "commit": "08407d5b17d15a41557c398fef823c03c8a48d9f",
+                    "date": "2026-08-08T14:03:01Z",
+                    "sourceSha": "06ec7fb4",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollToEndPreview_Scroll To End#1": {
+            "path": "renders/samples:cmp/ScrollToEndPreview_Scroll_To_End_SCROLL_end.png",
+            "versions": [
+                {
+                    "blob": "a23fb277db633e6a181204e118727490098c89d7",
+                    "commit": "08407d5b17d15a41557c398fef823c03c8a48d9f",
+                    "date": "2026-08-08T14:03:01Z",
+                    "sourceSha": "06ec7fb4",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
             "unstable": false,
             "flapCount": 0
         },
