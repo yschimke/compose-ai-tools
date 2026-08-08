@@ -1109,14 +1109,39 @@ open class RobolectricHost(
       append("functionName=").append(base.functionName).append(';')
       // Inbound explicit override wins over the spec's per-preview default. `device=` overrides are
       // pre-resolved into widthPx/heightPx/density by `JsonRpcServer.encodeRenderPayload`.
-      append("widthPx=").append(inbound["widthPx"] ?: base.widthPx).append(';')
-      append("heightPx=").append(inbound["heightPx"] ?: base.heightPx).append(';')
+      //
+      // #3547 — a device-less `orientation` request reaches here with no dimensions at all
+      // (`encodeRenderPayload` has none to rotate), so this is the only lane that can rotate the
+      // preview's own discovery-time frame. Skipping it captured a landscape bitmap while
+      // `applyPreviewQualifiers` derived a `port` qualifier from the same spec: a frame
+      // contradicting its own Configuration. Explicit pixels still outrank the request, and
+      // `orientedPx` only swaps a frame that contradicts it, so a device override (already rotated
+      // upstream) passes through untouched.
+      val orientationCanSwap = inbound["widthPx"] == null && inbound["heightPx"] == null
+      val requestedOrientation = inbound["orientation"] ?: base.orientation?.name?.lowercase()
+      val (framedWidthPx, framedHeightPx) =
+        if (orientationCanSwap)
+          ee.schimke.composeai.daemon.devices.FrameOrientation.orientedPx(
+            base.widthPx,
+            base.heightPx,
+            requestedOrientation,
+          )
+        else base.widthPx to base.heightPx
+      val rotated = framedWidthPx != base.widthPx || framedHeightPx != base.heightPx
+      append("widthPx=").append(inbound["widthPx"] ?: framedWidthPx).append(';')
+      append("heightPx=").append(inbound["heightPx"] ?: framedHeightPx).append(';')
       // AS-parity wrap flags must ride the serialized payload — `parseFromPayloadOrNull` defaults
       // them false, so a held/stream render of a no-height preview would otherwise reflow past the
       // frame to zero height. An inbound explicit size (a `device=` override arrives pre-resolved as
       // widthPx/heightPx per encodeRenderPayload) pins the axis, dropping its wrap flag.
-      if (base.wrapWidth && inbound["widthPx"] == null) append("wrapWidth=true;")
-      if (base.wrapHeight && inbound["heightPx"] == null) append("wrapHeight=true;")
+      //
+      // The flags name an *axis*, so a rotated frame has to trade them too — a fixed-width /
+      // wrapped-height preview turned landscape must now wrap width, or the measure-and-crop pass
+      // sizes the wrong axis.
+      val wrapWidth = if (rotated) base.wrapHeight else base.wrapWidth
+      val wrapHeight = if (rotated) base.wrapWidth else base.wrapHeight
+      if (wrapWidth && inbound["widthPx"] == null) append("wrapWidth=true;")
+      if (wrapHeight && inbound["heightPx"] == null) append("wrapHeight=true;")
       append("density=").append(inbound["density"] ?: base.density).append(';')
       append("showBackground=").append(base.showBackground).append(';')
       if (base.backgroundColor != 0L) {
@@ -1709,6 +1734,15 @@ open class RobolectricHost(
    * the field is recording-only on the wire but reusing the same merge path keeps the override
    * application byte-identical between the two acquire paths.
    */
+  /**
+   * Test seam for [applyOverrides] — the held-session (interactive / recording) merge is otherwise
+   * reachable only by standing up a full session, which needs a live Robolectric sandbox.
+   */
+  internal fun applyOverridesForTest(
+    base: RenderSpec,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+  ): RenderSpec = applyOverrides(base, overrides, "test-session")
+
   private fun applyOverrides(
     base: RenderSpec,
     overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
@@ -1749,6 +1783,12 @@ open class RobolectricHost(
     return base.copy(
       widthPx = merged.widthPx,
       heightPx = merged.heightPx,
+      // The wrap flags name an *axis*, so a rotated frame trades them — the held-session twin of
+      // the swap in `reshapeRenderPayload` and `DesktopHost.applyOverrides`. Without it an
+      // interactive / recording session starting from a one-wrapped-axis preview measures and
+      // crops the axis that is no longer the free one (#3552 review).
+      wrapWidth = if (merged.rotated) base.wrapHeight else base.wrapWidth,
+      wrapHeight = if (merged.rotated) base.wrapWidth else base.wrapHeight,
       density = merged.density,
       device = merged.device,
       localeTag = merged.localeTag,
@@ -2636,13 +2676,21 @@ open class RobolectricHost(
       val widthDp = pxToDp(start.widthPx, start.density)
       val heightDp = pxToDp(start.heightPx, start.density)
       val isRound = isRoundDevice(start.device)
+      // The frame decides, not the request — shared with `RenderEngine.applyPreviewQualifiers` so
+      // the held-session and one-shot captures of the same spec can't disagree about orientation
+      // (the whole point of the "mirrors it verbatim" note above).
       val derivedOrientation =
-        when (start.orientation) {
-          "portrait" -> "port"
-          "landscape" -> "land"
-          else ->
-            if (widthDp > 0 && heightDp > 0) (if (widthDp > heightDp) "land" else "port") else null
-        }
+        // Pixels, not dp: `pxToDp` truncates, so a near-square landscape frame (101x100 px at
+        // density 2) would quantize to 50x50 dp and read as square (#3552 review).
+        ee.schimke.composeai.data.render.previewOrientationQualifier(
+          start.widthPx,
+          start.heightPx,
+          when (start.orientation) {
+            "portrait" -> "port"
+            "landscape" -> "land"
+            else -> null
+          },
+        )
       val qualifiers = buildList {
         if (!start.localeTag.isNullOrBlank()) add(localeTagToQualifier(start.localeTag))
         // Same `sw<n>dp-w<n>dp-h<n>dp` triple RenderEngine emits — without the smallest-width

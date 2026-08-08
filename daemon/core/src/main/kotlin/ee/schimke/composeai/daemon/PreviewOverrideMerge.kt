@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.devices.FrameOrientation
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.GestureOverride
@@ -65,6 +66,18 @@ data class MergedPreviewOverrides(
   val remoteCompose: RemoteComposeOverride?,
   val launcherWidget: LauncherWidgetOverride?,
   val namedOverrides: Map<String, PreviewOverrideValue>?,
+  /**
+   * Whether [widthPx] / [heightPx] came back with their axes traded because [orientation]
+   * contradicted the resolved frame.
+   *
+   * Callers that carry **per-axis** state alongside the frame have to rotate it in step, and they
+   * can't re-derive the answer from the returned dimensions — those are already rotated, so asking
+   * "does the orientation contradict this?" a second time always says no. `DesktopHost` is the case
+   * in point: its `wrapWidth` / `wrapHeight` describe which axis wrap-contents, and a one-wrapped-
+   * axis preview that rotates without swapping them measures the wrong axis and crops (#3552
+   * review). Anything holding only whole-frame state can ignore this.
+   */
+  val rotated: Boolean = false,
 ) {
   /**
    * Project the merged overrides down to a [PreviewOverrides] bag that only carries fields
@@ -268,23 +281,36 @@ fun mergePreviewOverrides(
   val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
   val deviceSpec = deviceOverride?.let { DeviceDimensions.resolve(it) }
   val effectiveDensity = overrides.density ?: deviceSpec?.density ?: base.density
-  val widthPx =
+  val naturalWidthPx =
     overrides.widthPx
       ?: deviceSpec?.let { (it.widthDp * effectiveDensity).toInt().coerceAtLeast(1) }
       ?: base.widthPx
-  val heightPx =
+  val naturalHeightPx =
     overrides.heightPx
       ?: deviceSpec?.let { (it.heightDp * effectiveDensity).toInt().coerceAtLeast(1) }
       ?: base.heightPx
+  val effectiveOrientation = overrides.orientation ?: base.orientation
+  // Rotate the frame when the effective orientation contradicts it (#3547) — the live-session
+  // (`stream/start`, `setOverrides`) twin of the same swap in `JsonRpcServer.encodeRenderPayload`
+  // and both routers, so the viewer's Orientation control means the same thing on every lane.
+  // Explicit `widthPx` / `heightPx` outrank it; `device` does not, being the frame under rotation.
+  // Safe to apply over an already-rotated base because `orientedPx` only swaps a frame that
+  // contradicts the request.
+  val orientationCanSwap = overrides.widthPx == null && overrides.heightPx == null
+  val (widthPx, heightPx) =
+    if (orientationCanSwap)
+      FrameOrientation.orientedPx(naturalWidthPx, naturalHeightPx, effectiveOrientation)
+    else naturalWidthPx to naturalHeightPx
   return MergedPreviewOverrides(
     widthPx = widthPx,
     heightPx = heightPx,
+    rotated = widthPx != naturalWidthPx || heightPx != naturalHeightPx,
     density = effectiveDensity,
     device = deviceOverride ?: base.device,
     localeTag = overrides.localeTag?.takeIf { it.isNotBlank() } ?: base.localeTag,
     fontScale = overrides.fontScale ?: base.fontScale,
     uiMode = overrides.uiMode ?: base.uiMode,
-    orientation = overrides.orientation ?: base.orientation,
+    orientation = effectiveOrientation,
     inspectionMode = overrides.inspectionMode ?: base.inspectionMode,
     material3Theme = overrides.material3Theme ?: base.material3Theme,
     wallpaper = overrides.wallpaper ?: base.wallpaper,

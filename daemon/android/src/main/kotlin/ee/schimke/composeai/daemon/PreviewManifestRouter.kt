@@ -105,23 +105,47 @@ class PreviewManifestRouter(
       deviceSpec?.let { (it.heightDp * it.density).toInt().coerceAtLeast(1) } ?: resolved.heightPx
     val baseDensity = deviceSpec?.density ?: resolved.density
     val effectiveDevice = deviceOverride ?: resolved.device
+    // `orientation` is a `widthPx ↔ heightPx` swap of the device- or manifest-derived frame, the
+    // wire-format twin of the desktop router's (#3547). Android additionally emits a `port`/`land`
+    // resource qualifier from these same dimensions in `RenderEngine.applyPreviewQualifiers`, so
+    // before this the two disagreed: a portrait Pixel Tablet rendered a 2560×1600 landscape bitmap
+    // whose Configuration claimed `port`. Swapping here fixes the frame and the qualifier at once,
+    // since the qualifier is derived from the dimensions this payload carries.
+    //
+    // Explicit `widthPx` / `heightPx` outrank the rotation (PROTOCOL.md § 5); a `device=` token
+    // does not — the device is the frame being rotated, not a request for exact pixels.
+    val orientationCanSwap = inbound["widthPx"] == null && inbound["heightPx"] == null
+    val (effectiveBaseWidthPx, effectiveBaseHeightPx) =
+      if (orientationCanSwap)
+        ee.schimke.composeai.daemon.devices.FrameOrientation.orientedPx(
+          baseWidthPx,
+          baseHeightPx,
+          inbound["orientation"],
+        )
+      else baseWidthPx to baseHeightPx
+    // The wrap flags name an *axis*, so a rotated frame trades them with the dimensions: a
+    // fixed-width / wrapped-height preview turned landscape must wrap width instead, or the
+    // measure-and-crop pass sizes the axis that is no longer the free one.
+    val rotated = effectiveBaseWidthPx != baseWidthPx || effectiveBaseHeightPx != baseHeightPx
+    val resolvedWrapWidth = if (rotated) resolved.wrapHeight else resolved.wrapWidth
+    val resolvedWrapHeight = if (rotated) resolved.wrapWidth else resolved.wrapHeight
     return buildString {
       append("previewId=").append(previewId).append(';')
       append("className=").append(entry.className).append(';')
       append("functionName=").append(entry.functionName).append(';')
       // Inbound explicit override wins over both the device-derived value and the
       // per-preview manifest default.
-      append("widthPx=").append(inbound["widthPx"] ?: baseWidthPx).append(';')
-      append("heightPx=").append(inbound["heightPx"] ?: baseHeightPx).append(';')
+      append("widthPx=").append(inbound["widthPx"] ?: effectiveBaseWidthPx).append(';')
+      append("heightPx=").append(inbound["heightPx"] ?: effectiveBaseHeightPx).append(';')
       // AS-parity wrap flags MUST ride the serialized payload — `RenderSpec.parseFromPayloadOrNull`
       // defaults them false, so without emitting them here the render body never enters the
       // measure-and-crop path and no-height previews reflow past the frame to zero height. An
       // inbound explicit size or a device override pins the axis, so the wrap flag drops on that
       // axis (the base px above already reflect the device/override size).
-      if (resolved.wrapWidth && inbound["widthPx"] == null && deviceOverride == null) {
+      if (resolvedWrapWidth && inbound["widthPx"] == null && deviceOverride == null) {
         append("wrapWidth=true;")
       }
-      if (resolved.wrapHeight && inbound["heightPx"] == null && deviceOverride == null) {
+      if (resolvedWrapHeight && inbound["heightPx"] == null && deviceOverride == null) {
         append("wrapHeight=true;")
       }
       append("density=").append(inbound["density"] ?: baseDensity).append(';')

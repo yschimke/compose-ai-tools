@@ -514,4 +514,71 @@ class PreviewManifestRouterRoutingTest {
     assertTrue("inbound width wins. payload=$routed", routed.contains("widthPx=600;"))
     assertTrue("height still device-derived. payload=$routed", routed.contains("heightPx=384;"))
   }
+
+  @Test
+  fun `routePayload rotates a landscape device frame for orientation=portrait`() {
+    // #3547 — `?device=id:pixel_tablet&orientation=portrait` on the preview server rendered a
+    // 2560x1600 landscape bitmap. The Android router forwarded `orientation` as a bare token and
+    // never touched the device-derived pixels, so the frame stayed landscape while
+    // `RenderEngine.applyPreviewQualifiers` derived a contradicting `port` qualifier from it.
+    val router = routerWithSizedPreview()
+
+    val routed = router.routePayload("previewId=sized;device=id:pixel_tablet;orientation=portrait")
+
+    // Pixel Tablet: 1280x800dp at density 2.0 => 2560x1600px landscape, rotated to 1600x2560.
+    assertTrue("expected widthPx=1600 in $routed", routed.contains("widthPx=1600;"))
+    assertTrue("expected heightPx=2560 in $routed", routed.contains("heightPx=2560;"))
+    assertTrue("orientation token must still ride along in $routed", routed.contains("orientation=portrait"))
+  }
+
+  @Test
+  fun `routePayload leaves a device frame already in the requested orientation alone`() {
+    val router = routerWithSizedPreview()
+
+    val routed = router.routePayload("previewId=sized;device=id:pixel_tablet;orientation=landscape")
+
+    assertTrue("expected widthPx=2560 in $routed", routed.contains("widthPx=2560;"))
+    assertTrue("expected heightPx=1600 in $routed", routed.contains("heightPx=1600;"))
+  }
+
+  @Test
+  fun `routePayload lets explicit pixels outrank the orientation request`() {
+    val router = routerWithSizedPreview()
+
+    val routed =
+      router.routePayload("previewId=sized;device=id:pixel_tablet;orientation=portrait;widthPx=900")
+
+    // Naming exact pixels outranks the rotation, so the caller's 900 stays on the width axis
+    // rather than being swapped onto the height.
+    assertTrue("expected widthPx=900 in $routed", routed.contains("widthPx=900;"))
+    assertTrue("expected heightPx=1600 in $routed", routed.contains("heightPx=1600;"))
+  }
+
+  @Test
+  fun `routePayload rotates the manifest frame when no device is given`() {
+    // Orientation is not a device-only control: a preview with its own dp gets rotated too.
+    val router = routerWithSizedPreview()
+
+    val routed = router.routePayload("previewId=sized;orientation=landscape")
+
+    assertTrue("expected widthPx=400 in $routed", routed.contains("widthPx=400;"))
+    assertTrue("expected heightPx=200 in $routed", routed.contains("heightPx=200;"))
+  }
+
+  /** A 200x400px portrait preview (100x200dp at density 2.0), sized on both axes so no wrap. */
+  private fun routerWithSizedPreview(): PreviewManifestRouter =
+    PreviewManifestRouter(
+      manifest =
+        PreviewManifest(
+          previews =
+            listOf(
+              PreviewManifestEntry(
+                id = "sized",
+                className = "com.example.PreviewsKt",
+                functionName = "Sized",
+                params = PreviewParamsEntry(widthDp = 100, heightDp = 200, density = 2.0f),
+              )
+            )
+        )
+    )
 }

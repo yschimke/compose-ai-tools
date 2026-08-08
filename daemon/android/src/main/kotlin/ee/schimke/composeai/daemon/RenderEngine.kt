@@ -1190,6 +1190,8 @@ class RenderEngine(
       localeTag = spec.localeTag,
       uiMode = spec.uiMode,
       orientation = spec.orientation,
+      widthPx = spec.widthPx,
+      heightPx = spec.heightPx,
     )
     org.robolectric.RuntimeEnvironment.setFontScale(spec.fontScale ?: 1.0f)
 
@@ -1374,6 +1376,8 @@ class RenderEngine(
       localeTag = spec.localeTag,
       uiMode = spec.uiMode,
       orientation = spec.orientation,
+      widthPx = spec.widthPx,
+      heightPx = spec.heightPx,
     )
     org.robolectric.RuntimeEnvironment.setFontScale(spec.fontScale ?: 1.0f)
 
@@ -1722,6 +1726,8 @@ class RenderEngine(
       localeTag = spec.localeTag,
       uiMode = spec.uiMode,
       orientation = spec.orientation,
+      widthPx = spec.widthPx,
+      heightPx = probeHeightPx,
     )
     org.robolectric.RuntimeEnvironment.setFontScale(spec.fontScale ?: 1.0f)
 
@@ -2032,6 +2038,8 @@ class RenderEngine(
       localeTag = spec.localeTag,
       uiMode = spec.uiMode,
       orientation = spec.orientation,
+      widthPx = sandboxWidthPx,
+      heightPx = sandboxHeightPx,
     )
     org.robolectric.RuntimeEnvironment.setFontScale(spec.fontScale ?: 1.0f)
 
@@ -2071,6 +2079,14 @@ class RenderEngine(
     localeTag: String?,
     uiMode: RenderSpec.SpecUiMode?,
     orientation: RenderSpec.SpecOrientation?,
+    /**
+     * The frame in **pixels**, for the orientation decision only. `widthDp`/`heightDp` reach here
+     * via `pxToDp`, which truncates — a 101×100 px frame at density 2 quantizes to 50×50 dp and
+     * reads as square, so a landscape bitmap would take the square fallback and be qualified from
+     * the request instead of from itself (#3552 review). Pixels are what the bitmap actually is.
+     */
+    widthPx: Int = widthDp,
+    heightPx: Int = heightDp,
   ) {
     // Pseudolocales (`en-XA`, `ar-XB`) aren't first-class Android locales — they have no
     // `values-en-rXA/` resources to load. Substitute the base locale (`en`) before emitting the
@@ -2102,15 +2118,19 @@ class RenderEngine(
       // set (issue #3309).
       addAll(ee.schimke.composeai.data.render.previewSizeQualifiers(widthDp, heightDp))
       if (isRound) add("round")
+      // The **frame decides**, not the request — see `previewOrientationQualifier`. The two agree
+      // whenever the rotation was applied; they diverge only when explicit pixels outranked it,
+      // and there the bitmap is the truth (#3552 review).
       val derivedOrientation =
-        when (orientation) {
-          RenderSpec.SpecOrientation.PORTRAIT -> "port"
-          RenderSpec.SpecOrientation.LANDSCAPE -> "land"
-          null ->
-            if (widthDp > 0 && heightDp > 0) {
-              if (widthDp > heightDp) "land" else "port"
-            } else null
-        }
+        ee.schimke.composeai.data.render.previewOrientationQualifier(
+          widthPx,
+          heightPx,
+          when (orientation) {
+            RenderSpec.SpecOrientation.PORTRAIT -> "port"
+            RenderSpec.SpecOrientation.LANDSCAPE -> "land"
+            null -> null
+          },
+        )
       if (derivedOrientation != null) add(derivedOrientation)
       when (uiMode) {
         RenderSpec.SpecUiMode.LIGHT -> add("notnight")

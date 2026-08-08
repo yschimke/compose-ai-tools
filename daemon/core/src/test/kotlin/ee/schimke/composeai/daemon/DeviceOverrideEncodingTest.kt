@@ -90,6 +90,56 @@ class DeviceOverrideEncodingTest {
   }
 
   @Test(timeout = 30_000)
+  fun portraitRotatesALandscapeDeviceFrame() {
+    val captured =
+      renderAndCapturePayload(
+        overrides = """{"device":"id:pixel_tablet","orientation":"portrait"}"""
+      )
+    // #3547 — the reported URL: `?device=id:pixel_tablet&orientation=portrait`. Pixel Tablet is
+    // 1280x800dp at density 2.0, i.e. 2560x1600px landscape by nature. Portrait must trade the
+    // axes, so the wire payload carries 1600x2560. Pre-fix the device's natural landscape pixels
+    // went out unchanged and `orientation=portrait` rode along as an inert token.
+    assertContainsToken("widthPx=1600", captured)
+    assertContainsToken("heightPx=2560", captured)
+    assertContainsToken("density=2.0", captured)
+    assertContainsToken("orientation=portrait", captured)
+    assertContainsToken("device=id:pixel_tablet", captured)
+  }
+
+  @Test(timeout = 30_000)
+  fun landscapeRotatesAPortraitDeviceFrame() {
+    val captured =
+      renderAndCapturePayload(overrides = """{"device":"id:pixel_5","orientation":"landscape"}""")
+    // Pixel 5 is 393x851dp at 2.75 => 1080x2340px portrait; landscape trades the axes.
+    assertContainsToken("widthPx=2340", captured)
+    assertContainsToken("heightPx=1080", captured)
+  }
+
+  @Test(timeout = 30_000)
+  fun orientationMatchingTheDeviceFrameLeavesItAlone() {
+    val captured =
+      renderAndCapturePayload(
+        overrides = """{"device":"id:pixel_tablet","orientation":"landscape"}"""
+      )
+    // The swap is idempotent: a device already in the requested orientation stays put, so the
+    // downstream routers can apply the same rule again without rotating it back.
+    assertContainsToken("widthPx=2560", captured)
+    assertContainsToken("heightPx=1600", captured)
+  }
+
+  @Test(timeout = 30_000)
+  fun explicitPixelsBeatTheOrientationRequest() {
+    val captured =
+      renderAndCapturePayload(
+        overrides = """{"device":"id:pixel_tablet","orientation":"portrait","widthPx":900}"""
+      )
+    // PROTOCOL.md § 5 precedence: naming exact pixels outranks every derived value, the rotation
+    // included. Neither axis is swapped, so the caller's 900 is not silently moved to the height.
+    assertContainsToken("widthPx=900", captured)
+    assertContainsToken("heightPx=1600", captured)
+  }
+
+  @Test(timeout = 30_000)
   fun inspectionModeOverrideThreadsThroughPayload() {
     val captured = renderAndCapturePayload(overrides = """{"inspectionMode":false}""")
 

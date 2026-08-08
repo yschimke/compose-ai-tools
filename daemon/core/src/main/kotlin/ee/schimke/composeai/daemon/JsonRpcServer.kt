@@ -1026,8 +1026,25 @@ class JsonRpcServer(
       val deviceSpec = deviceToken?.let {
         ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it)
       }
-      val deviceWidthPx = deviceSpec?.let { (it.widthDp * it.density).toInt().coerceAtLeast(1) }
-      val deviceHeightPx = deviceSpec?.let { (it.heightDp * it.density).toInt().coerceAtLeast(1) }
+      val naturalWidthPx = deviceSpec?.let { (it.widthDp * it.density).toInt().coerceAtLeast(1) }
+      val naturalHeightPx = deviceSpec?.let { (it.heightDp * it.density).toInt().coerceAtLeast(1) }
+      // Rotate the device's natural frame when `orientation` asks for the other one (#3547). This
+      // has to happen HERE, not only in the downstream `PreviewManifestRouter`: the router treats
+      // an inbound `widthPx` as "the caller named exact pixels" and leaves it alone, and the lines
+      // below are what put those device-derived pixels on the wire. So a `renderNow` carrying
+      // `device` + `orientation` reached the router already looking like an explicit-size request
+      // and the rotation was dropped — which is what `?device=id:pixel_tablet&orientation=portrait`
+      // hit on the preview server. Skipped when the caller set either axis explicitly, since those
+      // outrank both the device geometry and the rotation.
+      val orientationCanSwap = overrides.widthPx == null && overrides.heightPx == null
+      val (deviceWidthPx, deviceHeightPx) =
+        if (orientationCanSwap && naturalWidthPx != null && naturalHeightPx != null)
+          ee.schimke.composeai.daemon.devices.FrameOrientation.orientedPx(
+            naturalWidthPx,
+            naturalHeightPx,
+            overrides.orientation,
+          )
+        else naturalWidthPx to naturalHeightPx
       val deviceDensity = deviceSpec?.density
       (overrides.widthPx ?: deviceWidthPx)?.let {
         if (isNotEmpty()) append(';')
