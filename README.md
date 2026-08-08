@@ -536,6 +536,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-themes/dark](renders/serve-viewer-themes.dark.png) |
 | `light` | ![serve-viewer-themes/light](renders/serve-viewer-themes.light.png) |
 
+## serve-viewer-themes-theme-back-unpinned
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-themes-theme-back-unpinned/dark](renders/serve-viewer-themes-theme-back-unpinned.dark.png) |
+| `light` | ![serve-viewer-themes-theme-back-unpinned/light](renders/serve-viewer-themes-theme-back-unpinned.light.png) |
+
 ## serve-viewer-variants
 
 | Theme | Capture |
