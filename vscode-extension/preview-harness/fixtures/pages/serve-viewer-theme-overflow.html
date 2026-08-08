@@ -3,7 +3,7 @@
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Button · Filled (light) — compose-preview</title>
+        <title>Profile screen — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
@@ -29,8 +29,8 @@
 </header>
         <main class="cp-main">
               <div class="cp-preview-head">
-        <h1 class="cp-head cp-preview-title">Button · Filled (light) <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
-        <code class="cp-preview-id" title="button-filled__ideal__default__light">button-filled__ideal__default__light</code>
+        <h1 class="cp-head cp-preview-title">Profile screen</h1>
+        <code class="cp-preview-id" title="com.example.ProfileScreenPreview">com.example.ProfileScreenPreview</code>
 
       </div>
 
@@ -38,34 +38,46 @@
       <div class="cp-preview-primary" aria-label="Preview renderer">
       <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" title="Static snapshot — click for the live, interactive preview">
             <span class="cp-live-dot" aria-hidden="true"></span>
-            <span id="cp-live-toggle-label">Snapshot</span>
+            <span id="cp-live-toggle-label">Live preview</span>
           </button>
-<select id="cp-lane-select" class="cp-lane-select" aria-label="Switch renderer" title="Draw this preview with a different renderer" data-default="png" data-rc-default=""><option value="" selected>Switch renderer…</option><option value="png">Snapshot</option><option value="wasm">In browser (Wasm)</option></select>
-<button type="button" id="cp-svg-toggle" class="cp-fmt-toggle" aria-pressed="false" title="Show the vector (SVG) render">SVG</button>
-<span id="cp-svg-match" class="cp-match" role="status" aria-live="polite" hidden></span><a id="cp-svg-diff" class="cp-format-link" href="/compare?format=svg&preview=button-filled__ideal__default__light&token=demo-token-fixture&session=compose-m3" hidden>view diff →</a>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
 <input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1">
-<input type="radio" name="cp-mode" value="wasm" id="cp-wasm-toggle" tabindex="-1">
         </span>
       </div>
       <div class="cp-viewer-bar">
-
+        <button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button>
         <span class="cp-theme cp-theme-bar" role="group" aria-label="Preview theme">
           <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
           <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandLightThemeCatalog" title="Brand · Brand Light">Brand Light</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandDarkThemeCatalog" title="Brand · Brand Dark">Brand Dark</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BaselineDarkThemeCatalog">Baseline Dark</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BaselineLightThemeCatalog">Baseline Light</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.DarkHighContrastThemeCatalog">Dark High Contrast</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.DarkMediumContrastThemeCatalog">Dark Medium Contrast</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.LightHighContrastThemeCatalog">Light High Contrast</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.LightMediumContrastThemeCatalog">Light Medium Contrast</button>
         </span>
         <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind the preview">Transparent</button>
         <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
 
-      <div class="cp-viewer cp-controls-open" data-bg-theme="light" data-preview-id="button-filled__ideal__default__light" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="true" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-wasm-src="/wasm/compose-m3/?id=button-filled">
-
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Button · Filled (light)"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts allow-same-origin" title="Button · Filled (light) (Wasm)"></iframe><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+      <div class="cp-viewer cp-controls-open" data-bg-theme="dark" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
+              <aside class="cp-nav" id="cp-nav" aria-label="Components">
+        <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
+        <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
+        <ul class="cp-nav-list" id="cp-nav-list">
+        <li><a class="cp-nav-item" href="/p/com.example.ButtonPreview?token=demo-token-fixture&session=compose-m3" title="com.example.ButtonPreview" data-search="Button com.example.ButtonPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Button</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.CardPreview?token=demo-token-fixture&session=compose-m3" title="com.example.CardPreview" data-search="Card com.example.CardPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.CardPreview.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Card</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.DialogPreview?token=demo-token-fixture&session=compose-m3" title="com.example.DialogPreview" data-search="Dialog com.example.DialogPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.DialogPreview.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Dialog</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.ListScreenPreview?token=demo-token-fixture&session=compose-m3" title="com.example.ListScreenPreview" data-search="List screen com.example.ListScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ListScreenPreview.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">List screen</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture&session=compose-m3" aria-current="page" title="com.example.ProfileScreenPreview" data-search="Profile screen com.example.ProfileScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Profile screen</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture&session=compose-m3" title="com.example.SettingsScreenPreview" data-search="Settings screen com.example.SettingsScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Settings screen</span></a></li>
+        </ul>
+        <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>
+      </aside>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
@@ -73,10 +85,14 @@
             <div class="cp-group-body">
                       <span class="cp-modes-inputs" aria-hidden="true">
           <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="true" data-fixed-theme="false" tabindex="-1">
-            <option value="light" selected>Day (Default)</option>
-            <option value="dark">Night (Default)</option>
-            <optgroup label="Brand"><option value="theme:com.example.BrandLightThemeCatalog">Brand Light</option>
-<option value="theme:com.example.BrandDarkThemeCatalog">Brand Dark</option></optgroup>
+            <option value="light">Day (Default)</option>
+            <option value="dark" selected>Night (Default)</option>
+            <option value="theme:com.example.BaselineDarkThemeCatalog">Baseline Dark</option>
+<option value="theme:com.example.BaselineLightThemeCatalog">Baseline Light</option>
+<option value="theme:com.example.DarkHighContrastThemeCatalog">Dark High Contrast</option>
+<option value="theme:com.example.DarkMediumContrastThemeCatalog">Dark Medium Contrast</option>
+<option value="theme:com.example.LightHighContrastThemeCatalog">Light High Contrast</option>
+<option value="theme:com.example.LightMediumContrastThemeCatalog">Light Medium Contrast</option>
           </select>
         </span>
               <label>Background
@@ -90,38 +106,25 @@
           <details class="cp-group" data-cp-group="size">
             <summary>Size</summary>
             <div class="cp-group-body">
-              <div class="cp-size">
-                <label>Size mode
-                  <select id="cp-sizeMode">
-                    <option value="">(default)</option>
-                    <option value="fixed">Fixed size</option>
-                    <option value="max">Max</option>
-                    <option value="min">Min</option>
-                    <option value="within">Within (min–max)</option>
-                  </select>
-                </label>
-                <div class="cp-size-row" id="cp-size-fixed" hidden>
-                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
-                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
-                </div>
-                <div class="cp-size-row" id="cp-size-min" hidden>
-                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
-                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
-                </div>
-                <div class="cp-size-row" id="cp-size-max" hidden>
-                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
-                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
-                </div>
-              </div>
+              <label>Device size
+                <select id="cp-device">
+                  <option value="">(preview default)</option>
+                  <option value="id:pixel_5">Pixel 5 · compact phone (393 × 851 dp)</option>
+                  <option value="id:pixel_7">Pixel 7 · standard phone (411 × 914 dp)</option>
+                  <option value="id:pixel_fold">Pixel Fold · foldable (841 × 701 dp)</option>
+                  <option value="id:pixel_tablet">Pixel Tablet · tablet (1280 × 800 dp)</option>
+                </select>
+              </label>
+              <label>Orientation
+                <select id="cp-orientation">
+                  <option value="">(device default)</option>
+                  <option value="portrait">Portrait</option>
+                  <option value="landscape">Landscape</option>
+                </select>
+              </label>
             </div>
           </details>
-          <details class="cp-group" data-cp-group="scroll">
-  <summary>Scroll</summary>
-  <div class="cp-group-body">
-    <label class="cp-live-row"><input id="cp-scroll-long" type="checkbox"> Full page (scroll)</label>
-    <div class="cp-knobs-head">Exports the whole scrollable page as PNG or SVG.</div>
-  </div>
-</details>
+
           <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
@@ -167,42 +170,8 @@
           </div>
         </details>
 
-                <details class="cp-group" data-cp-group="overrides">
-        <summary>Overrides</summary>
-        <div class="cp-group-body">
-          <div class="cp-knobs">
-            <div class="cp-knobs-head">Declared overrides — edit a value to re-render.</div>
-            <label>label
-  <input type="text" class="cp-knob" data-knob-key="label" data-knob-kind="string" data-knob-initial="Filled" data-knob-default="Filled" value="Filled">
-</label>
-<label>iconColor
-  <input type="text" class="cp-knob" data-knob-key="iconColor" data-knob-kind="color" data-knob-initial="#FF6750A4" data-knob-default="#FF6750A4" value="#FF6750A4">
-</label>
-            <label>theme.font
-              <input type="text" class="cp-knob" data-knob-key="theme.font" data-knob-kind="string" data-knob-initial="Roboto Flex" data-knob-default="Roboto Flex" value="Roboto Flex" list="cp-dl-theme-font">
-              <datalist id="cp-dl-theme-font">
-            <option value="Roboto Flex"></option>
-<option value="Google Sans Flex"></option>
-<option value="Lobster Two"></option>
-              </datalist>
-            </label>
-          </div>
-        </div>
-      </details>
-                <details class="cp-group" data-cp-group="remotecompose">
-        <summary>Remote Compose</summary>
-        <div class="cp-group-body">
-          <div class="cp-knobs">
-            <div class="cp-knobs-head">Declared Remote Compose knobs — edit a value to re-render.</div>
-            <label>label
-  <input type="text" class="cp-rc-knob" data-rc-name="label" data-rc-kind="string" data-rc-initial="Filled" value="Filled">
-</label>
-<label>shaderColor
-  <input type="text" class="cp-rc-knob" data-rc-name="shaderColor" data-rc-kind="color" data-rc-initial="#FF7DE2FF" value="#FF7DE2FF">
-</label>
-          </div>
-        </div>
-      </details>
+
+
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
@@ -212,57 +181,6 @@
            while the bar has to run the full content width to stay on one line. -->
       <div class="cp-below">
 
-      </div>
-      <div class="cp-preview-links">
-      <p class="cp-source"><a class="cp-source-link" href="https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/Button.kt"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a></p>
-      <form class="cp-report" id="cp-report" method="get" target="_blank" rel="noopener" action="https://github.com/yschimke/compose-ai-tools/issues/new"><input type="hidden" name="title" value="Preview issue: Button · Filled (light) (compose-m3)"><input type="hidden" name="body" id="cp-report-body" value="### What&#39;s wrong
-
-&lt;!-- What did you expect to see, and what did you get? --&gt;
-
-
-### Screenshot
-
-![Button · Filled (light)](https://preview.coo.ee/compose-m3/render/button-filled__ideal__default__light.png)
-
-&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. For a copy that stays put, use Copy PNG in the viewer&#39;s &quot;Export &amp; direct links&quot; panel and paste it here — GitHub then hosts the pixels itself. --&gt;
-
-
-### Which preview
-
-| | |
-| --- | --- |
-| Design system | `compose-m3` |
-| Preview | `button-filled__ideal__default__light` |
-| Source | https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/Button.kt |
-| Catalog | `yschimke/compose-ai-tools@design-artifacts/compose-m3` |
-| Rendered by | compose-ai-tools 0.16.54 |
-
-[Open this preview](https://preview.coo.ee/compose-m3/p/button-filled__ideal__default__light)
-" data-report-template="### What&#39;s wrong
-
-&lt;!-- What did you expect to see, and what did you get? --&gt;
-
-
-### Screenshot
-
-![Button · Filled (light)]({{render}})
-
-&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. For a copy that stays put, use Copy PNG in the viewer&#39;s &quot;Export &amp; direct links&quot; panel and paste it here — GitHub then hosts the pixels itself. --&gt;
-
-
-### Which preview
-
-| | |
-| --- | --- |
-| Design system | `compose-m3` |
-| Preview | `button-filled__ideal__default__light` |
-| Source | https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/Button.kt |
-| Catalog | `yschimke/compose-ai-tools@design-artifacts/compose-m3` |
-| Rendered by | compose-ai-tools 0.16.54 |
-
-[Open this preview](https://preview.coo.ee/compose-m3/p/button-filled__ideal__default__light)
-"><button type="submit" class="cp-report-link" title="File an issue on yschimke/compose-ai-tools as @yschimke"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> report an issue</button></form>
-      <p class="cp-figma"><a class="cp-figma-link" href="https://www.figma.com/design/gYzowY4cQ7rNr2gYoco1M6?node-id=73-6" target="_blank" rel="noopener noreferrer" title="Open the Figma node this preview is specified by — Contact chat"><svg class="cp-gh cp-figma-mark" viewBox="0 0 38 57" aria-hidden="true" fill="currentColor"><path d="M19 28.5a9.5 9.5 0 1 1 19 0 9.5 9.5 0 0 1-19 0z"/><path d="M0 47.5A9.5 9.5 0 0 1 9.5 38H19v9.5a9.5 9.5 0 0 1-19 0z"/><path d="M19 0v19h9.5a9.5 9.5 0 1 0 0-19H19z"/><path d="M0 9.5A9.5 9.5 0 0 0 9.5 19H19V0H9.5A9.5 9.5 0 0 0 0 9.5z"/><path d="M0 28.5A9.5 9.5 0 0 0 9.5 38H19V19H9.5A9.5 9.5 0 0 0 0 28.5z"/></svg> figma spec</a></p>
       </div>
             <div class="cp-export" aria-label="Export the current view">
         <span class="cp-export-head" id="cp-export-head">Export</span>
@@ -275,16 +193,6 @@
   <a id="cp-dl-png" class="cp-dl" download title="Save the PNG to a file">Download</a>
   <input id="cp-url-png" class="cp-url" type="text" readonly tabindex="-1"
     aria-label="PNG URL">
-</span>
-<span class="cp-link-group">
-  <span class="cp-link-kind">SVG</span>
-  <button type="button" class="cp-copyurl" data-copyurl-target="cp-url-svg"
-    title="Copy the SVG URL of the current view (overrides applied)">Copy link</button>
-  <button type="button" class="cp-copyimg" data-copyimg-target="cp-url-svg"
-    data-copyimg-ext=".svg" title="Copy the SVG itself to the clipboard">Copy SVG</button>
-  <a id="cp-dl-svg" class="cp-dl" download title="Save the SVG to a file">Download</a>
-  <input id="cp-url-svg" class="cp-url" type="text" readonly tabindex="-1"
-    aria-label="SVG URL">
 </span>
       </div>
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
@@ -353,7 +261,6 @@
   });
   syncBg();
 })();</script>
-      <script src="/assets/serve/fixture/format-compare.js"></script>
       <script src="/assets/serve/fixture/viewer.js"></script>
       <script src="/assets/serve/fixture/backend-badge.js"></script>
         </main>

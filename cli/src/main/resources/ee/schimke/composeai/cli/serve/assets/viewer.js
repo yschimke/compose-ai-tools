@@ -17,9 +17,22 @@
   // ("Fit width") and pressed-ness says whether it is on. A two-button group spends twice the bar
   // width to say the same thing, and always shows one button that does nothing when clicked.
   var zoomToggle = document.querySelector(".cp-zoom-toggle");
+  // "Fit screen" means the WHOLE preview is on screen, so the cap is whatever the viewport has
+  // left BELOW the chrome above the stage — measured, not a fixed 72vh guess. The guess was wrong
+  // in both directions: on the viewer, where the title block and two control rows sit above the
+  // stage, 72vh reached past the fold and cut the render off; on a short window it left the image
+  // taller than the space it had. Floored at 320px so a very short window still shows a usable
+  // stage rather than a sliver, and re-measured on resize.
+  function fitCap() {
+    if (!stage) return "72vh";
+    // The stage's own padding is inside the box the image has to fit in, and a little slack keeps
+    // the card's bottom edge on screen rather than flush against it.
+    var top = stage.getBoundingClientRect().top + (window.scrollY || 0);
+    return Math.max(320, Math.round(window.innerHeight - top - 64)) + "px";
+  }
   function applyZoom(mode) {
     if (mode !== "width") mode = "fit";
-    var maxHeight = mode === "fit" ? "72vh" : "";
+    var maxHeight = mode === "fit" ? fitCap() : "";
     img.style.maxHeight = maxHeight;
     var rcZoomCanvas = document.getElementById("cp-rc-canvas");
     if (rcZoomCanvas) rcZoomCanvas.style.maxHeight = maxHeight;
@@ -42,6 +55,11 @@
     });
   }
   applyZoom("fit");
+  // A resize changes the answer fitCap() gave, so re-measure. "Fit width" is an explicit choice to
+  // ignore the viewport's height, so it is left alone.
+  window.addEventListener("resize", function () {
+    if (root.getAttribute("data-zoom") !== "width") applyZoom("fit");
+  });
   // Surface a mode-activation failure visibly, instead of leaving a stale frame that reads as a
   // (wrong) render. Every lane routes its failure here — a dead Live stream, a Wasm app that
   // never boots, a /render that errors — so "can't activate this mode" is never silent.

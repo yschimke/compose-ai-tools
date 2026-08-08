@@ -183,14 +183,34 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
    Both the render-server badge and the GitHub session control are conditional, and under
    `space-between` their absence slid the nav between centred and hard-right from page to page.
    A `1fr auto 1fr` grid pins the brand left and the nav right whatever the middle holds. */
-.cp-site-header { min-height: 56px; margin-bottom: 26px; padding: 4px 0 10px;
+.cp-site-header { min-height: 56px; margin-bottom: 14px; padding: 4px 0 8px;
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 18px; }
-.cp-site-brand { justify-self: start; }
+/* The lead slot: the brand, then this page's breadcrumb / back link. Navigation belongs in the
+   navigation bar — as the body's first line it spent a whole row (plus its margin) restating
+   where you are, and on the viewer that row is the difference between the render being on screen
+   and being cut off by the fold. min-width:0 so a long catalog name ellipsises here instead of
+   shoving the centred status badge off its column. */
+.cp-site-lead { justify-self: start; min-width: 0; display: flex; align-items: center;
+  gap: 12px; }
 /* min-width:0 so a long badge ("connected · 2 instances, 1 live") shrinks rather than pushing the
    nav off the right edge. */
 .cp-site-status { justify-self: center; display: flex; align-items: center; min-width: 0; }
 .cp-site-nav { justify-self: end; }
-.cp-site-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--cp-fg);
+/* In the header the trail is a quiet continuation of the brand, separated by a hairline rather
+   than by another chip: the brand IS the first crumb, so a keyline reads as the first `/`. */
+.cp-site-lead .cp-breadcrumb { margin: 0; min-width: 0; display: flex; align-items: center;
+  gap: 6px; padding-left: 12px; border-left: 1px solid var(--cp-border);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp-site-lead .cp-breadcrumb > a { color: var(--md-sys-color-on-surface-variant);
+  overflow: hidden; text-overflow: ellipsis; }
+.cp-crumb-sep { color: var(--cp-fg-faint); }
+.cp-crumb-current { overflow: hidden; text-overflow: ellipsis; }
+/* A catalog landing's back button keeps its outlined-button shape but drops to the bar's own
+   height and loses the body margin it needed when it was the page's first element. */
+.cp-site-lead .cp-back { margin: 0; min-height: 32px; padding: 5px 14px 5px 12px;
+  font-size: var(--md-sys-typescale-label-medium-size); white-space: nowrap; }
+.cp-site-brand { display: inline-flex; align-items: center; gap: 10px; flex: none;
+  color: var(--cp-fg);
   font-size: var(--md-sys-typescale-title-medium-size);
   line-height: var(--md-sys-typescale-title-medium-line);
   letter-spacing: var(--md-sys-typescale-title-medium-tracking); font-weight: 500; }
@@ -681,17 +701,23 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-engage { margin-top: 3px; color: var(--cp-fg-faint);
   font-size: var(--md-sys-typescale-label-medium-size); }
-.cp-viewer-engage { margin: -14px 0 16px; color: var(--cp-fg-faint);
+.cp-viewer-engage { color: var(--cp-fg-faint);
   font-size: var(--md-sys-typescale-body-small-size); }
-.cp-preview-title { font-size: var(--md-sys-typescale-headline-small-size);
+/* The viewer's identity line: name, trust verdict, id and view tally on ONE baseline. They answer
+   the same question ("what am I looking at"), and as three stacked blocks they answered it three
+   times over ~90px of the fold — on a laptop that was the difference between seeing the render and
+   scrolling to it. They still wrap on a narrow viewport; they just don't insist on wrapping. */
+.cp-preview-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px;
+  margin: 0 0 8px; }
+.cp-preview-title { margin: 0; font-size: var(--md-sys-typescale-headline-small-size);
   line-height: var(--md-sys-typescale-headline-small-line); }
-.cp-preview-id { margin: 4px 0 10px; color: var(--cp-fg-muted);
-  font-size: var(--md-sys-typescale-body-small-size);
-  letter-spacing: var(--md-sys-typescale-body-small-tracking); }
-.cp-preview-id code { font-family: var(--md-sys-typescale-mono-font); padding: 2px 6px;
+.cp-preview-id { font-family: var(--md-sys-typescale-mono-font); padding: 2px 6px;
   border-radius: var(--md-sys-shape-corner-extra-small);
-  background: var(--md-sys-color-surface-container-high); }
-.cp-preview-primary { margin: 2px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  background: var(--md-sys-color-surface-container-high); color: var(--cp-fg-muted);
+  font-size: var(--md-sys-typescale-body-small-size);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-preview-primary { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
 /* The stage is the viewer's hero surface — an M3 elevated card at the large corner. */
 .cp-stage { position: relative; flex: 1 1 360px; min-width: 280px; border: 0;
@@ -900,7 +926,28 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 /* Drawer toggles + the two collapsible drawers (left component nav, right overrides). The open
    state is a class on .cp-viewer — cp-controls-open (default on) and cp-nav-open (default off) —
    so a drawer hides purely in CSS and the toggle JS just flips the class + aria-expanded. */
-.cp-viewer-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+/* ONE row, not a block that grows a line per theme. A catalog with seven declared themes wrapped
+   this bar onto three lines and pushed the stage most of a screen down — the render is what the
+   page is for, so the bar is capped at a single row and the theme group is the only elastic member:
+   everything else is flex:none, the chips shrink (ellipsising their labels) to take the squeeze,
+   and past the point where shrinking would make them unreadable the group scrolls within itself.
+   The bar wraps again below the mobile breakpoint, where the fixed controls alone fill the width. */
+.cp-viewer-bar { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px;
+  margin: 0 0 12px; min-width: 0; }
+.cp-viewer-bar > * { flex: none; }
+.cp-theme-bar { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+  /* Room for the thin scrollbar so it sits under the chips rather than clipping them, and a
+     scroll padding so keyboard-focusing a chip doesn't leave it flush against the clipped edge. */
+  padding-bottom: 4px; scroll-padding-inline: 8px; }
+/* inline-block, not the chips' usual inline-flex: `text-overflow` needs a block container of
+   inline content, and an ellipsised "Light Medium Cont…" still says which chip it is. The floor
+   matters as much as the shrink — without it eight chips on a 1024px bar collapse to "D…" / "N."
+   / "B…", which is a row of identical stubs, so shrinking stops at ~7em and the group scrolls
+   from there. */
+.cp-theme-bar .cp-theme-btn { display: inline-block; flex: 0 1 auto; min-width: 7em;
+  padding: 6px 12px; line-height: 20px; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The two drawer toggles are M3 *toggle buttons*: outlined while off, tonal (`secondary-container`)
    while the drawer they own is open — the same selected language as the chips above. */
 .cp-drawer-toggle { display: inline-flex; align-items: center; gap: 8px; font: inherit;
@@ -1418,7 +1465,11 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
      page), so keeping them on one row would overflow the viewport; the nav wraps internally too,
      for the longest sign-in labels. */
   .cp-site-header { margin-bottom: 18px; grid-template-columns: minmax(0, 1fr); row-gap: 4px; }
-  .cp-site-brand, .cp-site-status { justify-self: start; }
+  .cp-site-lead, .cp-site-status { justify-self: start; }
+  .cp-site-lead { flex-wrap: wrap; gap: 6px 10px; }
+  /* Wrapped onto its own line the crumb no longer continues the brand horizontally, so the
+     keyline that stood in for the first `/` would read as a stray rule. */
+  .cp-site-lead .cp-breadcrumb { padding-left: 0; border-left: 0; }
   .cp-site-nav { justify-self: start; flex-wrap: wrap; }
   .cp-site-mark { width: 22px; height: 22px; }
   .cp-site-nav { gap: 12px; }
@@ -1433,6 +1484,10 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   /* Sticky toggle bar so ⚙ Overrides / ☰ Components stay one tap away without scrolling. */
   .cp-viewer-bar { position: sticky; top: 0; z-index: 20; margin: 0 0 10px; padding: 6px 0;
     background: var(--cp-bg); }
+  /* The four fixed controls alone fill a phone's width, so the bar wraps again here. The theme
+     group keeps its own single scrolling row — that is its own axis, not the bar's. */
+  .cp-viewer-bar { flex-wrap: wrap; }
+  .cp-theme-bar { flex-basis: 100%; }
   .cp-viewer { gap: 16px; }
   /* Stage, overrides and nav each stack full-width; min-width:0 lets the flex items (and their
      selects/inputs) shrink below their content's intrinsic width instead of overflowing. */

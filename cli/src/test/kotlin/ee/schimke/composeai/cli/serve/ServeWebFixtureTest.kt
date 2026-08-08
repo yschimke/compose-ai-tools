@@ -916,6 +916,29 @@ class ServeWebFixtureTest {
             ServeTheme("High Contrast", "com.example.HighContrastThemeCatalog"),
           ),
       )
+    // The crowded-toolbar case: a viewer whose catalog declares the full Material 3 baseline +
+    // contrast theme set, so the Theme axis alone offers eight chips beside the four fixed toolbar
+    // controls. This is what the published `compose-m3` catalog actually looks like, and it is the
+    // shape that used to wrap the viewer bar onto three lines and push the stage below the fold.
+    // Committed so the single-row bar (chips shrinking, then scrolling within their own group) is
+    // diffed by the visual-diff bot on every PR rather than only ever checked by hand.
+    val viewerThemeOverflow =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ProfileScreenPreview") }.copy(uiMode = 0x20),
+        token,
+        siblings = previews,
+        sessionId = "compose-m3",
+        canApplyOverrides = true,
+        declaredThemes =
+          listOf(
+            ServeTheme("Baseline Dark", "com.example.BaselineDarkThemeCatalog"),
+            ServeTheme("Baseline Light", "com.example.BaselineLightThemeCatalog"),
+            ServeTheme("Dark High Contrast", "com.example.DarkHighContrastThemeCatalog"),
+            ServeTheme("Dark Medium Contrast", "com.example.DarkMediumContrastThemeCatalog"),
+            ServeTheme("Light High Contrast", "com.example.LightHighContrastThemeCatalog"),
+            ServeTheme("Light Medium Contrast", "com.example.LightMediumContrastThemeCatalog"),
+          ),
+      )
     // A daemon-backed viewer for a preview detected to support keyboard focus (`@FocusedPreview`):
     // the "Detected features" group with the "Keyboard focus" control appears, gated to daemon
     // sessions. Captured so the visual-diff bot covers the detected-feature control.
@@ -1634,6 +1657,7 @@ class ServeWebFixtureTest {
         "serve-viewer-signin.html" to viewerSignIn,
         "serve-viewer-catalog-knobs.html" to viewerCatalogKnobs,
         "serve-viewer-themes.html" to viewerThemes,
+        "serve-viewer-theme-overflow.html" to viewerThemeOverflow,
         "serve-viewer-focus.html" to viewerFocus,
         "serve-viewer-inspect.html" to viewerInspect,
         "serve-viewer-gestures.html" to viewerGestures,
@@ -3047,6 +3071,94 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `the viewer spends its vertical space on the render, not on chrome above it`() {
+    val view =
+      ServeWeb.viewerPage(
+        previews.first(),
+        token,
+        siblings = previews,
+        sessionId = "compose-m3",
+        catalogTitle = "Material 3 Design Kit",
+        sourceHref = "https://github.com/yschimke/compose-ai-tools/blob/main/Profile.kt",
+        engagement = ServeWeb.PreviewEngagement(1),
+      )
+
+    // 1. The breadcrumb is navigation, so it rides in the navigation bar rather than spending the
+    //    body's first row on it.
+    assertFalse(
+      view.substringAfter("<main class=\"cp-main\">").contains("cp-breadcrumb"),
+      "the trail is out of the body",
+    )
+    assertTrue(
+      view
+        .substringBefore("<main class=\"cp-main\">")
+        .contains(
+          "<nav class=\"cp-breadcrumb\" aria-label=\"Breadcrumb\">" +
+            "<a href=\"/?token=$token&amp;session=compose-m3\">Material 3 Design Kit</a>"
+        ),
+      "…and in the header's lead slot, still linking the catalog it came from",
+    )
+
+    // 2. Name, trust verdict, id and the view tally are ONE row — they answer one question.
+    val head = view.substringAfter("<div class=\"cp-preview-head\">").substringBefore("</div>")
+    assertTrue(head.contains("<h1 class=\"cp-head cp-preview-title\">"), head)
+    assertTrue(head.contains("<code class=\"cp-preview-id\""), head)
+    assertTrue(head.contains("<span class=\"cp-viewer-engage\">1 view</span>"), head)
+
+    // 3. The provenance links are hand-off affordances, so they sit with the other hand-off
+    //    affordances (the PNG / SVG export links) below the stage — not between the title and the
+    //    render.
+    assertTrue(
+      view.indexOf("class=\"cp-preview-links\"") > view.indexOf("class=\"cp-viewer "),
+      "the provenance row is below the stage",
+    )
+    assertTrue(
+      view.indexOf("class=\"cp-preview-links\"") < view.indexOf("class=\"cp-export\""),
+      "…and immediately above the export bar it now leads",
+    )
+  }
+
+  @Test
+  fun `the viewer toolbar stays one row however many themes a catalog declares`() {
+    val css = assetText("serve.css")
+    assertTrue(
+      css.contains(".cp-viewer-bar { display: flex; flex-wrap: nowrap;"),
+      "the bar cannot grow a second line and push the stage down",
+    )
+    assertTrue(
+      css.contains(".cp-viewer-bar > * { flex: none; }") &&
+        css.contains(".cp-theme-bar { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0;"),
+      "the theme group is the bar's only elastic member, so it absorbs the squeeze alone",
+    )
+    assertTrue(
+      css.contains("overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;") &&
+        css.contains(
+          ".cp-theme-bar .cp-theme-btn { display: inline-block; flex: 0 1 auto; min-width: 7em;"
+        ) &&
+        css.contains("overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }"),
+      "chips shrink (ellipsising) to a floor that keeps them tellable apart, and only past that " +
+        "does the group scroll within itself",
+    )
+    // Eight theme chips beside four fixed controls — the published compose-m3 shape, and what the
+    // committed `serve-viewer-theme-overflow` golden captures for the visual-diff bot.
+    val crowded =
+      ServeWeb.viewerPage(
+        previews.first(),
+        token,
+        siblings = previews,
+        sessionId = "compose-m3",
+        canApplyOverrides = true,
+        declaredThemes =
+          (1..6).map { ServeTheme("Declared theme $it", "com.example.Theme${'$'}it") },
+      )
+    assertEquals(
+      1,
+      crowded.split("class=\"cp-theme cp-theme-bar\"").size - 1,
+      "one theme group on the bar, not one per theme",
+    )
+  }
+
+  @Test
   fun `viewer defaults to fit screen and offers an explicit fit width mode`() {
     val view = ServeWeb.viewerPage(previews.first(), token)
     // One toggle, unpressed: screen fit is the default, and "Fit width" names the state the
@@ -3057,9 +3169,12 @@ class ServeWebFixtureTest {
       "the viewer offers width fit as an unpressed toggle over the default screen fit",
     )
     assertTrue(
-      assetText("viewer.js").contains("var maxHeight = mode === \"fit\" ? \"72vh\" : \"\";") &&
+      assetText("viewer.js").contains("var maxHeight = mode === \"fit\" ? fitCap() : \"\";") &&
+        assetText("viewer.js")
+          .contains("return Math.max(320, Math.round(window.innerHeight - top - 64)) + \"px\";") &&
         assetText("viewer.js").contains("applyZoom(\"fit\");"),
-      "screen fit bounds tall previews to the viewport before the initial render",
+      "screen fit bounds tall previews to the space the viewport actually has left below the " +
+        "chrome, measured before the initial render rather than guessed at 72vh",
     )
     assertTrue(
       assetText("viewer.js")
