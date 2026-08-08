@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "1fe41467c98c3a5a7f15d3de96ac0a6673c9d127",
+    "generatedFrom": "acc310649db5ab2a2e64f9a26baff1fb6995c2fc",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
@@ -4376,6 +4376,36 @@
                     "commit": "08407d5b17d15a41557c398fef823c03c8a48d9f",
                     "date": "2026-08-08T14:03:01Z",
                     "sourceSha": "06ec7fb4",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollToEndThemedPreview_Scroll To End Day": {
+            "path": "renders/samples:cmp/ScrollToEndThemedPreview_Scroll_To_End_Day.png",
+            "versions": [
+                {
+                    "blob": "0215523c2bb2f029f9b3c855311adbbd67bdf770",
+                    "commit": "acc310649db5ab2a2e64f9a26baff1fb6995c2fc",
+                    "date": "2026-08-08T19:34:28Z",
+                    "sourceSha": "ceef2f5a",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollToEndThemedPreview_Scroll To End Night": {
+            "path": "renders/samples:cmp/ScrollToEndThemedPreview_Scroll_To_End_Night.png",
+            "versions": [
+                {
+                    "blob": "0a749930de3b1300a617007c5b3772ae1f280db4",
+                    "commit": "acc310649db5ab2a2e64f9a26baff1fb6995c2fc",
+                    "date": "2026-08-08T19:34:28Z",
+                    "sourceSha": "ceef2f5a",
                     "commits": 1
                 }
             ],
@@ -9550,6 +9580,21 @@
                     "commit": "b254b04def240dcdb4d6087c8889d18a71bcc482",
                     "date": "2026-07-21T22:40:23Z",
                     "sourceSha": "a501ce03",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:wear/com.example.samplewear.SystemClockPreviewsKt.WearAppSystemClockPreview_Devices - Large Round": {
+            "path": "renders/samples:wear/WearAppSystemClockPreview_Devices_Large_Round.png",
+            "versions": [
+                {
+                    "blob": "3cdad760b538085fc15fbfb8329b504c0477039a",
+                    "commit": "acc310649db5ab2a2e64f9a26baff1fb6995c2fc",
+                    "date": "2026-08-08T19:34:28Z",
+                    "sourceSha": "ceef2f5a",
                     "commits": 1
                 }
             ],
