@@ -381,8 +381,22 @@
    */
   function scoreImageUrls(referenceUrl, candidateUrl) {
     return Promise.all([loadImage(referenceUrl), loadImage(candidateUrl)]).then(function (images) {
-      var referenceImage = images[0];
-      var candidateImage = images[1];
+      return scoreImages(images[0], images[1]);
+    });
+  }
+
+  /**
+   * [scoreImageUrls] over frames that are already decoded.
+   *
+   * Split out so a caller holding the images — the viewer's spec lane, which has just normalised
+   * them onto its canvases — can score the very frames it drew instead of re-requesting the URLs.
+   * That matters beyond the wasted work: an override-bearing `/render` is `no-store`, so a second
+   * request is a second render, and the score could end up describing a different frame than the
+   * diff beside it. The downscale still starts from the ORIGINAL images (not from the normalised
+   * canvases), so this is one resample exactly as before and the numbers are unchanged.
+   */
+  function scoreImages(referenceImage, candidateImage) {
+    return Promise.resolve().then(function () {
       var boxes = normalisedBoxes(referenceImage, candidateImage);
       var referenceBox = boxes.reference;
       var candidateBox = boxes.candidate;
@@ -447,7 +461,10 @@
         height: height,
         geometry: boxes.geometry,
         reference: boxCanvas(images[0], boxes.reference, width, height),
-        candidate: boxCanvas(images[1], boxes.candidate, width, height)
+        candidate: boxCanvas(images[1], boxes.candidate, width, height),
+        // The decoded originals, so a caller can score (see scoreImages) without asking the
+        // network for the same two frames a second time.
+        images: images
       };
     });
   }
@@ -504,7 +521,7 @@
   function compareImageUrls(referenceUrl, actualUrl, canvas) {
     return normaliseImageUrls(referenceUrl, actualUrl).then(function (frames) {
       var changed = diffCanvases(frames.reference, frames.candidate, canvas);
-      return scoreImageUrls(referenceUrl, actualUrl).then(function (score) {
+      return scoreImages(frames.images[0], frames.images[1]).then(function (score) {
         return {
           score: score.percent,
           geometry: score.geometry,
@@ -520,6 +537,7 @@
     scoreSvgUrls: scoreSvgUrls,
     scoreCanvas: scoreCanvas,
     scoreImageUrls: scoreImageUrls,
+    scoreImages: scoreImages,
     normaliseImageUrls: normaliseImageUrls,
     diffCanvases: diffCanvases,
     compareImageUrls: compareImageUrls

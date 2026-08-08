@@ -1161,23 +1161,36 @@
     img.hidden = false;
   }
   /**
-   * The render the spec is compared against: the exact bytes on the stage when we can name them,
-   * and a fresh `/render` URL when we cannot.
+   * The render the spec is compared against: the exact bytes that were on the stage when we can
+   * name them, and a fresh `/render` URL when we cannot.
    *
-   * Preferring the blob matters twice over. It costs no second render — an override-bearing render
-   * is `no-store`, so re-fetching the same URL renders again and can race the daemon's shared
-   * override state (see refreshSnapshot) — and it guarantees the comparison is against the pixels
-   * the visitor is actually looking at rather than a re-run that might land differently.
+   * Reusing the blob costs no second render — an override-bearing render is `no-store`, so
+   * re-fetching the same URL renders again and can race the daemon's shared override state (see
+   * refreshSnapshot) — and it guarantees the comparison is against the pixels the visitor was
+   * actually looking at rather than a re-run that might land differently.
    *
-   * Only when those bytes are the raster, though. A visitor arriving from the SVG toggle leaves a
-   * vector document in the blob, whose intrinsic size a `<canvas>` may not be able to resolve — so
-   * the blob is trusted only when `data-cp-src` (the /render URL that produced it) names a `.png`,
-   * and everything else falls back to asking for the PNG of the current controls.
+   * But the blob is only THAT frame when the visitor arrived from the static raster lane. Two cases
+   * where it is a stale bystander instead, and both must fall back to asking the server:
+   *
+   *  - **An interactive lane.** Live, Wasm and the Remote Compose players paint into a canvas or an
+   *    iframe while `#cp-img` still holds the snapshot fetched at page load. Worse, those lanes
+   *    apply overrides in place (the daemon takes `setOverrides` over the socket; the Wasm app
+   *    applies them in the browser) without ever re-pointing `/render` — so a theme or locale
+   *    changed in Live mode leaves the blob describing the state BEFORE that change. Comparing it
+   *    would score a frame the visitor never saw. `enterMode` records the outgoing lane before
+   *    tearing it down, which is the only moment that fact is still knowable.
+   *  - **The SVG toggle.** The blob then holds a vector document whose intrinsic size a `<canvas>`
+   *    may not be able to resolve. `data-cp-src` names the `/render` URL that produced the blob, so
+   *    its extension is the direct evidence of what those bytes are.
+   *
+   * The fallback is the PNG of the *current* controls, which is what the server would draw for the
+   * state the visitor is in — and if it cannot honour those overrides it refuses, and the
+   * comparison honestly reports itself unavailable rather than scoring the wrong frame.
    */
   function specActualUrl() {
     var blob = img.getAttribute("data-cp-blob");
     var rendered = (img.getAttribute("data-cp-src") || "").split("?")[0];
-    if (blob && rendered.slice(-4) === ".png") return blob;
+    if (blob && outgoingStage === "snapshot" && rendered.slice(-4) === ".png") return blob;
     return renderUrl(".png");
   }
 
@@ -1463,12 +1476,20 @@
   function svgOn() {
     return !!(svgToggle && svgToggle.getAttribute("aria-pressed") === "true");
   }
+  // The stage lane the current transition is leaving, latched by enterMode before it tears that
+  // lane down. Read by specActualUrl, which cannot otherwise tell whether the snapshot <img> holds
+  // the frame the visitor was looking at. Starts on the snapshot, which is what the page opens on.
+  var outgoingStage = "snapshot";
   function enterMode(m) {
     // A lane switch is a discrete choice, so the URL sync it ends up triggering pushes a history
     // entry rather than replacing one — Back returns to the lane the visitor came from. Set here
     // rather than on each control because every transition (radio, Live/Wasm/RC toggle, or an
     // auto-enable) passes through this function.
     urlPush = true;
+    // The lane being LEFT, read before any close() below tears it down. The spec lane's comparison
+    // needs it: whether the snapshot <img> holds the frame the visitor was actually looking at
+    // depends entirely on which lane they are arriving from (see specActualUrl).
+    outgoingStage = root.getAttribute("data-mode") || "snapshot";
     // A mode switch always clears a prior lane's error; the new lane re-raises its own if it fails.
     clearModeError();
     // The spec lane is closed by EVERY other transition (it has no per-branch close call below),

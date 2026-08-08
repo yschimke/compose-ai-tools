@@ -144,8 +144,12 @@
         copyInto(next.candidate, actualCanvas);
         var changed = diffCanvas ? api().diffCanvases(next.reference, next.candidate, diffCanvas) : 0;
         drawWipe();
+        // Scored from the frames just decoded, NOT by re-requesting the two URLs. An
+        // override-bearing `/render` is `no-store`, so asking again would be a second render — and
+        // a second render can come back different, leaving the percentage describing a frame other
+        // than the diff beside it.
         return api()
-          .scoreImageUrls(reference, actual)
+          .scoreImages(next.images[0], next.images[1])
           .then(function (result) {
             if (generation !== pending) return;
             var pixels = next.width * next.height;
