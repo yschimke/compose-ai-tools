@@ -581,6 +581,13 @@ The remote-m3 replacement corpus is guarded in CI, not recorded as a one-off man
   the regression it is sized to catch. Rows the baseline never measured are reported, never judged.
   Written up with its before/after in
   [`evidence/rc-compare-publish-gate/`](evidence/rc-compare-publish-gate/README.md).
+- **That job reports; it does not block.** It posts a sticky PR comment with the per-row report and
+  runs `continue-on-error`, because a parity delta is a judgement a human should make on the rows
+  rather than a merge veto — and because a guard that depends on a delivery branch it does not
+  control should earn a blocking role before it holds one. The step still goes red, and the renders
+  and pixel diffs are uploaded as `rc-cmp-wasm-parity`. Cost is measured, not assumed: 41 s to render
+  and diff 24 documents, 7 s for a warm `wasmPlayerDist`, so the job is dominated by the cold Gradle
+  build and the Chromium download — which is why it reads the shared `buildfetch-cache`.
 - The production distribution is capped at 23,000,000 raw bytes by `wasmPlayerDist`; the verified
   distribution is 22,756,717 bytes. Source maps and development-only formatters are not shipped.
 - The strict comparison lane caps cold and warm navigation-to-painted-ready time at 10,000 ms and

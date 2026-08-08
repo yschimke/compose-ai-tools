@@ -416,16 +416,37 @@ jobs:
   # baked Android references — and the baseline is the `rc-compare-summary.json` published beside
   # it. Fixed documents are what isolate the player: nothing here re-renders the catalog (no Android
   # toolchain, no ~6 minutes), so a moved number can only be the diff under test.
+  #
+  # Measured, because "is this too slow to be worth it" deserves a number rather than a guess: the
+  # render is 41 s for 24 documents (~1.7 s each, including the JS-player lane and the pixel diffs)
+  # and a warm `wasmPlayerDist` is 7 s. The job's cost is almost entirely the cold Gradle build and
+  # the Chromium download, so `buildfetch-cache` (read-only, same as the other PR jobs) is where the
+  # caching that matters happens — the Kotlin/Wasm compiles come back FROM-CACHE.
+  #
+  # `continue-on-error` on the job: this reports rather than blocks. It is new, it depends on a
+  # delivery branch it does not control, and a parity delta is a judgement call a human should make
+  # on a red-but-passable check — so it posts its report as a sticky PR comment and lets the merge
+  # proceed. The step still fails visibly, so the signal is not lost; promote it to blocking once it
+  # has a track record of only going red for real regressions.
   rc-cmp-wasm-parity:
     name: CMP/Wasm Parity
     needs: changes
     if: ${{ needs.changes.outputs.rc_player_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          # Read-only: a PR job never writes the shared cache (see functional-tests for the same
+          # reasoning). Reading is what turns the Kotlin/Wasm compile from minutes into seconds.
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Build the Wasm player distribution
         run: ./gradlew :rc-player-wasm:wasmPlayerDist
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -470,13 +491,60 @@ jobs:
             --system remote-m3 \
             --cmp-wasm "$GITHUB_WORKSPACE/rc-player/wasm/build/wasmDist" \
             --require-cmp-wasm
+      # `tee` so the same report reaches the log, the job summary (the script appends it itself) and
+      # the PR comment below — one text, three places, no chance of them disagreeing.
       - name: Compare against the published baseline
+        id: compare
         if: ${{ steps.corpus.outputs.available == 'true' }}
         working-directory: scripts/design-artifacts
         run: |
+          set -o pipefail
           node rc-compare-regression.mjs \
             --baseline "$RUNNER_TEMP/corpus/baseline.json" \
-            --current "$RUNNER_TEMP/parity-out/rc-compare-summary.json"
+            --current "$RUNNER_TEMP/parity-out/rc-compare-summary.json" \
+            | tee "$RUNNER_TEMP/parity-report.txt"
+      # Sticky comment, same shape as the vscode-preview-diff one: find our marker, PATCH it if it
+      # exists (no reviewer notification on a re-push), post it if it does not. Skipped for forks,
+      # whose GITHUB_TOKEN cannot write — the log and the job summary still carry the report.
+      - name: Comment the parity report on the PR
+        if: >-
+          ${{ always() && steps.corpus.outputs.available == 'true'
+              && github.event_name == 'pull_request'
+              && github.event.pull_request.head.repo.full_name == github.repository }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          OUTCOME: ${{ steps.compare.outcome }}
+        run: |
+          set -euo pipefail
+          MARKER="<!-- rc-cmp-wasm-parity -->"
+          if [ "$OUTCOME" = "success" ]; then
+            HEADLINE="✅ No CMP/Wasm parity regression against \`design-artifacts/remote-m3\`."
+          else
+            HEADLINE="⚠️ CMP/Wasm parity moved against \`design-artifacts/remote-m3\`. This check does not block merging — read the rows below and decide."
+          fi
+          {
+            echo "$MARKER"
+            echo "### Remote Compose CMP/Wasm parity"
+            echo
+            echo "$HEADLINE"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/parity-report.txt" 2>/dev/null || echo "the comparison did not produce a report"
+            echo '```'
+            echo
+            echo "Renders and pixel diffs are in the \`rc-cmp-wasm-parity\` artifact on [this run](https://github.com/$REPO/actions/runs/${{ github.run_id }})."
+          } > "$RUNNER_TEMP/parity-comment.md"
+          BODY=$(cat "$RUNNER_TEMP/parity-comment.md")
+          COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
+          if [ -n "$COMMENT_ID" ]; then
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" -X PATCH -f body="$BODY"
+          else
+            gh pr comment "$PR_NUMBER" --body "$BODY"
+          fi
       # The renders and diffs are the whole answer to "why did that row move", so they must survive
       # the failure that makes someone ask.
       - name: Upload parity renders

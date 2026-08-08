@@ -64,3 +64,22 @@ CMP/Wasm parity vs baseline: 0 regression(s), 0 improvement(s), 24 unchanged (±
 The second command is the noise control: two independent local runs over the same corpus produce
 identical mismatch percentages for all 24 rows, so the 0.25 pp delta has real headroom. The
 0.26% → 2.17% jump on `CompactRemoteButton` that this job exists to catch is nearly eight times it.
+
+## What it costs
+
+Measured on this container rather than estimated:
+
+| Step | Time |
+| --- | --- |
+| `rc-compare.mjs` over 24 documents (render, diff, page) | **41 s** |
+| `:rc-player-wasm:wasmPlayerDist`, warm | **7 s** |
+| `:rc-player-wasm:wasmPlayerDist`, cold with Gradle cache hits | ~3 min |
+
+The comparison itself is cheap; the job's cost is the cold Kotlin/Wasm build and the Chromium
+download, which is why it reads the shared `buildfetch-cache` (the player compiles come back
+`FROM-CACHE`). Nothing here re-renders the catalog, so there is no Android/Robolectric time in it at
+all.
+
+The job runs `continue-on-error` and posts a sticky PR comment with the report: it makes the delta
+visible and leaves the merge decision to a human, rather than blocking on a number that depends on a
+delivery branch the PR does not control.
