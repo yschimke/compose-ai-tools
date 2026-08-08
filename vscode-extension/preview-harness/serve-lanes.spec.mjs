@@ -313,13 +313,10 @@ test("Wasm iframe re-renders on knob override", async ({ page }) => {
   await knob.dispatchEvent("change");
 
   await expect
-    .poll(
-      async () => Buffer.compare(before, await frame.screenshot()) !== 0,
-      {
-        message: "Wasm stage pixels should change after the knob override",
-        timeout: 30000,
-      },
-    )
+    .poll(async () => Buffer.compare(before, await frame.screenshot()) !== 0, {
+      message: "Wasm stage pixels should change after the knob override",
+      timeout: 30000,
+    })
     .toBeTruthy();
 });
 
@@ -431,7 +428,9 @@ test("catalog selections land in the URL and Back restores them without reloadin
   const chosen = await chip.getAttribute("data-theme-choice");
   await chip.click();
   await expect
-    .poll(() => page.evaluate(() => new URLSearchParams(location.search).get("theme")))
+    .poll(() =>
+      page.evaluate(() => new URLSearchParams(location.search).get("theme")),
+    )
     .toBe(chosen);
 
   // A tab, when the catalog authored sections — the "select Components, then a theme, and the URL
@@ -442,7 +441,9 @@ test("catalog selections land in the URL and Back restores them without reloadin
     const slug = await tab.getAttribute("data-tab");
     await tab.click();
     await expect
-      .poll(() => page.evaluate(() => new URLSearchParams(location.search).get("tab")))
+      .poll(() =>
+        page.evaluate(() => new URLSearchParams(location.search).get("tab")),
+      )
       .toBe(slug);
     await expect(tab).toHaveAttribute("aria-selected", "true");
   }
@@ -451,12 +452,16 @@ test("catalog selections land in the URL and Back restores them without reloadin
   // here returns to the theme pick, not to a half-typed query.
   await page.fill("#cp-search", "a");
   await expect
-    .poll(() => page.evaluate(() => new URLSearchParams(location.search).get("q")))
+    .poll(() =>
+      page.evaluate(() => new URLSearchParams(location.search).get("q")),
+    )
     .toBe("a");
 
   await page.goBack();
   await expect
-    .poll(() => page.evaluate(() => new URLSearchParams(location.search).get("q")))
+    .poll(() =>
+      page.evaluate(() => new URLSearchParams(location.search).get("q")),
+    )
     .toBeNull();
   await expect(page.locator("#cp-search")).toHaveValue("");
   // Still the same document — the whole point is that Back re-points the grid rather than
@@ -469,10 +474,15 @@ test("a bookmarked catalog URL opens on the theme and tab it names", async ({
 }) => {
   await page.goto(`/${SYSTEM}/`, { waitUntil: "domcontentloaded" });
   const chips = page.locator(".cp-theme-btn");
-  test.skip((await chips.count()) < 2, "catalog offers no theme control to pick from");
+  test.skip(
+    (await chips.count()) < 2,
+    "catalog offers no theme control to pick from",
+  );
   const chosen = await chips.nth(1).getAttribute("data-theme-choice");
   const tabs = page.locator(".cp-tab");
-  const slug = (await tabs.count()) ? await tabs.nth(1).getAttribute("data-tab") : null;
+  const slug = (await tabs.count())
+    ? await tabs.nth(1).getAttribute("data-tab")
+    : null;
 
   const query = new URLSearchParams({ theme: chosen });
   if (slug) query.set("tab", slug);
@@ -490,9 +500,13 @@ test("a bookmarked catalog URL opens on the theme and tab it names", async ({
   }
 });
 
-test("viewer overrides ride the page URL and survive Back", async ({ page }) => {
+test("viewer overrides ride the page URL and survive Back", async ({
+  page,
+}) => {
   requirePreview();
-  await page.goto(`/${SYSTEM}/p/${previewId}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/${SYSTEM}/p/${previewId}`, {
+    waitUntil: "domcontentloaded",
+  });
   await openOverridesGroup(page);
 
   const knob = page.locator('.cp-knob[data-knob-key="label"]');
@@ -500,12 +514,189 @@ test("viewer overrides ride the page URL and survive Back", async ({ page }) => 
   await knob.dispatchEvent("input");
   await expect
     .poll(() =>
-      page.evaluate(() => new URLSearchParams(location.search).get("knob.label")),
+      page.evaluate(() =>
+        new URLSearchParams(location.search).get("knob.label"),
+      ),
     )
     .toBe(OVERRIDE);
 
   // Reloading that URL re-opens on the override — a bookmark, not just a live control state.
   await page.reload({ waitUntil: "domcontentloaded" });
   await openOverridesGroup(page);
-  await expect(page.locator('.cp-knob[data-knob-key="label"]')).toHaveValue(OVERRIDE);
+  await expect(page.locator('.cp-knob[data-knob-key="label"]')).toHaveValue(
+    OVERRIDE,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Live-lane text input (issue #3491).
+//
+// The Live lane forwards the visitor's real keyboard and mouse into a held
+// composition running in the render daemon. Two things about a text field are
+// easy to get silently wrong there, and were:
+//
+//   - typing needs the *character* on the wire, not just the physical keycode.
+//     Caret keys and Backspace map off the keycode alone, so the lane could look
+//     responsive — caret moves, Backspace deletes — while no character ever
+//     appeared;
+//   - selecting needs the pointer's *device class*. Compose only drags out a text
+//     selection for a mouse; a drag forwarded as touch is a gesture and leaves the
+//     selection alone.
+//
+// Both are asserted the only way that can't be faked from the client side: the
+// streamed frame's own pixels have to change. The daemon-side dispatch is unit
+// covered (`DesktopTextInputSessionTest`, `AndroidInteractiveSessionTest`); these
+// prove the browser half sends what those need.
+
+/** A preview id that renders a text field, or null when the catalog has none. */
+let textFieldPreviewId = null;
+
+test.beforeAll(async ({ request }) => {
+  const res = await request.get(`/${SYSTEM}/api/previews`);
+  if (!res.ok()) return;
+  const body = await res.json();
+  const previews = Array.isArray(body) ? body : (body.previews ?? []);
+  textFieldPreviewId =
+    previews.find((p) => /^textfield-/.test(p.id ?? ""))?.id ?? null;
+});
+
+/**
+ * The one catalog that is expected to carry a text field. The suite also runs against the Android
+ * lane's `androidlane` system, whose bundle is a single-card fixture with no text field at all —
+ * demanding one there fails a job for serving exactly what it was built to serve.
+ */
+const TEXT_FIELD_SYSTEM = "compose-m3";
+
+function requireTextField() {
+  if (!textFieldPreviewId && process.env.CI && SYSTEM === TEXT_FIELD_SYSTEM) {
+    throw new Error(
+      `no textfield-* preview at /${SYSTEM}/api/previews — refusing to green-skip the live text-input suite`,
+    );
+  }
+  test.skip(
+    !textFieldPreviewId,
+    `no textfield-* preview reachable at /${SYSTEM}/api/previews`,
+  );
+}
+
+/** Open the viewer on the text-field preview in Live mode with a painted frame. */
+async function openLiveTextField(page) {
+  await page.goto(`/${SYSTEM}/p/${textFieldPreviewId}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await page.click("#cp-live-toggle");
+  // The canvas only carries a buffer once a frame has painted; input forwarding
+  // is gated on exactly that (`liveActive()`), so waiting for it is also waiting
+  // for the lane to be able to accept input at all.
+  await expect
+    .poll(() => page.locator("#cp-canvas").evaluate((c) => c.width), {
+      timeout: 60000,
+    })
+    .toBeGreaterThan(0);
+  await expect(
+    page.locator("#cp-error"),
+    "live stream should open cleanly before driving input",
+  ).toBeHidden();
+  await page.waitForTimeout(1500);
+}
+
+/** The live canvas's current pixels, as a flat RGBA array. */
+function liveFrame(page) {
+  return page.locator("#cp-canvas").evaluate((c) => {
+    const ctx = c.getContext("2d");
+    return Array.from(ctx.getImageData(0, 0, c.width, c.height).data);
+  });
+}
+
+/** Percentage of pixels whose colour differs between two [liveFrame] snapshots. */
+function frameDiffPct(a, b) {
+  if (!a.length || a.length !== b.length) return 100;
+  let changed = 0;
+  for (let i = 0; i < a.length; i += 4) {
+    if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2])
+      changed++;
+  }
+  return (changed / (a.length / 4)) * 100;
+}
+
+/**
+ * Floor for "the composition visibly reacted", in percent of the frame's pixels.
+ *
+ * A bare "the frame changed at all" assertion would pass on nothing: a focused
+ * field blinks its caret, and a click that only *moves* the caret redraws it
+ * somewhere else. Measured against this lane, with a text field focused:
+ *
+ *   caret blink alone .................. 0.07%
+ *   caret moved, nothing typed ......... 0.13%
+ *   two characters typed ............... 0.99%
+ *   a drag-selection highlight ......... 0.67%
+ *
+ * 0.4% sits in the gap — comfortably above anything the caret can do by itself,
+ * comfortably below the smallest real edit. Without it, the selection test in
+ * particular would have gone green against the very bug it exists to catch.
+ */
+const REACTED_DIFF_PCT = 0.4;
+
+/** Centre of the live canvas in page coordinates. */
+async function liveCanvasBox(page) {
+  return await page.locator("#cp-canvas").boundingBox();
+}
+
+test("Live lane types the visitor's keystrokes into the field", async ({
+  page,
+}) => {
+  requireTextField();
+  await openLiveTextField(page);
+
+  const box = await liveCanvasBox(page);
+  // Click into the field to place the caret and focus the canvas.
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(2000);
+  const before = await liveFrame(page);
+
+  await page.keyboard.type("Zx", { delay: 400 });
+  await expect
+    .poll(async () => frameDiffPct(before, await liveFrame(page)), {
+      timeout: 30000,
+      message:
+        "typed characters must appear in the streamed frame — the keycode alone " +
+        "cannot type, the character has to ride the wire",
+    })
+    .toBeGreaterThan(REACTED_DIFF_PCT);
+});
+
+test("Live lane selects text on a mouse drag", async ({ page }) => {
+  requireTextField();
+  await openLiveTextField(page);
+
+  const box = await liveCanvasBox(page);
+  const y = box.y + box.height / 2;
+  await page.mouse.click(box.x + box.width / 2, y);
+  await page.waitForTimeout(2000);
+  const before = await liveFrame(page);
+
+  // Press and drag across the field's text. The press is deliberately separate
+  // from the moves: the viewer defers the pointerDown until the first move so a
+  // plain tap stays a click, and it is the move that promotes the gesture to a
+  // drag.
+  await page.mouse.move(box.x + box.width * 0.18, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) {
+    await page.mouse.move(box.x + box.width * (0.18 + 0.02 * i), y);
+    await page.waitForTimeout(80);
+  }
+  await page.mouse.up();
+
+  // A selection paints a highlight behind the selected glyphs. Dispatched as
+  // touch — which is what this lane used to do with every pointer — Compose
+  // treats the same drag as a gesture and paints no highlight at all; the frame
+  // then only differs by the caret the press moved, well under the floor.
+  await expect
+    .poll(async () => frameDiffPct(before, await liveFrame(page)), {
+      timeout: 30000,
+      message:
+        "a mouse drag must paint a selection highlight — a pointer forwarded as " +
+        "touch never starts one",
+    })
+    .toBeGreaterThan(REACTED_DIFF_PCT);
 });

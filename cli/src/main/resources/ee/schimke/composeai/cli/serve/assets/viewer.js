@@ -707,7 +707,11 @@
     var p = pixel(ev); if (!p) return;
     canvas.focus();
     try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
-    pointers[ev.pointerId] = { x: p.x, y: p.y, moved: false };
+    // The device class travels with every event of this gesture. Compose treats a mouse drag and
+    // a finger drag as different gestures — only the mouse one drags out a text selection — so
+    // forwarding a real mouse as touch made selection impossible on the live lane.
+    pointers[ev.pointerId] =
+      { x: p.x, y: p.y, moved: false, pointerType: ev.pointerType || "mouse" };
   });
   canvas.addEventListener("pointermove", function (ev) {
     if (!liveActive() || ev.buttons === 0) return; // only while pressed (a drag)
@@ -716,10 +720,12 @@
     if (!st.moved) {
       // First movement → this is a drag: emit the deferred press at the original point.
       st.moved = true;
-      sendInput({ kind: "pointerDown", pixelX: st.x, pixelY: st.y, pointerId: ev.pointerId });
+      sendInput({ kind: "pointerDown", pixelX: st.x, pixelY: st.y, pointerId: ev.pointerId,
+                  pointerType: st.pointerType });
     }
     pendingMoves[ev.pointerId] =
-      { kind: "pointerMove", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId };
+      { kind: "pointerMove", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId,
+        pointerType: st.pointerType };
     if (!moveScheduled) { moveScheduled = true; requestAnimationFrame(flushMoves); }
   });
   function endPointer(ev) {
@@ -728,10 +734,12 @@
     var p = pixel(ev) || { x: st.x, y: st.y };
     if (st.moved) {
       flushMoves();
-      sendInput({ kind: "pointerUp", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId });
+      sendInput({ kind: "pointerUp", pixelX: p.x, pixelY: p.y, pointerId: ev.pointerId,
+                  pointerType: st.pointerType });
     } else {
       // No drag → a tap. Send a single CLICK (the daemon renders between press and release).
-      sendInput({ kind: "click", pixelX: st.x, pixelY: st.y, pointerId: ev.pointerId });
+      sendInput({ kind: "click", pixelX: st.x, pixelY: st.y, pointerId: ev.pointerId,
+                  pointerType: st.pointerType });
     }
   }
   canvas.addEventListener("pointerup", endPointer);
@@ -766,12 +774,26 @@
       default: return null;
     }
   }
+  // A printable keystroke is one whose `key` is a single character (so not "Shift", "ArrowLeft",
+  // "Backspace", …) and isn't a control character. That character — not the keycode — is what the
+  // composition inserts: the keycode names a physical key, which is why the caret and Backspace
+  // used to work here while nothing could ever be typed.
+  function typedText(ev) {
+    if (ev.ctrlKey || ev.metaKey) return null;   // a shortcut, not typing
+    var k = ev.key;
+    if (typeof k !== "string" || Array.from(k).length !== 1) return null;
+    return k.charCodeAt(0) < 0x20 || k.charCodeAt(0) === 0x7f ? null : k;
+  }
   function keyInput(kind, ev) {
     if (!liveActive()) return;
     var code = androidKeycode(ev.key);
-    if (code === null) return;
+    var text = kind === "keyDown" ? typedText(ev) : null;
+    if (code === null && text === null) return;
     ev.preventDefault();
-    sendInput({ kind: kind, keyCode: code });
+    var msg = { kind: kind };
+    if (code !== null) msg.keyCode = code;
+    if (text !== null) msg.text = text;
+    sendInput(msg);
   }
   canvas.addEventListener("keydown", function (ev) { keyInput("keyDown", ev); });
   canvas.addEventListener("keyup", function (ev) { keyInput("keyUp", ev); });

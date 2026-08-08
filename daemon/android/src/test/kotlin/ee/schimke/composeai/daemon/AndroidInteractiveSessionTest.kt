@@ -385,6 +385,179 @@ class AndroidInteractiveSessionTest {
     }
   }
 
+  /**
+   * Issue #3491 — typing on the Android live lane. The pre-fix wire carried only the physical
+   * keycode, which drives Compose's *command* keys (caret, Backspace) but can never produce a
+   * character: whether a keycode types depends on the virtual keyboard's `KeyCharacterMap` and
+   * meta state. The character now rides alongside and is committed through the focused node's
+   * `InsertTextAtCursor` semantics action — the same entry point an IME commit uses.
+   *
+   * Fixture reports in pixels (it lives behind the sandbox classloader, so a shared probe object
+   * is not reachable): red = untouched, green = the value changed.
+   */
+  @Test
+  fun keyDownWithTextTypesIntoTheField() {
+    withTextFieldSession { session ->
+      val before = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+      assertTrue(
+        "text field fixture should start untouched (red)",
+        topStripMatchPct(before, RED_RGB) >= 0.8,
+      )
+
+      session.dispatch(
+        InteractiveInputParams(
+          frameStreamId = "irrelevant-on-host-side",
+          kind = InteractiveInputKind.KEY_DOWN,
+          keyCode = KEYCODE_A,
+          text = "a",
+        )
+      )
+
+      val after = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+      assertTrue(
+        "KEY_DOWN carrying text must change the field's value (green); got " +
+          "${"%.2f".format(topStripMatchPct(after, GREEN_RGB) * 100)}% green above the band",
+        topStripMatchPct(after, GREEN_RGB) >= 0.8,
+      )
+    }
+  }
+
+  /**
+   * One keystroke must insert exactly one character. The browser sends a printable key as *both* a
+   * mapped `keyCode` and its `text`, and Android's own `KeyCharacterMap` can turn the keycode into
+   * a character by itself — so a backend that acts on both commits the same character twice and a
+   * single `a` arrives as `aa`. The fixture distinguishes "one character" (green) from "the value
+   * changed somehow" (orange), which a latch on mere change could not.
+   */
+  @Test
+  fun keyDownWithBothKeycodeAndTextTypesTheCharacterOnce() {
+    withTextFieldSession { session ->
+      session.render(RenderHost.nextRequestId())
+
+      session.dispatch(
+        InteractiveInputParams(
+          frameStreamId = "irrelevant-on-host-side",
+          kind = InteractiveInputKind.KEY_DOWN,
+          keyCode = KEYCODE_A,
+          text = "a",
+        )
+      )
+
+      val after = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+      val once = pixelMatchPct(after, GREEN_RGB, perChannelTolerance = 8)
+      val duplicated = pixelMatchPct(after, DUPLICATED_RGB, perChannelTolerance = 8)
+      assertTrue(
+        "one keystroke must insert exactly one character; got " +
+          "${"%.2f".format(once * 100)}% green (one) / " +
+          "${"%.2f".format(duplicated * 100)}% orange (not one — a double commit)",
+        once >= 0.6,
+      )
+    }
+  }
+
+  /**
+   * A character with no Android keycode at all — `€` is not on the wire's key list, and neither is
+   * most of any non-US layout. Android's own `KeyCharacterMap` can turn `KEYCODE_A` into an `a`,
+   * which is why typing was never as broken here as on the desktop lane; it can do nothing at all
+   * with a key it has no code for. The carried character is what makes those keys work.
+   */
+  @Test
+  fun keyDownWithTextButNoKeycodeStillTypes() {
+    withTextFieldSession { session ->
+      session.render(RenderHost.nextRequestId())
+
+      session.dispatch(
+        InteractiveInputParams(
+          frameStreamId = "irrelevant-on-host-side",
+          kind = InteractiveInputKind.KEY_DOWN,
+          text = "€",
+        )
+      )
+
+      val after = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+      assertTrue(
+        "a keycode-less KEY_DOWN carrying a character must still type it; got " +
+          "${"%.2f".format(pixelMatchPct(after, GREEN_RGB, perChannelTolerance = 8) * 100)}% green",
+        pixelMatchPct(after, GREEN_RGB, perChannelTolerance = 8) >= 0.6,
+      )
+    }
+  }
+
+  /**
+   * Issue #3491 — a mouse press-drag selects text; the same drag as touch does not. Compose treats
+   * them as different gestures, and every pointer used to be synthesised as touch.
+   */
+  @Test
+  fun mouseDragSelectsTextButTouchDragDoesNot() {
+    withTextFieldSession { session ->
+      session.render(RenderHost.nextRequestId())
+
+      dragAcrossText(session, pointerType = null)
+      val afterTouch = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+      assertTrue(
+        "a touch drag must not select text (touch selection needs long-press + handles); got " +
+          "${"%.2f".format(topStripMatchPct(afterTouch, BLUE_RGB) * 100)}% blue",
+        topStripMatchPct(afterTouch, BLUE_RGB) < 0.2,
+      )
+
+      dragAcrossText(session, pointerType = "mouse")
+      val afterMouse = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+      assertTrue(
+        "a mouse drag across the text must leave a selection (blue); got " +
+          "${"%.2f".format(topStripMatchPct(afterMouse, BLUE_RGB) * 100)}% blue above the band — " +
+          "this is the load-bearing #3491 assertion (pointers used to be dispatched as touch, " +
+          "which never starts a text selection)",
+        topStripMatchPct(afterMouse, BLUE_RGB) >= 0.8,
+      )
+    }
+  }
+
+  /** Press near the start of the text, drag across it, release. One pointer, one device class. */
+  private fun dragAcrossText(session: InteractiveSession, pointerType: String?) {
+    listOf(
+      InteractiveInputKind.POINTER_DOWN to TEXT_DRAG_START_X,
+      InteractiveInputKind.POINTER_MOVE to TEXT_DRAG_END_X,
+      InteractiveInputKind.POINTER_UP to TEXT_DRAG_END_X,
+    )
+      .forEach { (kind, x) ->
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "irrelevant-on-host-side",
+            kind = kind,
+            pixelX = x,
+            pixelY = TEXT_BASELINE_Y,
+            pointerId = 0,
+            pointerType = pointerType,
+          )
+        )
+      }
+  }
+
+  /** Boot a host over [EditableTextFieldSquare], hand [body] a live session, tear both down. */
+  private fun withTextFieldSession(body: (InteractiveSession) -> Unit) {
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("interactive-text-field").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = TEXT_FIELD_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        body(session)
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   @Test
   fun pointerUpUsesReleaseCoordinates() {
     System.setProperty(
@@ -1093,6 +1266,19 @@ class AndroidInteractiveSessionTest {
           showBackground = true,
           outputBaseName = "interactive-clickable",
         )
+      TEXT_FIELD_PREVIEW_ID ->
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "EditableTextFieldSquare",
+          // Deliberately taller than the other fixtures: focusing a text field raises the
+          // always-on soft-keyboard band, which would cover a 96×96 frame end to end. Assertions
+          // read the top strip, above the band.
+          widthPx = TEXT_FIELD_WIDTH_PX,
+          heightPx = TEXT_FIELD_HEIGHT_PX,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "interactive-text-field",
+        )
       SCROLL_PREVIEW_ID ->
         RenderSpec(
           className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
@@ -1159,6 +1345,19 @@ class AndroidInteractiveSessionTest {
       ?: error("ImageIO refused to decode capture: ${file.absolutePath}")
   }
 
+  /**
+   * Fraction of the frame's top strip matching [rgb]. The text-field fixture's frame carries the
+   * soft-keyboard band along its bottom (focusing a field raises it), so a whole-image match would
+   * be dominated by keyboard pixels no matter what the field did. The strip is the field's own
+   * area, well above the band.
+   */
+  private fun topStripMatchPct(img: java.awt.image.BufferedImage, rgb: Int): Double =
+    pixelMatchPct(
+      img.getSubimage(0, 0, img.width, (img.height * TEXT_FIELD_STRIP_FRACTION).toInt()),
+      rgb,
+      perChannelTolerance = 8,
+    )
+
   private fun pixelMatchPct(
     img: java.awt.image.BufferedImage,
     expectedRgb: Int,
@@ -1192,6 +1391,21 @@ class AndroidInteractiveSessionTest {
     private const val DARK_PREVIEW_ID = "interactive-darkaware"
     private const val CLICKABLE_PREVIEW_ID = "interactive-clickable"
     private const val SCROLL_PREVIEW_ID = "interactive-scroll"
+    private const val TEXT_FIELD_PREVIEW_ID = "interactive-text-field"
+
+    /** `KEYCODE_A`, the wire's decimal-string spelling. */
+    private const val KEYCODE_A = "29"
+
+    private const val TEXT_FIELD_WIDTH_PX = 240
+    private const val TEXT_FIELD_HEIGHT_PX = 480
+
+    /** Top fraction of the text-field frame that sits above the soft-keyboard band. */
+    private const val TEXT_FIELD_STRIP_FRACTION = 0.25
+
+    /** Inside the seeded text, on its single line, at density 1. */
+    private const val TEXT_DRAG_START_X = 2
+    private const val TEXT_DRAG_END_X = 40
+    private const val TEXT_BASELINE_Y = 8
     private const val RELEASE_POSITION_PREVIEW_ID = "interactive-release-position"
     private const val ROTARY_PREVIEW_ID = "interactive-rsb"
     private const val NOTIFICATION_PREVIEW_ID = "interactive-notification"
@@ -1201,6 +1415,12 @@ class AndroidInteractiveSessionTest {
     private const val INTERACTIVE_HEIGHT_PX = 96
     private const val RED_RGB = 0xEF5350
     private const val GREEN_RGB = 0x66BB6A
+
+    /** [EditableTextFieldSquare]'s "something is selected" background. */
+    private const val BLUE_RGB = 0x42A5F5
+
+    /** [EditableTextFieldSquare]'s "the value changed by something other than one char". */
+    private const val DUPLICATED_RGB = 0xFFA726
     private const val BLACK_RGB = 0x000000
     private const val WHITE_RGB = 0xFFFFFF
   }

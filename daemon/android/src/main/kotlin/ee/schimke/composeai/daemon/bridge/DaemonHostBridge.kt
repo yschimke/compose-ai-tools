@@ -499,6 +499,19 @@ sealed interface InteractiveCommand {
      */
     val keyCode: String? = null,
     /**
+     * Issue #3491 — the literal character a `keyDown` typed (the browser's `KeyboardEvent.key`
+     * when printable). [keyCode] names the physical key; this names what it produced, which is
+     * what a `TextField` actually inserts. Plain `java.lang.String`, like [keyCode].
+     */
+    val text: String? = null,
+    /**
+     * Issue #3491 — `"mouse"` / `"touch"` / `"pen"`, the pointing device this event came from.
+     * Null means touch (every client before the field existed). Decides whether the sandbox
+     * synthesises the gesture through `performTouchInput` or `performMouseInput`; only the latter
+     * drags out a text selection.
+     */
+    val pointerType: String? = null,
+    /**
      * Issue #1784 — optional semantic target. When any of these is set the sandbox resolves it to
      * the matched node's centre (via `ComposeSemanticsDataProducer.buildPayload` +
      * `SemanticsTargets`) and dispatches there instead of using [pixelX]/[pixelY]. Passed as plain

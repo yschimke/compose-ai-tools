@@ -1946,7 +1946,54 @@ data class InteractiveInputParams(
   val scrollDeltaY: Float? = null,
   /** For `keyDown` / `keyUp`. */
   val keyCode: String? = null,
+  /**
+   * The literal text a `keyDown` produced — the browser's `KeyboardEvent.key` when it is a single
+   * printable character (`"a"`, `"Z"`, `"€"`), absent for every non-printing key (`ArrowLeft`,
+   * `Backspace`, `Shift`, …) and for `keyUp`.
+   *
+   * [keyCode] alone cannot express typing: it identifies the *physical* key, and Compose's text
+   * editing pipeline inserts characters from the event's code point, not its key. `KEYCODE_A` with
+   * no code point moves focus and fires `onKeyEvent`, but a `TextField` receiving it does nothing —
+   * which is why caret movement and deletion (both keyed off [keyCode] alone) used to work on the
+   * interactive lanes while typing silently did not (issue #3491).
+   *
+   * Sent alongside [keyCode] rather than instead of it, so a consumer's `Modifier.onKeyEvent` still
+   * sees the physical key it expects.
+   */
+  val text: String? = null,
+  /**
+   * Which kind of pointing device a pointer event came from — `"mouse"`, `"touch"` or `"pen"`,
+   * matching the DOM `PointerEvent.pointerType` spelling. Absent (or unrecognised) means touch,
+   * which is the behaviour every client had before the field existed.
+   *
+   * Load-bearing for text selection: Compose only starts a drag-selection in a text field for a
+   * *mouse* press-and-drag. A touch drag is a scroll/gesture and leaves the selection alone, so a
+   * browser mouse drag forwarded as touch reads to the composition as "no selection happened"
+   * (issue #3491). Multi-touch gestures still need genuine touch pointers, so the type travels
+   * per-event rather than being pinned per backend.
+   */
+  val pointerType: String? = null,
 )
+
+/**
+ * Wire spelling of [InteractiveInputParams.pointerType], parsed to the three device classes both
+ * backends know how to synthesise. Unknown / absent values fall back to [TOUCH] so a client that
+ * predates the field keeps its old dispatch behaviour exactly.
+ */
+enum class InteractivePointerType {
+  MOUSE,
+  TOUCH,
+  PEN;
+
+  companion object {
+    fun parse(wire: String?): InteractivePointerType =
+      when (wire?.trim()?.lowercase()) {
+        "mouse" -> MOUSE
+        "pen" -> PEN
+        else -> TOUCH
+      }
+  }
+}
 
 /**
  * A stable handle for the node an interaction targets, resolved server-side against the live

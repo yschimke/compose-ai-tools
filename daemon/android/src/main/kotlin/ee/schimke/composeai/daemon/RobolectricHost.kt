@@ -12,9 +12,13 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasRequestFocusAction
+import androidx.compose.ui.test.isFocused
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.text.AnnotatedString
 import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
 import ee.schimke.composeai.daemon.bridge.InteractiveCommand
@@ -2755,6 +2759,12 @@ open class RobolectricHost(
             // that frame back to the preview's own size. Re-measured on each recomposition, so a
             // live edit that changes the composable's size is reflected on the next frame.
             val heldMeasuredContent = intArrayOf(0, 0)
+            // Same per-session reset the one-shot renderer does before every render
+            // (`RobolectricRenderTest`): the soft-keyboard band's state holder is a JVM-wide
+            // singleton, so without this a live session that focused a text field — which raises
+            // the band through the shadowed `LocalSoftwareKeyboardController` — leaves the band up
+            // for the *next* preview held in the same daemon.
+            KeyboardController.resetForNewSession()
             setupTrace.section("compose:setContent") {
               rule.setContent {
                 androidx.compose.runtime.key(reloadCounter.intValue) {
@@ -3008,8 +3018,7 @@ open class RobolectricHost(
                         rule.mainClock.advanceTimeBy(cmd.advanceTimeMs ?: HELD_CAPTURE_ADVANCE_MS)
                       }
                       renderTrace.section("render:captureRoboImage") {
-                        rule
-                          .onRoot()
+                        heldSurfaceRoot(rule)
                           .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
                         // Same crop the one-shot path applies (`RenderEngine.render`), so a
                         // wrap-content preview streams at its own size instead of the sandbox
@@ -3678,26 +3687,54 @@ open class RobolectricHost(
       cmd: InteractiveCommand.Dispatch,
       position: Offset,
     ) {
+      // Issue #3491 — a mouse drag and a finger drag are different gestures to Compose, and only
+      // the mouse one drags out a text selection. The wire now says which device it was; absent
+      // (every pre-#3491 client) still means touch.
+      val mouse = cmd.pointerType?.trim()?.lowercase() == "mouse"
       when (cmd.kind) {
         "click" -> {
           if (!performClickActionAt(rule, position)) {
-            rule.onRoot().performTouchInput { down(position) }
-            rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
-            rule.onRoot().performTouchInput { move() }
-            rule.mainClock.advanceTimeBy(POINTER_HOLD_MS - POINTER_MOVE_MS)
-            rule.onRoot().performTouchInput { up() }
+            if (mouse) {
+              // MouseInjectionScope has a cursor position of its own; `press()` takes a button,
+              // not a point, so the cursor is moved first.
+              heldSurfaceRoot(rule).performMouseInput {
+                moveTo(position)
+                press()
+              }
+              rule.mainClock.advanceTimeBy(POINTER_HOLD_MS)
+              heldSurfaceRoot(rule).performMouseInput { release() }
+            } else {
+              heldSurfaceRoot(rule).performTouchInput { down(position) }
+              rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+              heldSurfaceRoot(rule).performTouchInput { move() }
+              rule.mainClock.advanceTimeBy(POINTER_HOLD_MS - POINTER_MOVE_MS)
+              heldSurfaceRoot(rule).performTouchInput { up() }
+            }
           }
         }
         "pointerDown" -> {
-          rule.onRoot().performTouchInput { down(position) }
+          if (mouse) {
+            heldSurfaceRoot(rule).performMouseInput {
+              moveTo(position)
+              press()
+            }
+          } else heldSurfaceRoot(rule).performTouchInput { down(position) }
         }
         "pointerMove" -> {
-          rule.onRoot().performTouchInput { moveTo(position) }
+          if (mouse) heldSurfaceRoot(rule).performMouseInput { moveTo(position) }
+          else heldSurfaceRoot(rule).performTouchInput { moveTo(position) }
         }
         "pointerUp" -> {
-          rule.onRoot().performTouchInput {
-            moveTo(position)
-            up()
+          if (mouse) {
+            heldSurfaceRoot(rule).performMouseInput {
+              moveTo(position)
+              release()
+            }
+          } else {
+            heldSurfaceRoot(rule).performTouchInput {
+              moveTo(position)
+              up()
+            }
           }
         }
         "rotaryScroll" -> {
@@ -3707,8 +3744,8 @@ open class RobolectricHost(
             dispatchRotaryScroll(rule, position, delta)
           }
         }
-        "keyDown" -> dispatchHeldKeyEvent(rule, cmd.keyCode, down = true)
-        "keyUp" -> dispatchHeldKeyEvent(rule, cmd.keyCode, down = false)
+        "keyDown" -> dispatchHeldKeyEvent(rule, cmd.keyCode, cmd.text, down = true)
+        "keyUp" -> dispatchHeldKeyEvent(rule, cmd.keyCode, text = null, down = false)
       }
     }
 
@@ -3728,13 +3765,59 @@ open class RobolectricHost(
           androidx.activity.ComponentActivity,
         >,
       keyCode: String?,
+      text: String?,
       down: Boolean,
     ) {
-      val code = InteractiveKeyCodes.parse(keyCode) ?: return
-      // Android's actual `Key(nativeKeyCode: Int)` builds a Compose `Key` directly from the
-      // Android `KEYCODE_*` int — same shape the wire carries.
-      val key = androidx.compose.ui.input.key.Key(nativeKeyCode = code)
-      rule.onRoot().performKeyInput { if (down) keyDown(key) else keyUp(key) }
+      // Issue #3491 — exactly one of these two may produce text, or one keystroke arrives twice.
+      //
+      // Unlike the desktop backend (whose synthesised `KeyEvent(key, KeyDown)` carries no code
+      // point and so *cannot* type), an injected Android key event resolves its own character
+      // through the virtual keyboard's `KeyCharacterMap`. That is why typing was never as broken
+      // here — and it means a keyDown that both replays the keycode and commits the carried
+      // character inserts `aa` for one `a`.
+      //
+      // The carried character wins whenever there is one. It is the only half that is right for
+      // the whole keyboard: `KeyCharacterMap` cannot produce a character for a key Android has no
+      // keycode for (`€`, most non-US layouts), and the wire's keycode is case-blind, so the
+      // keycode path would type `a` for a typed `A`. It goes in through the focused node's
+      // `InsertTextAtCursor` — the same entry point an IME commit uses, honouring caret and
+      // selection.
+      val typed = down && !text.isNullOrEmpty()
+      val code = InteractiveKeyCodes.parse(keyCode)
+      if (code != null && !typed) {
+        // Android's actual `Key(nativeKeyCode: Int)` builds a Compose `Key` directly from the
+        // Android `KEYCODE_*` int — same shape the wire carries. This drives the *command* keys:
+        // caret movement, Backspace, Delete, Enter — and every key release, which types nothing.
+        val key = androidx.compose.ui.input.key.Key(nativeKeyCode = code)
+        heldSurfaceRoot(rule).performKeyInput { if (down) keyDown(key) else keyUp(key) }
+      }
+      if (typed) insertTypedText(rule, text)
+    }
+
+    /**
+     * Insert [text] into whichever focused node accepts text, honouring caret and selection.
+     * No-op when there is no text, or nothing focused that can take it (a keystroke over a
+     * non-editable preview must stay a keystroke, not an error).
+     */
+    private fun insertTypedText(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      text: String?,
+    ) {
+      if (text.isNullOrEmpty()) return
+      val focused =
+        rule
+          .onAllNodes(isFocused(), useUnmergedTree = true)
+          .fetchSemanticsNodes(atLeastOneRootRequired = false)
+          .firstOrNull { SemanticsActions.InsertTextAtCursor in it.config } ?: return
+      rule.runOnUiThread {
+        focused.config[SemanticsActions.InsertTextAtCursor].action?.invoke(AnnotatedString(text))
+      }
+      rule.mainClock.advanceTimeBy(POINTER_MOVE_MS)
+      rule.waitForIdle()
     }
 
     private fun performClickActionAt(
@@ -4186,4 +4269,34 @@ open class RobolectricHost(
       private val UNRESOLVED_REASON_JSON: Json = Json { encodeDefaults = true }
     }
   }
+}
+
+/**
+ * The semantics root a held interactive session should inject input into and capture pixels from.
+ *
+ * `onRoot()` asserts there is exactly one root, and plenty of ordinary content breaks that
+ * assumption the moment it becomes interactive: focusing a text field puts Compose's selection
+ * handles and magnifier in windows of their own, each of which is another semantics root. Before
+ * this, the first focus turned every later injection into "Expected exactly '1' node but found
+ * '2'" and pointed the capture at a mostly-empty popup window instead of the preview — so a
+ * selection drag appeared to do nothing, and the frame after it went blank.
+ *
+ * Resolution reuses the one-shot renderer's [selectRenderedSurfaceSemanticsRoot], so a live frame
+ * and a baked frame of the same preview agree on which surface is "the preview". Falls back to
+ * `onRoot()` whenever there is nothing to disambiguate.
+ */
+private fun heldSurfaceRoot(
+  rule: androidx.compose.ui.test.junit4.AndroidComposeTestRule<*, androidx.activity.ComponentActivity>
+): androidx.compose.ui.test.SemanticsNodeInteraction {
+  val rootInteractions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
+  val roots =
+    runCatching { rootInteractions.fetchSemanticsNodes(atLeastOneRootRequired = false) }
+      .getOrDefault(emptyList())
+  if (roots.size <= 1) return rule.onRoot()
+  val resolved =
+    selectRenderedSurfaceSemanticsRoot(
+      roots = roots,
+      activityDecorView = rule.activity.window.decorView,
+    ) ?: return rule.onRoot()
+  return rootInteractions[roots.indexOf(resolved)]
 }

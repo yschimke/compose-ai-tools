@@ -940,3 +940,76 @@ fun MaterialIconRowPreview() {
     }
   }
 }
+
+/**
+ * Editable text field for the typing / mouse-drag-selection dispatch tests (issue #3491).
+ *
+ * The Android sandbox runs fixtures under its own instrumented classloader, so a static probe the
+ * test could read is not an option — the fixture reports what happened to it in pixels. It latches:
+ * the first time the value gains characters, or gains a non-collapsed selection, the field is
+ * *replaced* by a solid colour.
+ *
+ * Replacing rather than merely recolouring is load-bearing. Compose puts a focused field's
+ * selection handles and magnifier in windows of their own, and a held session capturing while one
+ * is open streams the handle's little window instead of the preview. Disposing the field disposes
+ * those popups, so the frame under assertion is unambiguously the preview surface.
+ *
+ * Self-focusing, so keyboard dispatch needs no preparatory click.
+ */
+@Composable
+fun EditableTextFieldSquare() {
+  var outcome by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+  if (outcome != 0) {
+    val color =
+      when (outcome) {
+        OUTCOME_SELECTED -> Color(0xFF42A5F5)
+        OUTCOME_TYPED_ONE -> Color(0xFF66BB6A)
+        // A distinct colour for "more characters arrived than were typed" — the shape a
+        // double-committed keystroke takes. Latching on a bare "the value changed" would report
+        // that as success, which is exactly how a duplicate would slip through.
+        else -> Color(0xFFFFA726)
+      }
+    Box(modifier = Modifier.fillMaxSize().background(color))
+    return
+  }
+  var value by
+    androidx.compose.runtime.remember {
+      androidx.compose.runtime.mutableStateOf(
+        androidx.compose.ui.text.input.TextFieldValue(
+          TEXT_FIELD_SEED,
+          androidx.compose.ui.text.TextRange(TEXT_FIELD_SEED.length),
+        )
+      )
+    }
+  val focusRequester = androidx.compose.runtime.remember { FocusRequester() }
+  LaunchedEffect(Unit) { focusRequester.requestFocus() }
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350))) {
+    androidx.compose.foundation.text.BasicTextField(
+      value = value,
+      onValueChange = {
+        value = it
+        val inserted = it.text.length - TEXT_FIELD_SEED.length
+        outcome =
+          when {
+            inserted == 1 -> OUTCOME_TYPED_ONE
+            it.text != TEXT_FIELD_SEED -> OUTCOME_TYPED_OTHER
+            !it.selection.collapsed -> OUTCOME_SELECTED
+            else -> 0
+          }
+      },
+      textStyle = androidx.compose.ui.text.TextStyle(color = Color.Black),
+      modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+    )
+  }
+}
+
+/** Seed content of [EditableTextFieldSquare] — long enough that a drag can select part of it. */
+const val TEXT_FIELD_SEED: String = "Filled"
+
+/** Exactly one character arrived for one keystroke — what typing is supposed to do. */
+private const val OUTCOME_TYPED_ONE = 1
+
+private const val OUTCOME_SELECTED = 2
+
+/** The value changed by something other than one character (a duplicate, most likely). */
+private const val OUTCOME_TYPED_OTHER = 3

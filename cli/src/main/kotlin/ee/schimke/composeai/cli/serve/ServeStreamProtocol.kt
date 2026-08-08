@@ -52,6 +52,13 @@ object ServeStreamProtocol {
       val pointerId: Int?,
       val scrollDeltaY: Float?,
       val keyCode: String?,
+      /**
+       * The character a `keyDown` typed — the browser's `KeyboardEvent.key` when printable. The
+       * keycode alone identifies a physical key and cannot type (issue #3491).
+       */
+      val text: String?,
+      /** DOM `PointerEvent.pointerType`: `"mouse"` / `"touch"` / `"pen"`. Absent means touch. */
+      val pointerType: String?,
     ) : ClientMessage
 
     /** Unrecognised message; [reason] is echoed back as an error rather than crashing the lane. */
@@ -97,6 +104,8 @@ object ServeStreamProtocol {
             pointerId = (obj["pointerId"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
             scrollDeltaY = (obj["scrollDeltaY"] as? JsonPrimitive)?.contentOrNull?.toFloatOrNull(),
             keyCode = (obj["keyCode"] as? JsonPrimitive)?.contentOrNull,
+            text = (obj["text"] as? JsonPrimitive)?.contentOrNull,
+            pointerType = (obj["pointerType"] as? JsonPrimitive)?.contentOrNull,
           )
         else -> ClientMessage.Unsupported("unknown message type: $type")
       }

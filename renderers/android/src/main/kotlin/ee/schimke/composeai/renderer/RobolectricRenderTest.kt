@@ -1095,7 +1095,14 @@ abstract class RobolectricRenderTestBase(
           // opt-in needed. The state holder `KeyboardController` is reset before each render
           // so previews don't leak visibility / pressed-key state into one another.
           KeyboardController.resetForNewSession()
-          val keyboardExtension = KeyboardOverrideExtension()
+          // `device` (or `showSystemUi`, which implies a whole screen) is the preview's own
+          // statement that it is a screen rather than a component, and decides whether the band
+          // draws at all on a surface too short for the size rule to recognise — a landscape
+          // phone, a wearable (issue #3491).
+          val keyboardExtension =
+            KeyboardOverrideExtension(
+              deviceScoped = !params.device.isNullOrBlank() || params.showSystemUi
+            )
           // `@AmbientPreview` discovery stamps the same `AmbientCapture` onto every capture
           // of an annotated function (single-shot per function — one preview produces one
           // ambient state). Wrap the composition with `AmbientOverrideExtension` from

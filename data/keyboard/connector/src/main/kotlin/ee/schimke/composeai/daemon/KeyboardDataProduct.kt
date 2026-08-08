@@ -55,7 +55,16 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  * user-environment phase reaches preview content — text fields composed in user code see the shadow
  * rather than the platform default.
  */
-class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
+class KeyboardOverrideExtension(
+  private val seed: KeyboardOverride? = null,
+  /**
+   * Whether this render is scoped to a device — a `@Preview(device = …)` / an override naming one.
+   * A device preview is a whole screen by definition, so it gets the soft-keyboard band whatever
+   * its dimensions: a landscape phone and a small wearable are both short, and both are screens.
+   * `false` leaves the decision to the surface's own size (issue #3491).
+   */
+  private val deviceScoped: Boolean = false,
+) :
   AroundComposableExtension(
     id = ID,
     constraints =
@@ -64,6 +73,10 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
         provides = setOf(DataExtensionCapability(Material3KeyboardProduct.KIND)),
       ),
   ) {
+  /** Whether the planner marked this render device-scoped. Readable so tests can pin it. */
+  val isDeviceScoped: Boolean
+    get() = deviceScoped
+
   @Composable
   override fun AroundComposable(content: @Composable () -> Unit) {
     if (seed != null) {
@@ -80,9 +93,32 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
     // that same call here and surface it through [KeyboardController.notifyImeVisibility].
     val shadow = remember { ObservingSoftwareKeyboardController() }
     CompositionLocalProvider(LocalSoftwareKeyboardController provides shadow) {
-      val visible by KeyboardController.softInputVisible
+      val configuration = LocalConfiguration.current
+      val imeVisible by KeyboardController.softInputVisible
       val pressedKey by KeyboardController.pressedKey
-      val night = (LocalConfiguration.current.uiMode and UI_MODE_NIGHT_MASK) == UI_MODE_NIGHT_YES
+      val night = (configuration.uiMode and UI_MODE_NIGHT_MASK) == UI_MODE_NIGHT_YES
+      // The band models a *device's* on-screen keyboard, so it belongs on device previews and
+      // nowhere else. A component preview — a catalog sticker of a single text field, say — is a
+      // few hundred pixels tall, and a 240dp band over it buries the very component under review.
+      // On those, the browser's own physical keyboard is the input device; there is nothing to
+      // draw. Focusing a `BasicTextField` raises the IME on any surface (that is what a real
+      // device does), so it cannot be the signal on its own.
+      //
+      // Three ways to be a screen, in order of authority:
+      //  * an explicit `KeyboardOverride(visible = …)` — a caller pinning the band is never
+      //    overruled by a heuristic, in either direction;
+      //  * [deviceScoped] — a device preview is a screen no matter its dimensions, which is what
+      //    keeps landscape phones and wearables (both shorter than any height rule could allow)
+      //    rendering their IME, insets and all;
+      //  * failing both, the surface is tall enough to be one.
+      //
+      // Wrap-content previews are covered from the other side: they compose against the generous
+      // sandbox window, so the band lands far below the measured content and the wrap crop removes
+      // it along with the rest of the empty window.
+      val requested by KeyboardController.requestedVisible
+      val screenSized =
+        deviceScoped || configuration.screenHeightDp >= MIN_SCREEN_HEIGHT_FOR_BAND_DP
+      val visible = requested ?: (imeVisible && screenSized)
 
       // Publish synthetic `WindowInsetsCompat.Type.ime()` insets on the host view so consumer code
       // reading `WindowInsets.ime` (e.g. `Modifier.imePadding()`,
@@ -149,6 +185,17 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
      */
     private const val UI_MODE_NIGHT_MASK = 0x30
     private const val UI_MODE_NIGHT_YES = 0x20
+
+    /**
+     * Shortest surface the band will draw on when nothing else identifies the render as a screen:
+     * two band-heights, so the keyboard never takes more than half the frame.
+     *
+     * Two, not three: a plain `@Preview(widthDp = 360, heightDp = 640)` is a phone — the shape the
+     * repo's own `SoftKeyboardIdlePreview` / `ImeAwareListShownPreview` samples use — and a third
+     * of the frame would have excluded it. Anything shorter that really is a screen (a landscape
+     * phone, a wearable) says so through `device` / `showSystemUi` and never reaches this rule.
+     */
+    internal const val MIN_SCREEN_HEIGHT_FOR_BAND_DP = KEYBOARD_HEIGHT_DP * 2
   }
 }
 
@@ -183,5 +230,10 @@ class KeyboardPreviewOverrideExtension : DataExtension<PreviewOverrides> {
   override val id: DataExtensionId = KeyboardOverrideExtension.ID
 
   override fun plan(request: PreviewOverrides): PlannedDataExtension =
-    KeyboardOverrideExtension(seed = request.keyboard)
+    KeyboardOverrideExtension(
+      seed = request.keyboard,
+      // `device` is the render's own statement that it is a screen, so it decides the band on
+      // short devices where size alone would say "component" (issue #3491).
+      deviceScoped = !request.device.isNullOrBlank(),
+    )
 }

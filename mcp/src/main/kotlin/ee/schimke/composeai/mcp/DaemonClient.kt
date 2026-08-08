@@ -538,6 +538,8 @@ class DaemonClient(
     pointerId: Int? = null,
     scrollDeltaY: Float? = null,
     keyCode: String? = null,
+    text: String? = null,
+    pointerType: String? = null,
   ) =
     sendNotification(
       "interactive/input",
@@ -551,6 +553,8 @@ class DaemonClient(
           pointerId = pointerId,
           scrollDeltaY = scrollDeltaY,
           keyCode = keyCode,
+          text = text,
+          pointerType = pointerType,
         ),
       ),
     )

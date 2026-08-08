@@ -258,6 +258,8 @@ interface RenderSession : AutoCloseable {
     pointerId: Int? = null,
     scrollDeltaY: Float? = null,
     keyCode: String? = null,
+    text: String? = null,
+    pointerType: String? = null,
   ): Unit = throw UnsupportedOperationException("streaming not supported")
 
   // ---------------------------------------------------------------------------

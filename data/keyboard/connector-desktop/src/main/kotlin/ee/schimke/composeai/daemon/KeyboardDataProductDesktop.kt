@@ -11,8 +11,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.SoftwareKeyboardController
+import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.daemon.protocol.KeyboardOverride
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.keyboard.Material3KeyboardProduct
@@ -34,7 +37,11 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  * observer needs to be in place even without a `KeyboardOverride` seed so app-side
  * `LocalSoftwareKeyboardController.show()` calls reach the band.
  */
-class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
+class KeyboardOverrideExtension(
+  private val seed: KeyboardOverride? = null,
+  /** See the Android connector: a device preview is a screen whatever its dimensions (#3491). */
+  private val deviceScoped: Boolean = false,
+) :
   AroundComposableExtension(
     id = ID,
     constraints =
@@ -43,6 +50,10 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
         provides = setOf(DataExtensionCapability(Material3KeyboardProduct.KIND)),
       ),
   ) {
+  /** Whether the planner marked this render device-scoped. Readable so tests can pin it. */
+  val isDeviceScoped: Boolean
+    get() = deviceScoped
+
   @Composable
   override fun AroundComposable(content: @Composable () -> Unit) {
     if (seed != null) {
@@ -54,8 +65,22 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
 
     val shadow = remember { ObservingSoftwareKeyboardController() }
     CompositionLocalProvider(LocalSoftwareKeyboardController provides shadow) {
-      val visible by KeyboardController.softInputVisible
+      val imeVisible by KeyboardController.softInputVisible
       val pressedKey by KeyboardController.pressedKey
+      // Same rule as the Android connector, same order of authority: an explicit request wins,
+      // then a device-scoped render (a screen whatever its dimensions), then the surface's own
+      // size. On a component preview the input device is the browser's own physical keyboard and
+      // there is nothing to draw — without this gate, a catalog sticker of a single text field
+      // would be buried under a 240dp keyboard the moment it took focus. Desktop has no
+      // `Configuration`; the scene's own size — already the wrapped content's size on a
+      // wrap-content preview — is the equivalent signal.
+      val requested by KeyboardController.requestedVisible
+      val containerHeightPx = LocalWindowInfo.current.containerSize.height
+      val density = LocalDensity.current
+      val screenSized =
+        deviceScoped ||
+          with(density) { containerHeightPx.toDp() } >= MIN_SCREEN_HEIGHT_FOR_BAND_DP.dp
+      val visible = requested ?: (imeVisible && screenSized)
       Box(modifier = Modifier.fillMaxSize()) {
         content()
         if (visible) {
@@ -88,5 +113,8 @@ class KeyboardPreviewOverrideExtension : DataExtension<PreviewOverrides> {
   override val id: DataExtensionId = KeyboardOverrideExtension.ID
 
   override fun plan(request: PreviewOverrides): PlannedDataExtension =
-    KeyboardOverrideExtension(seed = request.keyboard)
+    KeyboardOverrideExtension(
+      seed = request.keyboard,
+      deviceScoped = !request.device.isNullOrBlank(),
+    )
 }

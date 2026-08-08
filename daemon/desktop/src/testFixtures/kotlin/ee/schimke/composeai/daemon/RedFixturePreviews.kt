@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -53,9 +54,13 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * Test fixtures for [RenderEngineTest] / [JsonRpcDesktopIntegrationTest]. Lives in the test source
@@ -1077,3 +1082,58 @@ fun ScrolledLazyColumnPreview() {
     }
   }
 }
+
+/**
+ * Records what a live text-editing session did to [EditableTextFieldPreview]'s value, so the
+ * interactive tests can assert on the field's *content* and *selection* rather than on pixels —
+ * "the caret moved" and "three characters are selected" are not things a colour match can tell
+ * apart.
+ *
+ * Written from the composition and read from the test thread, hence `@Volatile`; the fixture and
+ * its test share a classloader (the interactive session is handed the test's own), so these are
+ * genuinely the same statics.
+ */
+object TextFieldProbe {
+  @Volatile var text: String = ""
+
+  @Volatile var selected: String = ""
+
+  fun reset() {
+    text = ""
+    selected = ""
+  }
+}
+
+/**
+ * Editable text field for the typing / selection dispatch tests (issue #3491). Self-focusing, so a
+ * test can drive the keyboard without first synthesising a click, and it publishes every value
+ * change — text *and* selected substring — into [TextFieldProbe].
+ *
+ * Deliberately a plain `BasicTextField` over a `TextFieldValue`: the selection range is the thing
+ * under test, and `TextFieldValue` is where it lives.
+ */
+@Composable
+fun EditableTextFieldPreview() {
+  // Caret seeded at the end, where focusing a real field leaves it, so a typed character appends
+  // rather than landing in front of the seed.
+  var value by remember {
+    mutableStateOf(TextFieldValue(TEXT_FIELD_SEED, TextRange(TEXT_FIELD_SEED.length)))
+  }
+  val focusRequester = remember { FocusRequester() }
+  LaunchedEffect(Unit) { focusRequester.requestFocus() }
+  Box(modifier = Modifier.fillMaxSize().background(Color.White)) {
+    BasicTextField(
+      value = value,
+      onValueChange = {
+        value = it
+        TextFieldProbe.text = it.text
+        TextFieldProbe.selected = it.text.substring(it.selection.min, it.selection.max)
+      },
+      textStyle = TextStyle(color = Color.Black, fontSize = 20.sp),
+      modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+    )
+  }
+}
+
+/** Seed content of [EditableTextFieldPreview] — wide enough that a drag can select part of it. */
+const val TEXT_FIELD_SEED: String = "Filled"
