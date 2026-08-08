@@ -787,7 +787,10 @@
   function keyInput(kind, ev) {
     if (!liveActive()) return;
     var code = androidKeycode(ev.key);
-    var text = kind === "keyDown" ? typedText(ev) : null;
+    // Carried on the release too, not just the press: a backend that suppresses the physical key
+    // event for a focused text field (so the character isn't typed twice) needs to suppress both
+    // halves, or the composition sees an unpaired key-up.
+    var text = typedText(ev);
     if (code === null && text === null) return;
     ev.preventDefault();
     var msg = { kind: kind };

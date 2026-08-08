@@ -456,6 +456,46 @@ class AndroidInteractiveSessionTest {
   }
 
   /**
+   * Press *and release* a printable key over a focused field. The release carries its character
+   * like the press does, so both halves are suppressed together.
+   *
+   * This is not cosmetic: the key-down is suppressed (the character goes in through
+   * `InsertTextAtCursor` instead), so dispatching the key-up would be a release of a key that was
+   * never pressed — which Compose's injection scope rejects outright, failing the whole dispatch.
+   */
+  @Test
+  fun printableKeyUpIsSuppressedAlongsideItsKeyDown() {
+    withTextFieldSession { session ->
+      session.render(RenderHost.nextRequestId())
+
+      session.dispatch(
+        InteractiveInputParams(
+          frameStreamId = "irrelevant-on-host-side",
+          kind = InteractiveInputKind.KEY_DOWN,
+          keyCode = KEYCODE_A,
+          text = "a",
+        )
+      )
+      session.dispatch(
+        InteractiveInputParams(
+          frameStreamId = "irrelevant-on-host-side",
+          kind = InteractiveInputKind.KEY_UP,
+          keyCode = KEYCODE_A,
+          text = "a",
+        )
+      )
+
+      val after = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+      assertTrue(
+        "a press/release pair over a focused field must type exactly one character and must not " +
+          "fail dispatching an unpaired release; got " +
+          "${"%.2f".format(pixelMatchPct(after, GREEN_RGB, perChannelTolerance = 8) * 100)}% green",
+        pixelMatchPct(after, GREEN_RGB, perChannelTolerance = 8) >= 0.6,
+      )
+    }
+  }
+
+  /**
    * A character with no Android keycode at all — `€` is not on the wire's key list, and neither is
    * most of any non-US layout. Android's own `KeyCharacterMap` can turn `KEYCODE_A` into an `a`,
    * which is why typing was never as broken here as on the desktop lane; it can do nothing at all

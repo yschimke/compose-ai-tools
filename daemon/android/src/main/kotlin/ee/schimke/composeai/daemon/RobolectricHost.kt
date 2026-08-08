@@ -6,6 +6,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
@@ -3745,7 +3746,10 @@ open class RobolectricHost(
           }
         }
         "keyDown" -> dispatchHeldKeyEvent(rule, cmd.keyCode, cmd.text, down = true)
-        "keyUp" -> dispatchHeldKeyEvent(rule, cmd.keyCode, text = null, down = false)
+        // The release carries its character too, so a focused field suppresses both halves of the
+        // keystroke. Dropping it here would dispatch a physical key-up whose key-down was
+        // suppressed — the unpaired release this pairing exists to avoid.
+        "keyUp" -> dispatchHeldKeyEvent(rule, cmd.keyCode, cmd.text, down = false)
       }
     }
 
@@ -3757,6 +3761,17 @@ open class RobolectricHost(
      * this shape. Unmapped / unparseable codes drop silently so a forward-looking client can't
      * crash the loop.
      */
+    /**
+     * Keycodes whose key-down was suppressed because a focused field was going to receive the
+     * character instead. The matching key-up is suppressed on the strength of this rather than by
+     * asking again where focus is: a keystroke can change focus between press and release (typing
+     * into a field that then hides itself), and a release whose press never happened is not merely
+     * untidy — Compose's injection scope rejects it outright and fails the whole dispatch.
+     *
+     * Per-sandbox, and entries live only between a press and its release.
+     */
+    private val suppressedKeyDowns: MutableSet<Int> = mutableSetOf()
+
     @OptIn(ExperimentalTestApi::class)
     private fun dispatchHeldKeyEvent(
       rule:
@@ -3776,43 +3791,65 @@ open class RobolectricHost(
       // here — and it means a keyDown that both replays the keycode and commits the carried
       // character inserts `aa` for one `a`.
       //
-      // The carried character wins whenever there is one. It is the only half that is right for
-      // the whole keyboard: `KeyCharacterMap` cannot produce a character for a key Android has no
-      // keycode for (`€`, most non-US layouts), and the wire's keycode is case-blind, so the
-      // keycode path would type `a` for a typed `A`. It goes in through the focused node's
+      // Only a *focused editable* can double-type, so that — not the mere presence of `text` — is
+      // what suppresses the key event. Everything else still gets the real thing: a component
+      // watching `Modifier.onKeyEvent` sees the physical key down and up for printable keys as
+      // usual, because there is no text field to insert into and `insertTypedText` no-ops. The
+      // client sends `text` on the release as well as the press, so a focused field suppresses
+      // both halves of the keystroke rather than delivering an unpaired key-up.
+      //
+      // Where a field *is* focused the carried character wins, because it is the only half that is
+      // right for the whole keyboard: `KeyCharacterMap` cannot produce a character for a key
+      // Android has no keycode for (`€`, most non-US layouts), and the wire's keycode is
+      // case-blind, so the keycode path would type `a` for a typed `A`. It goes in through
       // `InsertTextAtCursor` — the same entry point an IME commit uses, honouring caret and
       // selection.
-      val typed = down && !text.isNullOrEmpty()
+      val editable = if (text.isNullOrEmpty()) null else focusedEditableNode(rule)
       val code = InteractiveKeyCodes.parse(keyCode)
-      if (code != null && !typed) {
+      val suppressed =
+        if (down) {
+          val suppress = editable != null
+          if (suppress && code != null) suppressedKeyDowns.add(code)
+          suppress
+        } else {
+          code != null && suppressedKeyDowns.remove(code)
+        }
+      if (code != null && !suppressed) {
         // Android's actual `Key(nativeKeyCode: Int)` builds a Compose `Key` directly from the
         // Android `KEYCODE_*` int — same shape the wire carries. This drives the *command* keys:
-        // caret movement, Backspace, Delete, Enter — and every key release, which types nothing.
+        // caret movement, Backspace, Delete, Enter — and every key a focused field won't swallow.
         val key = androidx.compose.ui.input.key.Key(nativeKeyCode = code)
         heldSurfaceRoot(rule).performKeyInput { if (down) keyDown(key) else keyUp(key) }
       }
-      if (typed) insertTypedText(rule, text)
+      if (down && editable != null) insertTypedText(rule, editable, text!!)
     }
 
     /**
-     * Insert [text] into whichever focused node accepts text, honouring caret and selection.
-     * No-op when there is no text, or nothing focused that can take it (a keystroke over a
-     * non-editable preview must stay a keystroke, not an error).
+     * The focused node that can accept typed text, or `null` when nothing focused can — a
+     * keystroke over a non-editable preview stays a keystroke rather than an error.
      */
+    private fun focusedEditableNode(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >
+    ): SemanticsNode? =
+      rule
+        .onAllNodes(isFocused(), useUnmergedTree = true)
+        .fetchSemanticsNodes(atLeastOneRootRequired = false)
+        .firstOrNull { SemanticsActions.InsertTextAtCursor in it.config }
+
+    /** Insert [text] into [focused], honouring its caret and replacing any selection. */
     private fun insertTypedText(
       rule:
         androidx.compose.ui.test.junit4.AndroidComposeTestRule<
           *,
           androidx.activity.ComponentActivity,
         >,
-      text: String?,
+      focused: SemanticsNode,
+      text: String,
     ) {
-      if (text.isNullOrEmpty()) return
-      val focused =
-        rule
-          .onAllNodes(isFocused(), useUnmergedTree = true)
-          .fetchSemanticsNodes(atLeastOneRootRequired = false)
-          .firstOrNull { SemanticsActions.InsertTextAtCursor in it.config } ?: return
       rule.runOnUiThread {
         focused.config[SemanticsActions.InsertTextAtCursor].action?.invoke(AnnotatedString(text))
       }
