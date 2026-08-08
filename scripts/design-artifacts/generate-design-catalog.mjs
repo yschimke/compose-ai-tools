@@ -640,6 +640,11 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       if (component.caption !== undefined) source.caption = component.caption;
       if (component.reference !== undefined)
         source.reference = component.reference;
+      // The component FAMILY `reference` is one variant of. `reference` stays the single node a
+      // parity run diffs this sticker against; `referenceSet` is what a whole-screen import matches
+      // an instance through, since a screen rarely uses the exact variant the catalog pictured.
+      if (component.referenceSet !== undefined)
+        source.referenceSet = component.referenceSet;
       if (component.referenceSet !== undefined)
         source.referenceSet = component.referenceSet;
       // The stated reason there is NO reference — distinct from an absent `reference`, which says
