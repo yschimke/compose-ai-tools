@@ -2,10 +2,11 @@
 //
 // This runs on every PR (the `actions-tests` job in ci.yml) because the reaper
 // cancels workflow runs unattended, and every guard it has exists because the
-// failure it prevents is invisible until after it has happened: reaping the
-// default branch wipes post-merge CI for commits in flight; matching on branch
-// name alone lets a fork's `main` sweep up ours; and reaping without a
-// close-time cutoff kills the checks of whatever reopened or re-used the branch.
+// failure it prevents is invisible until after it has happened: cancelling a
+// `push` run wipes post-merge CI for commits in flight; matching on branch name
+// alone lets a fork's `main` sweep up ours; reaping without a close-time cutoff
+// kills the checks of whatever reopened or re-used the branch; and sweeping up a
+// manual dispatch kills someone's regression investigation.
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -24,6 +25,7 @@ function run(id, name, status, overrides = {}) {
     name,
     status,
     created_at: BEFORE,
+    event: 'pull_request',
     head_repository: { full_name: THIS_REPO },
     ...overrides,
   }
@@ -65,7 +67,6 @@ const BASE = {
   headRef: 'agent/some-branch',
   headRepo: THIS_REPO,
   thisRepo: THIS_REPO,
-  defaultBranch: 'main',
   closedAt: CLOSED_AT,
   currentRunId: 999,
 }
@@ -83,7 +84,7 @@ test('cancels queued and in-progress runs on the closed PR branch', async () => 
   assert.equal(result.skipped, null)
   assert.deepEqual(
     calls.listed.map((c) => c.status),
-    ['queued', 'in_progress'],
+    ['queued', 'in_progress', 'requested', 'waiting', 'pending'],
   )
   assert.ok(calls.listed.every((c) => c.branch === 'agent/some-branch'))
 })
@@ -118,12 +119,48 @@ test('a fork branch named main does not sweep up this repo’s main runs', async
   assert.deepEqual(calls.cancelled, [2])
 })
 
-test('refuses to reap this repo’s default branch', async () => {
-  const { github, core, calls } = harness({ runs: [run(1, 'CI', 'queued')] })
+test('reaps a PR whose head is the default branch, but never its push runs', async () => {
+  // Merging `main` forward into a release branch is a legitimate PR with
+  // headRef === the default branch. Its leftovers should be reaped; the
+  // default branch's own post-merge CI (a `push` run) must not be touched.
+  const { github, core, calls } = harness({
+    runs: [
+      run(1, 'CI', 'queued', { event: 'pull_request', pull_requests: [{ number: 42 }] }),
+      run(2, 'CI', 'queued', { event: 'push' }),
+    ],
+  })
   const result = await reapPrRuns({ ...BASE, headRef: 'main', github, core })
-  assert.deepEqual(calls.cancelled, [])
-  assert.deepEqual(calls.listed, [])
-  assert.match(result.skipped, /refusing to reap/)
+  assert.deepEqual(calls.cancelled, [1])
+  assert.equal(result.skipped, null)
+})
+
+test('leaves a manual workflow_dispatch run alone', async () => {
+  // A manual one-off has no PR association, so the empty-association fallback
+  // would sweep it up without the event allowlist. vscode-extension-e2e.yml is
+  // run this way for regression work.
+  const { github, core, calls } = harness({
+    runs: [
+      run(1, 'VS Code Extension E2E', 'in_progress', { event: 'workflow_dispatch' }),
+      run(2, 'CI', 'in_progress'),
+    ],
+  })
+  await reapPrRuns({ ...BASE, github, core })
+  assert.deepEqual(calls.cancelled, [2])
+})
+
+test('reaps runs stuck in waiting, requested and pending', async () => {
+  // A run blocked on a deployment gate never passes through queued or
+  // in_progress on its way out — it can sit in `waiting` indefinitely.
+  const { github, core, calls } = harness({
+    runs: [
+      run(1, 'Deploy', 'waiting'),
+      run(2, 'CI', 'requested'),
+      run(3, 'Integration', 'pending'),
+    ],
+  })
+  await reapPrRuns({ ...BASE, github, core })
+  // Ordered by the status loop (requested, then waiting, then pending), not by id.
+  assert.deepEqual(calls.cancelled.sort(), [1, 2, 3])
 })
 
 test('refuses to reap an empty head ref', async () => {
@@ -231,8 +268,8 @@ test('a listing failure warns instead of failing the workflow', async () => {
   const result = await reapPrRuns({ ...BASE, github, core })
   assert.equal(result.skipped, null)
   assert.equal(result.cancelled.length, 0)
-  // One per status queried, both surfaced as warnings rather than thrown.
-  assert.equal(result.failed.length, 2)
+  // One per status queried, all surfaced as warnings rather than thrown.
+  assert.equal(result.failed.length, 5)
   assert.ok(result.failed.every((f) => /rate limited/.test(f)))
-  assert.equal(warnings.length, 2)
+  assert.equal(warnings.length, 5)
 })

@@ -21,10 +21,10 @@ name: PR Run Reaper
 # only committed default-branch code, never the PR head.
 #
 # What may and may not be cancelled is decided in reap-pr-runs.mjs, per run:
-# same head repository (branch names alone collide across forks), not claimed by
-# a different PR, created before the close, never this repo's default branch,
-# and only while the PR is still closed on re-read. See its tests for why each
-# of those exists.
+# PR-triggered events only (never a push or a manual dispatch), same head
+# repository (branch names alone collide across forks), not claimed by a
+# different PR, created before the close, and only while the PR is still closed
+# on re-read. See its tests for why each of those exists.
 
 on:
   pull_request_target:
@@ -79,7 +79,6 @@ jobs:
               headRef: process.env.HEAD_REF,
               headRepo: process.env.HEAD_REPO,
               thisRepo: `${context.repo.owner}/${context.repo.repo}`,
-              defaultBranch: context.payload.repository.default_branch,
               closedAt: process.env.CLOSED_AT,
               currentRunId: context.runId,
             })

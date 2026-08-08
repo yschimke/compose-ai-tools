@@ -6,6 +6,11 @@
 // queue full. Both failure modes are invisible without tests, so
 // reap-pr-runs.test.mjs pins every guard below.
 
+// The only run events this script will ever cancel. Everything else on the
+// branch — manual dispatches, pushes, schedules — belongs to someone or
+// something other than the closed PR.
+const PR_EVENTS = new Set(['pull_request', 'pull_request_target'])
+
 /**
  * @param {object} options
  * @param {object} options.github        authenticated octokit (github-script's `github`)
@@ -15,7 +20,6 @@
  * @param {string} options.headRef       its head branch name
  * @param {string} options.headRepo      `owner/name` of the head repo (the fork, for fork PRs)
  * @param {string} options.thisRepo      `owner/name` of the repo being reaped
- * @param {string} options.defaultBranch
  * @param {string} options.closedAt      ISO timestamp the PR closed at
  * @param {number} options.currentRunId  this run, which must not cancel itself
  * @returns {Promise<{cancelled: string[], failed: string[], skipped: string|null}>}
@@ -28,7 +32,6 @@ export async function reapPrRuns({
   headRef,
   headRepo,
   thisRepo,
-  defaultBranch,
   closedAt,
   currentRunId,
 }) {
@@ -39,16 +42,19 @@ export async function reapPrRuns({
     return { cancelled, failed, skipped: reason }
   }
 
-  // Belt and braces. A PR cannot target its own base, so this should be
-  // unreachable — but a mis-triggered run that reaped the default branch would
-  // cancel post-merge CI for every commit in flight, the most damaging thing
-  // this script could do. Only applies to same-repo heads: a fork's `main` is a
-  // different branch that happens to share a name, and the head-repo filter
-  // below is what keeps those apart.
   if (!headRef) return skip('head ref is empty')
-  if (headRepo === thisRepo && headRef === defaultBranch) {
-    return skip(`refusing to reap this repo's ${defaultBranch}`)
-  }
+
+  // A PR whose *head* is the default branch is legitimate — merging `main`
+  // forward into a release branch is the usual case — so this deliberately does
+  // not bail out on `headRef === defaultBranch`. An earlier version did, on the
+  // reasoning that a PR cannot target its own base; that conflated head with
+  // base, and silently stranded every such PR's leftovers.
+  //
+  // What actually protects post-merge CI on the default branch is the run-event
+  // allowlist below: that CI runs on `push`, so it is excluded by kind rather
+  // than by name-matching. That is a stronger guarantee than this check ever
+  // was, and unlike this check it does not depend on guessing which branch
+  // names matter.
 
   // Re-read the PR instead of trusting the event payload. Between the close and
   // this job getting a runner, the PR can be reopened, or a new PR can be
@@ -71,7 +77,12 @@ export async function reapPrRuns({
   // cancelling live work costs someone their CI.
   const cutoff = closedAt ? Date.parse(closedAt) : NaN
 
-  for (const status of ['queued', 'in_progress']) {
+  // Every non-terminal status, not just the two obvious ones. A run sitting in
+  // `waiting` (blocked on a deployment gate) or `requested`/`pending` is not
+  // going to pass through `queued` on its way out — it can sit there
+  // indefinitely, which is exactly the kind of straggler this script exists to
+  // clear. Terminal statuses are not listed: there is nothing to cancel.
+  for (const status of ['queued', 'in_progress', 'requested', 'waiting', 'pending']) {
     let runs
     try {
       runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
@@ -90,6 +101,19 @@ export async function reapPrRuns({
 
     for (const run of runs) {
       if (run.id === currentRunId) continue
+
+      // Only ever cancel PR-triggered runs. Two reasons, and the second is what
+      // makes the rest of this function safe:
+      //
+      // 1. A manual `workflow_dispatch` on a PR branch has no PR association,
+      //    so the empty-association fallback below would otherwise sweep it up.
+      //    vscode-extension-e2e.yml exists partly to be run manually on any
+      //    branch for regression work; killing someone's investigation run
+      //    mid-flight would be a real cost for no queue benefit.
+      // 2. Post-merge CI on the default branch is a `push` run, so this
+      //    excludes it *categorically* rather than by heuristic — which is what
+      //    lets a PR whose head is `main` be reaped at all (see below).
+      if (!PR_EVENTS.has(run.event)) continue
 
       // The branch filter matches on name alone, not repo. Without this a fork
       // PR from a branch named `main` would sweep up our `main` runs. Filtering
