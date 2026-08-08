@@ -199,6 +199,31 @@ class ServeBundleHost(
   }
 
   /**
+   * Per-preview body-line anchors from the bundle's root `previews.json`, feeding
+   * [ServePreview.bodyLine] so the playground handoff can seed one declaration instead of a whole
+   * section file.
+   *
+   * Read only from the manifest, unlike [sourceFilesById] which prefers the catalog's
+   * `variants.json`. A `VariantMeta` is per *image* and a body line is per *function*, so carrying
+   * it there would restate the same number on every theme and state of a component; the manifest
+   * already keys it the right way. A catalog bundle carries both files, so nothing is lost — and a
+   * bundle with no manifest simply contributes no anchors and seeds whole files.
+   */
+  private val bodyLinesById: Map<String, Int> by lazy {
+    val previewsJson = File(bundleDir, PREVIEWS_JSON).toOkioPath()
+    if (!fileSystem.exists(previewsJson)) return@lazy emptyMap()
+    try {
+      val text = fileSystem.read(previewsJson) { readUtf8() }
+      OVERRIDES_JSON.decodeFromString(ee.schimke.composeai.cli.PreviewManifest.serializer(), text)
+        .previews
+        .mapNotNull { preview -> preview.bodyLine?.let { preview.id to it } }
+        .toMap()
+    } catch (e: Exception) {
+      emptyMap()
+    }
+  }
+
+  /**
    * The live-only ids this host lists, minus any that turned out to have a baked PNG after all (a
    * catalog that both baked and deferred the same route — belt and braces: the baked pixels win, so
    * the id keeps its ordinary snapshot lane).
@@ -263,6 +288,7 @@ class ServeBundleHost(
           group = meta?.group,
           catalogOrder = meta?.order,
           sourceFile = sourceFilesById[id],
+          bodyLine = bodyLinesById[id],
           uiMode = previewParamsById[id]?.uiMode ?: 0,
         )
       }

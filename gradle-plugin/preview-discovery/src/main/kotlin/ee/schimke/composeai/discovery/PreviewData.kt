@@ -857,6 +857,26 @@ data class PreviewInfo(
   val functionName: String,
   val className: String,
   val sourceFile: String? = null,
+  /**
+   * A 1-based line in [sourceFile] known to fall **inside** this preview's function body — its
+   * first statement, from the classfile's `LineNumberTable`.
+   *
+   * Lets a consumer address the **declaration** rather than the file: the playground's "open this
+   * preview" handoff walks outwards from here to the surrounding declaration and seeds just that
+   * composable, instead of the editor opening all 242 lines of the section file it shares with four
+   * other components. Purely additive — absent from older manifests, and every consumer degrades to
+   * whole-file behaviour without it.
+   *
+   * **An anchor, not a span, and deliberately so.** A span is what you would reach for, and
+   * ClassGraph offers both bounds — but the upper one cannot be trusted on Kotlin. An inline
+   * function's body is emitted into its caller with JSR-45/SMAP line numbers *past the end of the
+   * caller's file*, so `maxLineNum` runs off the end for any method that inlines anything: measured
+   * over m3-catalog's 244 methods with line info, 9 overran their own file (every one of them a
+   * `remember { … }` caller), while the first line was in range for all 244. Publishing a span
+   * would mean publishing an end that is sometimes fiction, and a consumer slicing on it would cut
+   * into whatever declaration follows. One number that is always right beats two where one is not.
+   */
+  val bodyLine: Int? = null,
   val params: PreviewParams = PreviewParams(),
   /**
    * Non-null on a synthetic override-variant preview (from `@OverrideVariant`): the

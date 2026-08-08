@@ -288,18 +288,17 @@ class ServeHttpServer(
             // just to answer where a file lives.
             val bundleHost = sessions.peekHost(system)?.let { catalogBundleHost(it) }
             val source = bundleHost?.catalogSource
-            val sourceFile =
-              bundleHost
-                ?.previews
-                ?.firstOrNull { it.id == previewId }
-                ?.sourceFile
-                ?.takeIf { it.isNotBlank() }
+            val preview = bundleHost?.previews?.firstOrNull { it.id == previewId }
+            val sourceFile = preview?.sourceFile?.takeIf { it.isNotBlank() }
             if (source != null && sourceFile != null)
               PlaygroundSeedResolver.Location(
                 repo = source.repo,
                 ref = source.ref,
                 module = source.module,
                 sourceFile = sourceFile,
+                // Absent on a catalog published before discovery recorded it, which is exactly the
+                // case the resolver falls back to whole-file seeding for.
+                bodyLine = preview.bodyLine,
               )
             else null
           },

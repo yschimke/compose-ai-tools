@@ -2467,7 +2467,18 @@ object ServeWeb {
                 WebEscaping.htmlEscape(seed.fileName)
               }</a>"""
           } ?: WebEscaping.htmlEscape(seed.fileName)
-        """
+        // Which of the two it is matters to a reader: told "the whole file" while looking at one
+        // function, they would go hunting for the rest of it.
+        if (seed.sliced)
+          """
+
+          <p id="pg-seed" class="cp-sub">Opened from $where — the declaration of
+            <code>${WebEscaping.htmlEscape(seed.previewId)}</code>, plus that file's imports, from
+            <code>${WebEscaping.htmlEscape(seed.catalog)}</code>. Just this one composable, not the
+            whole file, but otherwise its source verbatim — so anything it pulls in from elsewhere
+            in its own module shows up as an unresolved reference to delete.</p>"""
+        else
+          """
 
           <p id="pg-seed" class="cp-sub">Opened $where — the file
             <code>${WebEscaping.htmlEscape(seed.previewId)}</code> is declared in, from

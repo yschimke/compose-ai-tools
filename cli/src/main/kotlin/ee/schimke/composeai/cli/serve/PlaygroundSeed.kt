@@ -15,8 +15,15 @@ import java.util.concurrent.ConcurrentHashMap
  * it may reference siblings the catalog's bundle never exported, or internals the resolved
  * classpath doesn't carry. Those come back as ordinary compile diagnostics against the right
  * classpath, which is a far better place to start editing from than an empty buffer — so the seed
- * is offered verbatim rather than rewritten into something guaranteed to build, which would no
- * longer be the preview's source.
+ * is never rewritten into something guaranteed to build, which would no longer be the preview's
+ * source.
+ *
+ * **What it does narrow is scope.** A section file is one *group*, not one component: opening
+ * `Button/Filled` used to hand over all 242 lines of `Buttons.kt` — five components, and forty-odd
+ * `@OverrideVariant` lines belonging to the variant matrix rather than to anything a visitor wants
+ * to read. When discovery recorded an anchor line inside the preview (`PreviewInfo.bodyLine`), the
+ * seed is the file's header plus **that one declaration**, still verbatim, so the buffer opens on
+ * the composable that was clicked. Without an anchor it stays the whole file, as it always was.
  */
 data class PlaygroundSeed(
   /** The catalog to preselect — the system the preview belongs to. */
@@ -25,10 +32,16 @@ data class PlaygroundSeed(
   val previewId: String,
   /** Editor tab name, from the source path's basename (`FilledButton.kt`). */
   val fileName: String,
-  /** The file's text, verbatim. */
+  /** The seeded Kotlin: the whole file, or its header plus one declaration when [sliced]. */
   val text: String,
   /** Where it was read from, so the note can link back to the human-readable blob. */
   val blobUrl: String?,
+  /**
+   * True when [text] is one declaration rather than the whole file, so the editor's note can say
+   * which it is. A visitor told "this is the whole file" while looking at one function would go
+   * hunting for the rest.
+   */
+  val sliced: Boolean = false,
 )
 
 /**
@@ -78,6 +91,15 @@ class PlaygroundSeedResolver(
     val module: String?,
     /** Module-relative path, as discovery recorded it. */
     val sourceFile: String,
+    /**
+     * A 1-based line inside the preview function's body, as discovery recorded it — the anchor
+     * [sliceDeclaration] walks outwards from to find the whole declaration. Null on a manifest
+     * predating the field, or a classfile with no line numbers; the seed is then the whole file.
+     *
+     * Part of the cache key by construction (it is a [Location] field), which matters: a catalog
+     * republished from a file whose declarations moved must not keep slicing at the old offset.
+     */
+    val bodyLine: Int? = null,
   )
 
   /**
@@ -140,13 +162,15 @@ class PlaygroundSeedResolver(
       onLog("$rawUrl is not valid UTF-8; playground seed unavailable")
       return null
     }
+    val sliced = sliceDeclaration(text, where.bodyLine)
     val seed =
       PlaygroundSeed(
         catalog = system,
         previewId = previewId,
         fileName = fileNameFor(where.sourceFile),
-        text = text,
+        text = sliced ?: text,
         blobUrl = ServeUrls.githubBlobUrl(where.repo, where.ref, where.module, where.sourceFile),
+        sliced = sliced != null,
       )
     // Bounded, and deliberately not an LRU: entries are a few KB, a catalog has a fixed number of
     // previews, and a full cache means the ones people actually open are already served from it. A
@@ -182,6 +206,90 @@ class PlaygroundSeedResolver(
      */
     internal fun fileNameFor(sourceFile: String): String =
       PlaygroundCompileService.safeKtName(sourceFile.replace('\\', '/').substringAfterLast('/'))
+
+    /**
+     * Narrows [text] to the file's **header plus the one declaration** [bodyLine] falls inside, or
+     * null when it can't be done and the caller should seed the whole file.
+     *
+     * ### Why the header is kept whole
+     *
+     * "Header" is everything above the first top-level declaration: the `package` line, any
+     * `@file:` annotations, and the imports. It is carried verbatim rather than pruned to the
+     * imports this one declaration happens to use, because deciding that needs a Kotlin parser and
+     * getting it wrong turns a working buffer into a wall of unresolved references. An unused
+     * import costs a visitor nothing; a missing one costs them the compile. `@file:OptIn(...)` is
+     * in there too, which a body using an experimental API genuinely needs.
+     *
+     * ### How the declaration's bounds are found
+     *
+     * From **one** anchor, walked outwards in both directions over non-blank lines.
+     *
+     * A span would be the obvious input, and the classfile appears to offer one — but its upper
+     * bound is fiction on Kotlin whenever the method inlines anything (see `PreviewInfo.bodyLine`),
+     * and a wrong end here silently cuts into the next declaration. One line known to be *inside*
+     * the body is enough, because the same blank-line rule that finds the top finds the bottom.
+     *
+     * The rule works because ktfmt (Google style, which every catalog in this repo is formatted
+     * with) separates top-level declarations by exactly one blank line, and never puts a blank line
+     * inside an annotation stack or between KDoc and what it documents. So walking up from the
+     * anchor collects the `fun` line, the annotations and the KDoc — the last of those for free,
+     * rather than needing a doc-comment-matching special case — and walking down collects the
+     * closing braces.
+     *
+     * A brace-counting scan would be more general, but it has to model strings, char literals,
+     * comments and nested lambdas to not go wrong, and going wrong means silently truncating
+     * somebody's code mid-expression. Blank-line bounds fail in the other direction: on
+     * unconventionally formatted source they over-select (two declarations with no blank line
+     * between them come out together), which is a slightly bigger buffer rather than a broken one.
+     *
+     * Returns null — meaning "seed the whole file" — when there is no anchor, when the anchor does
+     * not fall inside the text (the file moved under a branch `ref` since discovery ran), or when
+     * the slice would be the whole file anyway.
+     */
+    internal fun sliceDeclaration(text: String, bodyLine: Int?): String? {
+      if (bodyLine == null) return null
+      val lines = text.lines()
+      // An anchor past the end means the source has changed since the manifest was built. Slicing
+      // on a stale offset would hand over an arbitrary fragment, so fall back to the file.
+      if (bodyLine < 1 || bodyLine > lines.size) return null
+      // A blank anchor line means the same thing: the file moved under us, and the walk from here
+      // would collapse to nothing.
+      if (lines[bodyLine - 1].isBlank()) return null
+
+      var start = bodyLine - 1 // to 0-based
+      while (start > 0 && lines[start - 1].isNotBlank()) start--
+      var end = bodyLine - 1
+      while (end < lines.lastIndex && lines[end + 1].isNotBlank()) end++
+
+      val headerEnd = headerEndExclusive(lines)
+      // The declaration starting at or inside the header means the walk escaped upwards past the
+      // imports — unusual formatting, and re-emitting the header would then duplicate lines.
+      if (start < headerEnd) return null
+      if (headerEnd == 0 && start == 0 && end == lines.lastIndex) return null
+
+      val header = lines.subList(0, headerEnd).joinToString("\n").trimEnd()
+      val declaration = lines.subList(start, end + 1).joinToString("\n")
+      val slice = if (header.isEmpty()) declaration else "$header\n\n$declaration"
+      return slice.takeIf { it.trimEnd() != text.trimEnd() }
+    }
+
+    /**
+     * Index of the first line that is part of a top-level declaration — everything before it is the
+     * file header (`package`, `@file:` annotations, imports, and the blank lines and comments among
+     * them).
+     *
+     * Anchored on the **last import**, then the `package` line, rather than on "the first line that
+     * looks like a declaration": a file can open with a licence comment or a block comment that
+     * mentions `fun`, and a header that swallowed the first declaration would be far worse than one
+     * that stopped a few lines early. A file with neither — a script-like snippet — has no header,
+     * which the caller handles.
+     */
+    private fun headerEndExclusive(lines: List<String>): Int {
+      val lastImport = lines.indexOfLast { it.trimStart().startsWith("import ") }
+      if (lastImport >= 0) return lastImport + 1
+      val packageLine = lines.indexOfLast { it.trimStart().startsWith("package ") }
+      return if (packageLine >= 0) packageLine + 1 else 0
+    }
 
     private val httpClient: okhttp3.OkHttpClient by lazy {
       okhttp3.OkHttpClient.Builder()
