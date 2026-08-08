@@ -1,7 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import java.io.File
-import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -26,10 +26,16 @@ import org.junit.rules.TemporaryFolder
  * catalog PNG would move on the switch, and the drift is a bug to fix first rather than a diff to
  * accept.
  *
- * Scope is deliberately the subset both bodies claim to support: a single frame of a simple
- * composable. `@PreviewParameter` fan-out, scroll/animation/GIF data products and the LOTTIE path
- * are documented as standalone-renderer-only, so they are out of scope here and are the reason the
- * routing change needs the v2 extraction first — see the report on this branch.
+ * Scope is deliberately the subset both bodies support today: a single frame of a simple
+ * composable.
+ *
+ * The real gap is narrower than [RenderEngine]'s KDoc claims. That comment says the scroll /
+ * animation / GIF paths "stay behind the standalone renderer for now", but the daemon has since
+ * gained them — it dispatches its LONG / GIF render modes into `:renderer-desktop`'s
+ * `DesktopScrollMode`, and `@ScrollingPreview(END)` landed in #3517. What the daemon still does not
+ * do is **fan a `@PreviewParameter` provider out**: it renders the first value under the bare id,
+ * where the standalone renderer emits one file per value. That is the blocker on routing
+ * `composePreviewRender` here, and it is a capability to add rather than a divergence to repair.
  */
 class RenderBodyDivergenceTest {
 
@@ -43,20 +49,50 @@ class RenderBodyDivergenceTest {
     assertTrue("daemon render produced no bytes", daemonPng.isNotEmpty())
     assertTrue("standalone render produced no bytes", standalonePng.isNotEmpty())
 
-    if (!daemonPng.contentEquals(standalonePng)) {
-      System.err.println(
-        "RENDER BODY DIVERGENCE: daemon ${daemonPng.size} bytes vs standalone " +
-          "${standalonePng.size} bytes; first difference at byte " +
-          firstDifference(daemonPng, standalonePng)
-      )
-    }
-    assertArrayEquals(
+    val daemon = decode(daemonPng, "daemon")
+    val standalone = decode(standalonePng, "standalone")
+
+    // Decoded pixels, not the compressed bytes. The claim under test is that the two render bodies
+    // *draw* the same thing; a future change to either path's encoder settings or ancillary chunks
+    // would move the bytes without moving a single pixel, and failing here for that would block the
+    // refactor this gate exists to unblock.
+    assertEquals(
+      "render dimensions differ: standalone ${standalone.width}x${standalone.height} vs " +
+        "daemon ${daemon.width}x${daemon.height}",
+      standalone.width to standalone.height,
+      daemon.width to daemon.height,
+    )
+    val differing = (standalone.argb.indices).count { standalone.argb[it] != daemon.argb[it] }
+    assertEquals(
       "the daemon's duplicated render body must draw the same pixels as :renderer-desktop's " +
         "renderPreview — they are hand-synced copies, and any drift moves every baked PNG the " +
-        "moment a caller is routed from one to the other",
-      standalonePng,
-      daemonPng,
+        "moment a caller is routed from one to the other ($differing of ${standalone.argb.size} " +
+        "pixels differ)",
+      0,
+      differing,
     )
+
+    // Identical pixels but different bytes is not a failure, and is worth knowing about: it means
+    // the encodings have parted company, so a routing switch would still churn every committed
+    // catalog PNG in git even though nothing looks different.
+    if (!daemonPng.contentEquals(standalonePng)) {
+      System.err.println(
+        "note: pixels agree but PNG encodings differ — daemon ${daemonPng.size} bytes vs " +
+          "standalone ${standalonePng.size} bytes, first difference at byte " +
+          "${firstDifference(daemonPng, standalonePng)}"
+      )
+    }
+  }
+
+  private class Decoded(val width: Int, val height: Int, val argb: IntArray)
+
+  private fun decode(png: ByteArray, label: String): Decoded {
+    val image =
+      requireNotNull(javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(png))) {
+        "$label render did not decode as a PNG"
+      }
+    val argb = image.getRGB(0, 0, image.width, image.height, null, 0, image.width)
+    return Decoded(image.width, image.height, argb)
   }
 
   private fun renderViaDaemon(): ByteArray {
