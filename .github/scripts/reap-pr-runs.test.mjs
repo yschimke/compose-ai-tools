@@ -35,9 +35,10 @@ function harness({ runs = [], cancelError, listError, prState = 'closed', prErro
   const calls = { listed: [], cancelled: [] }
   const github = {
     paginate: async (_fn, params) => {
+      // One snapshot, no status filter — mirrors the real call.
       calls.listed.push({ branch: params.branch, status: params.status })
       if (listError) throw listError
-      return runs.filter((r) => r.status === params.status)
+      return runs
     },
     rest: {
       pulls: {
@@ -82,11 +83,11 @@ test('cancels queued and in-progress runs on the closed PR branch', async () => 
   const result = await reapPrRuns({ ...BASE, github, core })
   assert.deepEqual(calls.cancelled, [1, 2, 3])
   assert.equal(result.skipped, null)
-  assert.deepEqual(
-    calls.listed.map((c) => c.status),
-    ['queued', 'in_progress', 'requested', 'waiting', 'pending'],
-  )
-  assert.ok(calls.listed.every((c) => c.branch === 'agent/some-branch'))
+  // A single listing with no status filter: per-status queries are separate
+  // snapshots, and a run advancing between them escapes every one.
+  assert.equal(calls.listed.length, 1)
+  assert.equal(calls.listed[0].status, undefined)
+  assert.equal(calls.listed[0].branch, 'agent/some-branch')
 })
 
 test('never cancels itself', async () => {
@@ -159,8 +160,25 @@ test('reaps runs stuck in waiting, requested and pending', async () => {
     ],
   })
   await reapPrRuns({ ...BASE, github, core })
-  // Ordered by the status loop (requested, then waiting, then pending), not by id.
-  assert.deepEqual(calls.cancelled.sort(), [1, 2, 3])
+  assert.deepEqual(calls.cancelled, [1, 2, 3])
+})
+
+test('never cancels an already-completed run', async () => {
+  // The single snapshot includes terminal runs, so they must be rejected here.
+  const { github, core, calls } = harness({
+    runs: [run(1, 'CI', 'completed'), run(2, 'CI', 'queued')],
+  })
+  await reapPrRuns({ ...BASE, github, core })
+  assert.deepEqual(calls.cancelled, [2])
+})
+
+test('a run advancing between statuses cannot escape the sweep', async () => {
+  // The regression that per-status queries caused: `requested` during the
+  // `queued` query, `queued` by the time `requested` was asked for, in neither.
+  const { github, core, calls } = harness({ runs: [run(1, 'CI', 'requested')] })
+  await reapPrRuns({ ...BASE, github, core })
+  assert.deepEqual(calls.cancelled, [1])
+  assert.equal(calls.listed.length, 1)
 })
 
 test('refuses to reap an empty head ref', async () => {
@@ -268,8 +286,8 @@ test('a listing failure warns instead of failing the workflow', async () => {
   const result = await reapPrRuns({ ...BASE, github, core })
   assert.equal(result.skipped, null)
   assert.equal(result.cancelled.length, 0)
-  // One per status queried, all surfaced as warnings rather than thrown.
-  assert.equal(result.failed.length, 5)
+  // The single listing failed, surfaced as a warning rather than thrown.
+  assert.equal(result.failed.length, 1)
   assert.ok(result.failed.every((f) => /rate limited/.test(f)))
-  assert.equal(warnings.length, 5)
+  assert.equal(warnings.length, 1)
 })

@@ -77,72 +77,81 @@ export async function reapPrRuns({
   // cancelling live work costs someone their CI.
   const cutoff = closedAt ? Date.parse(closedAt) : NaN
 
-  // Every non-terminal status, not just the two obvious ones. A run sitting in
-  // `waiting` (blocked on a deployment gate) or `requested`/`pending` is not
-  // going to pass through `queued` on its way out — it can sit there
-  // indefinitely, which is exactly the kind of straggler this script exists to
-  // clear. Terminal statuses are not listed: there is nothing to cancel.
-  for (const status of ['queued', 'in_progress', 'requested', 'waiting', 'pending']) {
-    let runs
+  // ONE listing, filtered locally — deliberately not a query per status.
+  //
+  // Per-status queries are separate snapshots taken at different moments, and
+  // runs move between statuses while we work. A run that is `requested` during
+  // a `queued` query and has advanced to `queued` by the time we ask for
+  // `requested` appears in neither, and survives with no later reaper coming
+  // for it. Ordering the queries to chase runs forward would mostly work, but
+  // "mostly" is doing real work there: `requested`/`waiting`/`pending` are not
+  // a clean linear prefix of `queued`, and a run can re-enter `waiting` on a
+  // deployment gate after being queued. A single snapshot has no gaps to
+  // reason about.
+  //
+  // The cost is paging past this branch's completed runs. That is bounded in
+  // practice — one PR head branch, and this job runs once per close.
+  let runs = []
+  try {
+    runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+      ...repo,
+      branch: headRef,
+      per_page: 100,
+    })
+  } catch (error) {
+    // Listing is as fallible as cancelling. Letting this escape would fail
+    // the workflow and put a red check on an already-merged PR, which is
+    // exactly what this script promises not to do.
+    failed.push(`list runs: ${error.message}`)
+  }
+
+  for (const run of runs) {
+    // Terminal runs are the reason the snapshot is cheap to take and the
+    // reason it has to be filtered: there is nothing to cancel on them.
+    if (run.status === 'completed') continue
+
+    if (run.id === currentRunId) continue
+
+    // Only ever cancel PR-triggered runs. Two reasons, and the second is what
+    // makes the rest of this function safe:
+    //
+    // 1. A manual `workflow_dispatch` on a PR branch has no PR association,
+    //    so the empty-association fallback below would otherwise sweep it up.
+    //    vscode-extension-e2e.yml exists partly to be run manually on any
+    //    branch for regression work; killing someone's investigation run
+    //    mid-flight would be a real cost for no queue benefit.
+    // 2. Post-merge CI on the default branch is a `push` run, so this
+    //    excludes it *categorically* rather than by heuristic — which is what
+    //    lets a PR whose head is `main` be reaped at all (see below).
+    if (!PR_EVENTS.has(run.event)) continue
+
+    // The branch filter matches on name alone, not repo. Without this a fork
+    // PR from a branch named `main` would sweep up our `main` runs. Filtering
+    // per run — rather than skipping fork PRs wholesale — means a fork's own
+    // leftover runs, which are recorded in this repo, still get reaped.
+    if (run.head_repository?.full_name !== headRepo) continue
+
+    // One branch can carry two open PRs at once (different bases), and the
+    // other PR's runs can predate this close, so they clear the cutoff. When
+    // GitHub tells us which PRs a run belongs to, believe it.
+    //
+    // Only when it says something, though: `pull_requests` is empty for fork
+    // runs, so *requiring* a match would silently stop reaping exactly the
+    // fork leftovers this script was fixed to catch. Empty means "no claim",
+    // and we fall through to the repo and cutoff checks.
+    const associated = run.pull_requests ?? []
+    if (associated.length > 0 && !associated.some((p) => p.number === prNumber)) continue
+
+    if (!Number.isNaN(cutoff) && Date.parse(run.created_at) >= cutoff) continue
+
     try {
-      runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
-        ...repo,
-        branch: headRef,
-        status,
-        per_page: 100,
-      })
+      await github.rest.actions.cancelWorkflowRun({ ...repo, run_id: run.id })
+      cancelled.push(`${run.name} (${run.id})`)
     } catch (error) {
-      // Listing is as fallible as cancelling. Letting this escape would fail
-      // the workflow and put a red check on an already-merged PR, which is
-      // exactly what this script promises not to do.
-      failed.push(`list ${status} runs: ${error.message}`)
-      continue
-    }
-
-    for (const run of runs) {
-      if (run.id === currentRunId) continue
-
-      // Only ever cancel PR-triggered runs. Two reasons, and the second is what
-      // makes the rest of this function safe:
-      //
-      // 1. A manual `workflow_dispatch` on a PR branch has no PR association,
-      //    so the empty-association fallback below would otherwise sweep it up.
-      //    vscode-extension-e2e.yml exists partly to be run manually on any
-      //    branch for regression work; killing someone's investigation run
-      //    mid-flight would be a real cost for no queue benefit.
-      // 2. Post-merge CI on the default branch is a `push` run, so this
-      //    excludes it *categorically* rather than by heuristic — which is what
-      //    lets a PR whose head is `main` be reaped at all (see below).
-      if (!PR_EVENTS.has(run.event)) continue
-
-      // The branch filter matches on name alone, not repo. Without this a fork
-      // PR from a branch named `main` would sweep up our `main` runs. Filtering
-      // per run — rather than skipping fork PRs wholesale — means a fork's own
-      // leftover runs, which are recorded in this repo, still get reaped.
-      if (run.head_repository?.full_name !== headRepo) continue
-
-      // One branch can carry two open PRs at once (different bases), and the
-      // other PR's runs can predate this close, so they clear the cutoff. When
-      // GitHub tells us which PRs a run belongs to, believe it.
-      //
-      // Only when it says something, though: `pull_requests` is empty for fork
-      // runs, so *requiring* a match would silently stop reaping exactly the
-      // fork leftovers this script was fixed to catch. Empty means "no claim",
-      // and we fall through to the repo and cutoff checks.
-      const associated = run.pull_requests ?? []
-      if (associated.length > 0 && !associated.some((p) => p.number === prNumber)) continue
-
-      if (!Number.isNaN(cutoff) && Date.parse(run.created_at) >= cutoff) continue
-
-      try {
-        await github.rest.actions.cancelWorkflowRun({ ...repo, run_id: run.id })
-        cancelled.push(`${run.name} (${run.id})`)
-      } catch (error) {
-        // A run that finished between the list and the cancel returns 409.
-        // That is the race resolving itself, not a failure worth reporting.
-        if (error.status === 409) continue
-        failed.push(`${run.name} (${run.id}): ${error.message}`)
-      }
+      // A run that finished between the list and the cancel returns 409.
+      // That is the race resolving itself, not a failure worth reporting.
+      if (error.status === 409) continue
+      failed.push(`${run.name} (${run.id}): ${error.message}`)
     }
   }
 
