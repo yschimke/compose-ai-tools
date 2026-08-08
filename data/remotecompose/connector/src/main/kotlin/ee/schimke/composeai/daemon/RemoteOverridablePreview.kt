@@ -296,6 +296,20 @@ internal fun stampGenerationDensity(bytes: ByteArray, density: Float): ByteArray
  * Pushes every entry of [overrides] through [updater] using the matching `setUserLocal*` setter for
  * the `RemoteNamedValue` variant. Internal but visible for tests; ordinary callers reach this via
  * [RemoteOverridablePreview] / [RemoteOverridablePreviewWrapper].
+ *
+ * **A string seed does not currently reach a replayed document.** Colour, float, dp and int seeds
+ * all move pixels on the published `remote-m3` catalog (`rc.shaderColor`, `rc.progress`); a string
+ * seed (`rc.label`, `rc.text`) comes back byte-identical to the un-overridden render. The
+ * divergence is not in this function or its callers — every branch below is covered by
+ * `ApplyConnectorOverridesTest`, and in the alpha player (1.0.0-alpha16) `setUserLocalString` →
+ * `RemoteContext.setNamedStringOverride` → `overrideText` → `RemoteComposeState.overrideData` is
+ * structurally identical to the float path that works, down to the same bounds guard and the same
+ * `updateListeners` call. Whatever swallows it sits below that, in how the player re-resolves text
+ * it has already laid out.
+ *
+ * Until it lands, the serve layer reports a string seed as un-applied rather than answering `200`
+ * with unchanged pixels — see `CatalogLiveRouting.irReplayDroppedOverrideNames`, whose
+ * `IrReplayDroppedOverridesTest` is what will fail (deliberately) on the day the player honours it.
  */
 internal fun applyConnectorOverrides(
   updater: StateUpdater,
