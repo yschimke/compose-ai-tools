@@ -340,6 +340,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-playground-multifile/dark](renders/serve-playground-multifile.dark.png) |
 | `light` | ![serve-playground-multifile/light](renders/serve-playground-multifile.light.png) |
 
+## serve-playground-uncompilable
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-playground-uncompilable/dark](renders/serve-playground-uncompilable.dark.png) |
+| `light` | ![serve-playground-uncompilable/light](renders/serve-playground-uncompilable.light.png) |
+
 ## serve-rc-lanes
 
 | Theme | Capture |
