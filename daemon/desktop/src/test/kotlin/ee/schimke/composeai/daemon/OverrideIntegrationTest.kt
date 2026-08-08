@@ -671,6 +671,44 @@ class OverrideIntegrationTest {
   }
 
   /**
+   * The `previewId=` one-shot lane — the same bundle-backed live-daemon path as
+   * [namedOverrideAppliesOnPreviewIdPayloadPath] — rotates the frame but used to leave the wrap
+   * flags on their old axis, so a fixed-width / wrapped-height preview turned portrait kept
+   * wrapping height and the measure-and-crop pass sized the axis that was no longer free (#3552
+   * review). Asserted on the resolved spec rather than through a render, since the wrap intent is
+   * what the crop pass consumes.
+   */
+  @Test
+  fun previewIdPayloadTradesWrapAxisWithARotatedFrame() {
+    val baseSpec =
+      RenderSpec(
+        previewId = "wrapped",
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "RedSquare",
+        widthPx = 800,
+        heightPx = 400,
+        wrapHeight = true,
+      )
+    val host = DesktopHost(previewSpecResolver = { id -> baseSpec.takeIf { id == "wrapped" } })
+
+    val rotated = host.specFromPreviewIdPayload("previewId=wrapped;orientation=portrait")
+
+    assertNotNull(rotated)
+    assertEquals(400, rotated!!.widthPx)
+    assertEquals(800, rotated.heightPx)
+    assertTrue("a rotated frame must wrap width instead", rotated.wrapWidth)
+    assertFalse("...and no longer wrap height", rotated.wrapHeight)
+
+    // Already portrait: no rotation, so the wrap intent is untouched.
+    val untouched =
+      host.specFromPreviewIdPayload(
+        "previewId=wrapped;widthPx=400;heightPx=800;orientation=portrait"
+      )
+    assertFalse("explicit pixels suppress the swap", untouched!!.wrapWidth)
+    assertTrue(untouched.wrapHeight)
+  }
+
+  /**
    * **Regression guard for the `serve` / preview.coo.ee named-override drop.**
    * [namedOverrideChangesRenderedFill] above wires the planner with the *ungated*
    * `PreviewOverrideExtensions(listOf(...))` (its `isActive` defaults to `{ true }`), so it never

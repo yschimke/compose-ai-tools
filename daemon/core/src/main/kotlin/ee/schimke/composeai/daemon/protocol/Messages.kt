@@ -509,10 +509,18 @@ data class PreviewOverrides(
    */
   val uiMode: UiMode? = null,
   /**
-   * Portrait/landscape override. Android applies via the corresponding qualifier; desktop reduces
-   * the hint to a `widthPx ↔ heightPx` swap when neither an explicit pixel dimension nor a `device`
-   * token is supplied AND the requested orientation conflicts with the current aspect ratio
-   * (issue #1208) — `ImageComposeScene` has no display-rotation concept of its own.
+   * Portrait/landscape override, applied on both backends as a `widthPx ↔ heightPx` swap of the
+   * resolved frame — `ImageComposeScene` has no display-rotation concept of its own, and Android
+   * derives its `port`/`land` qualifier from the resulting dimensions so the bitmap and its
+   * `Configuration` agree.
+   *
+   * The swap is **idempotent**: it fires only when the request conflicts with the current aspect
+   * ratio (issue #1208), so `landscape` on an already-landscape frame is a no-op and repeated calls
+   * are stable.
+   *
+   * Only an explicit [widthPx] / [heightPx] on the same call suppresses it. A [device] does **not**
+   * (issue #3547): a device supplies the frame's *natural* geometry — `id:pixel_tablet` is 1280×800
+   * dp, landscape — and rotating that frame is precisely what `device` + `orientation` asks for.
    */
   val orientation: Orientation? = null,
   /**

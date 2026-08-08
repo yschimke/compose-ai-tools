@@ -515,13 +515,14 @@ open class DesktopHost(
    * go through the host's render-queue payload string.
    *
    * Explicit `widthPx` / `heightPx` / `density` overrides win over `device`-resolved values.
-   * Issue #1208 — `orientation` swaps the resolved `widthPx`/`heightPx` only when neither an
-   * explicit pixel dimension nor a `device` token was supplied AND the requested orientation
-   * conflicts with the current aspect ratio. Otherwise the explicit sizing wins or the swap is a
-   * no-op (orientation is an idempotent hint, not a forced rotation). `outputBaseName` is rewritten
-   * to `recording-<recordingId>` so a stray engine fast-path encode (only used by the one-shot
-   * `engine.render` wrapper, not by the recording flow) wouldn't collide with another preview's
-   * PNG. The recording flow itself never reads it.
+   * Issue #1208 — `orientation` swaps the resolved `widthPx`/`heightPx` when the request conflicts
+   * with the current aspect ratio; otherwise the swap is a no-op (an idempotent hint, not a forced
+   * rotation). Only an explicit pixel dimension suppresses it — a `device` token does not, since
+   * the device is the frame being rotated (issue #3547). `mergePreviewOverrides` performs the swap
+   * and reports it as `rotated`, which this function reads to trade the wrap flags with it.
+   * `outputBaseName` is rewritten to `recording-<recordingId>` so a stray engine fast-path encode
+   * (only used by the one-shot `engine.render` wrapper, not by the recording flow) wouldn't collide
+   * with another preview's PNG. The recording flow itself never reads it.
    */
   private fun applyOverrides(
     base: RenderSpec,
@@ -732,7 +733,11 @@ open class DesktopHost(
     return engine.render(spec, request.id, classLoader, sandboxStats = sandboxStats)
   }
 
-  private fun specFromPreviewIdPayload(payload: String): RenderSpec? {
+  /**
+   * Visible for testing — the bundle-backed live daemon's lane, otherwise reachable only by
+   * standing up a host and rendering. Not part of the public host surface.
+   */
+  internal fun specFromPreviewIdPayload(payload: String): RenderSpec? {
     val map = parsePayloadMap(payload)
     val previewId = map["previewId"]?.takeIf { it.isNotBlank() } ?: return null
     val resolver = previewSpecResolver ?: return null
@@ -767,6 +772,13 @@ open class DesktopHost(
       renderMode = map["mode"]?.takeIf { it.isNotBlank() },
       widthPx = if (shouldSwap) baseHeightPx else baseWidthPx,
       heightPx = if (shouldSwap) baseWidthPx else baseHeightPx,
+      // The wrap flags name an *axis*, so a rotated frame trades them — without this a
+      // fixed-width / wrapped-height preview turned portrait keeps wrapping height and the
+      // measure-and-crop pass sizes the axis that is no longer free (#3552 review). Same trade as
+      // `applyOverrides`, `reshapeRenderPayload` and both routers; this is the lane the
+      // bundle-backed live daemon takes, per the note on `overrides` below.
+      wrapWidth = if (shouldSwap) base.wrapHeight else base.wrapWidth,
+      wrapHeight = if (shouldSwap) base.wrapWidth else base.wrapHeight,
       density = map["density"]?.toFloatOrNull() ?: base.density,
       localeTag = map["localeTag"]?.takeIf { it.isNotBlank() } ?: base.localeTag,
       fontScale = map["fontScale"]?.toFloatOrNull() ?: base.fontScale,
