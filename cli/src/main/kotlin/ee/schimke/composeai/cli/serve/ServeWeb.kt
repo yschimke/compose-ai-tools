@@ -5084,6 +5084,21 @@ $rows
     hasSvgExport: Boolean = false,
     /** Whether the full-page raster/vector scroll export is available for this preview. */
     hasScrollExport: Boolean = false,
+    /**
+     * Whether this session can produce the accessibility data products the viewer's **Accessibility
+     * inspection layer** draws from (`a11y/hierarchy`, plus ATF findings / touch targets where the
+     * backend has them) — [ServeHost.hasA11yOverlay]. False ⇒ the layer's checkbox is omitted
+     * rather than offered dead. Replaces the old daemon-composited "Accessibility (TalkBack)"
+     * overlay, which baked one focus ring and its spoken text into the pixels.
+     */
+    hasA11yOverlay: Boolean = false,
+    /**
+     * Whether this session can derive the **Typography** and **Theme attributes** inspection layers
+     * from a render's `compose/semantics` tree ([ServeHost.hasDesignAnnotations]). Same box +
+     * legend surface as the accessibility layer, and the same reason for the gate: a static bundle
+     * has no daemon to capture the tree.
+     */
+    hasDesignAnnotations: Boolean = false,
     trust: String? = null,
     /**
      * Whether this preview carries a captured Remote Compose document
@@ -5695,32 +5710,90 @@ $rows
           "<span class=\"cp-theme cp-theme-bar\" role=\"group\" aria-label=\"Preview theme\">\n" +
             "          $it\n        </span>"
         }
-    // Live overlay toggles (accessibility / touch visualization). The daemon composites these onto
-    // the held session's frames, so they mean nothing on a baked PNG — offered only when a Live
-    // Compose stream is available, and omitted entirely otherwise rather than left permanently
-    // dead. Rendered **enabled**: a visitor who ticks one while the viewer is still on the static
+    // Inspection layers (see inspect.js): what the frame is MADE OF, drawn client-side over the
+    // pixels the server already sent — the accessibility focus map, the resolved typography, the
+    // resolved theme attributes. Each is a box + numbered badge on the stage and a readable row in
+    // the legend beside it, so the facts stay legible and hoverable instead of being composited
+    // into the render. This is what replaced the old "Accessibility (TalkBack)" toggle, which
+    // asked the daemon to bake one focus rectangle and a wall of spoken text into the PNG: it
+    // covered the component it was describing, couldn't be inspected, and said nothing about the
+    // other stops on the screen.
+    //
+    // Each row is offered only when its host can actually produce the data (an a11y-capable daemon
+    // for the first, a semantics-capturing one for the other two) — never as a dead control.
+    val inspectRows = buildString {
+      if (hasA11yOverlay)
+        append(
+          "<label class=\"cp-live-row\"><input class=\"cp-inspect\" id=\"cp-inspect-a11y\" " +
+            "data-cp-inspect=\"a11y\" type=\"checkbox\"> Accessibility</label>\n"
+        )
+      if (hasDesignAnnotations) {
+        append(
+          "<label class=\"cp-live-row\"><input class=\"cp-inspect\" " +
+            "id=\"cp-inspect-typography\" data-cp-inspect=\"typography\" type=\"checkbox\"> " +
+            "Typography</label>\n"
+        )
+        append(
+          "<label class=\"cp-live-row\"><input class=\"cp-inspect\" id=\"cp-inspect-theme\" " +
+            "data-cp-inspect=\"theme\" type=\"checkbox\"> Theme attributes</label>\n"
+        )
+      }
+    }
+    val inspectGroupHtml =
+      if (inspectRows.isEmpty()) ""
+      else
+        """
+            <div class="cp-overlays">
+              <div class="cp-overlays-head">Inspect</div>
+              ${inspectRows.trimEnd().prependIndent("              ").trimStart()}
+            </div>
+        """
+          .trimIndent()
+    // The legend panel beside the stage, populated client-side by inspect.js and hidden until a
+    // layer is on. Server-rendered (empty) rather than created by the script so the panel has a
+    // stable place in the flex row and the stage doesn't jump sideways the first time a layer is
+    // ticked.
+    val inspectLayerHtml =
+      if (inspectRows.isEmpty()) ""
+      else "<div class=\"cp-inspect-layer\" id=\"cp-inspect-layer\"></div>"
+    val inspectLegendHtml =
+      if (inspectRows.isEmpty()) ""
+      else
+        "<div class=\"cp-inspect-legend\" id=\"cp-inspect-legend\" role=\"region\" " +
+          "aria-label=\"Inspection legend\" hidden></div>"
+    // Live overlay toggles (touch visualization). The daemon composites these onto the held
+    // session's frames, so they mean nothing on a baked PNG — offered only when a Live Compose
+    // stream is available, and omitted entirely otherwise rather than left permanently dead.
+    // Rendered **enabled**: a visitor who ticks one while the viewer is still on the static
     // snapshot is asking to see the overlay, so the JS switches into Live Compose for them (the
     // ticked toggle rides in on the stream's initial overrides) instead of presenting a dead
     // control that first demands a click on "Live preview". They carry `$liveDis` — the same gate
     // as the live transport radio — so the one case where they really are dead (the stream exists
     // but is behind sign-in) stays greyed out in the server-rendered markup, matching what
     // `syncOverlayToggles()` reconciles to. `cp-overlay` marks them for the JS collector + sync.
-    val overlaysHtml =
+    val liveOverlaysHtml =
       if (hasLiveStream)
+        """
+            <div class="cp-overlays">
+              <div class="cp-overlays-head">Overlays (Live Compose)</div>
+              <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox"$liveDis> Show touches</label>
+            </div>
+        """
+          .trimIndent()
+      else ""
+    val overlaysHtml =
+      if (inspectGroupHtml.isEmpty() && liveOverlaysHtml.isEmpty()) ""
+      else
         """
         <details class="cp-group" data-cp-group="overlays">
           <summary>Overlays</summary>
           <div class="cp-group-body">
-            <div class="cp-overlays">
-              <div class="cp-overlays-head">Overlays (Live Compose)</div>
-              <label class="cp-live-row"><input class="cp-overlay" id="cp-talkBack" type="checkbox"$liveDis> Accessibility (TalkBack)</label>
-              <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox"$liveDis> Show touches</label>
-            </div>
+            $inspectGroupHtml
+            $liveOverlaysHtml
           </div>
         </details>
         """
           .trimIndent()
-      else ""
     // Detected-feature controls — shown ONLY for previews that actually support the feature (so
     // it's
     // never a dead control everywhere), and routed like a knob via onKnobChanged (`cp-feature`),
@@ -5927,7 +6000,8 @@ $rows
       $historyInlineHtml
       <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
         $navDrawer
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        $inspectLegendHtml
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
@@ -6000,7 +6074,7 @@ $rows
       ${scriptTag("viewer-history.js")}
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
       ${if (hasSvgExport) "${scriptTag("format-compare.js")}\n      " else ""}${scriptTag("viewer.js")}
-      ${scriptTag("backend-badge.js")}
+      ${scriptTag("backend-badge.js")}${if (inspectRows.isEmpty()) "" else "\n      " + scriptTag("inspect.js")}
       """
         .trimIndent()
         .lineSequence()

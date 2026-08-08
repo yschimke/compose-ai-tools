@@ -3,7 +3,7 @@
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Card — compose-preview</title>
+        <title>Profile card — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
@@ -15,9 +15,6 @@
     <span class="cp-site-mark" aria-hidden="true">◇</span>
     <span>compose-preview</span>
   </a>
-  <div class="cp-site-status">
-    <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
-  </div>
   <nav class="cp-site-nav" aria-label="Primary navigation">
     <a href="/?token=demo-token-fixture">Catalogs</a>
     <a href="/status?token=demo-token-fixture">Status</a>
@@ -26,20 +23,20 @@
 </header>
         <main class="cp-main">
               <p class="cp-breadcrumb"><a href="/?token=demo-token-fixture&session=compose-m3">Previews</a> / Component</p>
-      <h1 class="cp-head cp-preview-title">Card <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
-      <p class="cp-preview-id" title="com.example.CardPreview"><code>com.example.CardPreview</code></p>
+      <h1 class="cp-head cp-preview-title">Profile card</h1>
+      <p class="cp-preview-id" title="com.example.ProfileCardPreview"><code>com.example.ProfileCardPreview</code></p>
 
 
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
-      <a id="cp-live-signin" class="cp-live-toggle cp-live-signin" href="/auth/github/start?return=%2Fp%2FCardPreview" data-github-repo="yschimke/compose-ai-tools" title="Sign in with GitHub (yschimke/compose-ai-tools) to enable Live preview">
+      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false">
             <span class="cp-live-dot" aria-hidden="true"></span>
-            <span>Live preview — sign in</span>
-          </a>
+            <span id="cp-live-toggle-label">Live preview</span>
+          </button>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
-<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
+<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1">
         </span>
       </div>
       <div class="cp-viewer-bar">
@@ -53,22 +50,22 @@
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
 
-      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
+      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.ProfileCardPreview" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
 
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
-
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile card"><canvas id="cp-canvas" hidden></canvas><div class="cp-inspect-layer" id="cp-inspect-layer"></div><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-inspect-legend" id="cp-inspect-legend" role="region" aria-label="Inspection legend" hidden></div>
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
             <div class="cp-group-body">
               <span class="cp-modes-inputs" aria-hidden="true">
-  <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" data-fixed-theme="false" tabindex="-1" disabled>
+  <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" data-fixed-theme="false" tabindex="-1">
     <option value="light" selected>Day (Default)</option>
     <option value="dark">Night (Default)</option>
   </select>
 </span>
               <label>Background
-                <select id="cp-background" disabled>
+                <select id="cp-background">
                   <option value="">(default)</option>
                   <option value="clear">Clear (crisp outline)</option>
                 </select>
@@ -80,7 +77,7 @@
             <div class="cp-group-body">
               <div class="cp-size">
                 <label>Size mode
-                  <select id="cp-sizeMode" disabled>
+                  <select id="cp-sizeMode">
                     <option value="">(default)</option>
                     <option value="fixed">Fixed size</option>
                     <option value="max">Max</option>
@@ -89,16 +86,16 @@
                   </select>
                 </label>
                 <div class="cp-size-row" id="cp-size-fixed" hidden>
-                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
-                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
                 </div>
                 <div class="cp-size-row" id="cp-size-min" hidden>
-                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
-                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
                 </div>
                 <div class="cp-size-row" id="cp-size-max" hidden>
-                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
-                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
                 </div>
               </div>
             </div>
@@ -108,7 +105,7 @@
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
               <label>Locale
-                <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off" disabled>
+                <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off">
                 <!-- A datalist, not a fixed <select>: the presets (pseudolocales, RTL, common
                      tags) drop down for quick picking, but any valid BCP-47 tag the server
                      accepts can still be typed in. -->
@@ -134,17 +131,22 @@
                 </datalist>
               </label>
               <label>Font scale: <span id="cp-fontScale-val">default</span>
-                <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0" disabled>
+                <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
               </label>
             </div>
           </details>
                   <details class="cp-group" data-cp-group="overlays">
           <summary>Overlays</summary>
           <div class="cp-group-body">
-
+            <div class="cp-overlays">
+  <div class="cp-overlays-head">Inspect</div>
+  <label class="cp-live-row"><input class="cp-inspect" id="cp-inspect-a11y" data-cp-inspect="a11y" type="checkbox"> Accessibility</label>
+  <label class="cp-live-row"><input class="cp-inspect" id="cp-inspect-typography" data-cp-inspect="typography" type="checkbox"> Typography</label>
+  <label class="cp-live-row"><input class="cp-inspect" id="cp-inspect-theme" data-cp-inspect="theme" type="checkbox"> Theme attributes</label>
+</div>
             <div class="cp-overlays">
   <div class="cp-overlays-head">Overlays (Live Compose)</div>
-  <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox" disabled> Show touches</label>
+  <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox"> Show touches</label>
 </div>
           </div>
         </details>
@@ -157,7 +159,7 @@
       <!-- Export remains below the workspace; renderer selection is kept beside the preview
            heading so it is visible before a tall stage. -->
       <div class="cp-below">
-        <div class="cp-note">Pre-rendered snapshot — overrides (size, locale, font scale) need the live server, not a published catalog. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
+
               <details class="cp-export cp-disclosure">
         <summary id="cp-export-head">Export &amp; direct links</summary>
         <div class="cp-links cp-disclosure-body">
@@ -241,6 +243,7 @@
 })();</script>
       <script src="/assets/serve/fixture/viewer.js"></script>
       <script src="/assets/serve/fixture/backend-badge.js"></script>
+      <script src="/assets/serve/fixture/inspect.js"></script>
         </main>
         <footer class="cp-site-footer">
           <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·

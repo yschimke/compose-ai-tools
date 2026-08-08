@@ -18,9 +18,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class ServeRenderHostTest {
 
@@ -456,6 +460,128 @@ class ServeRenderHostTest {
       )
     }
   }
+
+  @Test
+  fun `renderAnnotations projects the semantics tree into typography and theme layers`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      val out = h.renderAnnotations(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      assertTrue(out is AnnotationsOutcome.Ok)
+      val payload =
+        Json.parseToJsonElement((out as AnnotationsOutcome.Ok).json.decodeToString()).jsonObject
+      assertEquals(previewId, payload["previewId"]?.jsonPrimitive?.content)
+      val annotations =
+        Json.decodeFromJsonElement(
+          ListSerializer(DesignAnnotation.serializer()),
+          payload.getValue("annotations"),
+        )
+      val typography = annotations.single { it.kind == AnnotationKind.TYPOGRAPHY }
+      // Size over line height, the shortened face, then the weight — the one line a designer reads
+      // off a type ramp. The face is shortened from the resolved font FILE the daemon reports.
+      assertEquals("14.0sp/20.0sp · Roboto-Medium.ttf · 500", typography.label)
+      assertEquals("Supporting text", typography.role)
+      assertEquals(AnnotationBounds(x = 48, y = 44, width = 144, height = 20), typography.bounds)
+      assertEquals("14.0sp", typography.detail["fontSize"])
+
+      val theme = annotations.single { it.kind == AnnotationKind.THEME }
+      assertEquals("fill #FF6750A4 · radius 12.0dp · border 1.0dp #FF79747E", theme.label)
+      assertEquals(AnnotationBounds(x = 8, y = 8, width = 32, height = 32), theme.bounds)
+      assertEquals("#FF6750A4", theme.detail["background"])
+    }
+  }
+
+  @Test
+  fun `renderAnnotations serves identical requests from cache`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      h.renderAnnotations(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      h.renderAnnotations(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      assertEquals(
+        1,
+        session.renderCount.get(),
+        "second identical annotations request must hit the cache",
+      )
+    }
+  }
+
+  @Test
+  fun `renderA11y merges the hierarchy with ATF findings and touch targets`() {
+    val session =
+      FakeRenderSession(
+        newRenderRoot(),
+        fetchDataHook = { _, kind ->
+          when (kind) {
+            ServeRenderHost.A11Y_HIERARCHY_KIND ->
+              a11yFetch(kind, """{"nodes":[{"label":"Follow","boundsInScreen":"0,0,48,24"}]}""")
+            ServeRenderHost.A11Y_ATF_KIND ->
+              a11yFetch(
+                kind,
+                """{"findings":[{"level":"ERROR","type":"SpeakableTextPresentCheck","message":"no label"}]}""",
+              )
+            ServeRenderHost.A11Y_TOUCH_TARGETS_KIND ->
+              a11yFetch(
+                kind,
+                """{"targets":[{"nodeId":"7","boundsInScreen":"0,0,48,24","widthDp":24.0,"heightDp":12.0,"findings":["TouchTargetTooSmall"]}]}""",
+              )
+            else -> null
+          }
+        },
+      )
+    host(session).use { h ->
+      val out = h.renderA11y(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      assertTrue(out is A11yOutcome.Ok)
+      val payload =
+        Json.parseToJsonElement((out as A11yOutcome.Ok).json.decodeToString()).jsonObject
+      assertEquals(previewId, payload["previewId"]?.jsonPrimitive?.content)
+      assertEquals(1, payload.getValue("nodes").jsonArray.size)
+      assertEquals(1, payload.getValue("findings").jsonArray.size)
+      assertEquals(1, payload.getValue("touchTargets").jsonArray.size)
+    }
+  }
+
+  @Test
+  fun `renderA11y still draws the focus map when the backend has no ATF products`() {
+    // The desktop backend advertises no `a11y/touchTargets` at all and answers `a11y/atf` with
+    // empty findings — the overlay must still be worth drawing from the hierarchy alone rather
+    // than failing the whole request because an optional product wasn't there.
+    val session =
+      FakeRenderSession(
+        newRenderRoot(),
+        fetchDataHook = { _, kind ->
+          when (kind) {
+            ServeRenderHost.A11Y_HIERARCHY_KIND ->
+              a11yFetch(kind, """{"nodes":[{"label":"Follow","boundsInScreen":"0,0,48,24"}]}""")
+            ServeRenderHost.A11Y_ATF_KIND,
+            ServeRenderHost.A11Y_TOUCH_TARGETS_KIND -> error("kind not advertised")
+            else -> null
+          }
+        },
+      )
+    host(session).use { h ->
+      val out = h.renderA11y(previewId, PreviewOverrides())
+      assertTrue(out is A11yOutcome.Ok)
+      val payload =
+        Json.parseToJsonElement((out as A11yOutcome.Ok).json.decodeToString()).jsonObject
+      assertEquals(1, payload.getValue("nodes").jsonArray.size)
+      assertTrue(payload.getValue("findings").jsonArray.isEmpty())
+      assertTrue(payload.getValue("touchTargets").jsonArray.isEmpty())
+    }
+  }
+
+  @Test
+  fun `renderA11y is NotFound for an unknown preview`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      assertTrue(h.renderA11y("nope", PreviewOverrides()) is A11yOutcome.NotFound)
+    }
+  }
+
+  private fun a11yFetch(kind: String, json: String) =
+    ee.schimke.composeai.daemon.protocol.DataFetchResult(
+      kind = kind,
+      schemaVersion = 1,
+      payload = Json.parseToJsonElement(json),
+    )
 
   @Test
   fun `renderSlots is NotFound for an unknown preview`() {

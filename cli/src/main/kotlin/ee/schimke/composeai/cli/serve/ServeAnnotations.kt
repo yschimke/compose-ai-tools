@@ -40,7 +40,15 @@ object AnnotationKind {
   const val TYPOGRAPHY = "typography"
   const val LAYOUT = "layout"
 
-  val KNOWN = setOf(TYPOGRAPHY, LAYOUT)
+  /**
+   * Resolved theme attributes of a container — fill / border colour, corner radius, shape. Produced
+   * live from the render's own semantics tree by [ServeDesignAnnotations] for the viewer's
+   * inspection layers, rather than authored in a bundle's `annotations/index.json` (the compare
+   * page's producer-side layers are [TYPOGRAPHY] / [LAYOUT] only).
+   */
+  const val THEME = "theme"
+
+  val KNOWN = setOf(TYPOGRAPHY, LAYOUT, THEME)
 }
 
 /**

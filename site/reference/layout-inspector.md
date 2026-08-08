@@ -81,6 +81,15 @@ Backed on Android by the daemon's `RootForTest` carried on
 `build/compose-previews/data/<id>/layout-inspector.json` and
 `compose-semantics.json`.
 
+The `compose-preview serve` viewer projects the same tree into two
+inspection layers over the rendered frame — **Overlays → Inspect →
+Typography** (per text node: resolved size / line height / face / weight,
+from `ComposeSemanticsNode.typography`) and **Theme attributes** (per
+container: resolved fill, border, corner radius and shape, from
+`ComposeSemanticsNode.tokens`). Both are served by `/render/<id>.annotations`
+as `DesignAnnotation`s, the same shape the design-comparison page draws its
+producer-authored spec layers from.
+
 ## Companion products
 
 - [Accessibility](../a11y) — `a11y/hierarchy` for the assistive-technology view of the same nodes.

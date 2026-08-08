@@ -3156,6 +3156,11 @@ class ServeHttpServer(
           // flag.
           hasSvgExport = renderHost.hasSvgExportFor(preview.id),
           hasScrollExport = renderHost.hasScrollExportFor(preview.id),
+          // The inspection layers: the accessibility focus map needs an a11y-capable daemon, the
+          // typography / theme layers a semantics-capturing one. Both are session-wide facts (any
+          // preview this daemon renders can be inspected), unlike the export gates above.
+          hasA11yOverlay = renderHost.hasA11yOverlay,
+          hasDesignAnnotations = renderHost.hasDesignAnnotations,
           hasLiveStream = renderHost.hasLiveStream,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           // Per-preview: offer the in-browser Remote Compose canvas lane only when this preview
@@ -3263,10 +3268,11 @@ class ServeHttpServer(
   /**
    * `GET /render/{name}` (query) and `GET /{system}/render/{name}` (path): a preview's rendered
    * bytes — a PNG for `<id>.png` (or no suffix), the figma-svg export for `<id>.svg`, the declared
-   * preview slots as JSON for `<id>.slots`, or the captured Remote Compose document for `<id>.rc`.
-   * All but `.rc` take the same override query params; SVG and slots are only produced by a
-   * daemon-backed host, and `.rc` only by a bundle host that carries `ir/` sidecars (each 404s
-   * where unavailable).
+   * preview slots as JSON for `<id>.slots`, the merged accessibility products as JSON for
+   * `<id>.a11y`, the typography + theme inspection layers for `<id>.annotations`, or the captured
+   * Remote Compose document for `<id>.rc`. All but `.rc` take the same override query params; SVG
+   * and slots are only produced by a daemon-backed host, and `.rc` only by a bundle host that
+   * carries `ir/` sidecars (each 404s where unavailable).
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
     if (rejectBadToken()) return
@@ -3279,9 +3285,17 @@ class ServeHttpServer(
       }
       val wantSvg = rawName.endsWith(".svg")
       val wantSlots = rawName.endsWith(".slots")
+      val wantA11y = rawName.endsWith(".a11y")
+      val wantAnnotations = rawName.endsWith(".annotations")
       val wantRcDoc = rawName.endsWith(".rc")
       val previewId =
-        rawName.removeSuffix(".png").removeSuffix(".svg").removeSuffix(".slots").removeSuffix(".rc")
+        rawName
+          .removeSuffix(".png")
+          .removeSuffix(".svg")
+          .removeSuffix(".slots")
+          .removeSuffix(".a11y")
+          .removeSuffix(".annotations")
+          .removeSuffix(".rc")
       // The prebaked grid-thumbnail lane: a catalog card asks for `?thumb=<hash>` and gets a
       // downscaled copy of its render straight out of memory — no override parse, no admission, no
       // disk read, no chance of waking a daemon. This is the whole point of the lane: a catalog
@@ -3300,7 +3314,15 @@ class ServeHttpServer(
       // to the card's `src` when the visitor picks a theme), so this check is what keeps a themed
       // render from being answered with an unthemed thumbnail.
       val thumbHash = call.request.queryParameters[ServeHeroImages.THUMB_PARAM]
-      if (thumbHash != null && !wantSvg && !wantSlots && !wantRcDoc && plainThumbRequest()) {
+      if (
+        thumbHash != null &&
+          !wantSvg &&
+          !wantSlots &&
+          !wantA11y &&
+          !wantAnnotations &&
+          !wantRcDoc &&
+          plainThumbRequest()
+      ) {
         val thumb =
           heroImages.gridThumbFor(
             renderHost,
@@ -3330,6 +3352,8 @@ class ServeHttpServer(
       // structural `.svg` product; slots remain a host/daemon product and continue below.
       if (
         !wantSlots &&
+          !wantA11y &&
+          !wantAnnotations &&
           call.request.queryParameters["rcPlayer"]?.lowercase() == RcPlayerBackend.CMP_JVM.wire
       ) {
         val format = if (wantSvg) RcJvmServerRenderer.Format.SVG else RcJvmServerRenderer.Format.PNG
@@ -3384,6 +3408,14 @@ class ServeHttpServer(
           }
           if (wantSlots) {
             renderSlotsResponse(renderHost, previewId, overrides)
+            return@withLeasedSession
+          }
+          if (wantA11y) {
+            renderA11yResponse(renderHost, previewId, overrides)
+            return@withLeasedSession
+          }
+          if (wantAnnotations) {
+            renderAnnotationsResponse(renderHost, previewId, overrides)
             return@withLeasedSession
           }
           // The render is blocking (renderNow + await); keep it off the request dispatcher. Cap
@@ -3807,6 +3839,81 @@ class ServeHttpServer(
       is SlotsOutcome.Ok -> call.respondBytes(outcome.json, ContentType.Application.Json)
       SlotsOutcome.NotFound -> call.respondText("no such preview", status = HttpStatusCode.NotFound)
       is SlotsOutcome.Failed ->
+        call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
+    }
+  }
+
+  /**
+   * Accessibility lane of [handleRender]: load-shed like the PNG lane, then respond the merged
+   * `a11y/hierarchy` + `a11y/atf` + `a11y/touchTargets` JSON the viewer's overlay + legend read.
+   * Like the slots lane this can force a daemon re-render (the products are only written by an
+   * `a11y`-mode render), so it goes through the same render admission.
+   */
+  private suspend fun RoutingContext.renderA11yResponse(
+    renderHost: ServeHost,
+    previewId: String,
+    overrides: PreviewOverrides,
+  ) {
+    val outcome =
+      withContext(Dispatchers.IO) {
+        if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
+          null
+        } else {
+          try {
+            renderHost.renderA11y(previewId, overrides)
+          } finally {
+            renderSemaphore.release()
+          }
+        }
+      }
+    when (outcome) {
+      null -> {
+        call.response.headers.append(HttpHeaders.RetryAfter, "2")
+        call.respondText(
+          "render queue saturated; retry shortly",
+          status = HttpStatusCode.ServiceUnavailable,
+        )
+      }
+      is A11yOutcome.Ok -> call.respondBytes(outcome.json, ContentType.Application.Json)
+      A11yOutcome.NotFound -> call.respondText("no such preview", status = HttpStatusCode.NotFound)
+      is A11yOutcome.Failed ->
+        call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
+    }
+  }
+
+  /**
+   * Design-annotation lane of [handleRender]: load-shed like the PNG lane, then respond the
+   * typography + theme inspection layers the viewer draws over the frame.
+   */
+  private suspend fun RoutingContext.renderAnnotationsResponse(
+    renderHost: ServeHost,
+    previewId: String,
+    overrides: PreviewOverrides,
+  ) {
+    val outcome =
+      withContext(Dispatchers.IO) {
+        if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
+          null
+        } else {
+          try {
+            renderHost.renderAnnotations(previewId, overrides)
+          } finally {
+            renderSemaphore.release()
+          }
+        }
+      }
+    when (outcome) {
+      null -> {
+        call.response.headers.append(HttpHeaders.RetryAfter, "2")
+        call.respondText(
+          "render queue saturated; retry shortly",
+          status = HttpStatusCode.ServiceUnavailable,
+        )
+      }
+      is AnnotationsOutcome.Ok -> call.respondBytes(outcome.json, ContentType.Application.Json)
+      AnnotationsOutcome.NotFound ->
+        call.respondText("no such preview", status = HttpStatusCode.NotFound)
+      is AnnotationsOutcome.Failed ->
         call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
     }
   }

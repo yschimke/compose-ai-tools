@@ -26,7 +26,9 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -280,6 +282,34 @@ sealed interface SlotsOutcome {
 }
 
 /**
+ * Result of a design-annotation request — the typography + theme inspection layers derived from a
+ * render's own `compose/semantics` tree ([ServeDesignAnnotations]).
+ */
+sealed interface AnnotationsOutcome {
+  data class Ok(val json: ByteArray) : AnnotationsOutcome
+
+  /** No such preview id, or this host has no daemon to capture a semantics tree. */
+  data object NotFound : AnnotationsOutcome
+
+  /** The render or semantics fetch was attempted but failed. [reason] is human-readable. */
+  data class Failed(val reason: String) : AnnotationsOutcome
+}
+
+/**
+ * Result of an accessibility-overlay request — the merged `a11y/hierarchy` + `a11y/atf` +
+ * `a11y/touchTargets` JSON the viewer draws its overlay boxes and legend from.
+ */
+sealed interface A11yOutcome {
+  data class Ok(val json: ByteArray) : A11yOutcome
+
+  /** No such preview id, or this host has no daemon to produce a11y data products. */
+  data object NotFound : A11yOutcome
+
+  /** The a11y re-render / fetch was attempted but failed. [reason] is human-readable. */
+  data class Failed(val reason: String) : A11yOutcome
+}
+
+/**
  * Long-lived, thread-safe wrapper around **one** [RenderSession], fronting it for the
  * `compose-preview serve` HTTP server. The long-lived sibling of
  * [ee.schimke.composeai.cli.MatrixRenderFetcher]: same `renderNow` + await-`renderFinished` +
@@ -431,7 +461,12 @@ internal constructor(
     val opened = session
     runCatching {
         opened.enableExtensions(
-          listOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG, SCROLL_EXTENSION_ID)
+          listOf(
+            ComposeFigmaSvgProduct.KIND,
+            ComposeFigmaSvgProduct.KIND_LONG,
+            SCROLL_EXTENSION_ID,
+            A11Y_EXTENSION_ID,
+          )
         )
       }
       .getOrElse { e ->
@@ -442,6 +477,7 @@ internal constructor(
               ComposeFigmaSvgProduct.KIND,
               ComposeFigmaSvgProduct.KIND_LONG,
               SCROLL_EXTENSION_ID,
+              A11Y_EXTENSION_ID,
             )
         )
       }
@@ -455,6 +491,12 @@ internal constructor(
     SCROLL_EXTENSION_ID !in exportEnableResult.unknown &&
       exportEnableResult.dataProducts.any { it.kind == SCROLL_LONG_KIND }
   }
+
+  // The a11y extension is registered inactive like the exports above, so it rides the same
+  // `extensions/enable` call. A backend that doesn't carry it reports it in `unknown`, which is
+  // what makes the viewer omit the Accessibility overlay control rather than offer one whose fetch
+  // would 500 on `kind not advertised`.
+  override val hasA11yOverlay: Boolean by lazy { A11Y_EXTENSION_ID !in exportEnableResult.unknown }
 
   override fun hasScrollExportFor(previewId: String): Boolean =
     hasScrollExport &&
@@ -519,6 +561,12 @@ internal constructor(
 
   // The preview-slots counterpart of [cache], keyed the same way (previewId × overrides).
   private val slotsCache = LruByteCache(MAX_CACHE_ENTRIES)
+
+  // The accessibility-overlay counterpart of [cache], keyed the same way (previewId × overrides).
+  private val a11yCache = LruByteCache(MAX_CACHE_ENTRIES)
+
+  // The typography/theme inspection-layer counterpart of [cache], keyed the same way.
+  private val annotationsCache = LruByteCache(MAX_CACHE_ENTRIES)
 
   // Decodes a fetched compose/semantics payload and encodes the slots response; tolerant of the
   // schema's additive fields (a v7 file read by this v-agnostic slot extractor).
@@ -1055,6 +1103,71 @@ internal constructor(
   }
 
   /**
+   * Render [previewId] at [overrides] and return its **typography + theme** inspection layers as
+   * `{"previewId":"…","annotations":[…]}`, serving a cached result when one exists. Thread-safe.
+   *
+   * Same shape as [renderSlots] — both read the `compose/semantics` tree of the render that just
+   * produced the pixels, so both force a fresh render under [renderLock] before fetching the
+   * per-preview file it overwrote. The layers themselves are pure projection
+   * ([ServeDesignAnnotations]): resolved type size / face / weight per text node, resolved fill /
+   * border / corner radius per container.
+   */
+  override fun renderAnnotations(
+    previewId: String,
+    overrides: PreviewOverrides,
+  ): AnnotationsOutcome {
+    check(!closed.get()) { "ServeRenderHost is closed" }
+    if (previewId !in previewIds) return AnnotationsOutcome.NotFound
+
+    val key = ServeOverrides.cacheKey(previewId, overrides)
+    annotationsCache.get(key)?.let {
+      return AnnotationsOutcome.Ok(it)
+    }
+
+    return renderLock.withLock {
+      annotationsCache.get(key)?.let {
+        return@withLock AnnotationsOutcome.Ok(it)
+      }
+
+      cache.remove(key)
+      when (val pngOutcome = render(previewId, overrides)) {
+        RenderOutcome.NotFound -> return@withLock AnnotationsOutcome.NotFound
+        is RenderOutcome.Failed -> return@withLock AnnotationsOutcome.Failed(pngOutcome.reason)
+        RenderOutcome.Busy -> return@withLock AnnotationsOutcome.Failed("daemon busy")
+        is RenderOutcome.Ok -> {} // rendered; the semantics for these overrides is now on disk
+      }
+
+      val payload =
+        try {
+          fetchSemantics(previewId)
+        } catch (e: Exception) {
+          val reason = "compose/semantics fetch failed: ${e.message}"
+          onLog(reason)
+          return@withLock AnnotationsOutcome.Failed(reason)
+        } ?: return@withLock AnnotationsOutcome.Failed("render produced no semantics")
+
+      val json =
+        dataJson
+          .encodeToString(
+            JsonObject.serializer(),
+            buildJsonObject {
+              put("previewId", JsonPrimitive(previewId))
+              put(
+                "annotations",
+                dataJson.encodeToJsonElement(
+                  ListSerializer(DesignAnnotation.serializer()),
+                  ServeDesignAnnotations.annotations(payload),
+                ),
+              )
+            },
+          )
+          .encodeToByteArray()
+      annotationsCache.put(key, json)
+      AnnotationsOutcome.Ok(json)
+    }
+  }
+
+  /**
    * Fetch and decode the freshly written `compose/semantics` tree for [previewId] from whichever
    * transport the session used (inline payload or an on-disk path); null when the fetch yielded
    * neither. Callers hold [renderLock] so the file read matches the render that produced it.
@@ -1068,6 +1181,109 @@ internal constructor(
     val text = fileSystem.read(path) { readUtf8() }
     return dataJson.decodeFromString(ComposeSemanticsPayload.serializer(), text)
   }
+
+  /**
+   * Fetch [previewId]'s accessibility products at [overrides] and return them merged as one JSON
+   * object the viewer can draw an overlay + legend from:
+   * ```json
+   * {"previewId":"…","nodes":[…],"findings":[…],"touchTargets":[…]}
+   * ```
+   *
+   * `nodes` is `a11y/hierarchy` (what a screen reader sees — label, role, states, merged-ness and
+   * source-bitmap bounds), `findings` is `a11y/atf` (Android-only; empty on the desktop backend)
+   * and `touchTargets` is `a11y/touchTargets` (Android-only, absent elsewhere). Each is fetched
+   * independently and tolerantly: a kind this backend doesn't carry contributes an empty array
+   * rather than failing the request, so the desktop overlay still draws its focus map.
+   *
+   * The products are per-preview files the daemon overwrites on every render, and they're produced
+   * only by a render in `a11y` mode — so the fetch asks for a forced re-render carrying [overrides]
+   * (like [renderScrollPng]) and runs under [renderLock] so nothing else overwrites them in
+   * between. Results are cached per `(previewId, overrides)`; only a miss pays for the re-render.
+   */
+  override fun renderA11y(previewId: String, overrides: PreviewOverrides): A11yOutcome {
+    check(!closed.get()) { "ServeRenderHost is closed" }
+    if (previewId !in previewIds) return A11yOutcome.NotFound
+
+    val key = ServeOverrides.cacheKey(previewId, overrides)
+    a11yCache.get(key)?.let {
+      return A11yOutcome.Ok(it)
+    }
+
+    return renderLock.withLock {
+      a11yCache.get(key)?.let {
+        return@withLock A11yOutcome.Ok(it)
+      }
+
+      val fetchParams = buildJsonObject {
+        put(DataFetchParams.PARAM_FORCE_RERENDER, JsonPrimitive(true))
+        put(
+          DataFetchParams.PARAM_OVERRIDES,
+          Json.encodeToJsonElement(PreviewOverrides.serializer(), overrides),
+        )
+      }
+      // The hierarchy is the overlay itself — without it there is nothing to draw, so its failure
+      // is the request's failure. The other two only decorate it.
+      val hierarchy =
+        try {
+          fetchA11yProduct(previewId, A11Y_HIERARCHY_KIND, fetchParams)
+        } catch (e: Exception) {
+          val reason = "a11y/hierarchy fetch failed: ${e.message}"
+          onLog(reason)
+          return@withLock A11yOutcome.Failed(reason)
+        } ?: return@withLock A11yOutcome.Failed("render produced no accessibility hierarchy")
+
+      val json =
+        dataJson
+          .encodeToString(
+            JsonObject.serializer(),
+            buildJsonObject {
+              put("previewId", JsonPrimitive(previewId))
+              put("nodes", arrayField(hierarchy, "nodes"))
+              put("findings", arrayField(optionalA11yProduct(previewId, A11Y_ATF_KIND), "findings"))
+              put(
+                "touchTargets",
+                arrayField(optionalA11yProduct(previewId, A11Y_TOUCH_TARGETS_KIND), "targets"),
+              )
+            },
+          )
+          .encodeToByteArray()
+      a11yCache.put(key, json)
+      A11yOutcome.Ok(json)
+    }
+  }
+
+  /**
+   * Fetch an a11y product for [previewId] from whichever transport the daemon used (an inline
+   * payload, or an on-disk path written by the re-render), or null when it yielded neither. Callers
+   * hold [renderLock] so a path read matches the render that produced it.
+   */
+  private fun fetchA11yProduct(previewId: String, kind: String, params: JsonObject?): JsonObject? {
+    val result = session.fetchData(previewId, kind, inline = true, params = params)
+    result.payload?.let {
+      return it as? JsonObject
+    }
+    val path = result.path?.toPath()?.takeIf { fileSystem.exists(it) } ?: return null
+    val text = fileSystem.read(path) { readUtf8() }
+    return dataJson.parseToJsonElement(text) as? JsonObject
+  }
+
+  /**
+   * [fetchA11yProduct] for a kind that may not exist on this backend (ATF findings and touch
+   * targets are Android-only). Swallows the fetch failure — the overlay is still worth drawing from
+   * the hierarchy alone. No `params`: the forced re-render already ran for the hierarchy, and
+   * asking for another one per optional product would triple the cost of every overlay.
+   */
+  private fun optionalA11yProduct(previewId: String, kind: String): JsonObject? =
+    try {
+      fetchA11yProduct(previewId, kind, params = null)
+    } catch (e: Exception) {
+      onLog("$kind unavailable for '$previewId': ${e.message}")
+      null
+    }
+
+  /** [obj]'s [name] array, or an empty one when the product was absent or shaped differently. */
+  private fun arrayField(obj: JsonObject?, name: String): JsonArray =
+    obj?.get(name) as? JsonArray ?: JsonArray(emptyList())
 
   /**
    * Try to open a daemon-backed live stream for [previewId] (tier-2). On success the daemon pushes
@@ -1253,6 +1469,17 @@ internal constructor(
   companion object {
     internal const val SCROLL_LONG_KIND = "render/scroll/long"
     internal const val SCROLL_EXTENSION_ID = "scroll"
+
+    // The accessibility extension + its three product kinds, spelled here rather than imported
+    // from `:data-a11y-core` — the CLI doesn't depend on that module, and these are wire strings
+    // (`AccessibilityPreviewExtension.ID` / `KIND_HIERARCHY`, `AtfChecksPreviewExtension.KIND_ATF`
+    // / `KIND_TOUCH_TARGETS`), not types. Both daemon backends register all of them under the one
+    // `a11y` extension id; the desktop one advertises no `a11y/touchTargets` (ATF is Android-only)
+    // and answers `a11y/atf` with empty findings, which the overlay handles as "nothing to flag".
+    internal const val A11Y_EXTENSION_ID = "a11y"
+    internal const val A11Y_HIERARCHY_KIND = "a11y/hierarchy"
+    internal const val A11Y_ATF_KIND = "a11y/atf"
+    internal const val A11Y_TOUCH_TARGETS_KIND = "a11y/touchTargets"
     /** RPC ack budget for the (fast, queue-only) `renderNow` call itself. */
     private val RENDER_ACK_TIMEOUT = 60.seconds
 

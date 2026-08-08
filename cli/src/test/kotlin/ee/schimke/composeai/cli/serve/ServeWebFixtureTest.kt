@@ -897,6 +897,21 @@ class ServeWebFixtureTest {
         sessionId = "compose-m3",
         canApplyOverrides = true,
       )
+    // A daemon-backed viewer whose session can produce every inspection layer: the accessibility
+    // focus map (`a11y/hierarchy` + ATF findings + touch targets) and the typography / theme
+    // attributes derived from the render's own semantics tree. The harness drives this fixture
+    // twice — once as served, once with the layers ticked (see `pages-snapshot.spec.mjs`'s
+    // `serve-viewer-inspect` states) — so the visual-diff bot covers both the controls and the
+    // drawn overlay + legend.
+    val viewerInspect =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.ProfileCardPreview", "Profile card"),
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = true,
+        hasA11yOverlay = true,
+        hasDesignAnnotations = true,
+      )
     // A daemon-backed viewer for a preview detected to support one-handed gesture hints
     // (`@GestureHintPreview`) on an Android-backed session (`gesturesRenderable = true`): the
     // "Detected features" group shows the "Show gesture hints" control. Captured so the visual-diff
@@ -1591,6 +1606,7 @@ class ServeWebFixtureTest {
         "serve-viewer-catalog-knobs.html" to viewerCatalogKnobs,
         "serve-viewer-themes.html" to viewerThemes,
         "serve-viewer-focus.html" to viewerFocus,
+        "serve-viewer-inspect.html" to viewerInspect,
         "serve-viewer-gestures.html" to viewerGestures,
         "serve-landing-path.html" to landingPath,
         "serve-viewer-path.html" to viewerPath,
@@ -3600,7 +3616,7 @@ class ServeWebFixtureTest {
       "Theme disabled without a renderer or Wasm app",
     )
     assertFalse(
-      staticView.contains("id=\"cp-talkBack\""),
+      staticView.contains("id=\"cp-touchOverlay\""),
       "no live stream ⇒ the live-only overlay toggles are omitted entirely, not left dead",
     )
     assertTrue(
@@ -3689,14 +3705,20 @@ class ServeWebFixtureTest {
       liveCatalogWasm.contains("id=\"cp-sizeMode\" disabled"),
       "server-render-only sizing stays disabled on a live catalog's static snapshot",
     )
-    // A live-stream session offers the overlay toggles (talkBack / touch) ENABLED, even though the
-    // viewer opens on the static snapshot: ticking one switches into Live Compose (viewer.js'
+    // A live-stream session offers the daemon-composited overlay toggle ENABLED, even though the
+    // viewer opens on the static snapshot: ticking it switches into Live Compose (viewer.js'
     // onOverlayChanged) rather than sitting dead until "Live preview" is clicked first.
     assertTrue(
       liveCatalogWasm.contains("cp-overlays") &&
-        liveCatalogWasm.contains("id=\"cp-talkBack\" type=\"checkbox\">") &&
         liveCatalogWasm.contains("id=\"cp-touchOverlay\" type=\"checkbox\">"),
       "live stream offers the overlay toggles enabled from the static lane",
+    )
+    // The accessibility layer is NOT one of them: it is drawn client-side from the daemon's a11y
+    // data products, so it is gated on the host advertising them, not on the live stream. A
+    // catalog-live session that can't produce them offers no dead checkbox at all.
+    assertFalse(
+      liveCatalogWasm.contains("cp-inspect"),
+      "inspection layers are gated on the data products, not on the live stream",
     )
     assertTrue(
       assetText("viewer.js")
@@ -3709,7 +3731,7 @@ class ServeWebFixtureTest {
     // reach the daemon and nowhere else — unshareable, unrestorable by Back, and applied a frame
     // late via the onopen replay instead of arriving with `stream/start`.
     assertTrue(
-      assetText("viewer.js").contains("\"gestures\", \"talkBack\", \"touchOverlay\","),
+      assetText("viewer.js").contains("\"gestures\", \"touchOverlay\","),
       "overlays are URL-owned params",
     )
     // The stream replays the full liveOverrides() on open so an overlay checked while the socket
