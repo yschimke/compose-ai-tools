@@ -22,15 +22,22 @@ import ee.schimke.composeai.preview.TypographyCatalog
  * `CatalogCatalogs.kt`. Wear renders on the Android (Robolectric) backend, so these token-level
  * catalogs draw real specimen sheets (unlike the desktop M3 module, whose sheets await #2135).
  *
- * The two typefaces are declared as `@TypographyCatalog` specimens so the sheet shows each face on
- * the same type scale, and resolve as **downloadable Google fonts** rather than vendored TTFs — so
+ * Every typeface is declared as a `@TypographyCatalog` specimen so the sheet shows each face on the
+ * same type scale, and resolves as a **downloadable Google font** rather than a vendored TTF — so
  * the module ships no `res/font` faces and every packed bundle stays ~2 MB smaller while remaining
  * self-contained (the renderer fetches + caches the face; see [googleFontProvider]):
  * * **Roboto Flex** — the default, `GoogleFont("Roboto Flex")` (the variable Roboto Flex from
  *   fonts.google.com's `ofl/robotoflex`).
- * * **Google Sans Flex** — a named face that isn't distributed on fonts.google.com (Google Sans is a
- *   Google-brand font), so it degrades to the platform sans until a face is supplied; the choice is
- *   declared regardless.
+ * * **Google Sans Flex** — the Material 3 Expressive brand face. It is in no license directory of
+ *   the [google/fonts](https://github.com/google/fonts) corpus, but the **CSS2 endpoint serves it**
+ *   (see `deploy/image/README.md`, which bakes it into the image font cache for the same reason),
+ *   so it resolves through the same downloadable path as every other family here rather than
+ *   degrading to the platform sans as it did before.
+ * * **Lobster Two** — a deliberately distinctive display face, so a font override is unmistakable.
+ * * **JetBrains Mono** / **Inter** — the pair Confetti Wear's KotlinConf identity is built from
+ *   (mono titles, Inter body; see `design/STYLE_GUIDE.md` in joreilly/Confetti). Declared here as
+ *   selectable faces in their own right, and paired by [wearCatalogTypography] for the KotlinConf
+ *   `@WearThemeCatalog`.
  */
 
 /**
@@ -54,14 +61,34 @@ val RobotoFlex: FontFamily =
     GoogleFontFont(GoogleFont("Roboto Flex"), googleFontProvider, weight = FontWeight.Normal)
   )
 
-/** Google Sans Flex — declared choice; graceful sans fallback until a brand face is supplied. */
-val GoogleSansFlex: FontFamily = FontFamily.SansSerif
+/**
+ * Google Sans Flex — the Material 3 Expressive brand face, resolved as a downloadable Google font
+ * like every other family here. It is absent from the `google/fonts` corpus but the CSS2 endpoint
+ * serves it (`css2?family=Google%20Sans%20Flex:wght@100..1000` answers with a `format('truetype')`
+ * block), which is the only thing the renderer's downloadable-font path needs; the deployed image
+ * pre-bakes the same family for the same reason. It used to alias [FontFamily.SansSerif], which
+ * silently rendered as plain Roboto and made the "Google Sans Flex" choice a no-op on screen.
+ */
+val GoogleSansFlex: FontFamily =
+  FontFamily(
+    GoogleFontFont(GoogleFont("Google Sans Flex"), googleFontProvider, weight = FontWeight.Normal)
+  )
 
 /** Lobster Two — a selectable display face, resolved as a downloadable Google font. */
 val LobsterTwo: FontFamily =
   FontFamily(
     GoogleFontFont(GoogleFont("Lobster Two"), googleFontProvider, weight = FontWeight.Normal)
   )
+
+/** JetBrains Mono — the KotlinConf title face (see [wearCatalogTypography]). */
+val JetBrainsMono: FontFamily =
+  FontFamily(
+    GoogleFontFont(GoogleFont("JetBrains Mono"), googleFontProvider, weight = FontWeight.Normal)
+  )
+
+/** Inter — the KotlinConf body face (see [wearCatalogTypography]). */
+val Inter: FontFamily =
+  FontFamily(GoogleFontFont(GoogleFont("Inter"), googleFontProvider, weight = FontWeight.Normal))
 
 // --- Roboto Flex type-scale specimens (the default face) ------------------------------------------
 
@@ -81,7 +108,7 @@ val RobotoFlexBody: TextStyle =
 val RobotoFlexLabel: TextStyle =
   TextStyle(fontFamily = RobotoFlex, fontSize = 12.sp, fontWeight = FontWeight.Medium)
 
-// --- Google Sans Flex type-scale specimens (declared choice, graceful fallback) -------------------
+// --- Google Sans Flex type-scale specimens (the Material 3 Expressive brand face) -----------------
 
 @TypographyCatalog(name = "Display", group = "Google Sans Flex")
 val GoogleSansFlexDisplay: TextStyle =
@@ -108,6 +135,32 @@ val LobsterTwoTitle: TextStyle =
 @TypographyCatalog(name = "Body", group = "Lobster Two")
 val LobsterTwoBody: TextStyle =
   TextStyle(fontFamily = LobsterTwo, fontSize = 15.sp, fontWeight = FontWeight.Normal)
+
+// --- KotlinConf pairing specimens (JetBrains Mono titles + Inter body) ---------------------------
+
+@TypographyCatalog(name = "Display", group = "JetBrains Mono")
+val JetBrainsMonoDisplay: TextStyle =
+  TextStyle(fontFamily = JetBrainsMono, fontSize = 40.sp, fontWeight = FontWeight.Normal)
+
+@TypographyCatalog(name = "Title", group = "JetBrains Mono")
+val JetBrainsMonoTitle: TextStyle =
+  TextStyle(fontFamily = JetBrainsMono, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+
+@TypographyCatalog(name = "Body", group = "JetBrains Mono")
+val JetBrainsMonoBody: TextStyle =
+  TextStyle(fontFamily = JetBrainsMono, fontSize = 15.sp, fontWeight = FontWeight.Normal)
+
+@TypographyCatalog(name = "Display", group = "Inter")
+val InterDisplay: TextStyle =
+  TextStyle(fontFamily = Inter, fontSize = 40.sp, fontWeight = FontWeight.Normal)
+
+@TypographyCatalog(name = "Title", group = "Inter")
+val InterTitle: TextStyle =
+  TextStyle(fontFamily = Inter, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+
+@TypographyCatalog(name = "Body", group = "Inter")
+val InterBody: TextStyle =
+  TextStyle(fontFamily = Inter, fontSize = 15.sp, fontWeight = FontWeight.Normal)
 
 // --- Colour-role tokens ---------------------------------------------------------------------------
 

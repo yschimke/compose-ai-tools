@@ -49,7 +49,8 @@ fun WearSticker(content: @Composable () -> Unit) {
  * `@ColorCatalog` names in `WearCatalogFonts.kt`; this is the one place that maps a selected name to
  * its family / scheme.
  *
- * The whole Wear type scale is re-pointed in one call via `Typography(defaultFontFamily = …)`; the
+ * The type scale comes from [wearCatalogTypography] — which re-points each role explicitly, because
+ * `Typography(defaultFontFamily = …)` silently does nothing on Wear (see its KDoc) — and the
  * palette re-tints the default Wear scheme.
  */
 @Composable
@@ -63,27 +64,95 @@ fun WearCatalogTheme(content: @Composable () -> Unit) {
     return
   }
 
-  val font =
-    wearCatalogFont(previewOverrideFont("theme.font", "Roboto Flex", suggestions = WEAR_FONT_NAMES))
+  val font = previewOverrideFont("theme.font", "Roboto Flex", suggestions = WEAR_FONT_NAMES)
   val colorScheme = wearColorScheme(previewOverrideString("theme.colors", "M3"), MaterialTheme.colorScheme)
-  MaterialTheme(typography = Typography(defaultFontFamily = font), colorScheme = colorScheme) {
-    content()
-  }
+  MaterialTheme(typography = wearCatalogTypography(font), colorScheme = colorScheme) { content() }
 }
 
 /**
  * The declared typeface choices (`@TypographyCatalog` labels), shown first in the font-override
  * autocomplete before the full fonts.google.com list. Roboto Flex — the default — leads.
  */
-val WEAR_FONT_NAMES: List<String> = listOf("Roboto Flex", "Google Sans Flex", "Lobster Two")
+val WEAR_FONT_NAMES: List<String> =
+  listOf("Roboto Flex", "Google Sans Flex", "Lobster Two", "JetBrains Mono", "Inter")
 
 /** Resolves a selected typeface [name] (a declared `@TypographyCatalog` label) to its [FontFamily]. */
 fun wearCatalogFont(name: String): FontFamily =
   when (name) {
     "Google Sans Flex" -> GoogleSansFlex
     "Lobster Two" -> LobsterTwo
+    "JetBrains Mono" -> JetBrainsMono
+    "Inter" -> Inter
     else -> RobotoFlex
   }
+
+/**
+ * The Wear type scale for a selected theme [name] — the **typographic** half of a theme, alongside
+ * [wearColorScheme]'s palette half.
+ *
+ * A theme that only re-tints is only half a theme: Confetti Wear's KotlinConf identity is a
+ * *typeface pairing* as much as a seed colour (`design/STYLE_GUIDE.md` in joreilly/Confetti:
+ * "JetBrains Mono titles + Inter body" for the terminal/IDE feel, Inter keeping session cards
+ * readable), and this catalog's KotlinConf sheet used to render in the stock Wear face because the
+ * `@WearThemeCatalog` providers passed a `colorScheme` and nothing else. Pairings are expressed as
+ * `display`/`body` rather than a single family so a two-face identity survives the round trip.
+ *
+ * `Typography(defaultFontFamily = …)` re-points the whole scale — including the [CurvedTextStyle]
+ * arc roles, which have no `TextStyle.copy(fontFamily = …)` path — so the body face is applied that
+ * way and only the display/title/numeral roles are then re-pointed at the display face. Numerals
+ * ride with the display face: they're the glanceable hero digits, and JetBrains Mono's tabular
+ * figures are exactly what that role wants.
+ */
+fun wearCatalogTypography(name: String): Typography =
+  when {
+    name == "KotlinConf" -> wearTypography(body = Inter, display = JetBrainsMono)
+    // A single declared typeface — either the "Google Sans Flex" theme or a `knob.theme.font` pick.
+    name != "Roboto Flex" && name in WEAR_FONT_NAMES -> wearTypography(body = wearCatalogFont(name))
+    // "Roboto Flex", and every palette-only theme ("M3" / "Coral" / "Teal"): the stock scale,
+    // untouched. Roboto Flex already IS the Wear default face, and the stock tokens reach it as a
+    // *device* font carrying per-role `variationSettings` — the expressive variable axes.
+    // Re-pointing them at a downloadable GoogleFont family of the same name would drop those axes
+    // to buy nothing, so don't; it also keeps an un-themed render pixel-identical.
+    else -> Typography()
+  }
+
+/**
+ * A Wear [Typography] on [body], with the display / title / numeral roles on [display].
+ *
+ * Every role is re-pointed **explicitly**. The `Typography(defaultFontFamily = …)` constructor
+ * parameter looks like the one-liner for this and is in fact a **no-op** on Wear: it applies via
+ * `TextStyle.withDefaultFontFamily`, which only fills in a family when the style has none, and
+ * every `TypographyTokens` role already declares one (`Font(DeviceFontFamilyName("roboto-flex"),
+ * variationSettings = …)`). That is why this catalog's KotlinConf sheet — and its `knob.theme.font`
+ * override — rendered in the stock face no matter what was selected.
+ *
+ * The three **arc** (curved) roles are deliberately left on the stock face: the only
+ * `CurvedTextStyle.copy` overload that takes a `fontFamily` is deprecated, and the arc roles draw
+ * the curved status strip, which is system chrome rather than app typography.
+ */
+private fun wearTypography(body: FontFamily, display: FontFamily = body): Typography {
+  val base = Typography()
+  return base.copy(
+    displayLarge = base.displayLarge.copy(fontFamily = display),
+    displayMedium = base.displayMedium.copy(fontFamily = display),
+    displaySmall = base.displaySmall.copy(fontFamily = display),
+    titleLarge = base.titleLarge.copy(fontFamily = display),
+    titleMedium = base.titleMedium.copy(fontFamily = display),
+    titleSmall = base.titleSmall.copy(fontFamily = display),
+    numeralExtraLarge = base.numeralExtraLarge.copy(fontFamily = display),
+    numeralLarge = base.numeralLarge.copy(fontFamily = display),
+    numeralMedium = base.numeralMedium.copy(fontFamily = display),
+    numeralSmall = base.numeralSmall.copy(fontFamily = display),
+    numeralExtraSmall = base.numeralExtraSmall.copy(fontFamily = display),
+    labelLarge = base.labelLarge.copy(fontFamily = body),
+    labelMedium = base.labelMedium.copy(fontFamily = body),
+    labelSmall = base.labelSmall.copy(fontFamily = body),
+    bodyLarge = base.bodyLarge.copy(fontFamily = body),
+    bodyMedium = base.bodyMedium.copy(fontFamily = body),
+    bodySmall = base.bodySmall.copy(fontFamily = body),
+    bodyExtraSmall = base.bodyExtraSmall.copy(fontFamily = body),
+  )
+}
 
 /**
  * Resolves a selected palette [name] to a Wear [ColorScheme]: `"M3"` keeps the default [base]; the
