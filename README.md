@@ -158,6 +158,27 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-catalog-palette/dark](renders/serve-landing-catalog-palette.dark.png) |
 | `light` | ![serve-landing-catalog-palette/light](renders/serve-landing-catalog-palette.light.png) |
 
+## serve-landing-catalog-palette-theme-sync
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-catalog-palette-theme-sync/dark](renders/serve-landing-catalog-palette-theme-sync.dark.png) |
+| `light` | ![serve-landing-catalog-palette-theme-sync/light](renders/serve-landing-catalog-palette-theme-sync.light.png) |
+
+## serve-landing-catalog-palette-theme-sync-menu
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-catalog-palette-theme-sync-menu/dark](renders/serve-landing-catalog-palette-theme-sync-menu.dark.png) |
+| `light` | ![serve-landing-catalog-palette-theme-sync-menu/light](renders/serve-landing-catalog-palette-theme-sync-menu.light.png) |
+
+## serve-landing-catalog-palette-theme-sync-off
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-catalog-palette-theme-sync-off/dark](renders/serve-landing-catalog-palette-theme-sync-off.dark.png) |
+| `light` | ![serve-landing-catalog-palette-theme-sync-off/light](renders/serve-landing-catalog-palette-theme-sync-off.light.png) |
+
 ## serve-landing-declared-themes
 
 | Theme | Capture |
