@@ -88,17 +88,33 @@ export async function reapPrRuns({
   //
   // On failure, assume ambiguity. Skipping some fork leftovers costs queue
   // slots; cancelling an open PR's checks costs someone their CI.
+  // Deleting a fork nulls out `head.repo`, so headRepo arrives empty for exactly
+  // the orphaned fork runs most in need of reaping. Without this we would ask
+  // GitHub for head `:branch` and then reject every run, since a run's
+  // `head_repository` is null rather than '' — the guard below would compare
+  // undefined against '' and never match.
+  //
+  // We cannot identify those runs by repo, so we demand the stronger claim
+  // instead: the run must name this PR outright. That is narrower than the
+  // fork fallback, which is the point — with no repo to compare, an unclaimed
+  // run is genuinely unattributable and left alone.
+  const headRepoKnown = Boolean(headRepo)
+
   let ambiguousHead = true
-  try {
-    const openOnSameHead = await github.paginate(github.rest.pulls.list, {
-      ...repo,
-      state: 'open',
-      head: `${headRepo.split('/')[0]}:${headRef}`,
-      per_page: 100,
-    })
-    ambiguousHead = openOnSameHead.some((p) => p.number !== prNumber)
-  } catch (error) {
-    core.warning(`Could not check for other open PRs on ${headRef}: ${error.message}`)
+  if (!headRepoKnown) {
+    core.info('Head repository is gone (deleted fork); only reaping runs that name this PR.')
+  } else {
+    try {
+      const openOnSameHead = await github.paginate(github.rest.pulls.list, {
+        ...repo,
+        state: 'open',
+        head: `${headRepo.split('/')[0]}:${headRef}`,
+        per_page: 100,
+      })
+      ambiguousHead = openOnSameHead.some((p) => p.number !== prNumber)
+    } catch (error) {
+      core.warning(`Could not check for other open PRs on ${headRef}: ${error.message}`)
+    }
   }
 
   // ONE listing, filtered locally — deliberately not a query per status.
@@ -153,7 +169,7 @@ export async function reapPrRuns({
     // PR from a branch named `main` would sweep up our `main` runs. Filtering
     // per run — rather than skipping fork PRs wholesale — means a fork's own
     // leftover runs, which are recorded in this repo, still get reaped.
-    if (run.head_repository?.full_name !== headRepo) continue
+    if (headRepoKnown && run.head_repository?.full_name !== headRepo) continue
 
     // One branch can carry two open PRs at once (different bases), and the
     // other PR's runs can predate this close, so they clear the cutoff. When
@@ -166,7 +182,7 @@ export async function reapPrRuns({
     const associated = run.pull_requests ?? []
     if (associated.length > 0) {
       if (!associated.some((p) => p.number === prNumber)) continue
-    } else if (ambiguousHead) {
+    } else if (!headRepoKnown || ambiguousHead) {
       // Empty association and something else is live on this exact head — we
       // cannot tell whose run this is, so leave it. See `ambiguousHead` above.
       continue

@@ -19,12 +19,29 @@ permissions:
   contents: read
   pull-requests: read
 
-# `pull_request`-only, so grouping by ref is a plain supersede: re-titling or
-# pushing to a PR should replace its title check, not stack another one. Without
-# this the workflow accumulated a run per event — 17 were still live on merged,
-# deleted branches on 2026-08-08, each occupying a queue slot.
+# Pushes supersede; title edits deliberately do NOT.
+#
+# Without any group the workflow accumulated a run per event — 17 were still
+# live on merged, deleted branches on 2026-08-08, each holding a queue slot.
+# Superseding on push is the plain, safe case: a new head SHA gets its own
+# check, and a run that loses its race reported on a commit that is no longer
+# the head, so nothing is gated on it.
+#
+# `edited` is not that case. Title edits do NOT change the head SHA, so a check
+# from an edit stays attached to the very commit the merge gate reads. Group
+# execution order is not guaranteed, so an older `edited` run can enter after a
+# newer one and cancel it — and `action-semantic-pull-request` validates the
+# title frozen into its own event payload. The survivor would then certify a
+# title that has since been replaced by an invalid one, on the same SHA, and
+# the required check goes green over it.
+#
+# The attribution workflow solves this by re-reading the PR; that is not
+# available here, because the action reads the payload itself rather than
+# taking a title as input. So edits get a group of their own instead and never
+# cancel each other. That costs at most a few seconds per edit — this job runs
+# in about three — and it is the difference between a gate and a suggestion.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.action == 'edited' && github.run_id || 'head' }}
   cancel-in-progress: true
 
 jobs:

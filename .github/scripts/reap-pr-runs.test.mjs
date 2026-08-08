@@ -255,6 +255,30 @@ test('an explicit association still reaps even on an ambiguous head', async () =
   assert.deepEqual(calls.cancelled, [1])
 })
 
+test('a deleted fork still gets its runs reaped via explicit association', async () => {
+  // Deleting a fork nulls `head.repo`, so headRepo arrives empty — for exactly
+  // the orphans most worth reaping. The repo guard cannot apply (a run's
+  // head_repository is null, not ''), so we require the run to name this PR.
+  const { github, core, calls } = harness({
+    runs: [
+      run(1, 'CI', 'queued', { head_repository: null, pull_requests: [{ number: 42 }] }),
+      run(2, 'CI', 'queued', { head_repository: null, pull_requests: [] }),
+    ],
+  })
+  await reapPrRuns({ ...BASE, headRepo: '', github, core })
+  assert.deepEqual(calls.cancelled, [1])
+  // No head query is possible without a repo to name.
+  assert.deepEqual(calls.headQueries, [])
+})
+
+test('a deleted fork never reaps a run claiming a different PR', async () => {
+  const { github, core, calls } = harness({
+    runs: [run(1, 'CI', 'queued', { head_repository: null, pull_requests: [{ number: 77 }] })],
+  })
+  await reapPrRuns({ ...BASE, headRepo: '', github, core })
+  assert.deepEqual(calls.cancelled, [])
+})
+
 test('refuses to reap an empty head ref', async () => {
   const { github, core, calls } = harness({ runs: [run(1, 'CI', 'queued')] })
   const result = await reapPrRuns({ ...BASE, headRef: '', github, core })
