@@ -736,6 +736,8 @@ internal object ComposePreviewTasks {
     // unless the consumer names one; only a library module (no `<application android:theme>` to
     // inherit) needs to.
     val daemonHostTheme = composeAiHostTheme(project, extension)
+    // Pinned wall clock for the daemon's renders — see `PreviewClock`.
+    val daemonFixedTime = composeAiFixedTime(project, extension)
     val daemonCheapSignalFiles =
       collectDesktopCheapSignalFiles(project).joinToString(java.io.File.pathSeparator) {
         it.absolutePath
@@ -863,6 +865,7 @@ internal object ComposePreviewTasks {
       systemProperties.put("composeai.svg.embedFonts", daemonSvgEmbedFonts)
       systemProperties.put("composeai.svg.background", daemonSvgBackground)
       systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
+      systemProperties.put("composeai.render.fixedTime", daemonFixedTime)
       systemProperties.put(
         "composeai.daemon.perfettoTrace",
         AndroidPreviewSupport.resolveComposeAiTraceEnabled(project, extension).map { it.toString() },

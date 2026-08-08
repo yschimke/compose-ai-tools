@@ -48,6 +48,19 @@ class GenerateRobolectricPropertiesTaskTest {
   }
 
   @Test
+  fun `wear's clock-reading class is instrumented so the pinned preview clock reaches TimeText`() {
+    // Robolectric only rewrites `System.currentTimeMillis()` inside instrumented classes, and
+    // `androidx.wear.compose.materialcore.ResourcesKt` is where both Wear Material and Material3
+    // `TimeText` read it. Without this line `PreviewClock`'s pin is invisible to Wear and an
+    // activity hero showing the time diffs on every run (issue #3239). `WearTimeTextClockTest`
+    // asserts the same entry end-to-end; keep the two spellings identical.
+    listOf(false, true).forEach { useConsumerApplication ->
+      val body = generate(useConsumerApplication, override = null, compileSdk = 36)
+      assertThat(body).contains("androidx.wear.compose.materialcore.ResourcesKt")
+    }
+  }
+
+  @Test
   fun `useConsumerApplication drops application line but keeps sdk graphicsMode shadows`() {
     val body = generate(useConsumerApplication = true, override = null, compileSdk = 36)
     assertThat(body).contains("sdk=36")

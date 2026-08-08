@@ -2378,6 +2378,9 @@ internal object AndroidPreviewSupport {
         // set it (an app module inherits `<application android:theme>`); forwarded here because
         // `PreviewHostTheme` reads it in the forked render JVM, not on the Gradle JVM.
         val hostTheme = composeAiHostTheme(project, extension)
+        // The instant the render JVM pins its wall clock to (default `10:10`), so a preview showing
+        // the time doesn't diff on every run. `PreviewClock` reads it in the forked render JVM.
+        val fixedTime = composeAiFixedTime(project, extension)
         // Static system properties (Robolectric modes + the path-bearing composeai.*
         // values) live in [AndroidPreviewClasspath.buildSystemProperties] so the
         // preview daemon can replay the same set when launching its own JVM. The
@@ -2392,6 +2395,7 @@ internal object AndroidPreviewSupport {
             svgBackground = svgBackground.get(),
             fontsFailOnFallback = fontsFailOnFallback.get(),
             hostTheme = hostTheme.get(),
+            fixedTime = fixedTime.get(),
           )
           .forEach { (k, v) -> systemProperty(k, v) }
 
@@ -3094,6 +3098,10 @@ internal object AndroidPreviewSupport {
     // reaches the standalone render but NOT the VS Code / MCP / a11y daemon paths — the same
     // `AndroidView` inflation failure, just on the routes consumers actually use.
     val daemonHostTheme = composeAiHostTheme(project, extension)
+    // The pinned wall clock, forwarded to the daemon JVM exactly as the one-shot render path
+    // forwards it — `PreviewClock` reads it there, so without this line a daemon render of a
+    // clock-bearing screen would drift while the batch render stayed fixed.
+    val daemonFixedTime = composeAiFixedTime(project, extension)
     // Pre-resolved at configuration time — both feed @Input fields whose Provider chains
     // mustn't capture `project`. The cheap-signal set used to be collected at task-action
     // time so newly-added subproject scripts were seen on the same run, but doing it
@@ -3264,6 +3272,7 @@ internal object AndroidPreviewSupport {
       this.systemProperties.put("composeai.svg.embedFonts", daemonSvgEmbedFonts)
       this.systemProperties.put("composeai.svg.background", daemonSvgBackground)
       this.systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
+      this.systemProperties.put("composeai.render.fixedTime", daemonFixedTime)
       this.systemProperties.put("composeai.daemon.protocolVersion", "1")
       this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
       this.systemProperties.put(

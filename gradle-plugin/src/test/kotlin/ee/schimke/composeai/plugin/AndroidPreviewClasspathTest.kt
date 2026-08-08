@@ -215,6 +215,35 @@ class AndroidPreviewClasspathTest {
       .containsEntry("composeai.render.hostTheme", "")
   }
 
+  @Test
+  fun `buildSystemProperties forwards the pinned preview clock into the render jvm`() {
+    // `PreviewClock` reads `composeai.render.fixedTime` in the forked render / daemon JVM. If this
+    // map doesn't carry it, `composePreview.fixedTime` (and `-PcomposePreview.fixedTime`) never
+    // reach the JVM that pins the clock, and a preview showing the time keeps diffing every run
+    // (issue #3239).
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+          fixedTime = "09:41",
+        )
+      )
+      .containsEntry("composeai.render.fixedTime", "09:41")
+    // Blank when the consumer names nothing — the renderer reads that as "pin the default 10:10",
+    // so the property is still forwarded rather than conditionally omitted.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+        )
+      )
+      .containsEntry("composeai.render.fixedTime", "")
+  }
+
   private fun writeAndroidJar(file: File) {
     writeJar(file, mapOf("android/app/Application.class" to ByteArray(16)))
   }

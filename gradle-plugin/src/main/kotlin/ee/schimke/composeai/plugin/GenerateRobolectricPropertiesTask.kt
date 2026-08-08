@@ -115,7 +115,16 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     val shadowsLine =
       "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat," +
         "ee.schimke.composeai.renderer.ShadowAsyncImagePainter"
-    val instrumentedPackagesLine = "instrumentedPackages=coil.compose"
+    // `androidx.wear.compose.materialcore.ResourcesKt` is a CLASS name, not a package: Robolectric
+    // matches `instrumentedPackages` entries as plain class-name prefixes, so naming the class
+    // instruments exactly the one holding the `currentTimeMillis()` that both Wear Material and
+    // Wear Material3 `TimeText` read — and nothing else in Wear's rendering path. Instrumenting it
+    // is what routes that read through Robolectric's emulated clock, which
+    // [ee.schimke.composeai.renderer.PreviewClock] pins to a fixed instant so a preview showing the
+    // time stops diffing on every run (issue #3239). Both halves are load-bearing: without this
+    // line the pin is invisible to Wear clocks. Inert when the consumer has no wear-compose.
+    val instrumentedPackagesLine =
+      "instrumentedPackages=coil.compose,androidx.wear.compose.materialcore.ResourcesKt"
     // `sdk=` and `graphicsMode=` live here (not on `@Config`/`@GraphicsMode`
     // on `RobolectricRenderTestBase`) to avoid JUnit's `AnnotationParser`
     // resolving `@Config.application()`'s `android.app.Application` default

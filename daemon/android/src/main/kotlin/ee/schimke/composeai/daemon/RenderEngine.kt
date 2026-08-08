@@ -238,6 +238,12 @@ class RenderEngine(
     if (System.getProperty("roborazzi.test.record") == null) {
       System.setProperty("roborazzi.test.record", "true")
     }
+    // Same fixed wall clock the batch render pins, so a daemon-driven render of a clock-bearing
+    // screen matches the PNG `composePreviewRender` writes (issue #3239). A held sandbox keeps its
+    // clock across renders and interaction advances it, so this only ever pins the first render of
+    // a sandbox — Robolectric's paused clock never moves backwards. See
+    // [ee.schimke.composeai.renderer.PreviewClock].
+    ee.schimke.composeai.renderer.PreviewClock.pin()
 
     outputDir.mkdirs()
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")

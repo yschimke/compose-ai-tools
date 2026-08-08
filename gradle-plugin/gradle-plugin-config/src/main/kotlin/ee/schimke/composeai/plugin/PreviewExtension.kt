@@ -46,6 +46,27 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    */
   val hostTheme: Property<String> = objects.property(String::class.java)
 
+  /**
+   * The wall-clock instant preview renders are pinned to, so a screen that paints the time produces
+   * the same PNG on every run instead of diffing every minute (issue #3239). Matters most for
+   * `kind=ACTIVITY` heroes and app tours, where the app's own screen is the subject and there is no
+   * `@Preview` argument to inject a fixed clock through — on Wear that is close to every activity
+   * preview, since `TimeText` is standard furniture inside `AppScaffold`.
+   *
+   * Unset (default) pins `10:10`, the literal the Wear/Remote design catalogs and `:samples:wear`'s
+   * `FixedPreviewTimeSource` already paint, so an activity hero and a hand-authored preview of the
+   * same screen agree. Accepts `"HH:mm"` / `"HH:mm:ss"`, an ISO-8601 local date-time
+   * (`"2024-01-01T10:10"`) when the date matters too, bare epoch millis, or `"off"` to render
+   * against the host's wall clock as before.
+   *
+   * Times are interpreted in the render JVM's default zone, so the *rendered string* — not the
+   * underlying instant — is what stays identical between a laptop and CI.
+   *
+   * Override for a single run with `-PcomposePreview.fixedTime=09:41` (or
+   * `-Dcomposeai.render.fixedTime=…`), which takes precedence over this value.
+   */
+  val fixedTime: Property<String> = objects.property(String::class.java)
+
   val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**

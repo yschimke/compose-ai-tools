@@ -93,6 +93,17 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
     if (isCoil2Available(javaClass.classLoader)) {
       builder.addInstrumentedPackage("coil.compose")
     }
+    // Wear's `TimeText` reads the wall clock through `System.currentTimeMillis()` in ONE class,
+    // `androidx.wear.compose.materialcore.ResourcesKt` (both Material and Material3 route there).
+    // Robolectric only rewrites that call inside instrumented classes, so without this the clock a
+    // Wear preview paints is the host's and the render diffs every minute (issue #3239).
+    // `addInstrumentedPackage` matches class-name prefixes, so naming the class instruments exactly
+    // it. Mirrors the `instrumentedPackages=` line the Gradle path's generated
+    // `robolectric.properties` carries; [ee.schimke.composeai.renderer.PreviewClock] is the other
+    // half, pinning the emulated clock the rewritten call now reads.
+    if (isWearComposeMaterialCoreAvailable(javaClass.classLoader)) {
+      builder.addInstrumentedPackage(WEAR_MATERIAL_CORE_RESOURCES)
+    }
     // B2.0: optional user-package exclusion. Empty when sysprop is unset; existing in-process
     // tests that rely on the default sandbox-classpath path are unaffected.
     val raw = System.getProperty("composeai.daemon.userClassPackages")
@@ -215,6 +226,33 @@ internal fun isWearGestureAvailable(loader: ClassLoader?): Boolean {
       false,
       effective,
     )
+    true
+  } catch (_: ClassNotFoundException) {
+    false
+  } catch (_: NoClassDefFoundError) {
+    false
+  }
+}
+
+/**
+ * The single Wear class whose `currentTimeMillis()` both Wear Material and Wear Material3 `TimeText`
+ * read. Instrumented (see [SandboxHoldingRunner.createClassLoaderConfig] and the Gradle path's
+ * generated `robolectric.properties`) so Robolectric rewrites its `System.currentTimeMillis()` call
+ * into the emulated clock [ee.schimke.composeai.renderer.PreviewClock] pins.
+ */
+internal const val WEAR_MATERIAL_CORE_RESOURCES: String =
+  "androidx.wear.compose.materialcore.ResourcesKt"
+
+/**
+ * Returns `true` when [WEAR_MATERIAL_CORE_RESOURCES] is on the supplied classloader — i.e. the
+ * consumer is a Wear app whose `TimeText` would otherwise paint the host's wall clock. Mirrors
+ * [isCoil2Available]: instrumenting a class that isn't there costs nothing, but probing keeps the
+ * sandbox config honest about what it actually rewrote.
+ */
+internal fun isWearComposeMaterialCoreAvailable(loader: ClassLoader?): Boolean {
+  val effective = loader ?: ClassLoader.getSystemClassLoader() ?: return false
+  return try {
+    Class.forName(WEAR_MATERIAL_CORE_RESOURCES, false, effective)
     true
   } catch (_: ClassNotFoundException) {
     false

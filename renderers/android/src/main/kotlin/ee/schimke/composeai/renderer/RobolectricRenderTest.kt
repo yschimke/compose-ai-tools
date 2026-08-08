@@ -504,6 +504,12 @@ abstract class RobolectricRenderTestBase(
   @OptIn(ExperimentalRoborazziApi::class)
   @Test
   fun renderPreview() {
+    // Pin the wall clock FIRST — before the ComposeTestRule, before the activity, before anything
+    // schedules looper work. Robolectric's paused clock starts 100ms past the epoch, so the pin is
+    // one large forward jump and every clock listener is told about it; do it while the main looper
+    // is still idle and that jump has nothing to run. See [PreviewClock] for why an activity
+    // preview needs this and a composable preview can also want it (issue #3239).
+    PreviewClock.pin()
     val outputDir =
       File(System.getProperty("composeai.render.outputDir") ?: "build/compose-previews/renders")
     outputDir.mkdirs()
