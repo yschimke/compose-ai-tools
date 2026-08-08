@@ -115,12 +115,20 @@ internal class RcGoogleFontTypefaceResolver(
     // otherwise re-attempt the (network-backed) fetch for every run in the document. Storing null
     // makes it one attempt per key, and the caller falls back to `DefaultTypefaceResolver` as fast
     // as it did the first time.
+    // The static instance is the right base face — it is the family at this exact weight, already
+    // baked. But a *miss* on it does not mean the family is unavailable: an offline render whose
+    // shared cache was warmed by a `cmp-android` / `cmp-jvm` axis pass holds the variable file and
+    // no weight-specific static one, because those lanes ask `loadVariable` first. Falling through
+    // to the delegate there would substitute a platform face while the correct bytes sat in the
+    // cache. `Typeface.create(base, weight, italic)` instances the `wght` axis of a variable file,
+    // so the variable file serves as a base too.
+    val file = fonts.load(key) ?: variableFiles.fileFor(key)
     val instance =
-      fonts.load(key)?.let { file ->
-        typefaceLoader(file, weight, italic)?.let {
+      file?.let {
+        typefaceLoader(it, weight, italic)?.let { typeface ->
           VariableFontInstance(
-            typeface = it,
-            file = file,
+            typeface = typeface,
+            file = it,
             // Resolved lazily, and only if the document actually names an axis: the variable file
             // is ~1.7 MB and a document that draws this family at a fixed weight never needs it.
             variableFile = { variableFiles.fileFor(key) },
