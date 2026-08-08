@@ -1139,7 +1139,19 @@ data class FigmaSvgModel(
         // sliver from behind the word "Start" and threw the capsule away. The union never shrinks
         // below the node box (the content still has to be inside the crop) and is held to the
         // nearest clipping ancestor, so an ordinary overlay node crops exactly as before.
-        val region = drawnOverlayRegion(bounds, clipBounds)
+        //
+        // Held to the node's **own** mask as well as its ancestors'. A node that clips itself
+        // tighter than its draw modifier reports (the lookahead / `requiredSize` shapes
+        // [clipModifierBounds] exists for) would otherwise have the union hand back pixels its own
+        // clip removes — frame pixels belonging to whatever sits around it — and the raster leaf
+        // this returns carries no mask of its own to trim them again.
+        val ownAndAncestorClip =
+          when {
+            maskBox == null -> clipBounds
+            clipBounds == null -> maskBox
+            else -> intersectBounds(maskBox, clipBounds) ?: maskBox
+          }
+        val region = drawnOverlayRegion(bounds, ownAndAncestorClip)
         val href = ctx.rasterHref(nodeId)
         ctx.rasterTargets.add(
           FigmaSvgRasterTarget(nodeId, href, region.left, region.top, region.right, region.bottom)
@@ -1456,7 +1468,7 @@ data class FigmaSvgModel(
         elevationPx = elevationPx,
         opacity = opacity,
         contentOpacity = contentOpacity,
-        curvedTexts = curvedTexts,
+        curvedTexts = curvedTexts.map { it.scaledInto(bounds, scaleX, scaleY, scaleMean) },
         clipChildren = tokens?.clipsContent == true,
         // Carried only when the mask really is a different rect from the layer's own box (the
         // narrowed-to-paint case above); every ordinary layer masks with its own box and leaves
@@ -1572,6 +1584,42 @@ data class FigmaSvgModel(
               baseline = (it.baseline * scaleY).roundToInt(),
             )
           },
+      )
+    }
+
+    /**
+     * A Wear curved run placed at the node's **drawn** geometry rather than its measured one.
+     *
+     * The capture states a curved run in root pixels, but computed *before* the node's draw-time
+     * `graphicsLayer` — so a run on a transformed node describes where it would have been drawn
+     * untransformed. Every other value on the layer is scaled into drawn space (issue #2615); the
+     * curved runs were passed through raw, and the emitter builds the baseline arc straight from
+     * them.
+     *
+     * That is what kept a scrolled-away `TimeText` in the export. Wear's `Modifier.scrollAway`
+     * hides the clock by scaling it to half size and lifting it off the top of the screen, which
+     * the capture records faithfully as `transform = 0.5` and a `bounds` box mostly above `y = 0` —
+     * but the run still claimed the full-size arc centred on the frame, so the SVG drew a clock the
+     * PNG does not have.
+     *
+     * The arc is concentric with the node's own box (a `CurvedLayout` lays its runs out around its
+     * centre), so re-centring on the drawn [bounds] and scaling the radius and font size by
+     * [scaleMean] is the whole transform. An untransformed node is left exactly as captured: its
+     * `bounds` centre already *is* the captured centre, so the identity guard is a documented no-op
+     * rather than a rounding hazard.
+     */
+    private fun LayoutInspectorCurvedText.scaledInto(
+      bounds: LayoutInspectorBounds,
+      scaleX: Double,
+      scaleY: Double,
+      scaleMean: Double,
+    ): LayoutInspectorCurvedText {
+      if (abs(scaleX - 1.0) < SCALE_EPSILON && abs(scaleY - 1.0) < SCALE_EPSILON) return this
+      return copy(
+        centerXPx = (bounds.left + bounds.right) / 2.0,
+        centerYPx = (bounds.top + bounds.bottom) / 2.0,
+        radiusPx = radiusPx * scaleMean,
+        fontSizePx = fontSizePx * scaleMean,
       )
     }
 
