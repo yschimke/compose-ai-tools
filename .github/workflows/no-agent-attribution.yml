@@ -58,6 +58,23 @@ on:
 permissions:
   contents: read
 
+# PR runs dedupe; push runs deliberately do NOT.
+#
+# The workflow had no concurrency group at all, so every push stacked another
+# run — 18 were live at once on merged-and-deleted branches (2026-08-08), each
+# holding a queue slot behind the heavy lanes. Grouping PR runs by ref fixes
+# that: a new push to the PR supersedes the run it replaces.
+#
+# Push runs are keyed per-SHA so they never share a group and can never cancel
+# each other. That is load-bearing, not an oversight: `drift` scans only the
+# commits *this push* added to main, so it is not idempotent across commits.
+# Any shared group would let GitHub cancel a pending run — it keeps only the
+# newest pending per group even with `cancel-in-progress: false` — and the
+# commits that run was going to scan would never be checked by anything.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   scan:
     name: Reject agent attribution

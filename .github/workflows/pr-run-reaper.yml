@@ -1,0 +1,75 @@
+name: PR Run Reaper
+
+# Cancels the workflow runs left behind when a PR closes.
+#
+# GitHub cancels *in-progress* runs when a ref is deleted, but it does not
+# reliably reap **queued** ones — and when the queue is deep enough that jobs
+# wait 40-70 min for a runner, almost everything is still queued at merge time.
+# Those runs then outlive the branch, the PR, and any check they could report
+# to. Measured on 2026-08-08: 160 of 197 live runs (81%) belonged to branches
+# that no longer existed, crowding out CI for open work.
+#
+# Concurrency groups cannot fix this. They only supersede a run when a *newer*
+# run appears on the same ref, and a merged PR produces no newer run — nothing
+# ever arrives to evict the stragglers. Reaping on close is the missing half.
+#
+# `pull_request_target` is required, not incidental: `pull_request` hands fork
+# PRs a read-only token, which cannot cancel anything. The usual
+# `pull_request_target` hazard is running untrusted head code with a privileged
+# token — this job checks out the BASE ref (the trigger's default) and runs only
+# committed base-branch code, never the PR head.
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: pr-run-reaper-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  reap:
+    name: Cancel leftover runs for the closed PR
+    runs-on: ubuntu-latest
+    steps:
+      # No `ref:` — pull_request_target checks out the base branch, which is the
+      # point: the reaper must never execute code from the PR being closed.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        with:
+          script: |
+            const { reapPrRuns } = await import(
+              `${process.env.GITHUB_WORKSPACE}/.github/scripts/reap-pr-runs.mjs`
+            )
+            const { cancelled, failed, skipped } = await reapPrRuns({
+              github,
+              core,
+              repo: context.repo,
+              headRef: process.env.HEAD_REF,
+              headRepo: process.env.HEAD_REPO,
+              thisRepo: `${context.repo.owner}/${context.repo.repo}`,
+              defaultBranch: context.payload.repository.default_branch,
+              currentRunId: context.runId,
+            })
+            await core.summary
+              .addHeading('PR Run Reaper', 3)
+              .addRaw(
+                skipped
+                  ? `Skipped: ${skipped}.`
+                  : `Closed PR #${context.payload.pull_request.number} on ` +
+                    `\`${process.env.HEAD_REF}\`.`,
+              )
+              .addList([`Cancelled: ${cancelled.length}`, `Could not cancel: ${failed.length}`])
+              .write()

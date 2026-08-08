@@ -1180,6 +1180,8 @@ jobs:
       # a dropped `listed: false` or `group` silently moves a card on the front page.
       - name: Run publish-config reconcile tests
         run: ./.github/scripts/test-publish-config-to-box.sh
+      - name: Run PR run reaper tests
+        run: node --test .github/scripts/reap-pr-runs.test.mjs
 
   # The design-artifacts driver's own `node --test` suite, including the browser tests that drive the
   # built Remote Compose player bundle (`cli/src/main/resources/rc-player/bundle.js`) in headless

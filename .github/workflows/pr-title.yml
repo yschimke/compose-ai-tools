@@ -19,6 +19,14 @@ permissions:
   contents: read
   pull-requests: read
 
+# `pull_request`-only, so grouping by ref is a plain supersede: re-titling or
+# pushing to a PR should replace its title check, not stack another one. Without
+# this the workflow accumulated a run per event — 17 were still live on merged,
+# deleted branches on 2026-08-08, each occupying a queue slot.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Conventional Commit title
