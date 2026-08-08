@@ -199,6 +199,7 @@ const STYLED_FIXTURES = new Set([
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
     ["url-state.js", "text/javascript"],
+    ["page-theme.js", "text/javascript"],
     ["bg-toggle.js", "text/javascript"],
     ["viewer.js", "text/javascript"],
     ["viewer-groups.js", "text/javascript"],
@@ -317,6 +318,56 @@ const FIXTURE_STATES = [
             await page.check("#cp-inspect-theme");
             await page.waitForFunction(
                 () => document.querySelectorAll(".cp-inspect-box").length > 0,
+            );
+        },
+    },
+    {
+        // The page theme following the SELECTED PREVIEW THEME (the "Page theme" setting, on by
+        // default). Picking Dark repaints the chrome as well as the grid, and the claim is
+        // invisible to the two ordinary shots: they are captured under an emulated OS preference,
+        // so the light one is exactly the page that used to frame a dark grid in a light shell.
+        // Clicking the chip here means the pinned mode — chrome, catalog palette and badges — is
+        // diffed on every PR, in BOTH OS preferences (the `.light` shot is the one that proves the
+        // pin beats `prefers-color-scheme`).
+        fixture: "serve-landing-catalog-palette",
+        suffix: "theme-sync",
+        apply: async (page) => {
+            // Always pick the chip OPPOSITE the emulated OS preference. The grid's initial chip
+            // already follows `prefers-color-scheme`, so picking the matching one would be a no-op
+            // and shoot the page that was there anyway; the opposite one is the whole claim.
+            const wantDark = await page.evaluate(
+                () => !window.matchMedia("(prefers-color-scheme: dark)").matches,
+            );
+            await page.click(`[data-theme-choice="${wantDark ? "dark" : "light"}"]`);
+            await page.waitForFunction(
+                (cls) => document.documentElement.classList.contains(cls),
+                wantDark ? "cp-scheme-dark" : "cp-scheme-light",
+            );
+        },
+    },
+    {
+        // The Settings menu itself, open, with the setting being turned off — the control has to be
+        // shot open or its contents are diffed by nothing at all.
+        fixture: "serve-landing-catalog-palette",
+        suffix: "theme-sync-menu",
+        apply: async (page) => {
+            await page.click(".cp-settings > summary");
+            await page.check('[data-cp-page-theme][value="system"]');
+            await page.waitForFunction(
+                () =>
+                    !document.documentElement.className.includes("cp-scheme-"),
+            );
+        },
+    },
+    {
+        // …and the same page with the menu closed: the setting off is exactly the behaviour that
+        // shipped before it existed — a dark grid inside a light shell — so this is the honest
+        // before-picture as well as the opt-out's own baseline.
+        fixture: "serve-landing-catalog-palette",
+        suffix: "theme-sync-off",
+        apply: async (page) => {
+            await page.evaluate(() =>
+                document.querySelector(".cp-settings").removeAttribute("open"),
             );
         },
     },

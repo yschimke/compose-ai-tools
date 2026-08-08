@@ -44,15 +44,11 @@
    like the trust badges — must mean the same thing under every catalog palette. */
 .cp-pg-error { background: var(--md-sys-color-error-container);
   color: var(--md-sys-color-on-error-container); }
-.cp-pg-warning { background: #ffdfb0; color: #573100; }
+.cp-pg-warning { background: light-dark(#ffdfb0, #4a3000); color: light-dark(#573100, #ffd8a3); }
 .cp-pg-result { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
 .cp-pg-image { max-width: 100%; border-radius: var(--md-sys-shape-corner-medium); border: 0;
   background: var(--md-sys-color-surface-container-lowest);
   box-shadow: var(--md-sys-elevation-level1); }
-@media (prefers-color-scheme: dark) {
-  .cp-pg-warning { background: #4a3000; color: #ffd8a3; }
-}
-
 /* CodeMirror — sized and themed to match the textarea it replaces, so the page looks the same
    whether the vendored bundle loaded or not. Its chrome now comes from the same M3 roles as that
    textarea; only the token hues below stay literal (a code theme, not product chrome), and the
@@ -72,12 +68,21 @@
 .cp-pg .CodeMirror-cursor { border-left-color: var(--md-sys-color-on-surface); }
 .cp-pg .CodeMirror-selected { background: var(--md-sys-color-secondary-container); }
 
-@media (prefers-color-scheme: dark) {
-  .cp-pg .cm-keyword { color: #c792ea; }
-  .cp-pg .cm-def, .cp-pg .cm-variable-3, .cp-pg .cm-type { color: #82aaff; }
-  .cp-pg .cm-string, .cp-pg .cm-string-2 { color: #c3e88d; }
-  .cp-pg .cm-number { color: #f78c6c; }
-  .cp-pg .cm-comment { color: #7d8799; }
-  .cp-pg .cm-meta, .cp-pg .cm-atom { color: #ffcb6b; }
-  .cp-pg .cm-operator, .cp-pg .cm-punctuation { color: #89ddff; }
-}
+/* The syntax hues, as one `light-dark()` pair per token: the light half is CodeMirror's own
+   `cm-s-default` value (restated because the vendored sheet scopes it to `.cm-s-default`, which
+   this wrapper outranks anyway), the dark half is ours — CodeMirror ships a light theme only.
+   Written as pairs rather than as a `prefers-color-scheme` override so the editor follows the
+   page's resolved `color-scheme`, including when the page-theme setting pins it against the OS. */
+.cp-pg .cm-keyword { color: light-dark(#770088, #c792ea); }
+.cp-pg .cm-def { color: light-dark(#0000ff, #82aaff); }
+.cp-pg .cm-variable-3, .cp-pg .cm-type { color: light-dark(#008855, #82aaff); }
+.cp-pg .cm-string { color: light-dark(#aa1111, #c3e88d); }
+.cp-pg .cm-string-2 { color: light-dark(#ff5500, #c3e88d); }
+.cp-pg .cm-number { color: light-dark(#116644, #f78c6c); }
+.cp-pg .cm-comment { color: light-dark(#aa5500, #7d8799); }
+.cp-pg .cm-meta { color: light-dark(#555555, #ffcb6b); }
+.cp-pg .cm-atom { color: light-dark(#221199, #ffcb6b); }
+/* `operator` / `punctuation` have no default hue at all (they inherit the editor's text colour), so
+   the light half is `currentcolor` — which on `color` itself resolves to the inherited value —
+   rather than an invented hue. */
+.cp-pg .cm-operator, .cp-pg .cm-punctuation { color: light-dark(currentcolor, #89ddff); }

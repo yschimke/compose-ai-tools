@@ -1806,8 +1806,10 @@ class ServeWebFixtureTest {
       "the catalog palette is inlined directly after the stylesheet link",
     )
     assertTrue(
-      viewerCatalogPalette.contains("--cp-accent: #bf0031;") &&
-        viewerCatalogPalette.contains("@media (prefers-color-scheme: dark)"),
+      // Both modes, as one `light-dark()` pair per property — the shape the page-theme setting
+      // needs, since pinning `color-scheme` can only re-resolve a pair (see ServeThemeCssTest).
+      viewerCatalogPalette.contains("--cp-accent: light-dark(#bf0031, ") &&
+        !viewerCatalogPalette.contains("@media (prefers-color-scheme: dark)"),
       "the viewer carries the catalog's accent in both modes",
     )
     // A plain (non-catalog) session inlines nothing at all.
@@ -1832,7 +1834,10 @@ class ServeWebFixtureTest {
           ),
       )
     for ((name, html) in inCatalogPages) {
-      assertTrue(html.contains("--cp-accent: #bf0031;"), "the $name page carries the palette")
+      assertTrue(
+        html.contains("--cp-accent: light-dark(#bf0031, "),
+        "the $name page carries the palette",
+      )
     }
     assertTrue(
       landingThemed.contains("class=\"cp-format-link\" href=\"/compare?session=compose-m3\"") &&

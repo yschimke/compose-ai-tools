@@ -20,45 +20,54 @@
    emits an inline `:root` override — of BOTH families — after this sheet, so browsing `/wear-m3/`
    paints the page in Wear M3's own M3 roles. Semantic colours (trusted/unverified badges,
    good/warn/bad scores, the code/design parity lanes) stay literal: they mean the same thing in
-   every system and must not drift with a catalog's palette. */
+   every system and must not drift with a catalog's palette.
+
+   LIGHT AND DARK ARE ONE DECLARATION, not two blocks. Every mode-dependent value is written as
+   `light-dark(<light>, <dark>)`, which resolves against the element's used `color-scheme` — so the
+   whole sheet (and the catalog palette `ServeThemeCss` emits over it) has exactly one place per
+   colour, and switching modes is one property rather than a duplicated stylesheet. That is what
+   makes the page-theme setting possible: `.cp-scheme-light` / `.cp-scheme-dark` on <html> pin
+   `color-scheme`, so the chrome can be made to follow the *selected preview theme* instead of the
+   visitor's OS (see `page-theme.js`). With no class the declared `light dark` pair defers to
+   `prefers-color-scheme`, which is the default and the no-JS behaviour. */
 :root {
   color-scheme: light dark;
 
-  /* --- M3 baseline scheme, light. The reference palette Material ships when a product has not
-     supplied a source colour, so an unthemed preview server looks like Material rather than like
-     an arbitrary indigo. */
-  --md-sys-color-primary: #6750a4;
-  --md-sys-color-on-primary: #ffffff;
-  --md-sys-color-primary-container: #eaddff;
-  --md-sys-color-on-primary-container: #4f378a;
-  --md-sys-color-secondary: #625b71;
-  --md-sys-color-on-secondary: #ffffff;
-  --md-sys-color-secondary-container: #e8def8;
-  --md-sys-color-on-secondary-container: #4a4458;
-  --md-sys-color-tertiary: #7d5260;
-  --md-sys-color-on-tertiary: #ffffff;
-  --md-sys-color-tertiary-container: #ffd8e4;
-  --md-sys-color-on-tertiary-container: #633b48;
-  --md-sys-color-error: #b3261e;
-  --md-sys-color-on-error: #ffffff;
-  --md-sys-color-error-container: #f9dedc;
-  --md-sys-color-on-error-container: #8c1d18;
-  --md-sys-color-surface: #fef7ff;
-  --md-sys-color-on-surface: #1d1b20;
-  --md-sys-color-surface-variant: #e7e0ec;
-  --md-sys-color-on-surface-variant: #49454f;
-  --md-sys-color-surface-dim: #ded8e1;
-  --md-sys-color-surface-bright: #fef7ff;
-  --md-sys-color-surface-container-lowest: #ffffff;
-  --md-sys-color-surface-container-low: #f7f2fa;
-  --md-sys-color-surface-container: #f3edf7;
-  --md-sys-color-surface-container-high: #ece6f0;
-  --md-sys-color-surface-container-highest: #e6e0e9;
-  --md-sys-color-outline: #79747e;
-  --md-sys-color-outline-variant: #cac4d0;
-  --md-sys-color-inverse-surface: #322f35;
-  --md-sys-color-inverse-on-surface: #f5eff7;
-  --md-sys-color-inverse-primary: #d0bcff;
+  /* --- M3 baseline scheme. The reference palette Material ships when a product has not supplied a
+     source colour, so an unthemed preview server looks like Material rather than like an arbitrary
+     indigo — light half first, dark half second. */
+  --md-sys-color-primary: light-dark(#6750a4, #d0bcff);
+  --md-sys-color-on-primary: light-dark(#ffffff, #381e72);
+  --md-sys-color-primary-container: light-dark(#eaddff, #4f378b);
+  --md-sys-color-on-primary-container: light-dark(#4f378a, #eaddff);
+  --md-sys-color-secondary: light-dark(#625b71, #ccc2dc);
+  --md-sys-color-on-secondary: light-dark(#ffffff, #332d41);
+  --md-sys-color-secondary-container: light-dark(#e8def8, #4a4458);
+  --md-sys-color-on-secondary-container: light-dark(#4a4458, #e8def8);
+  --md-sys-color-tertiary: light-dark(#7d5260, #efb8c8);
+  --md-sys-color-on-tertiary: light-dark(#ffffff, #492532);
+  --md-sys-color-tertiary-container: light-dark(#ffd8e4, #633b48);
+  --md-sys-color-on-tertiary-container: light-dark(#633b48, #ffd8e4);
+  --md-sys-color-error: light-dark(#b3261e, #f2b8b5);
+  --md-sys-color-on-error: light-dark(#ffffff, #601410);
+  --md-sys-color-error-container: light-dark(#f9dedc, #8c1d18);
+  --md-sys-color-on-error-container: light-dark(#8c1d18, #f9dedc);
+  --md-sys-color-surface: light-dark(#fef7ff, #141218);
+  --md-sys-color-on-surface: light-dark(#1d1b20, #e6e0e9);
+  --md-sys-color-surface-variant: light-dark(#e7e0ec, #49454f);
+  --md-sys-color-on-surface-variant: light-dark(#49454f, #cac4d0);
+  --md-sys-color-surface-dim: light-dark(#ded8e1, #141218);
+  --md-sys-color-surface-bright: light-dark(#fef7ff, #3b383e);
+  --md-sys-color-surface-container-lowest: light-dark(#ffffff, #0f0d13);
+  --md-sys-color-surface-container-low: light-dark(#f7f2fa, #1d1b20);
+  --md-sys-color-surface-container: light-dark(#f3edf7, #211f26);
+  --md-sys-color-surface-container-high: light-dark(#ece6f0, #2b2930);
+  --md-sys-color-surface-container-highest: light-dark(#e6e0e9, #36343b);
+  --md-sys-color-outline: light-dark(#79747e, #938f99);
+  --md-sys-color-outline-variant: light-dark(#cac4d0, #49454f);
+  --md-sys-color-inverse-surface: light-dark(#322f35, #e6e0e9);
+  --md-sys-color-inverse-on-surface: light-dark(#f5eff7, #322f35);
+  --md-sys-color-inverse-primary: light-dark(#d0bcff, #6750a4);
   /* `scrim` and `shadow` are deliberately absent. Every role declared here must also be emitted by
      `ServeThemeCss` (its test asserts exactly that), or a catalog would re-theme the page while one
      role quietly stayed on the baseline scheme. Those two are pure black in every M3 scheme and
@@ -75,20 +84,22 @@
   --md-sys-shape-corner-full: 999px;
 
   /* --- Elevation. M3's six levels are a *pair* of shadows (a tight key light and a soft ambient
-     one); the umbra/penumbra ratios below are the spec's, with the alpha carried in
-     `--md-sys-elevation-shadow` so the dark scheme can deepen every level at once. */
-  --md-sys-elevation-shadow: 0 0 0;
+     one); the umbra/penumbra ratios below are the spec's, with the two shadow colours carried in
+     `--md-sys-elevation-key` / `--md-sys-elevation-ambient` so the dark scheme deepens every level
+     at once — M3's alphas are tuned for a light surface and all but vanish on a dark one. */
+  --md-sys-elevation-key: light-dark(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.6));
+  --md-sys-elevation-ambient: light-dark(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.45));
   --md-sys-elevation-level0: none;
-  --md-sys-elevation-level1: 0 1px 2px 0 rgba(var(--md-sys-elevation-shadow), 0.3),
-    0 1px 3px 1px rgba(var(--md-sys-elevation-shadow), 0.15);
-  --md-sys-elevation-level2: 0 1px 2px 0 rgba(var(--md-sys-elevation-shadow), 0.3),
-    0 2px 6px 2px rgba(var(--md-sys-elevation-shadow), 0.15);
-  --md-sys-elevation-level3: 0 1px 3px 0 rgba(var(--md-sys-elevation-shadow), 0.3),
-    0 4px 8px 3px rgba(var(--md-sys-elevation-shadow), 0.15);
-  --md-sys-elevation-level4: 0 2px 3px 0 rgba(var(--md-sys-elevation-shadow), 0.3),
-    0 6px 10px 4px rgba(var(--md-sys-elevation-shadow), 0.15);
-  --md-sys-elevation-level5: 0 4px 4px 0 rgba(var(--md-sys-elevation-shadow), 0.3),
-    0 8px 12px 6px rgba(var(--md-sys-elevation-shadow), 0.15);
+  --md-sys-elevation-level1: 0 1px 2px 0 var(--md-sys-elevation-key),
+    0 1px 3px 1px var(--md-sys-elevation-ambient);
+  --md-sys-elevation-level2: 0 1px 2px 0 var(--md-sys-elevation-key),
+    0 2px 6px 2px var(--md-sys-elevation-ambient);
+  --md-sys-elevation-level3: 0 1px 3px 0 var(--md-sys-elevation-key),
+    0 4px 8px 3px var(--md-sys-elevation-ambient);
+  --md-sys-elevation-level4: 0 2px 3px 0 var(--md-sys-elevation-key),
+    0 6px 10px 4px var(--md-sys-elevation-ambient);
+  --md-sys-elevation-level5: 0 4px 4px 0 var(--md-sys-elevation-key),
+    0 8px 12px 6px var(--md-sys-elevation-ambient);
 
   /* --- State layers. In M3 an interactive surface signals hover/focus/press by compositing its
      *content* colour over itself at a fixed opacity, rather than by swapping to a different fill.
@@ -159,6 +170,15 @@
   --cp-on-accent: var(--md-sys-color-on-primary);
   --cp-on-accent-soft: var(--md-sys-color-on-secondary-container);
 }
+/* The page-theme setting ("Page theme" in the header's Settings menu, wired by `page-theme.js`):
+   when the chrome is set to follow the SELECTED PREVIEW THEME, the resolved mode is pinned here
+   instead of being left to `prefers-color-scheme`. Every mode-dependent value in this sheet — and
+   in the catalog palette `ServeThemeCss` inlines after it — is a `light-dark()` pair resolved
+   against `color-scheme`, so these two declarations re-paint the whole page. Absent both classes
+   the `light dark` pair above defers to the OS, which is what a visitor who turned the setting off
+   (and every no-JS client that wasn't served an explicit `?theme=`) gets. */
+:root.cp-scheme-light { color-scheme: light; }
+:root.cp-scheme-dark { color-scheme: dark; }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 28px; font-family: var(--md-sys-typescale-font);
   font-size: var(--md-sys-typescale-body-medium-size);
@@ -211,6 +231,40 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-site-nav a:hover { text-decoration: none; color: var(--md-sys-color-primary);
   background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent); }
 .cp-site-nav .cp-gh-auth { color: var(--cp-fg-soft); }
+/* The Settings menu (ServeWeb.settingsMenuHtml): standing per-visitor preferences, as opposed to
+   the controls that describe what is on screen. A `<details>` so it works with no JavaScript; its
+   summary is styled as one more nav action, and the panel is an M3 menu surface anchored under it.
+   `list-style: none` + the `::-webkit-details-marker` reset drop the disclosure triangle — the gear
+   is the affordance. */
+.cp-settings { position: relative; }
+.cp-settings-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px;
+  border-radius: var(--md-sys-shape-corner-full); color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer; list-style: none; user-select: none;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-settings-btn::-webkit-details-marker { display: none; }
+.cp-settings-btn:hover, .cp-settings[open] > .cp-settings-btn {
+  color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent); }
+.cp-settings-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50;
+  width: max-content; max-width: min(320px, calc(100vw - 32px)); padding: 8px 4px;
+  border: 0; border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-high);
+  box-shadow: var(--md-sys-elevation-level2); }
+.cp-settings-group { margin: 0; padding: 0; border: 0; }
+.cp-settings-legend { padding: 4px 12px; color: var(--cp-fg-faint);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  letter-spacing: var(--md-sys-typescale-label-medium-tracking); text-transform: uppercase; }
+/* Menu items at M3's 48dp list-item rhythm, with the radio as the leading control. */
+.cp-settings-option { display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: var(--md-sys-shape-corner-small); cursor: pointer; font-weight: 400;
+  color: var(--cp-fg); }
+.cp-settings-option:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-settings-option input { margin: 0; }
+.cp-settings-hint { margin: 4px 12px 6px; max-width: 280px; color: var(--cp-fg-muted);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking); font-weight: 400; }
 .cp-site-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--cp-border);
   color: var(--cp-fg-muted); font-size: var(--md-sys-typescale-body-small-size);
   line-height: var(--md-sys-typescale-body-small-line);
@@ -476,14 +530,14 @@ html.cp-js .cp-section-head { display: none; }
   font-size: var(--md-sys-typescale-label-medium-size);
   letter-spacing: var(--md-sys-typescale-label-medium-tracking); font-weight: 500;
   vertical-align: middle; white-space: nowrap; }
-.cp-badge--trusted { background: #d7f0dd; color: #10521f; border: 0; }
-.cp-badge--unverified { background: #ffdfb0; color: #573100; border: 0; }
+.cp-badge--trusted { background: light-dark(#d7f0dd, #0d3a1c); color: light-dark(#10521f, #86dc9d); border: 0; }
+.cp-badge--unverified { background: light-dark(#ffdfb0, #4a3000); color: light-dark(#573100, #ffd8a3); border: 0; }
 /* The degradation banner takes M3's *error/warning container* shape: a tonal fill at the large
    corner with no outline, so it reads as a surface rather than as a boxed alert. */
 .cp-degrade { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
   margin: 0 0 12px; padding: 12px 16px; border-radius: var(--md-sys-shape-corner-medium);
   font-size: var(--md-sys-typescale-body-medium-size); line-height: 1.4;
-  background: #ffdfb0; color: #573100; border: 0; }
+  background: light-dark(#ffdfb0, #4a3000); color: light-dark(#573100, #ffd8a3); border: 0; }
 .cp-degrade-icon { font-weight: 700; }
 .cp-degrade-item { display: inline; }
 /* Status page (GET /status): stat tiles, config grid, and the catalog/daemon/failure tables. */
@@ -534,8 +588,8 @@ html.cp-js .cp-section-head { display: none; }
   border-radius: var(--md-sys-shape-corner-full);
   font-size: var(--md-sys-typescale-label-small-size); font-weight: 500; text-transform: uppercase;
   letter-spacing: 0.06em; white-space: nowrap; }
-.cp-parity-lane--code { background: #d7f0dd; color: #10521f; border: 0; }
-.cp-parity-lane--figma { background: #e5deff; color: #3c2b80; border: 0; }
+.cp-parity-lane--code { background: light-dark(#d7f0dd, #0d3a1c); color: light-dark(#10521f, #86dc9d); border: 0; }
+.cp-parity-lane--figma { background: light-dark(#e5deff, #372b70); color: light-dark(#3c2b80, #c9c0ff); border: 0; }
 .cp-parity-feed { list-style: none; margin: 0; padding: 0; max-width: 860px; }
 .cp-parity-entry { display: flex; gap: 16px; padding: 12px 0;
   border-bottom: 1px solid var(--cp-surface-2); }
@@ -998,7 +1052,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-live-toggle:hover:not(:disabled) {
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
 .cp-live-toggle:disabled { opacity: 0.38; cursor: default; }
-.cp-live-toggle[aria-pressed="true"] { background: #d7f0dd; border-color: transparent; color: #10521f; }
+.cp-live-toggle[aria-pressed="true"] { background: light-dark(#d7f0dd, #0d3a1c); border-color: transparent;
+  color: light-dark(#10521f, #86dc9d); }
 /* The sign-in affordance shown in place of the Live toggle when auth is the only thing blocking
    the daemon lane. Deliberately NOT dimmed like `:disabled` — the lane is available, it just needs
    one click, and a greyed chip says the opposite. Full contrast and a dashed keyline mark it as an
@@ -1074,12 +1129,15 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
   color: var(--cp-fg-muted); background: var(--md-sys-color-surface-container-high); border: 0; }
 .cp-match[hidden] { display: none; }
-.cp-match--good { color: #10521f; background: #d7f0dd; border-color: transparent; }
-.cp-match--warn { color: #573100; background: #ffdfb0; border-color: transparent; }
-.cp-match--bad { color: #6e1414; background: #ffdad6; border-color: transparent; }
+.cp-match--good { color: light-dark(#10521f, #86dc9d); background: light-dark(#d7f0dd, #0d3a1c);
+  border-color: transparent; }
+.cp-match--warn { color: light-dark(#573100, #ffd8a3); background: light-dark(#ffdfb0, #4a3000);
+  border-color: transparent; }
+.cp-match--bad { color: light-dark(#6e1414, #ffb4ab); background: light-dark(#ffdad6, #601410);
+  border-color: transparent; }
 .cp-match--na { color: var(--cp-fg-muted); }
-/* Native format-fidelity gallery. The site chrome follows prefers-color-scheme; the Theme control
-   selects compared artefacts and never changes the fixed scoring backdrop. */
+/* Native format-fidelity gallery. The site chrome follows the page's resolved colour scheme; the
+   Theme control selects compared artefacts and never changes the fixed scoring backdrop. */
 .cp-compare-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
   margin: 0 0 14px; }
 .cp-compare-control-label { color: var(--cp-fg-muted); font-size: 0.75rem; }
@@ -1089,7 +1147,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-compare-table th, .cp-compare-table td { padding: 10px 12px; text-align: left;
   vertical-align: middle; border-bottom: 1px solid var(--cp-border); }
 .cp-compare-table thead th { position: sticky; top: 0; z-index: 1; color: var(--cp-fg-muted);
-  font-size: 0.72rem; background: var(--cp-bg); }
+  font-size: 0.72rem; background: light-dark(var(--cp-bg), var(--cp-surface)); }
 .cp-compare-table tbody th { min-width: 150px; font-weight: 600; word-break: break-word; }
 .cp-compare-shot { display: grid; place-items: center; width: min(260px, 30vw); min-width: 150px;
   min-height: 92px; padding: 8px; border-radius: 8px; overflow: hidden;
@@ -1100,9 +1158,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-compare-shot [hidden] { display: none; }
 .cp-compare-score { min-width: 88px; text-align: right; white-space: nowrap; color: var(--cp-fg-muted);
   font-variant-numeric: tabular-nums; }
-.cp-compare-score--good { color: #1e7a34; }
-.cp-compare-score--warn { color: #8a5300; }
-.cp-compare-score--bad { color: #8a1c1c; }
+.cp-compare-score--good { color: light-dark(#1e7a34, #6cd98a); }
+.cp-compare-score--warn { color: light-dark(#8a5300, #e6b067); }
+.cp-compare-score--bad { color: light-dark(#8a1c1c, #ef9292); }
 .cp-compare-score--na { color: var(--cp-fg-faint); }
 #cp-compare .cp-compare-target-head { font-size: 0; }
 #cp-compare .cp-compare-target-head::after { font-size: 0.72rem; }
@@ -1328,76 +1386,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-doc-expiry { display: inline-block; padding: 4px 10px;
   border-radius: var(--md-sys-shape-corner-full);
   font-size: var(--md-sys-typescale-label-medium-size); font-weight: 500;
-  background: #ffdfb0; color: #573100; border: 0; }
-/* Dark mode is the same sheet with the palette re-pointed — only the handful of rules that are
-   genuinely mode-specific (a lighter accent on a dark chip, the semantic badge palettes, the
-   heavier sheet shadow) survive below the `:root` block. */
-@media (prefers-color-scheme: dark) {
-  /* The M3 baseline scheme's dark half. Only the ROLES are re-declared — the `--cp-*` aliases
-     above are `var()` references, so the whole chrome follows without a second alias block.
-     Elevation deepens too: M3's shadow recipes are tuned for a light surface, and on a dark one
-     the same alphas vanish, so the shadow colour goes fully opaque-black-based here. */
-  :root {
-    --md-sys-color-primary: #d0bcff;
-    --md-sys-color-on-primary: #381e72;
-    --md-sys-color-primary-container: #4f378b;
-    --md-sys-color-on-primary-container: #eaddff;
-    --md-sys-color-secondary: #ccc2dc;
-    --md-sys-color-on-secondary: #332d41;
-    --md-sys-color-secondary-container: #4a4458;
-    --md-sys-color-on-secondary-container: #e8def8;
-    --md-sys-color-tertiary: #efb8c8;
-    --md-sys-color-on-tertiary: #492532;
-    --md-sys-color-tertiary-container: #633b48;
-    --md-sys-color-on-tertiary-container: #ffd8e4;
-    --md-sys-color-error: #f2b8b5;
-    --md-sys-color-on-error: #601410;
-    --md-sys-color-error-container: #8c1d18;
-    --md-sys-color-on-error-container: #f9dedc;
-    --md-sys-color-surface: #141218;
-    --md-sys-color-on-surface: #e6e0e9;
-    --md-sys-color-surface-variant: #49454f;
-    --md-sys-color-on-surface-variant: #cac4d0;
-    --md-sys-color-surface-dim: #141218;
-    --md-sys-color-surface-bright: #3b383e;
-    --md-sys-color-surface-container-lowest: #0f0d13;
-    --md-sys-color-surface-container-low: #1d1b20;
-    --md-sys-color-surface-container: #211f26;
-    --md-sys-color-surface-container-high: #2b2930;
-    --md-sys-color-surface-container-highest: #36343b;
-    --md-sys-color-outline: #938f99;
-    --md-sys-color-outline-variant: #49454f;
-    --md-sys-color-inverse-surface: #e6e0e9;
-    --md-sys-color-inverse-on-surface: #322f35;
-    --md-sys-color-inverse-primary: #6750a4;
-    --md-sys-elevation-level1: 0 1px 2px 0 rgba(0, 0, 0, 0.6), 0 1px 3px 1px rgba(0, 0, 0, 0.45);
-    --md-sys-elevation-level2: 0 1px 2px 0 rgba(0, 0, 0, 0.6), 0 2px 6px 2px rgba(0, 0, 0, 0.45);
-    --md-sys-elevation-level3: 0 1px 3px 0 rgba(0, 0, 0, 0.6), 0 4px 8px 3px rgba(0, 0, 0, 0.45);
-  }
-  /* Everything that follows the palette now follows it through the roles above — the long list of
-     per-rule dark overrides this block used to carry (re-pointing a border, a surface or a muted
-     text colour at its dark twin) is gone with it. What survives is what the token layer genuinely
-     cannot express: the SEMANTIC colour pairs, which are literal by design and so need a dark
-     re-mix of their own. They keep M3's *container / on-container* relationship — a low-chroma
-     tonal fill with a high-chroma label — rather than reverting to bordered chips. */
-  .cp-imgwrap, .cp-stage { background: var(--cp-surface); }
-  html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage { background: repeating-conic-gradient(var(--cp-surface-2) 0% 25%, var(--cp-surface) 0% 50%) 50% / 16px 16px; }
-  .cp-badge--trusted { background: #0d3a1c; color: #86dc9d; border-color: transparent; }
-  .cp-badge--unverified { background: #4a3000; color: #ffd8a3; border-color: transparent; }
-  .cp-parity-lane--code { background: #0d3a1c; color: #86dc9d; border-color: transparent; }
-  .cp-parity-lane--figma { background: #372b70; color: #c9c0ff; border-color: transparent; }
-  .cp-degrade { background: #4a3000; color: #ffd8a3; border-color: transparent; }
-  .cp-doc-expiry { background: #4a3000; color: #ffd8a3; border-color: transparent; }
-  .cp-live-toggle[aria-pressed="true"] { background: #0d3a1c; border-color: transparent; color: #86dc9d; }
-  .cp-match--good { color: #86dc9d; background: #0d3a1c; border-color: transparent; }
-  .cp-match--warn { color: #ffd8a3; background: #4a3000; border-color: transparent; }
-  .cp-match--bad { color: #ffb4ab; background: #601410; border-color: transparent; }
-  .cp-compare-control-label, .cp-compare-score { color: var(--cp-fg-muted); }
-  .cp-compare-table th, .cp-compare-table td { border-bottom-color: var(--cp-border); }
-  .cp-compare-table thead th { background: var(--cp-surface); }
-  .cp-compare-score--good { color: #6cd98a; }
-  .cp-compare-score--warn { color: #e6b067; }
-  .cp-compare-score--bad { color: #ef9292; }}
+  background: light-dark(#ffdfb0, #4a3000); color: light-dark(#573100, #ffd8a3); border: 0; }
 
 @media (min-width: 1100px) {
   /* Component discovery is part of the desktop workspace; drawers remain opt-in below this. */
@@ -1423,6 +1412,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-site-mark { width: 22px; height: 22px; }
   .cp-site-nav { gap: 12px; }
   .cp-site-nav > a[href^="https://github.com/"] { display: none; }
+  /* The gear alone on a narrow bar; the panel still opens at full width under it. */
+  .cp-settings-btn-label { display: none; }
   .cp-disclosure > summary { align-items: flex-start; }
   .cp-disclosure-hint { display: none; }
   .cp-section-title { margin-bottom: 10px; }
@@ -1448,7 +1439,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     max-height: 78vh; overflow: auto;
     padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px));
     border: 0; border-top: 1px solid var(--cp-border); border-radius: 14px 14px 0 0;
-    background: var(--cp-bg); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18); }
+    background: var(--cp-bg);
+    box-shadow: 0 -8px 24px light-dark(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.5)); }
   /* Grabber affordance at the top of a sheet. */
   .cp-viewer.cp-controls-open .cp-controls::before,
   .cp-viewer.cp-nav-open .cp-nav::before {
@@ -1469,15 +1461,6 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-compare-table th, .cp-compare-table td { padding: 8px; }
   .cp-compare-table tbody th { min-width: 110px; }
   .cp-compare-shot { width: 160px; min-width: 130px; min-height: 82px; }
-}
-/* Dark-mode surfaces for the mobile sticky bar + bottom sheets. */
-@media (max-width: 640px) and (prefers-color-scheme: dark) {
-  .cp-viewer-bar { background: var(--cp-bg); }
-  .cp-viewer.cp-controls-open .cp-controls,
-  .cp-viewer.cp-nav-open .cp-nav { background: var(--cp-bg); border-top-color: var(--cp-border);
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5); }
-  .cp-viewer.cp-controls-open .cp-controls::before,
-  .cp-viewer.cp-nav-open .cp-nav::before { background: var(--cp-border-strong); }
 }
 
 /* Render-server badge (see ServeWeb.presenceScript). Catalogs open their daemon on first real use,

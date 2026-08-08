@@ -32,18 +32,26 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * ## Two modes from one palette
  *
- * A catalog bakes **one** mode — `wear-m3` is dark, `jetnews` is light — but a visitor arrives with
- * their own `prefers-color-scheme`. Rather than forcing the catalog's mode onto the browser, the
- * emitted CSS declares both:
+ * A catalog bakes **one** mode — `wear-m3` is dark, `jetnews` is light — but the page may be read
+ * in either. Rather than forcing the catalog's mode onto the browser, the emitted CSS declares
+ * both:
  * - the **matching** mode gets the full sync: surfaces, text and borders derived from the catalog's
  *   `surface` / `onSurface` (plus `surfaceContainer*` when it publishes them), and its accent
  *   family;
  * - the **opposite** mode keeps the built-in neutrals for that mode and takes only the accent
  *   family, re-contrasted against that mode's background.
  *
- * So a dark-mode visitor browsing a light-first catalog gets a dark page in the catalog's brand
- * colour, not a light page — and never an unreadable one: every colour that ends up as text is
- * pushed to a minimum contrast ratio against what it sits on ([ensureContrast]).
+ * So a dark-mode reader of a light-first catalog gets a dark page in the catalog's brand colour,
+ * not a light page — and never an unreadable one: every colour that ends up as text is pushed to a
+ * minimum contrast ratio against what it sits on ([ensureContrast]).
+ *
+ * The two are emitted as **one `:root` block of `light-dark(<light>, <dark>)` pairs**, not as a
+ * `:root` block plus a `prefers-color-scheme` media block. That is what lets the chrome be pinned
+ * to a mode: `serve.css` resolves every mode-dependent value the same way, and the page-theme
+ * setting only has to set `color-scheme` (via `.cp-scheme-light` / `.cp-scheme-dark` on `<html>`)
+ * for the catalog's palette to follow the selected preview theme instead of the OS. With neither
+ * class set, `color-scheme: light dark` defers to `prefers-color-scheme` exactly as the media query
+ * did.
  *
  * The neutral ramp (muted/faint text, borders) is *derived* from the `(background, text)` pair by
  * mixing, rather than read from `outline` / `onSurfaceVariant`: those roles are published
@@ -146,12 +154,18 @@ internal object ServeThemeCss {
 
     val light = mode(colors, surface, text, primary, dark = false, matches = !catalogIsDark)
     val dark = mode(colors, surface, text, primary, dark = true, matches = catalogIsDark)
+    // One declaration per property, carrying both halves. The two lists are produced by the same
+    // function over the same roles, so they are the same properties in the same order — zipping
+    // them is safe, and asserted by ServeThemeCssTest.
     return buildString {
       append(":root {\n")
-      light.forEach { (name, value) -> append("  $name: $value;\n") }
-      append("}\n@media (prefers-color-scheme: dark) {\n  :root {\n")
-      dark.forEach { (name, value) -> append("    $name: $value;\n") }
-      append("  }\n}\n")
+      light.zip(dark).forEach { (l, d) ->
+        val (name, lightValue) = l
+        val (darkName, darkValue) = d
+        require(name == darkName) { "mode() must emit the same properties in both modes" }
+        append("  $name: light-dark($lightValue, $darkValue);\n")
+      }
+      append("}\n")
     }
   }
 

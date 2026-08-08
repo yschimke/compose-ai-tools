@@ -345,6 +345,50 @@ Two details make it behave under a real visitor's settings:
   backing and a dark-rendered one its dark backing, since those are pinned to the render's theme,
   not the page's.
 
+## The page follows the theme you picked — Settings › Page theme
+
+The palette above says *which colours*; this says *which mode*. Selecting **Dark** in the catalog's
+Theme control (or opening a `?theme=dark` link someone shared) now paints the **page** dark too,
+instead of handing a dark grid to a light shell — the one combination nobody picked.
+
+| Before — **Dark** picked on a light machine | After — the page follows it |
+| --- | --- |
+| ![A dark grid framed by a light page: the chrome ignored the Dark chip and stayed on the OS preference](images/serve-page-theme-before.png) | ![The same landing with the chrome, the catalog palette and the badges all dark](images/serve-page-theme-followed.png) |
+
+It is **optional, and it is a setting** rather than another control in the toolbar — a standing
+preference, answered once, that applies to every catalog and every page. The header's **Settings**
+menu holds it:
+
+- **Match the preview theme** (default) — an explicit Light/Dark pick pins the page to that mode.
+- **Follow my system** — the previous behaviour: the page stays on `prefers-color-scheme` whatever
+  the previews are showing. Somebody who keeps their machine dark all day sets this once.
+
+![The Settings menu with Page theme set to "Follow my system" — the grid on its dark renders, the page back on the OS preference](images/serve-page-theme-setting.png)
+
+Only an **explicit** `light` / `dark` moves the chrome. `Default` and an app-declared
+`theme:<providerFqn>` carry no light/dark axis — a declared theme is a palette, not a mode — so they
+leave the page on the visitor's OS preference rather than guessing. The choice is not carried in the
+URL either: a shared link describes the previews, not the reader's chrome preference. Resolution
+order matches the theme itself — `?theme=` / `?uiMode=` on the URL first, then the catalog's
+remembered choice — and it is applied by a pre-paint script in the page `<head>`, so a page opened
+under `?theme=dark` never flashes light first.
+
+Mechanically the whole feature is one CSS property. `serve.css` and the emitted catalog palette both
+write every mode-dependent value as a **`light-dark(<light>, <dark>)` pair** instead of a `:root`
+block plus a `prefers-color-scheme` block, so pinning the mode is `color-scheme: dark` on `<html>`
+(`.cp-scheme-dark`) and the chrome, the catalog's palette and the semantic badges all re-resolve
+together. With neither class set the declared `light dark` pair defers to `prefers-color-scheme`
+exactly as the media query did, which is what the setting turns back on — and what a no-JS client
+gets.
+
+That rewrite also fixed a latent bug it made visible: the light scheme's elevation shadows were
+written as `rgba(var(--md-sys-elevation-shadow), 0.3)` over `--md-sys-elevation-shadow: 0 0 0`, which
+is invalid legacy `rgba()` syntax, so **every M3 shadow in light mode computed to `none`**. Cards,
+sheets and the viewer stage had been flat on a light page since the token layer landed; they are not
+now.
+
+![Light-mode cards before and after: flat, then carrying M3 elevation level 1](images/serve-elevation-shadow-fix.png)
+
 ## Reporting a bad render
 
 Every viewer page carries a **report an issue** link beside its "source" link. It opens a
