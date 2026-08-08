@@ -2,8 +2,10 @@ package ee.schimke.composeai.renderer
 
 import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -64,6 +66,38 @@ class RendererLocaleTest {
     } finally {
       Locale.setDefault(original)
     }
+  }
+
+  /**
+   * The direction half of the override, and the one this path was missing: a **real** RTL locale
+   * has to mirror the capture, not just translate it. `@Preview(locale = "ar")` used to render
+   * correctly shaped Arabic inside a left-to-right container — navigation icon left, FAB
+   * bottom-right, start/end padding unmirrored — because only `Pseudolocale.isRtl` was consulted.
+   *
+   * The other three render paths (daemon desktop, daemon Android, `RobolectricRenderTest`) already
+   * ask [ee.schimke.composeai.data.pseudolocale.LocaleDirection], so this pins the batch renderer
+   * to the same answer rather than to its own list.
+   */
+  @Test
+  fun realRtlLocalesMirrorNotJustTheBidiPseudolocale() {
+    // Real RTL locales, bare and region-qualified.
+    assertTrue(rendersRightToLeft("ar"))
+    assertTrue(rendersRightToLeft("ar-EG"))
+    assertTrue(rendersRightToLeft("he"))
+    assertTrue(rendersRightToLeft("iw")) // legacy Hebrew code
+    assertTrue(rendersRightToLeft("fa"))
+    assertTrue(rendersRightToLeft("ur-PK"))
+
+    // The bidi pseudolocale keeps flipping — its base tag is `en`, so this only holds because
+    // `rendersRightToLeft` asks the pseudolocale before folding the tag.
+    assertTrue(rendersRightToLeft("ar-XB"))
+
+    // LTR locales, the accent pseudolocale (English copy, LTR) and "no override" must not flip.
+    assertFalse(rendersRightToLeft("de"))
+    assertFalse(rendersRightToLeft("ja"))
+    assertFalse(rendersRightToLeft("en-XA"))
+    assertFalse(rendersRightToLeft(null))
+    assertFalse(rendersRightToLeft(""))
   }
 
   /**

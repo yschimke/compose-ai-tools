@@ -81,3 +81,26 @@ fun SwitchOnRtl() =
 @Preview(name = "Dark", fontScale = 2f, uiMode = 32, group = "modes")
 @Composable
 fun SwitchOnLargeFont() = Sticker("switch-on")
+
+// A REAL RTL locale, as opposed to the `ar-XB` pseudolocale above. This is the regression guard for
+// the bug where the desktop batch renderers keyed their `LayoutDirection` flip off
+// `Pseudolocale.isRtl` alone: `ar-XB` mirrored, `ar` did not, so a catalog with real Arabic
+// translations rendered correctly shaped Arabic inside a left-to-right container — the leading
+// swatch still on the left, the text column still starting at the left edge. It read as "RTL is
+// fine" precisely where RTL had never been exercised.
+//
+// The slotted card is the sticker that shows it: it has BOTH a leading region and a text column, so
+// a mirror is unmistakable, and its headline/supporting copy comes from `strings.xml` — so this one
+// capture proves the two halves of a locale override together (translated copy AND mirrored
+// layout), which no `ar-XB` capture can (desktop CMP pseudolocalises direction, not text).
+@CatalogVariant(
+  of = "Card/Slots",
+  props = ["locale=ar"],
+  caption =
+    "i18n axis: a real RTL locale (ar) — Arabic copy from values-ar AND mirrored layout, the two " +
+      "halves a locale override applies together.",
+)
+@Preview(name = "Light", locale = "ar", group = "modes")
+@Preview(name = "Dark", locale = "ar", uiMode = 32, group = "modes")
+@Composable
+fun SlottedCardArabic() = Sticker("card-slots")

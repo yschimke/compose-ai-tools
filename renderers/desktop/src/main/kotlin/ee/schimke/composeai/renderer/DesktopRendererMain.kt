@@ -830,6 +830,29 @@ internal fun restoreJvmDefaultLocale(previous: java.util.Locale?) {
   if (previous != null) java.util.Locale.setDefault(previous)
 }
 
+/**
+ * Whether a `localeTag` render should compose with `LayoutDirection.Rtl` — true for the `ar-XB`
+ * bidi pseudolocale **and** for a real RTL locale (`ar`, `he`, `fa`, `ur`, …).
+ *
+ * The real-locale half is the part that was missing on this batch path. [overrideJvmDefaultLocale]
+ * gives `stringResource(...)` the translated copy, so a `@Preview(locale = "ar")` came back with
+ * correctly shaped Arabic — inside a container that was still laid out left-to-right: navigation
+ * icon on the left, FAB bottom-right, start/end padding unmirrored. That is not what an Arabic
+ * device shows, and it made the capture read as "RTL is fine" when the layout had never been
+ * exercised. The daemon desktop `RenderEngine.localeProviders`, the daemon Android `RenderEngine`
+ * and `RobolectricRenderTest` all already consult [LocaleDirection]; the three desktop batch
+ * renderers keyed off `Pseudolocale.isRtl` alone, so `ar-XB` mirrored and `ar` did not.
+ *
+ * Takes the raw tag rather than the effective one: [effectiveLocaleTag] folds `ar-XB` to `en`, and
+ * asking "is `en` RTL?" would lose the pseudolocale's flip. Pseudolocale first, real locale second,
+ * so the two can never double-count.
+ */
+internal fun rendersRightToLeft(localeTag: String?): Boolean {
+  val pseudolocale = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
+  if (pseudolocale != null) return pseudolocale.isRtl
+  return ee.schimke.composeai.data.pseudolocale.LocaleDirection.isRtl(effectiveLocaleTag(localeTag))
+}
+
 @OptIn(androidx.compose.ui.InternalComposeUiApi::class)
 internal fun renderPreview(
   className: String,
@@ -909,12 +932,13 @@ internal fun renderPreview(
     // onGloballyPositioned. Only read when at least one axis wraps.
     var measured: IntSize? = null
 
-    // Pseudolocale (`en-XA`, `ar-XB`): ar-XB flips `LocalLayoutDirection` to RTL so the captured
-    // PNG mirrors layout. en-XA is a no-op visually on desktop — CMP's
+    // RTL: `ar-XB` (bidi pseudolocale) and every real RTL locale (`ar`, `he`, `fa`, …) flip
+    // `LocalLayoutDirection` so the captured PNG mirrors layout — see [rendersRightToLeft].
+    // en-XA is a no-op visually on desktop — CMP's
     // `org.jetbrains.compose.resources.stringResource` doesn't go through `LocalContext.resources`,
     // so the Resources-subclass trick the Android connector uses doesn't apply here. See the
     // platform-support note in `site/reference/pseudolocale.md`.
-    val pseudolocale = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
+    val rtl = rendersRightToLeft(localeTag)
     // `@Preview(uiMode = 32)` (`UI_MODE_NIGHT_YES`) must flip the composition to dark, not just
     // tint
     // the system-bar chrome below. Compose Desktop's `isSystemInDarkTheme()` reads
@@ -925,7 +949,7 @@ internal fun renderPreview(
     val systemTheme = systemThemeFromUiMode(uiMode)
     scene.setContent {
       val baseProviders: @Composable (@Composable () -> Unit) -> Unit = { inner ->
-        if (pseudolocale?.isRtl == true) {
+        if (rtl) {
           CompositionLocalProvider(
             LocalInspectionMode provides true,
             LocalDensity provides sceneDensity,

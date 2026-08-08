@@ -115,7 +115,9 @@ fun renderScrollPreview(
     if (previewArgs.isEmpty()) clazz.getDeclaredComposableMethod(functionName)
     else findComposableMethodForScroll(clazz, functionName, previewArgs)
 
-  val pseudolocale = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
+  // `ar-XB` and every real RTL locale (`ar`, `he`, `fa`, …) mirror the captured slices — see
+  // [rendersRightToLeft].
+  val rtl = rendersRightToLeft(localeTag)
   var captured = false
 
   val sceneDensity = Density(density, fontScale)
@@ -141,7 +143,7 @@ fun renderScrollPreview(
           else -> Color.Transparent
         }
       val baseProviders: @Composable (@Composable () -> Unit) -> Unit = { inner ->
-        if (pseudolocale?.isRtl == true) {
+        if (rtl) {
           CompositionLocalProvider(
             LocalInspectionMode provides true,
             LocalDensity provides sceneDensity,
