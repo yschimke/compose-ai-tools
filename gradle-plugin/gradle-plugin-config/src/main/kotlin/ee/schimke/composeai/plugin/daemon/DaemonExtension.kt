@@ -73,11 +73,11 @@ abstract class DaemonExtension @Inject constructor(objects: ObjectFactory) {
    * rest of the pool on a background thread. Default: `true`.
    *
    * `RobolectricHost.start()` boots the eager slots sequentially and applies the per-slot boot
-   * budget to each, so a [warmSpare] pool (5 sandboxes) would hold `initialize` for roughly
-   * `5 × sandbox boot` — ~58s at the ~11.6s-per-sandbox figure in
-   * `docs/daemon/SANDBOX-POOL.md` — before the client may render anything. With this on, only slot
-   * 0 is on the critical path; dispatch routes across the ready prefix while the remaining slots
-   * boot behind it, and once the pool completes behaviour is bit-identical with the eager path.
+   * budget to each, so a [warmSpare] pool (5 sandboxes) would hold `initialize` for roughly `5 ×
+   * sandbox boot` — ~58s at the ~11.6s-per-sandbox figure in `docs/daemon/SANDBOX-POOL.md` — before
+   * the client may render anything. With this on, only slot 0 is on the critical path; dispatch
+   * routes across the ready prefix while the remaining slots boot behind it, and once the pool
+   * completes behaviour is bit-identical with the eager path.
    *
    * On by default: time-to-first-render is what a human waits on. Nothing can render until
    * `initialize` returns, so the eager path makes every client pay for the whole pool before it may

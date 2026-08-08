@@ -1,11 +1,3 @@
-@file:Suppress(
-  "DEPRECATION"
-) // AndroidSingleVariantLibrary(Boolean, Boolean) is deprecated; the replacement
-
-// types (SourcesJar/JavadocJar) vary between plugin versions. Re-visit when bumping.
-
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-
 // `:data-a11y-hierarchy-android` — the Android-platform-specific producer for
 // `a11y/hierarchy` and `a11y/atf`. Wraps `AccessibilityChecker.analyze` (ATF +
 // Robolectric) into a `PostCaptureProcessor` so the typed product graph stays
@@ -29,16 +21,6 @@ dependencies {
 
   testImplementation(libs.junit)
   testImplementation(libs.robolectric)
-}
-
-mavenPublishing {
-  configure(
-    com.vanniktech.maven.publish.AndroidSingleVariantLibrary(
-      javadocJar = com.vanniktech.maven.publish.JavadocJar.Empty(),
-      sourcesJar = com.vanniktech.maven.publish.SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
 }
 
 composeAiMavenPublishing {

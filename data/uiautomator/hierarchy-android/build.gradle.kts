@@ -1,11 +1,3 @@
-@file:Suppress(
-  "DEPRECATION"
-) // AndroidSingleVariantLibrary(Boolean, Boolean) is deprecated; the replacement
-
-// types (SourcesJar/JavadocJar) vary between plugin versions. Re-visit when bumping.
-
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-
 // `:data-uiautomator-hierarchy-android` — the Android-platform-specific producer for
 // `uia/hierarchy` (#874). Walks a Compose `SemanticsOwner` tree and emits a typed
 // `UiAutomatorHierarchyPayload` carrying the actionable subset agents need to formulate
@@ -49,16 +41,6 @@ dependencies {
   testImplementation(libs.activity.compose)
   testImplementation("androidx.compose.ui:ui-test-junit4")
   testImplementation("androidx.compose.ui:ui-test-manifest")
-}
-
-mavenPublishing {
-  configure(
-    com.vanniktech.maven.publish.AndroidSingleVariantLibrary(
-      javadocJar = com.vanniktech.maven.publish.JavadocJar.Empty(),
-      sourcesJar = com.vanniktech.maven.publish.SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
 }
 
 composeAiMavenPublishing {

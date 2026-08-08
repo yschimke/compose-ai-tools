@@ -3240,17 +3240,17 @@ object PreviewDiscovery {
    * measured against the Wear screen + density ([DeviceDimensions.DEFAULT_WEAR], 227dp @ 2.0x).
    * Previews that pin their own `device` / `widthDp` / `heightDp` (e.g. the `id:wearos_*_round`
    * breakpoints, or fixed-size specimens) are left untouched, and the preview id — which never
-   * encodes a device for a device-less preview — is unchanged, so `catalog.spec.json` references and
-   * delivery filenames stay stable. A no-op off Wear.
+   * encodes a device for a device-less preview — is unchanged, so `catalog.spec.json` references
+   * and delivery filenames stay stable. A no-op off Wear.
    *
    * The retarget sets [PreviewParams.wrapSandboxWidthDp] / [PreviewParams.wrapSandboxHeightDp], NOT
    * `widthDp` / `heightDp`. Both axes stay wrapped, so every sticker still crops to its measured
-   * bounds; all that changes is the bound `fillMaxWidth`/`fillMaxHeight` resolve against. That's the
-   * distinction #2373 originally missed: it pinned the axes to fix a fill-width `Card` that was
-   * measuring on a 400dp phone sandbox (rendering 1050×210), and in doing so suppressed the crop for
-   * every OTHER device-less preview in the module — a `FilledButton` sticker that used to export
-   * 217×179 became a 454×454 watch canvas with the button adrift in the corner. Sandboxing instead
-   * of pinning fixes the Card (it fills to 227dp) and keeps the Button tight.
+   * bounds; all that changes is the bound `fillMaxWidth`/`fillMaxHeight` resolve against. That's
+   * the distinction #2373 originally missed: it pinned the axes to fix a fill-width `Card` that was
+   * measuring on a 400dp phone sandbox (rendering 1050×210), and in doing so suppressed the crop
+   * for every OTHER device-less preview in the module — a `FilledButton` sticker that used to
+   * export 217×179 became a 454×454 watch canvas with the button adrift in the corner. Sandboxing
+   * instead of pinning fixes the Card (it fills to 227dp) and keeps the Button tight.
    *
    * [pinWearCanvas] (from the `retargetWearPreviews` extension flag, [Input.retargetWearPreviews])
    * selects between two Wear behaviours for those device-less previews; it's a no-op off Wear:
@@ -3263,9 +3263,9 @@ object PreviewDiscovery {
    *
    * **Auto-detected Wear widgets always take the `false` branch, regardless of [pinWearCanvas].** A
    * glance-wear widget preview — one whose `@PreviewParameter` provider comes from
-   * `androidx.glance.wear.*` (the `Squircle`/`RectangularAllWidgetPreviewParams` providers that feed
-   * `WearWidgetParams`) — is exported as a fixed-size drawable asset, so no per-module config is
-   * needed for the common widget case; the flag remains the override for non-glance widget param
+   * `androidx.glance.wear.*` (the `Squircle`/`RectangularAllWidgetPreviewParams` providers that
+   * feed `WearWidgetParams`) — is exported as a fixed-size drawable asset, so no per-module config
+   * is needed for the common widget case; the flag remains the override for non-glance widget param
    * types (#2670). This is per-preview, so one module can mix fill-width catalog components
    * (watch-sandboxed) with widgets (not).
    */
@@ -3285,7 +3285,8 @@ object PreviewDiscovery {
         // the watch screen — `fillMaxWidth` inside a widget means "fill the widget".
         val sandboxToWatch = pinWearCanvas && !isWearWidgetPreview(p)
         if (sandboxToWatch) {
-          // Measure against the wear screen (square 227dp) at wear density, so fill-width components
+          // Measure against the wear screen (square 227dp) at wear density, so fill-width
+          // components
           // (Card) size to the watch and dp→px matches the render. Both axes stay WRAPPED, so the
           // renderer still crops each PNG to its measured bounds — a Card fills the 227dp and keeps
           // it, a Button wraps tight.
@@ -3298,10 +3299,12 @@ object PreviewDiscovery {
               )
           )
         } else {
-          // Opted out (`retargetWearPreviews = false`) or an auto-detected widget: leave the sandbox
+          // Opted out (`retargetWearPreviews = false`) or an auto-detected widget: leave the
+          // sandbox
           // at the renderer's generic default so the composable measures against a widget-sized
           // bound rather than the watch screen (#2670). Still apply the Wear density (2.0x) rather
-          // than the inherited phone default (2.625x), so the cropped dp bounds scale to the correct
+          // than the inherited phone default (2.625x), so the cropped dp bounds scale to the
+          // correct
           // watch-density px, not an oversized phone-scale export.
           info.copy(params = p.copy(density = wear.density))
         }

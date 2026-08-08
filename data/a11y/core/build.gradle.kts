@@ -1,11 +1,3 @@
-@file:Suppress(
-  "DEPRECATION"
-) // AndroidSingleVariantLibrary(Boolean, Boolean) is deprecated; the replacement
-
-// types (SourcesJar/JavadocJar) vary between plugin versions. Re-visit when bumping.
-
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-
 // D2.2 — `:data-a11y-core` is the **published** generic-Android piece of the
 // accessibility data product: the ATF wrapper (`AccessibilityChecker`), the
 // Paparazzi-style overlay generator (`AccessibilityOverlay`), and the JSON
@@ -52,18 +44,8 @@ dependencies {
   testImplementation(libs.robolectric)
 }
 
-// Vanniktech's `AndroidSingleVariantLibrary` creates the release publication
+// The `composeai.maven-publishing` convention creates the release publication
 // (with sources + javadoc jar) — do not create one manually; it clashes.
-
-mavenPublishing {
-  configure(
-    com.vanniktech.maven.publish.AndroidSingleVariantLibrary(
-      javadocJar = com.vanniktech.maven.publish.JavadocJar.Empty(),
-      sourcesJar = com.vanniktech.maven.publish.SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
-}
 
 composeAiMavenPublishing {
   coordinates(

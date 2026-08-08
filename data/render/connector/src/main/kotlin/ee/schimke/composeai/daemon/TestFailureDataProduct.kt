@@ -5,6 +5,8 @@ import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.TestFailureDataProduct
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import java.util.concurrent.ConcurrentHashMap
@@ -30,7 +32,12 @@ class TestFailureDataProductRegistry : DataProductRegistry {
       )
     )
 
-  override fun onRender(previewId: String, result: RenderResult) {
+  override fun onRender(
+    previewId: String,
+    result: RenderResult,
+    overrides: PreviewOverrides?,
+    previewContext: PreviewContext?,
+  ) {
     latestFailures.remove(previewId)
   }
 

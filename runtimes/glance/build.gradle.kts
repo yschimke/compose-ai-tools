@@ -1,13 +1,3 @@
-@file:Suppress(
-  "DEPRECATION"
-) // AndroidSingleVariantLibrary(Boolean, Boolean) is deprecated; the replacement
-
-// types (SourcesJar/JavadocJar) vary between plugin versions. Re-visit when bumping.
-
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import com.vanniktech.maven.publish.JavadocJar
-import com.vanniktech.maven.publish.SourcesJar
-
 // `:glance-preview-runtime` — composable-helper authoring path for Glance app-widget
 // previews. Sister to `:notification-preview-runtime`. `GlanceAppWidgetContent(widget = ...)`
 // materialises a `GlanceAppWidget` to `RemoteViews` via the public 1.2.0+
@@ -53,16 +43,6 @@ dependencies {
   // declared supported sizes / resize-axes on the payload. Without this dep the helper still
   // renders the widget; the payload just doesn't carry the size-mode constraints.
   implementation(project(":data-launcher-widget-connector"))
-}
-
-mavenPublishing {
-  configure(
-    AndroidSingleVariantLibrary(
-      javadocJar = JavadocJar.Empty(),
-      sourcesJar = SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
 }
 
 composeAiMavenPublishing {

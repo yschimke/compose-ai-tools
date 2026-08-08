@@ -172,10 +172,6 @@ class ThemeDataProductRegistry : DataProductRegistry {
     )
   }
 
-  override fun onRender(previewId: String, result: RenderResult) {
-    onRender(previewId, result, overrides = null, previewContext = result.previewContext)
-  }
-
   override fun onRender(
     previewId: String,
     result: RenderResult,

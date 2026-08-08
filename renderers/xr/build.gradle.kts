@@ -1,7 +1,3 @@
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import com.vanniktech.maven.publish.JavadocJar
-import com.vanniktech.maven.publish.SourcesJar
-
 plugins {
   id("composeai.base-conventions")
   // Published so external consumers can resolve `ee.schimke.composeai:renderer-xr:<version>` —
@@ -116,15 +112,6 @@ dependencies {
 // The heavy XR / compose-test libs are `compileOnly`, so they stay out of the published POM and the
 // plugin supplies the `*-testing` fakes on the render configuration itself (mirrors
 // `:renderer-android`).
-mavenPublishing {
-  configure(
-    AndroidSingleVariantLibrary(
-      javadocJar = JavadocJar.Empty(),
-      sourcesJar = SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
-}
 
 composeAiMavenPublishing {
   coordinates(
