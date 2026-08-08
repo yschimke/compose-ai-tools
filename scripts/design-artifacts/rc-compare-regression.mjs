@@ -16,8 +16,8 @@
  *     percentage points.
  *
  * Deliberately a *delta*, not a bar. Absolute mismatch is dominated by backend differences nobody
- * on this PR introduced (Skia-vs-Android glyph coverage, a reference lane that cannot apply font
- * axes); the number that means something is how much this change moved it. A row that was already
+ * on this PR introduced (Skia-vs-Android glyph coverage, rasteriser-level outline halos); the
+ * number that means something is how much this change moved it. A row that was already
  * at 3% and stays at 3% is somebody else's known divergence — the page reports it. A row that goes
  * 0.26% → 2.17% is this diff, and that is what turns the job red.
  *
