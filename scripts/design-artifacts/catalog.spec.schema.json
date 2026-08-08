@@ -149,6 +149,10 @@
           "type": "string",
           "description": "Optional handle of the component family `reference` is one variant of (a Figma component set). `reference` names the single node a parity run diffs this sticker against; `referenceSet` names the family, so an instance found on a whole screen — which reports its own variant, rarely the one the catalog pictured — still matches back to this component."
         },
+        "noReference": {
+          "type": "string",
+          "description": "Optional REASON there is no `reference`, for when the absence is a finding rather than a gap — the kit retired the pattern, never published it, or publishes something close enough to mislead. An absent `reference` otherwise means only \"nobody has looked yet\", and a consumer cannot tell an audited component with no counterpart from an unaudited one."
+        },
         "parallel": {
           "type": "string",
           "description": "Optional componentId of the counterpart in the `compareWith` sibling system, paired side-by-side on the cross-system compare page."

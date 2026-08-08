@@ -75,6 +75,28 @@ test("inventoryFromPreviews carries both seed-kit handles, and omits an absent r
   ]);
 });
 
+test("inventoryFromPreviews carries a stated absence of reference, distinct from an unaudited one", () => {
+  // Both of these components export no `reference`. The difference is that one has been looked at
+  // and the kit has nothing worth pointing to — which is exactly what `noReference` records, and
+  // is unrecoverable downstream if the inventory drops it here.
+  const { groups } = inventoryFromPreviews([
+    component("ScaffoldSticker", {
+      componentId: "Layout/Scaffold",
+      group: "Layout",
+      noReference: "Kit retired this pattern in the 2025 refresh.",
+    }),
+    component("UnauditedSticker", { componentId: "Layout/Unaudited", group: "Layout" }),
+  ]);
+  assert.deepEqual(groups[0].components, [
+    {
+      componentId: "Layout/Scaffold",
+      preview: "ScaffoldSticker",
+      noReference: "Kit retired this pattern in the 2025 refresh.",
+    },
+    { componentId: "Layout/Unaudited", preview: "UnauditedSticker" },
+  ]);
+});
+
 test("inventoryFromPreviews defaults the group to Components and carries section", () => {
   const { groups } = inventoryFromPreviews([
     component("Foo", { componentId: "Foo" }),
