@@ -149,18 +149,47 @@ class ServePageThemeTest {
     // same property the page-theme setting uses, applied one level down.
     val sheet = ServeWebAssets.load("serve.css")!!.bytes.decodeToString()
     assertTrue(
-      sheet.contains(""".cp-theme-btn[data-theme-choice="light"]""") &&
-        sheet.contains(""".cp-theme-btn[data-theme-choice="dark"]"""),
-      "the baked chips must pin their own colour scheme",
+      sheet.contains(
+        """[data-theme-choice="light"], [data-compare-theme="light"]) """ +
+          "{ color-scheme: light; }"
+      ),
+      "the Light chip must resolve the token layer in light",
+    )
+    assertTrue(
+      sheet.contains(
+        """[data-theme-choice="dark"], [data-compare-theme="dark"]) """ + "{ color-scheme: dark; }"
+      ),
+      "the Dark chip must resolve it in dark",
     )
     // Selection is a ring rather than a fill swap: the fill IS the swatch, so replacing it would
-    // hide the theme at the moment it is picked.
+    // hide the theme at the moment it is picked. The ring must be INSET — the viewer's theme bar is
+    // an `overflow` scroller padded on one edge, so an outward ring is clipped to three sides
+    // there and stops reading as a selection marker at all.
     val pressed =
       sheet
-        .substringAfter("""[data-compare-theme="dark"])[aria-pressed="true"]""")
+        .substringAfter("""[data-compare-theme="dark"])[aria-pressed="true"] {""")
         .substringBefore("}")
-    assertTrue(pressed.contains("box-shadow: 0 0 0 2px"), pressed)
+    assertTrue(pressed.contains("box-shadow: inset 0 0 0 2px"), pressed)
     assertTrue(pressed.contains("--md-sys-color-surface-container-low"), pressed)
+  }
+
+  @Test
+  fun `a disabled chip is dimmed inside its own scheme, not against the page`() {
+    // The viewer greys the Day/Night pair on a fixed lane. The shared disabled treatment fades the
+    // label to 38% of `on-surface`; on a chip pinned to the opposite scheme, resolving that against
+    // the PAGE would paint near-white text on a light page (or near-black on a dark one) — an
+    // unavailable option that has vanished rather than one that reads as unavailable. So the chip
+    // keeps its own surface under the dimmed label, and the scheme pin stays unconditional: every
+    // colour on the chip resolves in one mode, in every state.
+    val sheet = ServeWebAssets.load("serve.css")!!.bytes.decodeToString()
+    val disabled =
+      sheet.substringAfter("""[data-compare-theme="dark"]):disabled {""").substringBefore("}")
+    assertTrue(disabled.contains("background: var(--md-sys-color-surface-container-low)"), disabled)
+    assertTrue(disabled.contains("--md-sys-color-on-surface) 38%"), disabled)
+    assertFalse(
+      sheet.contains("""[data-theme-choice="dark"]:not(:disabled) { color-scheme"""),
+      "the scheme pin must not be dropped on a state change",
+    )
   }
 
   @Test
