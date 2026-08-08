@@ -640,6 +640,16 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       if (component.caption !== undefined) source.caption = component.caption;
       if (component.reference !== undefined)
         source.reference = component.reference;
+      if (component.referenceSet !== undefined)
+        source.referenceSet = component.referenceSet;
+      // The stated reason there is NO reference — distinct from an absent `reference`, which says
+      // only that nobody has looked. Both this and `referenceSet` are preserved by
+      // `@design-parity/catalog-export` from the release that added them; on an older pinned
+      // package `buildCatalog` drops them and the fields stop here. Harmless (the catalog is
+      // shaped exactly as before), but it does mean the annotation only reaches `catalog.json`
+      // once package.json + the lockfile move — see the note on the dependency pin.
+      if (component.noReference !== undefined)
+        source.noReference = component.noReference;
       if (candidate.semantics) source.semantics = candidate.semantics;
       sources.push(source);
     }
