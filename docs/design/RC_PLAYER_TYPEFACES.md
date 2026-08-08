@@ -103,11 +103,23 @@ and it is worth checking first whenever axes land correct-but-invisible in a lan
 `cssFontStackFor` (`third_party/remote-compose-player/src/web/CanvasPaintContext.ts`) maps the
 built-in ids to the concrete faces Android's `fonts.xml` resolves them to — `Roboto, sans-serif`,
 `"Noto Serif", serif`, `"Droid Sans Mono", monospace` — so the browser matches the baked raster
-*only if the page registered those faces*. The offline compare harness does exactly that
-(`scripts/design-artifacts/rc-fonts.mjs` inlines the vendored files as `@font-face`), and the wasm
-catalog dist ships them; **the `serve` viewer registers nothing**, so on a host without Roboto /
-Noto Serif / Droid Sans Mono the `js` chip falls through to the browser's own generics while the
-PNG lanes beside it use the vendored faces. That is a fidelity gap in the viewer, not in the player.
+*only if the page registered those faces*. Three hosts do, all from the same vendored files: the
+offline compare harness inlines them as base64 `@font-face`
+(`scripts/design-artifacts/rc-fonts.mjs`), the wasm catalog dist ships them, and the `serve` viewer
+serves them —
+[`ServeRcFonts`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt) publishes
+`/rc-fonts/fonts.css` plus the four face files out of the CLI jar, and every page with a client-side
+lane (the viewer's `js` chip, the PNG↔RC comparison, a shared `/d/<id>` document) links it and
+*loads* it before painting via `rc-fonts.js`. The load matters as much as the declaration: canvas
+neither drives a lazy `@font-face` nor repaints when one lands, so a declared-but-unloaded face is
+silently substituted for the whole first frame.
+
+Until #3480 the viewer registered nothing, so the `js` chip drew a document's generic families in
+whatever the *visitor's* machine called `sans-serif` — different outlines, a ~4% different line box
+(1.17em vs 1.12em measured per 100px in headless Chromium), and no Medium face at all, so text asked
+for at 500 rendered Regular — while the PNG lanes beside it used the vendored files. That was a
+fidelity gap in the viewer, not in the player, and it moved with the reader. Before/after/diff off a
+running server: [`evidence/serve-rc-fonts/`](evidence/serve-rc-fonts/README.md).
 
 Named families go through `WebFonts.ts`: `google:`-prefixed names are fetched from
 `https://fonts.googleapis.com/css2` (on by default; `configureWebFonts({enabled:false})` is the

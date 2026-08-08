@@ -497,3 +497,35 @@ val generateCliVersionResource by tasks.registering {
 }
 
 sourceSets.main.get().resources.srcDir(generateCliVersionResource)
+
+// The typefaces the served viewer registers for its client-side Remote Compose lanes
+// (`ServeRcFonts`): without them the browser lane paints a document's generic families in whatever
+// the *viewer's* machine calls `sans-serif`, at different metrics and without the Medium weight,
+// while the baked PNG beside it used these files (issue #3480).
+//
+// STAGED, not committed a second time. The source is the one vendored directory the offline parity
+// harness reads (`scripts/design-artifacts/rc-fonts.mjs`'s `DEFAULT_FONTS_DIR`) and the snapshot
+// renderer rasterizes with, so "the viewer's faces" and "the faces parity is measured against"
+// cannot become different files. The named-family faces in that directory (Orbitron, Lobster Two)
+// are deliberately left out — the player fetches those itself through `WebFonts.ts`; only the four
+// behind the generic families need registering, and they are what `ServeRcFonts.FACES` declares
+// (`ServeRcFontsTest` fails when this list and that table disagree).
+val stageRcFontResources by
+  tasks.registering(Sync::class) {
+    description =
+      "Stage the vendored generic-family faces the serve viewer registers for its RC lanes."
+    from(rootDir.resolve("samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts")) {
+      include(
+        "Roboto-Regular.ttf",
+        "Roboto-Medium.ttf",
+        "NotoSerif-Regular.ttf",
+        "DroidSansMono.ttf",
+        // The faces' own licence, so the jar carries it beside the bytes.
+        "LICENSE.txt",
+      )
+      into("rc-fonts")
+    }
+    into(layout.buildDirectory.dir("generated/rc-font-resources"))
+  }
+
+sourceSets.main.get().resources.srcDir(stageRcFontResources)

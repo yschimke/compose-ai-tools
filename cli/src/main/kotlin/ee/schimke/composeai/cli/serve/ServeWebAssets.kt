@@ -23,6 +23,11 @@ internal object ServeWebAssets {
       // The grid's long-press live lane; loaded only by a catalog page whose session can actually
       // stream (see [ServeWeb.catalogLiveScript]).
       "catalog-live.js" to "text/javascript; charset=utf-8",
+      // Forces the vendored `@font-face` block ([ServeRcFonts]) to load before a client-side Remote
+      // Compose lane paints — canvas never drives a lazy face itself. Loaded only by a page that
+      // carries such a lane (the viewer with an `.rc` document, the format-compare wall, a shared
+      // Remote Compose document page).
+      "rc-fonts.js" to "text/javascript; charset=utf-8",
       "viewer.js" to "text/javascript; charset=utf-8",
       // The viewer's inspection layers (accessibility / typography / theme attributes); loaded only
       // by a viewer whose host can produce at least one of them.

@@ -3096,6 +3096,10 @@ object ServeWeb {
           .trimIndent()
       }
     val rawUrl = doc.rawPath + suffix
+    val isRemoteComposeDoc = doc.formatId == ServeDocFormats.REMOTE_COMPOSE.id
+    // Only the Remote Compose lane paints into a canvas the vendored faces matter for; the Lottie
+    // player draws SVG and its page is byte-identical to before.
+    val rcFontsScript = if (isRemoteComposeDoc) scriptTag("rc-fonts.js") + "\n        " else ""
     return document(
       title = "${doc.name} — compose-preview",
       unfurlDescription = "A shared ${doc.formatLabel} document, played back in your browser.",
@@ -3118,9 +3122,13 @@ object ServeWeb {
           <a href="$rawUrl" download="${WebEscaping.htmlEscape(doc.name)}">Download the document</a> ·
           <a href="/docs$suffix">Share another</a>
         </p>
-        <script>${docPlayerScript(doc, rawUrl)}</script>
+        $rcFontsScript<script>${docPlayerScript(doc, rawUrl)}</script>
         """
           .trimIndent(),
+      // Same lane as the viewer's `js` chip, same reason: a shared `.rc` link must not render in
+      // the
+      // recipient's own generics.
+      rcFonts = isRemoteComposeDoc,
     )
   }
 
@@ -3151,8 +3159,14 @@ object ServeWeb {
           """
             .trimIndent()
         else ->
+          // The vendored generic-family faces must be *loaded*, not merely declared, before the
+          // player paints: canvas silently falls back for an unloaded face and never repaints
+          // (see `rc-fonts.js`). `cpRcFonts` is absent only if that script failed to load, in which
+          // case the lane still renders — in the fallback face, as it did before.
           """
-          fetch(raw).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+          var fonts = window.cpRcFonts ? window.cpRcFonts.ready() : Promise.resolve();
+          Promise.all([fonts, fetch(raw).then(function (r) { return r.arrayBuffer(); })]).then(function (r) {
+            var buf = r[1];
             var player = new window.RC.RcdPlayer(mount);
             return Promise.resolve(player.loadFromArrayBuffer(buf)).then(function () {
               if (player.repaint) player.repaint();
@@ -4367,6 +4381,11 @@ object ServeWeb {
       version = version,
       navSuffix = navSuffix,
       themeCss = themeCss,
+      // The PNG ↔ Remote Compose comparison plays the document in a canvas on this page and
+      // *scores*
+      // the result, so an unregistered typeface here doesn't just look wrong — it lands in the
+      // reported fidelity number.
+      rcFonts = hasRc,
       body =
         """
         <div id="cp-compare" $rootAttrs>
@@ -4389,6 +4408,7 @@ object ServeWeb {
           ${rcLanes.orEmpty()}
         </div>
         ${scriptTag("url-state.js")}
+        ${if (hasRc) scriptTag("rc-fonts.js") else ""}
         ${if (rcLanes != null) scriptTag("rc-lanes.js") else ""}
         ${scriptTag("format-compare.js")}
         """
@@ -6140,7 +6160,7 @@ $rows
       ${scriptTag("viewer-drawers.js")}
       ${scriptTag("viewer-history.js")}
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
-      ${if (hasSvgExport) "${scriptTag("format-compare.js")}\n      " else ""}${scriptTag("viewer.js")}
+      ${if (hasRemoteComposeDoc) "${scriptTag("rc-fonts.js")}\n      " else ""}${if (hasSvgExport) "${scriptTag("format-compare.js")}\n      " else ""}${scriptTag("viewer.js")}
       ${scriptTag("backend-badge.js")}${if (inspectRows.isEmpty()) "" else "\n      " + scriptTag("inspect.js")}
       """
         .trimIndent()
@@ -6155,6 +6175,9 @@ $rows
       version = version,
       navSuffix = navSuffix,
       themeCss = themeCss,
+      // Only the `js` chip paints in this document's canvas, and it only exists when the preview
+      // carries a captured document.
+      rcFonts = hasRemoteComposeDoc,
     )
   }
 
@@ -6251,6 +6274,15 @@ $rows
      * plain module / a catalog that publishes no tokens — the page then uses the built-in chrome.
      */
     themeCss: String = "",
+    /**
+     * Register the vendored Remote Compose typefaces ([ServeRcFonts]) on this page. True for the
+     * pages that play a `.rc` document **client-side** — without the faces the player's `Roboto,
+     * sans-serif` request falls through to whatever the *viewer's* machine calls `sans-serif`, so
+     * the same document renders in a different typeface, at different metrics and without the
+     * Medium weight, depending on who is looking (issue #3480). Off elsewhere: the page chrome is
+     * deliberately system-font, and a page with no canvas lane shouldn't carry the block.
+     */
+    rcFonts: Boolean = false,
   ): String {
     val unfurlHtml =
       if (unfurl == null) ""
@@ -6293,6 +6325,9 @@ $rows
       }
     val unfurlBlock = if (unfurlHtml.isEmpty()) "" else "\n${unfurlHtml.prependIndent("        ")}"
     val footerBlock = "\n${siteFooter(version).prependIndent("        ")}"
+    // Before `themeCss`, so a catalog palette still wins at equal specificity; the font block
+    // declares faces only and collides with nothing in the chrome.
+    val rcFontsBlock = if (rcFonts) "\n" + ServeRcFonts.linkTag().prependIndent("        ") else ""
     val themeBlock =
       themeCss
         .takeIf { it.isNotBlank() }
@@ -6304,7 +6339,7 @@ $rows
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
         <title>${WebEscaping.htmlEscape(title)}</title>
-        <link rel="stylesheet" href="${assetHref("serve.css")}">$themeBlock
+        <link rel="stylesheet" href="${assetHref("serve.css")}">$rcFontsBlock$themeBlock
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>

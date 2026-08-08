@@ -568,6 +568,14 @@ class ServeHttpServer(
         // outscores the `/{system}` catch-all in Ktor routing.
         get("/rc-player/bundle.js") { respondPlayerAsset(playerAsset(RC_PLAYER_RESOURCE)) }
 
+        // The typefaces that player draws a document's *generic* families in ([ServeRcFonts]): the
+        // generated `@font-face` stylesheet plus the vendored face files it points at. Registering
+        // them is what makes the browser lane comparable to the baked PNG beside it — unregistered,
+        // the player's `Roboto, sans-serif` request falls through to the viewer's own generics
+        // (issue #3480). Ungated and CORS-open for the same reason as the player bundle: font bytes
+        // baked into the jar, no session data.
+        get("${ServeRcFonts.URL_BASE}/{name}") { handleRcFont() }
+
         // The document lane (`--accept-docs`): ingest one **known document format** (Remote Compose
         // or Lottie — see [ServeDocFormats]) and hand back an expiring permalink that plays it in
         // the browser. Registered only when the operator opts in. Constant first segments, so they
@@ -1366,6 +1374,43 @@ class ServeHttpServer(
       return
     }
     respondPlayerAsset(playerAsset(format.playerResource))
+  }
+
+  /**
+   * `GET /rc-fonts/{name}`: the generated `@font-face` stylesheet ([ServeRcFonts.STYLESHEET]) or
+   * one of the vendored faces it declares. Anything else 404s — the route serves a fixed, declared
+   * set, never an arbitrary classpath path.
+   *
+   * Cached like the player bundles (ETag + a short `max-age`): the bytes are fixed at build time,
+   * so a repeat visitor revalidates cheaply instead of re-downloading a few hundred KB per face.
+   */
+  private suspend fun RoutingContext.handleRcFont() {
+    val name = call.parameters["name"] ?: ""
+    if (name == ServeRcFonts.STYLESHEET) {
+      val css = ServeRcFonts.css()
+      call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
+      call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
+      call.respondText(css, ContentType.parse("text/css; charset=utf-8"))
+      return
+    }
+    val resource = ServeRcFonts.resourceFor(name)
+    if (resource == null) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    val asset = playerAsset(resource)
+    if (asset.bytes.isEmpty()) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
+    call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
+    call.response.headers.append(HttpHeaders.ETag, asset.etag)
+    if (call.request.headers[HttpHeaders.IfNoneMatch] == asset.etag) {
+      call.respond(HttpStatusCode.NotModified)
+      return
+    }
+    call.respondBytes(asset.bytes, ContentType.parse("font/ttf"))
   }
 
   /** `GET /assets/serve/{version}/{name}`: static ServeWeb CSS/JS extracted from raw strings. */

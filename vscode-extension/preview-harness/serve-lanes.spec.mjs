@@ -21,7 +21,11 @@
 // xvfb). Self-skips with a clear message when no label-knob preview is reachable.
 
 import { test, expect } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
+const HERE = dirname(fileURLToPath(import.meta.url));
 const SYSTEM = process.env.SERVE_SYSTEM ?? "compose-m3";
 const OVERRIDE = "E2eKnobProof";
 
@@ -317,6 +321,89 @@ test("Wasm iframe re-renders on knob override", async ({ page }) => {
       },
     )
     .toBeTruthy();
+});
+
+// The client-side RC lane draws a document's *generic* families through the concrete faces Android
+// resolves them to (`Roboto, sans-serif`, …). That is only a request: on a page that registered no
+// such faces the browser falls through to whatever the visitor's own machine calls `sans-serif`, so
+// the same document renders in a different typeface, at ~4% different line metrics and without the
+// Medium weight — while the PNG lane beside it used the vendored files (issue #3480). The server now
+// serves those files (`/rc-fonts/…`) and the matching `@font-face` block.
+//
+// Driven through the **document lane** rather than a catalog preview: it needs only a `.rc` file, so
+// it runs on every serve this suite boots instead of skipping wherever the served catalog happens to
+// carry no `ir/` sidecars. The claim needs a real browser and a real server — `@font-face` is lazy,
+// canvas neither drives a load nor repaints when one lands, and no HTML fixture can show either.
+test("a Remote Compose document plays in the vendored typefaces, not the visitor's", async ({
+  browser,
+  request,
+}) => {
+  const sheet = await request.get("/rc-fonts/fonts.css");
+  expect(sheet.ok(), "the server publishes the vendored @font-face block").toBeTruthy();
+  const css = await sheet.text();
+  for (const family of ["Roboto", "Noto Serif", "Droid Sans Mono"]) {
+    expect(css, `declares ${family}`).toContain(`font-family:"${family}"`);
+  }
+  // The contiguous ranges are what stop an in-between weight (Wear M3 asks for 450) resolving upward
+  // onto Medium, and what gives a Medium request a real file at all.
+  expect(css, "Roboto Medium serves 500 and up").toContain("font-weight:500 1000");
+
+  const doc = readFileSync(resolve(HERE, "../../scripts/design-artifacts/fixtures/watch-screen-round-clip.rc"));
+  const upload = await request.post("/docs", {
+    headers: { "content-type": "application/octet-stream" },
+    data: doc,
+  });
+  test.skip(upload.status() === 404, "this serve was booted without the document lane (--accept-docs)");
+  expect(upload.status(), await upload.text()).toBe(201);
+  const docUrl = (await upload.json()).url;
+
+  // Two loads of the same page: as served, and with `/rc-fonts/**` blocked — which is exactly this
+  // page before the faces were served at all.
+  async function play(blockFonts) {
+    const ctx = await browser.newContext({ deviceScaleFactor: 2 });
+    const page = await ctx.newPage();
+    if (blockFonts) await page.route("**/rc-fonts/**", (route) => route.abort());
+    await page.goto(docUrl, { waitUntil: "domcontentloaded" });
+    // The page clears its status line once the player has painted a frame.
+    await expect(page.locator("#cp-doc-status")).toHaveText("", { timeout: 60000 });
+    const probe = await page.evaluate(() => {
+      const loaded = [];
+      document.fonts.forEach((f) => {
+        if (f.status === "loaded") loaded.push(f.family);
+      });
+      const ctx2d = document.createElement("canvas").getContext("2d");
+      // The stack the player itself asks for, measured the way it draws.
+      ctx2d.font = "100px Roboto, sans-serif";
+      const m = ctx2d.measureText("Hamburgefonstiv");
+      return {
+        loaded,
+        lineBox: Math.round(m.fontBoundingBoxAscent + m.fontBoundingBoxDescent),
+        width: Math.round(m.width),
+      };
+    });
+    const shot = await page.locator("#cp-doc-mount").screenshot();
+    await ctx.close();
+    return { ...probe, shot };
+  }
+
+  const served = await play(false);
+  const unregistered = await play(true);
+
+  // Both Roboto faces must be *loaded* before the lane paints: a declared-but-unloaded face is
+  // precisely the state canvas silently substitutes for, and 500 is the one no fallback stack has a
+  // file for.
+  expect(
+    served.loaded.filter((f) => f === "Roboto").length,
+    `both Roboto faces should be loaded, saw ${JSON.stringify(served.loaded)}`,
+  ).toBeGreaterThanOrEqual(2);
+  // Roboto's own metrics, not the host's generic — the residual no layout work can close.
+  expect(served.lineBox, "the request resolved to the vendored face's metrics").not.toBe(
+    unregistered.lineBox,
+  );
+  expect(
+    Buffer.compare(served.shot, unregistered.shot) !== 0,
+    "the painted document should differ from the unregistered-fallback rendering",
+  ).toBeTruthy();
 });
 
 // ——— Address-bar state ————————————————————————————————————————————————————————————————————
