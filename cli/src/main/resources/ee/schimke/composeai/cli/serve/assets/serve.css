@@ -555,12 +555,10 @@ html.cp-js .cp-section-head { display: none; }
    chip keep the plain outlined pill, because the page has no token set for either — a declared
    theme's palette isn't published yet (design-parity#307 adds the export side), and inventing a
    swatch for it would be a guess at the one thing the chip claims to show. */
-.cp-theme-btn[data-theme-choice="light"], .cp-theme-btn[data-compare-theme="light"] {
-  color-scheme: light; }
-.cp-theme-btn[data-theme-choice="dark"], .cp-theme-btn[data-compare-theme="dark"] {
-  color-scheme: dark; }
+.cp-theme-btn:is([data-theme-choice="light"], [data-compare-theme="light"]) { color-scheme: light; }
+.cp-theme-btn:is([data-theme-choice="dark"], [data-compare-theme="dark"]) { color-scheme: dark; }
 .cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"],
-    [data-compare-theme="light"], [data-compare-theme="dark"]):not(:disabled) {
+    [data-compare-theme="light"], [data-compare-theme="dark"]) {
   background: var(--md-sys-color-surface-container-low);
   color: var(--md-sys-color-on-surface);
   border-color: var(--md-sys-color-outline-variant); }
@@ -568,16 +566,40 @@ html.cp-js .cp-section-head { display: none; }
     [data-compare-theme="light"], [data-compare-theme="dark"]):hover:not(:disabled) {
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%,
     var(--md-sys-color-surface-container-low)); }
+/* A DISABLED chip — the viewer greys the Day/Night pair on a fixed lane (the spec view, an `.rc`
+   canvas) — keeps its swatch and dims its LABEL, rather than falling back to the shared
+   transparent treatment. Both halves of that matter. The shared treatment fades the label to 38%
+   of `on-surface`, and on a chip pinned to the opposite scheme that is near-white text on a light
+   page (or near-black on a dark one): an unavailable option that has vanished rather than one that
+   reads as unavailable. Dimming *within the chip's own scheme* keeps the same 38% relationship
+   against the surface it is actually painted on. Everything here therefore stays inside one
+   `color-scheme`, which is also why the pin above is unconditional: a rule that dropped the pin on
+   a state change would leave the chip's colours resolved in one mode and its label in another. */
+.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"],
+    [data-compare-theme="light"], [data-compare-theme="dark"]):disabled {
+  background: var(--md-sys-color-surface-container-low);
+  color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+  border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+  opacity: 0.7; }
 /* Selection is a RING, not a fill swap: the fill is the swatch — the whole point of the chip — so
    replacing it to say "selected" would hide the theme at exactly the moment you picked it. The ring
-   is drawn in the chip's own accent, and as a `box-shadow` rather than an `outline` so it doesn't
-   collide with the focus ring every control in this sheet shares. */
+   is drawn in the chip's own accent, as a `box-shadow` rather than an `outline` so it doesn't
+   collide with the focus ring every control in this sheet shares, and **inset** so it stays inside
+   the button's own box. That last part is not a style choice: the viewer's `.cp-theme-bar` is a
+   horizontal scroller (`overflow-x: auto; overflow-y: hidden`) with padding on the bottom edge
+   only, so an outward ring is clipped flat along the top — and along the outer edge of the first
+   and last chip — leaving a "selected" marker with two sides missing. An inset ring is clip-proof
+   in any container, and on a filled swatch it reads as the chip's own keyline anyway. */
 .cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"],
     [data-compare-theme="light"], [data-compare-theme="dark"])[aria-pressed="true"] {
   background: var(--md-sys-color-surface-container-low);
   color: var(--md-sys-color-on-surface);
   border-color: transparent; font-weight: 600;
-  box-shadow: 0 0 0 2px var(--md-sys-color-primary); }
+  box-shadow: inset 0 0 0 2px var(--md-sys-color-primary); }
+.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"],
+    [data-compare-theme="light"], [data-compare-theme="dark"])[aria-pressed="true"]:disabled {
+  color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 38%, transparent); }
 /* Trust badges. Their COLOURS stay literal (a verdict must read the same in every design system),
    but the shape is M3's: a fully-rounded tonal container, no keyline. */
 .cp-badge { display: inline-block; margin-left: 8px; padding: 4px 10px;
