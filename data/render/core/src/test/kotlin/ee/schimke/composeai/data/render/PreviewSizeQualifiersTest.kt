@@ -70,6 +70,15 @@ class PreviewSizeQualifiersTest {
   }
 
   @Test
+  fun `a near-square frame is not square once dp quantization is kept out of it`() {
+    // Callers must pass PIXELS. dp conversion truncates, so 101x100 px at density 2 becomes
+    // 50x50 dp and would take the square fallback — qualifying a landscape bitmap from the
+    // request rather than from itself (#3552 review). At pixel granularity it is landscape.
+    assertEquals("land", previewOrientationQualifier(101, 100, requested = "port"))
+    assertEquals("port", previewOrientationQualifier(100, 101, requested = "land"))
+  }
+
+  @Test
   fun `a non-positive axis has nothing to say`() {
     assertNull(previewOrientationQualifier(0, 800, requested = "port"))
     assertNull(previewOrientationQualifier(800, 0, requested = null))

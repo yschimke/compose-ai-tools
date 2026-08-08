@@ -2680,9 +2680,11 @@ open class RobolectricHost(
       // the held-session and one-shot captures of the same spec can't disagree about orientation
       // (the whole point of the "mirrors it verbatim" note above).
       val derivedOrientation =
+        // Pixels, not dp: `pxToDp` truncates, so a near-square landscape frame (101x100 px at
+        // density 2) would quantize to 50x50 dp and read as square (#3552 review).
         ee.schimke.composeai.data.render.previewOrientationQualifier(
-          widthDp,
-          heightDp,
+          start.widthPx,
+          start.heightPx,
           when (start.orientation) {
             "portrait" -> "port"
             "landscape" -> "land"
