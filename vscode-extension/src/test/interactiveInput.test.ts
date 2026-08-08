@@ -273,6 +273,26 @@ describe("attachInteractiveInputHandlers wheel — streaming mode", () => {
     });
 });
 
+/**
+ * A keyboard event with an explicit `getModifierState`.
+ *
+ * happy-dom reports `getModifierState("AltGraph") === true` for *any* `altKey`, which a real
+ * browser does not — it reports AltGraph only for a genuine AltGr press. Stating the modifier
+ * outright is what lets these tests tell "AltGr typed a character" apart from "Alt is a menu
+ * accelerator", which is the whole distinction under test.
+ */
+function keyEventWithModifiers(
+    type: string,
+    init: KeyboardEventInit,
+    modifiers: Record<string, boolean>,
+): KeyboardEvent {
+    const evt = new KeyboardEvent(type, { bubbles: true, ...init });
+    (
+        evt as KeyboardEvent & { getModifierState: (k: string) => boolean }
+    ).getModifierState = (k: string) => modifiers[k] === true;
+    return evt;
+}
+
 function pointerEvent(
     type: string,
     opts: {
@@ -280,6 +300,7 @@ function pointerEvent(
         clientY: number;
         pointerId?: number;
         button?: number;
+        pointerType?: string;
     },
 ): PointerEvent {
     return new PointerEvent(type, {
@@ -287,6 +308,7 @@ function pointerEvent(
         clientY: opts.clientY,
         pointerId: opts.pointerId ?? 1,
         button: opts.button ?? 0,
+        pointerType: opts.pointerType ?? "mouse",
         bubbles: true,
         cancelable: true,
     });
@@ -322,6 +344,9 @@ describe("attachInteractiveInputHandlers pointer — streaming mode", () => {
             imageWidth: 400,
             imageHeight: 300,
             scrollDeltaY: undefined,
+            // The device class rides along so Compose can tell a mouse from a finger — only a
+            // mouse press-drag selects text (issue #3491).
+            pointerType: "mouse",
         });
     });
 
@@ -793,5 +818,273 @@ describe("attachInteractiveInputHandlers keyboard (issue #1203)", () => {
         );
 
         assert.deepStrictEqual(posted, []);
+    });
+
+    it("carries the typed character beside the physical key", () => {
+        const { card } = buildLiveCard("p1");
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            supportsControl: () => true,
+            vscode: api,
+        });
+
+        // Issue #3491 — the keycode names a key and cannot type. Caret movement and Backspace
+        // map off it alone, which is why they worked on the live lanes while nothing could be
+        // typed; the character has to travel too, on the release as well as the press.
+        card.dispatchEvent(
+            new KeyboardEvent("keydown", {
+                code: "KeyA",
+                key: "a",
+                bubbles: true,
+            }),
+        );
+        card.dispatchEvent(
+            new KeyboardEvent("keyup", {
+                code: "KeyA",
+                key: "a",
+                bubbles: true,
+            }),
+        );
+
+        assert.deepStrictEqual(
+            posted.map((m) => ({
+                kind: m["kind"],
+                keyCode: m["keyCode"],
+                text: m["text"],
+            })),
+            [
+                { kind: "keyDown", keyCode: "29", text: "a" },
+                { kind: "keyUp", keyCode: "29", text: "a" },
+            ],
+        );
+    });
+
+    it("forwards a character whose key has no Android keycode", () => {
+        const { card } = buildLiveCard("p1");
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            supportsControl: () => true,
+            vscode: api,
+        });
+
+        // `€` is on no keycode table here, and most of any non-US layout is in the same
+        // position. Dropping the keystroke for want of a keycode would make those keyboards
+        // untypeable, so the character stands on its own.
+        card.dispatchEvent(
+            new KeyboardEvent("keydown", {
+                code: "F13",
+                key: "€",
+                bubbles: true,
+            }),
+        );
+
+        assert.deepStrictEqual(
+            posted.map((m) => ({ keyCode: m["keyCode"], text: m["text"] })),
+            [{ keyCode: undefined, text: "€" }],
+        );
+    });
+
+    it("sends no text for a key that types nothing", () => {
+        const { card } = buildLiveCard("p1");
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            supportsControl: () => true,
+            vscode: api,
+        });
+
+        // `KeyboardEvent.key` is a character for printable keys and a *name* for everything
+        // else. A client that forwarded those names verbatim would type "Shift" into the field.
+        card.dispatchEvent(
+            new KeyboardEvent("keydown", {
+                code: "ShiftLeft",
+                key: "Shift",
+                bubbles: true,
+            }),
+        );
+        card.dispatchEvent(
+            new KeyboardEvent("keydown", {
+                code: "ArrowLeft",
+                key: "ArrowLeft",
+                bubbles: true,
+            }),
+        );
+        // A modified keystroke is a shortcut, not typing — including plain Alt, which is a menu
+        // accelerator on every desktop platform.
+        card.dispatchEvent(
+            new KeyboardEvent("keydown", {
+                code: "KeyA",
+                key: "a",
+                ctrlKey: true,
+                bubbles: true,
+            }),
+        );
+        card.dispatchEvent(
+            keyEventWithModifiers(
+                "keydown",
+                { code: "KeyA", key: "a", altKey: true },
+                { Alt: true },
+            ),
+        );
+
+        assert.deepStrictEqual(
+            posted.map((m) => ({ keyCode: m["keyCode"], text: m["text"] })),
+            [
+                { keyCode: "59", text: undefined },
+                { keyCode: "21", text: undefined },
+                { keyCode: "29", text: undefined },
+                { keyCode: "29", text: undefined },
+            ],
+        );
+    });
+
+    it("types an AltGraph character even though it arrives as Ctrl+Alt", () => {
+        const { card } = buildLiveCard("p1");
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            supportsControl: () => true,
+            vscode: api,
+        });
+
+        // AltGr is how non-US layouts reach their extra characters — `€` is AltGr+E on many of
+        // them — and Windows and Linux conventionally surface AltGr as Ctrl+Alt. Rejecting on
+        // those modifiers alone would drop exactly the characters that motivated carrying text
+        // at all, so the AltGraph modifier state is what separates it from a real shortcut.
+        card.dispatchEvent(
+            keyEventWithModifiers(
+                "keydown",
+                { code: "KeyE", key: "€", ctrlKey: true, altKey: true },
+                { AltGraph: true, Control: true, Alt: true },
+            ),
+        );
+
+        assert.deepStrictEqual(
+            posted.map((m) => m["text"]),
+            ["€"],
+        );
+    });
+});
+
+describe("attachInteractiveInputHandlers pointer — device class", () => {
+    it("reports the device class on every event of a drag", () => {
+        installRafStub();
+        const { card } = buildLiveCard("p1");
+        const canvas = attachStreamCanvas(card, 400, 300);
+        stubBoundingRect(canvas, { width: 100, height: 75, left: 0, top: 0 });
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            vscode: api,
+        });
+
+        // Issue #3491 — Compose only drags out a text selection for a *mouse*; a touch drag is
+        // a gesture and leaves the selection alone. Forwarding a real mouse as touch, which is
+        // what this panel used to do with every pointer, made selection impossible.
+        canvas.dispatchEvent(
+            pointerEvent("pointerdown", {
+                clientX: 10,
+                clientY: 10,
+                pointerType: "mouse",
+            }),
+        );
+        canvas.dispatchEvent(
+            pointerEvent("pointermove", {
+                clientX: 30,
+                clientY: 10,
+                pointerType: "mouse",
+            }),
+        );
+        flushRaf();
+        canvas.dispatchEvent(
+            pointerEvent("pointerup", {
+                clientX: 30,
+                clientY: 10,
+                pointerType: "mouse",
+            }),
+        );
+
+        assert.deepStrictEqual(
+            posted.map((m) => ({
+                kind: m["kind"],
+                pointerType: m["pointerType"],
+            })),
+            [
+                { kind: "pointerDown", pointerType: "mouse" },
+                { kind: "pointerMove", pointerType: "mouse" },
+                { kind: "pointerUp", pointerType: "mouse" },
+            ],
+        );
+    });
+
+    it("reports a finger as touch, and holds the class across the gesture", () => {
+        installRafStub();
+        const { card } = buildLiveCard("p1");
+        const canvas = attachStreamCanvas(card, 400, 300);
+        stubBoundingRect(canvas, { width: 100, height: 75, left: 0, top: 0 });
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            vscode: api,
+        });
+
+        canvas.dispatchEvent(
+            pointerEvent("pointerdown", {
+                clientX: 10,
+                clientY: 10,
+                pointerType: "touch",
+            }),
+        );
+        // The class is the one the press established, so a stray move reporting something else
+        // cannot hand Compose a different device mid-gesture.
+        canvas.dispatchEvent(
+            pointerEvent("pointermove", {
+                clientX: 30,
+                clientY: 10,
+                pointerType: "mouse",
+            }),
+        );
+        flushRaf();
+
+        assert.deepStrictEqual(
+            posted.map((m) => m["pointerType"]),
+            ["touch", "touch"],
+        );
+    });
+
+    it("reports a tap's click with its device class", () => {
+        const { card } = buildLiveCard("p1");
+        const canvas = attachStreamCanvas(card, 400, 300);
+        stubBoundingRect(canvas, { width: 100, height: 75, left: 0, top: 0 });
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            vscode: api,
+        });
+
+        canvas.dispatchEvent(
+            pointerEvent("pointerdown", {
+                clientX: 10,
+                clientY: 10,
+                pointerType: "touch",
+            }),
+        );
+        canvas.dispatchEvent(
+            pointerEvent("pointerup", {
+                clientX: 10,
+                clientY: 10,
+                pointerType: "touch",
+            }),
+        );
+
+        assert.deepStrictEqual(
+            posted.map((m) => ({
+                kind: m["kind"],
+                pointerType: m["pointerType"],
+            })),
+            [{ kind: "click", pointerType: "touch" }],
+        );
     });
 });
