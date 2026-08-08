@@ -89,6 +89,18 @@ data class PreviewInfoDto(
    */
   val dataProducts: List<PreviewDataProductDto> = emptyList(),
   /**
+   * The plugin's per-capture plan for this preview. Only the `scroll` sub-shape is mirrored, and
+   * only for the modes that produce an ordinary PNG rather than a data product: `@ScrollingPreview`
+   * maps `TOP`/`END` to **captures** and `LONG`/`GIF` to [dataProducts], so an `END` sticker's
+   * "scroll before you shoot" intent lives here and nowhere else (see [staticScrollFor]).
+   *
+   * Optional and additive — fixtures predating this field, and the incremental class-file rescan
+   * ([IncrementalDiscovery.toDto], which can't recover it), leave it empty. [diff] and [applyDiff]
+   * normalize that the same way they do [params], so a rescan doesn't drop a preview's scroll
+   * intent or report it as a change.
+   */
+  val captures: List<PreviewCaptureDto> = emptyList(),
+  /**
    * `@OverrideVariant` seed for a synthetic variant preview (same `functionName` as its base, a
    * `_VARIANT_<name>` id). Parsed straight into the canonical
    * [ee.schimke.composeai.data.overrides.OverrideVariantSpec] — the wire shape the plugin emits —
@@ -114,6 +126,14 @@ data class PreviewInfoDto(
  */
 @Serializable
 data class PreviewDataProductDto(val kind: String, val scroll: ScrollCaptureDto? = null)
+
+/**
+ * Daemon-side mirror of the gradle plugin's `Capture` — one planned render of a preview. Only
+ * [scroll] is carried; every other field on the plugin's type (`animation`, `focus`, `tourStep`,
+ * `renderOutput`, `cost`, …) drives outputs the daemon's one-frame-per-id surface doesn't produce,
+ * and `ignoreUnknownKeys` drops them on parse.
+ */
+@Serializable data class PreviewCaptureDto(val scroll: ScrollCaptureDto? = null)
 
 /**
  * Daemon-side mirror of the gradle plugin's `ScrollCapture`. Carries only the intent fields the
@@ -352,6 +372,29 @@ internal constructor(
     return info.dataProducts.firstOrNull { it.kind == kind }?.scroll
   }
 
+  /**
+   * The scroll drive an **ordinary static render** of [previewId] has to perform before it shoots,
+   * or `null` when the preview asks for none.
+   *
+   * The sibling of [scrollCaptureFor] for the half of `@ScrollingPreview` that produces a plain PNG
+   * instead of a data product. `END` means "drive the first scrollable on the annotated axis to its
+   * content end, then capture" — for a Wear `ScreenScaffold` that is the difference between the
+   * resting top, where the `EdgeButton` is still collapsed, and the settled bottom where it is
+   * revealed. `TOP` is the unscrolled initial frame, i.e. exactly what a render without any drive
+   * already produces, so it resolves to `null` rather than a no-op drive.
+   *
+   * Deliberately narrowed to a preview with **exactly one** capture. `@ScrollingPreview(modes =
+   * [TOP, END])` plans *two* captures under one preview id — two PNGs, `…_SCROLL_top.png` and
+   * `…_SCROLL_end.png` — and the daemon's surface is one frame per id, so there is no honest answer
+   * to "which one" without a per-capture id. Those previews keep the undriven frame they render
+   * today rather than having the daemon silently pick a side.
+   */
+  fun staticScrollFor(previewId: String): ScrollCaptureDto? {
+    val info = byId(previewId) ?: return null
+    val only = info.captures.singleOrNull() ?: return null
+    return only.scroll?.takeIf { it.mode.equals("END", ignoreCase = true) }
+  }
+
   /** All known preview ids. Phase 2 will diff a fresh scan against this set. */
   fun ids(): Set<String> = lock.read { byId.keys.toSet() }
 
@@ -387,7 +430,13 @@ internal constructor(
         // null-params rescan to the prior's params before comparing — matching what [applyDiff]
         // stores — so an otherwise-identical rescan is empty and only a *real* field change
         // (displayName / group / a genuinely different params block) is reported.
-        val normalized = if (fresh.params == null) fresh.copy(params = prior.params) else fresh
+        // `captures` is unrecoverable from the class file for the same reason, and carries the
+        // `@ScrollingPreview(END)` drive — so it gets the same normalization, or an END sticker
+        // would re-report as `changed` on every save.
+        val normalized =
+          fresh
+            .let { if (it.params == null) it.copy(params = prior.params) else it }
+            .let { if (it.captures.isEmpty()) it.copy(captures = prior.captures) else it }
         normalized != prior
       }
       // Removed scopes to ids whose previous DTO claimed `sourceFile` matches the saved path.
@@ -431,7 +480,18 @@ internal constructor(
       for (dto in diff.changed) {
         val prior = byId[dto.id]
         byId[dto.id] =
-          if (dto.params == null && prior?.params != null) dto.copy(params = prior.params) else dto
+          dto
+            .let {
+              if (it.params == null && prior?.params != null) it.copy(params = prior.params) else it
+            }
+            // Same carry-forward for `captures`: dropping it would silently turn an edited
+            // `@ScrollingPreview(END)` sticker back into an unscrolled capture until the next full
+            // rediscovery.
+            .let {
+              if (it.captures.isEmpty() && !prior?.captures.isNullOrEmpty())
+                it.copy(captures = prior.captures)
+              else it
+            }
       }
     }
   }

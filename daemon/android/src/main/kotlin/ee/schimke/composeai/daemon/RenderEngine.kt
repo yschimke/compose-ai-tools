@@ -640,6 +640,35 @@ class RenderEngine(
               rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
             }
 
+            // `@ScrollingPreview(END)`: drive the scrollable to its content end before shooting, so
+            // the daemon's frame is the one the preview asked for. Everything downstream — the PNG,
+            // the semantics / layout trees, and the `compose/figma-svg` export built from them —
+            // reads the composition as it stands right here, so a missing drive doesn't merely lose
+            // the scrolled pixels: it makes the vector export describe a *different frame* than the
+            // Gradle render's PNG that ships beside it in the same bundle. On Wear that showed up
+            // as an `EdgeButton` sticker whose SVG carried the collapsed button and the list's
+            // resting top while its PNG carried the settled bottom.
+            //
+            // The intent is annotation-sourced, so it needs a previewId to look up; an interactive
+            // render (`renderNow` with no id) simply doesn't scroll, as before.
+            val staticScroll = spec.previewId?.let { loadPreviewIndexLazily().staticScrollFor(it) }
+            if (staticScroll != null) {
+              trace.section("compose:scrollToEnd") {
+                val driven =
+                  ee.schimke.composeai.renderer.driveScrollingPreviewToEnd(
+                    rule = rule,
+                    scroll = staticScroll.toRendererScrollCapture(),
+                  )
+                if (!driven) {
+                  System.err.println(
+                    "compose-ai-daemon: [render] @ScrollingPreview(END) on " +
+                      "'${spec.previewId}' but no scrollable composable found on axis " +
+                      "${staticScroll.axis} — capturing the initial frame."
+                  )
+                }
+              }
+            }
+
             outputFile.parentFile?.mkdirs()
             // `applyDeviceCrop = true` is what produces the circular alpha mask Roborazzi paints
             // over the captured bitmap; the `round` resource qualifier set above only affects

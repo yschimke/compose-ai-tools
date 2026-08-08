@@ -1559,24 +1559,11 @@ abstract class RobolectricRenderTestBase(
               // scrollable on the requested axis to its content
               // end before capturing.
               if (scroll != null && scroll.mode == ScrollMode.END) {
-                val result =
-                  driveScrollToEnd(
-                    rule = rule,
-                    axis = scroll.axis.toProductAxis(),
-                    maxScrollPx = scroll.maxScrollPx,
-                  )
-                if (result is ScrollDriveResult.NoScrollable) {
+                if (!driveScrollingPreviewToEnd(rule, scroll)) {
                   System.err.println(
                     "@ScrollingPreview on '${preview.id}' but no scrollable " +
                       "composable found on axis ${scroll.axis} — capturing initial frame."
                   )
-                } else {
-                  // Let animations that begin once the scroll lands settle to their
-                  // resting state before capture — notably Wear `ScreenScaffold`'s
-                  // `EdgeButton`, which reveals/expands on reaching the end. Without
-                  // this, END snapshots the button mid-reveal (overscroll-stretched).
-                  // Mirrors the LONG final-frame path (see [handleLongCapture]).
-                  settlePostScrollAnimations(rule)
                 }
               }
               resolveCaptureRoot()
@@ -2007,6 +1994,30 @@ public fun handleLongCapture(
   isRound: Boolean,
   outputFile: File,
 ): Boolean = handleLongCaptureInternal(rule, scroll, previewId, heightDp, isRound, outputFile)
+
+/**
+ * Drives `@ScrollingPreview(modes = [END])` — the mode that produces an ordinary single-frame PNG
+ * rather than a data product, so unlike [handleLongCapture]/[handleGifCapture] it writes nothing
+ * and the caller captures as usual afterwards.
+ *
+ * The first scrollable on `scroll.axis` is driven to its content end, then post-scroll animations
+ * are settled: Wear's `ScreenScaffold` reveals and expands its `EdgeButton` *in response to* the
+ * scroll landing, so capturing immediately snapshots the button mid-reveal (overscroll-stretched)
+ * or, at the resting top, not at all.
+ *
+ * Returns `false` when no scrollable matched on the axis — the caller should capture the initial
+ * frame and say so. Public so the daemon's duplicated render body drives END identically instead of
+ * silently exporting the unscrolled frame; TOP needs no call at all, being the undriven frame.
+ */
+public fun driveScrollingPreviewToEnd(
+  rule: AndroidComposeTestRule<*, ComponentActivity>,
+  scroll: ScrollCapture,
+): Boolean {
+  val result = driveScrollToEnd(rule = rule, axis = scroll.axis.toProductAxis(), maxScrollPx = scroll.maxScrollPx)
+  if (result is ScrollDriveResult.NoScrollable) return false
+  settlePostScrollAnimations(rule)
+  return true
+}
 
 /**
  * Public sibling of [handleLongCapture] for `@ScrollingPreview(modes = [GIF])`. Same arguments —
