@@ -224,9 +224,17 @@ class RenderEngine(
         // so the PNG *and* every tree derived from the same scene (semantics, layout, figma-svg)
         // describe the frame the Gradle render ships. Ahead of `renderOnce`, which is also the
         // interactive session's per-input entry point and must never re-drive under the user.
+        val driveStartNs = System.nanoTime()
         trace.section("render:scrollToEnd") { driveStaticScrollToEnd(state) }
+        val driveNs = System.nanoTime() - driveStartNs
         trace.section("render:once") {
-          renderOnce(state, requestId, sandboxStats = sandboxStats, trace = trace)
+          renderOnce(
+            state,
+            requestId,
+            sandboxStats = sandboxStats,
+            trace = trace,
+            elapsedBeforeNs = driveNs,
+          )
         }
       } finally {
         trace.section("compose:tearDown") { tearDown(state) }
@@ -634,8 +642,16 @@ class RenderEngine(
     trace: PerfettoTraceDataProducer.Recorder =
       PerfettoTraceDataProducer.recorder(state.spec.outputBaseName, backend = "desktop"),
     useWallClockFrameTime: Boolean = false,
+    /**
+     * Wall-clock nanoseconds already spent on this render *before* this call — currently the
+     * `@ScrollingPreview(END)` drive, which runs ahead of `renderOnce` (see [render]) but is part
+     * of the render body by any honest accounting: it can cost tens of scene renders. Folded into
+     * the reported `tookMs` so the daemon's latency and cost-model numbers cover the real work. `0`
+     * for every other caller, including the interactive session.
+     */
+    elapsedBeforeNs: Long = 0L,
   ): RenderResult {
-    val startNs = System.nanoTime()
+    val startNs = System.nanoTime() - elapsedBeforeNs
 
     // Flush snapshot state written out-of-composition since the last render so the held scene
     // observes it before painting. The held-session scrub path mutates `lottieProgressState` from
@@ -1408,36 +1424,58 @@ class RenderEngine(
   internal fun driveStaticScrollToEnd(state: SceneState) {
     val previewId = state.spec.previewId ?: return
     val intent = loadPreviewIndexLazily().staticScrollFor(previewId) ?: return
+    // Under the same JVM-default-`Locale` override `renderOnce` wraps its frames in. The drive
+    // performs the *first* layout and composes every lazy item it scrolls past, and
+    // `rememberResourceEnvironment` caches what it resolves — so without this a localized END
+    // capture would bake default-language `stringResource(...)` text into the items the drive
+    // brought on screen, and re-applying the locale for the final frames alone would not undo it.
+    val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(state.spec.localeTag))
+    try {
+      driveStaticScrollToEndLocalized(state, intent)
+    } finally {
+      restoreJvmDefaultLocale(previousDefaultLocale)
+    }
+  }
+
+  @OptIn(
+    androidx.compose.ui.InternalComposeUiApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+  )
+  private fun driveStaticScrollToEndLocalized(state: SceneState, intent: ScrollCaptureDto) {
     val axisKey =
       if (intent.axis.equals("HORIZONTAL", ignoreCase = true))
         SemanticsProperties.HorizontalScrollAxisRange
       else SemanticsProperties.VerticalScrollAxisRange
 
     // Semantics only exist once the scene has laid out, and `setUp` deliberately doesn't render.
-    state.scene.render(nanoTime = state.nextVirtualFrameNanos())
+    // At timestamp zero, and *without* touching the frame cursor: a preview that turns out to have
+    // nothing scrollable must be captured at the same deterministic frame zero as an ordinary
+    // render, which is what the "capturing the initial frame" message below promises. The cursor
+    // only starts moving once a scrollable is actually found.
+    state.scene.render()
 
     // Re-resolved on each read rather than held: the drive recomposes the scene, and a
     // `SemanticsNode` is a snapshot of one composition pass.
+    //
+    // First in traversal order, *not* the largest — `DesktopScrollRenderer` drives
+    // `nodes.firstOrNull()`, and `PreviewIndex.staticScrollFor` documents the contract as "the
+    // first scrollable on the annotated axis". A screen with two same-axis scrollers must settle
+    // in the same place whether it came from `compose-preview serve` or the Gradle batch render;
+    // agreeing with the other backend matters more than this one picking the scroller it guesses
+    // is the interesting one.
     fun mainScroller(): SemanticsNode? {
       val root = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode ?: return null
-      // The largest node carrying the range is the screen's main scroller; a nested inner one is
-      // smaller. Same choice [measureVerticalScroll] makes, for the same reason.
-      var best: SemanticsNode? = null
-      var largest = -1f
+      var found: SemanticsNode? = null
       fun walk(node: SemanticsNode) {
+        if (found != null) return
         if (node.config.getOrNull(axisKey) != null) {
-          val extent =
-            if (axisKey == SemanticsProperties.HorizontalScrollAxisRange) node.boundsInRoot.width
-            else node.boundsInRoot.height
-          if (extent > largest) {
-            largest = extent
-            best = node
-          }
+          found = node
+          return
         }
         node.children.forEach(::walk)
       }
       walk(root)
-      return best
+      return found
     }
 
     fun axisRange(): ScrollAxisRange? = mainScroller()?.config?.getOrNull(axisKey)
