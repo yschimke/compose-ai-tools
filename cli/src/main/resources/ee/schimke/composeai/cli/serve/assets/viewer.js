@@ -30,9 +30,15 @@
     var top = stage.getBoundingClientRect().top + (window.scrollY || 0);
     return Math.max(320, Math.round(window.innerHeight - top - 64)) + "px";
   }
+  // The cap last written to the stage, so a re-measure that lands on the same answer can do
+  // nothing. That is what keeps the observer below off a feedback loop: applying a cap resizes
+  // the image, which resizes the container being observed, which re-measures — and stops there,
+  // because the second measurement matches the first.
+  var appliedFitCap = null;
   function applyZoom(mode) {
     if (mode !== "width") mode = "fit";
     var maxHeight = mode === "fit" ? fitCap() : "";
+    appliedFitCap = mode === "fit" ? maxHeight : null;
     img.style.maxHeight = maxHeight;
     var rcZoomCanvas = document.getElementById("cp-rc-canvas");
     if (rcZoomCanvas) rcZoomCanvas.style.maxHeight = maxHeight;
@@ -55,11 +61,37 @@
     });
   }
   applyZoom("fit");
-  // A resize changes the answer fitCap() gave, so re-measure. "Fit width" is an explicit choice to
-  // ignore the viewport's height, so it is left alone.
-  window.addEventListener("resize", function () {
-    if (root.getAttribute("data-zoom") !== "width") applyZoom("fit");
-  });
+  // Re-measure when the answer fitCap() gave could have changed. "Fit width" is an explicit choice
+  // to ignore the viewport's height, so it is left alone.
+  function refit() {
+    if (root.getAttribute("data-zoom") === "width") return;
+    if (fitCap() === appliedFitCap) return;
+    applyZoom("fit");
+  }
+  window.addEventListener("resize", refit);
+  // A resize is not the only thing that invalidates the cap: fitCap() measures from the stage's
+  // TOP, so anything inserted above the stage moves it down and shortens the space it has. The
+  // render-history strip does exactly that — viewer-history.js fetches its manifest and inserts
+  // `.cp-history` between the toolbar and the stage well after this first ran — and a DOM
+  // insertion fires no `resize`, so a delivery-backed viewer kept a cap measured for a stage that
+  // had since moved, pushing a tall history strip's preview back below the fold.
+  //
+  // Observed rather than called back from the history builder: the cap is invalidated by the
+  // stage MOVING, whoever moved it, and an observer catches the next thing to grow above the
+  // stage without that code having to know this cap exists.
+  //
+  // The observed box is the BODY, not the stage or its parent. ResizeObserver reports size, not
+  // position, and the strip is inserted after `.cp-viewer-bar` — a sibling of `.cp-viewer`, so
+  // the stage's own container merely moves down and never changes size. Only an ancestor
+  // containing both the insertion point and the stage grows, and the body is the one element
+  // guaranteed to be that for any future insertion too.
+  if (typeof ResizeObserver === "function" && document.body) {
+    new ResizeObserver(function () {
+      // Coalesce to a frame: an insertion can fire the observer mid-layout, and measuring then
+      // reads geometry the browser is still settling.
+      window.requestAnimationFrame(refit);
+    }).observe(document.body);
+  }
   // Surface a mode-activation failure visibly, instead of leaving a stale frame that reads as a
   // (wrong) render. Every lane routes its failure here — a dead Live stream, a Wasm app that
   // never boots, a /render that errors — so "can't activate this mode" is never silent.
@@ -2254,7 +2286,15 @@
       // the chrome in step when a theme is PICKED — never runs on this path. Without this, going
       // Back from Dark to a Light entry re-rendered the preview light inside a page still pinned
       // dark. The same call the format-comparison pop handler already makes.
-      if (window.cpPageTheme) window.cpPageTheme.follow(themeChoice.value);
+      //
+      // The ACTIVE choice, not the displayed one. A viewer opened with no theme in the URL and
+      // none remembered shows the preview's baked default while `data-theme-active="0"` says
+      // nobody chose it, and the chrome correctly follows the OS. Restoring that entry re-sets
+      // the attribute to "0" above, so passing `.value` here would pin the page to a baked mode
+      // the visitor never picked — the one state Back is supposed to return them to.
+      // `activeThemeChoice()` yields "" for it, which paints neither class and hands the page
+      // back to `prefers-color-scheme`.
+      if (window.cpPageTheme) window.cpPageTheme.follow(activeThemeChoice());
     }
     // The Remote Compose player pick already rode the URL as `rcPlayer=<wire>` (query() emits it,
     // URL_STATE_PARAMS owns it) but nothing ever read it back, so a shared `?rcPlayer=cmp-android`

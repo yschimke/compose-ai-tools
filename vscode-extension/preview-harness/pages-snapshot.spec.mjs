@@ -18,7 +18,7 @@
 import { test, expect } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { listThemes } from "./_fixtures.mjs";
 
 const harnessDir = dirname(fileURLToPath(import.meta.url));
@@ -1141,4 +1141,134 @@ test("contract · the spec lane compares the frame that was on the stage", async
     await settled();
     await expect.poll(() => requests.length).toBe(beforeLive + 1);
     expect(requests.at(-1).pathname.endsWith(".png")).toBe(true);
+});
+
+test("contract · Back to an unthemed entry hands the chrome back to the OS", async ({
+    page,
+}) => {
+    for (const [name, contentType] of SERVE_ASSETS) {
+        await page.route(`**/assets/serve/**/${name}`, (route) =>
+            route.fulfill({
+                path: resolve(serveAssetsDir, name),
+                contentType,
+            }),
+        );
+    }
+    await page.route("**/render/**", (route) =>
+        route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
+    );
+    await page.goto("/preview-harness/fixtures/pages/serve-viewer-themes.html");
+
+    const scheme = () =>
+        page.evaluate(() =>
+            (document.documentElement.className.match(/cp-scheme-\w+/) || [""])[0],
+        );
+
+    // The entry this test is about: nothing in the URL, nothing remembered, so `#cp-theme` shows
+    // the preview's BAKED default — `dark`, for this fixture — while `data-theme-active="0"`
+    // records that nobody picked it. The chrome is left to `prefers-color-scheme`, no pinned
+    // class at all.
+    await expect(page.locator("#cp-theme")).toHaveAttribute(
+        "data-theme-active",
+        "0",
+    );
+    await expect(page.locator("#cp-theme")).toHaveJSProperty("value", "dark");
+    expect(await scheme()).toBe("");
+
+    // Pick Light — the chip that is NOT the baked default, so this is a real change rather than a
+    // no-op the handler drops. It pushes a history entry and pins the chrome, the working half.
+    // Driven through the visible chip rather than `#cp-theme`: the select is in the DOM but
+    // visually removed (the bar is its face), so it is the chip a visitor can actually click.
+    await page.click('[data-theme-choice="light"]');
+    await expect.poll(scheme).toBe("cp-scheme-light");
+
+    // Back to the entry that had no choice on it. The select's displayed value returns to the
+    // baked `dark` and `data-theme-active` returns to "0" — so the chrome must return to the OS
+    // too. Passing the DISPLAYED value here instead of the active one pins the page dark: a mode
+    // the visitor never chose, reached by going Back from the one they did.
+    await page.goBack();
+    await expect(page.locator("#cp-theme")).toHaveAttribute(
+        "data-theme-active",
+        "0",
+    );
+    await expect.poll(scheme).toBe("");
+});
+
+test("contract · the fit cap re-measures when the history strip lands", async ({
+    page,
+}) => {
+    for (const [name, contentType] of SERVE_ASSETS) {
+        await page.route(`**/assets/serve/**/${name}`, (route) =>
+            route.fulfill({
+                path: resolve(serveAssetsDir, name),
+                contentType,
+            }),
+        );
+    }
+    await page.route("**/render/**", (route) =>
+        route.fulfill({ path: renderPlaceholder, contentType: "image/png" }),
+    );
+
+    // The fixture carries an INLINE history payload, which viewer-history.js consumes
+    // synchronously — and it is ordered ahead of viewer.js, so the strip is already in the DOM
+    // before the first fit is measured. That is the one arrangement in which this bug cannot
+    // happen. Strip the inline payload so the fetch path runs instead: that is the delivery-backed
+    // shape, where the manifest arrives over the network and the strip lands long after viewer.js
+    // has measured and fitted.
+    await page.route(
+        "**/fixtures/pages/serve-viewer-history.html",
+        async (route) => {
+            const html = await (await route.fetch()).text();
+            await route.fulfill({
+                contentType: "text/html",
+                body: html.replace(
+                    /<script type="application\/json" id="cp-history-data">[\s\S]*?<\/script>/,
+                    "",
+                ),
+            });
+        },
+    );
+    let manifest = null;
+    await page.route("**/history.json", async (route) => {
+        const inline = await (await route.fetch()).text().catch(() => null);
+        await route.fulfill({
+            contentType: "application/json",
+            body: manifest ?? inline ?? "{}",
+        });
+    });
+
+    // Read the payload the fixture ships, and serve it from the manifest URL instead.
+    const raw = readFileSync(
+        resolve(pagesDir, "serve-viewer-history.html"),
+        "utf8",
+    );
+    manifest = raw
+        .match(
+            /<script type="application\/json" id="cp-history-data">([\s\S]*?)<\/script>/,
+        )[1]
+        .trim();
+
+    await page.goto("/preview-harness/fixtures/pages/serve-viewer-history.html");
+    // The strip arrives asynchronously — this is the moment the stage moves down.
+    await page.waitForSelector(".cp-history");
+    await page.waitForTimeout(200);
+
+    const { applied, expected, historyHeight } = await page.evaluate(() => {
+        const stage = document.querySelector(".cp-stage");
+        const top = stage.getBoundingClientRect().top + (window.scrollY || 0);
+        return {
+            applied: parseInt(
+                document.getElementById("cp-img").style.maxHeight,
+                10,
+            ),
+            // fitCap()'s own arithmetic, re-run against the geometry as it stands NOW.
+            expected: Math.max(320, Math.round(window.innerHeight - top - 64)),
+            historyHeight: document.querySelector(".cp-history").offsetHeight,
+        };
+    });
+
+    // Guard the guard: if the strip were too short to move the stage, both numbers would agree no
+    // matter what the code did, and this test would pass against the bug it exists to catch.
+    expect(historyHeight).toBeGreaterThan(0);
+    expect(applied).toBe(expected);
 });
