@@ -29,9 +29,9 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    * The Android theme the preview host activity runs under, e.g. `"@style/Theme.Foo"` (also accepts
    * `"com.example:style/Theme.Foo"` or a bare `"Theme.Foo"`).
    *
-   * Leave it unset in an **application** module: the host activity already inherits
-   * `<application android:theme>` from the merged manifest, which is what makes an `AndroidView`
-   * preview resolve app-owned `?attr/…` references.
+   * Leave it unset in an **application** module: the host activity already inherits `<application
+   * android:theme>` from the merged manifest, which is what makes an `AndroidView` preview resolve
+   * app-owned `?attr/…` references.
    *
    * Set it in a **library** module whose previews host platform views. A library's merged manifest
    * has no `<application android:theme>` to inherit, so the host activity falls back to the
@@ -358,28 +358,13 @@ constructor(private val extensionName: String, objects: ObjectFactory) : Named {
   val checks: ListProperty<String> =
     objects.listProperty(String::class.java).convention(emptyList())
 
-  /**
-   * Fail the build if any ERROR-level ATF finding is reported. Default: `false` — findings are
-   * reported (logged, written to the JSON report, surfaced as CLI/VSCode diagnostics) but do not
-   * fail the build unless the consumer explicitly opts in. That way turning on `enabled` is a safe,
-   * purely additive change.
-   */
-  val failOnErrors: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
-
-  /**
-   * Fail the build if any WARNING-level ATF finding is reported. Default: `false` (same rationale
-   * as [failOnErrors]).
-   */
-  val failOnWarnings: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
-
-  /**
-   * Generate an annotated screenshot per preview showing each finding as a numbered badge + legend
-   * panel. Costs ~10ms/preview when there are findings, zero when there aren't. Default: `true` —
-   * if you asked for checks, you probably want to see what they found. Set to `false` for CI jobs
-   * that only care about the JSON / fail-on-errors gate.
-   */
-  val annotateScreenshots: Property<Boolean> =
-    objects.property(Boolean::class.java).convention(true)
+  // No `failOnErrors` / `failOnWarnings` / `annotateScreenshots` here on purpose. They existed
+  // while a11y ran as a *gate* inside the render task; that model is gone (a11y is daemon-only
+  // now, a data producer rather than a build gate — see docs/DATA_PRODUCTS.md). The properties
+  // outlived the gate and were read by nothing, so a consumer setting `failOnErrors = true` got a
+  // silently green build and believed findings were blocking. Removed rather than reimplemented:
+  // if build-failing checks come back, they should be wired to the daemon's producer surface and
+  // named for what they actually gate.
 }
 
 abstract class ComposeAiTracePreviewExtension
