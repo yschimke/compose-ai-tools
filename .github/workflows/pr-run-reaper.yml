@@ -14,10 +14,16 @@ name: PR Run Reaper
 # ever arrives to evict the stragglers. Reaping on close is the missing half.
 #
 # `pull_request_target` is required, not incidental: `pull_request` hands fork
-# PRs a read-only token, which cannot cancel anything. The usual
-# `pull_request_target` hazard is running untrusted head code with a privileged
-# token — this job checks out the BASE ref (the trigger's default) and runs only
-# committed base-branch code, never the PR head.
+# PRs a read-only token, which cannot cancel anything — and a fork PR's runs are
+# recorded in *this* repo, so they are exactly the leftovers that need reaping.
+# The usual `pull_request_target` hazard is running untrusted head code with a
+# privileged token — this job checks out the BASE ref (the trigger's default)
+# and runs only committed base-branch code, never the PR head.
+#
+# What may and may not be cancelled is decided in reap-pr-runs.mjs, per run:
+# same head repository (branch names alone collide across forks), created no
+# later than the close, never this repo's default branch, and only while the PR
+# is still closed on re-read. See its tests for why each of those exists.
 
 on:
   pull_request_target:
@@ -26,6 +32,9 @@ on:
 permissions:
   contents: read
   actions: write
+  # The reaper re-reads the PR before cancelling anything, so a reopen (or a new
+  # PR on the same branch) while this job queued does not get its checks killed.
+  pull-requests: read
 
 concurrency:
   group: pr-run-reaper-${{ github.event.pull_request.number }}
@@ -48,6 +57,7 @@ jobs:
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          CLOSED_AT: ${{ github.event.pull_request.closed_at }}
         with:
           script: |
             const { reapPrRuns } = await import(
@@ -57,10 +67,12 @@ jobs:
               github,
               core,
               repo: context.repo,
+              prNumber: context.payload.pull_request.number,
               headRef: process.env.HEAD_REF,
               headRepo: process.env.HEAD_REPO,
               thisRepo: `${context.repo.owner}/${context.repo.repo}`,
               defaultBranch: context.payload.repository.default_branch,
+              closedAt: process.env.CLOSED_AT,
               currentRunId: context.runId,
             })
             await core.summary

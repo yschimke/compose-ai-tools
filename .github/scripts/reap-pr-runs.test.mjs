@@ -1,11 +1,11 @@
 // Self-test for the PR run reaper. Run: node --test .github/scripts/reap-pr-runs.test.mjs
 //
 // This runs on every PR (the `actions-tests` job in ci.yml) because the reaper
-// cancels workflow runs unattended. The two guards below are the whole safety
-// story: without the fork check it cancels our runs when a fork PR's branch
-// shares a name with ours, and without the default-branch check a mis-trigger
-// wipes post-merge CI for every commit in flight. Neither failure is visible
-// until it has already happened.
+// cancels workflow runs unattended, and every guard it has exists because the
+// failure it prevents is invisible until after it has happened: reaping the
+// default branch wipes post-merge CI for commits in flight; matching on branch
+// name alone lets a fork's `main` sweep up ours; and reaping without a
+// close-time cutoff kills the checks of whatever reopened or re-used the branch.
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -14,15 +14,36 @@ import { reapPrRuns } from './reap-pr-runs.mjs'
 
 const REPO = { owner: 'yschimke', repo: 'compose-ai-tools' }
 const THIS_REPO = 'yschimke/compose-ai-tools'
+const CLOSED_AT = '2026-08-08T12:00:00Z'
+const BEFORE = '2026-08-08T11:00:00Z'
+const AFTER = '2026-08-08T13:00:00Z'
 
-function harness({ runs = [], cancelError } = {}) {
+function run(id, name, status, overrides = {}) {
+  return {
+    id,
+    name,
+    status,
+    created_at: BEFORE,
+    head_repository: { full_name: THIS_REPO },
+    ...overrides,
+  }
+}
+
+function harness({ runs = [], cancelError, listError, prState = 'closed', prError } = {}) {
   const calls = { listed: [], cancelled: [] }
   const github = {
     paginate: async (_fn, params) => {
       calls.listed.push({ branch: params.branch, status: params.status })
+      if (listError) throw listError
       return runs.filter((r) => r.status === params.status)
     },
     rest: {
+      pulls: {
+        get: async () => {
+          if (prError) throw prError
+          return { data: { state: prState } }
+        },
+      },
       actions: {
         listWorkflowRunsForRepo: 'listWorkflowRunsForRepo',
         cancelWorkflowRun: async ({ run_id }) => {
@@ -33,30 +54,32 @@ function harness({ runs = [], cancelError } = {}) {
       },
     },
   }
-  const core = { info: () => {}, warning: () => {} }
-  return { github, core, calls }
+  const warnings = []
+  const core = { info: () => {}, warning: (m) => warnings.push(m) }
+  return { github, core, calls, warnings }
 }
 
 const BASE = {
   repo: REPO,
+  prNumber: 42,
   headRef: 'agent/some-branch',
   headRepo: THIS_REPO,
   thisRepo: THIS_REPO,
   defaultBranch: 'main',
+  closedAt: CLOSED_AT,
   currentRunId: 999,
 }
 
 test('cancels queued and in-progress runs on the closed PR branch', async () => {
   const { github, core, calls } = harness({
     runs: [
-      { id: 1, name: 'CI', status: 'queued' },
-      { id: 2, name: 'VS Code Extension E2E', status: 'queued' },
-      { id: 3, name: 'Integration', status: 'in_progress' },
+      run(1, 'CI', 'queued'),
+      run(2, 'VS Code Extension E2E', 'queued'),
+      run(3, 'Integration', 'in_progress'),
     ],
   })
   const result = await reapPrRuns({ ...BASE, github, core })
   assert.deepEqual(calls.cancelled, [1, 2, 3])
-  assert.equal(result.cancelled.length, 3)
   assert.equal(result.skipped, null)
   assert.deepEqual(
     calls.listed.map((c) => c.status),
@@ -67,35 +90,36 @@ test('cancels queued and in-progress runs on the closed PR branch', async () => 
 
 test('never cancels itself', async () => {
   const { github, core, calls } = harness({
-    runs: [
-      { id: 999, name: 'PR Run Reaper', status: 'in_progress' },
-      { id: 7, name: 'CI', status: 'in_progress' },
-    ],
+    runs: [run(999, 'PR Run Reaper', 'in_progress'), run(7, 'CI', 'in_progress')],
   })
   await reapPrRuns({ ...BASE, github, core })
   assert.deepEqual(calls.cancelled, [7])
 })
 
-test('skips fork PRs so a shared branch name cannot reap our runs', async () => {
+test('reaps a fork PR’s own runs, which are recorded in this repo', async () => {
+  const FORK = 'someone-else/compose-ai-tools'
   const { github, core, calls } = harness({
-    runs: [{ id: 1, name: 'CI', status: 'queued' }],
+    runs: [run(1, 'CI', 'queued', { head_repository: { full_name: FORK } })],
   })
-  const result = await reapPrRuns({
-    ...BASE,
-    headRef: 'main',
-    headRepo: 'someone-else/compose-ai-tools',
-    github,
-    core,
-  })
-  assert.deepEqual(calls.cancelled, [])
-  assert.deepEqual(calls.listed, [])
-  assert.match(result.skipped, /someone-else/)
+  const result = await reapPrRuns({ ...BASE, headRef: 'main', headRepo: FORK, github, core })
+  assert.deepEqual(calls.cancelled, [1])
+  assert.equal(result.skipped, null)
 })
 
-test('refuses to reap the default branch', async () => {
+test('a fork branch named main does not sweep up this repo’s main runs', async () => {
+  const FORK = 'someone-else/compose-ai-tools'
   const { github, core, calls } = harness({
-    runs: [{ id: 1, name: 'CI', status: 'queued' }],
+    runs: [
+      run(1, 'CI', 'queued', { head_repository: { full_name: THIS_REPO } }),
+      run(2, 'CI', 'queued', { head_repository: { full_name: FORK } }),
+    ],
   })
+  await reapPrRuns({ ...BASE, headRef: 'main', headRepo: FORK, github, core })
+  assert.deepEqual(calls.cancelled, [2])
+})
+
+test('refuses to reap this repo’s default branch', async () => {
+  const { github, core, calls } = harness({ runs: [run(1, 'CI', 'queued')] })
   const result = await reapPrRuns({ ...BASE, headRef: 'main', github, core })
   assert.deepEqual(calls.cancelled, [])
   assert.deepEqual(calls.listed, [])
@@ -103,20 +127,49 @@ test('refuses to reap the default branch', async () => {
 })
 
 test('refuses to reap an empty head ref', async () => {
-  const { github, core, calls } = harness({
-    runs: [{ id: 1, name: 'CI', status: 'queued' }],
-  })
+  const { github, core, calls } = harness({ runs: [run(1, 'CI', 'queued')] })
   const result = await reapPrRuns({ ...BASE, headRef: '', github, core })
   assert.deepEqual(calls.cancelled, [])
-  assert.match(result.skipped, /refusing to reap/)
+  assert.match(result.skipped, /empty/)
+})
+
+test('skips entirely if the PR was reopened while this job queued', async () => {
+  const { github, core, calls } = harness({
+    runs: [run(1, 'CI', 'queued')],
+    prState: 'open',
+  })
+  const result = await reapPrRuns({ ...BASE, github, core })
+  assert.deepEqual(calls.cancelled, [])
+  assert.deepEqual(calls.listed, [])
+  assert.match(result.skipped, /open again/)
+})
+
+test('skips rather than guesses when the PR cannot be re-read', async () => {
+  const { github, core, calls } = harness({
+    runs: [run(1, 'CI', 'queued')],
+    prError: new Error('gateway timeout'),
+  })
+  const result = await reapPrRuns({ ...BASE, github, core })
+  assert.deepEqual(calls.cancelled, [])
+  assert.match(result.skipped, /could not re-read/)
+})
+
+test('leaves runs created after the PR closed alone', async () => {
+  // A new PR on the same branch, or a reopen that then re-closed: its checks
+  // are live work, not leftovers.
+  const { github, core, calls } = harness({
+    runs: [
+      run(1, 'CI', 'queued', { created_at: BEFORE }),
+      run(2, 'CI', 'queued', { created_at: AFTER }),
+    ],
+  })
+  await reapPrRuns({ ...BASE, github, core })
+  assert.deepEqual(calls.cancelled, [1])
 })
 
 test('treats a 409 as the finish/cancel race resolving itself', async () => {
   const { github, core } = harness({
-    runs: [
-      { id: 1, name: 'CI', status: 'queued' },
-      { id: 2, name: 'Format Check', status: 'queued' },
-    ],
+    runs: [run(1, 'CI', 'queued'), run(2, 'Format Check', 'queued')],
     cancelError: (id) => (id === 1 ? Object.assign(new Error('completed'), { status: 409 }) : null),
   })
   const result = await reapPrRuns({ ...BASE, github, core })
@@ -124,13 +177,28 @@ test('treats a 409 as the finish/cancel race resolving itself', async () => {
   assert.deepEqual(result.failed, [])
 })
 
-test('reports a real API error without throwing', async () => {
-  const { github, core } = harness({
-    runs: [{ id: 1, name: 'CI', status: 'queued' }],
+test('reports a real cancel error without throwing', async () => {
+  const { github, core, warnings } = harness({
+    runs: [run(1, 'CI', 'queued')],
     cancelError: () => Object.assign(new Error('boom'), { status: 500 }),
   })
   const result = await reapPrRuns({ ...BASE, github, core })
   assert.deepEqual(result.cancelled, [])
   assert.equal(result.failed.length, 1)
   assert.match(result.failed[0], /boom/)
+  assert.equal(warnings.length, 1)
+})
+
+test('a listing failure warns instead of failing the workflow', async () => {
+  const { github, core, warnings } = harness({
+    runs: [run(1, 'CI', 'queued')],
+    listError: Object.assign(new Error('rate limited'), { status: 403 }),
+  })
+  const result = await reapPrRuns({ ...BASE, github, core })
+  assert.equal(result.skipped, null)
+  assert.equal(result.cancelled.length, 0)
+  // One per status queried, both surfaced as warnings rather than thrown.
+  assert.equal(result.failed.length, 2)
+  assert.ok(result.failed.every((f) => /rate limited/.test(f)))
+  assert.equal(warnings.length, 2)
 })

@@ -1,20 +1,22 @@
 // Cancels the workflow runs left behind when a PR closes.
 //
 // Driven by pr-run-reaper.yml. The logic lives here rather than inline in the
-// workflow because it cancels things unattended: an over-reaching branch match
-// kills CI for work that is still open, and an under-reaching one silently
-// leaves the queue full. Both failure modes are invisible without tests, so
-// reap-pr-runs.test.mjs pins the guards.
+// workflow because it cancels things unattended: an over-reaching match kills
+// CI for work that is still open, and an under-reaching one silently leaves the
+// queue full. Both failure modes are invisible without tests, so
+// reap-pr-runs.test.mjs pins every guard below.
 
 /**
  * @param {object} options
  * @param {object} options.github        authenticated octokit (github-script's `github`)
  * @param {object} options.core          github-script's `core`, for logging
  * @param {{owner: string, repo: string}} options.repo
- * @param {string} options.headRef       the closed PR's head branch name
- * @param {string} options.headRepo      `owner/name` of the head repo
+ * @param {number} options.prNumber      the closed PR
+ * @param {string} options.headRef       its head branch name
+ * @param {string} options.headRepo      `owner/name` of the head repo (the fork, for fork PRs)
  * @param {string} options.thisRepo      `owner/name` of the repo being reaped
  * @param {string} options.defaultBranch
+ * @param {string} options.closedAt      ISO timestamp the PR closed at
  * @param {number} options.currentRunId  this run, which must not cancel itself
  * @returns {Promise<{cancelled: string[], failed: string[], skipped: string|null}>}
  */
@@ -22,43 +24,77 @@ export async function reapPrRuns({
   github,
   core,
   repo,
+  prNumber,
   headRef,
   headRepo,
   thisRepo,
   defaultBranch,
+  closedAt,
   currentRunId,
 }) {
   const cancelled = []
   const failed = []
-
-  // A fork PR's head branch name can collide with one of ours (both sides
-  // routinely have `main`), and the branch filter below matches on name alone,
-  // not on repo. Reaping a fork PR would cancel *our* runs on the same-named
-  // branch. Fork runs are charged to the fork, so skipping costs us nothing.
-  if (headRepo !== thisRepo) {
-    const skipped = `head is ${headRepo}, not ${thisRepo}`
-    core.info(`Skipping: ${skipped}.`)
-    return { cancelled, failed, skipped }
+  const skip = (reason) => {
+    core.info(`Skipping: ${reason}.`)
+    return { cancelled, failed, skipped: reason }
   }
 
-  // Belt and braces. A PR cannot target its own base, but a mis-triggered run
-  // that reaped the default branch would cancel post-merge CI for every commit
-  // in flight — the single most damaging thing this script could do.
-  if (!headRef || headRef === defaultBranch) {
-    const skipped = `refusing to reap ref ${headRef || '(empty)'}`
-    core.info(`Skipping: ${skipped}.`)
-    return { cancelled, failed, skipped }
+  // Belt and braces. A PR cannot target its own base, so this should be
+  // unreachable — but a mis-triggered run that reaped the default branch would
+  // cancel post-merge CI for every commit in flight, the most damaging thing
+  // this script could do. Only applies to same-repo heads: a fork's `main` is a
+  // different branch that happens to share a name, and the head-repo filter
+  // below is what keeps those apart.
+  if (!headRef) return skip('head ref is empty')
+  if (headRepo === thisRepo && headRef === defaultBranch) {
+    return skip(`refusing to reap this repo's ${defaultBranch}`)
   }
+
+  // Re-read the PR instead of trusting the event payload. Between the close and
+  // this job getting a runner, the PR can be reopened, or a new PR can be
+  // opened from the same branch — in both cases the branch has live work again
+  // and its runs are not leftovers. If the read fails we skip rather than
+  // guess: not reaping costs a few queue slots, over-reaping costs someone's CI.
+  let pr
+  try {
+    ;({ data: pr } = await github.rest.pulls.get({ ...repo, pull_number: prNumber }))
+  } catch (error) {
+    return skip(`could not re-read PR #${prNumber} (${error.message})`)
+  }
+  if (pr.state !== 'closed') return skip(`PR #${prNumber} is ${pr.state} again`)
+
+  // Anything created after the PR closed belongs to whatever came next — a
+  // reopen, or a fresh PR on the same branch — not to the PR we are cleaning up.
+  const cutoff = closedAt ? Date.parse(closedAt) : NaN
 
   for (const status of ['queued', 'in_progress']) {
-    const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
-      ...repo,
-      branch: headRef,
-      status,
-      per_page: 100,
-    })
+    let runs
+    try {
+      runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+        ...repo,
+        branch: headRef,
+        status,
+        per_page: 100,
+      })
+    } catch (error) {
+      // Listing is as fallible as cancelling. Letting this escape would fail
+      // the workflow and put a red check on an already-merged PR, which is
+      // exactly what this script promises not to do.
+      failed.push(`list ${status} runs: ${error.message}`)
+      continue
+    }
+
     for (const run of runs) {
       if (run.id === currentRunId) continue
+
+      // The branch filter matches on name alone, not repo. Without this a fork
+      // PR from a branch named `main` would sweep up our `main` runs. Filtering
+      // per run — rather than skipping fork PRs wholesale — means a fork's own
+      // leftover runs, which are recorded in this repo, still get reaped.
+      if (run.head_repository?.full_name !== headRepo) continue
+
+      if (!Number.isNaN(cutoff) && Date.parse(run.created_at) > cutoff) continue
+
       try {
         await github.rest.actions.cancelWorkflowRun({ ...repo, run_id: run.id })
         cancelled.push(`${run.name} (${run.id})`)
