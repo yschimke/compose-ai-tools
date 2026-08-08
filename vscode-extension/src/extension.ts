@@ -80,7 +80,8 @@ import {
 import { ContinuousCompileManager } from "./daemon/continuousCompileManager";
 import { mergeRemoteComposeChange } from "./daemon/remoteComposeMerge";
 import { mergePermissionsChange } from "./daemon/permissionsMerge";
-import { composePreviewOverrides } from "./daemon/previewOverrides";
+import { PreviewOverrideStore } from "./daemon/previewOverrideStore";
+import { DaemonRefreshIndicator } from "./daemonRefreshIndicator";
 import {
     buildHistorySource,
     HistoryPanel,
@@ -304,83 +305,17 @@ const registry = new PreviewRegistry();
  *  {@link PreviewModuleIndex}. */
 const previewModuleIndex = new PreviewModuleIndex();
 /**
- * previewId → latest Remote Compose override the panel pushed. The panel's
- * editable tab body posts `setRemoteComposeNamedValue` per cell change; we
- * merge into this map and forward the full bag on the next `renderNow` so
- * the daemon's `RemoteComposeController.set(...)` applies the cumulative
- * state. The map persists across renders so a user editing a value, then
- * editing another, sees both reflected (the daemon-side controller resets
- * on session close — this map mirrors that scope).
- */
-const remoteComposeOverridesByPreview = new Map<
-    string,
-    import("./daemon/daemonProtocol").RemoteComposeOverride
->();
-/**
- * previewId → latest `compose/remotecompose` payload the daemon attached. Used to seed
- * [remoteComposeOverridesByPreview] when the user makes the *first* edit for a preview:
- * `RemoteComposeController.set(...)` applies full-replacement map semantics on each
- * `renderNow.overrides.remoteCompose`, so a partial bag built from the empty override
- * map would erase every named value the user code originally bound. Seeding from the
- * last-seen payload preserves those values on the first edit; subsequent edits merge
- * into the accumulated bag the normal way.
+ * Host-authoritative per-preview override state for the edit→render loop —
+ * permissions, Remote Compose named values (plus the last-attached payload used
+ * to seed the first edit), and the clear-background toggle.
  *
- * Captured from `onDataProductsAttached` for the `compose/remotecompose` kind. Both
- * `namedValues` and `profile` are mirrored. The map persists for the lifetime of the
- * extension activation, mirroring [remoteComposeOverridesByPreview]'s scope.
+ * Previously four module-level collections keyed by the same previewId, with
+ * the same activation-lifetime scope, only ever read together through one
+ * `buildPreviewOverrides` helper. See [PreviewOverrideStore] for why they are
+ * one object and for the first-edit seeding rule.
  */
-const latestRemoteComposeByPreview = new Map<
-    string,
-    {
-        profile?: import("./daemon/daemonProtocol").RemoteComposeOverride["profile"];
-        namedValues?: Record<
-            string,
-            import("./daemon/daemonProtocol").RemoteNamedValueWire
-        >;
-    }
->();
-/**
- * previewId → latest Android-permissions override the panel pushed. The permissions
- * tab body posts `setPermissionsOverride` per Grant / Deny / Clear / Add click; we
- * merge into this map and forward the cumulative `PermissionsOverride` on the next
- * `renderNow` so the daemon's `PermissionsController.set(...)` applies the new state.
- * Persists across renders for the activation lifetime, mirroring
- * [remoteComposeOverridesByPreview]'s scope — a `clearAll` change resets the entry
- * to `{ grants: {} }` rather than removing it, so the next dispatch still strips any
- * grants the daemon previously pinned.
- */
-const permissionsOverridesByPreview = new Map<
-    string,
-    import("./daemon/daemonProtocol").PermissionsOverride
->();
-/**
- * previewIds whose focus-toolbar "clear background" (crisp outline) toggle is on. Host-side
- * mirror of the webview's sticky bit, kept here so the override composes with permissions /
- * remoteCompose in [buildPreviewOverrides] when any edit handler re-renders the preview. Same
- * activation-lifetime scope as the other override maps.
- */
-const clearBackgroundByPreview = new Set<string>();
+const previewOverrides = new PreviewOverrideStore();
 
-/**
- * Unified per-preview override bag for an edit-driven snapshot `renderNow`. Assembles every
- * host-authoritative override (permissions + remoteCompose + clearBackground) so each edit resends
- * the full set — otherwise editing one override drops the others, because the daemon reverts any
- * authoritative override a render omits. Lottie is daemon-sticky and intentionally excluded (see
- * [composePreviewOverrides]). `undefined` when nothing is active.
- *
- * Only the explicit edit handlers use this — the auto re-render paths (save / warm-up / heavy
- * opt-in) deliberately stay override-free so a source-change render is never dropped by the
- * daemon's override-in-flight coalescing (see the note in [dispatchDaemonRender]).
- */
-function buildPreviewOverrides(
-    previewId: string,
-): import("./daemon/daemonProtocol").PreviewOverrides | undefined {
-    return composePreviewOverrides({
-        permissions: permissionsOverridesByPreview.get(previewId),
-        remoteCompose: remoteComposeOverridesByPreview.get(previewId),
-        clearBackground: clearBackgroundByPreview.has(previewId),
-    });
-}
 /** Last edited preview function name per Kotlin file, captured from in-memory edits and
  * consumed on save to prioritize that preview's refresh. */
 const lastEditedPreviewFunctionByFile = new Map<string, string>();
@@ -400,27 +335,27 @@ let refreshQueue: RefreshQueue = new RefreshQueue(
  *  `onPreviewImageReady` for that module. Latest save overwrites any
  *  in-flight entry so the metric tracks the most recent edit. */
 const editJourneyByModule = new Map<string, number>();
-/** Top progress-strip driver for the daemon save path.
- *
- *  The Gradle refresh path drives the webview `<progress-bar>` through
- *  `refresh()`'s `tracker` (it parses Gradle stdout for phase/percent). The
- *  daemon save path — compile-only + `daemonScheduler.renderNow` — never went
- *  through that tracker, so saves in the default `full` mode produced **no**
- *  top-bar feedback at all: the user saw "BUILD SUCCESSFUL" in the output
- *  channel but nothing in the panel. This lightweight driver posts the same
- *  `setProgress` / `clearProgress` messages so a save shows "Refreshing
- *  previews…" until the first rendered image lands (`onPreviewImageReady`),
- *  the render fails, or a safety timeout fires (covers the daemon
- *  `unchanged` / stub / no-preview cases where no image is posted). */
-let daemonRefreshActive = false;
-let daemonRefreshLabel = "";
-let daemonRefreshPct = 0;
-let daemonRefreshTick: ReturnType<typeof setInterval> | null = null;
-let daemonRefreshSafety: ReturnType<typeof setTimeout> | null = null;
-/** Hard ceiling on the crawling bar so a render that never posts an image
- *  (daemon reported `unchanged`, stub path, or zero resolved previews) still
- *  resolves the strip instead of crawling forever. */
-const DAEMON_REFRESH_SAFETY_MS = 12000;
+/**
+ * Top progress-strip driver for the daemon save path. Previously five
+ * module-level mutables (`daemonRefreshActive` / `Label` / `Pct` / `Tick` /
+ * `Safety`) driven by five free functions; see [DaemonRefreshIndicator].
+ */
+const daemonRefresh = new DaemonRefreshIndicator({
+    setProgress: (label, percent, phase) =>
+        panel?.postMessage({
+            command: "setProgress",
+            phase,
+            label,
+            percent,
+            slow: false,
+        }),
+    clearProgress: () => panel?.postMessage({ command: "clearProgress" }),
+    setInterval: (h, ms) => setInterval(h, ms),
+    clearInterval: (handle) => clearInterval(handle as NodeJS.Timeout),
+    setTimeout: (h, ms) => setTimeout(h, ms),
+    clearTimeout: (handle) => clearTimeout(handle as NodeJS.Timeout),
+});
+
 /** Module/file scopes that already received a daemon view-open pre-render in
  *  this extension session. Keeps "show this file's previews" warm-up from
  *  re-rendering the same cards on every focus bounce. */
@@ -1247,7 +1182,7 @@ export async function activate(
                           // First image after a save resolves the top progress
                           // strip the daemon save path lit up. No-ops for
                           // live/interactive stream frames (no save in flight).
-                          finishDaemonRefreshProgress();
+                          daemonRefresh.finish();
                           if (!panel) {
                               return;
                           }
@@ -1295,7 +1230,7 @@ export async function activate(
                       onRenderFailed: (_moduleId, previewId, message) => {
                           // Resolve the save-path progress strip — the per-card
                           // error banner below now owns the feedback.
-                          finishDaemonRefreshProgress();
+                          daemonRefresh.finish();
                           if (!panel) {
                               return;
                           }
@@ -1372,7 +1307,7 @@ export async function activate(
                               });
                           }
                           // Capture the latest `compose/remotecompose` payload so the next
-                          // panel-side edit can seed [remoteComposeOverridesByPreview] with the
+                          // panel-side edit can seed [PreviewOverrideStore] with the
                           // user code's bound named values + profile. Without this seed the
                           // first edit's `renderNow.overrides.remoteCompose` would carry only
                           // the edited field, and `RemoteComposeController.set(...)` would
@@ -1398,12 +1333,15 @@ export async function activate(
                                           import("./daemon/daemonProtocol").RemoteNamedValueWire
                                       >;
                                   };
-                                  latestRemoteComposeByPreview.set(previewId, {
-                                      profile: payload.profile,
-                                      namedValues: payload.namedValues
-                                          ? { ...payload.namedValues }
-                                          : undefined,
-                                  });
+                                  previewOverrides.noteRemoteComposePayload(
+                                      previewId,
+                                      {
+                                          profile: payload.profile,
+                                          namedValues: payload.namedValues
+                                              ? { ...payload.namedValues }
+                                              : undefined,
+                                      },
+                                  );
                               }
                           }
                           if (panel) {
@@ -2752,7 +2690,7 @@ function runVerifyConsistency(): void {
 
 export function deactivate() {
     refreshQueue.dispose();
-    clearDaemonRefreshTimers();
+    daemonRefresh.dispose();
     stopAllDaemonStartupProgress();
     pendingRefresh?.abort();
     // Tell the daemon to release every interactive stream this session opened
@@ -4369,95 +4307,6 @@ function resolveWatcherTarget(filePath: string): string {
  * the user re-renders them on demand via the refresh command, which uses
  * `tier='full'`.
  */
-function postDaemonRefreshProgress(percent: number, phase: string): void {
-    panel?.postMessage({
-        command: "setProgress",
-        phase,
-        label: daemonRefreshLabel,
-        percent,
-        slow: false,
-    });
-}
-
-/** Start (or relabel) the top progress strip for an in-flight daemon save. */
-function beginDaemonRefreshProgress(label: string): void {
-    daemonRefreshLabel = label;
-    if (daemonRefreshActive) {
-        // Already crawling (compile → render relabel): keep the current fill,
-        // just update the caption so the bar doesn't jump backwards.
-        postDaemonRefreshProgress(daemonRefreshPct, "rendering");
-        return;
-    }
-    daemonRefreshActive = true;
-    daemonRefreshPct = 0.08;
-    postDaemonRefreshProgress(daemonRefreshPct, "rendering");
-    daemonRefreshTick = setInterval(() => {
-        // Asymptotic crawl toward 0.9 — always visibly alive, never claims
-        // completion before the rendered image actually arrives.
-        daemonRefreshPct += (0.9 - daemonRefreshPct) * 0.12;
-        postDaemonRefreshProgress(daemonRefreshPct, "rendering");
-    }, 250);
-    // NB: the safety ceiling is armed separately (armDaemonRefreshSafety),
-    // only once the render is in flight — see that function for why.
-}
-
-/** Arm (or re-arm) the hard ceiling that resolves the strip if the daemon
- *  posts no image (`unchanged` / stub / zero resolved previews).
- *
- *  Deliberately NOT armed by `beginDaemonRefreshProgress`: the compile phase
- *  that precedes the render is unbounded (a cold daemon or large module can
- *  take most of the budget), and arming the timer there would flash the bar to
- *  done mid-compile — losing the feedback this whole change adds. Called from
- *  the save path once `notifyDaemonOfSave` reports the render is queued, so the
- *  full budget covers the post-render image wait. */
-function armDaemonRefreshSafety(): void {
-    if (!daemonRefreshActive) {
-        return;
-    }
-    if (daemonRefreshSafety !== null) {
-        clearTimeout(daemonRefreshSafety);
-    }
-    daemonRefreshSafety = setTimeout(
-        () => finishDaemonRefreshProgress(),
-        DAEMON_REFRESH_SAFETY_MS,
-    );
-}
-
-function clearDaemonRefreshTimers(): void {
-    if (daemonRefreshTick !== null) {
-        clearInterval(daemonRefreshTick);
-        daemonRefreshTick = null;
-    }
-    if (daemonRefreshSafety !== null) {
-        clearTimeout(daemonRefreshSafety);
-        daemonRefreshSafety = null;
-    }
-}
-
-/** Drive the strip to 100% (the `<progress-bar>` holds the completed state
- *  briefly, then resets to idle). Called when the first rendered image lands. */
-function finishDaemonRefreshProgress(): void {
-    if (!daemonRefreshActive) {
-        return;
-    }
-    daemonRefreshActive = false;
-    clearDaemonRefreshTimers();
-    daemonRefreshPct = 1;
-    postDaemonRefreshProgress(1, "done");
-}
-
-/** Tear the strip down without a completion flash. Used on the failure /
- *  fall-through-to-Gradle paths, where either an error banner takes over or
- *  the Gradle `tracker` is about to drive the same bar. */
-function cancelDaemonRefreshProgress(): void {
-    if (!daemonRefreshActive) {
-        return;
-    }
-    daemonRefreshActive = false;
-    clearDaemonRefreshTimers();
-    panel?.postMessage({ command: "clearProgress" });
-}
-
 async function runRefreshExclusiveImpl(filePath: string): Promise<void> {
     // The journey timer is started by the `onDidSaveTextDocument` handler
     // (not here) so it captures the debounce wait too. Manual refreshes
@@ -4470,10 +4319,10 @@ async function runRefreshExclusiveImpl(filePath: string): Promise<void> {
         // Light the top progress strip the instant the save starts working —
         // the daemon path has no Gradle `tracker` to drive it, so without this
         // a save in the default `full` mode shows zero panel feedback.
-        beginDaemonRefreshProgress("Compiling…");
+        daemonRefresh.begin("Compiling…");
         const compileOk = await runDaemonCompileOnly(filePath);
         if (!compileOk) {
-            cancelDaemonRefreshProgress();
+            daemonRefresh.cancel();
             if (journeyModuleKey) {
                 editJourneyByModule.delete(journeyModuleKey);
             }
@@ -4482,7 +4331,7 @@ async function runRefreshExclusiveImpl(filePath: string): Promise<void> {
             );
             return;
         }
-        beginDaemonRefreshProgress("Refreshing previews…");
+        daemonRefresh.begin("Refreshing previews…");
         const result = await notifyDaemonOfSave(filePath);
         if (result === "accepted") {
             // The render is in flight now — arm the safety ceiling here (not at
@@ -4492,20 +4341,20 @@ async function runRefreshExclusiveImpl(filePath: string): Promise<void> {
             // first rendered image arrives; the safety timeout resolves the
             // strip if the daemon reported the render `unchanged` / stub (no
             // image posted). Until then the timer stays in `editJourneyByModule`.
-            armDaemonRefreshSafety();
+            daemonRefresh.armSafety();
             return;
         }
         if (result === "disabled") {
             // Falling through to the Gradle render, which drives the same bar
             // via its own tracker — hand the strip off cleanly.
-            cancelDaemonRefreshProgress();
+            daemonRefresh.cancel();
             await refresh(true, filePath, "fast");
             if (journeyModuleKey) {
                 endEditJourney(journeyModuleKey);
             }
             return;
         }
-        cancelDaemonRefreshProgress();
+        daemonRefresh.cancel();
         if (journeyModuleKey) {
             editJourneyByModule.delete(journeyModuleKey);
         }
@@ -6390,7 +6239,7 @@ async function handleSetDataExtensionEnabled(
  *    `RemoteComposeController.setProfile(...)` / `setNamedValue(...)`; the controller's
  *    snapshot state triggers a sub-frame recomposition, so the panel's streaming view
  *    repaints on the very next frame without an override+rerender round-trip.
- *  * **No live session** — merge into [remoteComposeOverridesByPreview] and dispatch
+ *  * **No live session** — merge into [PreviewOverrideStore] and dispatch
  *    `renderNow.overrides.remoteCompose` carrying the cumulative bag. This is the canonical
  *    source-of-truth path: it always works even on backends without a live
  *    `RemoteComposeController` binding, and an explicit re-render guarantees the next
@@ -6415,30 +6264,9 @@ async function handleSetRemoteComposeNamedValue(
     if (!moduleInfo) {
         return;
     }
-    // On the first edit, `remoteComposeOverridesByPreview` is empty for this preview;
-    // `RemoteComposeController.set(...)` applies full-replacement semantics on the next
-    // `renderNow.overrides.remoteCompose`, so a bag containing only the edited field
-    // would erase every other value the user code bound. Seed from the last-seen
-    // `compose/remotecompose` payload so the merge result is "snapshot + this edit".
-    // After the first edit the override bag is the source of truth — the snapshot seed
-    // would shadow user edits with stale values from the last-attached payload.
-    const priorOverride = remoteComposeOverridesByPreview.get(previewId);
-    let seed:
-        import("./daemon/daemonProtocol").RemoteComposeOverride | undefined =
-        priorOverride;
-    if (!seed) {
-        const snapshot = latestRemoteComposeByPreview.get(previewId);
-        if (snapshot) {
-            seed = {
-                profile: snapshot.profile,
-                namedValues: snapshot.namedValues
-                    ? { ...snapshot.namedValues }
-                    : undefined,
-            };
-        }
-    }
-    const next = mergeRemoteComposeChange(seed, change);
-    remoteComposeOverridesByPreview.set(previewId, next);
+    // Seeding on the first edit is subtle enough to live in the store — see
+    // [PreviewOverrideStore.applyRemoteComposeChange].
+    const next = previewOverrides.applyRemoteComposeChange(previewId, change);
 
     // Prefer the live path when a `composestream/1` session is up — sub-frame controller
     // mutation beats a full re-render every time. `activeInteractiveStreams` is the legacy
@@ -6479,7 +6307,7 @@ async function handleSetRemoteComposeNamedValue(
         "remotecompose-edit",
         // Full composed bag (not just `{ remoteCompose }`) so a preview that also has a
         // permissions / clear-background override keeps it on this re-render.
-        buildPreviewOverrides(previewId),
+        previewOverrides.compose(previewId),
     );
 }
 
@@ -6550,7 +6378,7 @@ async function handleSetLottieProgress(
         // permissions / remoteCompose / clear-background override. `lottie` itself is
         // daemon-sticky, so it's added here inline rather than stored host-side.
         {
-            ...(buildPreviewOverrides(previewId) ?? {}),
+            ...(previewOverrides.compose(previewId) ?? {}),
             lottie: { progress: clamped },
         },
     );
@@ -6558,7 +6386,7 @@ async function handleSetLottieProgress(
 
 /**
  * Apply one edit from the panel's permissions tab body. Merges the change into
- * [permissionsOverridesByPreview] and dispatches `renderNow.overrides.permissions`
+ * [PreviewOverrideStore] and dispatches `renderNow.overrides.permissions`
  * so the daemon's `PermissionsOverrideExtension` re-seeds Robolectric's grant
  * state on the next composition.
  *
@@ -6585,9 +6413,7 @@ async function handleSetPermissionsOverride(
     if (!moduleInfo) {
         return;
     }
-    const prior = permissionsOverridesByPreview.get(previewId);
-    const next = mergePermissionsChange(prior, change);
-    permissionsOverridesByPreview.set(previewId, next);
+    const next = previewOverrides.applyPermissionsChange(previewId, change);
     logInfo(
         `[panel] permissions ${describePermissionsChange(change)} for ${previewId} via renderNow (bag size=${Object.keys(next.grants).length})`,
     );
@@ -6597,7 +6423,7 @@ async function handleSetPermissionsOverride(
         "fast",
         "permissions-edit",
         // Full composed bag so a co-active remoteCompose / clear-background override survives.
-        buildPreviewOverrides(previewId),
+        previewOverrides.compose(previewId),
     );
 }
 
@@ -6622,9 +6448,9 @@ async function handleToggleClearBackground(
         return;
     }
     if (enabled) {
-        clearBackgroundByPreview.add(previewId);
+        previewOverrides.setClearBackground(previewId, true);
     } else {
-        clearBackgroundByPreview.delete(previewId);
+        previewOverrides.setClearBackground(previewId, false);
     }
     logInfo(
         `[panel] clearBackground ${enabled ? "on" : "off"} for ${previewId} via renderNow`,
@@ -6635,7 +6461,7 @@ async function handleToggleClearBackground(
         "fast",
         "clear-background-toggle",
         // Full composed bag so a co-active permissions / remoteCompose override survives.
-        buildPreviewOverrides(previewId),
+        previewOverrides.compose(previewId),
     );
 }
 
