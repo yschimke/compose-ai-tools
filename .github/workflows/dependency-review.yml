@@ -14,6 +14,13 @@ on:
 permissions:
   contents: read
 
+# `pull_request`-only: only the current head's dependency diff is meaningful, so
+# a new push supersedes the review of the head it replaced. 12 runs were still
+# live on merged, deleted branches on 2026-08-08 for want of this.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   review:
     runs-on: ubuntu-latest

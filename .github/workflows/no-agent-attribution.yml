@@ -57,6 +57,39 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read # `scan` re-reads the PR's current title/body; see below.
+
+# PR runs dedupe; push runs deliberately do NOT.
+#
+# The workflow had no concurrency group at all, so every push stacked another
+# run — 18 were live at once on merged-and-deleted branches (2026-08-08), each
+# holding a queue slot behind the heavy lanes. Grouping PR runs by ref fixes
+# that: a new push to the PR supersedes the run it replaces.
+#
+# Superseding PR runs is only sound because `scan` re-reads the PR's current
+# title and body instead of trusting its own event payload. Group execution
+# order is NOT guaranteed, so an older `edited` run can enter the group after a
+# newer one and cancel it. If each run validated the text frozen into its own
+# payload, the survivor could certify a body that has since gained a prohibited
+# trailer — and because both edits share a head SHA, that stale-clean check
+# would satisfy the required gate. Re-reading makes every run interchangeable,
+# which is the precondition `cancel-in-progress` needs and does not provide.
+#
+# Push runs are keyed per-RUN so they never share a group and can never cancel
+# each other. That is load-bearing, not an oversight: `drift` scans only the
+# commits *this push* added to main, so it is not idempotent across commits.
+# Any shared group would let GitHub cancel a pending run — it keeps only the
+# newest pending per group even with `cancel-in-progress: false` — and the
+# commits that run was going to scan would never be checked by anything.
+#
+# `github.run_id`, not `github.sha`: a SHA is not unique per push event. A
+# force-push can make an earlier SHA the tip again (X→A, A→B, B→A), which would
+# put two push events in one group and evict the pending run for the first —
+# leaving that event's commit range scanned by nothing. This workflow exists to
+# handle force-pushed history, so it cannot assume tips are never revisited.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   scan:
@@ -69,19 +102,35 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Read the PR's title and body from the API, NOT from this run's event
+      # payload. The payload is a snapshot of one `edited` event; a run holding
+      # a stale one can outlive the run holding the current one (see the
+      # concurrency note above), and the gate would then pass on text nobody
+      # will actually merge. The API always answers with what the squash commit
+      # would be built from right now.
+      #
+      # Writing the file here also keeps untrusted text out of the shell
+      # entirely, rather than routing it through env: as before.
+      - name: Read the PR's current title and body
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              ...context.repo,
+              pull_number: context.payload.pull_request.number,
+            })
+            const fs = require('node:fs')
+            fs.writeFileSync('pr_text.txt', `${pr.title ?? ''}\n${pr.body ?? ''}\n`)
+
       - name: Scan commit identities and Co-authored-by trailers
         env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          # The commit range stays on the payload: this check reports against
+          # the head SHA of the event that started it, and a push produces its
+          # own run. Only the metadata is re-read.
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -uo pipefail
-
-          # The squash commit is built from the PR title + body, so they are
-          # scanned alongside the commit messages. Untrusted — written to a file
-          # rather than interpolated into the shell.
-          { printf '%s\n' "${PR_TITLE:-}"; printf '%s\n' "${PR_BODY:-}"; } > pr_text.txt
 
           .github/scripts/agent-attribution-scan.sh \
             --range "${BASE_SHA}..${HEAD_SHA}" --text-file pr_text.txt
