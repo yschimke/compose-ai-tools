@@ -286,4 +286,31 @@ class RenderGraphComposeExclusionTest {
     assertThat(AndroidPreviewSupport.consumerBringsOwnCompose(project, configuration)).isTrue()
     assertThat(configuration.dependencies).isEmpty()
   }
+
+  @Test
+  fun `main-variant compose pin follows whichever compose actually runs`() {
+    // The second face of the #3484 failure. With Rule 3 correctly OFF for a tile-only consumer, the
+    // render classpath's compose-ui is OURS (1.11.2, via Compose Multiplatform) — but the merged
+    // unit-test resource APK is built from the consumer's MAIN variant, so pinning that at the
+    // 1.9.5 floor leaves newer classes reading an older R class:
+    //
+    //   NoSuchFieldError: Class androidx.compose.ui.R$id does not have member field
+    //     'int androidx_compose_ui_view_compose_view_context'
+    //       at ComposeView_androidKt.getComposeViewContext
+    //
+    // Verified against the published artifacts: ui-android 1.9.5's R.txt has no such id, 1.11.2's
+    // does. So the pin has to follow whichever Compose actually runs.
+    val tileOnly = project()
+    tileOnly.configurations.create("debugUnitTestRuntimeClasspath")
+    assertThat(AndroidPreviewSupport.mainVariantComposeVersion(tileOnly, "debug"))
+      .isEqualTo(AndroidPreviewSupport.RENDERER_COMPOSE_CMP_RUNTIME_VERSION)
+
+    // A Compose consumer keeps Rule 3, so its own Compose runs and its BOM wins over our floor —
+    // raising the floor there would push it off its own Compose line for no reason.
+    val composeApp = project()
+    val unitTest = composeApp.configurations.create("debugUnitTestRuntimeClasspath")
+    composeApp.dependencies.add(unitTest.name, "androidx.compose.ui:ui:1.10.6")
+    assertThat(AndroidPreviewSupport.mainVariantComposeVersion(composeApp, "debug"))
+      .isEqualTo(AndroidPreviewSupport.RENDERER_COMPOSE_FLOOR_VERSION)
+  }
 }

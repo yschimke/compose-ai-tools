@@ -349,6 +349,36 @@ internal object AndroidPreviewSupport {
   private const val PLUGIN_INJECTED_DEPENDENCIES_KEY = "composeai.pluginInjectedDependencies"
 
   /**
+   * The `androidx.compose` version the Compose Multiplatform artifacts on the render classpath
+   * resolve to — `org.jetbrains.compose.ui:ui:1.11.1` declares `androidx.compose.ui:ui:1.11.2`.
+   *
+   * Only reached on consumers that bring no Compose of their own, where those artifacts ARE the
+   * render classpath's Compose (Rule 3 is off, see [consumerBringsOwnCompose]). Bump this in
+   * lockstep with the `compose-multiplatform` catalog entry: read the mapping off the published
+   * `org/jetbrains/compose/ui/ui/<version>/ui-<version>.pom` rather than assuming it tracks the CMP
+   * version, because it does not — 1.11.1 maps to 1.11.2.
+   */
+  internal const val RENDERER_COMPOSE_CMP_RUNTIME_VERSION: String = "1.11.2"
+
+  /**
+   * Version for the main-variant `androidx.compose.ui` / `foundation` pins, which decide the R
+   * class in the merged unit-test resource APK. See the call site for why the two cases differ: a
+   * Compose consumer's own BOM wins over our floor anyway, while a Compose-less consumer runs
+   * against OUR compose-ui and needs its resources on that same line.
+   *
+   * Probes the variant's unit-test runtime classpath — where a consumer's Compose sits, and what
+   * the render configuration is built from. Our own injections into `${variantName}Implementation`
+   * reach it too, but [consumerBringsOwnCompose] skips those by identity, so this does not answer
+   * itself.
+   */
+  internal fun mainVariantComposeVersion(project: Project, variantName: String): String {
+    val unitTestClasspath =
+      project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
+    return if (consumerBringsOwnCompose(project, unitTestClasspath)) RENDERER_COMPOSE_FLOOR_VERSION
+    else RENDERER_COMPOSE_CMP_RUNTIME_VERSION
+  }
+
+  /**
    * Compose compiler plugin ids — the Kotlin 2.x plugin every consumer with `@Composable` code
    * applies, and the legacy AndroidX id for older consumers. Used by [consumerBringsOwnCompose].
    */
@@ -1322,10 +1352,31 @@ internal object AndroidPreviewSupport {
       // with consumer-aligned versions, so this is a no-op for Compose-app
       // consumers that already get a newer ui via their BOM, and a fix for
       // tile-only consumers that don't.
+      //
+      // The VERSION is not the same for both, though. This pin decides the R
+      // class in the merged unit-test resource APK, and that has to agree with
+      // the compose-ui CLASSES on the render classpath:
+      //
+      //  * A Compose consumer keeps Rule 3, so its own Compose is what runs and
+      //    its BOM wins over this floor. Classes and resources are both theirs.
+      //  * A Compose-less consumer has Rule 3 off, so the render classpath's
+      //    compose-ui is OURS — the one Compose Multiplatform brings. Pinning
+      //    the main variant at the 1.9.5 floor there mismatches by two minor
+      //    versions, and the merged APK's R class is missing ids the newer
+      //    classes read:
+      //
+      //      NoSuchFieldError: Class androidx.compose.ui.R$id does not have
+      //        member field 'int androidx_compose_ui_view_compose_view_context'
+      //          at ComposeView_androidKt.getComposeViewContext
+      //
+      //    (Verified against the published artifacts: `ui-android` 1.9.5's
+      //    `R.txt` has no such id; [RENDERER_COMPOSE_CMP_RUNTIME_VERSION]'s
+      //    has it.) So a Compose-less consumer gets the CMP runtime version,
+      //    keeping its resources and our classes on the same line.
       addPluginDependency(
         project,
         "${variantName}Implementation",
-        "androidx.compose.ui:ui:$RENDERER_COMPOSE_FLOOR_VERSION",
+        "androidx.compose.ui:ui:${mainVariantComposeVersion(project, variantName)}",
       )
       // Pin `androidx.compose.foundation:foundation` on the main variant for
       // the same reason as compose-ui above — but for class-loading rather
@@ -1339,14 +1390,13 @@ internal object AndroidPreviewSupport {
       //   `NoClassDefFoundError: androidx/compose/foundation/layout/SizeKt`
       //   at `TilePreviewRendererKt.TilePreviewComposable`
       //
-      // Same `${variantName}Implementation` floor pattern as compose-ui —
-      // Gradle picks the max with consumer-aligned versions, so this is a
-      // no-op for Compose-app consumers that already get foundation via
-      // their BOM, and a fix for tile-only consumers that don't.
+      // Same `${variantName}Implementation` floor pattern as compose-ui, and
+      // versioned by the same rule — foundation and ui have to stay on one
+      // line, so this uses [mainVariantComposeVersion] too.
       addPluginDependency(
         project,
         "${variantName}Implementation",
-        "androidx.compose.foundation:foundation:$RENDERER_COMPOSE_FLOOR_VERSION",
+        "androidx.compose.foundation:foundation:${mainVariantComposeVersion(project, variantName)}",
       )
       recordInjectedDependency(
         project,
