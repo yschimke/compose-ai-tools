@@ -785,7 +785,7 @@ private const val CATALOG_TYPE_SAMPLE = "The quick brown fox"
  * the safe direction: it starts a new column early and leaves slack at the bottom, where being
  * wrong the other way would clip, which is the bug this whole type exists to remove.
  */
-private class SpecimenCell(
+internal class SpecimenCell(
   val height: Dp,
   /** True for a section heading, which must never be the last row in a column. */
   val keepWithNext: Boolean = false,
@@ -811,11 +811,74 @@ private fun CatalogSpecimenSheet(
   types: List<Pair<String, TextStyle>>,
   shapes: List<Pair<String, Shape>>,
 ) {
-  Column(
-    modifier =
-      Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(CATALOG_SHEET_PADDING),
-    verticalArrangement = Arrangement.spacedBy(CATALOG_ROW_GAP),
+  BoxWithConstraints(
+    Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(CATALOG_SHEET_PADDING)
   ) {
+    // The block layout is the *designed* sheet, but it is only reachable when the content fits the
+    // canvas — a theme is free to declare type roles tall enough that colour + type + shape exceeds
+    // it, and a fixed-height `Column` answers that by clipping, which is the bug this file exists to
+    // remove. So the fit is checked against the same estimates the packer uses, and the fallback is
+    // the generic multi-column packing, which cannot clip because it adds columns instead.
+    if (blockLayoutFits(colours, types, shapes, maxHeight.value)) {
+      BlockSpecimenLayout(colours, types, shapes)
+    } else {
+      PackedSpecimenLayout(specimenCells(colours, types, shapes), maxHeight.value)
+    }
+  }
+}
+
+/** Every row of the sheet as a packable cell, in reading order — the fallback layout's input. */
+private fun specimenCells(
+  colours: List<SpecimenCell>,
+  types: List<Pair<String, TextStyle>>,
+  shapes: List<Pair<String, Shape>>,
+): List<SpecimenCell> = buildList {
+  if (colours.isNotEmpty()) {
+    add(sectionCell("Colour"))
+    addAll(colours)
+  }
+  if (types.isNotEmpty()) {
+    add(sectionCell("Type"))
+    types.forEach { (label, style) -> add(typeCell(label, style)) }
+  }
+  if (shapes.isNotEmpty()) {
+    add(sectionCell("Shape"))
+    shapes.forEach { (label, shape) -> add(shapeCell(label, shape)) }
+  }
+}
+
+/**
+ * Whether the designed block layout fits [available] dp of content height.
+ *
+ * The colour block costs its *tallest* column (they run side by side); type costs the sum of its
+ * rows, because they stack at full width; shapes cost one row whatever their count, because they
+ * run across. Section headings are counted per block that exists.
+ */
+private fun blockLayoutFits(
+  colours: List<SpecimenCell>,
+  types: List<Pair<String, TextStyle>>,
+  shapes: List<Pair<String, Shape>>,
+  available: Float,
+): Boolean {
+  val colourHeight =
+    balanceColumns(colours, CATALOG_COLOUR_COLUMNS)
+      .maxOfOrNull { column -> column.fold(0f) { sum, cell -> sum + cell.height.value } } ?: 0f
+  val typeHeight = types.fold(0f) { sum, (_, style) -> sum + catalogTypeRowHeight(style).value }
+  val shapeHeight = if (shapes.isEmpty()) 0f else CATALOG_SWATCH_ROW_HEIGHT.value
+  val headings =
+    listOf(colours.isNotEmpty(), types.isNotEmpty(), shapes.isNotEmpty()).count { it } *
+      CATALOG_SECTION_HEIGHT.value
+  return colourHeight + typeHeight + shapeHeight + headings <= available
+}
+
+/** The designed sheet: colour in two columns, type at full width, shapes across one row. */
+@Composable
+private fun BlockSpecimenLayout(
+  colours: List<SpecimenCell>,
+  types: List<Pair<String, TextStyle>>,
+  shapes: List<Pair<String, Shape>>,
+) {
+  Column(verticalArrangement = Arrangement.spacedBy(CATALOG_ROW_GAP)) {
     if (colours.isNotEmpty()) {
       CatalogSectionHeader("Colour")
       Row(horizontalArrangement = Arrangement.spacedBy(CATALOG_COLUMN_GAP)) {
@@ -846,6 +909,55 @@ private fun CatalogSpecimenSheet(
       }
     }
   }
+}
+
+/** Fallback for content the block layout can't hold: every row packed into as many columns as fit. */
+@Composable
+private fun PackedSpecimenLayout(cells: List<SpecimenCell>, available: Float) {
+  Row(horizontalArrangement = Arrangement.spacedBy(CATALOG_COLUMN_GAP)) {
+    for (column in packColumns(cells, available)) {
+      Column(
+        modifier = Modifier.weight(1f),
+        verticalArrangement = Arrangement.spacedBy(CATALOG_ROW_GAP),
+      ) {
+        for (cell in column) cell.content()
+      }
+    }
+  }
+}
+
+/**
+ * Packs [cells] into the fewest balanced columns that keep every column within [available].
+ *
+ * Balanced rather than filled — packing to capacity leaves whatever spills over alone in the last
+ * column — but capacity still wins: a column may exceed the balanced share rather than let a row
+ * fall off the canvas. A heading reserves room for the row it introduces, so a column never ends on
+ * a heading whose section starts in the next one.
+ */
+internal fun packColumns(cells: List<SpecimenCell>, available: Float): List<List<SpecimenCell>> {
+  if (cells.isEmpty()) return emptyList()
+  val total = cells.fold(0f) { sum, cell -> sum + cell.height.value }
+  val count = max(1, ceil(total / available).toInt())
+  val target = total / count
+  val columns = mutableListOf<List<SpecimenCell>>()
+  var current = mutableListOf<SpecimenCell>()
+  var used = 0f
+  for ((index, cell) in cells.withIndex()) {
+    val needed =
+      cell.height.value +
+        if (cell.keepWithNext) cells.getOrNull(index + 1)?.height?.value ?: 0f else 0f
+    val overCanvas = used + needed > available
+    val overShare = used + cell.height.value > target && columns.size < count - 1
+    if (current.isNotEmpty() && (overCanvas || overShare)) {
+      columns += current
+      current = mutableListOf()
+      used = 0f
+    }
+    current += cell
+    used += cell.height.value
+  }
+  if (current.isNotEmpty()) columns += current
+  return columns
 }
 
 /**
