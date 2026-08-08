@@ -977,7 +977,7 @@ test("contract · snapshot overrides stay composed with a declared theme", async
     await page.waitForTimeout(100);
     requests.length = 0;
 
-    for (const group of ["appearance", "size", "locale"]) {
+    for (const group of ["size", "locale"]) {
         await page
             .locator(`details[data-cp-group="${group}"]`)
             .evaluate((details) => {
@@ -1018,9 +1018,6 @@ test("contract · snapshot overrides stay composed with a declared theme", async
                 .click(),
         {},
     );
-    await change(() => page.locator("#cp-background").selectOption("clear"), {
-        background: "clear",
-    });
     await change(
         async () => {
             await page.locator("#cp-localeTag").fill("ar-XB");

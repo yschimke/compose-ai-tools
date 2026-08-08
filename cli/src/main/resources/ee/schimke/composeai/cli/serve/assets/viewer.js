@@ -146,7 +146,12 @@
   // scale slider has no empty state, so it's gated separately: we only send fontScale once the
   // user moves it (fontScaleTouched), otherwise the slider's standing 1.0 would override a
   // preview's declared default font scale and the first render wouldn't match the thumbnail.
-  var fields = ["device", "localeTag", "orientation", "background"];
+  // No "background" here: the viewer no longer offers a Background override — the viewer bar's
+  // Transparent toggle is the single background affordance, and the panel select that used to sit
+  // beside it read as its duplicate. `/render?background=clear` still strips a preview's authored
+  // background for the authoring lanes (CLI, exports, the VS Code extension); the viewer simply
+  // does not drive it.
+  var fields = ["device", "localeTag", "orientation"];
   var fs = document.getElementById("cp-fontScale");
   var fsVal = document.getElementById("cp-fontScale-val");
   var fontScaleTouched = false;
@@ -1660,7 +1665,7 @@
     Array.prototype.forEach.call(overlayToggles, function (el) { el.disabled = !on; });
   }
   // Enable/disable the display controls to match what the active session can actually render.
-  // A server-render control (Size / Device / Orientation / Background) takes effect whenever the
+  // A server-render control (Size / Device / Orientation) takes effect whenever the
   // server can produce a fresh overridden render: a live daemon session (!staticSnapshot), a
   // catalog whose carried daemon re-renders on demand (canRenderOverrides), or an active live
   // stream. The wasm-honoured trio (Day/Night / Locale / Font scale) additionally applies in the
@@ -1669,7 +1674,7 @@
   // a stream is opened; the server-rendered markup already reflects this, and this keeps it in
   // sync across mode transitions.
   var serverOnlyControlIds =
-    ["device", "orientation", "background", "sizeMode",
+    ["device", "orientation", "sizeMode",
      "fixedW", "fixedH", "minW", "minH", "maxW", "maxH"];
   var wasmHonouredControlIds = ["localeTag", "fontScale"];
   var alwaysDark = root.getAttribute("data-always-dark") === "1";
@@ -1711,7 +1716,7 @@
     "overrides on a replayed document. Switch to the JS player to edit it.";
   function syncServerControls() {
     // The in-browser Wasm lane only honours the wasm-honoured trio (uiMode/locale/fontScale) +
-    // knobs (see wasmOverridePatch); size/device/orientation/background and the app-theme
+    // knobs (see wasmOverridePatch); size/device/orientation and the app-theme
     // selector re-point /render, which the iframe ignores. So while Wasm is the active lane they
     // are dead — disable them (even on a catalog that can otherwise re-render) and restore them
     // when the lane leaves Wasm. Called on every mode transition, so the states track the lane.
@@ -2160,7 +2165,7 @@
   // than pinning a redundant value, so an untouched viewer keeps the clean URL it was opened
   // with.
   var URL_STATE_PARAMS = [
-    "device", "localeTag", "orientation", "background", "fontScale",
+    "device", "localeTag", "orientation", "fontScale",
     "uiMode", "themeProvider", "focus", "gestures", "touchOverlay",
     "scroll", "mode", "sizeMode", "rcPlayer", "specView",
     "widthPx", "heightPx", "minWidthPx", "minHeightPx", "maxWidthPx", "maxHeightPx",

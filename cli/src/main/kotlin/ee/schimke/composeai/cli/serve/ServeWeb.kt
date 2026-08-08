@@ -5791,7 +5791,7 @@ $rows
     // "most override modes" work for a CMP catalog (compose-m3) instead of sitting greyed out until
     // a live stream is opened.
     val overridesLive = canApplyOverrides || canRenderOverrides
-    // Server-render controls (size / device / orientation / background): enabled whenever the
+    // Server-render controls (size / device / orientation): enabled whenever the
     // server can render an override ([overridesLive]); a plain static bundle (neither) keeps them
     // disabled with the note.
     val serverDis = if (overridesLive) "" else " disabled"
@@ -5895,7 +5895,7 @@ $rows
         overridesLive -> ""
         wasmSrc != null ->
           "<div class=\"cp-note\">Pre-rendered snapshot — turn on <strong>Live preview</strong> to " +
-            "interact. Day/Night, Font scale, Locale, background &amp; declared knob values apply in " +
+            "interact. Day/Night, Font scale, Locale &amp; declared knob values apply in " +
             "the browser; " +
             serverOnlyOverrideNote +
             "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
@@ -6322,18 +6322,23 @@ $rows
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
         <div class="cp-controls" id="cp-controls">
-          <details class="cp-group" data-cp-group="appearance">
-            <summary>Appearance</summary>
-            <div class="cp-group-body">
-              $themeSelectorHtml
-              <label>Background
-                <select id="cp-background"$serverDis>
-                  <option value="">(default)</option>
-                  <option value="clear">Clear (crisp outline)</option>
-                </select>
-              </label>
-            </div>
-          </details>
+          <!-- No "Appearance" group. Its only ever-visible control was a Background select
+               offering "(default) / Clear (crisp outline)" — which read as a duplicate of the
+               viewer bar's **Transparent** toggle: same word, same apparent job, two places, one
+               of them buried behind a drawer. With that gone the group held nothing but the
+               visually-hidden Theme state below, so an empty collapsible card would have sat at
+               the top of every viewer's panel; the group goes with the control.
+
+               Neither affordance is lost. Transparent still shows a preview's real alpha on the
+               bar, and stripping a preview's *authored* background is still `background=clear` on
+               /render (and the VS Code extension's own override) — the authoring lane, which is
+               where it belongs, rather than the reading one.
+
+               The Theme select stays in the panel, outside any group: it is `aria-hidden` and out
+               of the tab order, but it is the Theme axis's single state holder — viewer.js reads
+               it on every render and Back/Forward hydration writes to it — so it has to remain in
+               the DOM. The visible Theme control is the chip row on the viewer bar. -->
+          $themeSelectorHtml
           $sizeControlsHtml
           ${scrollGroupHtml(hasScrollExport, hasSvgExport)}
           <details class="cp-group" data-cp-group="locale">
