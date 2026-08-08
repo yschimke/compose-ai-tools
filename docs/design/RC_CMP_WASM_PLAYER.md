@@ -608,6 +608,34 @@ The remote-m3 replacement corpus is guarded in CI, not recorded as a one-off man
   ~1.5 s the player itself waits before reporting readiness. Each row records its
   `cmpWasmDensity`, `cmpWasmViewport`, and `cmpWasmContextRender` in `rc-compare-summary.json`, so
   a slow row can be attributed rather than guessed at.
+- **Only the first render in a context navigates; the rest are handed the document in place.**
+  `window.rcPlayerLoad(src)` (installed by the player, see `installDocumentSwap` in
+  [`Main.kt`](../../rc-player/wasm/src/wasmJsMain/kotlin/ee/schimke/composeai/rcplayer/wasm/Main.kt))
+  points the running player at another document instead of reloading the page, which would discard
+  the instantiated Wasm module, the Compose runtime and the host fonts and rebuild all three to draw
+  a document of a few dozen operations
+  ([#3445](https://github.com/yschimke/compose-ai-tools/issues/3445)). Over the 27-document
+  `remote-m3` corpus the warm navigation-to-`ready` time fell from a mean of **819 ms to 107 ms**
+  (max 1,745 → 293 ms); the cold row, which still navigates, is unchanged at ~1.2 s. The player
+  drops the outgoing document before fetching the next, so nothing carries between them but the host
+  fonts, which are cached deliberately — `?theme` and `?namedValues` are *not* re-read, and a host
+  that needs different ones must navigate.
+  [`rc-cmp-wasm-document-swap.test.mjs`](../../scripts/design-artifacts/rc-cmp-wasm-document-swap.test.mjs)
+  pins the equivalence that buys this: a swapped render is byte-identical to a navigated one, and
+  stays so after a detour through another document, so a leak from the outgoing document fails the
+  guard rather than hiding inside an already-imperfect parity row.
+- **`ready` is liveness, not settlement — the lane captures on convergence.** Three frames prove the
+  composition ran; Compose resolves the host font faces asynchronously, so a text-bearing document
+  draws once in a fallback face and again in the real one, and the second draw can land after the
+  third frame. With the handoff tail dropped for speed the lane was capturing the intermediate draw:
+  worth 2–4% mismatch on a button-with-a-label row and nothing at all on a row without text.
+  [`rc-settle.mjs`](../../scripts/design-artifacts/rc-settle.mjs) screenshots until the pixels hold
+  still for 500 ms instead. Measured over the corpus, that took the mean mismatch from **0.79% to
+  0.49%** and the worst row from 2.98% to 2.35%, and made two consecutive runs come back
+  byte-for-byte identical on all 27 rows where the capture-on-`ready` lane differed on 9 — the
+  reproducibility is the point, since a lane whose pixels depend on the run cannot tell a regression
+  from noise. It reaches the same pixels the player's 1,500 ms tail does, at a third of the cost.
+  Each row records `cmpWasmSettleMs` beside its first-frame time.
 - **The readiness signal is deliberately late, and only for hosts that can flash.** After its three
   frames the player holds `ready` back for another 1.5 s, so viewer.js's `revealRcWasm` cannot swap
   the snapshot for a surface the compositor has not presented. `?handoffDelayMs=0` drops that tail

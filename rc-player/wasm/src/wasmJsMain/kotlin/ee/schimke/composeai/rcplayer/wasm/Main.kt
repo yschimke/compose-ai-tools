@@ -51,6 +51,17 @@ private sealed interface LoadState {
   data class Failed(val message: String) : LoadState
 }
 
+/**
+ * Which document the player is showing, and how many times it has been asked.
+ *
+ * [generation] is not decoration: `?src` is usually a *stable* URL whose bytes change underneath it
+ * (the parity driver serves every preview from one `/document.rc`), so the source alone cannot key
+ * a reload — and two consecutive documents can decode to equal [RcDocument]s. Counting the requests
+ * gives both the fetch and the readiness signal a key that always moves.
+ */
+private data class LoadRequest(val source: String?, val generation: Int)
+
+private var loadRequest by mutableStateOf(LoadRequest(null, 0))
 private var loadState by mutableStateOf<LoadState>(LoadState.Loading)
 
 public fun main() {
@@ -59,7 +70,8 @@ public fun main() {
   // not be filling it on every frame. `?rcTrace=1` turns the player's spans on for a session; the
   // span names match the ones the desktop player writes into Perfetto.
   setRcPlatformTracingEnabled(queryParameter("rcTrace") == "1")
-  val source = queryParameter("src")
+  loadRequest = LoadRequest(queryParameter("src"), generation = 0)
+  installDocumentSwap()
   val theme =
     when (queryParameter("theme")?.lowercase()) {
       "light" -> RcTheme.LIGHT
@@ -67,7 +79,22 @@ public fun main() {
       else -> RcTheme.UNSPECIFIED
     }
   ComposeViewport(viewportContainerId = "rcPlayer") {
-    LaunchedEffect(source) {
+    LaunchedEffect(Unit) {
+      // One waiter, re-armed after every swap: `window.rcPlayerLoad(src)` hands the next source in
+      // here instead of the host navigating the page again. See [installDocumentSwap].
+      while (true) {
+        val next = awaitDocumentSwap()
+        loadRequest = LoadRequest(next, loadRequest.generation + 1)
+      }
+    }
+
+    val request = loadRequest
+    LaunchedEffect(request) {
+      val source = request.source
+      // Drop the previous document before fetching the next: the player leaves composition, so no
+      // state from the document being replaced can reach the one replacing it, and a host that
+      // waits on the readiness marker cannot mistake the outgoing render for the incoming one.
+      loadState = LoadState.Loading
       loadState =
         if (source == null) LoadState.Failed("Missing ?src=<document.rc>")
         else
@@ -89,7 +116,9 @@ public fun main() {
 
     when (val state = loadState) {
       LoadState.Loading -> Unit
-      is LoadState.Failed -> LaunchedEffect(state.message) { reportFailure(state.message) }
+      // Keyed by request as well as message: two documents can fail the same way, and the second
+      // failure still has to be reported — `rcPlayerLoad` cleared the marker the first one set.
+      is LoadState.Failed -> LaunchedEffect(request, state.message) { reportFailure(state.message) }
       is LoadState.Ready -> {
         RcComposePlayer(
           state.document,
@@ -102,7 +131,7 @@ public fun main() {
           onEvent = ::postPlayerEvent,
           fontFamilies = state.fontFamilies,
         )
-        LaunchedEffect(state.document) {
+        LaunchedEffect(request) {
           // Compose schedules Skiko's raster work after composition. One frame only proves the
           // composition ran; waiting through two further browser frames prevents the host from
           // revealing an iframe whose backing surface is still blank on a cold Wasm start.
@@ -172,15 +201,20 @@ private suspend fun loadHostFontFamilies(): Map<String, RcFontFaces> {
     (if (rawBase.endsWith('/')) rawBase else "$rawBase/").takeIf {
       !it.contains(':') || it.startsWith("http:") || it.startsWith("https:")
     } ?: "./fonts/"
+  // The manifest and its faces belong to the *host*, not to the document, so a swapped-in document
+  // (see `window.rcPlayerLoad`) reuses what the first load already fetched and decoded rather than
+  // paying for the whole catalog's fonts again. `fontsBase` is fixed for the life of the page, but
+  // it is kept in the key so the cache cannot answer for a base it was not filled from.
+  cachedFontFamilies?.let { (cachedBase, families) -> if (cachedBase == base) return families }
   val entries = parseFontsManifest(fetchText(base + "fonts.json"))
-  suspend fun load(entry: ManifestFont) =
+  suspend fun load(entry: ManifestFont): RcFontFace =
     RcFontFace(
       identity = entry.file,
       data = fetchBytes(base + entry.file),
       weight = entry.weight,
       italic = entry.italic,
     )
-  return buildMap {
+  val families = buildMap {
     entries
       .groupBy { it.family }
       .forEach { (family, faces) ->
@@ -203,7 +237,14 @@ private suspend fun loadHostFontFamilies(): Map<String, RcFontFaces> {
         }
       }
   }
+  cachedFontFamilies = base to families
+  return families
 }
+
+/**
+ * The host faces from the last successful [loadHostFontFamilies], keyed by the base they came from.
+ */
+private var cachedFontFamilies: Pair<String, Map<String, RcFontFaces>>? = null
 
 private fun parseFontsManifest(json: String): List<ManifestFont> {
   val flat = flattenFontsManifest(json)?.toString().orEmpty()
@@ -283,6 +324,77 @@ private val handoffDelayMs: Long
   get() =
     queryParameter("handoffDelayMs")?.toLongOrNull()?.coerceIn(0L, 10_000L)
       ?: DEFAULT_HANDOFF_DELAY_MS
+
+/**
+ * Install `window.rcPlayerLoad(src)`: show another document in the player that is already running,
+ * instead of navigating the page again.
+ *
+ * A navigation is the honest way to load the *first* document, but it is a poor way to load the
+ * next one — it throws away the instantiated Wasm module, the Compose runtime and the host fonts,
+ * then rebuilds all three to draw a document that is usually a few dozen operations long. The
+ * parity driver renders a whole catalog through one page, so it pays that teardown once per
+ * preview; a 122-preview catalog spends minutes on it. Handing over just the source keeps the
+ * player warm and leaves the reload contract unchanged: the marker on `<html>` goes back to
+ * `loading` synchronously here, so a host that waits for `ready` cannot read the outgoing render's
+ * marker and screenshot the document it just replaced.
+ *
+ * `?theme` and `?namedValues` are *not* re-read — they belong to the page, and a host that needs
+ * different ones should navigate. Only the document changes.
+ *
+ * The handshake is a one-slot mailbox rather than an event listener because this module reaches the
+ * browser exclusively through `js(...)` (no `kotlinx-browser` dependency): [awaitDocumentSwap]
+ * parks a resolver here, and a call that arrives while the player is busy loading is held in
+ * `pending` until the next waiter arms. Requests are last-one-wins, which is what a host driving
+ * one render at a time wants.
+ */
+private fun installDocumentSwap(): Unit =
+  js(
+    """{
+      window.__rcPlayerSwap = { pending: null, resolve: null };
+      window.rcPlayerLoad = function (source) {
+        var request = String(source);
+        var root = document.documentElement;
+        root.dataset.rcPlayerState = 'loading';
+        delete root.dataset.rcPlayerError;
+        var swap = window.__rcPlayerSwap;
+        if (swap.resolve) {
+          var resolve = swap.resolve;
+          swap.resolve = null;
+          resolve(request);
+        } else {
+          swap.pending = request;
+        }
+      };
+    }"""
+  )
+
+private fun nextDocumentSwap(): Promise<JsString> =
+  js(
+    """new Promise(function (resolve) {
+      var swap = window.__rcPlayerSwap;
+      if (swap.pending !== null) {
+        var pending = swap.pending;
+        swap.pending = null;
+        resolve(pending);
+      } else {
+        swap.resolve = resolve;
+      }
+    })"""
+  )
+
+private suspend fun awaitDocumentSwap(): String = suspendCancellableCoroutine { continuation ->
+  nextDocumentSwap()
+    .then { source ->
+      if (continuation.isActive) continuation.resume(source.toString())
+      null
+    }
+    .catch { failure ->
+      if (continuation.isActive) {
+        continuation.resumeWithException(IllegalStateException(failure.toString()))
+      }
+      null
+    }
+}
 
 private fun queryParameter(name: String): String? =
   queryParameterFromLocation(name).toString().takeUnless { it == "null" }
