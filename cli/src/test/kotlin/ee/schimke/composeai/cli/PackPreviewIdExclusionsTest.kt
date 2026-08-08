@@ -127,4 +127,21 @@ class PackPreviewIdExclusionsTest {
     // filter gives it. Reach for a glob (`Foo_*`) when that's not what you meant.
     assertEquals(listOf("Bar_Light"), PackPreviewIdExclusions.retain(ids, listOf("Foo")))
   }
+
+  @Test
+  fun `an anchored pattern drops only the id it names, not its fan-out`() {
+    // Issue #3559: ids are hierarchical, so a base id is a substring of its own variants.
+    // Unanchored, excluding a base id also dropped every variant of it — which is what silently
+    // cost a sharded render three quarters of its captures.
+    val ids = listOf("FilledButton_Light", "FilledButton_Light_VARIANT_off", "FilledButton_Dark")
+
+    assertEquals(
+      listOf("FilledButton_Dark"),
+      PackPreviewIdExclusions.retain(ids, listOf("FilledButton_Light")),
+    )
+    assertEquals(
+      listOf("FilledButton_Light_VARIANT_off", "FilledButton_Dark"),
+      PackPreviewIdExclusions.retain(ids, listOf("=FilledButton_Light")),
+    )
+  }
 }

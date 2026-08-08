@@ -25,6 +25,14 @@ package ee.schimke.composeai.data.render
  */
 object PreviewFilter {
 
+  /**
+   * Prefix marking a pattern as an **exact** match rather than a substring one — the renderer-side
+   * mirror of `PreviewNameFilter.ANCHOR`, which documents why a generated id list needs it (a base
+   * id is always a substring of its own `_VARIANT_` / row fan-out, so substring exclusion deletes
+   * work a sharder meant to keep).
+   */
+  const val ANCHOR: String = "="
+
   /** System property carrying the comma-separated `--preview` name patterns. */
   const val NAME_FILTER_PROPERTY: String = "composeai.preview.filter"
 
@@ -207,14 +215,20 @@ object PreviewFilter {
     )
 
   private fun matchOne(pattern: String, simpleName: String, fqName: String): Boolean =
-    if (pattern.any { it == '*' || it == '?' }) {
-      val regex = globToRegex(pattern)
-      regex.matches(simpleName) || regex.matches(fqName)
-    } else {
-      simpleName == pattern ||
-        fqName == pattern ||
-        simpleName.contains(pattern) ||
-        fqName.contains(pattern)
+    when {
+      pattern.startsWith(ANCHOR) -> {
+        val exact = pattern.substring(ANCHOR.length)
+        simpleName == exact || fqName == exact
+      }
+      pattern.any { it == '*' || it == '?' } -> {
+        val regex = globToRegex(pattern)
+        regex.matches(simpleName) || regex.matches(fqName)
+      }
+      else ->
+        simpleName == pattern ||
+          fqName == pattern ||
+          simpleName.contains(pattern) ||
+          fqName.contains(pattern)
     }
 
   private fun globToRegex(glob: String): Regex {

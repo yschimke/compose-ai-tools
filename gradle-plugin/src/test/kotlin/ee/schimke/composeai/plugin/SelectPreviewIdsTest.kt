@@ -161,4 +161,36 @@ class SelectPreviewIdsTest {
       excludePreviewIds(selectPreviewIds(all, listOf("FilledButton*")), listOf("*_HighContrast"))
     assertThat(kept.map { it.id }).containsExactly("FilledButton_Light", "FilledButton_Dark")
   }
+
+  @Test
+  fun `an anchored exclusion does not take the variants of the id it names`() {
+    // The sharding bug (issue #3559): ids are hierarchical, so a base id is a substring of its own
+    // fan-out members. Unanchored, excluding one shard's `FilledButton_Light` also deleted
+    // `FilledButton_Light_VARIANT_off` — work the excluding shard was itself assigned.
+    val previews =
+      listOf(
+        preview("FilledButton_Light", "FilledButton"),
+        preview("FilledButton_Light_VARIANT_off", "FilledButton"),
+        preview("FilledButton_Dark", "FilledButton"),
+      )
+
+    val unanchored = excludePreviewIds(previews, listOf("FilledButton_Light"))
+    assertThat(unanchored.map { it.id }).containsExactly("FilledButton_Dark")
+
+    val anchored = excludePreviewIds(previews, listOf("=FilledButton_Light"))
+    assertThat(anchored.map { it.id })
+      .containsExactly("FilledButton_Light_VARIANT_off", "FilledButton_Dark")
+      .inOrder()
+  }
+
+  @Test
+  fun `an anchored selection matches only the id it names`() {
+    val previews =
+      listOf(
+        preview("FilledButton_Light", "FilledButton"),
+        preview("FilledButton_Light_VARIANT_off", "FilledButton"),
+      )
+    assertThat(selectPreviewIds(previews, listOf("=FilledButton_Light")).map { it.id })
+      .containsExactly("FilledButton_Light")
+  }
 }

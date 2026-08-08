@@ -12,7 +12,10 @@ package ee.schimke.composeai.discovery
  *   `com.example.preview.ExportHelpDialogPreview`) — the FQN a user reads off the source, derived
  *   from the owning class's package rather than the synthetic `…Kt` holder class.
  *
- * Two matching styles, chosen per pattern:
+ * Three matching styles, chosen per pattern:
+ * - **Anchored** — a pattern prefixed with `=` matches that id or FQN and nothing else:
+ *   `=FilledButton_Light` will not touch `FilledButton_Light_VARIANT_off`. See [ANCHOR] for why
+ *   any generated id list needs this.
  * - **Glob** — a pattern containing `*` (any run) or `?` (one char) is anchored and full-matched
  *   against either candidate: `*ExportHelpDialogPreview`, `Export*Preview`, `com.example.*.Foo`.
  * - **Plain** — a pattern with no glob chars matches on equality *or substring* against either
@@ -24,6 +27,26 @@ package ee.schimke.composeai.discovery
  * "render every preview" behaviour.
  */
 object PreviewNameFilter {
+
+  /**
+   * Prefix that makes a pattern an **exact** match rather than a substring one.
+   *
+   * Plain substring matching is safe on the *include* axis — over-matching only renders more than
+   * asked — and unsafe on the *exclude* axis, where over-matching silently deletes work. Preview
+   * ids are hierarchical (`<base>_<variant>`, `<base>_<row>`), so a base id is **always** a
+   * substring of its own fan-out members: excluding `FilledButton_Light` also excluded
+   * `FilledButton_Light_VARIANT_off`.
+   *
+   * That made substring exclusion unusable with any *generated* id list, which is exactly what a
+   * render sharder produces — a shard excluding the other shards' ids also deleted the variants it
+   * was itself assigned. m3-catalog hit this at scale: 267 captured of 1095 assigned, on a green
+   * run, which is why its `render-shards` has been pinned to 1 (issue #3559).
+   *
+   * `=` is chosen because no discovered id can begin with it (ids derive from Kotlin identifiers
+   * and are path-sanitised), so adding this cannot change the meaning of any existing pattern.
+   */
+  const val ANCHOR: String = "="
+
 
   /**
    * True when [functionName] (owned by [className]) matches at least one of [patterns], or when
@@ -68,14 +91,20 @@ object PreviewNameFilter {
   }
 
   private fun matchOne(pattern: String, simpleName: String, fqName: String): Boolean =
-    if (pattern.any { it == '*' || it == '?' }) {
-      val regex = globToRegex(pattern)
-      regex.matches(simpleName) || regex.matches(fqName)
-    } else {
-      simpleName == pattern ||
-        fqName == pattern ||
-        simpleName.contains(pattern) ||
-        fqName.contains(pattern)
+    when {
+      pattern.startsWith(ANCHOR) -> {
+        val exact = pattern.substring(ANCHOR.length)
+        simpleName == exact || fqName == exact
+      }
+      pattern.any { it == '*' || it == '?' } -> {
+        val regex = globToRegex(pattern)
+        regex.matches(simpleName) || regex.matches(fqName)
+      }
+      else ->
+        simpleName == pattern ||
+          fqName == pattern ||
+          simpleName.contains(pattern) ||
+          fqName.contains(pattern)
     }
 
   /**
