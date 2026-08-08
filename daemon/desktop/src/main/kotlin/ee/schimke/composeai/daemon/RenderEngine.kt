@@ -575,9 +575,12 @@ class RenderEngine(
                   )
                 ) {
                   ee.schimke.composeai.renderer.SystemBarsFrame(
-                    // 0x20 == Configuration.UI_MODE_NIGHT_YES — the only bit SystemBarsFrame
-                    // inspects.
-                    uiMode = if (spec.uiMode == RenderSpec.SpecUiMode.DARK) 0x20 else 0
+                    // Same conversion as every other uiMode-taking call, so there is one place to
+                    // get it right. Behaviourally identical here — SystemBarsFrame inspects the
+                    // night-YES bit alone, so 0x10 and 0 are the same to it — but leaving a second
+                    // hand-rolled mapping around is what made the scroll dispatch copy the wrong
+                    // one.
+                    uiMode = RenderSpec.uiModeBits(spec.uiMode)
                   ) {
                     content()
                   }
@@ -1222,8 +1225,11 @@ class RenderEngine(
         // colours as a still is. This is the daemon's own dispatch, so leaving the argument
         // defaulted would have fixed the standalone renderer and left every daemon-served scroll
         // data product rendering light on white.
-        // 0x20 == Configuration.UI_MODE_NIGHT_YES — the only bit the renderer inspects.
-        uiMode = if (spec.uiMode == RenderSpec.SpecUiMode.DARK) 0x20 else 0,
+        //
+        // Via [RenderSpec.uiModeBits] rather than an inline `if (DARK) 0x20 else 0`: an explicit
+        // `uiMode=light` has to send 0x10, because 0 means "undefined" and hands the decision back
+        // to the host's theme probe.
+        uiMode = RenderSpec.uiModeBits(spec.uiMode),
         classLoader = classLoader,
       )
     if (!handled) {
@@ -2005,6 +2011,28 @@ data class RenderSpec(
   }
 
   companion object {
+
+    /**
+     * The `@Preview(uiMode = …)` **Configuration bits** for a [SpecUiMode], for the renderer entry
+     * points that take the raw int rather than the enum.
+     *
+     * All three states are distinct and the distinction matters:
+     * [ee.schimke.composeai.renderer.systemThemeFromUiMode] maps `0x20` → dark, `0x10` → light and
+     * anything else → `Unknown`, and `Unknown` deliberately leaves `isSystemInDarkTheme()` to the
+     * JVM's own theme probe. So collapsing [SpecUiMode.LIGHT] to `0` does not mean "light", it
+     * means "ask the host" — and a request that explicitly asked for light would render dark on a
+     * dark-themed machine.
+     *
+     * Easy to get wrong by copying the `if (DARK) 0x20 else 0` shape used for `SystemBarsFrame`,
+     * which is correct there only because that consumer inspects the night-YES bit alone and so has
+     * two states rather than three.
+     */
+    fun uiModeBits(mode: SpecUiMode?): Int =
+      when (mode) {
+        SpecUiMode.DARK -> 0x20 // UI_MODE_NIGHT_YES
+        SpecUiMode.LIGHT -> 0x10 // UI_MODE_NIGHT_NO
+        null -> 0 // UI_MODE_NIGHT_UNDEFINED — defer to the host
+      }
 
     /**
      * Parses [RenderRequest.Render.payload] — a `;`-delimited `key=value` string — into a

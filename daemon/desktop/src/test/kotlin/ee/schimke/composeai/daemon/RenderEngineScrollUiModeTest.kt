@@ -120,6 +120,25 @@ class RenderEngineScrollUiModeTest {
     assertEquals("a dark scroll product must carry no white ground", 0, nearWhite)
   }
 
+  /**
+   * The bit-level claim, asserted directly because the rendered tests cannot make it.
+   *
+   * `systemThemeFromUiMode` reads three states — `0x20` dark, `0x10` light, anything else `Unknown`
+   * — and `Unknown` hands `isSystemInDarkTheme()` back to the JVM's own theme probe. So sending `0`
+   * for an explicit `uiMode=light` does not mean light, it means "ask the host", and the render
+   * would come back dark on a dark-themed machine.
+   *
+   * The light render test below cannot catch that: on a light-themed host `Unknown` resolves light
+   * anyway, so it passes for the wrong reason and would only fail on somebody else's machine. This
+   * assertion has no such dependency.
+   */
+  @Test
+  fun `uiMode bits distinguish light from unspecified`() {
+    assertEquals(0x20, RenderSpec.uiModeBits(RenderSpec.SpecUiMode.DARK))
+    assertEquals(0x10, RenderSpec.uiModeBits(RenderSpec.SpecUiMode.LIGHT))
+    assertEquals(0, RenderSpec.uiModeBits(null))
+  }
+
   /** The control: the same fixture under light stays light, so the flip is what moved it. */
   @Test
   fun `a light preview's stitched scroll product stays light`() {
