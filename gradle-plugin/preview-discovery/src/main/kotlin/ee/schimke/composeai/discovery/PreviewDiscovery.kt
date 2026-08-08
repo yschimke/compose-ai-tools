@@ -1578,7 +1578,13 @@ object PreviewDiscovery {
     // `@OverrideVariant` (repeatable) — each spec yields one extra synthetic preview per @Preview
     // expansion below, rendered with its `previewOverride*` seeds applied. Applies to every
     // expansion, the same "one annotation, applies to every preview" policy as the capture specs.
-    val overrideVariantSpecs = extractOverrideVariantSpecs(annotations)
+    val overrideVariantSpecs =
+      extractOverrideVariantSpecs(
+        annotations,
+        scanResult,
+        owner = "${classInfo.name}.${method.name}",
+        warnings = warnings,
+      )
     // @RoboComposePreviewOptions, similarly, applies to the function as a
     // whole — each timing fans out into its own manifest entry, orthogonal
     // to any multi-preview expansion.
@@ -1770,39 +1776,108 @@ object PreviewDiscovery {
    * each. Each per-type array entry is `"key=value"` / `"key#index=value"`; the array it lives in
    * fixes its [OverrideSeedKind]. A variant that names no parseable seed is dropped (it would
    * render identically to the base).
+   *
+   * Variants may be **hoisted onto a multi-preview-style annotation class** so a matrix several
+   * components share is declared once (`@Target` includes `ANNOTATION_CLASS`; see `OverrideVariant`
+   * for the semantics). Two things make that work here. ClassGraph already flattens a method's
+   * meta-annotation closure into `method.annotationInfo`, unwrapping the repeatable container as it
+   * goes, so hoisted variants arrive in [annotations] alongside the direct ones; and
+   * [overrideVariantsFromMetaAnnotation] walks the closure explicitly as well, so resolution does
+   * not silently depend on that flattening staying true of a future ClassGraph. Both paths feed the
+   * same de-duplication below, so an annotation reachable twice contributes once.
+   *
+   * **Names are de-duplicated, first wins.** A variant's name is what distinguishes its rendered
+   * `_VARIANT_<name>` output, so two variants sharing one would write to the same file — the second
+   * overwriting the first, silently, with whichever seeds it happened to carry. That was
+   * unreachable while variants could only sit directly on a function (Kotlin rejects two identical
+   * repeated annotations at the same site only when their arguments match, but a catalog author
+   * writing them by hand sees them adjacent). Hoisting makes it easy: stack two matrices that
+   * overlap on one cell and nothing in the compile objects. Keeping the first and warning names the
+   * collision at discovery time, where the fix is obvious.
    */
   private fun extractOverrideVariantSpecs(
-    annotations: List<AnnotationInfo>
+    annotations: List<AnnotationInfo>,
+    scanResult: ScanResult,
+    owner: String,
+    warnings: MutableList<String>,
   ): List<OverrideVariantSpec> {
     val infos = mutableListOf<AnnotationInfo>()
+    val visited = mutableSetOf<String>()
     for (ann in annotations) {
-      when (ann.name) {
-        OVERRIDE_VARIANT_FQN -> infos.add(ann)
-        OVERRIDE_VARIANT_CONTAINER_FQN -> {
-          when (val value = ann.parameterValues.getValue("value")) {
-            is Array<*> -> value.filterIsInstance<AnnotationInfo>().forEach { infos.add(it) }
-            is AnnotationInfo -> infos.add(value)
-            else -> {
-              val len = runCatching { java.lang.reflect.Array.getLength(value) }.getOrNull() ?: 0
-              for (i in 0 until len) {
-                (java.lang.reflect.Array.get(value, i) as? AnnotationInfo)?.let { infos.add(it) }
-              }
-            }
-          }
-        }
-      }
+      collectOverrideVariants(ann, infos)
+      overrideVariantsFromMetaAnnotation(ann, scanResult, visited, infos)
     }
-    return infos.mapNotNull { info ->
+    val specs = LinkedHashMap<String, OverrideVariantSpec>()
+    val collisions = LinkedHashSet<String>()
+    for (info in infos) {
       val pv = info.parameterValues
-      val name =
-        (pv.getValue("name") as? String)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+      val name = (pv.getValue("name") as? String)?.takeIf { it.isNotBlank() } ?: continue
       val seeds =
         readOverrideSeeds(pv.getValue("booleans"), OverrideSeedKind.BOOLEAN) +
           readOverrideSeeds(pv.getValue("strings"), OverrideSeedKind.STRING) +
           readOverrideSeeds(pv.getValue("ints"), OverrideSeedKind.INT) +
           readOverrideSeeds(pv.getValue("floats"), OverrideSeedKind.FLOAT) +
           readOverrideSeeds(pv.getValue("colors"), OverrideSeedKind.COLOR)
-      if (seeds.isEmpty()) null else OverrideVariantSpec(name = name, seeds = seeds)
+      if (seeds.isEmpty()) continue
+      val spec = OverrideVariantSpec(name = name, seeds = seeds)
+      val existing = specs.putIfAbsent(name, spec)
+      // Only a *conflicting* duplicate is worth a warning. The same annotation reached twice — once
+      // flattened by ClassGraph and once by the explicit meta-annotation walk — is the common case
+      // and produces an identical spec, which is exactly the de-duplication working.
+      if (existing != null && existing != spec) collisions.add(name)
+    }
+    for (name in collisions) {
+      warnings.add(
+        "composePreview: '$owner' carries more than one @OverrideVariant named '$name' with " +
+          "different seeds — most likely two hoisted variant annotations that overlap on a cell. " +
+          "Variant names are the `_VARIANT_$name` render output's identity, so the second would " +
+          "overwrite the first; keeping the first and ignoring the rest. Rename the cell, or drop " +
+          "the overlapping annotation."
+      )
+    }
+    return specs.values.toList()
+  }
+
+  /** Adds [ann] to [into] when it is an `@OverrideVariant`, unwrapping the repeatable container. */
+  private fun collectOverrideVariants(ann: AnnotationInfo, into: MutableList<AnnotationInfo>) {
+    when (ann.name) {
+      OVERRIDE_VARIANT_FQN -> into.add(ann)
+      OVERRIDE_VARIANT_CONTAINER_FQN -> {
+        when (val value = ann.parameterValues.getValue("value")) {
+          is Array<*> -> value.filterIsInstance<AnnotationInfo>().forEach { into.add(it) }
+          is AnnotationInfo -> into.add(value)
+          else -> {
+            val len = runCatching { java.lang.reflect.Array.getLength(value) }.getOrNull() ?: 0
+            for (i in 0 until len) {
+              (java.lang.reflect.Array.get(value, i) as? AnnotationInfo)?.let { into.add(it) }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Recursively collects `@OverrideVariant`s hoisted onto a multi-preview-style annotation class
+   * (and onto its own meta-annotations), mirroring [wrapperFromMetaAnnotation]'s traversal and cycle
+   * guard. Skips `@Preview` and its container — a hoisted variant only ever rides on a custom
+   * annotation. Contributes nothing when the annotation class is off the discovery classpath, which
+   * is the same limit every other meta-annotation walk here has.
+   */
+  private fun overrideVariantsFromMetaAnnotation(
+    ann: AnnotationInfo,
+    scanResult: ScanResult,
+    visited: MutableSet<String>,
+    into: MutableList<AnnotationInfo>,
+  ) {
+    if (ann.name in visited) return
+    if (isDirectPreview(ann) || isPreviewContainer(ann)) return
+    if (ann.name == OVERRIDE_VARIANT_FQN || ann.name == OVERRIDE_VARIANT_CONTAINER_FQN) return
+    visited.add(ann.name)
+    val annClassInfo = scanResult.getClassInfo(ann.name) ?: return
+    for (metaAnn in annClassInfo.annotationInfo.toList()) {
+      collectOverrideVariants(metaAnn, into)
+      overrideVariantsFromMetaAnnotation(metaAnn, scanResult, visited, into)
     }
   }
 
