@@ -82,6 +82,40 @@ class FigmaSvgOversizedDrawTest {
   }
 
   /**
+   * The expansion is held to the node's **own** mask, not just its ancestors'. A node that clips
+   * itself tighter than its draw modifier reports would otherwise crop in frame pixels its own clip
+   * removes — and the raster leaf carries no mask of its own to trim them again.
+   */
+  @Test
+  fun `the expanded crop is held to the node's own clip`() {
+    val mask = bounds(40, 120, 344, 280)
+    val overflowingDraw = bounds(0, 90, 384, 320)
+    val clipped =
+      LayoutInspectorNode(
+        nodeId = "15",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 100, 384, 300),
+        size = LayoutInspectorSize(384, 200),
+        tokens = ComposeSemanticsTokens(clipsContent = true),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "graphicsLayer",
+              properties = mapOf("clip" to "true"),
+              bounds = mask,
+            ),
+            LayoutInspectorModifier(name = "drawWithContent", bounds = overflowingDraw),
+          ),
+        modifiesDrawnContent = true,
+      )
+    val layer = model(clipped).root.children.single()
+    assertEquals("left clamped to the node's own clip", mask.left, layer.left)
+    assertEquals(mask.top, layer.top)
+    assertEquals(mask.right, layer.right)
+    assertEquals(mask.bottom, layer.bottom)
+  }
+
+  /**
    * The ordinary case is untouched: a draw that stays inside its node crops the node's box, because
    * the union never shrinks below it — the content being clipped still has to be in the crop.
    */
