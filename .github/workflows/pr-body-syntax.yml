@@ -97,10 +97,16 @@ jobs:
           # ever evaluated. Re-reading here narrows the window to this job's own
           # runtime. `.body // ""` maps a null body to the empty string, which
           # the matcher treats as "nothing to fix", same as an empty payload did.
-          # Round-tripping through a shell variable drops jq's trailing newline,
-          # so a repair does not append one to the description each time.
-          BODY="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""')"
-          printf '%s' "$BODY" > body.md
+          #
+          # Piped into `jq -j`, NOT captured in `$(…)`. Command substitution
+          # strips *every* trailing newline, not just the one jq -r appends, so a
+          # body ending in a blank line would come back shortened — and since the
+          # PATCH writes the whole description, a run that repaired a backtick
+          # would quietly reflow unrelated whitespace too. `jq -j` emits the
+          # string with no terminator at all, so body.md is byte-exact and the
+          # matcher's "preserves trailing newlines exactly" guarantee survives
+          # the round trip to the API.
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" | jq -j '.body // ""' > body.md
           node .github/scripts/fix-pr-body-markdown.mjs body.md > fixed.md
 
           if cmp -s body.md fixed.md; then
