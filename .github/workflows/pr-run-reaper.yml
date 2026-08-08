@@ -17,13 +17,14 @@ name: PR Run Reaper
 # PRs a read-only token, which cannot cancel anything — and a fork PR's runs are
 # recorded in *this* repo, so they are exactly the leftovers that need reaping.
 # The usual `pull_request_target` hazard is running untrusted head code with a
-# privileged token — this job checks out the BASE ref (the trigger's default)
-# and runs only committed base-branch code, never the PR head.
+# privileged token — this job checks out the default branch explicitly and runs
+# only committed default-branch code, never the PR head.
 #
 # What may and may not be cancelled is decided in reap-pr-runs.mjs, per run:
-# same head repository (branch names alone collide across forks), created no
-# later than the close, never this repo's default branch, and only while the PR
-# is still closed on re-read. See its tests for why each of those exists.
+# same head repository (branch names alone collide across forks), not claimed by
+# a different PR, created before the close, never this repo's default branch,
+# and only while the PR is still closed on re-read. See its tests for why each
+# of those exists.
 
 on:
   pull_request_target:
