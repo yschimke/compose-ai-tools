@@ -5,7 +5,8 @@ import { applySourceFiles } from "./apply-source-files.mjs";
 
 const comp = (componentId, extra = {}) => ({ componentId, images: [], ...extra });
 const manifest = (components) => ({ schema: "design-parity-catalog/v1", system: "s", components });
-const byFn = (entries) => new Map(entries.map(([fn, sf]) => [fn, { sourceFile: sf }]));
+const byFn = (entries) =>
+  new Map(entries.map(([fn, sf, bodyLine]) => [fn, { sourceFile: sf, bodyLine }]));
 
 test("stamps each component's sourceFile from its spec function's discovery path", () => {
   const spec = {
@@ -87,4 +88,48 @@ test("is a no-op with an empty / missing lookup and tolerates empty inputs", () 
   assert.equal(applySourceFiles(manifest([comp("Buttons/Filled")]), spec, undefined), 0);
   assert.equal(applySourceFiles({ components: [] }, {}, byFn([["X", "a.kt"]])), 0);
   assert.equal(applySourceFiles({}, { groups: [] }, byFn([["X", "a.kt"]])), 0);
+});
+
+test("stamps bodyLine alongside sourceFile so the playground can open one declaration", () => {
+  const spec = {
+    groups: [
+      { name: "Buttons", components: [{ componentId: "Buttons/Filled", preview: "FilledButtonPreview" }] },
+    ],
+  };
+  const m = manifest([comp("Buttons/Filled")]);
+
+  applySourceFiles(m, spec, byFn([["FilledButtonPreview", "src/main/kotlin/Buttons.kt", 81]]));
+
+  assert.equal(m.components[0].sourceFile, "src/main/kotlin/Buttons.kt");
+  assert.equal(m.components[0].bodyLine, 81);
+});
+
+test("omits bodyLine when discovery recorded none, rather than writing a bogus zero", () => {
+  // An older bundle carries no `bodyLine`; the server reads its absence as "seed the whole file",
+  // so a 0 or null here would be a line number that points at nothing.
+  const spec = {
+    groups: [
+      { name: "Buttons", components: [{ componentId: "Buttons/Filled", preview: "FilledButtonPreview" }] },
+    ],
+  };
+  const m = manifest([comp("Buttons/Filled")]);
+
+  applySourceFiles(m, spec, byFn([["FilledButtonPreview", "src/main/kotlin/Buttons.kt", undefined]]));
+
+  assert.equal(m.components[0].sourceFile, "src/main/kotlin/Buttons.kt");
+  assert.equal("bodyLine" in m.components[0], false);
+});
+
+test("never stamps a bodyLine without a sourceFile to resolve it against", () => {
+  const spec = {
+    groups: [
+      { name: "Buttons", components: [{ componentId: "Buttons/Filled", preview: "FilledButtonPreview" }] },
+    ],
+  };
+  const m = manifest([comp("Buttons/Filled")]);
+
+  applySourceFiles(m, spec, byFn([["FilledButtonPreview", undefined, 81]]));
+
+  assert.equal(m.components[0].sourceFile, undefined);
+  assert.equal("bodyLine" in m.components[0], false);
 });

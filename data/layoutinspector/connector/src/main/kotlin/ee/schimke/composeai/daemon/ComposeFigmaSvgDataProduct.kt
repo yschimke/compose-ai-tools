@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.FigmaLayeredSvg
@@ -12,6 +13,7 @@ import ee.schimke.composeai.data.layoutinspector.FigmaSvgLayer
 import ee.schimke.composeai.data.layoutinspector.FigmaSvgModel
 import ee.schimke.composeai.data.layoutinspector.FigmaSvgRasterTarget
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
+import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
 import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.image.BufferedImage
@@ -639,7 +641,12 @@ class ComposeFigmaSvgDataProductRegistry(
   ) {
   private val latestOutputBaseNameByPreviewId = ConcurrentHashMap<String, String>()
 
-  override fun onRender(previewId: String, result: RenderResult) {
+  override fun onRender(
+    previewId: String,
+    result: RenderResult,
+    overrides: PreviewOverrides?,
+    previewContext: PreviewContext?,
+  ) {
     // Mode-specific renders (for example figma-svg-long) do not replace the viewport export, so a
     // result without a concrete output name must leave the latest viewport mapping intact.
     result.outputBaseName?.let { latestOutputBaseNameByPreviewId[previewId] = it }

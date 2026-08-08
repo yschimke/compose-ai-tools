@@ -199,12 +199,14 @@ const STYLED_FIXTURES = new Set([
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
     ["url-state.js", "text/javascript"],
+    ["page-theme.js", "text/javascript"],
     ["bg-toggle.js", "text/javascript"],
     ["viewer.js", "text/javascript"],
     ["viewer-groups.js", "text/javascript"],
     ["viewer-drawers.js", "text/javascript"],
     ["backend-badge.js", "text/javascript"],
     ["format-compare.js", "text/javascript"],
+    ["spec-compare.js", "text/javascript"],
     ["rc-lanes.js", "text/javascript"],
     ["catalog-live.js", "text/javascript"],
     ["inspect.js", "text/javascript"],
@@ -320,6 +322,56 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The page theme following the SELECTED PREVIEW THEME (the "Page theme" setting, on by
+        // default). Picking Dark repaints the chrome as well as the grid, and the claim is
+        // invisible to the two ordinary shots: they are captured under an emulated OS preference,
+        // so the light one is exactly the page that used to frame a dark grid in a light shell.
+        // Clicking the chip here means the pinned mode — chrome, catalog palette and badges — is
+        // diffed on every PR, in BOTH OS preferences (the `.light` shot is the one that proves the
+        // pin beats `prefers-color-scheme`).
+        fixture: "serve-landing-catalog-palette",
+        suffix: "theme-sync",
+        apply: async (page) => {
+            // Always pick the chip OPPOSITE the emulated OS preference. The grid's initial chip
+            // already follows `prefers-color-scheme`, so picking the matching one would be a no-op
+            // and shoot the page that was there anyway; the opposite one is the whole claim.
+            const wantDark = await page.evaluate(
+                () => !window.matchMedia("(prefers-color-scheme: dark)").matches,
+            );
+            await page.click(`[data-theme-choice="${wantDark ? "dark" : "light"}"]`);
+            await page.waitForFunction(
+                (cls) => document.documentElement.classList.contains(cls),
+                wantDark ? "cp-scheme-dark" : "cp-scheme-light",
+            );
+        },
+    },
+    {
+        // The Settings menu itself, open, with the setting being turned off — the control has to be
+        // shot open or its contents are diffed by nothing at all.
+        fixture: "serve-landing-catalog-palette",
+        suffix: "theme-sync-menu",
+        apply: async (page) => {
+            await page.click(".cp-settings > summary");
+            await page.check('[data-cp-page-theme][value="system"]');
+            await page.waitForFunction(
+                () =>
+                    !document.documentElement.className.includes("cp-scheme-"),
+            );
+        },
+    },
+    {
+        // …and the same page with the menu closed: the setting off is exactly the behaviour that
+        // shipped before it existed — a dark grid inside a light shell — so this is the honest
+        // before-picture as well as the opt-out's own baseline.
+        fixture: "serve-landing-catalog-palette",
+        suffix: "theme-sync-off",
+        apply: async (page) => {
+            await page.evaluate(() =>
+                document.querySelector(".cp-settings").removeAttribute("open"),
+            );
+        },
+    },
+    {
         // Card hover. A hover state exists only under a pointer, so it is invisible to an ordinary
         // end-state screenshot — and it is the front door's main affordance: the tile lifts, takes
         // an accent rim and a top-edge wipe, and eases its artwork rather than underlining four
@@ -363,6 +415,29 @@ const FIXTURE_STATES = [
             );
         },
     },
+    // The three comparison views the spec lane offers once it is up. Each is drawn entirely at
+    // runtime — pre-normalised canvases painted by `spec-compare.js` — so the committed HTML holds
+    // four empty `<canvas>` elements and none of what these views actually look like. Capturing
+    // them here is what puts the diff colouring, the triptych's three-up rhythm and the wipe's seam
+    // under the visual-diff bot, so a later change to any of them moves a baseline instead of
+    // landing unreviewed. They chain off `spec-lane` above (same page, applied in order), and both
+    // frames come from the harness's existing `**/reference/**` and `**/render/**` stubs — no
+    // design tool and no daemon are contacted.
+    ...["diff", "triptych", "slider"].map((view) => ({
+        fixture: "serve-viewer-path",
+        suffix: `spec-${view}`,
+        apply: async (page) => {
+            await page.click(`[data-cp-spec-view="${view}"]`);
+            // The comparison is asynchronous (two decodes, a normalisation pass, then SSIM), so
+            // hold for the settled readout rather than shooting the "comparing…" frame.
+            await page
+                .waitForFunction(() => {
+                    const score = document.getElementById("cp-spec-score");
+                    return score && score.textContent && score.textContent !== "comparing…";
+                })
+                .catch(() => {});
+        },
+    })),
     {
         // Switching player through the combo. The committed HTML always opens on the default
         // (`Java`), so this is the only way the picker's *moved* state is diffed: the combo on
@@ -994,4 +1069,76 @@ test("contract · an emptied string knob is sent, an emptied typed knob is not",
     // The string knob stays cleared across the second edit — the collector rebuilds the whole
     // query each time, so a regression that dropped empties would lose it here too.
     expect(afterColor.get("knob.label")).toBe("");
+});
+
+test("contract · the spec lane compares the frame that was on the stage", async ({
+    page,
+}) => {
+    // What the diff / triptych / slider are scored against. The lane reuses the blob the viewer
+    // already fetched — no second render, and the comparison is literally the pixels the visitor
+    // was looking at — but ONLY when that blob is in fact the frame they were looking at. Live,
+    // Wasm and the Remote Compose players paint into a canvas or an iframe while `#cp-img` keeps
+    // the snapshot from page load, and they apply overrides in place without re-pointing /render,
+    // so from those lanes the blob can describe a state the visitor left behind. Both halves are
+    // asserted here by counting renders.
+    const requests = [];
+    for (const [name, contentType] of SERVE_ASSETS) {
+        await page.route(`**/assets/serve/**/${name}`, (route) =>
+            route.fulfill({
+                path: resolve(serveAssetsDir, name),
+                contentType,
+            }),
+        );
+    }
+    await page.route("**/reference/**", (route) =>
+        route.fulfill({
+            body: REFERENCE_PLACEHOLDER,
+            contentType: "image/svg+xml",
+        }),
+    );
+    await page.route("**/render/**", async (route) => {
+        requests.push(new URL(route.request().url()));
+        await route.fulfill({
+            path: renderPlaceholder,
+            contentType: "image/png",
+        });
+    });
+    await page.goto("/preview-harness/fixtures/pages/serve-viewer-path.html");
+    await expect.poll(() => requests.length).toBeGreaterThan(0);
+    await page.waitForTimeout(100);
+
+    const settled = () =>
+        page
+            .waitForFunction(() => {
+                const score = document.getElementById("cp-spec-score");
+                return score && score.textContent && score.textContent !== "comparing…";
+            })
+            .catch(() => {});
+
+    // From the static raster lane: the blob is the frame, so comparing costs nothing extra.
+    const beforeSnapshot = requests.length;
+    await page.selectOption("#cp-lane-select", "spec");
+    await page.click('[data-cp-spec-view="triptych"]');
+    await settled();
+    await page.waitForTimeout(100);
+    expect(requests).toHaveLength(beforeSnapshot);
+    await expect(page.locator("#cp-spec-score")).not.toHaveText(
+        "Comparison unavailable",
+    );
+
+    // Now arriving from an interactive lane. `data-mode` is the page's own record of what is on
+    // the stage, and `enterMode` reads it before tearing the outgoing lane down — so marking it
+    // exercises exactly the path a real Live/Wasm/RC lane takes, without needing a daemon or a
+    // Wasm app in the harness. The stale blob must NOT be reused: the lane has to ask the server
+    // for the current controls instead.
+    await page.selectOption("#cp-lane-select", "png");
+    await page.waitForTimeout(100);
+    await page
+        .locator(".cp-viewer")
+        .evaluate((root) => root.setAttribute("data-mode", "live"));
+    const beforeLive = requests.length;
+    await page.selectOption("#cp-lane-select", "spec");
+    await settled();
+    await expect.poll(() => requests.length).toBe(beforeLive + 1);
+    expect(requests.at(-1).pathname.endsWith(".png")).toBe(true);
 });

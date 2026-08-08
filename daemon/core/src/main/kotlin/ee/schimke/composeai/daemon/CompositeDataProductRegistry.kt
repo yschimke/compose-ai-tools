@@ -35,14 +35,6 @@ class CompositeDataProductRegistry(private val registries: List<DataProductRegis
       else registry.attachmentsFor(previewId, supportedKinds)
     }
 
-  override fun onRender(previewId: String, result: RenderResult) {
-    registries.forEach { it.onRender(previewId, result, overrides = null, result.previewContext) }
-  }
-
-  override fun onRender(previewId: String, result: RenderResult, overrides: PreviewOverrides?) {
-    registries.forEach { it.onRender(previewId, result, overrides, result.previewContext) }
-  }
-
   override fun onRender(
     previewId: String,
     result: RenderResult,

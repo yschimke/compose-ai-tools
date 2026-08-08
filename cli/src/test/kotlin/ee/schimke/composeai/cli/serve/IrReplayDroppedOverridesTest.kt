@@ -19,8 +19,10 @@ import kotlin.test.assertEquals
  * with `generation=daemon`, and handed back bytes byte-identical to the baked snapshot. A caller
  * diffing renders across override values reads that as "the override had no visual effect".
  *
- * The expectations below are pinned against the published `remote-m3` catalog, where each of these
- * was observed returning the baked bytes under a successful daemon render.
+ * The bar for entering the list is **no representation in the document at all**, not "observed
+ * inert against one catalog" — `fontScale` and `uiMode` look inert on `remote-m3` yet a document
+ * can defer both to the host and resolve them at paint time, so naming them would refuse an
+ * override the replay can honour. The negative assertions here are the load-bearing ones.
  */
 class IrReplayDroppedOverridesTest {
 
@@ -34,12 +36,13 @@ class IrReplayDroppedOverridesTest {
     )
   }
 
+  /**
+   * `stringResource()` resolved to a literal at capture and the text op holds it, and — unlike the
+   * font/theme pair below — `RemoteContext` exposes no locale among its system variables, so a
+   * document has no way to defer the choice to the host.
+   */
   @Test
-  fun `configuration qualifiers a replay cannot recompose are named`() {
-    assertEquals(
-      listOf("fontScale"),
-      CatalogLiveRouting.irReplayDroppedOverrideNames(lightId, PreviewOverrides(fontScale = 2.0f)),
-    )
+  fun `localeTag is named — a document cannot defer it to the host`() {
     assertEquals(
       listOf("localeTag"),
       CatalogLiveRouting.irReplayDroppedOverrideNames(lightId, PreviewOverrides(localeTag = "ar")),
@@ -47,24 +50,36 @@ class IrReplayDroppedOverridesTest {
   }
 
   /**
-   * Same baked-theme no-op rule [CatalogLiveRouting.droppedOverrideNames] applies: a `uiMode`
-   * restating the variant's own theme is *satisfied* by the replay, so naming it would refuse a
-   * request that was answered truly.
+   * The subtle case, and the one worth guarding hardest.
+   *
+   * Both look inert against `remote-m3` — every render comes back byte-identical to the baked
+   * snapshot — but that is a property of *those documents*, which baked absolute text sizes and
+   * concrete colours at capture. A document can defer either to the host and resolve it at paint
+   * time with no recomposition: `RemoteComposeView.getDefaultTextSize()` is `14f * density *
+   * Configuration.fontScale`, and `onDraw` derives the paint theme from
+   * `Configuration.isNightModeActive()` when the player's theme is `THEME_UNSPECIFIED`. Both read
+   * the live `Configuration` that `RenderEngine` already sets, so the wiring is end-to-end today.
+   *
+   * Naming either would 409 an override the replay can honour.
    */
   @Test
-  fun `a uiMode matching the variant's own theme is satisfied, a differing one is not`() {
+  fun `fontScale and uiMode are never named — a document may read the host value`() {
+    assertEquals(
+      emptyList(),
+      CatalogLiveRouting.irReplayDroppedOverrideNames(lightId, PreviewOverrides(fontScale = 2.0f)),
+    )
+    assertEquals(
+      emptyList(),
+      CatalogLiveRouting.irReplayDroppedOverrideNames(
+        lightId,
+        PreviewOverrides(uiMode = UiMode.DARK),
+      ),
+    )
     assertEquals(
       emptyList(),
       CatalogLiveRouting.irReplayDroppedOverrideNames(
         lightId,
         PreviewOverrides(uiMode = UiMode.LIGHT),
-      ),
-    )
-    assertEquals(
-      listOf("uiMode"),
-      CatalogLiveRouting.irReplayDroppedOverrideNames(
-        lightId,
-        PreviewOverrides(uiMode = UiMode.DARK),
       ),
     )
   }
@@ -154,7 +169,7 @@ class IrReplayDroppedOverridesTest {
   @Test
   fun `every named axis reports together, sorted within a family`() {
     assertEquals(
-      listOf("fontScale", "localeTag", "uiMode", "themeProvider", "knob.a", "knob.b", "rc.text"),
+      listOf("localeTag", "themeProvider", "knob.a", "knob.b", "rc.text"),
       CatalogLiveRouting.irReplayDroppedOverrideNames(
         lightId,
         PreviewOverrides(

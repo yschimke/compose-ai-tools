@@ -500,7 +500,7 @@ class ServeWebTest {
         siblings = previews,
         engagement = ServeWeb.PreviewEngagement(13),
       )
-    assertTrue(viewer.contains("""<p class="cp-viewer-engage">13 views</p>"""), viewer)
+    assertTrue(viewer.contains("""<span class="cp-viewer-engage">13 views</span>"""), viewer)
   }
 
   @Test
@@ -638,6 +638,66 @@ class ServeWebTest {
   }
 
   @Test
+  fun `the spec lane offers diff triptych and slider beside the plain spec`() {
+    val preview = ServePreview(id = "com.example.ProfileScreenPreview", label = "Profile")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/meshcore-mobile",
+        siblings = listOf(preview),
+        designReference =
+          DesignReference(
+            id = "contact-chat-figma",
+            previewId = preview.id,
+            label = "Contact chat",
+            raster = DesignReferenceRaster(path = "references/contact-chat-figma.png"),
+            source = DesignReferenceSource(provider = "figma"),
+          ),
+      )
+    // Four ways to look at the same pair, all four on the stage rather than behind a navigation to
+    // /compare — which is the point: the render worth comparing is the one the viewer's overrides,
+    // knobs and theme just produced, and leaving the page loses it.
+    listOf("spec", "diff", "triptych", "slider").forEach { view ->
+      assertTrue(html.contains("data-cp-spec-view=\"$view\""), "the $view view is offered: $html")
+    }
+    // `spec` is the default and the only pressed one, so a visitor who ignores the group sees
+    // exactly what this lane always showed.
+    assertTrue(
+      html.contains("data-cp-spec-view=\"spec\" aria-pressed=\"true\""),
+      "the plain spec is the default view",
+    )
+    assertEquals(1, Regex("aria-pressed=\"true\"").findAll(html).count(), "one view is pressed")
+    // Hidden until the lane is entered — while a render is on the stage there is no pair to
+    // compare, and spec-compare.js reveals the group from openSpec().
+    assertTrue(
+      html.contains("id=\"cp-spec-views\" role=\"group\" aria-label=\"Design comparison\" hidden"),
+      html,
+    )
+    // The comparison surface: three canvas panels plus the wipe, hidden until a view is picked,
+    // and carrying the reference raster it normalises against.
+    assertTrue(
+      html.contains(
+        "id=\"cp-spec-compare\" hidden data-view=\"spec\" " +
+          "data-reference=\"/meshcore-mobile/reference/contact-chat-figma.png?token=t\""
+      ),
+      html,
+    )
+    listOf("cp-spec-reference", "cp-spec-diff", "cp-spec-actual", "cp-spec-wipe-canvas").forEach {
+      assertTrue(html.contains("id=\"$it\""), "the $it canvas is rendered: $html")
+    }
+    assertTrue(html.contains("id=\"cp-spec-wipe-range\""), "the wipe carries a range control")
+    assertTrue(html.contains("id=\"cp-spec-score\""), "the match readout is rendered")
+    // Load order is load-bearing: viewer.js calls window.cpSpecCompare on the way into the lane,
+    // and spec-compare.js draws every surface from format-compare.js's primitives.
+    val formatCompare = html.indexOf("format-compare.js")
+    val specCompare = html.indexOf("spec-compare.js")
+    val viewer = html.indexOf("/viewer.js")
+    assertTrue(formatCompare in 1 until specCompare, "format-compare.js precedes spec-compare.js")
+    assertTrue(specCompare in 1 until viewer, "spec-compare.js precedes viewer.js")
+  }
+
+  @Test
   fun `the viewer offers no spec lane when the catalog publishes no reference`() {
     // Every catalog that has not adopted design-parity: no lane, no stage image, no mode radio.
     val preview = ServePreview(id = "plain.Button", label = "button")
@@ -651,6 +711,11 @@ class ServeWebTest {
     assertFalse(html.contains("cp-spec-lane"), "no spec lane without a reference")
     assertFalse(html.contains("cp-spec-img"), "no spec stage image without a reference")
     assertFalse(html.contains("id=\"cp-spec-toggle\""), "no spec mode radio without a reference")
+    // …and none of the comparison surface either: no canvases, no view group, and no request for
+    // the script that drives them.
+    assertFalse(html.contains("cp-spec-compare"), "no comparison surface without a reference")
+    assertFalse(html.contains("data-cp-spec-view"), "no diff options without a reference")
+    assertFalse(html.contains("spec-compare.js"), "spec-compare.js is not loaded without a lane")
   }
 
   @Test

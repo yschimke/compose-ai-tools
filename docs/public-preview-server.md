@@ -345,6 +345,50 @@ Two details make it behave under a real visitor's settings:
   backing and a dark-rendered one its dark backing, since those are pinned to the render's theme,
   not the page's.
 
+## The page follows the theme you picked — Settings › Page theme
+
+The palette above says *which colours*; this says *which mode*. Selecting **Dark** in the catalog's
+Theme control (or opening a `?theme=dark` link someone shared) now paints the **page** dark too,
+instead of handing a dark grid to a light shell — the one combination nobody picked.
+
+| Before — **Dark** picked on a light machine | After — the page follows it |
+| --- | --- |
+| ![A dark grid framed by a light page: the chrome ignored the Dark chip and stayed on the OS preference](images/serve-page-theme-before.png) | ![The same landing with the chrome, the catalog palette and the badges all dark](images/serve-page-theme-followed.png) |
+
+It is **optional, and it is a setting** rather than another control in the toolbar — a standing
+preference, answered once, that applies to every catalog and every page. The header's **Settings**
+menu holds it:
+
+- **Match the preview theme** (default) — an explicit Light/Dark pick pins the page to that mode.
+- **Follow my system** — the previous behaviour: the page stays on `prefers-color-scheme` whatever
+  the previews are showing. Somebody who keeps their machine dark all day sets this once.
+
+![The Settings menu with Page theme set to "Follow my system" — the grid on its dark renders, the page back on the OS preference](images/serve-page-theme-setting.png)
+
+Only an **explicit** `light` / `dark` moves the chrome. `Default` and an app-declared
+`theme:<providerFqn>` carry no light/dark axis — a declared theme is a palette, not a mode — so they
+leave the page on the visitor's OS preference rather than guessing. The choice is not carried in the
+URL either: a shared link describes the previews, not the reader's chrome preference. Resolution
+order matches the theme itself — `?theme=` / `?uiMode=` on the URL first, then the catalog's
+remembered choice — and it is applied by a pre-paint script in the page `<head>`, so a page opened
+under `?theme=dark` never flashes light first.
+
+Mechanically the whole feature is one CSS property. `serve.css` and the emitted catalog palette both
+write every mode-dependent value as a **`light-dark(<light>, <dark>)` pair** instead of a `:root`
+block plus a `prefers-color-scheme` block, so pinning the mode is `color-scheme: dark` on `<html>`
+(`.cp-scheme-dark`) and the chrome, the catalog's palette and the semantic badges all re-resolve
+together. With neither class set the declared `light dark` pair defers to `prefers-color-scheme`
+exactly as the media query did, which is what the setting turns back on — and what a no-JS client
+gets.
+
+That rewrite also fixed a latent bug it made visible: the light scheme's elevation shadows were
+written as `rgba(var(--md-sys-elevation-shadow), 0.3)` over `--md-sys-elevation-shadow: 0 0 0`, which
+is invalid legacy `rgba()` syntax, so **every M3 shadow in light mode computed to `none`**. Cards,
+sheets and the viewer stage had been flat on a light page since the token layer landed; they are not
+now.
+
+![Light-mode cards before and after: flat, then carrying M3 elevation level 1](images/serve-elevation-shadow-fix.png)
+
 ## Reporting a bad render
 
 Every viewer page carries a **report an issue** link beside its "source" link. It opens a
@@ -467,6 +511,51 @@ The lane is therefore provider-neutral: a reference imported from a committed PN
 export or Stitch gets the same chip (labelled `Spec` rather than `Figma`), and a catalog that
 publishes no references gets no lane at all.
 
+### Diffing the spec without leaving the viewer
+
+Flipping between the render and the spec is a weak instrument. It answers *are these different?*
+only by asking the eye to hold one frame while looking at the other — which finds a wholesale colour
+change and misses the 4dp of padding that is usually the actual bug. The focused
+[Reference / Diff / Actual](#design-references-and-ui-mocks) page has the real instruments, but
+reaching it means leaving the viewer, and with it the overrides, knobs and theme that produced the
+render worth comparing.
+
+So the instruments come to the lane. While the Spec lane is up, a segmented group beside the
+renderer picker offers four ways to look at the same pair, one click apart, with the match score
+beside it:
+
+| View | What it shows |
+| --- | --- |
+| **Spec** | The imported reference alone — the lane's original behaviour, and still the default. |
+| **Diff** | The magenta delta map: where, exactly, the two disagree. |
+| **Triptych** | Spec, diff and render side by side — the shape the focused comparison page is built around. |
+| **Slider** | One frame, wiped between spec and render, with a draggable seam — the alignment instrument. |
+
+![Triptych: spec, diff and render side by side](images/serve-viewer-spec-triptych.png)
+
+![The magenta delta map alone](images/serve-viewer-spec-diff.png)
+
+![The wipe, seam at 50%](images/serve-viewer-spec-slider.png)
+
+![The same triptych on a dark catalog](images/serve-viewer-spec-triptych-dark.png)
+
+Every surface comes from **one normalisation pass**: each side is cropped to its content box and
+redrawn into one shared pixel space before anything is compared, the same treatment the focused
+page's score uses. A reference exported at a different scale — or with different padding — than the
+render therefore lines up here instead of reading as a total mismatch, and the diff, the three
+panels and the wipe are all in the same coordinates.
+
+The comparison runs against **the bytes already on the stage**, not a fresh render: the viewer hands
+the spec lane the blob it fetched for the current controls, so entering the lane costs no second
+render (an override-bearing render is `no-store`, so re-fetching would re-render and could race the
+daemon's shared override state) and the score describes exactly the frame the visitor was looking
+at.
+
+The chosen view rides the URL as `?specView=diff|triptych|slider` alongside `?mode=spec`, so
+`…/p/<id>?mode=spec&specView=slider` is shareable and Back returns to the view you came from.
+`spec diff →` beside the group still steps out to the focused page when the annotation layers or the
+opacity overlay are what you want.
+
 ## Design references and UI mocks
 
 A bundle or published catalog can map independently-authored UI mocks to exact preview ids. The
@@ -558,6 +647,22 @@ a catalog must never lose its render to a reference lane. Pass `--strict` to gat
 
 A repo with no `design-map.json` is a clean no-op, so the step runs unconditionally for every
 catalog.
+
+The same step also writes the **reference side of the annotation layers** — the numbered spec boxes
+the compare page draws over each column. Two things decide whether those numbers can be read against
+the render's:
+
+- **`density` on the design-map entry** — the reference board's scale, in source pixels per dp. A
+  Figma file reports its own pixels and nothing in it says what they are pixels *of*, so only the
+  map's author knows. Declared, the reference column is quoted in the same `dp`/`sp` the render
+  resolved (`text 17.5sp` for a 3× board's 52.5px), with the factor and the source unit recorded in
+  the annotation's `detail` so the original number stays recoverable. Undeclared, the column names
+  the board's own unit (`text 52.5px`) rather than guessing — a wrong factor silently rescales every
+  spec, which is worse than an honest `px`. Omit it unless you know it.
+- **`≈` in a label** — the spacing was measured off the frame's child geometry, not declared. Only an
+  auto-layout frame carries Figma's `padding` / `itemSpacing`, so a hand-placed mock would otherwise
+  publish a type layer and no layout layer at all. The measurement fills that gap; the mark keeps it
+  from reading as a number the design file actually asserts.
 
 The lane only appears once a catalog actually publishes references — before the producer existed
 every catalog served the format controls on the left:

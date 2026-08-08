@@ -22,6 +22,8 @@ package ee.schimke.composeai.preview
  *   system named by the catalog's `compareWith` setting.
  * * [perBreakpoint] defaults to false — every render of the function folds onto ONE component. Set
  *   it when the component should be a card *per* breakpoint instead; see below.
+ * * [referenceSet] defaults to empty. Override with the handle of the component *family*
+ *   [reference] is one variant of — see below.
  *
  * ```kotlin
  * @file:CatalogGroup("Buttons")
@@ -29,6 +31,31 @@ package ee.schimke.composeai.preview
  * @CatalogComponent(id = "Button/Filled", caption = "Highest emphasis; the primary action.")
  * @CatalogModes @Composable fun FilledButton() = Sticker("button-filled")
  * ```
+ *
+ * ### Variant vs family: [reference] and [referenceSet]
+ *
+ * [reference] names ONE concrete node — the frame a design-parity run diffs this sticker's render
+ * against. It has to be one variant: point it at a Figma component *set* and the comparison is
+ * against a grid of every variant at once, which is meaningless.
+ *
+ * [referenceSet] names the family that variant belongs to (the component set), and exists for the
+ * other direction — matching a whole *screen* back to code. An instance placed on a screen reports
+ * its own variant and its set, and a screen almost never uses the exact variant a catalog chose to
+ * picture, so matching on [reference] alone misses. Measured on the Material 3 kit: per-variant
+ * handles alone linked 3 of 11 instances on a real screen; the misses were a list item and a
+ * carousel whose screens used *sibling* variants of components the catalog already maps.
+ *
+ * ```kotlin
+ * @CatalogComponent(
+ *   id = "Lists/ListItem",
+ *   reference = "figma:AbCdEf/51964:64241",     // the one variant this sticker renders
+ *   referenceSet = "figma:AbCdEf/51964:63037",  // the family every sibling variant shares
+ * )
+ * ```
+ *
+ * Two fields rather than one because the two readers want incompatible things — a parity diff needs
+ * the narrowest renderable node, screen matching needs the widest. Both travel into `previews.json`
+ * and out to the design-map, where design-parity indexes them side by side.
  *
  * ### Breakpoints: [perBreakpoint]
  *
@@ -74,6 +101,11 @@ annotation class CatalogComponent(
   val reference: String = "",
   val parallel: String = "",
   val perBreakpoint: Boolean = false,
+  // Appended, NOT slotted in beside `reference` where it reads best: a parameter inserted ahead of
+  // an existing one silently re-points a positional call. A five-string `@CatalogComponent(...)`
+  // whose fifth argument meant `parallel` would still compile and quietly mean `referenceSet`.
+  // Declaration order is source API here; the pairing is documented above instead.
+  val referenceSet: String = "",
 )
 
 /**

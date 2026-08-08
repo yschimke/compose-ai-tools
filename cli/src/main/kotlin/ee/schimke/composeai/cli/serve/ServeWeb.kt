@@ -46,8 +46,12 @@ object ServeWeb {
   private fun viewCountHtml(views: Long): String =
     if (views <= 0) "" else "<div class=\"cp-engage\">${formatViews(views)}</div>"
 
+  /**
+   * The viewer's view tally. A `<span>`, not a block: it sits on the title row beside the id, where
+   * it reads as one more fact about this preview rather than a paragraph of its own.
+   */
   private fun viewerViewCountHtml(views: Long): String =
-    if (views <= 0) "" else "<p class=\"cp-viewer-engage\">${formatViews(views)}</p>"
+    if (views <= 0) "" else "<span class=\"cp-viewer-engage\">${formatViews(views)}</span>"
 
   private fun formatViews(views: Long): String =
     "${formatCount(views)} ${if (views == 1L) "view" else "views"}"
@@ -300,15 +304,24 @@ object ServeWeb {
    * The status slot is server-rendered but starts empty and `hidden`; `presenceScript` fills and
    * unhides it when the daemon poll answers, so a page that never polls simply shows nothing there
    * rather than reserving a visible gap.
+   *
+   * [breadcrumb] rides in the brand slot, immediately after the mark: a page's "where am I / how do
+   * I get back" (a [crumbHtml] trail, or a catalog landing's [backButton]) is *navigation*, and the
+   * bar is where a visitor already looks for navigation. It used to be the first line of the page
+   * BODY, which spent a whole row — plus its margin — restating the header's own job and pushed the
+   * thing the page exists to show (the render) further below the fold on every viewer.
    */
-  private fun siteHeader(navSuffix: String, action: String = ""): String {
+  private fun siteHeader(navSuffix: String, action: String = "", breadcrumb: String = ""): String {
     val actionHtml = action.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
+    val crumb = breadcrumb.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
     return """
       <header class="cp-site-header">
-        <a class="cp-site-brand" href="/$navSuffix" aria-label="compose-preview home">
-          <span class="cp-site-mark" aria-hidden="true">◇</span>
-          <span>compose-preview</span>
-        </a>
+        <div class="cp-site-lead">
+          <a class="cp-site-brand" href="/$navSuffix" aria-label="compose-preview home">
+            <span class="cp-site-mark" aria-hidden="true">◇</span>
+            <span>compose-preview</span>
+          </a>$crumb
+        </div>
         <div class="cp-site-status">
           <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
         </div>
@@ -316,11 +329,49 @@ object ServeWeb {
           <a href="/$navSuffix">Catalogs</a>
           <a href="/status$navSuffix">Status</a>
           <a href="https://github.com/$SOURCE_REPO">GitHub</a>$actionHtml
+          ${settingsMenuHtml().prependIndent("          ").trimStart()}
         </nav>
       </header>
       """
       .trimIndent()
   }
+
+  /**
+   * The header's **Settings** menu: standing per-visitor preferences, as opposed to the controls
+   * that describe what is on screen (the Theme chips, Transparent, the override drawers). One
+   * setting lives here today — **Page theme**, whether the chrome follows the selected preview
+   * theme or the visitor's operating system (see `page-theme.js`) — and it is a setting rather than
+   * another toolbar control precisely because it is answered once and then applies to every catalog
+   * and every page.
+   *
+   * A plain `<details>`, so it opens and the radios record a choice with **no JavaScript at all**;
+   * `page-theme.js` only reflects the stored value into them and repaints when one changes. It sits
+   * in the nav so it is in the same place on every page, and last so it never displaces the links.
+   */
+  private fun settingsMenuHtml(): String =
+    """
+    <details class="cp-settings">
+      <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+        <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+      </summary>
+      <div class="cp-settings-panel">
+        <fieldset class="cp-settings-group">
+          <legend class="cp-settings-legend">Page theme</legend>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+            <span>Match the preview theme</span>
+          </label>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+            <span>Follow my system</span>
+          </label>
+          <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+            match. Turn it off to keep the page on your operating system's setting.</p>
+        </fieldset>
+      </div>
+    </details>
+    """
+      .trimIndent()
 
   /**
    * A "back to all design systems" button for a catalog landing — replaces the in-catalog
@@ -331,6 +382,26 @@ object ServeWeb {
   private fun backButton(token: String, isPublic: Boolean): String {
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     return """<a class="cp-back" href="/$suffix">← All design systems</a>"""
+  }
+
+  /**
+   * A breadcrumb trail for the site header's brand slot: the [parent] page as a link, then — when
+   * the page is a leaf rather than a plain "up one level" — the [current] page's name as inert
+   * text.
+   *
+   * Emitted into [siteHeader]'s `breadcrumb` slot rather than as the body's first paragraph. Both
+   * [parent] and [current] are escaped here, so callers pass raw text.
+   */
+  private fun crumbHtml(href: String, parent: String, current: String? = null): String {
+    val tail =
+      current
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          "<span class=\"cp-crumb-sep\" aria-hidden=\"true\">/</span>" +
+            "<span class=\"cp-crumb-current\">${WebEscaping.htmlEscape(it)}</span>"
+        } ?: ""
+    return "<nav class=\"cp-breadcrumb\" aria-label=\"Breadcrumb\">" +
+      "<a href=\"${WebEscaping.htmlEscape(href)}\">${WebEscaping.htmlEscape(parent)}</a>$tail</nav>"
   }
 
   /**
@@ -1656,7 +1727,11 @@ object ServeWeb {
         // actually changed, so typing never restarts an in-flight themed-render queue.
         function applyThemeChoice() {
           if (theme === appliedTheme) return;
-          appliedTheme = theme;$applyDeclaredThemeIndented
+          appliedTheme = theme;
+          // Turn the page over with the previews: with the Page theme setting on, the chrome
+          // follows an explicit Light/Dark pick (page-theme.js decides; a declared theme leaves it
+          // alone). Guarded because that file is deferred to the end of the body.
+          if (window.cpPageTheme) window.cpPageTheme.follow(theme);$applyDeclaredThemeIndented
           var k = theme === "dark" ? "d" : "l";
           cards.forEach(function (c, i) {
             if (c.getAttribute("data-swap") === "1") { applyVariant(c, k, true); return; }$restoreBakedSrc
@@ -1996,6 +2071,8 @@ object ServeWeb {
         el.setAttribute("data-theme-active", "1");
         try { localStorage.setItem("$themeStorageKey", el.value); } catch (e) {}
         syncBg();
+        // …and the page around the stage, when the Page theme setting says to follow the choice.
+        if (window.cpPageTheme) window.cpPageTheme.follow(el.value);
       });
       syncBg();
     })();
@@ -2467,7 +2544,18 @@ object ServeWeb {
                 WebEscaping.htmlEscape(seed.fileName)
               }</a>"""
           } ?: WebEscaping.htmlEscape(seed.fileName)
-        """
+        // Which of the two it is matters to a reader: told "the whole file" while looking at one
+        // function, they would go hunting for the rest of it.
+        if (seed.sliced)
+          """
+
+          <p id="pg-seed" class="cp-sub">Opened from $where — the declaration of
+            <code>${WebEscaping.htmlEscape(seed.previewId)}</code>, plus that file's imports, from
+            <code>${WebEscaping.htmlEscape(seed.catalog)}</code>. Just this one composable, not the
+            whole file, but otherwise its source verbatim — so anything it pulls in from elsewhere
+            in its own module shows up as an unresolved reference to delete.</p>"""
+        else
+          """
 
           <p id="pg-seed" class="cp-sub">Opened $where — the file
             <code>${WebEscaping.htmlEscape(seed.previewId)}</code> is declared in, from
@@ -4079,8 +4167,10 @@ object ServeWeb {
     val about = if (isPublic) "\n" + aboutSection() else ""
     // A catalog page links HOME (the front-door index) rather than sideways to its siblings: the
     // old design-systems nav row is replaced by a single back button, shown whenever this server
-    // publishes catalogs (i.e. a home index exists to go back to).
-    val back = if (hasHomeIndex) backButton(token, isPublic) + "\n" else ""
+    // publishes catalogs (i.e. a home index exists to go back to). It rides in the site header's
+    // brand slot with every other page's breadcrumb, rather than as the body's first line — a
+    // catalog page's own heading and grid then start at the top of the content column.
+    val back = if (hasHomeIndex) backButton(token, isPublic) else ""
     // The catalog-provenance strip (delivery branch, generation date, tool versions, regenerate
     // link), shown under the header for a served design-system catalog.
     val prov = provenance?.let { provenanceSection(it, refreshUrl) + "\n" } ?: ""
@@ -4171,11 +4261,13 @@ object ServeWeb {
       unfurlDescription = "${previews.size} Compose previews in $heading",
       unfurl = unfurl,
       navSuffix = navSuffix,
+      headerBreadcrumb = back,
       version = version,
       themeCss = themeCss,
+      themeStorageKey = themeStorageKey(sessionId, basePath),
       body =
         """
-        $back<h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
+        <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
         $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} ·
           <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink$parityLink$playgroundLink$liveNote</p>
         <div class="cp-catalog-tools">
@@ -4380,7 +4472,9 @@ object ServeWeb {
       unfurl = unfurl,
       version = version,
       navSuffix = navSuffix,
+      headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Compare formats"),
       themeCss = themeCss,
+      themeStorageKey = themeStorageKey(sessionId, basePath),
       // The PNG ↔ Remote Compose comparison plays the document in a canvas on this page and
       // *scores*
       // the result, so an unregistered typeface here doesn't just look wrong — it lands in the
@@ -4389,7 +4483,6 @@ object ServeWeb {
       body =
         """
         <div id="cp-compare" $rootAttrs>
-          <p class="cp-breadcrumb"><a href="$basePath/$q">${WebEscaping.htmlEscape(heading)}</a> / Compare formats</p>
           <h1 class="cp-head">Format comparison${compactTrustBadge(trust)}</h1>
           <p class="cp-sub"><span class="cp-sub-formats">PNG, SVG and Remote Compose fidelity · scores use structural similarity on a fixed backdrop</span>${
           if (rcLanes != null)
@@ -4672,11 +4765,11 @@ $rows
       unfurl = unfurl,
       version = version,
       navSuffix = navSuffix,
+      headerBreadcrumb = crumbHtml("$basePath/compare$q", heading, "Design comparison"),
       themeCss = themeCss,
       body =
         """
         <div id="cp-reference-compare" data-reference="$raster" data-actual="$actual">
-          <p class="cp-breadcrumb"><a href="$basePath/compare$q">${WebEscaping.htmlEscape(heading)}</a> / Design comparison</p>
           <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(reference.label)}${compactTrustBadge(trust)}</h1>
           <p class="cp-sub">${WebEscaping.htmlEscape(previewDisplayName(preview))} · ${WebEscaping.htmlEscape(preview.id)}</p>
           $referencePicker
@@ -5042,10 +5135,10 @@ $rows
       unfurl = unfurl,
       version = version,
       navSuffix = navSuffix,
+      headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Design parity"),
       themeCss = themeCss,
       body =
         """
-        <p class="cp-breadcrumb"><a href="$basePath/$q">← ${esc(heading)}</a></p>
         <h1 class="cp-head cp-catalog-head">Design parity${compactTrustBadge(trust)}</h1>
         <p class="cp-sub">How this catalog's code and its design file have moved, and how far apart
           they are.</p>
@@ -5130,6 +5223,23 @@ $rows
      * stay daemon-routed).
      */
     hasRemoteComposeDoc: Boolean = false,
+    /**
+     * Whether a server render of this preview **replays a captured document** rather than
+     * re-running the composable — the same host question ([ServeHost.hasRemoteComposeDoc])
+     * `ServeHttpServer.droppedOverridesFor` asks before reporting an override un-applied. Emitted
+     * as `data-ir-replay` so the viewer can grey out the controls the server would answer with a
+     * 409, instead of offering a slider that only produces an error.
+     *
+     * Deliberately its own flag rather than reusing `data-has-rc-doc`, even though the two coincide
+     * on every host today: that one means "there are `.rc` bytes for the browser canvas lane", this
+     * one means "the daemon cannot recompose this preview". Keeping them separate is what stops a
+     * future host that serves a document for a class-backed preview from greying live controls.
+     *
+     * Note this covers a *narrow* set — see the `irReplay` block in `viewer.js`. Day/Night and font
+     * scale stay live, because a document can defer both to the host and resolve them at paint
+     * time.
+     */
+    irReplay: Boolean = false,
     /**
      * The Remote Compose render backends the viewer may offer for this preview as a per-preview
      * **backend selector** — the [RcPlayerBackend.wire] ids the host reports via
@@ -5315,13 +5425,13 @@ $rows
     val displayName = previewDisplayName(preview)
     val label = WebEscaping.htmlEscape(displayName)
     val idText = WebEscaping.htmlEscape(preview.id)
-    val catalogName = WebEscaping.htmlEscape(catalogTitle?.takeIf { it.isNotBlank() } ?: "Previews")
     val modes = preview.modes.joinToString(",") { it.wire }
     // Wear OS is an always-dark surface. Do not expose the generic day/night override: besides
     // being meaningless for Wear, an old light choice within the Wear catalog must not turn into a
     // confetti-wear live render.
     val wearAlwaysDark = SystemDisplay.isDarkFirst(basePath.trim('/').ifBlank { sessionId ?: "" })
     val alwaysDarkAttr = if (wearAlwaysDark) " data-always-dark=\"1\"" else ""
+    val irReplayAttr = if (irReplay) " data-ir-replay=\"1\"" else ""
     // The baked fallback shown before any override is chosen. The unified Theme selector displays
     // this choice without sending a redundant uiMode override on first load.
     val viewerTheme = previewTheme(preview, isDarkFirstSystem(basePath, sessionId, declaredSurface))
@@ -5429,17 +5539,46 @@ $rows
           .joinToString("&")
       "$basePath/compare/$idSeg${querySuffix(query)}"
     }
+    // The four ways to look at the render/spec pair, offered on the stage itself the moment the
+    // spec lane is up. The lane used to be a flip — spec on the stage instead of the render — which
+    // answers "are these different?" only by asking the eye to hold one frame while looking at the
+    // other. That finds a wholesale colour change and misses the 4dp of padding that is the actual
+    // bug. The focused `/compare/<id>` page has always had the real instruments, but reaching it
+    // means leaving the viewer, and with it the overrides, knobs and theme that produced the render
+    // worth comparing. So the instruments come to the lane. `spec` is first and is the default, so
+    // a visitor who ignores this row sees exactly what the lane always showed.
+    val specViews =
+      listOf(
+        "spec" to ("Spec" to "The imported design reference on its own"),
+        "diff" to ("Diff" to "Highlight every pixel where the render and the spec disagree"),
+        "triptych" to ("Triptych" to "Spec, diff and render side by side"),
+        "slider" to ("Slider" to "One frame, wiped between the spec and the render"),
+      )
     // The spec lane's *carrier*, not a control: `data-spec-src` is the raster viewer.js paints onto
-    // the stage when the picker selects `spec`, and the trailing link is the step from "look at the
-    // spec" to "diff it". The lane no longer has a chip of its own — it is one `<option>` in
-    // [laneSelectHtml] like every other renderer.
+    // the stage when the picker selects `spec`, the comparison group beside it chooses how that
+    // pair is drawn, and the trailing link is the step out to the focused comparison page. The lane
+    // has no chip of its own — it is one `<option>` in [laneSelectHtml] like every other renderer.
     val specSelector =
       if (specRasterUrl == null || specProviderLabel == null || specLabel == null) ""
       else {
         val tip = "Compare this render against the imported design spec — $specLabel"
+        // Hidden until the lane is entered: while a render is on the stage there is no pair to
+        // compare, and a control that acts on nothing is worse than no control. spec-compare.js
+        // reveals it from openSpec() and hides it again on the way out.
+        val viewButtons =
+          specViews.joinToString("") { (value, text) ->
+            val (viewLabel, viewTip) = text
+            "<button type=\"button\" class=\"cp-spec-view\" data-cp-spec-view=\"$value\" " +
+              "aria-pressed=\"${value == "spec"}\" " +
+              "title=\"${WebEscaping.htmlEscape(viewTip)}\">${WebEscaping.htmlEscape(viewLabel)}</button>"
+          }
         "<span class=\"cp-spec-lane\" id=\"cp-spec-lane\" " +
           "data-spec-src=\"${WebEscaping.htmlEscape(specRasterUrl)}\" " +
           "data-spec-label=\"${WebEscaping.htmlEscape(specProviderLabel)}\">" +
+          "<span class=\"cp-spec-views\" id=\"cp-spec-views\" role=\"group\" " +
+          "aria-label=\"Design comparison\" hidden>$viewButtons</span>" +
+          "<span class=\"cp-spec-score\" id=\"cp-spec-score\" role=\"status\" " +
+          "aria-live=\"polite\" hidden></span>" +
           "<a class=\"cp-format-link cp-spec-diff\" " +
           "href=\"${WebEscaping.htmlEscape(specCompareHref.orEmpty())}\" " +
           "title=\"${WebEscaping.htmlEscape(tip)}\">spec diff →</a></span>"
@@ -5546,6 +5685,34 @@ $rows
       else
         "<img id=\"cp-spec-img\" class=\"cp-spec-img\" hidden alt=\"" +
           "${WebEscaping.htmlEscape("$displayName — design spec")}\">"
+    // The comparison surface the Diff / Triptych / Slider views paint into — a second stage child
+    // beside [specImg], `hidden` until one of them is picked. Every panel is a `<canvas>` rather
+    // than an `<img>` on purpose: spec-compare.js normalises both frames to one shared pixel space
+    // before painting (a reference exported at a different scale than the render is the normal
+    // case), and only canvases can carry that redrawn result. Nothing is fetched until a
+    // comparison view is actually chosen.
+    val specCompare =
+      if (specRasterUrl == null) ""
+      else {
+        fun panel(kind: String, id: String, caption: String, description: String) =
+          "<figure class=\"cp-spec-panel\" data-cp-spec-panel=\"$kind\">" +
+            "<canvas id=\"$id\" aria-label=\"${WebEscaping.htmlEscape(description)}\"></canvas>" +
+            "<figcaption>${WebEscaping.htmlEscape(caption)}</figcaption></figure>"
+        "<div class=\"cp-spec-compare\" id=\"cp-spec-compare\" hidden data-view=\"spec\" " +
+          "data-reference=\"${WebEscaping.htmlEscape(specRasterUrl)}\">" +
+          panel("reference", "cp-spec-reference", "Spec", "Imported design spec") +
+          panel("diff", "cp-spec-diff", "Diff", "Pixels where the render and the spec disagree") +
+          panel("actual", "cp-spec-actual", "Render", "This preview's Compose render") +
+          "<div class=\"cp-spec-wipe\">" +
+          "<canvas id=\"cp-spec-wipe-canvas\" " +
+          "aria-label=\"Spec on the left of the seam, Compose render on the right\"></canvas>" +
+          "<label class=\"cp-spec-wipe-control\"><span>Spec</span>" +
+          "<input id=\"cp-spec-wipe-range\" class=\"cp-spec-wipe-range\" type=\"range\" " +
+          "min=\"0\" max=\"100\" value=\"50\" " +
+          "aria-label=\"Wipe between the design spec and the Compose render\">" +
+          "<span>Render</span></label></div>" +
+          "</div>"
+      }
     val specModeInput =
       if (specRasterUrl == null) ""
       else
@@ -6060,13 +6227,34 @@ $rows
         )
         .filter { it.isNotBlank() }
         .joinToString("\n")
+    // `format-compare.js` holds the comparison primitives — content-box normalisation, the SSIM
+    // score, the magenta delta map — that BOTH the SVG/PNG fidelity toggle and the spec lane's
+    // Diff / Triptych / Slider views draw from, so it loads for either. `spec-compare.js` sits on
+    // top of it and must be defined before `viewer.js`, which calls into `window.cpSpecCompare` on
+    // the way into (and out of) the lane.
+    val compareScriptTags =
+      listOfNotNull(
+          scriptTag("format-compare.js").takeIf { hasSvgExport || specRasterUrl != null },
+          scriptTag("spec-compare.js").takeIf { specRasterUrl != null },
+        )
+        .joinToString("") { "$it\n      " }
+    // The provenance row (source / playground / report an issue / figma spec) no longer sits under
+    // the title. It is *about* the preview rather than a control over it, and four lines of small
+    // links between the heading and the renderer controls is four lines of chrome between the
+    // visitor and the render. It now rides directly above the export bar, where the other
+    // "take this away with you" affordances (the PNG and SVG links) already live.
+    val previewLinks =
+      previewLinksHtml(sourceHref, preview.sourceFile, reportIssue, figmaSpec, playgroundHref)
+    // Title, trust badge, id and the view tally on ONE baseline-aligned row. They are all
+    // *identity* — three separate blocks said so three times, at the cost of ~90px above the fold.
     val body =
       """
-      <p class="cp-breadcrumb"><a href="$basePath/$q">$catalogName</a> / Component</p>
-      <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
-      <p class="cp-preview-id" title="$idText"><code>$idText</code></p>
-      ${degradeBanner(degradations)}${previewLinksHtml(sourceHref, preview.sourceFile, reportIssue, figmaSpec, playgroundHref)}
-      ${viewerViewCountHtml(engagement.views)}
+      <div class="cp-preview-head">
+        <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
+        <code class="cp-preview-id" title="$idText">$idText</code>
+        ${viewerViewCountHtml(engagement.views)}
+      </div>
+      ${degradeBanner(degradations)}
       $switchers
       <div class="cp-preview-primary" aria-label="Preview renderer">
       $primaryControls
@@ -6083,9 +6271,9 @@ $rows
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
       $historyInlineHtml
-      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
+      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
         $navDrawer
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
@@ -6149,7 +6337,7 @@ $rows
            while the bar has to run the full content width to stay on one line. -->
       <div class="cp-below">
         $snapshotNote
-      </div>
+      </div>$previewLinks
       ${downloadLinksHtml(hasSvgExport)}
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
@@ -6160,7 +6348,7 @@ $rows
       ${scriptTag("viewer-drawers.js")}
       ${scriptTag("viewer-history.js")}
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
-      ${if (hasRemoteComposeDoc) "${scriptTag("rc-fonts.js")}\n      " else ""}${if (hasSvgExport) "${scriptTag("format-compare.js")}\n      " else ""}${scriptTag("viewer.js")}
+      ${if (hasRemoteComposeDoc) "${scriptTag("rc-fonts.js")}\n      " else ""}$compareScriptTags${scriptTag("viewer.js")}
       ${scriptTag("backend-badge.js")}${if (inspectRows.isEmpty()) "" else "\n      " + scriptTag("inspect.js")}
       """
         .trimIndent()
@@ -6174,7 +6362,14 @@ $rows
       unfurl = unfurl,
       version = version,
       navSuffix = navSuffix,
+      headerBreadcrumb =
+        crumbHtml(
+          "$basePath/$q",
+          catalogTitle?.takeIf { it.isNotBlank() } ?: "Previews",
+          "Component",
+        ),
       themeCss = themeCss,
+      themeStorageKey = themeStorageKey(sessionId, basePath),
       // Only the `js` chip paints in this document's canvas, and it only exists when the preview
       // carries a captured document.
       rcFonts = hasRemoteComposeDoc,
@@ -6263,6 +6458,12 @@ $rows
     navSuffix: String = "",
     headerAction: String = "",
     /**
+     * The page's breadcrumb / back link, rendered in the header's brand slot by [siteHeader] rather
+     * than as the body's first line — see that function for why. Empty (the front door, which is
+     * already home) renders nothing.
+     */
+    headerBreadcrumb: String = "",
+    /**
      * Running server version (the CLI's `BUNDLE_VERSION`), shown in the minimal [siteFooter] every
      * page ends with. Null omits just the build span; the fixture goldens pass a fixed string so a
      * release never churns the committed HTML.
@@ -6274,6 +6475,14 @@ $rows
      * plain module / a catalog that publishes no tokens — the page then uses the built-in chrome.
      */
     themeCss: String = "",
+    /**
+     * The catalog-scoped `localStorage` key this page's theme choice is remembered under (as
+     * produced by [themeStorageKey]) — published to the client on `<html data-cp-theme-key>` and
+     * read back by the pre-paint script and `page-theme.js`, which need the remembered choice to
+     * resolve the page's colour scheme. Empty for a page with no theme control at all (the front
+     * door, `/status`, a shared document): those never pin a scheme.
+     */
+    themeStorageKey: String = "",
     /**
      * Register the vendored Remote Compose typefaces ([ServeRcFonts]) on this page. True for the
      * pages that play a `.rc` document **client-side** — without the faces the player's `Roboto,
@@ -6332,9 +6541,13 @@ $rows
       themeCss
         .takeIf { it.isNotBlank() }
         ?.let { "\n" + ("<style>\n" + it.trimEnd() + "\n</style>").prependIndent("        ") } ?: ""
+    val themeKeyAttr =
+      themeStorageKey
+        .takeIf { it.isNotBlank() }
+        ?.let { " data-cp-theme-key=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
     return """
     <!doctype html>
-    <html lang="en">
+    <html lang="en"$themeKeyAttr>
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
@@ -6343,16 +6556,45 @@ $rows
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        ${pageThemeScript(themeStorageKey)}
       </head>
       <body>
-        ${siteHeader(navSuffix, headerAction)}
+        ${siteHeader(navSuffix, headerAction, headerBreadcrumb)}
         <main class="cp-main">
         $body
         </main>$footerBlock
+        ${scriptTag("page-theme.js")}
       </body>
     </html>
     """
       .trimIndent() + "\n"
+  }
+
+  /**
+   * Pin the page's colour scheme to the selected preview theme **before first paint**, when the
+   * Page theme setting is on (its default — see `page-theme.js` for why it is a setting).
+   *
+   * Inline and in the `<head>` for the same reason the Transparent restore above is: resolving this
+   * from the deferred `page-theme.js` would paint the page in the wrong mode first and correct it a
+   * frame later, which on a dark-to-light swap is a full-screen flash. It is deliberately the whole
+   * resolution rather than a call into that file — the file has not loaded yet.
+   *
+   * The order is the same one the grid and the viewer use for the theme itself: the URL wins
+   * (`?theme=` on a catalog landing, `?uiMode=` in the viewer — someone picked that chip or was
+   * handed the link), then the choice this catalog remembers. Only an explicit `light` / `dark`
+   * moves the chrome; `default` and an app-declared `theme:<providerFqn>` carry no light/dark axis,
+   * so they leave the page on the visitor's OS preference rather than guessing a mode for it.
+   */
+  private fun pageThemeScript(themeStorageKey: String): String {
+    val storedTheme =
+      themeStorageKey
+        .takeIf { it.isNotBlank() }
+        ?.let { "||localStorage.getItem(${WebEscaping.jsString(it)})" } ?: ""
+    return "<script>try{var p=new URLSearchParams(location.search)," +
+      "t=localStorage.getItem(\"cp-page-theme\")===\"system\"?\"\"" +
+      ":(p.get(\"theme\")||p.get(\"uiMode\")$storedTheme);" +
+      "if(t===\"light\"||t===\"dark\")document.documentElement.classList.add(\"cp-scheme-\"+t);" +
+      "}catch(e){}</script>"
   }
 
   /**

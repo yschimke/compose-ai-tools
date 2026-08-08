@@ -554,9 +554,8 @@ data class PreviewParams(
    */
   val density: Float? = null,
   /**
-   * Bound a **wrapped** width axis is measured against, replacing the renderer's generic
-   * 400×800 dp sandbox ([DeviceDimensions.SANDBOX_WIDTH_DP]). `null` (the default) keeps that
-   * sandbox.
+   * Bound a **wrapped** width axis is measured against, replacing the renderer's generic 400×800 dp
+   * sandbox ([DeviceDimensions.SANDBOX_WIDTH_DP]). `null` (the default) keeps that sandbox.
    *
    * Deliberately not [widthDp]: setting `widthDp` FIXES the axis, so the capture keeps the whole
    * frame and the intrinsic crop never runs. The sandbox bound changes only what
@@ -786,7 +785,8 @@ enum class CatalogRole {
  * The two [CatalogRole]s reuse one shape: [componentId] is the component's own id for a
  * [CatalogRole.COMPONENT] and the *parent* component id (`@CatalogVariant.of`) for a
  * [CatalogRole.VARIANT]. Fields that only apply to one role are `null`/empty on the other ([group]
- * / [section] / [reference] / [parallel] are component-only; [state] / [props] are variant-only).
+ * / [section] / [reference] / [referenceSet] / [parallel] are component-only; [state] / [props] are
+ * variant-only).
  */
 @Serializable
 data class CatalogEntry(
@@ -801,6 +801,14 @@ data class CatalogEntry(
   val caption: String? = null,
   /** COMPONENT only: seed-kit handle for the one-off import. */
   val reference: String? = null,
+  /**
+   * COMPONENT only: handle of the component **family** [reference] is one variant of (a Figma
+   * component set). [reference] must stay one concrete node — that is what a parity run diffs
+   * against — so the family travels separately, for the opposite direction: matching a component
+   * *instance* found on a whole screen, which reports its own variant and its set, back to this
+   * code. A screen rarely uses the exact variant a catalog pictured, so the set is what matches.
+   */
+  val referenceSet: String? = null,
   /** COMPONENT only: component id of the counterpart in the `compareWith` sibling system. */
   val parallel: String? = null,
   /** VARIANT only: the interaction/state this render shows (`pressed`, `disabled`, …). */
@@ -811,8 +819,9 @@ data class CatalogEntry(
    * COMPONENT only: `@CatalogComponent.perBreakpoint` — split this function's multipreview fan-out
    * into a component per breakpoint rather than folding every render onto one. Which breakpoints
    * those are is NOT recorded here: they come from the renders themselves (each `@Preview`'s device
-   * / width, resolved against the catalog's `breakpoints` table), so the annotation can't contradict
-   * what the function actually rendered. `false` — the default — is the pre-existing behaviour.
+   * / width, resolved against the catalog's `breakpoints` table), so the annotation can't
+   * contradict what the function actually rendered. `false` — the default — is the pre-existing
+   * behaviour.
    */
   val perBreakpoint: Boolean = false,
 )
@@ -857,6 +866,26 @@ data class PreviewInfo(
   val functionName: String,
   val className: String,
   val sourceFile: String? = null,
+  /**
+   * A 1-based line in [sourceFile] known to fall **inside** this preview's function body — its
+   * first statement, from the classfile's `LineNumberTable`.
+   *
+   * Lets a consumer address the **declaration** rather than the file: the playground's "open this
+   * preview" handoff walks outwards from here to the surrounding declaration and seeds just that
+   * composable, instead of the editor opening all 242 lines of the section file it shares with four
+   * other components. Purely additive — absent from older manifests, and every consumer degrades to
+   * whole-file behaviour without it.
+   *
+   * **An anchor, not a span, and deliberately so.** A span is what you would reach for, and
+   * ClassGraph offers both bounds — but the upper one cannot be trusted on Kotlin. An inline
+   * function's body is emitted into its caller with JSR-45/SMAP line numbers *past the end of the
+   * caller's file*, so `maxLineNum` runs off the end for any method that inlines anything: measured
+   * over m3-catalog's 244 methods with line info, 9 overran their own file (every one of them a
+   * `remember { … }` caller), while the first line was in range for all 244. Publishing a span
+   * would mean publishing an end that is sometimes fiction, and a consumer slicing on it would cut
+   * into whatever declaration follows. One number that is always right beats two where one is not.
+   */
+  val bodyLine: Int? = null,
   val params: PreviewParams = PreviewParams(),
   /**
    * Non-null on a synthetic override-variant preview (from `@OverrideVariant`): the

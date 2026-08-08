@@ -288,18 +288,17 @@ class ServeHttpServer(
             // just to answer where a file lives.
             val bundleHost = sessions.peekHost(system)?.let { catalogBundleHost(it) }
             val source = bundleHost?.catalogSource
-            val sourceFile =
-              bundleHost
-                ?.previews
-                ?.firstOrNull { it.id == previewId }
-                ?.sourceFile
-                ?.takeIf { it.isNotBlank() }
+            val preview = bundleHost?.previews?.firstOrNull { it.id == previewId }
+            val sourceFile = preview?.sourceFile?.takeIf { it.isNotBlank() }
             if (source != null && sourceFile != null)
               PlaygroundSeedResolver.Location(
                 repo = source.repo,
                 ref = source.ref,
                 module = source.module,
                 sourceFile = sourceFile,
+                // Absent on a catalog published before discovery recorded it, which is exactly the
+                // case the resolver falls back to whole-file seeding for.
+                bodyLine = preview.bodyLine,
               )
             else null
           },
@@ -3212,6 +3211,11 @@ class ServeHttpServer(
           // carries a captured `.rc` document to replay (the browser fetches it from
           // `/render/<id>.rc`).
           hasRemoteComposeDoc = renderHost.hasRemoteComposeDoc(preview.id),
+          // Per-preview: a server render replays the captured document instead of recomposing, so
+          // the viewer greys the controls [droppedOverridesFor] would answer with a 409. Same host
+          // question that predicate asks, deliberately read here rather than derived from
+          // `hasRemoteComposeDoc` on the client — the two must not drift apart.
+          irReplay = droppedOverridesAreTerminal(renderHost, preview.id),
           // Per-preview: the Remote Compose backend selector's enabled lanes. The host advertises
           // its server/client lanes; the opt-in CMP/Wasm distribution contributes the browser
           // lane when this preview has an RC document. Empty for a non-RC preview ⇒ no selector.

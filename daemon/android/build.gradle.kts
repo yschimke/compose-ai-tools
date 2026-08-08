@@ -402,20 +402,6 @@ val daemonHarnessClasspathFile by configurations.creating {
   }
 }
 
-// Use the new (non-deprecated) AndroidSingleVariantLibrary constructor — takes typed JavadocJar /
-// SourcesJar instead of booleans. `JavadocJar.Empty()` ships an empty javadoc jar (Maven Central
-// requires the file to exist) without invoking javadoc/Dokka. javadoc 17 fails on AndroidX
-// dependencies' Kotlin metadata version mismatch (`expected version is 1.4.2`); Dokka would work
-// but is heavyweight for an artifact whose value is in KDocs the sources jar carries anyway.
-// `:renderer-android` still uses the deprecated (Boolean, Boolean) overload — fine to migrate
-// independently when its release bumps next.
-val androidSingleVariantLibrary =
-  com.vanniktech.maven.publish.AndroidSingleVariantLibrary(
-    javadocJar = com.vanniktech.maven.publish.JavadocJar.Empty(),
-    sourcesJar = com.vanniktech.maven.publish.SourcesJar.Sources(),
-    variant = "release",
-  )
-
 // AGP `testFixtures { enable = true }` ships `daemon-android-<version>-test-fixtures.aar` as
 // part of the published `release` component. The fixture composables (`RedSquare`/`BlueSquare`/
 // etc.) are internal harness aids, not for consumers. Skip the testFixtures publication
@@ -448,8 +434,6 @@ afterEvaluate {
 }
 
 artifacts { add(daemonHarnessClasspathFile.name, writeDaemonClasspath) }
-
-mavenPublishing { configure(androidSingleVariantLibrary) }
 
 composeAiMavenPublishing {
   coordinates(

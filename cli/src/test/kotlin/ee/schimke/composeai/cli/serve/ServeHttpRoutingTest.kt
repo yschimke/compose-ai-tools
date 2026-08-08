@@ -1308,8 +1308,12 @@ class ServeHttpRoutingTest {
     assertEquals(200, pathCode)
     assertTrue(pathBody.contains("id=\"cp-compare\""), "canonical comparison page: $pathBody")
     assertTrue(
-      pathBody.contains(">Compose Material 3</a> / Compare formats"),
-      "the comparison breadcrumb uses the catalog's human title: $pathBody",
+      pathBody.contains(
+        ">Compose Material 3</a><span class=\"cp-crumb-sep\" aria-hidden=\"true\">/</span>" +
+          "<span class=\"cp-crumb-current\">Compare formats</span>"
+      ),
+      "the comparison breadcrumb — now in the site header — uses the catalog's human title: " +
+        pathBody,
     )
     assertTrue(
       pathBody.contains("data-compare-format=\"rc\"") &&

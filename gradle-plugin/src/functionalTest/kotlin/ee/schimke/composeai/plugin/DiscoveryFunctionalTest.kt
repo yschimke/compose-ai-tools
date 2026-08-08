@@ -147,6 +147,25 @@ class DiscoveryFunctionalTest {
     // bytecode `SourceFile` attribute and rewritten to a package-qualified
     // path in DiscoverPreviewsTask — see PreviewData.sourceFile.
     assertThat(manifest.previews.any { !it.sourceFile.isNullOrBlank() }).isTrue()
+
+    // …and where in that file it is, from the classfile's LineNumberTable. This addresses the
+    // *declaration* rather than the file, which is what lets the playground handoff seed one
+    // composable instead of every component in a section file.
+    //
+    // The anchor points INSIDE the body: the fixture declares `RedBoxPreview` with `@Preview` and
+    // `@Composable` above it and a `Box { Text(…) }` inside, so what is recorded is the `Box` line
+    // — strictly below the `fun` line. Both previews live in one file, `RedBoxPreview` first, so
+    // the two anchors are ordered. Asserting the relationship rather than exact numbers keeps this
+    // from breaking every time the fixture gains a line.
+    val red = manifest.previews.single { it.functionName == "RedBoxPreview" }
+    val blue = manifest.previews.single { it.functionName == "BlueBoxPreview" }
+    assertThat(red.bodyLine).isNotNull()
+    assertThat(blue.bodyLine).isNotNull()
+    assertThat(red.bodyLine!!).isGreaterThan(0)
+    assertThat(blue.bodyLine!!).isGreaterThan(red.bodyLine!!)
+    // Deliberately NOT asserted against a recorded *end* line: there isn't one. Kotlin emits an
+    // inlined body into its caller with SMAP line numbers past the end of the caller's file, so a
+    // method's last line is not a number worth publishing — see `PreviewInfo.bodyLine`.
   }
 
   @Test
@@ -236,6 +255,189 @@ class DiscoveryFunctionalTest {
       .containsExactly(
         OverrideSeed(key = "label", index = null, kind = OverrideSeedKind.STRING, raw = "Hi"),
         OverrideSeed(key = "sub", index = 1, kind = OverrideSeedKind.STRING, raw = "Two"),
+      )
+  }
+
+  /**
+   * The hoisted form: a matrix declared once on an annotation class and applied with one line.
+   *
+   * This is what stops a catalog retyping a cross product per component — five sizes by two shapes
+   * is nine cells, and m3-catalog had 237 near-identical annotations across thirteen blocks before
+   * `@OverrideVariant` could sit on an annotation class.
+   *
+   * Three properties are asserted together because they are the ones a naive implementation gets
+   * wrong: hoisted variants are found at all; stacking two annotations is a **union** (2 + 1 = 3
+   * variants, not 2 x 1 = 2 or some product); and a name carried by both is de-duplicated rather
+   * than emitted twice onto the same `_VARIANT_` output path.
+   */
+  @Test
+  fun `composePreviewDiscover expands @OverrideVariant hoisted onto an annotation class`() {
+    val projectDir = createCmpTestProject()
+
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "OverrideVariant.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Repeatable
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class OverrideVariant(
+            val name: String,
+            val booleans: Array<String> = [],
+            val strings: Array<String> = [],
+            val ints: Array<String> = [],
+            val floats: Array<String> = [],
+            val colors: Array<String> = [],
+        )
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/Sized.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+        import ee.schimke.composeai.preview.OverrideVariant
+
+        @OverrideVariant(name = "xs", strings = ["size=xs"])
+        @OverrideVariant(name = "l", strings = ["size=l"])
+        annotation class SizeMatrix
+
+        @OverrideVariant(name = "square", strings = ["shape=square"])
+        annotation class ShapeMatrix
+
+        @Preview
+        @SizeMatrix
+        @ShapeMatrix
+        @Composable
+        fun SizedPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Sized") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val sized = manifest.previews.filter { it.functionName == "SizedPreview" }
+    // Base + three variants. Union, not product: two annotations carrying 2 and 1 cells give 3.
+    assertThat(sized).hasSize(4)
+    assertThat(sized.mapNotNull { it.overrides?.name }).containsExactly("xs", "l", "square")
+
+    val xs = sized.single { it.overrides?.name == "xs" }
+    assertThat(xs.id).endsWith("_VARIANT_xs")
+    assertThat(xs.captures.single().renderOutput).contains("_VARIANT_xs")
+    assertThat(xs.overrides!!.seeds)
+      .containsExactly(
+        OverrideSeed(key = "size", index = null, kind = OverrideSeedKind.STRING, raw = "xs")
+      )
+
+    // The annotation is reachable both through ClassGraph's meta-annotation flattening and through
+    // the explicit closure walk. Reaching it twice must still produce one variant, not two.
+    assertThat(sized.count { it.overrides?.name == "square" }).isEqualTo(1)
+  }
+
+  /**
+   * Two hoisted matrices that disagree about one cell. The name is the rendered output's identity,
+   * so emitting both would have the second silently overwrite the first's PNG.
+   */
+  @Test
+  fun `composePreviewDiscover keeps the first of a colliding @OverrideVariant name and warns`() {
+    val projectDir = createCmpTestProject()
+
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "OverrideVariant.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Repeatable
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class OverrideVariant(
+            val name: String,
+            val booleans: Array<String> = [],
+            val strings: Array<String> = [],
+            val ints: Array<String> = [],
+            val floats: Array<String> = [],
+            val colors: Array<String> = [],
+        )
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/Clash.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+        import ee.schimke.composeai.preview.OverrideVariant
+
+        @OverrideVariant(name = "wide", strings = ["size=xl"])
+        annotation class FirstMatrix
+
+        @OverrideVariant(name = "wide", strings = ["width=wide"])
+        annotation class SecondMatrix
+
+        @Preview
+        @FirstMatrix
+        @SecondMatrix
+        @Composable
+        fun ClashPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Clash") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.output).contains("more than one @OverrideVariant named 'wide'")
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val clash = manifest.previews.filter { it.functionName == "ClashPreview" }
+    // Base + exactly one `wide`, seeded from the annotation that won.
+    assertThat(clash).hasSize(2)
+    assertThat(clash.single { it.overrides != null }.overrides!!.seeds)
+      .containsExactly(
+        OverrideSeed(key = "size", index = null, kind = OverrideSeedKind.STRING, raw = "xl")
       )
   }
 
@@ -329,6 +531,7 @@ class DiscoveryFunctionalTest {
           val reference: String = "",
           val parallel: String = "",
           val perBreakpoint: Boolean = false,
+          val referenceSet: String = "",
         )
 
         @Retention(AnnotationRetention.BINARY)
@@ -364,6 +567,8 @@ class DiscoveryFunctionalTest {
         @CatalogComponent(
           id = "Button/Filled",
           caption = "Highest emphasis; the primary action.",
+          reference = "figma:AbCdEf/10:5",
+          referenceSet = "figma:AbCdEf/10:1",
           parallel = "FilledButton",
         )
         @Preview @Composable fun FilledButton() {}
@@ -423,6 +628,10 @@ class DiscoveryFunctionalTest {
     assertThat(filled.section).isEqualTo("Components")
     assertThat(filled.caption).isEqualTo("Highest emphasis; the primary action.")
     assertThat(filled.parallel).isEqualTo("FilledButton")
+    // The two kit handles travel side by side: `reference` is the one node a parity run diffs
+    // against, `referenceSet` the family a screen's sibling variant matches through.
+    assertThat(filled.reference).isEqualTo("figma:AbCdEf/10:5")
+    assertThat(filled.referenceSet).isEqualTo("figma:AbCdEf/10:1")
 
     // Variant: parent id on componentId, state + parsed `key=value` prop, own caption.
     val pressed = byFn.getValue("FilledButtonPressed").catalog
@@ -439,6 +648,8 @@ class DiscoveryFunctionalTest {
     assertThat(plain.group).isEqualTo("Buttons")
     assertThat(plain.caption).isNull()
     assertThat(plain.parallel).isNull()
+    assertThat(plain.reference).isNull()
+    assertThat(plain.referenceSet).isNull()
 
     // The fan-out intent rides the component entry as a flag; the export resolves the actual
     // breakpoints from the renders (`Layout/List/smallRound`, `…/largeRound`) rather than from a

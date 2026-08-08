@@ -595,7 +595,9 @@ class ServeCatalogStoreTest {
     // built-in indigo.
     val themed = load("tokens.dtcg.json").webThemeCss
     assertTrue(
-      themed != null && themed.contains("--cp-accent: #bf0031;"),
+      // Light half of the pair: the projection emits one `light-dark(<light>, <dark>)` declaration
+      // per property (see ServeThemeCssTest), and this catalog is light-first.
+      themed != null && themed.contains("--cp-accent: light-dark(#bf0031, "),
       "the catalog's own primary reaches the page palette: $themed",
     )
     // A `tokensFile` that tries to leave the catalog is not fetched at all — the branch is trusted,

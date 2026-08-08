@@ -43,6 +43,38 @@ test("inventoryFromPreviews builds one component per COMPONENT entry, keyed on f
   ]);
 });
 
+test("inventoryFromPreviews carries both seed-kit handles, and omits an absent referenceSet", () => {
+  // `reference` is the one node parity diffs against; `referenceSet` is the family a screen's
+  // sibling variant matches through. Both must reach the exported inventory, and a component
+  // that names only the variant must look exactly as it did before the field existed.
+  const { groups } = inventoryFromPreviews([
+    component("ListItemSticker", {
+      componentId: "Lists/ListItem",
+      group: "Lists",
+      reference: "figma:AbCdEf/51964:64241",
+      referenceSet: "figma:AbCdEf/51964:63037",
+    }),
+    component("OutlinedButton", {
+      componentId: "Button/Outlined",
+      group: "Lists",
+      reference: "figma:AbCdEf/10:5",
+    }),
+  ]);
+  assert.deepEqual(groups[0].components, [
+    {
+      componentId: "Lists/ListItem",
+      preview: "ListItemSticker",
+      reference: "figma:AbCdEf/51964:64241",
+      referenceSet: "figma:AbCdEf/51964:63037",
+    },
+    {
+      componentId: "Button/Outlined",
+      preview: "OutlinedButton",
+      reference: "figma:AbCdEf/10:5",
+    },
+  ]);
+});
+
 test("inventoryFromPreviews defaults the group to Components and carries section", () => {
   const { groups } = inventoryFromPreviews([
     component("Foo", { componentId: "Foo" }),

@@ -34,6 +34,10 @@ dependencies {
   // supplies its own at runtime, same shape as the pre-migration `compileOnly(libs.compose.ui)`.
   compileOnly(libs.jetbrains.compose.ui)
   testImplementation(libs.jetbrains.compose.ui)
+  // `ComposeInternalFieldContractTest` builds *real* modifier chains (`Modifier.background(...)`,
+  // `Arrangement.spacedBy(...)`) to check that the private field names `ModifierTokenResolver`
+  // reflects on still exist in the pinned Compose. That needs foundation, not just ui.
+  testImplementation(libs.jetbrains.compose.foundation)
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)
 }

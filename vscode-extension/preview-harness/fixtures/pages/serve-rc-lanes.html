@@ -1,5 +1,5 @@
     <!doctype html>
-    <html lang="en">
+    <html lang="en" data-cp-theme-key="cp-theme:remote-m3">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,13 +9,17 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||p.get("uiMode")||localStorage.getItem("cp-theme:remote-m3"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
-  <a class="cp-site-brand" href="/" aria-label="compose-preview home">
-    <span class="cp-site-mark" aria-hidden="true">◇</span>
-    <span>compose-preview</span>
-  </a>
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span>compose-preview</span>
+    </a>
+    <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/?session=remote-m3">remote-m3</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Compare formats</span></nav>
+  </div>
   <div class="cp-site-status">
     <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
   </div>
@@ -23,11 +27,30 @@
     <a href="/">Catalogs</a>
     <a href="/status">Status</a>
     <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+    <details class="cp-settings">
+      <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+        <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+      </summary>
+      <div class="cp-settings-panel">
+        <fieldset class="cp-settings-group">
+          <legend class="cp-settings-legend">Page theme</legend>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+            <span>Match the preview theme</span>
+          </label>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+            <span>Follow my system</span>
+          </label>
+          <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+            match. Turn it off to keep the page on your operating system's setting.</p>
+        </fieldset>
+      </div>
+    </details>
   </nav>
 </header>
         <main class="cp-main">
                 <div id="cp-compare" data-default-format="rc" data-default-theme="light" data-theme-key="cp-theme:remote-m3" data-has-svg="0" data-has-rc="1" data-has-reference="0" data-rc-lanes="1">
-          <p class="cp-breadcrumb"><a href="/?session=remote-m3">remote-m3</a> / Compare formats</p>
           <h1 class="cp-head">Format comparison <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/remote-m3">✓ trusted</span></h1>
           <p class="cp-sub"><span class="cp-sub-formats">PNG, SVG and Remote Compose fidelity · scores use structural similarity on a fixed backdrop</span><span class="cp-sub-rc">Every Remote Compose player side by side · pixel diffs from the published parity run</span></p>
           <div class="cp-compare-controls">
@@ -219,5 +242,6 @@
           <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
           <a href="/version">/version</a>
         </footer>
+        <script src="/assets/serve/fixture/page-theme.js"></script>
       </body>
     </html>

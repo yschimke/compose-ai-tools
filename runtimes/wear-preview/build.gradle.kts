@@ -1,11 +1,3 @@
-@file:Suppress(
-  "DEPRECATION"
-) // AndroidSingleVariantLibrary(Boolean, Boolean) is deprecated; see :splash.
-
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import com.vanniktech.maven.publish.JavadocJar
-import com.vanniktech.maven.publish.SourcesJar
-
 // `:wear-preview-runtime` — composable-helper authoring path for **Wear TransformingLazyColumn item
 // scaling** in an isolated `@Preview`. Sister to `:splash-preview-runtime` /
 // `:slot-preview-runtime`:
@@ -94,16 +86,6 @@ dependencies {
   compileOnly(libs.glance.wear.core)
   compileOnly(libs.glance.wear.tooling.preview)
   compileOnly(libs.compose.remote.creation.compose)
-}
-
-mavenPublishing {
-  configure(
-    AndroidSingleVariantLibrary(
-      javadocJar = JavadocJar.Empty(),
-      sourcesJar = SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
 }
 
 composeAiMavenPublishing {

@@ -146,6 +146,13 @@ data class CatalogEntry(
   val section: String? = null,
   val caption: String? = null,
   val reference: String? = null,
+  /**
+   * COMPONENT: the component **family** [reference] is one variant of. Kept apart from [reference]
+   * because the two answer opposite questions — a parity diff needs the one concrete node this
+   * sticker renders, while matching an instance found on a whole screen needs the family, since a
+   * screen rarely uses the exact variant a catalog pictured.
+   */
+  val referenceSet: String? = null,
   val parallel: String? = null,
   val state: String? = null,
   val props: List<CatalogVariantProp> = emptyList(),
@@ -163,6 +170,20 @@ data class PreviewInfo(
   val functionName: String,
   val className: String,
   val sourceFile: String? = null,
+  /**
+   * A 1-based line in [sourceFile] known to fall **inside** this preview's function body — its
+   * first statement, from the classfile's `LineNumberTable`. Mirrors `PreviewInfo.bodyLine` in
+   * gradle-plugin/PreviewData.kt.
+   *
+   * Lets a consumer address the declaration rather than the whole file: walk outwards from here to
+   * the surrounding declaration. An **anchor, not a span** — Kotlin emits an inline function's body
+   * into its caller with SMAP line numbers past the end of the caller's file, so the last line of a
+   * method is not a number worth publishing. See the discovery-side KDoc for the measurements.
+   *
+   * Absent from manifests produced before this field existed, so treat it as a hint and keep a
+   * whole-file fallback.
+   */
+  val bodyLine: Int? = null,
   val params: PreviewParams = PreviewParams(),
   val captures: List<Capture> = listOf(Capture()),
   val dataProducts: List<PreviewDataProduct> = emptyList(),

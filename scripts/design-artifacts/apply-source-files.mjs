@@ -23,12 +23,18 @@
  * with the catalog's source `module` when building the GitHub blob URL, so this stays the
  * bare path the discovery manifest recorded.
  *
- * @param {{components?: Array<{componentId: string, sourceFile?: string}>}} manifest
+ * `bodyLine` — a line inside the preview function's body — rides along on the same join,
+ * for the same reason and to the same place. It is what lets the playground handoff open
+ * the one declaration a visitor clicked instead of the whole section file it shares with
+ * its group. Stamped only alongside a `sourceFile` (a line number with no file is
+ * meaningless), and the server treats its absence as "seed the whole file".
+ *
+ * @param {{components?: Array<{componentId: string, sourceFile?: string, bodyLine?: number}>}} manifest
  *   The parsed `catalog.json`, mutated in place.
  * @param {{groups?: Array<{components?: Array<{componentId: string, preview?: string}>}>}} spec
  *   The catalog spec the manifest was built from.
- * @param {Map<string, {sourceFile?: string}>} sourceByFn
- *   Function-name → `{ sourceFile }` lookup (the generator's `sourceByFunction(bundle)`).
+ * @param {Map<string, {sourceFile?: string, bodyLine?: number}>} sourceByFn
+ *   Function-name → `{ sourceFile, bodyLine }` lookup (the generator's `sourceByFunction(bundle)`).
  * @returns {number} how many components had a `sourceFile` newly stamped.
  */
 export function applySourceFiles(manifest, spec, sourceByFn) {
@@ -47,9 +53,14 @@ export function applySourceFiles(manifest, spec, sourceByFn) {
   for (const component of manifest?.components ?? []) {
     if (component.sourceFile !== undefined) continue; // never clobber an existing path
     const fn = previewByComponentId.get(component.componentId);
-    const sourceFile = fn ? sourceByFn.get(fn)?.sourceFile : undefined;
-    if (sourceFile) {
-      component.sourceFile = sourceFile;
+    const source = fn ? sourceByFn.get(fn) : undefined;
+    if (source?.sourceFile) {
+      component.sourceFile = source.sourceFile;
+      // Only with a path, and only when discovery actually recorded one — an older bundle
+      // carries no `bodyLine`, and a component with a line but no file cannot be opened.
+      if (typeof source.bodyLine === "number" && source.bodyLine > 0) {
+        component.bodyLine = source.bodyLine;
+      }
       stamped += 1;
     }
   }

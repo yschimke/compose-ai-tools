@@ -2,10 +2,10 @@ package ee.schimke.composeai.mcp
 
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
-import ee.schimke.composeai.mcp.protocol.ListToolsResult
 import ee.schimke.composeai.mcp.protocol.ReadResourceResult
 import ee.schimke.composeai.mcp.protocol.ResourceContents
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import io.modelcontextprotocol.kotlin.sdk.types.ListToolsResult
 import java.awt.image.BufferedImage
 import java.io.IOException
 import java.io.InputStream
@@ -3388,7 +3388,7 @@ class DaemonMcpServerTest {
       val listBefore =
         json
           .decodeFromJsonElement(
-            ee.schimke.composeai.mcp.protocol.ListResourcesResult.serializer(),
+            io.modelcontextprotocol.kotlin.sdk.types.ListResourcesResult.serializer(),
             freshClient.request("resources/list"),
           )
           .resources
@@ -3415,7 +3415,7 @@ class DaemonMcpServerTest {
       val listAfter =
         json
           .decodeFromJsonElement(
-            ee.schimke.composeai.mcp.protocol.ListResourcesResult.serializer(),
+            io.modelcontextprotocol.kotlin.sdk.types.ListResourcesResult.serializer(),
             freshClient.request("resources/list"),
           )
           .resources

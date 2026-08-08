@@ -17,6 +17,11 @@
  * are where it starts. Those default to a raster the artwork fills edge to edge; they carry real
  * values when the reference was letterboxed to keep its proportions, since the annotations then
  * have to move with the artwork rather than with the canvas.
+ *
+ * Only `bounds` move. `tokens` (the padding / gap / type sizes the annotations quote) stay in the
+ * design's own pixels, and the tree's `density` describes exactly those — a spec is not relocated
+ * by where its box was drawn, and rescaling it here would leave `density` describing a unit that no
+ * longer exists.
  */
 export function scaleTree(tree, targetWidth, offsetX = 0, offsetY = 0) {
   const frame = tree?.root?.bounds;

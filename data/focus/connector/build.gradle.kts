@@ -48,16 +48,6 @@ dependencies {
   testImplementation(libs.kotlinx.serialization.json)
 }
 
-mavenPublishing {
-  configure(
-    com.vanniktech.maven.publish.AndroidSingleVariantLibrary(
-      javadocJar = com.vanniktech.maven.publish.JavadocJar.Empty(),
-      sourcesJar = com.vanniktech.maven.publish.SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
-}
-
 composeAiMavenPublishing {
   coordinates(
     artifactId = "data-focus-connector",

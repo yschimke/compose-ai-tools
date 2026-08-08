@@ -9,6 +9,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
@@ -70,7 +71,12 @@ class DeviceBackgroundDataProductRegistry(previewIndex: PreviewIndex) : DataProd
     )
   }
 
-  override fun onRender(previewId: String, result: RenderResult) {
+  override fun onRender(
+    previewId: String,
+    result: RenderResult,
+    overrides: PreviewOverrides?,
+    previewContext: PreviewContext?,
+  ) {
     result.previewContext?.let { context ->
       val current = backgrounds[previewId]
       if (current?.previewExplicit == true) return

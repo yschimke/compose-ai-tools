@@ -54,9 +54,19 @@ tasks.register<Sync>("wasmPlayerDist") {
   // +237 KB, ~1%. Nearly all of it is `skiko.wasm`: that bump crosses skiko 0.9.37.4 -> 0.144.6, a
   // large Skia jump (it is the release that added `org.jetbrains.skia.PathBuilder`), so a bigger
   // binary is expected rather than a leak. The value keeps roughly the same slack the old one did.
+  //
+  // Raised again from 23_500_000 for the Google Sans Flex face vendored into
+  // `:samples:cmp-wasm-catalog`'s fonts manifest, which this task copies wholesale (see the `from`
+  // above — the budget counts the fonts dir, not just the binary). The two weights are 256_316
+  // bytes and took the measured distribution to 23_513_207, 13_207 over. It is a deliberate
+  // payload, not drift: this lane is manifest-only and never fetches, so a named family it doesn't
+  // carry fails `RcComposeSupport.fontFamilyIssue`'s availability check outright — without the
+  // face, `:samples:design-catalog-remote-m3`'s Google Sans Flex typeface theme is unrenderable
+  // here while the other four lanes resolve it. Slack is kept at roughly the ~257 KB the previous
+  // value had, so an unintended jump still fails.
   inputs.property(
     "maximumDistributionBytes",
-    providers.gradleProperty("rcPlayerWasmMaxBytes").orElse("23500000"),
+    providers.gradleProperty("rcPlayerWasmMaxBytes").orElse("23780000"),
   )
   doLast {
     val maximumBytes = inputs.properties.getValue("maximumDistributionBytes").toString().toLong()

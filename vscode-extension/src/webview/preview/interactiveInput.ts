@@ -193,12 +193,19 @@ export function attachInteractiveInputHandlers(
                 return;
             }
             const keyCode = domCodeToAndroidKeycode(evt.code);
-            if (keyCode == null) return;
+            // Issue #3491 — the character travels beside the physical key. The keycode names a
+            // key; it cannot type. Caret movement and Backspace map off the keycode alone, which
+            // is exactly why they used to work on the live lanes while nothing could be typed.
+            // A key with no keycode entry (`€`, most of any non-US layout) is still worth
+            // sending when it produced a character, so the two are checked independently.
+            const text = typedText(evt);
+            if (keyCode == null && text == null) return;
             config.vscode.postMessage({
                 command: "recordInteractiveInput",
                 previewId: id,
                 kind,
-                keyCode: String(keyCode),
+                ...(keyCode == null ? {} : { keyCode: String(keyCode) }),
+                ...(text == null ? {} : { text }),
             });
             evt.preventDefault();
             evt.stopPropagation();
@@ -224,6 +231,11 @@ export function attachInteractiveInputHandlers(
          */
         surface: LiveSurface | null;
         /**
+         * Device class captured at pointerdown and held for the gesture, so every event of one
+         * drag reports the same pointer to Compose (issue #3491).
+         */
+        pointerType: string | null;
+        /**
          * Latest pointerMove position not yet posted to the daemon —
          * coalesced and flushed once per animation frame. See
          * `flushPendingMove`.
@@ -239,6 +251,7 @@ export function attachInteractiveInputHandlers(
         dragging: false,
         sentDown: false,
         surface: null,
+        pointerType: null,
         pendingMove: null,
         rafScheduled: false,
     };
@@ -268,6 +281,8 @@ export function attachInteractiveInputHandlers(
             state.surface,
             "pointerMove",
             move,
+            undefined,
+            state.pointerType ?? undefined,
         );
     };
 
@@ -289,6 +304,7 @@ export function attachInteractiveInputHandlers(
         state.dragging = false;
         state.sentDown = false;
         state.surface = surface;
+        state.pointerType = evt.pointerType || "mouse";
         // Capture on the card so subsequent move/up route here even when
         // the cursor leaves the surface (or the surface gets swapped out
         // mid-drag by the streaming painter).
@@ -321,6 +337,8 @@ export function attachInteractiveInputHandlers(
                     state.surface,
                     "pointerDown",
                     state.start,
+                    undefined,
+                    state.pointerType ?? undefined,
                 );
                 state.sentDown = true;
             }
@@ -358,6 +376,8 @@ export function attachInteractiveInputHandlers(
                     state.surface,
                     "pointerDown",
                     state.start,
+                    undefined,
+                    state.pointerType ?? undefined,
                 );
             }
             // Flush any coalesced move so the daemon sees the cursor's
@@ -370,6 +390,8 @@ export function attachInteractiveInputHandlers(
                     state.surface,
                     "pointerMove",
                     state.pendingMove,
+                    undefined,
+                    state.pointerType ?? undefined,
                 );
             }
             postInteractiveInput(
@@ -378,6 +400,8 @@ export function attachInteractiveInputHandlers(
                 state.surface,
                 "pointerUp",
                 point,
+                undefined,
+                state.pointerType ?? undefined,
             );
         } else {
             postInteractiveInput(
@@ -386,6 +410,8 @@ export function attachInteractiveInputHandlers(
                 state.surface,
                 "click",
                 point,
+                undefined,
+                state.pointerType ?? undefined,
             );
         }
         card.releasePointerCapture?.(evt.pointerId);
@@ -395,6 +421,7 @@ export function attachInteractiveInputHandlers(
         state.dragging = false;
         state.sentDown = false;
         state.surface = null;
+        state.pointerType = null;
         state.pendingMove = null;
         evt.preventDefault();
         evt.stopPropagation();
@@ -409,6 +436,7 @@ export function attachInteractiveInputHandlers(
         state.dragging = false;
         state.sentDown = false;
         state.surface = null;
+        state.pointerType = null;
         state.pendingMove = null;
     });
 
@@ -583,6 +611,37 @@ const DOM_CODE_TO_ANDROID_KEYCODE: ReadonlyMap<string, number> = new Map([
     ["ScrollLock", 116],
 ]);
 
+/**
+ * The character a keystroke produced, or `null` when it produced none.
+ *
+ * `KeyboardEvent.key` is the character for a printable key and a *name* for everything else
+ * (`"Shift"`, `"ArrowLeft"`, `"Backspace"`) — hence the single-character test, which also lets an
+ * astral character such as an emoji through as the one character it is.
+ *
+ * Modified keystrokes are shortcuts rather than typing — with one exception that matters a great
+ * deal to the non-US layouts this exists to support. AltGraph *is* how those layouts reach their
+ * extra characters (`€` is AltGr+E on many of them), and Windows and Linux conventionally surface
+ * AltGr as Ctrl+Alt — so rejecting on `ctrlKey`/`altKey` alone would drop exactly the characters
+ * that motivated carrying text in the first place, while a plain Alt+key shortcut would sail
+ * through and get typed. `getModifierState("AltGraph")` separates the two.
+ *
+ * Sent for both press and release: a backend that suppresses the physical key event over a
+ * focused text field (so the character is not typed twice) has to suppress both halves, or the
+ * composition sees a release whose press never happened.
+ */
+function typedText(evt: KeyboardEvent): string | null {
+    const altGraph = evt.getModifierState?.("AltGraph") === true;
+    if (!altGraph && (evt.ctrlKey || evt.metaKey || evt.altKey)) return null;
+    // Cmd is never part of an AltGr combination, so it stays a shortcut regardless.
+    if (evt.metaKey) return null;
+    const key = evt.key;
+    if (typeof key !== "string" || Array.from(key).length !== 1) return null;
+    // Control characters are not typing even when they arrive as one "character".
+    const code = key.codePointAt(0);
+    if (code === undefined || code < 0x20 || code === 0x7f) return null;
+    return key;
+}
+
 type InteractiveInputKind =
     "click" | "pointerDown" | "pointerMove" | "pointerUp" | "rotaryScroll";
 
@@ -593,6 +652,12 @@ function postInteractiveInput(
     kind: InteractiveInputKind,
     point: ImagePoint | null,
     scrollDeltaY?: number,
+    /**
+     * DOM `PointerEvent.pointerType` for the gesture this event belongs to. Compose treats a
+     * mouse drag and a finger drag as different gestures — only the mouse one drags out a text
+     * selection — so forwarding a real mouse as touch makes selection impossible (issue #3491).
+     */
+    pointerType?: string,
 ): void {
     if (!point || !surface.naturalWidth || !surface.naturalHeight) return;
     vscode.postMessage({
@@ -604,5 +669,6 @@ function postInteractiveInput(
         imageWidth: surface.naturalWidth,
         imageHeight: surface.naturalHeight,
         scrollDeltaY,
+        ...(pointerType === undefined ? {} : { pointerType }),
     });
 }

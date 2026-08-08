@@ -1,7 +1,3 @@
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import com.vanniktech.maven.publish.JavadocJar
-import com.vanniktech.maven.publish.SourcesJar
-
 plugins {
   id("composeai.base-conventions")
   id("composeai.maven-publishing")
@@ -18,16 +14,6 @@ dependencies {
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)
   testImplementation(libs.robolectric)
-}
-
-mavenPublishing {
-  configure(
-    AndroidSingleVariantLibrary(
-      javadocJar = JavadocJar.Empty(),
-      sourcesJar = SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
 }
 
 composeAiMavenPublishing {

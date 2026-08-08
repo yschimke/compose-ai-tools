@@ -29,9 +29,9 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    * The Android theme the preview host activity runs under, e.g. `"@style/Theme.Foo"` (also accepts
    * `"com.example:style/Theme.Foo"` or a bare `"Theme.Foo"`).
    *
-   * Leave it unset in an **application** module: the host activity already inherits
-   * `<application android:theme>` from the merged manifest, which is what makes an `AndroidView`
-   * preview resolve app-owned `?attr/…` references.
+   * Leave it unset in an **application** module: the host activity already inherits `<application
+   * android:theme>` from the merged manifest, which is what makes an `AndroidView` preview resolve
+   * app-owned `?attr/…` references.
    *
    * Set it in a **library** module whose previews host platform views. A library's merged manifest
    * has no `<application android:theme>` to inherit, so the host activity falls back to the
@@ -358,26 +358,42 @@ constructor(private val extensionName: String, objects: ObjectFactory) : Named {
   val checks: ListProperty<String> =
     objects.listProperty(String::class.java).convention(emptyList())
 
-  /**
-   * Fail the build if any ERROR-level ATF finding is reported. Default: `false` — findings are
-   * reported (logged, written to the JSON report, surfaced as CLI/VSCode diagnostics) but do not
-   * fail the build unless the consumer explicitly opts in. That way turning on `enabled` is a safe,
-   * purely additive change.
-   */
+  // `failOnErrors` / `failOnWarnings` / `annotateScreenshots` below are **no-ops**, kept only to
+  // honour the binary-stability contract in docs/CONFIG_ONLY_PLUGIN.md § "The binary-stability
+  // contract": this artifact can land on the buildscript classpath at two versions at once (the
+  // one the consumer pinned, and the one the CLI-injected runtime plugin drags in), Gradle
+  // conflict-resolves to a single copy, so deleting a documented DSL property breaks the *other*
+  // version's build script with an unresolved reference — for a consumer who did nothing wrong,
+  // and in a way that stops them rendering at all.
+  //
+  // They existed while a11y ran as a gate inside the render task. That model is gone: a11y is
+  // daemon-only, a data producer rather than a build gate (docs/DATA_PRODUCTS.md), and nothing has
+  // read these since. Deprecating rather than deleting also fixes the actual harm — the old KDoc
+  // promised behaviour that never ran, so `failOnErrors = true` bought a silently green build.
+  // A deprecation warning is visible; a silent no-op is not.
+  //
+  // Remove on the next deliberate binary break of `compose-preview-config`. If build-failing
+  // checks return, wire them to the daemon's producer surface and name them for what they gate.
+
+  @Deprecated(
+    "No-op since a11y became a daemon-side data product rather than a build gate; it never " +
+      "fails the build. Remove it from your composePreview { } block.",
+    level = DeprecationLevel.WARNING,
+  )
   val failOnErrors: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
 
-  /**
-   * Fail the build if any WARNING-level ATF finding is reported. Default: `false` (same rationale
-   * as [failOnErrors]).
-   */
+  @Deprecated(
+    "No-op since a11y became a daemon-side data product rather than a build gate; it never " +
+      "fails the build. Remove it from your composePreview { } block.",
+    level = DeprecationLevel.WARNING,
+  )
   val failOnWarnings: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
 
-  /**
-   * Generate an annotated screenshot per preview showing each finding as a numbered badge + legend
-   * panel. Costs ~10ms/preview when there are findings, zero when there aren't. Default: `true` —
-   * if you asked for checks, you probably want to see what they found. Set to `false` for CI jobs
-   * that only care about the JSON / fail-on-errors gate.
-   */
+  @Deprecated(
+    "No-op. Annotated screenshots are produced by the daemon's a11y data product, not by this " +
+      "flag. Remove it from your composePreview { } block.",
+    level = DeprecationLevel.WARNING,
+  )
   val annotateScreenshots: Property<Boolean> =
     objects.property(Boolean::class.java).convention(true)
 }

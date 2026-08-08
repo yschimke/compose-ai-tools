@@ -1045,6 +1045,7 @@ object PreviewDiscovery {
       section = fileGroup?.section,
       caption = annStringOrNull(component, "caption"),
       reference = annStringOrNull(component, "reference"),
+      referenceSet = annStringOrNull(component, "referenceSet"),
       parallel = annStringOrNull(component, "parallel"),
       perBreakpoint = annBoolean(component, "perBreakpoint"),
     )
@@ -1578,7 +1579,13 @@ object PreviewDiscovery {
     // `@OverrideVariant` (repeatable) — each spec yields one extra synthetic preview per @Preview
     // expansion below, rendered with its `previewOverride*` seeds applied. Applies to every
     // expansion, the same "one annotation, applies to every preview" policy as the capture specs.
-    val overrideVariantSpecs = extractOverrideVariantSpecs(annotations)
+    val overrideVariantSpecs =
+      extractOverrideVariantSpecs(
+        annotations,
+        scanResult,
+        owner = "${classInfo.name}.${method.name}",
+        warnings = warnings,
+      )
     // @RoboComposePreviewOptions, similarly, applies to the function as a
     // whole — each timing fans out into its own manifest entry, orthogonal
     // to any multi-preview expansion.
@@ -1770,39 +1777,108 @@ object PreviewDiscovery {
    * each. Each per-type array entry is `"key=value"` / `"key#index=value"`; the array it lives in
    * fixes its [OverrideSeedKind]. A variant that names no parseable seed is dropped (it would
    * render identically to the base).
+   *
+   * Variants may be **hoisted onto a multi-preview-style annotation class** so a matrix several
+   * components share is declared once (`@Target` includes `ANNOTATION_CLASS`; see `OverrideVariant`
+   * for the semantics). Two things make that work here. ClassGraph already flattens a method's
+   * meta-annotation closure into `method.annotationInfo`, unwrapping the repeatable container as it
+   * goes, so hoisted variants arrive in [annotations] alongside the direct ones; and
+   * [overrideVariantsFromMetaAnnotation] walks the closure explicitly as well, so resolution does
+   * not silently depend on that flattening staying true of a future ClassGraph. Both paths feed the
+   * same de-duplication below, so an annotation reachable twice contributes once.
+   *
+   * **Names are de-duplicated, first wins.** A variant's name is what distinguishes its rendered
+   * `_VARIANT_<name>` output, so two variants sharing one would write to the same file — the second
+   * overwriting the first, silently, with whichever seeds it happened to carry. That was
+   * unreachable while variants could only sit directly on a function (Kotlin rejects two identical
+   * repeated annotations at the same site only when their arguments match, but a catalog author
+   * writing them by hand sees them adjacent). Hoisting makes it easy: stack two matrices that
+   * overlap on one cell and nothing in the compile objects. Keeping the first and warning names the
+   * collision at discovery time, where the fix is obvious.
    */
   private fun extractOverrideVariantSpecs(
-    annotations: List<AnnotationInfo>
+    annotations: List<AnnotationInfo>,
+    scanResult: ScanResult,
+    owner: String,
+    warnings: MutableList<String>,
   ): List<OverrideVariantSpec> {
     val infos = mutableListOf<AnnotationInfo>()
+    val visited = mutableSetOf<String>()
     for (ann in annotations) {
-      when (ann.name) {
-        OVERRIDE_VARIANT_FQN -> infos.add(ann)
-        OVERRIDE_VARIANT_CONTAINER_FQN -> {
-          when (val value = ann.parameterValues.getValue("value")) {
-            is Array<*> -> value.filterIsInstance<AnnotationInfo>().forEach { infos.add(it) }
-            is AnnotationInfo -> infos.add(value)
-            else -> {
-              val len = runCatching { java.lang.reflect.Array.getLength(value) }.getOrNull() ?: 0
-              for (i in 0 until len) {
-                (java.lang.reflect.Array.get(value, i) as? AnnotationInfo)?.let { infos.add(it) }
-              }
-            }
-          }
-        }
-      }
+      collectOverrideVariants(ann, infos)
+      overrideVariantsFromMetaAnnotation(ann, scanResult, visited, infos)
     }
-    return infos.mapNotNull { info ->
+    val specs = LinkedHashMap<String, OverrideVariantSpec>()
+    val collisions = LinkedHashSet<String>()
+    for (info in infos) {
       val pv = info.parameterValues
-      val name =
-        (pv.getValue("name") as? String)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+      val name = (pv.getValue("name") as? String)?.takeIf { it.isNotBlank() } ?: continue
       val seeds =
         readOverrideSeeds(pv.getValue("booleans"), OverrideSeedKind.BOOLEAN) +
           readOverrideSeeds(pv.getValue("strings"), OverrideSeedKind.STRING) +
           readOverrideSeeds(pv.getValue("ints"), OverrideSeedKind.INT) +
           readOverrideSeeds(pv.getValue("floats"), OverrideSeedKind.FLOAT) +
           readOverrideSeeds(pv.getValue("colors"), OverrideSeedKind.COLOR)
-      if (seeds.isEmpty()) null else OverrideVariantSpec(name = name, seeds = seeds)
+      if (seeds.isEmpty()) continue
+      val spec = OverrideVariantSpec(name = name, seeds = seeds)
+      val existing = specs.putIfAbsent(name, spec)
+      // Only a *conflicting* duplicate is worth a warning. The same annotation reached twice — once
+      // flattened by ClassGraph and once by the explicit meta-annotation walk — is the common case
+      // and produces an identical spec, which is exactly the de-duplication working.
+      if (existing != null && existing != spec) collisions.add(name)
+    }
+    for (name in collisions) {
+      warnings.add(
+        "composePreview: '$owner' carries more than one @OverrideVariant named '$name' with " +
+          "different seeds — most likely two hoisted variant annotations that overlap on a cell. " +
+          "Variant names are the `_VARIANT_$name` render output's identity, so the second would " +
+          "overwrite the first; keeping the first and ignoring the rest. Rename the cell, or drop " +
+          "the overlapping annotation."
+      )
+    }
+    return specs.values.toList()
+  }
+
+  /** Adds [ann] to [into] when it is an `@OverrideVariant`, unwrapping the repeatable container. */
+  private fun collectOverrideVariants(ann: AnnotationInfo, into: MutableList<AnnotationInfo>) {
+    when (ann.name) {
+      OVERRIDE_VARIANT_FQN -> into.add(ann)
+      OVERRIDE_VARIANT_CONTAINER_FQN -> {
+        when (val value = ann.parameterValues.getValue("value")) {
+          is Array<*> -> value.filterIsInstance<AnnotationInfo>().forEach { into.add(it) }
+          is AnnotationInfo -> into.add(value)
+          else -> {
+            val len = runCatching { java.lang.reflect.Array.getLength(value) }.getOrNull() ?: 0
+            for (i in 0 until len) {
+              (java.lang.reflect.Array.get(value, i) as? AnnotationInfo)?.let { into.add(it) }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Recursively collects `@OverrideVariant`s hoisted onto a multi-preview-style annotation class
+   * (and onto its own meta-annotations), mirroring [wrapperFromMetaAnnotation]'s traversal and
+   * cycle guard. Skips `@Preview` and its container — a hoisted variant only ever rides on a custom
+   * annotation. Contributes nothing when the annotation class is off the discovery classpath, which
+   * is the same limit every other meta-annotation walk here has.
+   */
+  private fun overrideVariantsFromMetaAnnotation(
+    ann: AnnotationInfo,
+    scanResult: ScanResult,
+    visited: MutableSet<String>,
+    into: MutableList<AnnotationInfo>,
+  ) {
+    if (ann.name in visited) return
+    if (isDirectPreview(ann) || isPreviewContainer(ann)) return
+    if (ann.name == OVERRIDE_VARIANT_FQN || ann.name == OVERRIDE_VARIANT_CONTAINER_FQN) return
+    visited.add(ann.name)
+    val annClassInfo = scanResult.getClassInfo(ann.name) ?: return
+    for (metaAnn in annClassInfo.annotationInfo.toList()) {
+      collectOverrideVariants(metaAnn, into)
+      overrideVariantsFromMetaAnnotation(metaAnn, scanResult, visited, into)
     }
   }
 
@@ -3160,6 +3236,7 @@ object PreviewDiscovery {
       functionName = method.name,
       className = classInfo.name,
       sourceFile = previewSourceFile,
+      bodyLine = bodyLineOf(method),
       params = params,
       captures = outputPlan.captures,
       dataProducts = outputPlan.dataProducts,
@@ -3171,6 +3248,19 @@ object PreviewDiscovery {
       fixedTheme = method.annotationInfo.any { it.name == FIXED_THEME_FQN },
     )
   }
+
+  /**
+   * The first line of the method body, from the classfile's `LineNumberTable`, or null when it
+   * carries none (ClassGraph reports `0`, which is what the guard rejects).
+   *
+   * `enableMethodInfo()` is already on for the whole scan, so this costs nothing beyond reading an
+   * int — no extra pass, no source parsing.
+   *
+   * Only the *first* line, never the last: `maxLineNum` is unreliable on Kotlin because an inline
+   * function's body carries SMAP line numbers past the end of the calling file. See
+   * [PreviewInfo.bodyLine].
+   */
+  private fun bodyLineOf(method: MethodInfo): Int? = method.minLineNum.takeIf { it > 0 }
 
   // Module-relative source path, e.g. "src/main/kotlin/com/example/samplewear/Previews.kt".
   // Fall back to the old package-qualified path when source files were not wired into the task.
@@ -3240,17 +3330,17 @@ object PreviewDiscovery {
    * measured against the Wear screen + density ([DeviceDimensions.DEFAULT_WEAR], 227dp @ 2.0x).
    * Previews that pin their own `device` / `widthDp` / `heightDp` (e.g. the `id:wearos_*_round`
    * breakpoints, or fixed-size specimens) are left untouched, and the preview id — which never
-   * encodes a device for a device-less preview — is unchanged, so `catalog.spec.json` references and
-   * delivery filenames stay stable. A no-op off Wear.
+   * encodes a device for a device-less preview — is unchanged, so `catalog.spec.json` references
+   * and delivery filenames stay stable. A no-op off Wear.
    *
    * The retarget sets [PreviewParams.wrapSandboxWidthDp] / [PreviewParams.wrapSandboxHeightDp], NOT
    * `widthDp` / `heightDp`. Both axes stay wrapped, so every sticker still crops to its measured
-   * bounds; all that changes is the bound `fillMaxWidth`/`fillMaxHeight` resolve against. That's the
-   * distinction #2373 originally missed: it pinned the axes to fix a fill-width `Card` that was
-   * measuring on a 400dp phone sandbox (rendering 1050×210), and in doing so suppressed the crop for
-   * every OTHER device-less preview in the module — a `FilledButton` sticker that used to export
-   * 217×179 became a 454×454 watch canvas with the button adrift in the corner. Sandboxing instead
-   * of pinning fixes the Card (it fills to 227dp) and keeps the Button tight.
+   * bounds; all that changes is the bound `fillMaxWidth`/`fillMaxHeight` resolve against. That's
+   * the distinction #2373 originally missed: it pinned the axes to fix a fill-width `Card` that was
+   * measuring on a 400dp phone sandbox (rendering 1050×210), and in doing so suppressed the crop
+   * for every OTHER device-less preview in the module — a `FilledButton` sticker that used to
+   * export 217×179 became a 454×454 watch canvas with the button adrift in the corner. Sandboxing
+   * instead of pinning fixes the Card (it fills to 227dp) and keeps the Button tight.
    *
    * [pinWearCanvas] (from the `retargetWearPreviews` extension flag, [Input.retargetWearPreviews])
    * selects between two Wear behaviours for those device-less previews; it's a no-op off Wear:
@@ -3263,9 +3353,9 @@ object PreviewDiscovery {
    *
    * **Auto-detected Wear widgets always take the `false` branch, regardless of [pinWearCanvas].** A
    * glance-wear widget preview — one whose `@PreviewParameter` provider comes from
-   * `androidx.glance.wear.*` (the `Squircle`/`RectangularAllWidgetPreviewParams` providers that feed
-   * `WearWidgetParams`) — is exported as a fixed-size drawable asset, so no per-module config is
-   * needed for the common widget case; the flag remains the override for non-glance widget param
+   * `androidx.glance.wear.*` (the `Squircle`/`RectangularAllWidgetPreviewParams` providers that
+   * feed `WearWidgetParams`) — is exported as a fixed-size drawable asset, so no per-module config
+   * is needed for the common widget case; the flag remains the override for non-glance widget param
    * types (#2670). This is per-preview, so one module can mix fill-width catalog components
    * (watch-sandboxed) with widgets (not).
    */
@@ -3285,7 +3375,8 @@ object PreviewDiscovery {
         // the watch screen — `fillMaxWidth` inside a widget means "fill the widget".
         val sandboxToWatch = pinWearCanvas && !isWearWidgetPreview(p)
         if (sandboxToWatch) {
-          // Measure against the wear screen (square 227dp) at wear density, so fill-width components
+          // Measure against the wear screen (square 227dp) at wear density, so fill-width
+          // components
           // (Card) size to the watch and dp→px matches the render. Both axes stay WRAPPED, so the
           // renderer still crops each PNG to its measured bounds — a Card fills the 227dp and keeps
           // it, a Button wraps tight.
@@ -3298,10 +3389,12 @@ object PreviewDiscovery {
               )
           )
         } else {
-          // Opted out (`retargetWearPreviews = false`) or an auto-detected widget: leave the sandbox
+          // Opted out (`retargetWearPreviews = false`) or an auto-detected widget: leave the
+          // sandbox
           // at the renderer's generic default so the composable measures against a widget-sized
           // bound rather than the watch screen (#2670). Still apply the Wear density (2.0x) rather
-          // than the inherited phone default (2.625x), so the cropped dp bounds scale to the correct
+          // than the inherited phone default (2.625x), so the cropped dp bounds scale to the
+          // correct
           // watch-density px, not an oversized phone-scale export.
           info.copy(params = p.copy(density = wear.density))
         }

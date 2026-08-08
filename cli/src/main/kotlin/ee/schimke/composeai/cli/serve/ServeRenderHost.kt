@@ -160,6 +160,17 @@ data class ServePreview(
    * live/local session with no published source to point at.
    */
   val sourceFile: String? = null,
+  /**
+   * A 1-based line inside this preview's function body within [sourceFile], from the bundle's
+   * `previews.json` ([ee.schimke.composeai.cli.PreviewInfo.bodyLine]).
+   *
+   * Lets the playground handoff seed the editor with the one declaration that was clicked rather
+   * than the whole file it shares with its group — a section file is one *group*, so opening
+   * `Button/Filled` otherwise hands over four other components too. Null for a bundle without a
+   * manifest, or one produced before discovery recorded it; the seed is then whole-file, as it
+   * always was.
+   */
+  val bodyLine: Int? = null,
   /** Discovery-time `@Preview(uiMode=…)`; used to identify the baked Day/Night default. */
   val uiMode: Int = 0,
   /**
