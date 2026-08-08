@@ -2144,6 +2144,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "SlottedCardArabic_Dark.a11y.png",
+      "cleanBasename": "SlottedCardArabic_Dark.png",
+      "findings": [],
+      "functionName": "SlottedCardArabic",
+      "module": "design-catalog-m3",
+      "previewId": "com.example.designcatalogm3.CatalogI18nKt.SlottedCardArabic_Dark",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SlottedCardSlotsSticker_Dark.a11y.png",
       "cleanBasename": "SlottedCardSlotsSticker_Dark.png",
       "findings": [],
