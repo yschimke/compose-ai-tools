@@ -11,10 +11,13 @@
       </head>
       <body>
         <header class="cp-site-header">
-  <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
-    <span class="cp-site-mark" aria-hidden="true">◇</span>
-    <span>compose-preview</span>
-  </a>
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span>compose-preview</span>
+    </a>
+    <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/?token=demo-token-fixture&amp;session=compose-m3">Previews</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Component</span></nav>
+  </div>
   <div class="cp-site-status">
     <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
   </div>
@@ -25,10 +28,11 @@
   </nav>
 </header>
         <main class="cp-main">
-              <p class="cp-breadcrumb"><a href="/?token=demo-token-fixture&session=compose-m3">Previews</a> / Component</p>
-      <h1 class="cp-head cp-preview-title">Checkbox · Checked (light) <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
-      <p class="cp-preview-id" title="checkbox__ideal__default__light"><code>checkbox__ideal__default__light</code></p>
+              <div class="cp-preview-head">
+        <h1 class="cp-head cp-preview-title">Checkbox · Checked (light) <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
+        <code class="cp-preview-id" title="checkbox__ideal__default__light">checkbox__ideal__default__light</code>
 
+      </div>
 
             <nav class="cp-states" aria-label="Component state">
         <span class="cp-axis-label">State</span>

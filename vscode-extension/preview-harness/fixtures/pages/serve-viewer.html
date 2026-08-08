@@ -11,10 +11,13 @@
       </head>
       <body>
         <header class="cp-site-header">
-  <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
-    <span class="cp-site-mark" aria-hidden="true">◇</span>
-    <span>compose-preview</span>
-  </a>
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span>compose-preview</span>
+    </a>
+    <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/?token=demo-token-fixture">Previews</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Component</span></nav>
+  </div>
   <div class="cp-site-status">
     <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
   </div>
@@ -25,60 +28,10 @@
   </nav>
 </header>
         <main class="cp-main">
-              <p class="cp-breadcrumb"><a href="/?token=demo-token-fixture">Previews</a> / Component</p>
-      <h1 class="cp-head cp-preview-title">Profile screen <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ unverified</span></h1>
-      <p class="cp-preview-id" title="com.example.ProfileScreenPreview"><code>com.example.ProfileScreenPreview</code></p>
+              <div class="cp-preview-head">
+        <h1 class="cp-head cp-preview-title">Profile screen <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ unverified</span></h1>
+        <code class="cp-preview-id" title="com.example.ProfileScreenPreview">com.example.ProfileScreenPreview</code>
 
-      <div class="cp-preview-links">
-      <p class="cp-source"><a class="cp-source-link" href="https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/ProfileScreen.kt" title="src/main/kotlin/com/example/ProfileScreen.kt"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a></p>
-      <p class="cp-source"><a class="cp-source-link" href="/playground?from=compose-m3/com.example.ProfileScreenPreview" title="Open this preview's source in the playground">▶ playground</a></p>
-      <form class="cp-report" id="cp-report" method="get" target="_blank" rel="noopener" action="https://github.com/yschimke/compose-ai-tools/issues/new"><input type="hidden" name="title" value="Preview issue: Profile screen (compose-m3)"><input type="hidden" name="body" id="cp-report-body" value="### What&#39;s wrong
-
-&lt;!-- What did you expect to see, and what did you get? --&gt;
-
-
-### Screenshot
-
-![Profile screen](https://preview.coo.ee/compose-m3/render/com.example.ProfileScreenPreview.png)
-
-&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. For a copy that stays put, use Copy PNG in the viewer&#39;s &quot;Export &amp; direct links&quot; panel and paste it here — GitHub then hosts the pixels itself. --&gt;
-
-
-### Which preview
-
-| | |
-| --- | --- |
-| Design system | `compose-m3` |
-| Preview | `com.example.ProfileScreenPreview` |
-| Source | https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/ProfileScreen.kt |
-| Catalog | `yschimke/compose-ai-tools@design-artifacts/compose-m3` |
-| Rendered by | compose-ai-tools 0.16.54 |
-
-[Open this preview](https://preview.coo.ee/compose-m3/p/com.example.ProfileScreenPreview)
-" data-report-template="### What&#39;s wrong
-
-&lt;!-- What did you expect to see, and what did you get? --&gt;
-
-
-### Screenshot
-
-![Profile screen]({{render}})
-
-&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. For a copy that stays put, use Copy PNG in the viewer&#39;s &quot;Export &amp; direct links&quot; panel and paste it here — GitHub then hosts the pixels itself. --&gt;
-
-
-### Which preview
-
-| | |
-| --- | --- |
-| Design system | `compose-m3` |
-| Preview | `com.example.ProfileScreenPreview` |
-| Source | https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/ProfileScreen.kt |
-| Catalog | `yschimke/compose-ai-tools@design-artifacts/compose-m3` |
-| Rendered by | compose-ai-tools 0.16.54 |
-
-[Open this preview](https://preview.coo.ee/compose-m3/p/com.example.ProfileScreenPreview)
-"><button type="submit" class="cp-report-link" title="File an issue on yschimke/compose-ai-tools as @yschimke"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> report an issue</button></form>
       </div>
 
 
@@ -207,6 +160,57 @@
            while the bar has to run the full content width to stay on one line. -->
       <div class="cp-below">
         <div class="cp-note">Pre-rendered snapshot — overrides (device size, locale, font scale, orientation) need the live server, not a published catalog. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
+      </div>
+      <div class="cp-preview-links">
+      <p class="cp-source"><a class="cp-source-link" href="https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/ProfileScreen.kt" title="src/main/kotlin/com/example/ProfileScreen.kt"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a></p>
+      <p class="cp-source"><a class="cp-source-link" href="/playground?from=compose-m3/com.example.ProfileScreenPreview" title="Open this preview's source in the playground">▶ playground</a></p>
+      <form class="cp-report" id="cp-report" method="get" target="_blank" rel="noopener" action="https://github.com/yschimke/compose-ai-tools/issues/new"><input type="hidden" name="title" value="Preview issue: Profile screen (compose-m3)"><input type="hidden" name="body" id="cp-report-body" value="### What&#39;s wrong
+
+&lt;!-- What did you expect to see, and what did you get? --&gt;
+
+
+### Screenshot
+
+![Profile screen](https://preview.coo.ee/compose-m3/render/com.example.ProfileScreenPreview.png)
+
+&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. For a copy that stays put, use Copy PNG in the viewer&#39;s &quot;Export &amp; direct links&quot; panel and paste it here — GitHub then hosts the pixels itself. --&gt;
+
+
+### Which preview
+
+| | |
+| --- | --- |
+| Design system | `compose-m3` |
+| Preview | `com.example.ProfileScreenPreview` |
+| Source | https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/ProfileScreen.kt |
+| Catalog | `yschimke/compose-ai-tools@design-artifacts/compose-m3` |
+| Rendered by | compose-ai-tools 0.16.54 |
+
+[Open this preview](https://preview.coo.ee/compose-m3/p/com.example.ProfileScreenPreview)
+" data-report-template="### What&#39;s wrong
+
+&lt;!-- What did you expect to see, and what did you get? --&gt;
+
+
+### Screenshot
+
+![Profile screen]({{render}})
+
+&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. For a copy that stays put, use Copy PNG in the viewer&#39;s &quot;Export &amp; direct links&quot; panel and paste it here — GitHub then hosts the pixels itself. --&gt;
+
+
+### Which preview
+
+| | |
+| --- | --- |
+| Design system | `compose-m3` |
+| Preview | `com.example.ProfileScreenPreview` |
+| Source | https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/ProfileScreen.kt |
+| Catalog | `yschimke/compose-ai-tools@design-artifacts/compose-m3` |
+| Rendered by | compose-ai-tools 0.16.54 |
+
+[Open this preview](https://preview.coo.ee/compose-m3/p/com.example.ProfileScreenPreview)
+"><button type="submit" class="cp-report-link" title="File an issue on yschimke/compose-ai-tools as @yschimke"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> report an issue</button></form>
       </div>
             <div class="cp-export" aria-label="Export the current view">
         <span class="cp-export-head" id="cp-export-head">Export</span>

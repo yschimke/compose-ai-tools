@@ -12,10 +12,13 @@
       </head>
       <body>
         <header class="cp-site-header">
-  <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
-    <span class="cp-site-mark" aria-hidden="true">◇</span>
-    <span>compose-preview</span>
-  </a>
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span>compose-preview</span>
+    </a>
+    <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/remote-m3/?token=demo-token-fixture">Previews</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Component</span></nav>
+  </div>
   <div class="cp-site-status">
     <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
   </div>
@@ -26,10 +29,11 @@
   </nav>
 </header>
         <main class="cp-main">
-              <p class="cp-breadcrumb"><a href="/remote-m3/?token=demo-token-fixture">Previews</a> / Component</p>
-      <h1 class="cp-head cp-preview-title">App Card <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/remote-m3">✓ trusted</span></h1>
-      <p class="cp-preview-id" title="appcard__ideal__default__compact"><code>appcard__ideal__default__compact</code></p>
+              <div class="cp-preview-head">
+        <h1 class="cp-head cp-preview-title">App Card <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/remote-m3">✓ trusted</span></h1>
+        <code class="cp-preview-id" title="appcard__ideal__default__compact">appcard__ideal__default__compact</code>
 
+      </div>
 
 
       <div class="cp-preview-primary" aria-label="Preview renderer">

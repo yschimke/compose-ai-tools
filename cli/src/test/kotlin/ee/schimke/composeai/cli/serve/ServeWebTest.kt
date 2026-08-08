@@ -500,7 +500,7 @@ class ServeWebTest {
         siblings = previews,
         engagement = ServeWeb.PreviewEngagement(13),
       )
-    assertTrue(viewer.contains("""<p class="cp-viewer-engage">13 views</p>"""), viewer)
+    assertTrue(viewer.contains("""<span class="cp-viewer-engage">13 views</span>"""), viewer)
   }
 
   @Test

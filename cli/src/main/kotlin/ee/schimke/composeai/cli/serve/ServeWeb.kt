@@ -46,8 +46,12 @@ object ServeWeb {
   private fun viewCountHtml(views: Long): String =
     if (views <= 0) "" else "<div class=\"cp-engage\">${formatViews(views)}</div>"
 
+  /**
+   * The viewer's view tally. A `<span>`, not a block: it sits on the title row beside the id, where
+   * it reads as one more fact about this preview rather than a paragraph of its own.
+   */
   private fun viewerViewCountHtml(views: Long): String =
-    if (views <= 0) "" else "<p class=\"cp-viewer-engage\">${formatViews(views)}</p>"
+    if (views <= 0) "" else "<span class=\"cp-viewer-engage\">${formatViews(views)}</span>"
 
   private fun formatViews(views: Long): String =
     "${formatCount(views)} ${if (views == 1L) "view" else "views"}"
@@ -300,15 +304,24 @@ object ServeWeb {
    * The status slot is server-rendered but starts empty and `hidden`; `presenceScript` fills and
    * unhides it when the daemon poll answers, so a page that never polls simply shows nothing there
    * rather than reserving a visible gap.
+   *
+   * [breadcrumb] rides in the brand slot, immediately after the mark: a page's "where am I / how do
+   * I get back" (a [crumbHtml] trail, or a catalog landing's [backButton]) is *navigation*, and the
+   * bar is where a visitor already looks for navigation. It used to be the first line of the page
+   * BODY, which spent a whole row — plus its margin — restating the header's own job and pushed the
+   * thing the page exists to show (the render) further below the fold on every viewer.
    */
-  private fun siteHeader(navSuffix: String, action: String = ""): String {
+  private fun siteHeader(navSuffix: String, action: String = "", breadcrumb: String = ""): String {
     val actionHtml = action.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
+    val crumb = breadcrumb.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
     return """
       <header class="cp-site-header">
-        <a class="cp-site-brand" href="/$navSuffix" aria-label="compose-preview home">
-          <span class="cp-site-mark" aria-hidden="true">◇</span>
-          <span>compose-preview</span>
-        </a>
+        <div class="cp-site-lead">
+          <a class="cp-site-brand" href="/$navSuffix" aria-label="compose-preview home">
+            <span class="cp-site-mark" aria-hidden="true">◇</span>
+            <span>compose-preview</span>
+          </a>$crumb
+        </div>
         <div class="cp-site-status">
           <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
         </div>
@@ -331,6 +344,26 @@ object ServeWeb {
   private fun backButton(token: String, isPublic: Boolean): String {
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     return """<a class="cp-back" href="/$suffix">← All design systems</a>"""
+  }
+
+  /**
+   * A breadcrumb trail for the site header's brand slot: the [parent] page as a link, then — when
+   * the page is a leaf rather than a plain "up one level" — the [current] page's name as inert
+   * text.
+   *
+   * Emitted into [siteHeader]'s `breadcrumb` slot rather than as the body's first paragraph. Both
+   * [parent] and [current] are escaped here, so callers pass raw text.
+   */
+  private fun crumbHtml(href: String, parent: String, current: String? = null): String {
+    val tail =
+      current
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          "<span class=\"cp-crumb-sep\" aria-hidden=\"true\">/</span>" +
+            "<span class=\"cp-crumb-current\">${WebEscaping.htmlEscape(it)}</span>"
+        } ?: ""
+    return "<nav class=\"cp-breadcrumb\" aria-label=\"Breadcrumb\">" +
+      "<a href=\"${WebEscaping.htmlEscape(href)}\">${WebEscaping.htmlEscape(parent)}</a>$tail</nav>"
   }
 
   /**
@@ -4079,8 +4112,10 @@ object ServeWeb {
     val about = if (isPublic) "\n" + aboutSection() else ""
     // A catalog page links HOME (the front-door index) rather than sideways to its siblings: the
     // old design-systems nav row is replaced by a single back button, shown whenever this server
-    // publishes catalogs (i.e. a home index exists to go back to).
-    val back = if (hasHomeIndex) backButton(token, isPublic) + "\n" else ""
+    // publishes catalogs (i.e. a home index exists to go back to). It rides in the site header's
+    // brand slot with every other page's breadcrumb, rather than as the body's first line — a
+    // catalog page's own heading and grid then start at the top of the content column.
+    val back = if (hasHomeIndex) backButton(token, isPublic) else ""
     // The catalog-provenance strip (delivery branch, generation date, tool versions, regenerate
     // link), shown under the header for a served design-system catalog.
     val prov = provenance?.let { provenanceSection(it, refreshUrl) + "\n" } ?: ""
@@ -4171,11 +4206,12 @@ object ServeWeb {
       unfurlDescription = "${previews.size} Compose previews in $heading",
       unfurl = unfurl,
       navSuffix = navSuffix,
+      headerBreadcrumb = back,
       version = version,
       themeCss = themeCss,
       body =
         """
-        $back<h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
+        <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
         $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} ·
           <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink$parityLink$playgroundLink$liveNote</p>
         <div class="cp-catalog-tools">
@@ -4380,6 +4416,7 @@ object ServeWeb {
       unfurl = unfurl,
       version = version,
       navSuffix = navSuffix,
+      headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Compare formats"),
       themeCss = themeCss,
       // The PNG ↔ Remote Compose comparison plays the document in a canvas on this page and
       // *scores*
@@ -4389,7 +4426,6 @@ object ServeWeb {
       body =
         """
         <div id="cp-compare" $rootAttrs>
-          <p class="cp-breadcrumb"><a href="$basePath/$q">${WebEscaping.htmlEscape(heading)}</a> / Compare formats</p>
           <h1 class="cp-head">Format comparison${compactTrustBadge(trust)}</h1>
           <p class="cp-sub"><span class="cp-sub-formats">PNG, SVG and Remote Compose fidelity · scores use structural similarity on a fixed backdrop</span>${
           if (rcLanes != null)
@@ -4672,11 +4708,11 @@ $rows
       unfurl = unfurl,
       version = version,
       navSuffix = navSuffix,
+      headerBreadcrumb = crumbHtml("$basePath/compare$q", heading, "Design comparison"),
       themeCss = themeCss,
       body =
         """
         <div id="cp-reference-compare" data-reference="$raster" data-actual="$actual">
-          <p class="cp-breadcrumb"><a href="$basePath/compare$q">${WebEscaping.htmlEscape(heading)}</a> / Design comparison</p>
           <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(reference.label)}${compactTrustBadge(trust)}</h1>
           <p class="cp-sub">${WebEscaping.htmlEscape(previewDisplayName(preview))} · ${WebEscaping.htmlEscape(preview.id)}</p>
           $referencePicker
@@ -5042,10 +5078,10 @@ $rows
       unfurl = unfurl,
       version = version,
       navSuffix = navSuffix,
+      headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Design parity"),
       themeCss = themeCss,
       body =
         """
-        <p class="cp-breadcrumb"><a href="$basePath/$q">← ${esc(heading)}</a></p>
         <h1 class="cp-head cp-catalog-head">Design parity${compactTrustBadge(trust)}</h1>
         <p class="cp-sub">How this catalog's code and its design file have moved, and how far apart
           they are.</p>
@@ -5315,7 +5351,6 @@ $rows
     val displayName = previewDisplayName(preview)
     val label = WebEscaping.htmlEscape(displayName)
     val idText = WebEscaping.htmlEscape(preview.id)
-    val catalogName = WebEscaping.htmlEscape(catalogTitle?.takeIf { it.isNotBlank() } ?: "Previews")
     val modes = preview.modes.joinToString(",") { it.wire }
     // Wear OS is an always-dark surface. Do not expose the generic day/night override: besides
     // being meaningless for Wear, an old light choice within the Wear catalog must not turn into a
@@ -6128,13 +6163,23 @@ $rows
           scriptTag("spec-compare.js").takeIf { specRasterUrl != null },
         )
         .joinToString("") { "$it\n      " }
+    // The provenance row (source / playground / report an issue / figma spec) no longer sits under
+    // the title. It is *about* the preview rather than a control over it, and four lines of small
+    // links between the heading and the renderer controls is four lines of chrome between the
+    // visitor and the render. It now rides directly above the export bar, where the other
+    // "take this away with you" affordances (the PNG and SVG links) already live.
+    val previewLinks =
+      previewLinksHtml(sourceHref, preview.sourceFile, reportIssue, figmaSpec, playgroundHref)
+    // Title, trust badge, id and the view tally on ONE baseline-aligned row. They are all
+    // *identity* — three separate blocks said so three times, at the cost of ~90px above the fold.
     val body =
       """
-      <p class="cp-breadcrumb"><a href="$basePath/$q">$catalogName</a> / Component</p>
-      <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
-      <p class="cp-preview-id" title="$idText"><code>$idText</code></p>
-      ${degradeBanner(degradations)}${previewLinksHtml(sourceHref, preview.sourceFile, reportIssue, figmaSpec, playgroundHref)}
-      ${viewerViewCountHtml(engagement.views)}
+      <div class="cp-preview-head">
+        <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
+        <code class="cp-preview-id" title="$idText">$idText</code>
+        ${viewerViewCountHtml(engagement.views)}
+      </div>
+      ${degradeBanner(degradations)}
       $switchers
       <div class="cp-preview-primary" aria-label="Preview renderer">
       $primaryControls
@@ -6217,7 +6262,7 @@ $rows
            while the bar has to run the full content width to stay on one line. -->
       <div class="cp-below">
         $snapshotNote
-      </div>
+      </div>$previewLinks
       ${downloadLinksHtml(hasSvgExport)}
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
@@ -6242,6 +6287,12 @@ $rows
       unfurl = unfurl,
       version = version,
       navSuffix = navSuffix,
+      headerBreadcrumb =
+        crumbHtml(
+          "$basePath/$q",
+          catalogTitle?.takeIf { it.isNotBlank() } ?: "Previews",
+          "Component",
+        ),
       themeCss = themeCss,
       // Only the `js` chip paints in this document's canvas, and it only exists when the preview
       // carries a captured document.
@@ -6331,6 +6382,12 @@ $rows
     navSuffix: String = "",
     headerAction: String = "",
     /**
+     * The page's breadcrumb / back link, rendered in the header's brand slot by [siteHeader] rather
+     * than as the body's first line — see that function for why. Empty (the front door, which is
+     * already home) renders nothing.
+     */
+    headerBreadcrumb: String = "",
+    /**
      * Running server version (the CLI's `BUNDLE_VERSION`), shown in the minimal [siteFooter] every
      * page ends with. Null omits just the build span; the fixture goldens pass a fixed string so a
      * release never churns the committed HTML.
@@ -6413,7 +6470,7 @@ $rows
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
-        ${siteHeader(navSuffix, headerAction)}
+        ${siteHeader(navSuffix, headerAction, headerBreadcrumb)}
         <main class="cp-main">
         $body
         </main>$footerBlock
