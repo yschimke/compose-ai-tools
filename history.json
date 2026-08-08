@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "761185a3ed8763c1e6af63353d9479b960a271c0",
+    "generatedFrom": "1fe41467c98c3a5a7f15d3de96ac0a6673c9d127",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
@@ -3436,6 +3436,13 @@
             "path": "renders/samples:android/themecatalog__Brand_Dark.png",
             "versions": [
                 {
+                    "blob": "36425e26db944daf65ca50f9ffcd9a370da558d9",
+                    "commit": "1fe41467c98c3a5a7f15d3de96ac0a6673c9d127",
+                    "date": "2026-08-08T19:11:46Z",
+                    "sourceSha": "75c5272d",
+                    "commits": 1
+                },
+                {
                     "blob": "cad4c99bd567efe62d1d55756d244ebda4b3c62b",
                     "commit": "6cf5211d886777aab0c7fe6aa794c011c2a4cf0a",
                     "date": "2026-07-15T07:04:23Z",
@@ -3450,13 +3457,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
             "flapCount": 0
         },
         "samples:android/themecatalog__Brand_Light": {
             "path": "renders/samples:android/themecatalog__Brand_Light.png",
             "versions": [
+                {
+                    "blob": "ba13c411cd813753d303f5f4b69d5e17f5482789",
+                    "commit": "1fe41467c98c3a5a7f15d3de96ac0a6673c9d127",
+                    "date": "2026-08-08T19:11:46Z",
+                    "sourceSha": "75c5272d",
+                    "commits": 1
+                },
                 {
                     "blob": "d30c80cbe396796f07a0a8372a73b4fce24fc3ea",
                     "commit": "6cf5211d886777aab0c7fe6aa794c011c2a4cf0a",
@@ -3472,7 +3486,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 3,
             "unstable": false,
             "flapCount": 0
         },
@@ -6437,20 +6451,12 @@
             "path": "renders/samples:design-catalog-remote-m3/wearthemecatalog__Google_Sans_Flex.png",
             "versions": [
                 {
-                    "blob": "ce05008bd7d5dbca14aef2d82b744f3671d27ac8",
-                    "commit": "761185a3ed8763c1e6af63353d9479b960a271c0",
-                    "date": "2026-08-08T15:50:07Z",
-                    "sourceSha": "b7535e57",
+                    "blob": "d6ed59a7f922f27b0c0291753dee426137cce652",
+                    "commit": "1fe41467c98c3a5a7f15d3de96ac0a6673c9d127",
+                    "date": "2026-08-08T19:11:46Z",
+                    "sourceSha": "75c5272d",
                     "commits": 1
-                }
-            ],
-            "observations": 1,
-            "unstable": false,
-            "flapCount": 0
-        },
-        "samples:design-catalog-remote-m3/wearthemecatalog__Roboto_Flex": {
-            "path": "renders/samples:design-catalog-remote-m3/wearthemecatalog__Roboto_Flex.png",
-            "versions": [
+                },
                 {
                     "blob": "ce05008bd7d5dbca14aef2d82b744f3671d27ac8",
                     "commit": "761185a3ed8763c1e6af63353d9479b960a271c0",
@@ -6459,7 +6465,29 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/wearthemecatalog__Roboto_Flex": {
+            "path": "renders/samples:design-catalog-remote-m3/wearthemecatalog__Roboto_Flex.png",
+            "versions": [
+                {
+                    "blob": "d6ed59a7f922f27b0c0291753dee426137cce652",
+                    "commit": "1fe41467c98c3a5a7f15d3de96ac0a6673c9d127",
+                    "date": "2026-08-08T19:11:46Z",
+                    "sourceSha": "75c5272d",
+                    "commits": 1
+                },
+                {
+                    "blob": "ce05008bd7d5dbca14aef2d82b744f3671d27ac8",
+                    "commit": "761185a3ed8763c1e6af63353d9479b960a271c0",
+                    "date": "2026-08-08T15:50:07Z",
+                    "sourceSha": "b7535e57",
+                    "commits": 1
+                }
+            ],
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -7887,6 +7915,13 @@
             "path": "renders/samples:design-catalog-wear-m3/wearthemecatalog__Coral.png",
             "versions": [
                 {
+                    "blob": "74a7f6f6d47f5f1a5621e098e26e51c6784f4a16",
+                    "commit": "1fe41467c98c3a5a7f15d3de96ac0a6673c9d127",
+                    "date": "2026-08-08T19:11:46Z",
+                    "sourceSha": "75c5272d",
+                    "commits": 1
+                },
+                {
                     "blob": "f60c16b85c1a316b0891e4035dd10af84d4c5321",
                     "commit": "78ce5c130fd7c35be3474db1b9217e12322ad55c",
                     "date": "2026-07-26T09:57:17Z",
@@ -7894,13 +7929,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-wear-m3/wearthemecatalog__Google_Sans_Flex": {
             "path": "renders/samples:design-catalog-wear-m3/wearthemecatalog__Google_Sans_Flex.png",
             "versions": [
+                {
+                    "blob": "e2783d43de9b8e34228e9bb5e45c6a20940bf8e4",
+                    "commit": "1fe41467c98c3a5a7f15d3de96ac0a6673c9d127",
+                    "date": "2026-08-08T19:11:46Z",
+                    "sourceSha": "75c5272d",
+                    "commits": 1
+                },
                 {
                     "blob": "ce05008bd7d5dbca14aef2d82b744f3671d27ac8",
                     "commit": "2b8effdf5d1d1c0b7f7860c4c5baab271ec6657a",
@@ -7909,13 +7951,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-wear-m3/wearthemecatalog__KotlinConf": {
             "path": "renders/samples:design-catalog-wear-m3/wearthemecatalog__KotlinConf.png",
             "versions": [
+                {
+                    "blob": "3720c4033a44e3ad1764110c26fa48bf7634c7a9",
+                    "commit": "1fe41467c98c3a5a7f15d3de96ac0a6673c9d127",
+                    "date": "2026-08-08T19:11:46Z",
+                    "sourceSha": "75c5272d",
+                    "commits": 1
+                },
                 {
                     "blob": "3611d1006ba31f2f08a9702a7bc283a610997471",
                     "commit": "ca006d52f251b19d618e953d48620b122d90c6a8",
@@ -7924,13 +7973,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-wear-m3/wearthemecatalog__M3": {
             "path": "renders/samples:design-catalog-wear-m3/wearthemecatalog__M3.png",
             "versions": [
+                {
+                    "blob": "d6ed59a7f922f27b0c0291753dee426137cce652",
+                    "commit": "1fe41467c98c3a5a7f15d3de96ac0a6673c9d127",
+                    "date": "2026-08-08T19:11:46Z",
+                    "sourceSha": "75c5272d",
+                    "commits": 1
+                },
                 {
                     "blob": "ce05008bd7d5dbca14aef2d82b744f3671d27ac8",
                     "commit": "78ce5c130fd7c35be3474db1b9217e12322ad55c",
@@ -7939,13 +7995,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-wear-m3/wearthemecatalog__Teal": {
             "path": "renders/samples:design-catalog-wear-m3/wearthemecatalog__Teal.png",
             "versions": [
+                {
+                    "blob": "f76593d45437f966f33748ec9b7e88395b26a6b3",
+                    "commit": "1fe41467c98c3a5a7f15d3de96ac0a6673c9d127",
+                    "date": "2026-08-08T19:11:46Z",
+                    "sourceSha": "75c5272d",
+                    "commits": 1
+                },
                 {
                     "blob": "c9ec1b90833db7b014bf36c4e63f66d347ab02aa",
                     "commit": "78ce5c130fd7c35be3474db1b9217e12322ad55c",
@@ -7954,7 +8017,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
