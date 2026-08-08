@@ -174,17 +174,36 @@ internal object ServeThemeCss {
     // "Strong" means *further from the background*: mixing toward the text colour darkens the
     // accent in light mode and lightens it in dark, which is exactly the built-in pair's relation.
     val accentStrong = mix(accent, fg, 0.45)
-    val accentSoft = accentSoft(colors, accent, bg, dark, matches)
     val accentRing = mix(accent, bg, 0.35)
     val onAccent =
       (colors["onPrimary"]?.takeIf { matches }?.let { flatten(it, accent) } ?: readableOn(accent))
         .let { ensureContrast(it, accent, MIN_ON_ACCENT_CONTRAST, toward = readableOn(accent)) }
-    val onAccentSoft =
-      (colors["onPrimaryContainer"]?.takeIf { matches }?.let { flatten(it, accentSoft) }
-          ?: accentStrong)
-        .let {
-          ensureContrast(it, accentSoft, MIN_ON_ACCENT_CONTRAST, toward = readableOn(accentSoft))
-        }
+
+    // The two tonal containers this chrome actually paints, each with its own checked label.
+    //
+    // M3 assigns them to *different* jobs, which is why they are resolved separately rather than
+    // sharing one "soft accent": `primaryContainer` backs the brand mark, while
+    // `secondaryContainer` is the SELECTED state of every chip, segmented-button segment, drawer
+    // toggle, navigation row and history stop. A catalog that authors a distinct secondary family
+    // (wear-m3's rose `#652936`, say) means it for exactly those, so passing its primary container
+    // through to them would ignore half a published scheme.
+    val primaryContainer =
+      container(colors, "primaryContainer", mix(accent, bg, 0.14), bg, dark, matches)
+    val onPrimaryContainer =
+      onContainer(colors, "onPrimaryContainer", primaryContainer, accentStrong, matches)
+    // A catalog with no secondary family — which is most of them, and every one published before
+    // this projection existed — falls back to the PRIMARY container rather than to the bare derived
+    // tint, so those pages keep exactly the chip fill they have today. Only a catalog that actually
+    // authors a *usable* secondary container moves; one whose secondary lands on the wrong side of
+    // the page for this mode is rejected by [container] and lands on the same fallback.
+    val secondaryContainer =
+      container(colors, "secondaryContainer", primaryContainer, bg, dark, matches)
+    val onSecondaryContainer =
+      onContainer(colors, "onSecondaryContainer", secondaryContainer, onPrimaryContainer, matches)
+    // `--cp-accent-soft` IS the selected-chip fill, so it follows the secondary container — the two
+    // families must agree about the same pixel (asserted in ServeThemeCssTest).
+    val accentSoft = secondaryContainer
+    val onAccentSoft = onSecondaryContainer
 
     val muted = mix(fg, bg, FG_MUTED)
     val faint = mix(fg, bg, FG_FAINT)
@@ -199,10 +218,11 @@ internal object ServeThemeCss {
       faint,
       border,
       accent,
-      accentStrong,
-      accentSoft,
       onAccent,
-      onAccentSoft,
+      primaryContainer,
+      onPrimaryContainer,
+      secondaryContainer,
+      onSecondaryContainer,
       dark,
       matches,
     ) +
@@ -237,10 +257,11 @@ internal object ServeThemeCss {
    * Deriving here means the two families can never disagree about the same colour, which is the
    * whole reason the aliases exist.
    *
-   * The exceptions are the roles the chrome has no alias for — the secondary, tertiary and error
-   * families, and the surface-container ladder. Those are taken from the catalog when it publishes
-   * them **and** the mode being painted is the one it baked; otherwise they are derived, so a
-   * light-first catalog never paints a light error container onto a dark page.
+   * The exceptions are the roles the chrome has no alias for — the secondary accent, the tertiary
+   * and error families, and the surface-container ladder. Those are taken from the catalog when it
+   * publishes them **and** the mode being painted is the one it baked; otherwise they are derived,
+   * so a light-first catalog never paints a light error container onto a dark page. The two tonal
+   * container pairs are resolved in [mode] instead, because `--cp-accent-soft` is one of them.
    */
   private fun m3Roles(
     colors: Map<String, String>,
@@ -251,10 +272,11 @@ internal object ServeThemeCss {
     faint: Rgb,
     border: Rgb,
     accent: Rgb,
-    accentStrong: Rgb,
-    accentSoft: Rgb,
     onAccent: Rgb,
-    onAccentSoft: Rgb,
+    primaryContainer: Rgb,
+    onPrimaryContainer: Rgb,
+    secondaryContainer: Rgb,
+    onSecondaryContainer: Rgb,
     dark: Boolean,
     matches: Boolean,
   ): List<Pair<String, String>> {
@@ -265,23 +287,11 @@ internal object ServeThemeCss {
     /** A catalog role, composited over [bg], but only when this is the mode it was baked for. */
     fun published(role: String): Rgb? = colors[role]?.takeIf { matches }?.let { flatten(it, bg) }
 
-    /** …and its readable-on-[on] counterpart, falling back to [fallback]. */
-    fun onRole(role: String, on: Rgb, fallback: Rgb): Rgb =
-      (published(role) ?: fallback).let {
-        ensureContrast(it, on, MIN_ON_ACCENT_CONTRAST, toward = readableOn(on))
-      }
-
-    /** A container fill that must sit on the right side of the page to be usable in this mode. */
-    fun container(role: String, derived: Rgb): Rgb {
-      val c = published(role) ?: return derived
-      val rightSide = if (dark) luminance(c) < 0.5 else luminance(c) > 0.5
-      return if (rightSide) c else derived
-    }
-
     val secondary = ensureContrast(published("secondary") ?: muted, bg, MIN_ACCENT_CONTRAST, fg)
     val tertiaryBase = published("tertiary") ?: accent
     val tertiary = ensureContrast(tertiaryBase, bg, MIN_ACCENT_CONTRAST, fg)
-    val tertiaryContainer = container("tertiaryContainer", mix(tertiary, bg, 0.14))
+    val tertiaryContainer =
+      container(colors, "tertiaryContainer", mix(tertiary, bg, 0.14), bg, dark, matches)
     // The error family is the one place a *literal* fallback is right: a catalog that publishes no
     // error role still needs a red that reads as an error, not a tint of its own brand colour.
     val error =
@@ -291,27 +301,51 @@ internal object ServeThemeCss {
         MIN_ACCENT_CONTRAST,
         fg,
       )
-    val errorContainer = container("errorContainer", rgb(if (dark) "#8c1d18" else "#f9dedc"))
+    val errorContainer =
+      container(
+        colors,
+        "errorContainer",
+        rgb(if (dark) "#8c1d18" else "#f9dedc"),
+        bg,
+        dark,
+        matches,
+      )
 
     return listOf(
       "--md-sys-color-primary" to hex(accent),
       "--md-sys-color-on-primary" to hex(onAccent),
-      "--md-sys-color-primary-container" to hex(accentSoft),
-      "--md-sys-color-on-primary-container" to hex(accentStrong),
+      "--md-sys-color-primary-container" to hex(primaryContainer),
+      "--md-sys-color-on-primary-container" to hex(onPrimaryContainer),
       "--md-sys-color-secondary" to hex(secondary),
       "--md-sys-color-on-secondary" to hex(readableOn(secondary)),
-      "--md-sys-color-secondary-container" to hex(accentSoft),
-      "--md-sys-color-on-secondary-container" to hex(onAccentSoft),
+      "--md-sys-color-secondary-container" to hex(secondaryContainer),
+      "--md-sys-color-on-secondary-container" to hex(onSecondaryContainer),
       "--md-sys-color-tertiary" to hex(tertiary),
       "--md-sys-color-on-tertiary" to hex(readableOn(tertiary)),
       "--md-sys-color-tertiary-container" to hex(tertiaryContainer),
       "--md-sys-color-on-tertiary-container" to
-        hex(onRole("onTertiaryContainer", tertiaryContainer, readableOn(tertiaryContainer))),
+        hex(
+          onContainer(
+            colors,
+            "onTertiaryContainer",
+            tertiaryContainer,
+            readableOn(tertiaryContainer),
+            matches,
+          )
+        ),
       "--md-sys-color-error" to hex(error),
       "--md-sys-color-on-error" to hex(readableOn(error)),
       "--md-sys-color-error-container" to hex(errorContainer),
       "--md-sys-color-on-error-container" to
-        hex(onRole("onErrorContainer", errorContainer, readableOn(errorContainer))),
+        hex(
+          onContainer(
+            colors,
+            "onErrorContainer",
+            errorContainer,
+            readableOn(errorContainer),
+            matches,
+          )
+        ),
       "--md-sys-color-surface" to hex(bg),
       "--md-sys-color-on-surface" to hex(fg),
       "--md-sys-color-surface-variant" to hex(n.surface2),
@@ -367,24 +401,43 @@ internal object ServeThemeCss {
   }
 
   /**
-   * The soft accent chip fill. `primaryContainer` is the faithful choice when the catalog's mode is
-   * the one being painted, but only if it lands on the right side of the page — a light-scheme
-   * container is a glaring patch on a dark page — so it is checked against the mode and derived
-   * from the accent otherwise.
+   * A published tonal container fill (`primaryContainer`, `secondaryContainer`, …). The catalog's
+   * own value is the faithful choice when the mode being painted is the one it baked, but only if
+   * it lands on the right side of the page — a light-scheme container is a glaring patch on a dark
+   * page — so it is checked against the mode and derived from the accent otherwise.
    */
-  private fun accentSoft(
+  private fun container(
     colors: Map<String, String>,
-    accent: Rgb,
+    role: String,
+    derived: Rgb,
     bg: Rgb,
     dark: Boolean,
     matches: Boolean,
   ): Rgb {
-    val derived = mix(accent, bg, 0.14)
     if (!matches) return derived
-    val container = colors["primaryContainer"]?.let { flatten(it, bg) } ?: return derived
+    val container = colors[role]?.let { flatten(it, bg) } ?: return derived
     val onRightSide = if (dark) luminance(container) < 0.5 else luminance(container) > 0.5
     return if (onRightSide) container else derived
   }
+
+  /**
+   * The label that sits **on** [fill] — the catalog's published `on…Container` when this is its
+   * mode, else [fallback] — always pushed to a readable contrast against that exact fill.
+   *
+   * Checking against the fill rather than against the page is the whole point: a container and its
+   * label are resolved as a pair (the fill may have been rejected and derived above), so a label
+   * validated against anything else can still come out invisible on the fill it actually lands on.
+   */
+  private fun onContainer(
+    colors: Map<String, String>,
+    role: String,
+    fill: Rgb,
+    fallback: Rgb,
+    matches: Boolean,
+  ): Rgb =
+    (colors[role]?.takeIf { matches }?.let { flatten(it, fill) } ?: fallback).let {
+      ensureContrast(it, fill, MIN_ON_ACCENT_CONTRAST, toward = readableOn(fill))
+    }
 
   // ---------------------------------------------------------------------------------------------
   // Colour maths. sRGB only — the tokens are 8-bit hex and the output is 8-bit hex, so there is

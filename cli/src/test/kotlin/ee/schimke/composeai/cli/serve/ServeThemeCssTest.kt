@@ -230,6 +230,72 @@ class ServeThemeCssTest {
     }
   }
 
+  // wear-m3 as its CatalogTheme actually declares it: a cyan primary AND a distinct rose secondary
+  // family. The published design systems mostly publish no secondary family at all, which is the
+  // other half of this behaviour.
+  private val wearM3WithSecondary =
+    tokens(
+      "primary" to "#4dd0e1ff",
+      "primaryContainer" to "#4d3d76ff",
+      "onPrimary" to "#210f48ff",
+      "onPrimaryContainer" to "#f6edffff",
+      "secondary" to "#ff8da1ff",
+      "secondaryContainer" to "#652936ff",
+      "onSecondaryContainer" to "#ffd9e0ff",
+      "surface" to "#202124ff",
+      "onSurface" to "#f6edffff",
+    )
+
+  @Test
+  fun `a published secondary family paints the selected states it was authored for`() {
+    // M3 gives the two containers different jobs: `primaryContainer` backs the brand mark, while
+    // `secondaryContainer` is the selected state of every chip, segment, drawer toggle and nav row.
+    // Collapsing both onto the primary container would throw away half of a published scheme.
+    val dark = roles(assertNotNull(ServeThemeCss.fromDtcg(wearM3WithSecondary)), dark = true)
+    val aliases = vars(assertNotNull(ServeThemeCss.fromDtcg(wearM3WithSecondary)), dark = true)
+    assertEquals("#4d3d76", dark["--md-sys-color-primary-container"], "the mark keeps the primary")
+    assertEquals("#652936", dark["--md-sys-color-secondary-container"], "chips take the secondary")
+    assertEquals("#ffd9e0", dark["--md-sys-color-on-secondary-container"])
+    // …and the alias a chip may equally be styled from moves with it, or one page would paint the
+    // same selected state two different colours.
+    assertEquals(dark["--md-sys-color-secondary-container"], aliases["--cp-accent-soft"])
+    assertEquals(dark["--md-sys-color-on-secondary-container"], aliases["--cp-on-accent-soft"])
+  }
+
+  @Test
+  fun `a catalog with no secondary family keeps the chip fill it has today`() {
+    // Most published catalogs name no `secondaryContainer`. They must fall back to the PRIMARY
+    // container rather than to a bare derived tint, so this projection doesn't silently restyle
+    // every design system that predates it.
+    for (dark in listOf(false, true)) {
+      val r = roles(assertNotNull(ServeThemeCss.fromDtcg(wearM3)), dark)
+      assertEquals(
+        r["--md-sys-color-primary-container"],
+        r["--md-sys-color-secondary-container"],
+        "${if (dark) "dark" else "light"} mode",
+      )
+    }
+  }
+
+  @Test
+  fun `every on-container label is contrast-checked against the fill it actually lands on`() {
+    // A label validated against the page — or against a container that was then rejected for
+    // sitting on the wrong side of it — can still come out invisible on the fill it is painted on.
+    val palettes = listOf(wearM3, wearM3WithSecondary, jetNews, jetSnack)
+    for (palette in palettes) {
+      val css = assertNotNull(ServeThemeCss.fromDtcg(palette))
+      for (dark in listOf(false, true)) {
+        val r = roles(css, dark)
+        val where = "${if (dark) "dark" else "light"} mode"
+        for (family in listOf("primary", "secondary", "tertiary", "error")) {
+          val fill = r.getValue("--md-sys-color-$family-container")
+          val label = r.getValue("--md-sys-color-on-$family-container")
+          assertTrue(contrast(label, fill) >= 4.0, "$family container label, $where")
+        }
+      }
+    }
+  }
+
   @Test
   fun `a catalog with no usable tokens serves the built-in chrome`() {
     assertNull(ServeThemeCss.fromDtcg("not json at all"))
