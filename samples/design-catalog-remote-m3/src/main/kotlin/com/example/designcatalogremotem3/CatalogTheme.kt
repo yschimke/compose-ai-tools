@@ -10,6 +10,7 @@ import androidx.compose.remote.creation.compose.modifier.fillMaxSize
 import androidx.compose.remote.creation.profile.RcPlatformProfiles
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.wear.compose.remote.material3.RemoteMaterialTheme
 import ee.schimke.composeai.daemon.RemoteOverridablePreview
 
 /**
@@ -28,15 +29,26 @@ import ee.schimke.composeai.daemon.RemoteOverridablePreview
  * `RemoteDocument` into the bundle's `.rc` sidecar for replay. With no seeded overrides (the
  * vanilla `composePreviewRenderAll` and the weekly design-artifacts render) it is the same output
  * as plain `RemotePreview`.
+ *
+ * Also the one place a selected `@WearThemeCatalog` typeface reaches the document.
+ * `RemoteMaterialTheme` is `@RemoteComposable`, so it can only be installed here, inside the remote
+ * scope — the theme provider wraps the whole `@Preview`, which is outside it, and hands its choice
+ * over as [LocalRemoteCatalogFont]. Absent a provider the local is null and nothing is installed,
+ * so an un-themed render is byte-for-byte what it was before the themes existed.
  */
 @Composable
 fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
+  val themeFont = LocalRemoteCatalogFont.current
   RemoteOverridablePreview(profile = RcPlatformProfiles.ANDROIDX) {
-    RemoteBox(
-      modifier = RemoteModifier.fillMaxSize(),
-      contentAlignment = RemoteAlignment.Center,
-      content = content,
-    )
+    val body: @Composable @RemoteComposable () -> Unit = {
+      RemoteBox(
+        modifier = RemoteModifier.fillMaxSize(),
+        contentAlignment = RemoteAlignment.Center,
+        content = content,
+      )
+    }
+    if (themeFont == null) body()
+    else RemoteMaterialTheme(typography = remoteCatalogTypography(themeFont), content = body)
   }
 }
 
