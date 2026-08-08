@@ -24,7 +24,6 @@
  *     --out <dir> [--system <id>] [--title <t>] [--threshold 0.1] [--theme light] \
  *     [--fonts <dir>] [--cmp-wasm <rc-player-wasm distribution>] \
  *     [--require-cmp-wasm] [--cmp-wasm-allowlist <json>] \
- *     [--cmp-wasm-pixel-tolerances <json>] \
  *     [--cmp-wasm-max-cold-first-frame-ms <ms>] [--cmp-wasm-max-warm-first-frame-ms <ms>]
  *
  * `--fonts` defaults to the vendored faces the snapshot renderer itself rasterizes with (see
@@ -47,11 +46,10 @@ import { renderRcCompareHtml } from "./render-rc-compare-html.mjs";
 import { CHROMIUM_LAUNCH_ARGS } from "./rc-chromium.mjs";
 import {
   applyCmpWasmPerformanceBudgets,
-  applyCmpWasmPixelTolerances,
   evaluateCmpWasmGate,
   formatCmpWasmGate,
   readCmpWasmAllowlist,
-  readCmpWasmPixelTolerances,
+  summarizeCmpWasmPixelParity,
 } from "./rc-compare-gate.mjs";
 import { BG, flattenOnto, isFullyTransparent, splitCoverage } from "./rc-compare-pixels.mjs";
 import { laneSplit as laneSplitFor } from "./rc-compare-means.mjs";
@@ -96,7 +94,6 @@ const EMBEDDED_JVM = arg("embedded-jvm");
 const CMP_WASM = arg("cmp-wasm");
 const REQUIRE_CMP_WASM = process.argv.includes("--require-cmp-wasm");
 const CMP_WASM_ALLOWLIST = arg("cmp-wasm-allowlist");
-const CMP_WASM_PIXEL_TOLERANCES = arg("cmp-wasm-pixel-tolerances");
 const CMP_WASM_MAX_COLD_FIRST_FRAME_MS = optionalNumber(
   "cmp-wasm-max-cold-first-frame-ms",
 );
@@ -732,11 +729,7 @@ if (REQUIRE_CMP_WASM) {
       CMP_WASM_MAX_COLD_FIRST_FRAME_MS,
       CMP_WASM_MAX_WARM_FIRST_FRAME_MS,
     );
-    applyCmpWasmPixelTolerances(
-      cmpWasmGate,
-      rows,
-      readCmpWasmPixelTolerances(CMP_WASM_PIXEL_TOLERANCES),
-    );
+    summarizeCmpWasmPixelParity(cmpWasmGate, rows);
   } catch (error) {
     cmpWasmGate = evaluateCmpWasmGate(rcIds, rows);
     cmpWasmGate.passed = false;

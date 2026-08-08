@@ -557,9 +557,30 @@ Do not measure progress as “number of classes ported.” A cluster is complete
 
 The remote-m3 replacement corpus is guarded in CI, not recorded as a one-off manual result:
 
-- All 24/24 current documents render through CMP/Wasm. Pixel comparison uses a strict 1% default;
-  only WatchScreen (1.4%) and WidgetContainerSmall (1.5%) have reviewed, catalog-owned ceilings.
-  The tolerance file is stale-failing: an entry that is no longer measured above 1% must be removed.
+- All 27/27 current documents render through CMP/Wasm, and *that* is the lane's gate: a document the
+  player cannot render fails the run unless it is named in the dated, reasoned allowlist.
+- **Per-preview pixel mismatch is measured and reported, not gated.** It used to be: a strict 1%
+  default with a checked-in file of reviewed per-preview ceilings. That check ran in the publish job,
+  on `main`, after the change that moved the number had already merged — so it could never stop a
+  regression arriving, only stop the catalog being republished afterwards. On 7 Aug 2026 five
+  text-bearing `remote-m3` rows drifted past 1% and the delivery branch froze for five days on the
+  3 Aug render, whose CMP/Wasm column still showed 0/24 from player bugs fixed on the 4th and 7th —
+  the gate hiding four days of *fixes* to punish one regression it had already let through. Every
+  row's mismatch stays in `rc-compare-summary.json`, on the comparison page, and in the job summary
+  (`pixel parity (report-only)`), so a divergence is still visible in the place a human looks.
+- **The blocking question is asked on the pull request instead**, by the `CMP/Wasm Parity` job in
+  [`ci.yml`](../../.github/workflows/ci.yml) and
+  [`rc-compare-regression.mjs`](../../scripts/design-artifacts/rc-compare-regression.mjs). It
+  renders the *published* `design-artifacts/remote-m3` bundle — fixed documents plus their baked
+  references, so nothing but the player can move — through the PR's `wasmPlayerDist`, and fails on
+  either of the two things a PR can actually be responsible for: a document that rendered on the
+  baseline and no longer does, or a mismatch that grew by more than 0.25 pp. A delta, not a bar:
+  absolute mismatch is dominated by backend and reference-lane differences nobody on the PR
+  introduced, while the 0.26% → 2.17% jump that froze the branch is unmistakably the diff. Two
+  independent runs over the same corpus measure identically, so that threshold has ~8× headroom over
+  the regression it is sized to catch. Rows the baseline never measured are reported, never judged.
+  Written up with its before/after in
+  [`evidence/rc-compare-publish-gate/`](evidence/rc-compare-publish-gate/README.md).
 - The production distribution is capped at 23,000,000 raw bytes by `wasmPlayerDist`; the verified
   distribution is 22,756,717 bytes. Source maps and development-only formatters are not shipped.
 - The strict comparison lane caps cold and warm navigation-to-painted-ready time at 10,000 ms and

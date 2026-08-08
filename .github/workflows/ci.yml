@@ -404,6 +404,94 @@ jobs:
           RC_CMP_WASM_REQUIRE: "1"
         run: node --test rc-cmp-wasm-*.test.mjs
 
+  # Does this player change make any real document render worse? This is the CMP/Wasm parity guard,
+  # and it lives here — on the pull request — on purpose. It used to be an absolute 1%-per-preview
+  # bar inside the `design-artifacts` publish job, which runs on `main` after the change has already
+  # merged: it could never stop a regression, only stop the delivery branch being republished
+  # afterwards. It did exactly that on 7 Aug 2026, freezing `design-artifacts/remote-m3` for five
+  # days on a render whose CMP/Wasm column predated four days of *fixes*. So: the publish lane now
+  # reports pixels, and the blocking question is asked here instead.
+  #
+  # The corpus is the published `design-artifacts/remote-m3` bundle — 27 real documents plus the
+  # baked Android references — and the baseline is the `rc-compare-summary.json` published beside
+  # it. Fixed documents are what isolate the player: nothing here re-renders the catalog (no Android
+  # toolchain, no ~6 minutes), so a moved number can only be the diff under test.
+  rc-cmp-wasm-parity:
+    name: CMP/Wasm Parity
+    needs: changes
+    if: ${{ needs.changes.outputs.rc_player_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Build the Wasm player distribution
+        run: ./gradlew :rc-player-wasm:wasmPlayerDist
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Install driver dependencies
+        working-directory: scripts/design-artifacts
+        run: npm ci
+      - name: Install Chromium
+        working-directory: scripts/design-artifacts
+        run: npx playwright install --with-deps chromium
+      # Anonymous fetch of a branch in this public repo, so `persist-credentials: false` above costs
+      # nothing. A delivery branch that has never published the lane (no summary, or one whose
+      # cmp-wasm rows never rendered) still works: every row then reads as "not in the baseline" or
+      # "now renders", which reports and does not judge.
+      - name: Fetch the published parity corpus and baseline
+        id: corpus
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/corpus"
+          if ! git fetch --depth=1 origin design-artifacts/remote-m3; then
+            echo "::warning::design-artifacts/remote-m3 is not fetchable; skipping the parity comparison"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git show FETCH_HEAD:bundle/bundle.png > "$RUNNER_TEMP/corpus/bundle.png"
+          if git show FETCH_HEAD:rc-compare-summary.json > "$RUNNER_TEMP/corpus/baseline.json"; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::the delivery branch carries no rc-compare-summary.json; skipping"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Render the corpus through this PR's player
+        if: ${{ steps.corpus.outputs.available == 'true' }}
+        working-directory: scripts/design-artifacts
+        run: |
+          set -euo pipefail
+          node rc-compare.mjs \
+            --bundle "$RUNNER_TEMP/corpus/bundle.png" \
+            --player "$GITHUB_WORKSPACE/cli/src/main/resources/rc-player/bundle.js" \
+            --out "$RUNNER_TEMP/parity-out" \
+            --system remote-m3 \
+            --cmp-wasm "$GITHUB_WORKSPACE/rc-player/wasm/build/wasmDist" \
+            --require-cmp-wasm
+      - name: Compare against the published baseline
+        if: ${{ steps.corpus.outputs.available == 'true' }}
+        working-directory: scripts/design-artifacts
+        run: |
+          node rc-compare-regression.mjs \
+            --baseline "$RUNNER_TEMP/corpus/baseline.json" \
+            --current "$RUNNER_TEMP/parity-out/rc-compare-summary.json"
+      # The renders and diffs are the whole answer to "why did that row move", so they must survive
+      # the failure that makes someone ask.
+      - name: Upload parity renders
+        if: ${{ always() && steps.corpus.outputs.available == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rc-cmp-wasm-parity
+          path: |
+            ${{ runner.temp }}/parity-out/rc-compare.html
+            ${{ runner.temp }}/parity-out/rc-compare-summary.json
+            ${{ runner.temp }}/parity-out/rc-cmp-wasm
+            ${{ runner.temp }}/parity-out/rc-cmp-wasm-diff
+            ${{ runner.temp }}/parity-out/rc-cmp-wasm-errors
+          if-no-files-found: warn
+
   functional-tests:
     name: Plugin Functional Tests
     needs: changes
