@@ -1169,22 +1169,25 @@ object PreviewDiscovery {
    * token catalogs.
    */
   /**
-   * Canvas for a synthetic theme sheet: 640x900dp at density 1 (`dpi=160`), so the PNG is 640x900px.
+   * Canvas for a synthetic theme sheet: 900x760dp at density 1 (`dpi=160`), so the PNG is 900x760px.
    *
    * These previews have no `@Preview` of their own to size them, so they used to fall back to the
    * 400x800dp sandbox — and a theme sheet does not fit in it. A Wear scheme alone is 21 colour rows
    * at 48dp = 1008dp against a 768dp content box, so its type scale was never drawn; the mobile
    * sheet lost four of its five shape rows the same way. The renderer now packs the rows into
-   * columns ([CatalogSpecimenSheet]), and this is the canvas that gives it room to do so: wide
-   * enough for three columns of swatch-plus-hex, tall enough that a scheme rarely needs a fourth.
+   * columns ([CatalogSpecimenSheet]), and this is the canvas that gives it room to do so. Landscape
+   * because the sheet is laid out as blocks rather than one list: colour roles run in two columns,
+   * then the type scale takes the full width below them (a specimen line is judged on a real line
+   * of text, and a half-width column wraps the pangram mid-phrase), then the shape scale runs as a
+   * single row so the corner progression reads left to right.
    *
    * Density 1 rather than the 2.625 phone default because the sheet is a document, not a device
    * capture — the dp figures above are the pixels, which is what keeps the geometry legible here
    * and in the numbers this KDoc quotes.
    */
-  internal const val THEME_CATALOG_SHEET_DEVICE: String = "spec:width=640dp,height=900dp,dpi=160"
+  internal const val THEME_CATALOG_SHEET_DEVICE: String = "spec:width=900dp,height=760dp,dpi=160"
 
-  /** [THEME_CATALOG_SHEET_DEVICE] resolved once — 640x900dp at density 1. */
+  /** [THEME_CATALOG_SHEET_DEVICE] resolved once — 900x760dp at density 1. */
   internal val THEME_CATALOG_SHEET: DeviceDimensions.DeviceSpec =
     DeviceDimensions.resolve(THEME_CATALOG_SHEET_DEVICE, null, null)
 
