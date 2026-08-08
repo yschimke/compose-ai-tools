@@ -123,10 +123,17 @@ class ServePageThemeTest {
     // Every pop path restores its theme by ASSIGNING the control's value, which fires no `change`
     // — so each one has to hand the restored choice over itself. Missing this left Back from Dark
     // to a Light entry re-rendering the preview light inside a page still pinned dark.
+    //
+    // It must hand over the ACTIVE choice, not the displayed one: a viewer opened with no theme
+    // anywhere shows its baked default under `data-theme-active="0"`, and passing `.value` there
+    // pins the page to a mode nobody picked. #3544 fixed that in `viewer.js` and left this
+    // assertion on the old spelling, so it has been failing on `main` since.
     val viewerJs = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
     assertTrue(
-      viewerJs.contains("window.cpPageTheme.follow(themeChoice.value)"),
-      "the viewer's Back/Forward hydrate must repaint the chrome",
+      viewerJs
+        .substringAfter("function hydrateFromUrl")
+        .contains("window.cpPageTheme.follow(activeThemeChoice())"),
+      "the viewer's Back/Forward hydrate must repaint the chrome, from the active choice",
     )
     val compare = ServeWebAssets.load("format-compare.js")!!.bytes.decodeToString()
     assertTrue(
