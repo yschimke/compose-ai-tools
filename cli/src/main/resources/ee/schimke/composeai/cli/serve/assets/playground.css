@@ -1,63 +1,78 @@
+/* The playground shares the preview server's Material 3 token layer (`serve.css`), so nothing here
+   declares a colour of its own: the editor, its file tabs, the run button and the diagnostics list
+   are painted from the same `--md-sys-color-*` roles the rest of the chrome uses — which is also
+   what makes them follow a served catalog's palette. The only literals left are the CodeMirror
+   syntax hues at the bottom, which are a code theme rather than product chrome. */
 .cp-pg { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
 .cp-pg-bar { display: flex; align-items: center; gap: 10px; }
-.cp-pg-modelabel { font-weight: 600; }
-.cp-pg-mode { padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.18);
-  background: #fff; font: inherit; }
+.cp-pg-modelabel { font-weight: 500; }
+/* An M3 outlined select. */
+.cp-pg-mode { padding: 8px 12px; border-radius: var(--md-sys-shape-corner-extra-small);
+  border: 1px solid var(--md-sys-color-outline); background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface); font: inherit; }
 .cp-pg-run { margin-left: auto; }
 .cp-pg-files { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.cp-pg-file { padding: 5px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.18);
-  background: #fff; font: inherit; font-size: 13px; cursor: pointer; }
-.cp-pg-file[aria-current="true"] { background: #1b1b1f; color: #fff; border-color: #1b1b1f; }
-.cp-pg-filebtn { padding: 5px 10px; border-radius: 8px; border: 1px dashed rgba(0,0,0,0.28);
-  background: transparent; font: inherit; font-size: 13px; cursor: pointer; }
-.cp-pg-source { width: 100%; min-height: 260px; box-sizing: border-box; padding: 12px 14px;
-  border-radius: 10px; border: 1px solid rgba(0,0,0,0.18); background: #fbfbfd;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+/* File tabs are M3 filter chips: outlined, tonal when current. */
+.cp-pg-file { display: inline-flex; align-items: center; min-height: 32px; padding: 6px 16px;
+  border-radius: var(--md-sys-shape-corner-small); border: 1px solid var(--md-sys-color-outline-variant);
+  background: transparent; color: var(--md-sys-color-on-surface-variant); font: inherit;
+  font-size: var(--md-sys-typescale-label-large-size); font-weight: 500; cursor: pointer; }
+.cp-pg-file:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-pg-file[aria-current="true"] { background: var(--md-sys-color-secondary-container);
+  border-color: transparent; color: var(--md-sys-color-on-secondary-container); }
+/* "Add file" is the dashed-outline variant — an action, not a selection. */
+.cp-pg-filebtn { display: inline-flex; align-items: center; min-height: 32px; padding: 6px 16px;
+  border-radius: var(--md-sys-shape-corner-small); border: 1px dashed var(--md-sys-color-outline);
+  background: transparent; color: var(--md-sys-color-primary); font: inherit;
+  font-size: var(--md-sys-typescale-label-large-size); font-weight: 500; cursor: pointer; }
+.cp-pg-filebtn:hover { background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent); }
+/* The editor is an M3 filled text field: a container-role fill, no outline. */
+.cp-pg-source { width: 100%; min-height: 260px; box-sizing: border-box; padding: 14px 16px;
+  border-radius: var(--md-sys-shape-corner-medium); border: 0;
+  background: var(--md-sys-color-surface-container-low); color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-mono-font); font-size: 13px;
   line-height: 1.5; tab-size: 2; resize: vertical; }
-.cp-pg-status { font-size: 14px; color: #55555f; }
-.cp-pg-status.cp-doc-error { color: #b00020; }
+.cp-pg-status { font-size: var(--md-sys-typescale-body-medium-size);
+  color: var(--md-sys-color-on-surface-variant); }
+.cp-pg-status.cp-doc-error { color: var(--md-sys-color-error); }
 .cp-pg-diags { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column;
   gap: 6px; }
-.cp-pg-diag { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px; padding: 6px 10px; border-radius: 8px; background: #f2f2f5; }
-.cp-pg-error { background: #fdecef; color: #8a0017; }
-.cp-pg-warning { background: #fff5e0; color: #7a5200; }
+.cp-pg-diag { font-family: var(--md-sys-typescale-mono-font);
+  font-size: 12.5px; padding: 10px 14px; border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-high); }
+/* A compiler error takes the M3 error container pair; a warning keeps its literal amber, which —
+   like the trust badges — must mean the same thing under every catalog palette. */
+.cp-pg-error { background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container); }
+.cp-pg-warning { background: #ffdfb0; color: #573100; }
 .cp-pg-result { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
-.cp-pg-image { max-width: 100%; border-radius: 10px; border: 1px solid rgba(0,0,0,0.12);
-  background: #fff; }
+.cp-pg-image { max-width: 100%; border-radius: var(--md-sys-shape-corner-medium); border: 0;
+  background: var(--md-sys-color-surface-container-lowest);
+  box-shadow: var(--md-sys-elevation-level1); }
 @media (prefers-color-scheme: dark) {
-  .cp-pg-mode, .cp-pg-source, .cp-pg-file { background: #161618; border-color: #34343a;
-    color: #e6e6ea; }
-  .cp-pg-file[aria-current="true"] { background: #e6e6ea; color: #161618; border-color: #e6e6ea; }
-  .cp-pg-filebtn { border-color: #4a4a52; color: #e6e6ea; }
-  .cp-pg-status { color: #a8a8b2; }
-  .cp-pg-diag { background: #1d1d20; }
-  .cp-pg-error { background: #34161b; color: #ff9aa6; }
-  .cp-pg-warning { background: #2c2410; color: #ffd486; }
-  .cp-pg-image { border-color: #34343a; }
+  .cp-pg-warning { background: #4a3000; color: #ffd8a3; }
 }
 
 /* CodeMirror — sized and themed to match the textarea it replaces, so the page looks the same
-   whether the vendored bundle loaded or not. CodeMirror ships a light theme only, so the dark
-   half is ours; the token colours follow the existing `prefers-color-scheme` chrome rather than
-   importing one of CodeMirror's themes (another asset, and none of them match this palette). */
-.cp-pg .CodeMirror { height: auto; min-height: 260px; border-radius: 10px;
-  border: 1px solid rgba(0,0,0,0.18); background: #fbfbfd; color: var(--cp-fg);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+   whether the vendored bundle loaded or not. Its chrome now comes from the same M3 roles as that
+   textarea; only the token hues below stay literal (a code theme, not product chrome), and the
+   dark half of those is ours because CodeMirror ships a light theme only. */
+.cp-pg .CodeMirror { height: auto; min-height: 260px;
+  border-radius: var(--md-sys-shape-corner-medium); border: 0;
+  background: var(--md-sys-color-surface-container-low); color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-mono-font); font-size: 13px;
   line-height: 1.5; }
 .cp-pg .CodeMirror-scroll { min-height: 260px; }
-.cp-pg .CodeMirror-gutters { background: transparent; border-right: 1px solid var(--cp-border); }
-.cp-pg .CodeMirror-linenumber { color: var(--cp-fg-faint); }
+.cp-pg .CodeMirror-gutters { background: transparent;
+  border-right: 1px solid var(--md-sys-color-outline-variant); }
+.cp-pg .CodeMirror-linenumber { color: var(--md-sys-color-outline); }
 /* Focus ring parity with the other controls — CodeMirror paints its own box, so the outline has
    to go on the wrapper rather than the (hidden) textarea. */
-.cp-pg .CodeMirror-focused { outline: 2px solid #5b6bff; outline-offset: 1px; }
+.cp-pg .CodeMirror-focused { outline: 3px solid var(--md-sys-color-secondary); outline-offset: 2px; }
+.cp-pg .CodeMirror-cursor { border-left-color: var(--md-sys-color-on-surface); }
+.cp-pg .CodeMirror-selected { background: var(--md-sys-color-secondary-container); }
 
 @media (prefers-color-scheme: dark) {
-  .cp-pg .CodeMirror { background: #161618; border-color: #34343a; color: #e6e6ea; }
-  .cp-pg .CodeMirror-gutters { border-right-color: #34343a; }
-  .cp-pg .CodeMirror-linenumber { color: #6b6b70; }
-  .cp-pg .CodeMirror-cursor { border-left-color: #e6e6ea; }
-  .cp-pg .CodeMirror-selected { background: #33334a; }
   .cp-pg .cm-keyword { color: #c792ea; }
   .cp-pg .cm-def, .cp-pg .cm-variable-3, .cp-pg .cm-type { color: #82aaff; }
   .cp-pg .cm-string, .cp-pg .cm-string-2 { color: #c3e88d; }

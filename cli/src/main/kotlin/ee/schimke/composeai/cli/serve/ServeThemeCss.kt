@@ -22,9 +22,13 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * The output is an inline `:root` override for the custom properties `serve.css` paints the chrome
  * from ([ServeWebAssets] `serve.css`), emitted into the page `<head>` *after* the stylesheet so it
- * wins at equal specificity. Only the neutral ramp and the accent family are themed; semantic
- * colours (the trust badges, good/warn/bad scores) stay literal in the sheet, because they mean the
- * same thing in every system.
+ * wins at equal specificity. It covers **both** families that sheet declares: the
+ * `--md-sys-color-*` Material 3 roles and the `--cp-*` chrome aliases written in terms of them.
+ * Emitting only the aliases would leave every component styled against a role (an M3 tonal chip, a
+ * state layer, an error container) stuck on the baseline scheme while the rest of the page
+ * re-themed — so the two are produced together, from the same resolved values, in [m3Roles].
+ * Semantic colours (the trust badges, good/warn/bad scores, the parity lanes) stay literal in the
+ * sheet, because they mean the same thing in every system.
  *
  * ## Two modes from one palette
  *
@@ -69,22 +73,25 @@ internal object ServeThemeCss {
 
   /**
    * The chrome palette of `serve.css`'s built-in light mode, used verbatim for a non-matching mode.
+   * These are the **M3 baseline scheme**'s surface roles — `surface`, `surfaceContainerLow`,
+   * `surfaceContainerHigh`, `onSurface` — and must stay in step with the `:root` block of
+   * `serve.css`, which declares the same four.
    */
   private val builtInLight =
     Neutrals(
-      bg = rgb("#fafafb"),
-      surface = rgb("#ffffff"),
-      surface2 = rgb("#f0f0f3"),
-      fg = rgb("#1b1b1f"),
+      bg = rgb("#fef7ff"),
+      surface = rgb("#f7f2fa"),
+      surface2 = rgb("#ece6f0"),
+      fg = rgb("#1d1b20"),
     )
 
-  /** …and of its dark mode. */
+  /** …and of its dark mode (the M3 baseline dark scheme's same four roles). */
   private val builtInDark =
     Neutrals(
-      bg = rgb("#161618"),
-      surface = rgb("#1d1d20"),
-      surface2 = rgb("#26262b"),
-      fg = rgb("#e6e6e9"),
+      bg = rgb("#141218"),
+      surface = rgb("#1d1b20"),
+      surface2 = rgb("#2b2930"),
+      fg = rgb("#e6e0e9"),
     )
 
   /**
@@ -179,22 +186,148 @@ internal object ServeThemeCss {
           ensureContrast(it, accentSoft, MIN_ON_ACCENT_CONTRAST, toward = readableOn(accentSoft))
         }
 
+    val muted = mix(fg, bg, FG_MUTED)
+    val faint = mix(fg, bg, FG_FAINT)
+    val border = mix(fg, bg, BORDER)
+
+    return m3Roles(
+      colors,
+      n,
+      fg,
+      bg,
+      muted,
+      faint,
+      border,
+      accent,
+      accentStrong,
+      accentSoft,
+      onAccent,
+      onAccentSoft,
+      dark,
+      matches,
+    ) +
+      listOf(
+        "--cp-bg" to hex(bg),
+        "--cp-surface" to hex(n.surface),
+        "--cp-surface-2" to hex(n.surface2),
+        "--cp-fg" to hex(fg),
+        "--cp-fg-soft" to hex(mix(fg, bg, FG_SOFT)),
+        "--cp-fg-muted" to hex(muted),
+        "--cp-fg-faint" to hex(faint),
+        "--cp-border" to hex(border),
+        "--cp-border-strong" to hex(mix(fg, bg, BORDER_STRONG)),
+        "--cp-accent" to hex(accent),
+        "--cp-accent-strong" to hex(accentStrong),
+        "--cp-accent-soft" to hex(accentSoft),
+        "--cp-accent-ring" to hex(accentRing),
+        "--cp-on-accent" to hex(onAccent),
+        "--cp-on-accent-soft" to hex(onAccentSoft),
+      )
+  }
+
+  /**
+   * The **M3 role** half of the projection — the `--md-sys-color-*` custom properties `serve.css`'s
+   * token layer declares, so a component styled against a role follows a served catalog exactly as
+   * one styled against a `--cp-*` alias does.
+   *
+   * These are deliberately **derived from the values computed above** rather than read straight out
+   * of the token file a second time. A catalog's raw `onSurface` may be unreadable on its own
+   * surface, its `primary` may not clear contrast against the page, and its light-scheme
+   * `primaryContainer` has no business on a dark page — all of which [mode] has already resolved.
+   * Deriving here means the two families can never disagree about the same colour, which is the
+   * whole reason the aliases exist.
+   *
+   * The exceptions are the roles the chrome has no alias for — the secondary, tertiary and error
+   * families, and the surface-container ladder. Those are taken from the catalog when it publishes
+   * them **and** the mode being painted is the one it baked; otherwise they are derived, so a
+   * light-first catalog never paints a light error container onto a dark page.
+   */
+  private fun m3Roles(
+    colors: Map<String, String>,
+    n: Neutrals,
+    fg: Rgb,
+    bg: Rgb,
+    muted: Rgb,
+    faint: Rgb,
+    border: Rgb,
+    accent: Rgb,
+    accentStrong: Rgb,
+    accentSoft: Rgb,
+    onAccent: Rgb,
+    onAccentSoft: Rgb,
+    dark: Boolean,
+    matches: Boolean,
+  ): List<Pair<String, String>> {
+    // The pole a surface moves toward to become *less* elevated: white in a light scheme, black in
+    // a dark one. M3's `surfaceContainerLowest` sits on that side of `surfaceContainerLow`.
+    val awayPole = if (dark) Rgb(0, 0, 0) else Rgb(255, 255, 255)
+
+    /** A catalog role, composited over [bg], but only when this is the mode it was baked for. */
+    fun published(role: String): Rgb? = colors[role]?.takeIf { matches }?.let { flatten(it, bg) }
+
+    /** …and its readable-on-[on] counterpart, falling back to [fallback]. */
+    fun onRole(role: String, on: Rgb, fallback: Rgb): Rgb =
+      (published(role) ?: fallback).let {
+        ensureContrast(it, on, MIN_ON_ACCENT_CONTRAST, toward = readableOn(on))
+      }
+
+    /** A container fill that must sit on the right side of the page to be usable in this mode. */
+    fun container(role: String, derived: Rgb): Rgb {
+      val c = published(role) ?: return derived
+      val rightSide = if (dark) luminance(c) < 0.5 else luminance(c) > 0.5
+      return if (rightSide) c else derived
+    }
+
+    val secondary = ensureContrast(published("secondary") ?: muted, bg, MIN_ACCENT_CONTRAST, fg)
+    val tertiaryBase = published("tertiary") ?: accent
+    val tertiary = ensureContrast(tertiaryBase, bg, MIN_ACCENT_CONTRAST, fg)
+    val tertiaryContainer = container("tertiaryContainer", mix(tertiary, bg, 0.14))
+    // The error family is the one place a *literal* fallback is right: a catalog that publishes no
+    // error role still needs a red that reads as an error, not a tint of its own brand colour.
+    val error =
+      ensureContrast(
+        published("error") ?: rgb(if (dark) "#f2b8b5" else "#b3261e"),
+        bg,
+        MIN_ACCENT_CONTRAST,
+        fg,
+      )
+    val errorContainer = container("errorContainer", rgb(if (dark) "#8c1d18" else "#f9dedc"))
+
     return listOf(
-      "--cp-bg" to hex(bg),
-      "--cp-surface" to hex(n.surface),
-      "--cp-surface-2" to hex(n.surface2),
-      "--cp-fg" to hex(fg),
-      "--cp-fg-soft" to hex(mix(fg, bg, FG_SOFT)),
-      "--cp-fg-muted" to hex(mix(fg, bg, FG_MUTED)),
-      "--cp-fg-faint" to hex(mix(fg, bg, FG_FAINT)),
-      "--cp-border" to hex(mix(fg, bg, BORDER)),
-      "--cp-border-strong" to hex(mix(fg, bg, BORDER_STRONG)),
-      "--cp-accent" to hex(accent),
-      "--cp-accent-strong" to hex(accentStrong),
-      "--cp-accent-soft" to hex(accentSoft),
-      "--cp-accent-ring" to hex(accentRing),
-      "--cp-on-accent" to hex(onAccent),
-      "--cp-on-accent-soft" to hex(onAccentSoft),
+      "--md-sys-color-primary" to hex(accent),
+      "--md-sys-color-on-primary" to hex(onAccent),
+      "--md-sys-color-primary-container" to hex(accentSoft),
+      "--md-sys-color-on-primary-container" to hex(accentStrong),
+      "--md-sys-color-secondary" to hex(secondary),
+      "--md-sys-color-on-secondary" to hex(readableOn(secondary)),
+      "--md-sys-color-secondary-container" to hex(accentSoft),
+      "--md-sys-color-on-secondary-container" to hex(onAccentSoft),
+      "--md-sys-color-tertiary" to hex(tertiary),
+      "--md-sys-color-on-tertiary" to hex(readableOn(tertiary)),
+      "--md-sys-color-tertiary-container" to hex(tertiaryContainer),
+      "--md-sys-color-on-tertiary-container" to
+        hex(onRole("onTertiaryContainer", tertiaryContainer, readableOn(tertiaryContainer))),
+      "--md-sys-color-error" to hex(error),
+      "--md-sys-color-on-error" to hex(readableOn(error)),
+      "--md-sys-color-error-container" to hex(errorContainer),
+      "--md-sys-color-on-error-container" to
+        hex(onRole("onErrorContainer", errorContainer, readableOn(errorContainer))),
+      "--md-sys-color-surface" to hex(bg),
+      "--md-sys-color-on-surface" to hex(fg),
+      "--md-sys-color-surface-variant" to hex(n.surface2),
+      "--md-sys-color-on-surface-variant" to hex(muted),
+      "--md-sys-color-surface-dim" to hex(if (dark) bg else mix(fg, bg, 0.09)),
+      "--md-sys-color-surface-bright" to hex(if (dark) mix(fg, bg, 0.16) else bg),
+      "--md-sys-color-surface-container-lowest" to hex(mix(awayPole, n.surface, 0.6)),
+      "--md-sys-color-surface-container-low" to hex(n.surface),
+      "--md-sys-color-surface-container" to hex(mix(n.surface2, n.surface, 0.5)),
+      "--md-sys-color-surface-container-high" to hex(n.surface2),
+      "--md-sys-color-surface-container-highest" to hex(mix(fg, n.surface2, 0.05)),
+      "--md-sys-color-outline" to hex(faint),
+      "--md-sys-color-outline-variant" to hex(border),
+      "--md-sys-color-inverse-surface" to hex(fg),
+      "--md-sys-color-inverse-on-surface" to hex(bg),
+      "--md-sys-color-inverse-primary" to hex(mix(accent, fg, 0.35)),
     )
   }
 

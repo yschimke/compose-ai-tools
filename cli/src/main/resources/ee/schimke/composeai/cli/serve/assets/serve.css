@@ -1,64 +1,240 @@
-/* The site chrome is painted from ONE palette of custom properties — the neutral ramp
-   (bg/surface/text/border) and the accent family — declared here for light and re-declared in the
-   `prefers-color-scheme: dark` block below. Nothing else in this sheet hard-codes a chrome colour,
-   which is what lets a served catalog re-theme the page: `ServeThemeCss` emits an inline `:root`
-   override built from that design system's own `tokens.dtcg.json` (its resolved
-   `MaterialTheme.colorScheme`), so browsing `/wear-m3/` paints the page in Wear M3's colours.
-   Semantic colours (trusted/unverified badges, good/warn/bad scores) stay literal — they mean the
-   same thing in every system and must not drift with a catalog's palette. */
+/* ==========================================================================================
+   MATERIAL 3 DESIGN TOKENS
+   ==========================================================================================
+   The preview server's chrome is a Material 3 (Material You) surface. This block is the design
+   system's *token* layer — colour roles, shape scale, elevation, state layers, motion and the
+   type scale — expressed as the same `--md-sys-*` custom properties Material Web (`@material/md`)
+   emits, so a reader who knows M3 already knows what every value here means. Nothing is imported:
+   the server is self-contained (a strict CSP, no CDN, no web font fetch), so the baseline scheme
+   below is inlined rather than pulled from a package.
+
+   Two families, one source of truth:
+   - `--md-sys-color-*` are the **roles** — the full M3 scheme (primary/secondary/tertiary/error
+     families, the surface-container ladder, outline pair, inverse trio).
+   - `--cp-*` are the **chrome aliases** this sheet was already written against. They are now
+     defined *in terms of* the roles, so a component can be written either way and both stay in
+     step.
+
+   That indirection is what keeps the catalog palette sync working. A served design system
+   publishes its resolved `MaterialTheme.colorScheme` as `tokens.dtcg.json`, and `ServeThemeCss`
+   emits an inline `:root` override — of BOTH families — after this sheet, so browsing `/wear-m3/`
+   paints the page in Wear M3's own M3 roles. Semantic colours (trusted/unverified badges,
+   good/warn/bad scores, the code/design parity lanes) stay literal: they mean the same thing in
+   every system and must not drift with a catalog's palette. */
 :root {
   color-scheme: light dark;
-  --cp-bg: #fafafb;
-  --cp-surface: #fff;
-  --cp-surface-2: #f0f0f3;
-  --cp-fg: #1b1b1f;
-  --cp-fg-soft: #45454c;
-  --cp-fg-muted: #6b6b70;
-  --cp-fg-faint: #8a8a92;
-  --cp-border: #e3e3e8;
-  --cp-border-strong: #d7d7de;
-  --cp-accent: #5b5bd6;
-  --cp-accent-strong: #3a3a8a;
-  --cp-accent-soft: #ececff;
-  --cp-accent-ring: #c4c4f5;
-  --cp-on-accent: #fff;
-  --cp-on-accent-soft: #5a5a9a;
+
+  /* --- M3 baseline scheme, light. The reference palette Material ships when a product has not
+     supplied a source colour, so an unthemed preview server looks like Material rather than like
+     an arbitrary indigo. */
+  --md-sys-color-primary: #6750a4;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #eaddff;
+  --md-sys-color-on-primary-container: #4f378a;
+  --md-sys-color-secondary: #625b71;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #e8def8;
+  --md-sys-color-on-secondary-container: #4a4458;
+  --md-sys-color-tertiary: #7d5260;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #ffd8e4;
+  --md-sys-color-on-tertiary-container: #633b48;
+  --md-sys-color-error: #b3261e;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: #f9dedc;
+  --md-sys-color-on-error-container: #8c1d18;
+  --md-sys-color-surface: #fef7ff;
+  --md-sys-color-on-surface: #1d1b20;
+  --md-sys-color-surface-variant: #e7e0ec;
+  --md-sys-color-on-surface-variant: #49454f;
+  --md-sys-color-surface-dim: #ded8e1;
+  --md-sys-color-surface-bright: #fef7ff;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f7f2fa;
+  --md-sys-color-surface-container: #f3edf7;
+  --md-sys-color-surface-container-high: #ece6f0;
+  --md-sys-color-surface-container-highest: #e6e0e9;
+  --md-sys-color-outline: #79747e;
+  --md-sys-color-outline-variant: #cac4d0;
+  --md-sys-color-inverse-surface: #322f35;
+  --md-sys-color-inverse-on-surface: #f5eff7;
+  --md-sys-color-inverse-primary: #d0bcff;
+  /* `scrim` and `shadow` are deliberately absent. Every role declared here must also be emitted by
+     `ServeThemeCss` (its test asserts exactly that), or a catalog would re-theme the page while one
+     role quietly stayed on the baseline scheme. Those two are pure black in every M3 scheme and
+     nothing on this page paints from them, so they are left out rather than themed to no effect —
+     the scrim below uses its own literal black, as M3 specifies. */
+
+  /* --- Shape scale. M3 names five steps plus `full`; components pick a step rather than a pixel
+     value, which is why a shape change (say, a more expressive corner) is one edit here. */
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-full: 999px;
+
+  /* --- Elevation. M3's six levels are a *pair* of shadows (a tight key light and a soft ambient
+     one); the umbra/penumbra ratios below are the spec's, with the alpha carried in
+     `--md-sys-elevation-shadow` so the dark scheme can deepen every level at once. */
+  --md-sys-elevation-shadow: 0 0 0;
+  --md-sys-elevation-level0: none;
+  --md-sys-elevation-level1: 0 1px 2px 0 rgba(var(--md-sys-elevation-shadow), 0.3),
+    0 1px 3px 1px rgba(var(--md-sys-elevation-shadow), 0.15);
+  --md-sys-elevation-level2: 0 1px 2px 0 rgba(var(--md-sys-elevation-shadow), 0.3),
+    0 2px 6px 2px rgba(var(--md-sys-elevation-shadow), 0.15);
+  --md-sys-elevation-level3: 0 1px 3px 0 rgba(var(--md-sys-elevation-shadow), 0.3),
+    0 4px 8px 3px rgba(var(--md-sys-elevation-shadow), 0.15);
+  --md-sys-elevation-level4: 0 2px 3px 0 rgba(var(--md-sys-elevation-shadow), 0.3),
+    0 6px 10px 4px rgba(var(--md-sys-elevation-shadow), 0.15);
+  --md-sys-elevation-level5: 0 4px 4px 0 rgba(var(--md-sys-elevation-shadow), 0.3),
+    0 8px 12px 6px rgba(var(--md-sys-elevation-shadow), 0.15);
+
+  /* --- State layers. In M3 an interactive surface signals hover/focus/press by compositing its
+     *content* colour over itself at a fixed opacity, rather than by swapping to a different fill.
+     That is why these are opacities, not colours: the same three numbers apply to a filled button,
+     a tonal chip, and a list row. */
+  --md-sys-state-hover-opacity: 0.08;
+  --md-sys-state-focus-opacity: 0.1;
+  --md-sys-state-pressed-opacity: 0.1;
+
+  /* --- Motion. M3 separates *standard* movement (things entering/leaving their own lane) from
+     *emphasized* movement (a surface the eye should follow). */
+  --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --md-sys-motion-duration-short2: 100ms;
+  --md-sys-motion-duration-short4: 200ms;
+  --md-sys-motion-duration-medium2: 300ms;
+
+  /* --- Type scale. Roboto is Material's typeface; it is *not* fetched (no web font on a
+     self-contained server), so the stack degrades to the platform UI face where Roboto is absent.
+     Only the roles this chrome actually uses are declared — display/headline for page titles,
+     title for section and card headings, body for prose, label for controls and metadata. */
+  --md-sys-typescale-font: Roboto, "Roboto Flex", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --md-sys-typescale-mono-font: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --md-sys-typescale-headline-small-size: 1.5rem;
+  --md-sys-typescale-headline-small-line: 2rem;
+  --md-sys-typescale-title-large-size: 1.375rem;
+  --md-sys-typescale-title-large-line: 1.75rem;
+  --md-sys-typescale-title-medium-size: 1rem;
+  --md-sys-typescale-title-medium-line: 1.5rem;
+  --md-sys-typescale-title-medium-tracking: 0.009375em;
+  --md-sys-typescale-title-small-size: 0.875rem;
+  --md-sys-typescale-title-small-line: 1.25rem;
+  --md-sys-typescale-title-small-tracking: 0.00714em;
+  --md-sys-typescale-body-medium-size: 0.875rem;
+  --md-sys-typescale-body-medium-line: 1.25rem;
+  --md-sys-typescale-body-medium-tracking: 0.01786em;
+  --md-sys-typescale-body-small-size: 0.75rem;
+  --md-sys-typescale-body-small-line: 1rem;
+  --md-sys-typescale-body-small-tracking: 0.03333em;
+  --md-sys-typescale-label-large-size: 0.875rem;
+  --md-sys-typescale-label-large-line: 1.25rem;
+  --md-sys-typescale-label-large-tracking: 0.00714em;
+  --md-sys-typescale-label-medium-size: 0.75rem;
+  --md-sys-typescale-label-medium-line: 1rem;
+  --md-sys-typescale-label-medium-tracking: 0.04167em;
+  --md-sys-typescale-label-small-size: 0.6875rem;
+  --md-sys-typescale-label-small-line: 1rem;
+  --md-sys-typescale-label-small-tracking: 0.04545em;
+
+  /* --- Chrome aliases. Every rule in this sheet that predates the token layer reads these; they
+     are now a *view* of the M3 roles above rather than a second palette, so there is exactly one
+     place a colour is decided. The three-step text ramp maps onto M3's own hierarchy
+     (on-surface → on-surface-variant → outline) rather than being mixed by hand. */
+  --cp-bg: var(--md-sys-color-surface);
+  --cp-surface: var(--md-sys-color-surface-container-low);
+  --cp-surface-2: var(--md-sys-color-surface-container-high);
+  --cp-fg: var(--md-sys-color-on-surface);
+  --cp-fg-soft: var(--md-sys-color-on-surface);
+  --cp-fg-muted: var(--md-sys-color-on-surface-variant);
+  --cp-fg-faint: var(--md-sys-color-outline);
+  --cp-border: var(--md-sys-color-outline-variant);
+  --cp-border-strong: var(--md-sys-color-outline);
+  --cp-accent: var(--md-sys-color-primary);
+  --cp-accent-strong: var(--md-sys-color-on-primary-container);
+  --cp-accent-soft: var(--md-sys-color-secondary-container);
+  --cp-accent-ring: var(--md-sys-color-primary);
+  --cp-on-accent: var(--md-sys-color-on-primary);
+  --cp-on-accent-soft: var(--md-sys-color-on-secondary-container);
 }
 * { box-sizing: border-box; }
-body { margin: 0; padding: 28px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  color: var(--cp-fg); background: var(--cp-bg); }
+body { margin: 0; padding: 28px; font-family: var(--md-sys-typescale-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line);
+  color: var(--cp-fg); background: var(--cp-bg);
+  -webkit-font-smoothing: antialiased; }
 a { color: var(--cp-accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
+/* M3 focus indicator: a 3dp ring in `secondary`, offset clear of the component's own outline, on
+   every focusable thing. Declared once so no control has to remember to grow its own. */
+:where(a, button, summary, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--md-sys-color-secondary); outline-offset: 2px; border-radius: inherit; }
+/* Selection controls (checkbox, radio, range) are painted by the UA; `accent-color` is the one
+   hook it gives us, and pointing it at `primary` is what makes them read as Material. */
+input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-main, .cp-site-header, .cp-site-footer { width: 100%; max-width: 1440px;
   margin-left: auto; margin-right: auto; }
-.cp-site-header { min-height: 44px; margin-bottom: 30px; padding: 0 0 14px; border-bottom: 1px solid var(--cp-border);
+/* The page's top app bar. M3's small top app bar is a plain surface with a title on the left and
+   trailing actions on the right — no rule beneath it; separation comes from the surface, not from
+   a line, so the keyline is gone and the bar simply sits on the page's own colour. */
+.cp-site-header { min-height: 56px; margin-bottom: 26px; padding: 4px 0 10px;
   display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-.cp-site-brand { display: inline-flex; align-items: center; gap: 8px; color: var(--cp-fg);
-  font-size: 0.92rem; font-weight: 700; }
-.cp-site-brand:hover { text-decoration: none; color: var(--cp-accent-strong); }
-.cp-site-mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px;
-  color: var(--cp-on-accent); background: var(--cp-accent); font-size: 0.9rem; }
-.cp-site-nav { display: flex; align-items: center; gap: 18px; font-size: 0.8rem; }
-.cp-site-nav a { color: var(--cp-fg-muted); }
+.cp-site-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--cp-fg);
+  font-size: var(--md-sys-typescale-title-medium-size);
+  line-height: var(--md-sys-typescale-title-medium-line);
+  letter-spacing: var(--md-sys-typescale-title-medium-tracking); font-weight: 500; }
+.cp-site-brand:hover { text-decoration: none; color: var(--md-sys-color-primary); }
+/* The product mark is an M3 avatar/monogram: a full-round tonal container, not a rounded square. */
+.cp-site-mark { display: grid; place-items: center; width: 32px; height: 32px;
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--md-sys-color-on-primary-container); background: var(--md-sys-color-primary-container);
+  font-size: 0.9rem; }
+/* Trailing actions read as M3 text buttons: full-round, a state layer on hover, no underline. */
+.cp-site-nav { display: flex; align-items: center; gap: 4px;
+  font-size: var(--md-sys-typescale-label-large-size);
+  line-height: var(--md-sys-typescale-label-large-line);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500; }
+.cp-site-nav a { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px;
+  border-radius: var(--md-sys-shape-corner-full); color: var(--md-sys-color-on-surface-variant);
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-site-nav a:hover { text-decoration: none; color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent); }
 .cp-site-nav .cp-gh-auth { color: var(--cp-fg-soft); }
 .cp-site-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--cp-border);
-  color: var(--cp-fg-muted); font-size: 0.8rem; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  color: var(--cp-fg-muted); font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cp-site-footer a { display: inline-flex; align-items: center; gap: 4px; }
-.cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
-.cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: var(--cp-fg-muted); }
-.cp-breadcrumb { margin: 0 0 8px; color: var(--cp-fg-faint); font-size: 0.78rem; }
+/* Page + section headings ride the M3 type scale rather than ad-hoc rem sizes. */
+.cp-head { margin: 0 0 4px; font-size: var(--md-sys-typescale-title-large-size);
+  line-height: var(--md-sys-typescale-title-large-line); font-weight: 400; }
+.cp-sub { margin: 0 0 20px; font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line);
+  letter-spacing: var(--md-sys-typescale-body-medium-tracking); color: var(--cp-fg-muted); }
+.cp-breadcrumb { margin: 0 0 8px; color: var(--cp-fg-faint);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  letter-spacing: var(--md-sys-typescale-label-medium-tracking); }
 /* Front-door section rhythm. The page is a run of (title, grid) pairs with no wrapper element, so
    the gap BETWEEN sections is expressed on the title that follows a grid — one section reads as one
    band instead of the whole page reading as an undifferentiated column of cards. */
 .cp-section-title { margin: 0 0 16px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; }
-.cp-section-title .cp-head { margin: 0; font-size: 1.32rem; letter-spacing: -0.01em; }
+.cp-section-title .cp-head { margin: 0; font-size: var(--md-sys-typescale-headline-small-size);
+  line-height: var(--md-sys-typescale-headline-small-line); letter-spacing: 0; font-weight: 400; }
 .cp-grid + .cp-section-title { margin-top: 44px; }
-.cp-section-count, .cp-catalog-id { color: var(--cp-fg-faint); font-size: 0.75rem; }
-/* The count reads as a quiet tally beside its heading, not as a second title. */
-.cp-section-count { padding: 2px 9px; border-radius: 999px; background: var(--cp-surface-2);
-  color: var(--cp-fg-muted); font-weight: 500; }
-.cp-catalog-id { margin: 0 0 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.cp-catalog-head { font-size: 1.35rem; }
+.cp-section-count, .cp-catalog-id { color: var(--cp-fg-faint);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  letter-spacing: var(--md-sys-typescale-label-medium-tracking); }
+/* The count reads as a quiet tally beside its heading, not as a second title — an M3 suggestion
+   chip's shape in the neutral container role. */
+.cp-section-count { padding: 4px 10px; border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant); font-weight: 500; }
+.cp-catalog-id { margin: 0 0 14px; font-family: var(--md-sys-typescale-mono-font); }
+.cp-catalog-head { font-size: var(--md-sys-typescale-headline-small-size);
+  line-height: var(--md-sys-typescale-headline-small-line); }
 /* Per-preview GitHub links under the viewer title: source file, and "report an issue". One flex
    row so they read as a single line whether one or both are present. */
 .cp-preview-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px;
@@ -73,43 +249,80 @@ a:hover { text-decoration: underline; }
 .cp-source-link:hover, .cp-report-link:hover, .cp-figma-link:hover { text-decoration: underline; }
 /* The Figma mark is 2:3, not square like the GitHub one — size it by height so it isn't squashed. */
 .cp-figma-mark { width: auto; height: 14px; }
-.cp-about { margin: 0 0 34px; padding: 16px 18px; border: 1px solid var(--cp-border); border-radius: 12px;
-  background: var(--cp-surface); max-width: 720px; }
-.cp-about-title { font-size: 0.88rem; font-weight: 600; }
-.cp-about-body { margin: 0 0 8px; font-size: 0.84rem; line-height: 1.45; color: var(--cp-fg-soft); }
-.cp-about-body code { font-size: 0.8rem; padding: 0 3px; border-radius: 4px; background: var(--cp-surface-2); }
+/* M3 *filled* card: a container-role fill with no outline and no shadow. The border this used to
+   carry is what made every panel on the page read as a box; M3 separates panels from the page by
+   tone instead, which is why the surface-container ladder exists. */
+.cp-about { margin: 0 0 34px; padding: 16px 20px; border: 0;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low); max-width: 720px; }
+.cp-about-title { font-size: var(--md-sys-typescale-title-small-size);
+  line-height: var(--md-sys-typescale-title-small-line);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking); font-weight: 500; }
+.cp-about-body { margin: 0 0 8px; font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: 1.5; letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+  color: var(--md-sys-color-on-surface-variant); }
+.cp-about-body code { font-family: var(--md-sys-typescale-mono-font); font-size: 0.8rem;
+  padding: 1px 5px; border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface-container-high); }
 .cp-about-links { margin: 0; font-size: 0.8rem; color: var(--cp-fg-muted); display: flex; flex-wrap: wrap;
   align-items: center; gap: 6px; }
 .cp-about-links a, .cp-gh-auth { display: inline-flex; align-items: center; gap: 4px; }
 .cp-gh { width: 15px; height: 15px; vertical-align: text-bottom; }
-.cp-about-ver { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem;
-  padding: 1px 7px; border-radius: 999px; border: 1px solid var(--cp-border-strong); background: var(--cp-surface);
-  color: var(--cp-fg-soft); }
+/* An M3 assist chip carrying the build id. */
+.cp-about-ver { font-family: var(--md-sys-typescale-mono-font);
+  font-size: var(--md-sys-typescale-label-small-size);
+  letter-spacing: var(--md-sys-typescale-label-small-tracking);
+  padding: 3px 10px; border-radius: var(--md-sys-shape-corner-full);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: transparent; color: var(--md-sys-color-on-surface-variant); }
 .cp-gh-auth--signed { color: var(--cp-fg-soft); }
 .cp-disclosure > summary { cursor: pointer; list-style: none; display: flex; align-items: center;
   justify-content: space-between; gap: 12px; }
 .cp-disclosure > summary::-webkit-details-marker { display: none; }
-.cp-disclosure > summary::after { content: "Show"; color: var(--cp-accent); font-size: 0.72rem; font-weight: 600; }
+/* The Show/Hide affordance is an M3 text button: label-large in `primary`, pill state layer. */
+.cp-disclosure > summary::after { content: "Show"; color: var(--md-sys-color-primary);
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  padding: 6px 12px; border-radius: var(--md-sys-shape-corner-full);
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
 .cp-disclosure[open] > summary::after { content: "Hide"; }
-.cp-disclosure-hint { flex: 1; color: var(--cp-fg-faint); font-size: 0.75rem; font-weight: 400; }
+.cp-disclosure > summary:hover::after {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent); }
+.cp-disclosure-hint { flex: 1; color: var(--cp-fg-faint);
+  font-size: var(--md-sys-typescale-body-small-size);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking); font-weight: 400; }
 .cp-disclosure-body { margin-top: 12px; }
-/* Catalog "back to home" button — replaces the in-catalog design-systems nav row. */
-.cp-back { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 14px;
-  font-size: 0.82rem; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--cp-border-strong);
-  background: var(--cp-surface); color: var(--cp-fg-soft); }
-.cp-back { transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease; }
-.cp-back:hover { background: var(--cp-surface-2); border-color: var(--cp-accent-ring);
-  color: var(--cp-accent-strong); text-decoration: none; transform: translateX(-2px); }
-@media (prefers-reduced-motion: reduce) { .cp-back:hover { transform: none; } }
+/* Catalog "back to home" — an M3 outlined button: 40dp tall, fully rounded, an `outline` keyline,
+   and a `primary` state layer under the pointer rather than a surface swap. */
+.cp-back { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 16px;
+  min-height: 40px; font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  padding: 8px 20px 8px 16px; border-radius: var(--md-sys-shape-corner-full);
+  border: 1px solid var(--md-sys-color-outline);
+  background: transparent; color: var(--md-sys-color-primary); }
+.cp-back { transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard),
+  border-color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-back:hover { background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+  border-color: var(--md-sys-color-outline); color: var(--md-sys-color-primary);
+  text-decoration: none; }
 /* Provenance strip: how/when/from-what this catalog was generated (branch, date, versions,
    a link to re-run the generating workflow). Shown near the catalog header. */
-.cp-prov { margin: 0 0 18px; padding: 12px 16px; border: 1px solid var(--cp-border); border-radius: 10px;
-  background: var(--cp-surface); font-size: 0.78rem; color: var(--cp-fg-muted); max-width: 720px; }
-.cp-prov-title { color: var(--cp-fg-soft); font-weight: 600; }
+.cp-prov { margin: 0 0 18px; padding: 14px 18px; border: 0;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking);
+  color: var(--cp-fg-muted); max-width: 720px; }
+.cp-prov-title { color: var(--cp-fg-soft); font-weight: 500;
+  font-size: var(--md-sys-typescale-title-small-size);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking); }
 .cp-prov-body { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .cp-prov-item { display: inline-flex; align-items: center; gap: 5px; }
 .cp-prov-item .cp-prov-key { color: var(--cp-fg-faint); }
-.cp-prov-item code { font-size: 0.74rem; padding: 0 4px; border-radius: 4px; background: var(--cp-surface-2); }
+.cp-prov-item code { font-family: var(--md-sys-typescale-mono-font); font-size: 0.74rem;
+  padding: 1px 5px; border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface-container-high); }
 .cp-prov-refresh { appearance: none; border: 0; padding: 0; background: none; color: var(--cp-accent);
   font: inherit; cursor: pointer; }
 .cp-prov-refresh:hover { text-decoration: underline; }
@@ -118,81 +331,159 @@ a:hover { text-decoration: underline; }
 .cp-systems { margin: 0 0 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
   font-size: 0.85rem; }
 .cp-systems-label { font-weight: 600; color: var(--cp-fg-muted); }
-.cp-systems a, .cp-systems-cur { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--cp-border-strong); }
-.cp-systems a { background: var(--cp-surface); }
-.cp-systems-cur { background: var(--cp-accent-soft); border-color: var(--cp-accent-ring); color: var(--cp-accent-strong); font-weight: 600; }
+/* M3 filter chips: 32dp, fully rounded, outlined when unselected and a `secondary-container`
+   tonal fill when selected — the same selected treatment every chip row on this page now uses. */
+.cp-systems a, .cp-systems-cur { display: inline-flex; align-items: center; min-height: 32px;
+  padding: 6px 16px; border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500; }
+.cp-systems a { background: transparent; color: var(--md-sys-color-on-surface-variant); }
+.cp-systems a:hover { text-decoration: none;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-systems-cur { background: var(--md-sys-color-secondary-container); border-color: transparent;
+  color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
 .cp-toolbar { margin: 0; }
 .cp-searchbar { margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1 1 440px; }
 .cp-catalog-tools { position: sticky; top: 0; z-index: 18; margin: 0 0 20px; padding: 10px 0;
   display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; background: var(--cp-bg); }
-.cp-search { flex: 1 1 260px; max-width: 420px; padding: 7px 12px; font: inherit; font-size: 0.85rem;
-  border: 1px solid var(--cp-border-strong); border-radius: 999px; background: var(--cp-surface); color: inherit; }
-.cp-search:focus { outline: 2px solid var(--cp-accent-ring); outline-offset: 1px; }
-.cp-count { font-size: 0.78rem; color: var(--cp-fg-muted); }
-.cp-empty { margin: 12px 0 0; font-size: 0.85rem; color: var(--cp-fg-muted); }
+/* M3 search bar: a filled `surface-container-high` pill with NO outline — the fill is the
+   affordance. Focus is the shared 3dp `secondary` ring rather than a border colour change. */
+.cp-search { flex: 1 1 260px; max-width: 420px; min-height: 44px; padding: 10px 18px; font: inherit;
+  font-size: var(--md-sys-typescale-body-medium-size);
+  letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+  border: 0; border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface); }
+.cp-search::placeholder { color: var(--md-sys-color-on-surface-variant); }
+.cp-search:focus { outline: 3px solid var(--md-sys-color-secondary); outline-offset: 2px; }
+.cp-count { font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); color: var(--cp-fg-muted); }
+.cp-empty { margin: 12px 0 0; font-size: var(--md-sys-typescale-body-medium-size);
+  color: var(--cp-fg-muted); }
 .cp-empty[hidden] { display: none; }
 /* Tabbed catalog: a tab bar (role=tablist) over per-section panels. Progressive enhancement —
    with no JS every section shows under its own <h2> and the tabs act as in-page anchor links;
    the filter script turns them into real tabs (one panel shown at a time) and adds `cp-js` to
    <html>, which hides the then-redundant per-section <h2> (the tab already names the section). */
-.cp-tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 0 0 22px;
-  border-bottom: 1px solid var(--cp-border); }
-.cp-tab { display: inline-flex; align-items: center; gap: 7px; padding: 8px 15px;
-  font-size: 0.85rem; color: var(--cp-fg-muted); border: 1px solid transparent; border-bottom: none;
-  border-radius: 9px 9px 0 0; margin-bottom: -1px; cursor: pointer; }
-.cp-tab:hover { color: var(--cp-accent-strong); background: var(--cp-surface-2); text-decoration: none; }
-.cp-tab[aria-selected="true"] { color: var(--cp-accent-strong); font-weight: 600; background: var(--cp-bg);
-  border-color: var(--cp-border); border-bottom-color: var(--cp-bg); }
-.cp-tab-count { font-size: 0.7rem; padding: 0 7px; border-radius: 999px; background: var(--cp-accent-soft);
-  color: var(--cp-on-accent-soft); }
+/* M3 *primary tabs*. Not folder tabs: a 48dp row of label-large targets over one divider, where
+   the selected tab is marked by a 3dp `primary` active indicator with rounded top corners and a
+   `primary` label. Hover is a state layer over the tab's own footprint. */
+.cp-tabs { display: flex; flex-wrap: wrap; gap: 0; margin: 0 0 22px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant); }
+.cp-tab { position: relative; display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px; min-height: 48px; padding: 14px 16px;
+  font-size: var(--md-sys-typescale-title-small-size);
+  line-height: var(--md-sys-typescale-title-small-line);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking); font-weight: 500;
+  color: var(--md-sys-color-on-surface-variant); border: 0; border-radius: 0;
+  background: transparent; cursor: pointer;
+  transition: color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard),
+    background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-tab:hover { color: var(--md-sys-color-on-surface); text-decoration: none;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-tab[aria-selected="true"] { color: var(--md-sys-color-primary); font-weight: 500;
+  background: transparent; }
+/* The active indicator. A 3dp bar pinned to the divider, full-round on its top corners, that
+   scales in from the tab's centre so switching tabs reads as one moving indicator. */
+.cp-tab::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 3px;
+  border-radius: 3px 3px 0 0; background: var(--md-sys-color-primary);
+  transform: scaleX(0);
+  transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized); }
+.cp-tab[aria-selected="true"]::after { transform: scaleX(1); }
+@media (prefers-reduced-motion: reduce) { .cp-tab::after { transition-duration: 0.01ms; } }
+/* A tab's count is an M3 badge — a small tonal pill riding beside the label. */
+.cp-tab-count { font-size: var(--md-sys-typescale-label-small-size);
+  letter-spacing: var(--md-sys-typescale-label-small-tracking); font-weight: 500;
+  padding: 2px 8px; border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); }
 .cp-section { margin: 0; }
 .cp-section[hidden] { display: none; }
-.cp-section-head { margin: 0 0 16px; font-size: 1rem; font-weight: 600; }
+.cp-section-head { margin: 0 0 16px; font-size: var(--md-sys-typescale-title-medium-size);
+  line-height: var(--md-sys-typescale-title-medium-line);
+  letter-spacing: var(--md-sys-typescale-title-medium-tracking); font-weight: 500; }
 html.cp-js .cp-section-head { display: none; }
 .cp-subgroup { margin: 0 0 30px; }
 .cp-subgroup[hidden] { display: none; }
-.cp-group-head { margin: 26px 0 12px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
+.cp-group-head { margin: 26px 0 12px; font-size: var(--md-sys-typescale-label-medium-size);
+  line-height: var(--md-sys-typescale-label-medium-line); font-weight: 500; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--cp-fg-faint); }
 .cp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; }
-/* The Theme picker carries one chip per configured theme (the baked light/dark pair plus any
-   app-declared @ThemeCatalog theme), so it wraps rather than overflowing a narrow viewport. */
-.cp-theme { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--cp-border-strong); border-radius: 999px;
+/* The Theme picker is an M3 *segmented button*: one connected track, `outline` keyline, per-segment
+   dividers, and the selected segment carrying the `secondary-container` tonal fill. */
+.cp-theme { display: inline-flex; flex-wrap: wrap;
+  border: 1px solid var(--md-sys-color-outline); border-radius: var(--md-sys-shape-corner-full);
   overflow: hidden; max-width: 100%; }
-.cp-theme-btn { border: 0; background: var(--cp-surface); color: var(--cp-fg-muted); font: inherit; font-size: 0.78rem;
-  padding: 3px 14px; cursor: pointer; }
-.cp-theme-btn + .cp-theme-btn { border-left: 1px solid var(--cp-border); }
-.cp-theme-btn[aria-pressed="true"] { background: var(--cp-accent-soft); color: var(--cp-accent-strong); font-weight: 600; }
-.cp-states { display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
-.cp-axis-label { align-self: center; margin-right: 2px; color: var(--cp-fg-faint); font-size: 0.68rem;
-  font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
-.cp-state-btn { border: 1px solid var(--cp-border-strong); border-radius: 999px; background: var(--cp-surface); color: var(--cp-fg-muted);
-  font: inherit; font-size: 0.78rem; padding: 3px 14px; cursor: pointer; text-decoration: none; }
-.cp-state-btn:hover { border-color: var(--cp-border-strong); color: var(--cp-accent-strong); }
-.cp-state-btn[aria-current="page"] { background: var(--cp-accent-soft); border-color: var(--cp-accent-ring); color: var(--cp-accent-strong); font-weight: 600; }
-.cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
-  font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
-.cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
-.cp-badge--unverified { background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
+.cp-theme-btn { border: 0; background: transparent; color: var(--md-sys-color-on-surface);
+  font: inherit; font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  min-height: 40px; padding: 8px 16px; cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-theme-btn:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-theme-btn + .cp-theme-btn { border-left: 1px solid var(--md-sys-color-outline); }
+.cp-theme-btn[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
+.cp-states { display: inline-flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+.cp-axis-label { align-self: center; margin-right: 2px; color: var(--cp-fg-faint);
+  font-size: var(--md-sys-typescale-label-small-size); font-weight: 500; letter-spacing: 0.06em;
+  text-transform: uppercase; }
+/* M3 filter chip. */
+.cp-state-btn { display: inline-flex; align-items: center; min-height: 32px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small); background: transparent;
+  color: var(--md-sys-color-on-surface-variant); font: inherit;
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  padding: 6px 16px; cursor: pointer; text-decoration: none;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-state-btn:hover { color: var(--md-sys-color-on-surface);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-state-btn[aria-current="page"] { background: var(--md-sys-color-secondary-container);
+  border-color: transparent; color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
+/* Trust badges. Their COLOURS stay literal (a verdict must read the same in every design system),
+   but the shape is M3's: a fully-rounded tonal container, no keyline. */
+.cp-badge { display: inline-block; margin-left: 8px; padding: 4px 10px;
+  border-radius: var(--md-sys-shape-corner-full);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  letter-spacing: var(--md-sys-typescale-label-medium-tracking); font-weight: 500;
+  vertical-align: middle; white-space: nowrap; }
+.cp-badge--trusted { background: #d7f0dd; color: #10521f; border: 0; }
+.cp-badge--unverified { background: #ffdfb0; color: #573100; border: 0; }
+/* The degradation banner takes M3's *error/warning container* shape: a tonal fill at the large
+   corner with no outline, so it reads as a surface rather than as a boxed alert. */
 .cp-degrade { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
-  margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; line-height: 1.4;
-  background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
+  margin: 0 0 12px; padding: 12px 16px; border-radius: var(--md-sys-shape-corner-medium);
+  font-size: var(--md-sys-typescale-body-medium-size); line-height: 1.4;
+  background: #ffdfb0; color: #573100; border: 0; }
 .cp-degrade-icon { font-weight: 700; }
 .cp-degrade-item { display: inline; }
 /* Status page (GET /status): stat tiles, config grid, and the catalog/daemon/failure tables. */
 .cp-status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 10px; margin: 0 0 22px; max-width: 860px; }
-.cp-stat { border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-surface); padding: 10px 14px; }
-.cp-stat-key { font-size: 0.71rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--cp-fg-faint); }
-.cp-stat-val { margin-top: 3px; font-size: 1.05rem; font-weight: 600; color: var(--cp-fg); }
-.cp-status-sec { margin: 26px 0 12px; font-size: 1rem; font-weight: 600; }
+/* Stat tiles are M3 filled cards at the medium corner: tonal fill, no keyline. */
+.cp-stat { border: 0; border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low); padding: 14px 16px; }
+.cp-stat-key { font-size: var(--md-sys-typescale-label-medium-size);
+  line-height: var(--md-sys-typescale-label-medium-line); text-transform: uppercase;
+  letter-spacing: 0.06em; font-weight: 500; color: var(--cp-fg-faint); }
+.cp-stat-val { margin-top: 4px; font-size: var(--md-sys-typescale-title-large-size);
+  line-height: var(--md-sys-typescale-title-large-line); font-weight: 400; color: var(--cp-fg); }
+.cp-status-sec { margin: 26px 0 12px; font-size: var(--md-sys-typescale-title-medium-size);
+  line-height: var(--md-sys-typescale-title-medium-line);
+  letter-spacing: var(--md-sys-typescale-title-medium-tracking); font-weight: 500; }
 .cp-status-scroll { overflow-x: auto; max-width: 100%; margin: 0 0 8px; }
-.cp-table { border-collapse: collapse; font-size: 0.82rem; max-width: 860px; min-width: 100%; }
-.cp-table th { text-align: left; font-weight: 600; color: var(--cp-fg-muted); font-size: 0.72rem;
-  text-transform: uppercase; letter-spacing: 0.03em; padding: 6px 12px 6px 0;
-  border-bottom: 1px solid var(--cp-border); white-space: nowrap; }
-.cp-table td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--cp-surface-2); vertical-align: top; }
+.cp-table { border-collapse: collapse; font-size: var(--md-sys-typescale-body-medium-size);
+  letter-spacing: var(--md-sys-typescale-body-medium-tracking); max-width: 860px; min-width: 100%; }
+.cp-table th { text-align: left; font-weight: 500; color: var(--cp-fg-muted);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  text-transform: uppercase; letter-spacing: 0.06em; padding: 10px 12px 10px 0;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant); white-space: nowrap; }
+.cp-table td { padding: 10px 12px 10px 0;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant); vertical-align: top; }
 .cp-table tr:last-child td { border-bottom: none; }
-.cp-table code { font-size: 0.76rem; padding: 0 4px; border-radius: 4px; background: var(--cp-surface-2); }
+.cp-table code { font-family: var(--md-sys-typescale-mono-font); font-size: 0.76rem; padding: 1px 5px;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface-container-high); }
 .cp-ok { color: #1e7a34; font-weight: 600; }
 .cp-muted { color: var(--cp-fg-faint); font-size: 0.76rem; }
 /* Design parity page (GET /<system>/parity): the coverage meter, the merged two-lane activity
@@ -200,14 +491,22 @@ html.cp-js .cp-section-head { display: none; }
    trusted/unverified badges — they stay literal rather than following a catalog's palette: a row
    must mean the same thing on /wear-m3 as on /m3-catalog. Everything else here is drawn from the
    chrome tokens and needs no dark counterpart. */
-.cp-parity-meter { max-width: 860px; height: 8px; border-radius: 999px; overflow: hidden;
-  background: var(--cp-surface-2); margin: 0 0 6px; }
-.cp-parity-meter-fill { height: 100%; background: var(--cp-accent); border-radius: 999px; }
-.cp-parity-sub { margin: 18px 0 6px; font-size: 0.85rem; font-weight: 600; color: var(--cp-fg-soft); }
-.cp-parity-lane { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.68rem;
-  font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
-.cp-parity-lane--code { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
-.cp-parity-lane--figma { background: #ede8fb; color: #5b3fa8; border: 1px solid #d0c3f0; }
+/* M3 linear progress indicator: a 4dp full-round track in `secondary-container` with a `primary`
+   active bar — the shape Material uses for a determinate meter. */
+.cp-parity-meter { max-width: 860px; height: 4px; border-radius: var(--md-sys-shape-corner-full);
+  overflow: hidden; background: var(--md-sys-color-secondary-container); margin: 0 0 8px; }
+.cp-parity-meter-fill { height: 100%; background: var(--md-sys-color-primary);
+  border-radius: var(--md-sys-shape-corner-full); }
+.cp-parity-sub { margin: 18px 0 6px; font-size: var(--md-sys-typescale-title-medium-size);
+  line-height: var(--md-sys-typescale-title-medium-line);
+  letter-spacing: var(--md-sys-typescale-title-medium-tracking); font-weight: 500;
+  color: var(--cp-fg-soft); }
+.cp-parity-lane { display: inline-block; padding: 3px 10px;
+  border-radius: var(--md-sys-shape-corner-full);
+  font-size: var(--md-sys-typescale-label-small-size); font-weight: 500; text-transform: uppercase;
+  letter-spacing: 0.06em; white-space: nowrap; }
+.cp-parity-lane--code { background: #d7f0dd; color: #10521f; border: 0; }
+.cp-parity-lane--figma { background: #e5deff; color: #3c2b80; border: 0; }
 .cp-parity-feed { list-style: none; margin: 0; padding: 0; max-width: 860px; }
 .cp-parity-entry { display: flex; gap: 16px; padding: 12px 0;
   border-bottom: 1px solid var(--cp-surface-2); }
@@ -245,17 +544,29 @@ html.cp-js .cp-section-head { display: none; }
    one-line coordinate and a three-line one then still land their footers on the same baseline
    across a row, which is what makes the grid read as a grid rather than as ragged tiles. */
 .cp-sys .cp-meta { display: flex; flex-direction: column; padding: 14px 16px 15px; }
-.cp-sys-title { font-size: 1.02rem; font-weight: 650; line-height: 1.3; }
-.cp-sys .cp-id { margin-top: 5px; font-size: 0.72rem; }
-.cp-sys-desc { margin-top: 7px; font-size: 0.76rem; color: var(--cp-fg-muted); line-height: 1.5; }
+.cp-sys-title { font-size: var(--md-sys-typescale-title-medium-size);
+  line-height: var(--md-sys-typescale-title-medium-line);
+  letter-spacing: var(--md-sys-typescale-title-medium-tracking); font-weight: 500; }
+.cp-sys .cp-id { margin-top: 5px; font-size: var(--md-sys-typescale-body-small-size);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking); }
+.cp-sys-desc { margin-top: 7px; font-size: var(--md-sys-typescale-body-small-size);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking); color: var(--cp-fg-muted);
+  line-height: 1.5; }
 /* `auto` collapses to zero once the metadata fills the card, so the padding — not the margin — is
    what guarantees the count never crowds the line above it. */
-.cp-sys-foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--cp-border);
-  font-size: 0.74rem; color: var(--cp-fg-muted); }
-.cp-sys-noimg { font-size: 0.78rem; color: var(--cp-fg-faint); }
-.cp-card { position: relative; isolation: isolate; border: 1px solid var(--cp-border); border-radius: 12px;
-  overflow: hidden; background: var(--cp-surface); display: block; color: inherit;
-  transition: transform 0.2s cubic-bezier(0.2, 0.7, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease; }
+.cp-sys-foot { margin-top: auto; padding-top: 12px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  letter-spacing: var(--md-sys-typescale-label-medium-tracking); color: var(--cp-fg-muted); }
+.cp-sys-noimg { font-size: var(--md-sys-typescale-body-small-size); color: var(--cp-fg-faint); }
+/* M3 *elevated card*: `surface-container-low` at the medium corner, resting at elevation level 1,
+   with no outline — a card is separated from the page by tone and shadow, not by a keyline. */
+.cp-card { position: relative; isolation: isolate; border: 0;
+  border-radius: var(--md-sys-shape-corner-medium);
+  overflow: hidden; background: var(--md-sys-color-surface-container-low); display: block;
+  color: inherit; box-shadow: var(--md-sys-elevation-level1);
+  transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized),
+    box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard); }
 .cp-card[hidden] { display: none; }
 /* Card hover — the whole tile is the affordance, so it must NOT read as a hyperlink. The sheet's
    global `a:hover { text-decoration: underline }` otherwise underlined every line of a card's meta
@@ -264,17 +575,22 @@ html.cp-js .cp-section-head { display: none; }
    shadow, takes an accent rim, and wipes an accent bar along its top edge while its artwork eases
    in a little. Focus-visible gets the identical treatment so keyboard navigation is not a
    second-class path. Everything here is transform/opacity-only, so it costs no layout. */
+/* Hover/focus is M3's card interaction: rise to elevation level 3 and take a `primary` STATE
+   LAYER over the whole tile (the ::after below), rather than swapping to another fill or growing
+   an accent rim. The small lift is kept — it is what tells a pointer the tile itself is the
+   target — but it is now the shadow, not a border colour, that carries the change. */
 .cp-card:hover, .cp-card:focus-visible {
-  transform: translateY(-3px); border-color: var(--cp-accent-ring); text-decoration: none;
-  box-shadow: 0 14px 28px -18px rgba(22, 22, 48, 0.45), 0 3px 8px -5px rgba(22, 22, 48, 0.3); }
-.cp-card:focus-visible { outline: 2px solid var(--cp-accent-ring); outline-offset: 2px; }
-.cp-card::after { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; z-index: 3;
-  background: linear-gradient(90deg, var(--cp-accent), var(--cp-accent-ring));
-  transform: scaleX(0); transform-origin: left center;
-  transition: transform 0.28s cubic-bezier(0.2, 0.7, 0.3, 1); pointer-events: none; }
-.cp-card:hover::after, .cp-card:focus-visible::after { transform: scaleX(1); }
+  transform: translateY(-2px); text-decoration: none;
+  box-shadow: var(--md-sys-elevation-level3); }
+.cp-card:focus-visible { outline: 3px solid var(--md-sys-color-secondary); outline-offset: 2px; }
+.cp-card::after { content: ""; position: absolute; inset: 0; z-index: 3;
+  background: var(--md-sys-color-primary); opacity: 0;
+  transition: opacity var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+  pointer-events: none; }
+.cp-card:hover::after { opacity: var(--md-sys-state-hover-opacity); }
+.cp-card:focus-visible::after { opacity: var(--md-sys-state-focus-opacity); }
 .cp-card:hover .cp-sys-title, .cp-card:focus-visible .cp-sys-title,
-.cp-card:hover .cp-label, .cp-card:focus-visible .cp-label { color: var(--cp-accent-strong); }
+.cp-card:hover .cp-label, .cp-card:focus-visible .cp-label { color: var(--md-sys-color-primary); }
 .cp-card .cp-imgwrap img { transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.3, 1); }
 .cp-card:hover .cp-imgwrap img, .cp-card:focus-visible .cp-imgwrap img { transform: scale(1.035); }
 /* A card mid-render is already animating (fade + spinner); leave its artwork alone so the two
@@ -326,23 +642,45 @@ html:not(.cp-bg-transparent) .cp-card[data-bg-theme="dark"] .cp-imgwrap { backgr
    Solid mode only; the Transparent checkerboard still wins via cp-bg-transparent. */
 html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="dark"] .cp-stage { background: #1d1d20; }
 html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { background: #fff; }
-.cp-bg { display: inline-flex; border: 1px solid var(--cp-border-strong); border-radius: 999px; overflow: hidden; }
-.cp-bg-btn { border: 0; background: var(--cp-surface); color: var(--cp-fg-muted); font: inherit; font-size: 0.78rem;
-  padding: 3px 14px; cursor: pointer; }
-.cp-bg-btn[aria-pressed="true"] { background: var(--cp-accent-soft); color: var(--cp-accent-strong); font-weight: 600; }
-.cp-meta { padding: 10px 12px 11px; font-size: 0.82rem; }
-.cp-label { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-id { color: var(--cp-fg-muted); font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-engage { margin-top: 3px; color: var(--cp-fg-faint); font-size: 0.7rem; }
-.cp-viewer-engage { margin: -14px 0 16px; color: var(--cp-fg-faint); font-size: 0.78rem; }
-.cp-preview-title { font-size: 1.35rem; }
-.cp-preview-id { margin: 2px 0 8px; color: var(--cp-fg-muted); font-size: 0.75rem; }
-.cp-preview-id code { padding: 1px 5px; border-radius: 4px; background: var(--cp-surface-2); }
+/* Background/Transparent — a second M3 segmented button, same track as the Theme picker. */
+.cp-bg { display: inline-flex; border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full); overflow: hidden; }
+.cp-bg-btn { border: 0; background: transparent; color: var(--md-sys-color-on-surface); font: inherit;
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  min-height: 40px; padding: 8px 16px; cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-bg-btn:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-bg-btn + .cp-bg-btn { border-left: 1px solid var(--md-sys-color-outline); }
+.cp-bg-btn[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
+.cp-meta { padding: 12px 16px 14px; font-size: var(--md-sys-typescale-body-medium-size); }
+.cp-label { font-size: var(--md-sys-typescale-title-small-size);
+  line-height: var(--md-sys-typescale-title-small-line);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking); font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-id { color: var(--cp-fg-muted); font-size: var(--md-sys-typescale-body-small-size);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-engage { margin-top: 3px; color: var(--cp-fg-faint);
+  font-size: var(--md-sys-typescale-label-medium-size); }
+.cp-viewer-engage { margin: -14px 0 16px; color: var(--cp-fg-faint);
+  font-size: var(--md-sys-typescale-body-small-size); }
+.cp-preview-title { font-size: var(--md-sys-typescale-headline-small-size);
+  line-height: var(--md-sys-typescale-headline-small-line); }
+.cp-preview-id { margin: 4px 0 10px; color: var(--cp-fg-muted);
+  font-size: var(--md-sys-typescale-body-small-size);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking); }
+.cp-preview-id code { font-family: var(--md-sys-typescale-mono-font); padding: 2px 6px;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface-container-high); }
 .cp-preview-primary { margin: 2px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
-.cp-stage { position: relative; flex: 1 1 360px; min-width: 280px; border: 1px solid var(--cp-border);
-  border-radius: 10px;
-  background: var(--cp-surface); padding: 12px;
+/* The stage is the viewer's hero surface — an M3 elevated card at the large corner. */
+.cp-stage { position: relative; flex: 1 1 360px; min-width: 280px; border: 0;
+  border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container-low); padding: 16px;
+  box-shadow: var(--md-sys-elevation-level1);
   display: flex; align-items: center; justify-content: center; min-height: 220px; }
 .cp-stage img, .cp-stage canvas { max-width: 100%; height: auto; }
 /* Override/theme renders can take a moment. Preserve the previous pixels as context, fade them
@@ -430,13 +768,19 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 /* Visible mode-activation error overlay: shown when a lane (Live stream, Wasm
    app, or a /render) fails to activate, so a failed mode reads as an error
    instead of a silent stale frame. Centered over the stage; [hidden] hides it. */
+/* M3 error container: the `error-container` / `on-error-container` role pair at the medium
+   corner, lifted on elevation 2 because it floats over the stage. */
 .cp-error { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  max-width: 80%; z-index: 3; padding: 10px 14px; border-radius: 8px;
-  font-size: 0.8rem; line-height: 1.4; text-align: center; color: #8a1c1c;
-  background: #fdecec; border: 1px solid #f3b6b6; box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+  max-width: 80%; z-index: 3; padding: 12px 16px; border-radius: var(--md-sys-shape-corner-medium);
+  font-size: var(--md-sys-typescale-body-medium-size); line-height: 1.4; text-align: center;
+  color: var(--md-sys-color-on-error-container); background: var(--md-sys-color-error-container);
+  border: 0; box-shadow: var(--md-sys-elevation-level2); }
 .cp-error[hidden] { display: none; }
-.cp-note { font-size: 0.75rem; color: var(--cp-fg-muted); line-height: 1.4; padding: 8px 10px;
-  border-radius: 8px; background: var(--cp-surface-2); }
+.cp-note { font-size: var(--md-sys-typescale-body-small-size);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking);
+  color: var(--md-sys-color-on-surface-variant); line-height: 1.45; padding: 12px 16px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-high); }
 .cp-controls label:has(:disabled) { opacity: 0.55; }
 .cp-size { display: flex; flex-direction: column; gap: 8px; }
 /* :not([hidden]) so the mode toggle's `hidden` attribute still wins over this display rule. */
@@ -455,47 +799,82 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-below { margin: 18px 0 0; max-width: 720px; display: flex; flex-direction: column; gap: 12px; }
 /* Export & direct links: its own border is the card's, so the .cp-links divider rule above is
    dropped inside it. */
-.cp-export { padding: 12px 14px; border: 1px solid var(--cp-border);
-  border-radius: 10px; background: var(--cp-surface); }
-.cp-export > summary { color: var(--cp-fg-soft); font-size: 0.78rem; font-weight: 600; }
+.cp-export { padding: 14px 18px; border: 0;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low); }
+.cp-export > summary { color: var(--cp-fg-soft);
+  font-size: var(--md-sys-typescale-title-small-size);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking); font-weight: 500; }
 .cp-export .cp-links { border-top: 0; padding-top: 0; }
-.cp-link-row { display: flex; align-items: center; gap: 6px; }
-.cp-link-kind { font-size: 0.72rem; font-weight: 600; color: var(--cp-fg-muted); width: 30px; flex: none; }
-.cp-url { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem; padding: 4px 6px; border: 1px solid var(--cp-border-strong); border-radius: 6px;
-  background: var(--cp-surface); color: var(--cp-fg); cursor: pointer; }
-.cp-url.cp-url-copied { border-color: var(--cp-accent); box-shadow: 0 0 0 2px rgba(91, 91, 214, 0.25); }
-.cp-copyimg, .cp-dl { font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--cp-border-strong);
-  background: var(--cp-surface); color: var(--cp-accent); cursor: pointer; text-decoration: none; flex: none; white-space: nowrap; }
-.cp-copyimg:hover, .cp-dl:hover { background: var(--cp-surface-2); }
+.cp-link-row { display: flex; align-items: center; gap: 8px; }
+.cp-link-kind { font-size: var(--md-sys-typescale-label-medium-size);
+  letter-spacing: var(--md-sys-typescale-label-medium-tracking); font-weight: 500;
+  color: var(--cp-fg-muted); width: 30px; flex: none; }
+.cp-url { flex: 1; min-width: 0; font-family: var(--md-sys-typescale-mono-font);
+  font-size: 0.72rem; padding: 8px 10px; border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: transparent; color: var(--cp-fg); cursor: pointer; }
+.cp-url.cp-url-copied { border-color: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 30%, transparent); }
+/* M3 text buttons on the link rows. */
+.cp-copyimg, .cp-dl { font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  padding: 8px 14px; border-radius: var(--md-sys-shape-corner-full); border: 0;
+  background: transparent; color: var(--md-sys-color-primary); cursor: pointer;
+  text-decoration: none; flex: none; white-space: nowrap;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-copyimg:hover, .cp-dl:hover {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent); }
 /* Drawer toggles + the two collapsible drawers (left component nav, right overrides). The open
    state is a class on .cp-viewer — cp-controls-open (default on) and cp-nav-open (default off) —
    so a drawer hides purely in CSS and the toggle JS just flips the class + aria-expanded. */
 .cp-viewer-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
-.cp-drawer-toggle { display: inline-flex; align-items: center; gap: 6px; font: inherit;
-  font-size: 0.78rem; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--cp-border-strong);
-  background: var(--cp-surface); color: var(--cp-fg-soft); cursor: pointer; }
-.cp-drawer-toggle:hover { background: var(--cp-surface-2); }
-.cp-drawer-toggle[aria-expanded="true"] { background: var(--cp-accent-soft); border-color: var(--cp-accent-ring);
-  color: var(--cp-accent-strong); font-weight: 600; }
-.cp-nav { flex: 0 0 220px; align-self: stretch; max-height: 72vh; overflow: auto;
-  border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-surface); padding: 12px;
+/* The two drawer toggles are M3 *toggle buttons*: outlined while off, tonal (`secondary-container`)
+   while the drawer they own is open — the same selected language as the chips above. */
+.cp-drawer-toggle { display: inline-flex; align-items: center; gap: 8px; font: inherit;
+  min-height: 40px; font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  padding: 8px 16px; border-radius: var(--md-sys-shape-corner-full);
+  border: 1px solid var(--md-sys-color-outline);
+  background: transparent; color: var(--md-sys-color-on-surface-variant); cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-drawer-toggle:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-drawer-toggle[aria-expanded="true"] { background: var(--md-sys-color-secondary-container);
+  border-color: transparent; color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
+/* The component list is an M3 *navigation drawer*: a container-role surface at the extra-large
+   corner whose rows are full-round pills. */
+.cp-nav { flex: 0 0 240px; align-self: stretch; max-height: 72vh; overflow: auto;
+  border: 0; border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container-low); padding: 12px;
   display: flex; flex-direction: column; gap: 10px; }
 .cp-nav-head { display: flex; align-items: center; justify-content: space-between;
-  font-size: 0.8rem; font-weight: 600; color: var(--cp-fg-soft); }
+  padding: 4px 8px; font-size: var(--md-sys-typescale-title-small-size);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking); font-weight: 500;
+  color: var(--cp-fg-soft); }
 .cp-nav-close { border: 0; background: none; font: inherit; font-size: 1.1rem; line-height: 1;
   color: var(--cp-fg-muted); cursor: pointer; padding: 0 2px; }
-.cp-nav-search { padding: 6px 10px; font: inherit; font-size: 0.8rem; border: 1px solid var(--cp-border-strong);
-  border-radius: 8px; background: var(--cp-surface); color: inherit; }
+.cp-nav-search { padding: 8px 14px; font: inherit;
+  font-size: var(--md-sys-typescale-body-medium-size); border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-surface-container-high); color: inherit; }
 .cp-nav-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.cp-nav-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px;
-  font-size: 0.8rem; color: inherit; }
-.cp-nav-thumb { flex: none; width: 28px; height: 28px; object-fit: contain; border-radius: 4px;
+/* M3 navigation-drawer item: 56dp tall, full-round, `secondary-container` when it is the page. */
+.cp-nav-item { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 6px 14px;
+  border-radius: var(--md-sys-shape-corner-full);
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  color: var(--md-sys-color-on-surface-variant);
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-nav-thumb { flex: none; width: 28px; height: 28px; object-fit: contain;
+  border-radius: var(--md-sys-shape-corner-extra-small);
   background: repeating-conic-gradient(var(--cp-surface-2) 0% 25%, var(--cp-surface) 0% 50%) 50% / 8px 8px; }
 .cp-nav-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-nav-item:hover { background: var(--cp-surface-2); text-decoration: none; }
-.cp-nav-item[aria-current="page"] { background: var(--cp-accent-soft); color: var(--cp-accent-strong); font-weight: 600; }
-.cp-nav-empty { font-size: 0.78rem; color: var(--cp-fg-muted); }
+.cp-nav-item:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  color: var(--md-sys-color-on-surface); text-decoration: none; }
+.cp-nav-item[aria-current="page"] { background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
+.cp-nav-empty { font-size: var(--md-sys-typescale-body-medium-size); color: var(--cp-fg-muted); }
 .cp-nav-empty[hidden] { display: none; }
 .cp-viewer:not(.cp-nav-open) .cp-nav { display: none; }
 .cp-viewer:not(.cp-controls-open) .cp-controls { display: none; }
@@ -506,26 +885,48 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    expands/collapses on its own. The summary is the group title with a rotating disclosure
    caret; the body holds the labelled controls. Replaces the old flat control stack so the
    overrides panel reads as a small set of named, foldable groups. */
-.cp-group { border: 1px solid var(--cp-border); border-radius: 8px; background: var(--cp-surface); }
+/* Each override group is an M3 filled card at the medium corner. */
+.cp-group { border: 0; border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low); }
 .cp-group > summary { cursor: pointer; list-style: none; display: flex; align-items: center;
-  gap: 6px; padding: 8px 10px; font-size: 0.78rem; font-weight: 600; color: var(--cp-fg-soft);
+  gap: 8px; min-height: 44px; padding: 10px 14px;
+  font-size: var(--md-sys-typescale-title-small-size);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking); font-weight: 500;
+  color: var(--cp-fg-soft); border-radius: var(--md-sys-shape-corner-medium);
   user-select: none; }
 .cp-group > summary::-webkit-details-marker { display: none; }
 .cp-group > summary::before { content: "\25B8"; font-size: 0.72rem; color: var(--cp-fg-faint);
   transition: transform 0.12s ease; }
 .cp-group[open] > summary::before { transform: rotate(90deg); }
-.cp-group > summary:hover { color: var(--cp-accent-strong); }
-.cp-group-body { display: flex; flex-direction: column; gap: 12px; padding: 0 10px 12px; }
+.cp-group > summary:hover { color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-group-body { display: flex; flex-direction: column; gap: 12px; padding: 0 14px 14px; }
+/* Override inputs read as M3 *outlined text fields*: an `outline` keyline at the extra-small
+   corner, on the group's own surface. The shared focus ring above supplies the focused state. */
+.cp-controls input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+.cp-controls select { padding: 8px 10px; border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  background: var(--md-sys-color-surface-container-low); color: var(--md-sys-color-on-surface);
+  font: inherit; font-size: var(--md-sys-typescale-body-medium-size); }
+.cp-controls label { color: var(--md-sys-color-on-surface-variant); }
 /* The single Static⇄Live preview toggle (replaces the old PNG/SVG/Live/Wasm radio row). Off =
    the baked / on-demand snapshot; on = the interactive lane (daemon stream, or the in-browser
    Wasm app). The hidden mode radios behind it are what the transport JS actually reads. */
 .cp-preview-mode { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.cp-live-toggle { display: inline-flex; align-items: center; gap: 7px; font: inherit;
-  font-size: 0.8rem; font-weight: 600; padding: 6px 14px; border-radius: 999px;
-  border: 1px solid var(--cp-border-strong); background: var(--cp-surface); color: var(--cp-fg-soft); cursor: pointer; }
-.cp-live-toggle:hover:not(:disabled) { background: var(--cp-surface-2); }
-.cp-live-toggle:disabled { opacity: 0.5; cursor: default; }
-.cp-live-toggle[aria-pressed="true"] { background: #e7f4ea; border-color: #b6e0c2; color: #1e7a34; }
+/* M3 toggle button, 40dp: outlined while the lane is off, and — because "live" is a status, not a
+   selection — a literal green tonal container while it is on. That green is deliberately NOT a
+   palette role: it pairs with the status dot below and must mean the same on every catalog. */
+.cp-live-toggle { display: inline-flex; align-items: center; gap: 8px; font: inherit;
+  min-height: 40px; font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  padding: 8px 20px; border-radius: var(--md-sys-shape-corner-full);
+  border: 1px solid var(--md-sys-color-outline); background: transparent;
+  color: var(--md-sys-color-on-surface-variant); cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-live-toggle:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-live-toggle:disabled { opacity: 0.38; cursor: default; }
+.cp-live-toggle[aria-pressed="true"] { background: #d7f0dd; border-color: transparent; color: #10521f; }
 /* The sign-in affordance shown in place of the Live toggle when auth is the only thing blocking
    the daemon lane. Deliberately NOT dimmed like `:disabled` — the lane is available, it just needs
    one click, and a greyed chip says the opposite. Full contrast and a dashed keyline mark it as an
@@ -549,20 +950,28 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
    It swaps the static snapshot between the raster PNG and the resolution-independent vector
    render; pressing it while Live is on drops back to the static SVG. */
-.cp-fmt-toggle { display: inline-flex; align-items: center; font: inherit; font-size: 0.78rem;
-  font-weight: 600; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--cp-border-strong);
-  background: var(--cp-surface); color: var(--cp-fg-soft); cursor: pointer; }
-.cp-fmt-toggle:hover { background: var(--cp-surface-2); }
-.cp-fmt-toggle[aria-pressed="true"] { background: var(--cp-accent-soft); border-color: var(--cp-accent-ring); color: var(--cp-accent-strong); }
+.cp-fmt-toggle { display: inline-flex; align-items: center; font: inherit; min-height: 40px;
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  padding: 8px 20px; border-radius: var(--md-sys-shape-corner-full);
+  border: 1px solid var(--md-sys-color-outline); background: transparent;
+  color: var(--md-sys-color-on-surface-variant); cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-fmt-toggle:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-fmt-toggle[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
+  border-color: transparent; color: var(--md-sys-color-on-secondary-container); }
 .cp-format-link { color: var(--cp-fg-muted); font-size: 0.75rem; white-space: nowrap; }
 .cp-format-link:hover { color: var(--cp-accent-strong); }
-.cp-match { display: inline-flex; align-items: center; min-height: 28px; padding: 4px 9px;
-  border-radius: 999px; font-size: 0.75rem; font-weight: 600; color: var(--cp-fg-muted);
-  background: var(--cp-surface-2); border: 1px solid var(--cp-border); }
+/* Score chips: M3 assist-chip shape, literal semantic colours. */
+.cp-match { display: inline-flex; align-items: center; min-height: 32px; padding: 6px 12px;
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  color: var(--cp-fg-muted); background: var(--md-sys-color-surface-container-high); border: 0; }
 .cp-match[hidden] { display: none; }
-.cp-match--good { color: #1e7a34; background: #e7f4ea; border-color: #b6e0c2; }
-.cp-match--warn { color: #8a5300; background: #fdf0e3; border-color: #f0d3a8; }
-.cp-match--bad { color: #8a1c1c; background: #fdecec; border-color: #f3b6b6; }
+.cp-match--good { color: #10521f; background: #d7f0dd; border-color: transparent; }
+.cp-match--warn { color: #573100; background: #ffdfb0; border-color: transparent; }
+.cp-match--bad { color: #6e1414; background: #ffdad6; border-color: transparent; }
 .cp-match--na { color: var(--cp-fg-muted); }
 /* Native format-fidelity gallery. The site chrome follows prefers-color-scheme; the Theme control
    selects compared artefacts and never changes the fixed scoring backdrop. */
@@ -645,11 +1054,15 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-reference-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   margin: 14px 0 10px; color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-reference-picker > span { margin-right: 2px; font-weight: 650; }
-.cp-reference-choice { padding: 6px 10px; border: 1px solid var(--cp-border-strong); border-radius: 999px;
-  background: var(--cp-surface); color: var(--cp-fg-soft); text-decoration: none; }
-.cp-reference-choice:hover { border-color: var(--cp-accent-ring); color: var(--cp-accent-strong); }
-.cp-reference-choice[aria-current="page"] { background: var(--cp-accent-soft); border-color: var(--cp-accent-ring);
-  color: var(--cp-accent-strong); font-weight: 600; }
+.cp-reference-choice { display: inline-flex; align-items: center; min-height: 32px; padding: 6px 16px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: transparent; color: var(--md-sys-color-on-surface-variant); text-decoration: none;
+  font-weight: 500; }
+.cp-reference-choice:hover { color: var(--md-sys-color-on-surface);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-reference-choice[aria-current="page"] { background: var(--md-sys-color-secondary-container);
+  border-color: transparent; color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
 .cp-reference-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
 .cp-reference-grid section h2 { margin: 0 0 8px; font-size: 0.8rem; color: var(--cp-fg-muted);
   text-transform: uppercase; letter-spacing: 0.06em; }
@@ -717,108 +1130,116 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 /* Shared-document surfaces (POST /docs → GET /d/<id>): the drop zone on the upload page and the
    played-back document + its facts on the permalink page. Both reuse the card/stage chrome. */
 .cp-drop { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 720px;
-  padding: 28px 20px; border: 2px dashed var(--cp-border-strong); border-radius: 12px; background: var(--cp-surface);
-  text-align: center; cursor: pointer; }
-.cp-drop:hover, .cp-drop.cp-drop-over { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
-.cp-drop-title { font-size: 0.95rem; font-weight: 600; }
-.cp-drop-hint { font-size: 0.8rem; color: var(--cp-fg-muted); line-height: 1.45; }
+  padding: 32px 24px; border: 2px dashed var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container-low);
+  text-align: center; cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-drop:hover, .cp-drop.cp-drop-over { border-color: var(--md-sys-color-primary);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%,
+    var(--md-sys-color-surface-container-low)); }
+.cp-drop-title { font-size: var(--md-sys-typescale-title-medium-size);
+  line-height: var(--md-sys-typescale-title-medium-line);
+  letter-spacing: var(--md-sys-typescale-title-medium-tracking); font-weight: 500; }
+.cp-drop-hint { font-size: var(--md-sys-typescale-body-medium-size); color: var(--cp-fg-muted);
+  line-height: 1.45; }
 .cp-doc-form { max-width: 720px; margin: 16px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
-.cp-doc-url { flex: 1 1 320px; padding: 7px 12px; font: inherit; font-size: 0.85rem;
-  border: 1px solid var(--cp-border-strong); border-radius: 999px; background: var(--cp-surface); color: inherit; }
-.cp-doc-btn { font: inherit; font-size: 0.82rem; font-weight: 600; padding: 6px 16px;
-  border-radius: 999px; border: 1px solid var(--cp-border-strong); background: var(--cp-surface); color: var(--cp-fg-soft); cursor: pointer; }
-.cp-doc-btn:hover { background: var(--cp-surface-2); }
-.cp-doc-result { max-width: 720px; margin: 18px 0 0; padding: 14px 16px; border-radius: 10px;
-  border: 1px solid var(--cp-border); background: var(--cp-surface); font-size: 0.84rem; }
+.cp-doc-url { flex: 1 1 320px; min-height: 44px; padding: 10px 18px; font: inherit;
+  font-size: var(--md-sys-typescale-body-medium-size);
+  border: 0; border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-surface-container-high); color: inherit; }
+/* The one true "commit" action on the page — an M3 *filled button*. */
+.cp-doc-btn { font: inherit; font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  min-height: 40px; padding: 10px 24px; border-radius: var(--md-sys-shape-corner-full);
+  border: 0; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);
+  cursor: pointer;
+  transition: box-shadow var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-doc-btn:hover { background: var(--md-sys-color-primary);
+  box-shadow: var(--md-sys-elevation-level1); }
+.cp-doc-result { max-width: 720px; margin: 18px 0 0; padding: 16px 20px;
+  border-radius: var(--md-sys-shape-corner-medium); border: 0;
+  background: var(--md-sys-color-surface-container-low);
+  font-size: var(--md-sys-typescale-body-medium-size); }
 .cp-doc-result[hidden] { display: none; }
-.cp-doc-result.cp-doc-error { background: #fdf0e3; color: #8a5300; border-color: #f0d3a8; }
-.cp-doc-stage { max-width: 720px; border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-surface);
-  padding: 12px; display: flex; align-items: center; justify-content: center; min-height: 260px; }
+.cp-doc-result.cp-doc-error { background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container); border-color: transparent; }
+.cp-doc-stage { max-width: 720px; border: 0; border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container-low); box-shadow: var(--md-sys-elevation-level1);
+  padding: 16px; display: flex; align-items: center; justify-content: center; min-height: 260px; }
 .cp-doc-stage canvas, .cp-doc-stage svg, .cp-doc-stage img { max-width: 100%; height: auto; }
-.cp-doc-status { margin: 8px 0 0; font-size: 0.78rem; color: var(--cp-fg-muted); min-height: 1.2em; }
+.cp-doc-status { margin: 8px 0 0; font-size: var(--md-sys-typescale-body-small-size);
+  color: var(--cp-fg-muted); min-height: 1.2em; }
 .cp-doc-facts { max-width: 720px; margin: 16px 0 0; display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
-.cp-doc-expiry { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.7rem;
-  font-weight: 600; background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
+.cp-doc-expiry { display: inline-block; padding: 4px 10px;
+  border-radius: var(--md-sys-shape-corner-full);
+  font-size: var(--md-sys-typescale-label-medium-size); font-weight: 500;
+  background: #ffdfb0; color: #573100; border: 0; }
 /* Dark mode is the same sheet with the palette re-pointed — only the handful of rules that are
    genuinely mode-specific (a lighter accent on a dark chip, the semantic badge palettes, the
    heavier sheet shadow) survive below the `:root` block. */
 @media (prefers-color-scheme: dark) {
+  /* The M3 baseline scheme's dark half. Only the ROLES are re-declared — the `--cp-*` aliases
+     above are `var()` references, so the whole chrome follows without a second alias block.
+     Elevation deepens too: M3's shadow recipes are tuned for a light surface, and on a dark one
+     the same alphas vanish, so the shadow colour goes fully opaque-black-based here. */
   :root {
-    --cp-bg: #161618;
-    --cp-surface: #1d1d20;
-    --cp-surface-2: #26262b;
-    --cp-fg: #e6e6e9;
-    --cp-fg-soft: #c9c9d0;
-    --cp-fg-muted: #a0a0a8;
-    --cp-fg-faint: #7a7a82;
-    --cp-border: #34343a;
-    --cp-border-strong: #4a4a55;
-    --cp-accent: #8f8ff0;
-    --cp-accent-strong: #c9c9ff;
-    --cp-accent-soft: #26264a;
-    --cp-accent-ring: #45458a;
-    --cp-on-accent: #16161a;
-    --cp-on-accent-soft: #c9c9ff;
+    --md-sys-color-primary: #d0bcff;
+    --md-sys-color-on-primary: #381e72;
+    --md-sys-color-primary-container: #4f378b;
+    --md-sys-color-on-primary-container: #eaddff;
+    --md-sys-color-secondary: #ccc2dc;
+    --md-sys-color-on-secondary: #332d41;
+    --md-sys-color-secondary-container: #4a4458;
+    --md-sys-color-on-secondary-container: #e8def8;
+    --md-sys-color-tertiary: #efb8c8;
+    --md-sys-color-on-tertiary: #492532;
+    --md-sys-color-tertiary-container: #633b48;
+    --md-sys-color-on-tertiary-container: #ffd8e4;
+    --md-sys-color-error: #f2b8b5;
+    --md-sys-color-on-error: #601410;
+    --md-sys-color-error-container: #8c1d18;
+    --md-sys-color-on-error-container: #f9dedc;
+    --md-sys-color-surface: #141218;
+    --md-sys-color-on-surface: #e6e0e9;
+    --md-sys-color-surface-variant: #49454f;
+    --md-sys-color-on-surface-variant: #cac4d0;
+    --md-sys-color-surface-dim: #141218;
+    --md-sys-color-surface-bright: #3b383e;
+    --md-sys-color-surface-container-lowest: #0f0d13;
+    --md-sys-color-surface-container-low: #1d1b20;
+    --md-sys-color-surface-container: #211f26;
+    --md-sys-color-surface-container-high: #2b2930;
+    --md-sys-color-surface-container-highest: #36343b;
+    --md-sys-color-outline: #938f99;
+    --md-sys-color-outline-variant: #49454f;
+    --md-sys-color-inverse-surface: #e6e0e9;
+    --md-sys-color-inverse-on-surface: #322f35;
+    --md-sys-color-inverse-primary: #6750a4;
+    --md-sys-elevation-level1: 0 1px 2px 0 rgba(0, 0, 0, 0.6), 0 1px 3px 1px rgba(0, 0, 0, 0.45);
+    --md-sys-elevation-level2: 0 1px 2px 0 rgba(0, 0, 0, 0.6), 0 2px 6px 2px rgba(0, 0, 0, 0.45);
+    --md-sys-elevation-level3: 0 1px 3px 0 rgba(0, 0, 0, 0.6), 0 4px 8px 3px rgba(0, 0, 0, 0.45);
   }
-  .cp-site-header { border-bottom-color: var(--cp-border); }
-  .cp-site-footer { border-top-color: var(--cp-border); }
-  .cp-site-nav a { color: var(--cp-fg-soft); }
-  .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: var(--cp-fg-muted); }
-  .cp-engage, .cp-viewer-engage { color: var(--cp-fg-faint); }
-  .cp-card, .cp-stage, .cp-knobs, .cp-links, .cp-about { border-color: var(--cp-border); }
-  .cp-export { background: var(--cp-surface); border-color: var(--cp-border); }
-  .cp-export-head { color: var(--cp-fg-soft); }
-  .cp-url { border-color: var(--cp-border); }
-  .cp-url.cp-url-copied { box-shadow: 0 0 0 2px rgba(143, 143, 240, 0.3); }
-  .cp-copyimg, .cp-dl { border-color: var(--cp-border); }
-  .cp-card, .cp-about { background: var(--cp-surface); }
-  /* A lift needs a heavier, tighter shadow on a dark surface to read at all. */
-  .cp-card:hover, .cp-card:focus-visible { border-color: var(--cp-accent-ring);
-    box-shadow: 0 16px 30px -18px rgba(0, 0, 0, 0.85), 0 3px 10px -5px rgba(0, 0, 0, 0.6); }
-  .cp-section-count { background: var(--cp-surface-2); color: var(--cp-fg-muted); }
-  .cp-sys-foot { border-top-color: var(--cp-border); }
-  .cp-systems a, .cp-systems-cur { border-color: var(--cp-border); }
-  .cp-about-ver { border-color: var(--cp-border); }
-  .cp-back { background: var(--cp-surface); border-color: var(--cp-border); color: var(--cp-fg-soft); }
-  .cp-prov { background: var(--cp-surface); border-color: var(--cp-border); color: var(--cp-fg-muted); }
-  .cp-search { border-color: var(--cp-border); }
-  .cp-count, .cp-empty { color: var(--cp-fg-muted); }
-  .cp-tabs { border-bottom-color: var(--cp-border); }
-  .cp-tab-count { color: var(--cp-accent-strong); }
-  .cp-theme { border-color: var(--cp-border); }
-  .cp-theme-btn + .cp-theme-btn { border-left-color: var(--cp-border); }
-  .cp-state-btn { border-color: var(--cp-border); }
-  .cp-reference-choice { border-color: var(--cp-border); color: var(--cp-fg-muted); }
-  .cp-reference-choice:hover { border-color: var(--cp-border-strong); }
-  .cp-drop { background: var(--cp-surface); border-color: var(--cp-border); }
-  .cp-drop:hover, .cp-drop.cp-drop-over { background: var(--cp-surface-2); }
-  .cp-drop-hint, .cp-doc-status { color: var(--cp-fg-muted); }
-  .cp-doc-url, .cp-doc-btn { background: var(--cp-surface); border-color: var(--cp-border); color: var(--cp-fg); }
-  .cp-doc-result, .cp-doc-stage { background: var(--cp-surface); border-color: var(--cp-border); }
-  /* Stat tiles are shared by the status page and the document facts; without these they stayed
-     white-on-dark in both. */
-  .cp-stat { background: var(--cp-surface); border-color: var(--cp-border); }
+  /* Everything that follows the palette now follows it through the roles above — the long list of
+     per-rule dark overrides this block used to carry (re-pointing a border, a surface or a muted
+     text colour at its dark twin) is gone with it. What survives is what the token layer genuinely
+     cannot express: the SEMANTIC colour pairs, which are literal by design and so need a dark
+     re-mix of their own. They keep M3's *container / on-container* relationship — a low-chroma
+     tonal fill with a high-chroma label — rather than reverting to bordered chips. */
+  .cp-url.cp-url-copied { box-shadow: 0 0 0 2px rgba(208, 188, 255, 0.35); }
   .cp-imgwrap, .cp-stage { background: var(--cp-surface); }
   html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage { background: repeating-conic-gradient(var(--cp-surface-2) 0% 25%, var(--cp-surface) 0% 50%) 50% / 16px 16px; }
-  .cp-bg { border-color: var(--cp-border); }
-  .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
-  .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
-  /* Same semantic pair as the badges above: literal, re-mixed for a dark surface. */
-  .cp-parity-lane--code { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
-  .cp-parity-lane--figma { background: #241d3d; color: #b3a1ee; border-color: #453a6b; }
-  .cp-degrade { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
-  .cp-drawer-toggle { border-color: var(--cp-border); }
-  .cp-nav { border-color: var(--cp-border); }
-  .cp-nav-search { border-color: var(--cp-border); }
-  .cp-group { background: var(--cp-surface); border-color: var(--cp-border); }
-  .cp-live-toggle { border-color: var(--cp-border); }
-  .cp-live-toggle[aria-pressed="true"] { background: #14361f; border-color: #2c6b40; color: #6cd98a; }
-  .cp-fmt-toggle { background: var(--cp-surface); border-color: var(--cp-border); color: var(--cp-fg-soft); }
-  .cp-match { border-color: var(--cp-border); }
-  .cp-match--good { color: #6cd98a; background: #14361f; border-color: #2c6b40; }
-  .cp-match--warn { color: #e6b067; background: #3a2a12; border-color: #6b4f24; }
-  .cp-match--bad { color: #ef9292; background: #3d1d1d; border-color: #713535; }
+  .cp-badge--trusted { background: #0d3a1c; color: #86dc9d; border-color: transparent; }
+  .cp-badge--unverified { background: #4a3000; color: #ffd8a3; border-color: transparent; }
+  .cp-parity-lane--code { background: #0d3a1c; color: #86dc9d; border-color: transparent; }
+  .cp-parity-lane--figma { background: #372b70; color: #c9c0ff; border-color: transparent; }
+  .cp-degrade { background: #4a3000; color: #ffd8a3; border-color: transparent; }
+  .cp-doc-expiry { background: #4a3000; color: #ffd8a3; border-color: transparent; }
+  .cp-live-toggle[aria-pressed="true"] { background: #0d3a1c; border-color: transparent; color: #86dc9d; }
+  .cp-match--good { color: #86dc9d; background: #0d3a1c; border-color: transparent; }
+  .cp-match--warn { color: #ffd8a3; background: #4a3000; border-color: transparent; }
+  .cp-match--bad { color: #ffb4ab; background: #601410; border-color: transparent; }
   .cp-compare-control-label, .cp-compare-score { color: var(--cp-fg-muted); }
   .cp-compare-table th, .cp-compare-table td { border-bottom-color: var(--cp-border); }
   .cp-compare-table thead th { background: var(--cp-surface); }
@@ -905,9 +1326,10 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    so "not running" is a normal resting state — styled as neutral information, not a fault. */
 .cp-daemon-status {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: var(--md-sys-shape-corner-full);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  letter-spacing: var(--md-sys-typescale-label-medium-tracking);
   line-height: 1.6;
   border: 1px solid currentColor;
   opacity: 0.7;
@@ -964,29 +1386,33 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   overflow-x: auto;
   padding-bottom: 0.15rem;
 }
+/* Each timeline stop is an M3 outlined card: a keyline at the small corner, no fill, and a tonal
+   `secondary-container` fill for the stop currently on the stage. */
 .cp-history-item {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 0.1rem;
-  padding: 0.3rem 0.5rem;
-  border: 1px solid var(--cp-border, #d0d7de);
-  border-radius: 6px;
-  background: var(--cp-surface, #fff);
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: transparent;
   color: inherit;
   text-decoration: none;
   font: inherit;
-  font-size: 0.78rem;
-  line-height: 1.25;
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: 1.35;
   white-space: nowrap;
   cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
 }
 .cp-history-item:hover {
-  border-color: var(--cp-accent, #0969da);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
 }
 .cp-history-item[data-current] {
-  border-color: var(--cp-accent, #0969da);
-  box-shadow: inset 0 0 0 1px var(--cp-accent, #0969da);
+  border-color: transparent;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
 }
 .cp-history-date {
   font-variant-numeric: tabular-nums;

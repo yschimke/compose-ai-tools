@@ -89,9 +89,10 @@ class ServeThemeCssTest {
   @Test
   fun `the mode a dark-first catalog did not bake keeps the built-in neutrals`() {
     val light = vars(assertNotNull(ServeThemeCss.fromDtcg(wearM3)), dark = false)
-    // Light mode is not wear-m3's mode: its dark surfaces must not leak into a light page…
-    assertEquals("#fafafb", light["--cp-bg"])
-    assertEquals("#1b1b1f", light["--cp-fg"])
+    // Light mode is not wear-m3's mode: its dark surfaces must not leak into a light page, so the
+    // M3 baseline scheme's light neutrals (the same four `serve.css` declares) are used verbatim…
+    assertEquals("#fef7ff", light["--cp-bg"])
+    assertEquals("#1d1b20", light["--cp-fg"])
     // …but the brand colour still carries, re-contrasted against the light page (cyan on white is
     // unreadable at 1.6:1, so it is deepened until it reads).
     assertTrue(contrast(light.getValue("--cp-accent"), light.getValue("--cp-bg")) >= 4.0)
@@ -169,6 +170,64 @@ class ServeThemeCssTest {
     val emitted = vars(assertNotNull(ServeThemeCss.fromDtcg(wearM3)), dark = false).keys
     assertEquals(declared.toSet(), emitted, "the sheet's :root palette and the projection's")
     assertEquals(emptySet(), used - emitted, "custom properties used but never themed")
+  }
+
+  /** The `--md-sys-color-*` (Material 3 role) declarations of one `:root` block. */
+  private fun roles(css: String, dark: Boolean): Map<String, String> {
+    val blocks = css.split("@media (prefers-color-scheme: dark)")
+    val block = if (dark) blocks[1] else blocks[0]
+    return Regex("(--md-sys-color-[a-z0-9-]+):\\s*(#[0-9a-f]{6})").findAll(block).associate {
+      it.groupValues[1] to it.groupValues[2]
+    }
+  }
+
+  @Test
+  fun `the M3 roles the stylesheet declares are all themed, and agree with the aliases`() {
+    val sheet = ServeWebAssets.load("serve.css")!!.bytes.decodeToString()
+    val declared =
+      Regex("(--md-sys-color-[a-z0-9-]+):")
+        .findAll(sheet.substringBefore("* { box-sizing"))
+        .map { it.groupValues[1] }
+        .toSet()
+    val css = assertNotNull(ServeThemeCss.fromDtcg(wearM3))
+    for (dark in listOf(false, true)) {
+      val r = roles(css, dark)
+      val v = vars(css, dark)
+      val where = if (dark) "dark" else "light"
+      // A role the sheet paints from but the projection never emits would silently keep the
+      // baseline scheme's colour while the rest of the page re-themed.
+      assertEquals(emptySet(), declared - r.keys, "roles declared but never themed, $where")
+      // The two families are one palette seen twice; where they name the same colour they must
+      // agree exactly, or a tonal chip and its `--cp-*` neighbour drift apart on the same page.
+      assertEquals(v["--cp-accent"], r["--md-sys-color-primary"], where)
+      assertEquals(v["--cp-bg"], r["--md-sys-color-surface"], where)
+      assertEquals(v["--cp-fg"], r["--md-sys-color-on-surface"], where)
+      assertEquals(v["--cp-surface"], r["--md-sys-color-surface-container-low"], where)
+      assertEquals(v["--cp-surface-2"], r["--md-sys-color-surface-container-high"], where)
+      assertEquals(v["--cp-border"], r["--md-sys-color-outline-variant"], where)
+      assertEquals(v["--cp-accent-soft"], r["--md-sys-color-secondary-container"], where)
+    }
+  }
+
+  @Test
+  fun `M3 container roles stay on the right side of the page in both modes`() {
+    for (palette in listOf(wearM3, jetNews, jetSnack)) {
+      val css = assertNotNull(ServeThemeCss.fromDtcg(palette))
+      for (dark in listOf(false, true)) {
+        val r = roles(css, dark)
+        val where = "${if (dark) "dark" else "light"} mode"
+        for (role in listOf("error", "tertiary")) {
+          val container = r.getValue("--md-sys-color-$role-container")
+          val on = r.getValue("--md-sys-color-on-$role-container")
+          assertTrue(contrast(on, container) >= 4.0, "$role container label, $where")
+        }
+        // The surface ladder must climb monotonically away from the page, or "one step of
+        // elevation" stops meaning anything.
+        val low = contrast(r.getValue("--md-sys-color-surface-container-low"), "#ffffff")
+        val high = contrast(r.getValue("--md-sys-color-surface-container-high"), "#ffffff")
+        assertTrue(if (dark) high <= low else high >= low, "the surface ladder, $where")
+      }
+    }
   }
 
   @Test
