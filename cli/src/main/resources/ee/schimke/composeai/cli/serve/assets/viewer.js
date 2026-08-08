@@ -1054,7 +1054,18 @@
   var specToggle = document.getElementById("cp-spec-toggle");
   var specSrc = specLane ? (specLane.getAttribute("data-spec-src") || "") : "";
   var specLoaded = false; // the raster is requested once, on the lane's first entry
-  function specAvailable() { return !!(specImg && specSrc); }
+  // Same treatment as the Wasm iframe's src (see wasmBaseSrc): the URL comes from a server-set
+  // data- attribute, but it is resolved against our own origin and refused unless it stays on it,
+  // so a `javascript:`/`data:` URL can never reach the stage even if the attribute were ever
+  // mis-set — which is also what defuses the DOM-text-as-HTML rule for this assignment.
+  function specRasterSrc() {
+    if (!specSrc) return "";
+    var u;
+    try { u = new URL(specSrc, location.origin); } catch (e) { return ""; }
+    if (u.origin !== location.origin) return "";
+    return u.href;
+  }
+  function specAvailable() { return !!(specImg && specRasterSrc()); }
   function specActive() { return !!(specToggle && specToggle.checked); }
   function openSpec() {
     if (!specAvailable()) return;
@@ -1069,11 +1080,9 @@
       specImg.addEventListener("error", function () {
         showModeError("The design spec could not be loaded.");
       });
-      // A property write, like every other image/frame lane here (`img.src`, `wasmFrame.src`).
-      // Deliberately not `setAttribute("src", …)`: that form is indistinguishable from setting a
-      // script/iframe source on an element whose type isn't known statically, which is exactly
-      // what CodeQL's "DOM text reinterpreted as HTML" rule flags — see the review on #3488.
-      specImg.src = specSrc;
+      // A property write, like every other image/frame lane here (`img.src`, `wasmFrame.src`),
+      // of an origin-checked URL.
+      specImg.src = specRasterSrc();
     }
     if (specBtn) specBtn.setAttribute("aria-pressed", "true");
     if (status) status.textContent = "";
