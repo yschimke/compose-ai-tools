@@ -431,6 +431,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-path/dark](renders/serve-viewer-path.dark.png) |
 | `light` | ![serve-viewer-path/light](renders/serve-viewer-path.light.png) |
 
+## serve-viewer-path-spec-lane
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-path-spec-lane/dark](renders/serve-viewer-path-spec-lane.dark.png) |
+| `light` | ![serve-viewer-path-spec-lane/light](renders/serve-viewer-path-spec-lane.light.png) |
+
 ## serve-viewer-signin
 
 | Theme | Capture |
