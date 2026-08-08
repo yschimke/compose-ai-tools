@@ -1130,16 +1130,26 @@ data class FigmaSvgModel(
       // descendants; flattening those would discard representable vector structure for no
       // visibility benefit.
       if (ctx.captureCanvasDraws && modifiesDrawnContent) {
+        // [drawnOverlayRegion], not the node's placed box: the draw being preserved is the
+        // modifier's, and a modifier can cover more than the layout node it hangs off. Wear's
+        // `EdgeButton` is the case that proves it — a trailing
+        // `layout`/`ScaleAndAlignContentElement`/`SizeElement` chain shrinks the *layout node* down
+        // to its label while `paint`, `drawWithContent` and the `EdgeButtonShape` `graphicsLayer`
+        // all still cover the full screen-hugging capsule. Cropping the placed box took a 69×36
+        // sliver from behind the word "Start" and threw the capsule away. The union never shrinks
+        // below the node box (the content still has to be inside the crop) and is held to the
+        // nearest clipping ancestor, so an ordinary overlay node crops exactly as before.
+        val region = drawnOverlayRegion(bounds, clipBounds)
         val href = ctx.rasterHref(nodeId)
         ctx.rasterTargets.add(
-          FigmaSvgRasterTarget(nodeId, href, bounds.left, bounds.top, bounds.right, bounds.bottom)
+          FigmaSvgRasterTarget(nodeId, href, region.left, region.top, region.right, region.bottom)
         )
         return FigmaSvgLayer(
           name = layerName(),
-          left = bounds.left,
-          top = bounds.top,
-          right = bounds.right,
-          bottom = bounds.bottom,
+          left = region.left,
+          top = region.top,
+          right = region.right,
+          bottom = region.bottom,
           raster = FigmaSvgRaster(href),
           opacity = opacity,
           contentOpacity = contentOpacity,
