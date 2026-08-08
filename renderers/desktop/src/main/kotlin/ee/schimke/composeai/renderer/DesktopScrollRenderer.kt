@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.ScrollAxisRange
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -299,12 +300,13 @@ private fun captureLong(
       // not clamped by the axis range — see [ScrollAnchor] for why that number can't size a step.
       val step = minOf(stepPx, headroom)
       val anchor = scrollAnchor(host, axis)
+      val rangeBefore = axisRangeValue(host, axis)
       if (!performScroll(host, axis, step)) break
       // What the content actually did. Short of the content end this equals `step`; on the last
       // stride the scroller clamps and it is less, which is what keeps the final slice from being
-      // stitched below where it really sits. A recycled anchor means the step landed in full (the
-      // node travelled far enough to be discarded), so fall back to the requested distance.
-      val advanced = anchor?.let { anchorShiftPx(host, axis, it) } ?: step
+      // stitched below where it really sits. Zero means the end — stop rather than stack duplicate
+      // slices on top of each other.
+      val advanced = measuredScrollPx(host, axis, anchor, rangeBefore, step)
       if (advanced <= SETTLED_EPSILON_PX) break
       scrolledPx += advanced
       val sliceFile = File(slicesDir, "slice_${slices.size}.png")
@@ -372,16 +374,18 @@ private fun captureEnd(
     if (headroom <= SETTLED_EPSILON_PX) break
 
     val anchor = scrollAnchor(host, axis)
+    val rangeBefore = axisRangeValue(host, axis)
     // A viewport-sized stride rather than one jump to a claimed end: the axis range can't tell us
     // where the end is (see [ScrollAnchor]), and stepping keeps a lazy container composing the
     // items it passes, which is how its extent firms up at all.
-    performScrollDelta(host, axis, minOf(viewportPx.toFloat(), headroom))
+    val requested = minOf(viewportPx.toFloat(), headroom)
+    performScrollDelta(host, axis, requested)
     // `SemanticsActions.ScrollBy` animates and [performScrollDelta] only advances a fixed slice of
     // virtual time. Let the animation land, or the next iteration measures a scroll still in
     // flight and the drive creeps instead of converging.
     repeat(END_STEP_SETTLE_FRAMES) { host.mainClock.advanceTimeByFrame() }
 
-    val advanced = anchor?.let { anchorShiftPx(host, axis, it) } ?: viewportPx.toFloat()
+    val advanced = measuredScrollPx(host, axis, anchor, rangeBefore, requested)
     if (advanced <= SETTLED_EPSILON_PX) break
     scrolledPx += advanced
   }
@@ -496,8 +500,9 @@ private fun captureGif(
           val target = minOf(step, cap - scrolledPx)
           if (target <= SETTLED_EPSILON_PX) break
           val anchor = scrollAnchor(host, axis)
+          val rangeBefore = axisRangeValue(host, axis)
           if (performScrollDelta(host, axis, target) <= SETTLED_EPSILON_PX) break
-          val advanced = anchor?.let { anchorShiftPx(host, axis, it) } ?: target
+          val advanced = measuredScrollPx(host, axis, anchor, rangeBefore, target)
           if (advanced <= SETTLED_EPSILON_PX) break
           burstMoved = true
           scrolledPx += advanced
@@ -659,7 +664,63 @@ private fun anchorShiftPx(
     node.children.forEach(::walk)
   }
   scroller.children.forEach(::walk)
-  return found?.let { anchor.edgePx - it }
+  // Magnitude, not signed displacement. A `LazyColumn(reverseLayout = true)` — and any RTL or
+  // otherwise reversed scroller — moves its content toward *increasing* root coordinates as the
+  // scroll advances, so a signed `anchor.edgePx - it` comes back negative on a perfectly good
+  // step and every caller reads that as "didn't move": LONG would emit one slice, END would stop
+  // after a single stride. The drives only ever scroll one way, so any movement of the anchor is
+  // that scroll landing, whichever direction the layout runs.
+  return found?.let { kotlin.math.abs(anchor.edgePx - it) }
+}
+
+/**
+ * How far the content moved in response to a step, or `0` when it didn't move at all.
+ *
+ * [anchorShiftPx] is the measurement; this adds the fallback for content that publishes no
+ * semantics to anchor to — a `LazyColumn` of bare `Box` or `Canvas` items, say, where
+ * [scrollAnchor] finds nothing. Assuming the requested distance in that case would be a licence to
+ * keep "scrolling" forever past the content end, stacking duplicate end slices into an inflated
+ * stitch, which is exactly the failure this whole change is about.
+ *
+ * So the fallback asks the axis range whether *anything* changed. The range is a bad ruler — that
+ * is the premise of [ScrollAnchor] — but it is a perfectly good motion detector: `value` is derived
+ * from the scroller's real position, so it holds still when the scroller does. A change means the
+ * step landed and the requested distance is the best estimate available; no change means the end.
+ */
+@OptIn(ExperimentalTestApi::class)
+private fun measuredScrollPx(
+  host: ComposeUiTestScrollHost,
+  axis: ScrollAxis,
+  anchor: ScrollAnchor?,
+  rangeValueBefore: Float?,
+  requestedPx: Float,
+): Float {
+  anchor?.let { a ->
+    anchorShiftPx(host, axis, a)?.let {
+      return it
+    }
+  }
+  val after = axisRangeValue(host, axis)
+  val moved =
+    rangeValueBefore != null && after != null && kotlin.math.abs(after - rangeValueBefore) > 0f
+  return if (moved) requestedPx else 0f
+}
+
+/** `ScrollAxisRange.value` for the driven scroller — a motion detector, never a distance. */
+@OptIn(ExperimentalTestApi::class)
+private fun axisRangeValue(host: ComposeUiTestScrollHost, axis: ScrollAxis): Float? {
+  val axisKey =
+    when (axis) {
+      ScrollAxis.VERTICAL -> SemanticsProperties.VerticalScrollAxisRange
+      ScrollAxis.HORIZONTAL -> SemanticsProperties.HorizontalScrollAxisRange
+    }
+  val node =
+    host.provider
+      .onAllNodes(SemanticsMatcher.keyIsDefined(axisKey))
+      .fetchSemanticsNodes()
+      .firstOrNull() ?: return null
+  val range: ScrollAxisRange = node.config.getOrNull(axisKey) ?: return null
+  return range.value()
 }
 
 @OptIn(ExperimentalTestApi::class)
