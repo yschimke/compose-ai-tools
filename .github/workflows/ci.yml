@@ -47,6 +47,16 @@ concurrency:
 # `github.event.pull_request` is null, so pushes to main always run the full
 # suite.
 jobs:
+  # Deliberately the cheapest job in the workflow: checkout + a path classifier,
+  # a few seconds. Every other job is `needs: changes`, and GitHub does not even
+  # create — let alone queue — a dependent job until its dependency finishes, so
+  # whatever runs here is paid twice: once as runner time, and again as queue
+  # time added to all ~12 downstream jobs. Resolving the affected Gradle tests
+  # (a full `./.github/actions/setup` + a Gradle model query, ~4 min) used to sit
+  # in this job and blocked all of them, though only Module Unit Tests consumes
+  # the result. It now lives in `module-test-scope` below, which runs alongside
+  # the other jobs instead of in front of them. Keep this job cheap: anything
+  # added here delays the entire workflow.
   changes:
     name: Determine CI scope
     runs-on: ubuntu-latest
@@ -55,7 +65,6 @@ jobs:
       renderer_android_tests: ${{ steps.scope.outputs.renderer_android_tests }}
       rc_player_tests: ${{ steps.scope.outputs.rc_player_tests }}
       module_unit_tests: ${{ steps.scope.outputs.module_unit_tests }}
-      module_test_tasks: ${{ steps.test-scope.outputs.tasks }}
       functional_tests: ${{ steps.scope.outputs.functional_tests }}
       build_samples: ${{ steps.scope.outputs.build_samples }}
       build_cli: ${{ steps.scope.outputs.build_cli }}
@@ -76,23 +85,47 @@ jobs:
           git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
           python3 .github/ci/path-scope.py \
             --config .github/ci/ci-paths.json >> "$GITHUB_OUTPUT"
+
+  # Split out of `changes` so its ~4 min of Gradle model resolution stops
+  # sitting on the critical path of every other job (see the note on `changes`).
+  # Only Module Unit Tests reads `tasks`, and that job runs `needs:` on both, so
+  # the chain is one job deeper for it alone while the other ~11 start as soon
+  # as the cheap classifier lands.
+  #
+  # PRs only, and that restriction is the whole point. Only a PR narrows the
+  # suite; on push and schedule the answer is unconditionally `full`. Since
+  # `path-scope.py` enables every group on non-PR events, gating this job on
+  # `module_unit_tests` alone would schedule it on EVERY push to `main` purely
+  # to echo a constant — and because Module Unit Tests `needs:` it, that job
+  # could not enter the runner queue until this one had queued and finished
+  # too. On a saturated queue that is another 40-70 min in front of post-merge
+  # module coverage: the exact cost this split exists to remove. Non-PR events
+  # skip the job and the consumer defaults to `full` directly.
+  module-test-scope:
+    name: Resolve affected module tests
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.module_unit_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    outputs:
+      tasks: ${{ steps.test-scope.outputs.tasks }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # `changes` fetched this into its own checkout; the split means this job
+      # has to fetch it again for `affected-gradle-tests.py` to diff against.
+      - name: Fetch the PR base commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
       - uses: ./.github/actions/setup
-        if: github.event_name == 'pull_request' && steps.scope.outputs.module_unit_tests == 'true'
       - name: Resolve affected Gradle tests
         id: test-scope
         env:
-          EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.sha }}
-          RUN_MODULE_TESTS: ${{ steps.scope.outputs.module_unit_tests }}
         run: |
-          if [ "$EVENT_NAME" != "pull_request" ]; then
-            tasks=full
-          elif [ "$RUN_MODULE_TESTS" != "true" ]; then
-            tasks=none
-          else
-            tasks=$(python3 .github/ci/affected-gradle-tests.py)
-          fi
+          tasks=$(python3 .github/ci/affected-gradle-tests.py)
           echo "tasks=$tasks" >> "$GITHUB_OUTPUT"
 
   plugin-tests:
@@ -254,14 +287,28 @@ jobs:
   # of masking them — the point of the job is to know the true state, not to stop at the first red.
   module-unit-tests:
     name: Module Unit Tests
-    needs: changes
-    # `module_test_tasks != 'none'` is load-bearing, not belt-and-braces: the two scopes are
+    needs: [changes, module-test-scope]
+    # `tasks != 'none'` is load-bearing, not belt-and-braces: the two scopes are
     # resolved from different configs and can disagree. `path-scope.py` fails OPEN on a path it
     # doesn't recognise (turning every group on, this job included), while
     # `affected-gradle-tests.py` reads `gradle-test-scope.json`, where e.g. `.github/**` is
     # ignored — so a PR touching only such a path enabled the job with `tasks=none` and it died
     # on `gradlew none` ("Task 'none' not found"). `none` means there is nothing to run: skip.
-    if: ${{ needs.changes.outputs.module_unit_tests == 'true' && needs.changes.outputs.module_test_tasks != 'none' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    # It is scoped to `pull_request` because that is the only event that produces it.
+    #
+    # `!cancelled()` is required, not decoration: `module-test-scope` deliberately does not run
+    # on push/schedule, and a skipped `needs:` skips the dependent by default — which would
+    # silently delete post-merge and nightly module coverage. The explicit
+    # `needs.changes.result == 'success'` and `module-test-scope.result != 'failure'` restore
+    # the propagation that `!cancelled()` switches off, so a broken scope job still stops this
+    # one rather than running it against an empty task list.
+    if: >-
+      ${{ !cancelled()
+          && needs.changes.result == 'success'
+          && needs.changes.outputs.module_unit_tests == 'true'
+          && needs.module-test-scope.result != 'failure'
+          && (github.event_name != 'pull_request' || needs.module-test-scope.outputs.tasks != 'none')
+          && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -274,7 +321,8 @@ jobs:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run affected module tests (full suite off PRs)
         env:
-          TEST_TASKS: ${{ needs.changes.outputs.module_test_tasks }}
+          # Non-PR events skip the resolver job, so default to the full suite here.
+          TEST_TASKS: ${{ github.event_name == 'pull_request' && needs.module-test-scope.outputs.tasks || 'full' }}
         run: |
           if [ "$TEST_TASKS" = full ]; then
             ./gradlew test --continue \
