@@ -946,6 +946,20 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-rc-backends-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em;
   text-transform: uppercase; color: var(--cp-fg-faint); }
 .cp-rc-backend { padding: 5px 11px; }
+/* The design-spec lane, offered beside the renderer chips when the catalog publishes an imported
+   reference for this preview. Same segmented-group shape as the RC selector — it is picked the
+   same way — with the "view diff →" step into the focused comparison as its trailing link. */
+.cp-spec-lane { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cp-spec-btn { padding: 5px 11px; }
+/* Pressed, it wears the design side's colour rather than the renderers' green — the same pairing
+   the parity dashboard already speaks (`.cp-parity-lane--code` green / `--figma` purple), so "this
+   is the design's claim, not this server's output" reads the same wherever it appears. Overrides
+   the generic `.cp-live-toggle[aria-pressed="true"]` green it would otherwise inherit, dot
+   included; the dark half lives with the other dark overrides below. */
+.cp-spec-btn[aria-pressed="true"] { background: #e5deff; border-color: transparent;
+  color: #3c2b80; }
+.cp-spec-btn[aria-pressed="true"] .cp-live-dot { background: #5b45b8;
+  box-shadow: 0 0 0 3px rgba(91, 69, 184, 0.2); }
 .cp-mode-hint { font-size: 0.72rem; color: var(--cp-fg-muted); }
 /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
    It swaps the static snapshot between the raster PNG and the resolution-independent vector
@@ -1237,6 +1251,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-degrade { background: #4a3000; color: #ffd8a3; border-color: transparent; }
   .cp-doc-expiry { background: #4a3000; color: #ffd8a3; border-color: transparent; }
   .cp-live-toggle[aria-pressed="true"] { background: #0d3a1c; border-color: transparent; color: #86dc9d; }
+  .cp-spec-btn[aria-pressed="true"] { background: #372b70; border-color: transparent; color: #c9c0ff; }
+  .cp-spec-btn[aria-pressed="true"] .cp-live-dot { background: #c9c0ff;
+    box-shadow: 0 0 0 3px rgba(201, 192, 255, 0.2); }
   .cp-match--good { color: #86dc9d; background: #0d3a1c; border-color: transparent; }
   .cp-match--warn { color: #ffd8a3; background: #4a3000; border-color: transparent; }
   .cp-match--bad { color: #ffb4ab; background: #601410; border-color: transparent; }

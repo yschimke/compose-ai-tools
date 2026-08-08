@@ -574,6 +574,87 @@ class ServeWebTest {
   }
 
   @Test
+  fun `the viewer offers the imported spec as a lane beside the renderers`() {
+    val preview = ServePreview(id = "com.example.ProfileScreenPreview", label = "Profile")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/meshcore-mobile",
+        siblings = listOf(preview),
+        designReference =
+          DesignReference(
+            id = "contact-chat-figma",
+            previewId = preview.id,
+            label = "Contact chat",
+            raster = DesignReferenceRaster(path = "references/contact-chat-figma.png"),
+            source = DesignReferenceSource(provider = "figma"),
+          ),
+      )
+    assertTrue(html.contains("id=\"cp-spec-lane\""), "the spec lane group is rendered")
+    assertTrue(html.contains("id=\"cp-spec-btn\""), "the spec chip is rendered")
+    // The chip names the provider it imported from, and the raster is served from THIS server's
+    // reference route — nothing points at figma.com.
+    assertTrue(html.contains("<span>Figma</span>"), "the chip names the provider")
+    assertTrue(
+      html.contains("data-spec-src=\"/meshcore-mobile/reference/contact-chat-figma.png?token=t\""),
+      html,
+    )
+    // A hidden mode radio + a stage image, so the lane joins the same mode machinery as the
+    // player lanes (bookmarkable `?mode=spec`, Back/Forward, one lane on the stage at a time).
+    assertTrue(html.contains("value=\"spec\" id=\"cp-spec-toggle\""), "the mode radio is rendered")
+    assertTrue(html.contains("id=\"cp-spec-img\""), "the stage image is rendered")
+    // …and the step from "look at the spec" to "diff it" against this render.
+    assertTrue(
+      html.contains(
+        "/meshcore-mobile/compare/com.example.ProfileScreenPreview?token=t" +
+          "&amp;reference=contact-chat-figma"
+      ),
+      html,
+    )
+  }
+
+  @Test
+  fun `the viewer offers no spec lane when the catalog publishes no reference`() {
+    // Every catalog that has not adopted design-parity: no lane, no stage image, no mode radio.
+    val preview = ServePreview(id = "plain.Button", label = "button")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+      )
+    assertFalse(html.contains("cp-spec-lane"), "no spec lane without a reference")
+    assertFalse(html.contains("cp-spec-img"), "no spec stage image without a reference")
+    assertFalse(html.contains("id=\"cp-spec-toggle\""), "no spec mode radio without a reference")
+  }
+
+  @Test
+  fun `a non-figma design reference is still offered as a spec lane`() {
+    // design-parity's other adapters (a committed PNG bundle, an HTML export, Stitch) publish the
+    // same canonical raster, so the lane is provider-neutral — only the chip's wording changes.
+    val preview = ServePreview(id = "plain.Button", label = "button")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+        designReference =
+          DesignReference(
+            id = "button-primary",
+            previewId = preview.id,
+            label = "Button / Primary",
+            raster = DesignReferenceRaster(path = "references/button-primary.png"),
+            source = DesignReferenceSource(provider = "png"),
+          ),
+      )
+    assertTrue(html.contains("id=\"cp-spec-btn\""), "the lane is offered for any provider")
+    assertTrue(html.contains("<span>Spec</span>"), "a non-Figma provider reads as a plain spec")
+  }
+
+  @Test
   fun `the viewer renders no figma link when the catalog names no spec`() {
     // The common case: a catalog with no references, or whose references are HTML/PNG exports.
     val preview = ServePreview(id = "plain.Button", label = "button")

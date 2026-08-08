@@ -19,6 +19,12 @@
     img.style.maxHeight = maxHeight;
     var rcZoomCanvas = document.getElementById("cp-rc-canvas");
     if (rcZoomCanvas) rcZoomCanvas.style.maxHeight = maxHeight;
+    // The spec lane paints into its own <img>, so the zoom limit has to reach it too — a
+    // phone-shaped imported reference would otherwise blow the stage past the 72vh Fit-screen
+    // cap the render it is being compared against obeys. Looked up rather than closed over:
+    // applyZoom("fit") runs at page load, before the lane's own declarations.
+    var specZoomImg = document.getElementById("cp-spec-img");
+    if (specZoomImg) specZoomImg.style.maxHeight = maxHeight;
     root.setAttribute("data-zoom", mode);
     zoomBtns.forEach(function (b) {
       b.setAttribute(
@@ -1033,6 +1039,63 @@
   }
   function wasmActive() { return wasmToggle && wasmToggle.checked; }
 
+  // ---- Design spec lane -------------------------------------------------------------------
+  // The imported design reference (design-parity's Figma/PNG spec for this exact preview id),
+  // shown on the same stage as the render so "what the code draws" and "what the design says"
+  // occupy the same pixels and can be flipped between. Present only when the served catalog
+  // published a reference — every other session finds no elements here and the lane is inert.
+  //
+  // Nothing is fetched from Figma: the src is this server's own `/reference/<id>.png`, carried on
+  // the lane element by the server. It is assigned on first entry rather than at page load, so a
+  // visitor who never opens the lane never pays for the bytes.
+  var specLane = document.getElementById("cp-spec-lane");
+  var specBtn = document.getElementById("cp-spec-btn");
+  var specImg = document.getElementById("cp-spec-img");
+  var specToggle = document.getElementById("cp-spec-toggle");
+  var specSrc = specLane ? (specLane.getAttribute("data-spec-src") || "") : "";
+  var specLoaded = false; // the raster is requested once, on the lane's first entry
+  // Same treatment as the Wasm iframe's src (see wasmBaseSrc): the URL comes from a server-set
+  // data- attribute, but it is resolved against our own origin and refused unless it stays on it,
+  // so a `javascript:`/`data:` URL can never reach the stage even if the attribute were ever
+  // mis-set — which is also what defuses the DOM-text-as-HTML rule for this assignment.
+  function specRasterSrc() {
+    if (!specSrc) return "";
+    var u;
+    try { u = new URL(specSrc, location.origin); } catch (e) { return ""; }
+    if (u.origin !== location.origin) return "";
+    return u.href;
+  }
+  function specAvailable() { return !!(specImg && specRasterSrc()); }
+  function specActive() { return !!(specToggle && specToggle.checked); }
+  function openSpec() {
+    if (!specAvailable()) return;
+    root.setAttribute("data-mode", "spec");
+    // The snapshot is taken out of flow (not merely hidden) exactly like the RC canvas lane, so
+    // the stage sizes to the spec raster instead of stacking two images.
+    img.style.display = "none";
+    canvas.hidden = true;
+    specImg.hidden = false;
+    if (!specLoaded) {
+      specLoaded = true;
+      specImg.addEventListener("error", function () {
+        showModeError("The design spec could not be loaded.");
+      });
+      // A property write, like every other image/frame lane here (`img.src`, `wasmFrame.src`),
+      // of an origin-checked URL.
+      specImg.src = specRasterSrc();
+    }
+    if (specBtn) specBtn.setAttribute("aria-pressed", "true");
+    if (status) status.textContent = "";
+  }
+  function closeSpec() {
+    if (!specImg) return;
+    if (root.getAttribute("data-mode") === "spec") root.setAttribute("data-mode", "snapshot");
+    specImg.hidden = true;
+    img.style.removeProperty("display");
+    img.hidden = false;
+    if (specBtn) specBtn.setAttribute("aria-pressed", "false");
+  }
+
   // ---- In-browser Remote Compose canvas lane ----------------------------------------------
   // When this preview carries a captured `.rc` document, the "RC (browser)" toggle paints it with
   // the vendored player (RC.RcdPlayer) into #cp-rc-canvas — no daemon — and Remote Compose knob
@@ -1319,6 +1382,9 @@
     urlPush = true;
     // A mode switch always clears a prior lane's error; the new lane re-raises its own if it fails.
     clearModeError();
+    // The spec lane is closed by EVERY other transition (it has no per-branch close call below),
+    // so leaving it always restores the snapshot <img> to the stage.
+    if (m !== "spec") closeSpec();
     if (m === "live") {
       cancelSnapshotLoading();
       snapshotExt = ".png";
@@ -1351,6 +1417,17 @@
       closeWasm();
       closeRc();
       openRcWasm();
+    } else if (m === "spec") {
+      // Looking at the spec is not a render: cancel any in-flight snapshot, drop every interactive
+      // lane, and paint the imported reference instead. Nothing is re-requested on the way in.
+      cancelSnapshotLoading();
+      snapshotExt = ".png";
+      if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+      closeStream();
+      closeWasm();
+      closeRc();
+      closeRcWasm();
+      openSpec();
     } else {
       closeStream();
       closeWasm();
@@ -1371,7 +1448,8 @@
     // query() includes an rc.* value edited before the Wasm detour in the first snapshot render
     // (and its direct links) instead of skipping the still-disabled control. The live/wasm lanes
     // drive their own render (openStream / openWasm), so only the static lane renders here.
-    if (m !== "live" && m !== "wasm" && m !== "rc" && m !== "rc-wasm") refreshSnapshot();
+    if (m !== "live" && m !== "wasm" && m !== "rc" && m !== "rc-wasm" && m !== "spec")
+      refreshSnapshot();
     // The interactive lanes drive their own render and never reach refreshLinks, so the URL would
     // still describe the snapshot the visitor just left — the chosen lane unbookmarkable until
     // some unrelated control moved, and the pending push landing on that edit instead. Sync here
@@ -1386,7 +1464,12 @@
     svgToggle.addEventListener("click", function () {
       var turnOn = !svgOn();
       svgToggle.setAttribute("aria-pressed", turnOn ? "true" : "false");
-      if (turnOn && (live.checked || wasmActive())) {
+      // Every non-static lane has to be LEFT before the vector snapshot can own the stage —
+      // otherwise the badge flips to SVG and a hidden snapshot reloads underneath a canvas /
+      // iframe / spec image that is still on screen, with its chip still pressed. The daemon and
+      // Wasm lanes were already routed this way; the RC canvas, the RC/Wasm frame and the spec
+      // lane are the same case.
+      if (turnOn && (live.checked || wasmActive() || rcActive() || rcWasmActive() || specActive())) {
         setMode("png"); // enterMode("png") reads svgOn() → renders the .svg
       } else {
         snapshotExt = turnOn ? ".svg" : ".png";
@@ -1439,8 +1522,12 @@
     var onRcCanvas = rcActive();
     var onRcWasm = rcWasmActive();
     var onRc = onRcCanvas || onRcWasm;
+    // The spec lane shows a fixed imported raster: no override re-points it, so every control that
+    // would re-render is as dead here as it is in the Wasm / RC canvas lanes.
+    var onSpec = specActive();
     var canServerRender =
-      !onWasm && !onRc && (!staticSnapshot || canRenderOverrides || !!(live && live.checked));
+      !onWasm && !onRc && !onSpec &&
+      (!staticSnapshot || canRenderOverrides || !!(live && live.checked));
     serverOnlyControlIds.forEach(function (id) {
       var el = document.getElementById("cp-" + id);
       if (el) el.disabled = !canServerRender;
@@ -1451,7 +1538,7 @@
     wasmHonouredControlIds.forEach(function (id) {
       var el = document.getElementById("cp-" + id);
       if (el) el.disabled = (id === "uiMode" && alwaysDark) ||
-        !(canServerRender || (wasmSrc && !onRc) || (id === "uiMode" && onRcWasm));
+        !(canServerRender || (wasmSrc && !onRc && !onSpec) || (id === "uiMode" && onRcWasm));
     });
     // Day/Night options work in Wasm; declared provider options need the daemon. Keep the unified
     // select usable whenever at least one kind can work, and gate its individual option families.
@@ -1463,11 +1550,11 @@
       // sibling. Recomputed here rather than left to the server's `disabled` attribute, because
       // this block reassigns `themeChoice.disabled` outright and would otherwise re-enable it.
       var fixedTheme = themeChoice.getAttribute("data-fixed-theme") === "true";
-      var canProviderTheme = !fixedTheme && hasDeclaredThemes && !onWasm && !onRc &&
+      var canProviderTheme = !fixedTheme && hasDeclaredThemes && !onWasm && !onRc && !onSpec &&
         (!staticSnapshot || canRenderOverrides);
       // Wear has no day/night axis, but Night (Default) must remain selectable when provider
       // themes are offered so the visitor can clear a chosen provider and return to the app.
-      var canDefaultTheme = !fixedTheme && !onRc &&
+      var canDefaultTheme = !fixedTheme && !onRc && !onSpec &&
         ((!alwaysDark && (canServerRender || !!wasmSrc)) || (alwaysDark && canProviderTheme));
       Array.prototype.forEach.call(themeChoice.options, function (option) {
         option.disabled = option.value.indexOf("theme:") === 0 ? !canProviderTheme : !canDefaultTheme;
@@ -1480,7 +1567,7 @@
     // isolated document; outside either browser RC lane they're gated on server rendering.
     document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
       el.disabled = (rcActive() || rcWasmActive()) ? false
-        : (onWasm || !(!staticSnapshot || canRenderOverrides));
+        : (onWasm || onSpec || !(!staticSnapshot || canRenderOverrides));
     });
   }
   // Programmatic switch (the live toggle, or a wasm-only control auto-enabling Wasm): tick the
@@ -1490,6 +1577,7 @@
       m === "live" ? "cp-live" :
       m === "wasm" ? "cp-wasm-toggle" :
       m === "rc-wasm" ? "cp-rc-wasm-toggle" :
+      m === "spec" ? "cp-spec-toggle" :
       m === "rc" ? "cp-rc-toggle" : "cp-mode-png");
     if (r) r.checked = true;
     enterMode(m);
@@ -1533,7 +1621,8 @@
     }
     if (wasmBtn) { wasmBtn.setAttribute("aria-pressed", wasmOn ? "true" : "false"); }
     if (modeHint) {
-      modeHint.textContent = (liveOn || wasmOn) ? "interactive — click / scroll the preview"
+      modeHint.textContent = specActive() ? "imported design spec — not a render"
+        : (liveOn || wasmOn) ? "interactive — click / scroll the preview"
         // "no live lane" is only true when there is genuinely nothing to switch to. When the lane
         // exists and is merely behind sign-in, the transport radio is (correctly) disabled, so
         // liveTransportAvailable() is false and this used to read "no live lane" right beside a
@@ -1564,6 +1653,15 @@
       if (rcActive()) { setMode("png"); } else { setMode("rc"); }
     });
   }
+  // The Spec chip: a toggle like the lane buttons beside it — press to put the imported design
+  // reference on the stage, press again to come back to the render you were comparing it with.
+  if (specBtn && specAvailable()) {
+    specBtn.addEventListener("click", function () {
+      if (specActive()) { setMode("png"); } else { setMode("spec"); }
+    });
+  } else if (specBtn) {
+    specBtn.disabled = true;
+  }
   // ---- RC backend selector -----------------------------------------------------------------
   // Chips choose which Remote Compose player draws the stage: `js` (the in-browser canvas lane,
   // via setMode("rc")), or a server-side player (`java` / `cmp-android`) that re-renders the PNG
@@ -1580,6 +1678,9 @@
       var active =
         rcWasmActive() ? "cmp-wasm"
         : rcActive() ? "js"
+        // The spec lane is not a player: while it owns the stage no player's output is on screen,
+        // so — exactly as for Live / Wasm — no chip is marked current.
+        : specActive() ? ""
         : anyLiveActive() ? ""
         : (rcPlayerPicked ? rcPlayerBackend : rcDefaultBackend);
       Array.prototype.forEach.call(rcChips, function (c) {
