@@ -53,6 +53,18 @@ fun driveScrollToEnd(
       node.config.getOrNull(SemanticsActions.ScrollBy)?.action
         ?: return ScrollDriveResult.Completed(scrolledPx)
 
+    // Deliberately still sized from the axis range, unlike [driveScrollByViewport].
+    //
+    // The placeholder problem is real here too — a plain `LazyColumn` claims `100.0` before it has
+    // been scrolled — but this drive *self-corrects*: one 100 px step is enough for the container
+    // to publish its true extent, and the next iteration jumps the rest. It reaches the end either
+    // way, in two or three iterations instead of one.
+    //
+    // Enlarging the step anyway is not free: `ScrollBy` animates, so dispatching more than the
+    // remaining distance changes the velocity the animation runs at and shifts where the content
+    // settles by the time the frame is captured. Measured — it re-rendered the Wear `EdgeButton`
+    // sticker to different bytes. A drive that already lands correctly is not worth perturbing for
+    // an iteration or two.
     val remaining = (range.maxValue() - range.value()).coerceAtLeast(0f)
     if (remaining <= SETTLED_EPSILON_PX) return ScrollDriveResult.Completed(scrolledPx)
 
@@ -119,21 +131,35 @@ fun driveScrollByViewport(
       node.config.getOrNull(SemanticsActions.ScrollBy)?.action
         ?: return ScrollDriveResult.Completed(scrolledPx)
 
-    val remaining = (range.maxValue() - range.value()).coerceAtLeast(0f)
-    if (remaining <= SETTLED_EPSILON_PX) return ScrollDriveResult.Completed(scrolledPx)
-
     val headroom = (cap - scrolledPx).coerceAtLeast(0f)
     if (headroom <= SETTLED_EPSILON_PX) return ScrollDriveResult.CapReached(scrolledPx)
 
-    val step = minOf(stepPx, remaining, headroom)
+    // Stride by the requested viewport fraction and let the scroller clamp itself at its content
+    // end.
+    //
+    // Clamping against `maxValue - value` first is what broke this: that is not always a usable
+    // pixel extent. A plain `LazyColumn` publishes a placeholder `100.0` until it has been
+    // scrolled once (measured in the renderer's `WearTlcScrollSemanticsProbeTest`, where it then
+    // jumps to `5010.0`), so a 400 px stride became a 100 px one — four times the slices and four
+    // times the frames, and against [DEFAULT_MAX_ITERATIONS] a quarter of the reach, silently
+    // truncating a long list. Wear's `TransformingLazyColumn` reports a true extent from the first
+    // frame and was never affected; it keeps its exact strides through [creditedPx].
+    val before = range.value()
+    val step = minOf(stepPx, headroom)
     val (dx, dy) =
       when (axis) {
         ScrollAxis.VERTICAL -> 0f to step
         ScrollAxis.HORIZONTAL -> step to 0f
       }
     scrollByAction.invoke(dx, dy)
-    scrolledPx += step
     rule.mainClock.advanceTimeBy(advanceMsPerStep)
+
+    val after = interaction.fetchSemanticsNode().config.getOrNull(axisKey)?.value?.invoke()
+    scrolledPx += creditedPx(before, after, step)
+    // Nothing moved ⇒ the content end, so don't emit another slice of the same frame.
+    if (after != null && kotlin.math.abs(after - before) <= SETTLED_EPSILON_PX) {
+      return ScrollDriveResult.Completed(scrolledPx)
+    }
 
     onSlice(scrolledPx)
   }
@@ -271,6 +297,31 @@ sealed interface ScrollDriveResult {
 
 // 30 iterations × 250ms of virtual time = 7.5s budget, enough for 100-ish
 // LazyColumn items' worth of progressive materialization without runaway.
+/**
+ * How much of a dispatched [requested] stride to count as travelled.
+ *
+ * Prefers the movement the scroller actually reported. `ScrollAxisRange.value` is trustworthy on a
+ * container that knows its extent — Wear's `TransformingLazyColumn` reports the exact clamped tail,
+ * so the final slice is credited 353 px rather than the 400 px asked for — but it is not universally
+ * so: a plain `LazyColumn`'s `value` leaps to its newly-discovered extent (0 → 5010 for a single
+ * 1000 px scroll) the first time it is scrolled. A reported move larger than what was dispatched is
+ * therefore a re-scaling, not travel, and the requested distance is the better estimate.
+ *
+ * Callers treat the total as a hint — the Android stitcher decides placement by pixel matching — so
+ * this only has to be right enough to keep the hint useful.
+ */
+private fun creditedPx(before: Float, after: Float?, requested: Float): Float {
+  if (after == null) return requested
+  val moved = after - before
+  return when {
+    // Didn't move: the content end. Crediting the requested stride here would overstate the total
+    // by a full step on the last, wasted iteration of every drive.
+    kotlin.math.abs(moved) <= SETTLED_EPSILON_PX -> 0f
+    moved > 0f && moved <= requested + 1f -> moved
+    else -> requested
+  }
+}
+
 private const val DEFAULT_MAX_ITERATIONS = 30
 private const val DEFAULT_ADVANCE_MS_PER_STEP = 250L
 
