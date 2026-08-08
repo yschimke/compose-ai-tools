@@ -18,6 +18,23 @@ classic Roboto 2.x and CMP's bundled default both differ measurably (see PR hist
   export regenerates the `role: "named"` entry from the recorded `Font(GoogleFont("Orbitron"), …)`
   usage. Downloaded from Google Fonts, SIL OFL-1.1 — see [Orbitron-OFL.txt](Orbitron-OFL.txt).
 
+- `google-sans-flex-400.ttf` + `google-sans-flex-700.ttf` — a downloadable **GoogleFont**
+  (`role: "named"`), the face `:samples:design-catalog-remote-m3`'s **Google Sans Flex** typeface
+  theme names as `google:Google Sans Flex`. This lane is *manifest-only* — it never fetches — so
+  without the face vendored here the themed document fails `RcComposeSupport.fontFamilyIssue`'s
+  availability check instead of rendering, while the other four player lanes resolve it. Fetched
+  from the same CSS2 endpoint as the others (`wght@100..1000`, the 400 and 700 instances of the
+  variable file).
+
+  **Licensing — read before forking.** Unlike every other face here, Google Sans Flex is in **no
+  license directory** of the [google/fonts](https://github.com/google/fonts) corpus, so its terms
+  can't be read off the corpus; the CSS2 endpoint serves it regardless. It is committed because
+  the project owner confirmed redistribution is cleared, the same clearance
+  [`deploy/image/README.md`](../../../../../../deploy/image/README.md) records for baking it into
+  the runtime image. **A fork does not inherit that clearance** — re-check it, or drop this family
+  from `fonts.json` and delete the two files. Dropping it only costs the Wasm lane's rendering of
+  that one theme.
+
 The committed [`fonts.json`](fonts.json) is the **dev-time default**; the design-catalog export
 regenerates it from the per-preview `fonts/used` records (`previews/<id>.fonts.json` in the packed
 bundle → `scripts/design-artifacts/render-fonts-manifest.mjs`), so the published manifest tracks
@@ -44,4 +61,6 @@ The manifest is additive: future roles (named families, generic-family mappings 
 can be declared per family without breaking older apps, which only consume `role: "default"`.
 
 License: Apache 2.0 (Roboto / Noto Serif / Droid Sans Mono, Google) — see [LICENSE.txt](LICENSE.txt);
-Orbitron is SIL OFL-1.1 — see [Orbitron-OFL.txt](Orbitron-OFL.txt).
+Orbitron is SIL OFL-1.1 — see [Orbitron-OFL.txt](Orbitron-OFL.txt). Google Sans Flex carries no
+corpus license file and ships under the owner's explicit redistribution clearance — see its bullet
+above before forking.

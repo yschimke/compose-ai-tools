@@ -73,6 +73,12 @@ internal val LocalRemoteCatalogFont = compositionLocalOf<String?> { null }
  * knows where the face comes from instead of guessing: the browser fetches it from the CSS API, the
  * wasm lane reads the vendored copy, and the server-side lanes resolve it through the shared font
  * cache.
+ *
+ * Both faces have to be **vendored into `:samples:cmp-wasm-catalog`'s `fonts.json`** for that
+ * middle lane, which is manifest-only and never fetches — an unlisted family fails
+ * `RcComposeSupport.fontFamilyIssue`'s availability check rather than degrading to a substitute
+ * face. Roboto Flex was already there as the `role: "default"` family; Google Sans Flex was added
+ * alongside these themes, under the redistribution clearance its `fonts/README.md` bullet records.
  */
 fun remoteCatalogTypography(family: String): RemoteTypography =
   RemoteTypography(defaultFontFamily = RemoteFontFamily.Named("google:$family"))

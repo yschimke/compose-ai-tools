@@ -101,13 +101,25 @@ private val largeWidgetParams =
 // Fills the container's padded content slot and centres the given content in it.
 // `WearWidgetContainer` lays content out top-start; a real widget supplies its own
 // layout, so the stickers do too.
+//
+// Also installs a selected `@WearThemeCatalog` typeface, the same way `RemoteSticker` does for the
+// component stickers. These previews bypass `RemoteSticker` entirely (the Glance Wear preview path
+// owns its own capture), so without this the module-wide Theme select would silently skip the three
+// widget cards — most visibly on [WidgetContainerLargeRemote], which draws through
+// `RemoteMaterialTheme.typography`. Absent a theme provider nothing is installed and the capture is
+// byte-for-byte unchanged.
 @Composable
 private fun CenteredWidgetContent(content: @Composable @RemoteComposable () -> Unit) {
-  RemoteBox(
-    modifier = RemoteModifier.fillMaxSize(),
-    contentAlignment = RemoteAlignment.Center,
-    content = content,
-  )
+  val themeFont = LocalRemoteCatalogFont.current
+  val centred: @Composable @RemoteComposable () -> Unit = {
+    RemoteBox(
+      modifier = RemoteModifier.fillMaxSize(),
+      contentAlignment = RemoteAlignment.Center,
+      content = content,
+    )
+  }
+  if (themeFont == null) centred()
+  else RemoteMaterialTheme(typography = remoteCatalogTypography(themeFont), content = centred)
 }
 
 /**
