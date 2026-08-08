@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.19.48](https://github.com/yschimke/compose-ai-tools/compare/v0.19.47...v0.19.48) (2026-08-08)
+
+
+### Features
+
+* **serve:** end every page with the minimal footer, close with the about box ([#3491](https://github.com/yschimke/compose-ai-tools/issues/3491)) ([0530fdb](https://github.com/yschimke/compose-ai-tools/commit/0530fdba50f6afcdcfe90f7fe9b3301a855f0fbd))
+* **serve:** one chip + one combo for the viewer's renderer, and a single-line export bar ([#3496](https://github.com/yschimke/compose-ai-tools/issues/3496)) ([e8fafbf](https://github.com/yschimke/compose-ai-tools/commit/e8fafbf8786243cb4afe64b739583f18e2249bd3))
+* **serve:** replace the baked TalkBack overlay with inspection layers ([#3497](https://github.com/yschimke/compose-ai-tools/issues/3497)) ([1a34da2](https://github.com/yschimke/compose-ai-tools/commit/1a34da2fc0d0287dae2d50ce651b07f6c8169a42))
+
+
+### Bug Fixes
+
+* **figma-svg:** stop a clipped-away run landing on an unrelated node ([#3495](https://github.com/yschimke/compose-ai-tools/issues/3495)) ([4b712a7](https://github.com/yschimke/compose-ai-tools/commit/4b712a74d621a731a8313f690e02c612dfaf33a6))
+* **rc-compare:** report CMP/Wasm pixel parity, guard regressions on the PR ([#3492](https://github.com/yschimke/compose-ai-tools/issues/3492)) ([05bbe8f](https://github.com/yschimke/compose-ai-tools/commit/05bbe8feb043502ba9cccb93f6306d413043f1d8))
+* **serve:** pin the site header's slots so the nav stops moving between pages ([#3493](https://github.com/yschimke/compose-ai-tools/issues/3493)) ([36bb1e9](https://github.com/yschimke/compose-ai-tools/commit/36bb1e9479020e27c20bba6596af85522f29d258))
+
 ## [0.19.47](https://github.com/yschimke/compose-ai-tools/compare/v0.19.46...v0.19.47) (2026-08-08)
 
 
