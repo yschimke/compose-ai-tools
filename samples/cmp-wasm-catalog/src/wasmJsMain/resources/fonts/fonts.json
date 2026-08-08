@@ -47,6 +47,14 @@
         { "file": "jetbrains-mono-400.ttf", "weight": 400 },
         { "file": "jetbrains-mono-700.ttf", "weight": 700 }
       ]
+    },
+    {
+      "name": "Google Sans Flex",
+      "role": "named",
+      "fonts": [
+        { "file": "google-sans-flex-400.ttf", "weight": 400 },
+        { "file": "google-sans-flex-700.ttf", "weight": 700 }
+      ]
     }
   ]
 }

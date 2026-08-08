@@ -86,6 +86,10 @@ dependencies {
   implementation(libs.glance.wear.core)
   implementation(libs.glance.wear.tooling.preview)
   implementation(libs.activity.compose)
+  // `@WearThemeCatalog` — the catalog's two declared typeface themes (`RemoteThemeCatalogs.kt`),
+  // which populate the preview server's Theme select and re-point the document's built-in default
+  // font family. Annotations only; no runtime weight, and nothing else here depends on it.
+  implementation(project(":preview-annotations"))
   // The sticker frame captures through the connector's `RemoteOverridablePreview`
   // rather than raw upstream `RemotePreview`, so the named-value stickers
   // (`NamedLabelRemoteButton`, `ShaderGradientSticker`) honour
