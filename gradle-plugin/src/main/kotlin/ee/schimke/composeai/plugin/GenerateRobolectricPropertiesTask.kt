@@ -112,10 +112,21 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     // preview render actually loads the image instead of painting a null placeholder (issue
     // #2952). Shadowing a non-Android library class needs its package instrumented, hence the
     // `instrumentedPackages` line below — both are inert when the consumer has no coil.
+    // `ShadowWearTimeSource` replaces the `currentTimeMillis()` both Wear Material and Wear
+    // Material3 `TimeText` read, so a preview showing the time renders a fixed `10:10` instead of
+    // the host wall clock and stops diffing on every run (issue #3239).
     val shadowsLine =
       "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat," +
-        "ee.schimke.composeai.renderer.ShadowAsyncImagePainter"
-    val instrumentedPackagesLine = "instrumentedPackages=coil.compose"
+        "ee.schimke.composeai.renderer.ShadowAsyncImagePainter," +
+        "ee.schimke.composeai.renderer.ShadowWearTimeSource"
+    // `androidx.wear.compose.materialcore.ResourcesKt` is a CLASS name, not a package: Robolectric
+    // matches `instrumentedPackages` entries as plain class-name prefixes, so naming the class
+    // instruments exactly the one `ShadowWearTimeSource` targets — and nothing else in Wear's
+    // rendering path. Both halves are load-bearing here too: Robolectric can't shadow a class it
+    // didn't rewrite, so dropping this leaves the shadow inert and Wear clocks drifting. Inert when
+    // the consumer has no wear-compose.
+    val instrumentedPackagesLine =
+      "instrumentedPackages=coil.compose,androidx.wear.compose.materialcore.ResourcesKt"
     // `sdk=` and `graphicsMode=` live here (not on `@Config`/`@GraphicsMode`
     // on `RobolectricRenderTestBase`) to avoid JUnit's `AnnotationParser`
     // resolving `@Config.application()`'s `android.app.Application` default

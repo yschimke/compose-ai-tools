@@ -48,6 +48,22 @@ class GenerateRobolectricPropertiesTaskTest {
   }
 
   @Test
+  fun `the wear clock shadow is registered with its target class instrumented`() {
+    // Both lines are load-bearing together, exactly like the coil pair above: Robolectric can't
+    // shadow a class it didn't rewrite, and `androidx.wear.compose.materialcore.ResourcesKt` —
+    // where
+    // both Wear Material and Material3 `TimeText` read the clock — isn't instrumented by default.
+    // Dropping either one silently reverts Wear previews to painting the host wall clock, so an
+    // activity hero showing the time diffs on every run (issue #3239). `WearTimeTextClockTest`
+    // spells the same two entries onto its `@Config`; keep the spellings identical.
+    listOf(false, true).forEach { useConsumerApplication ->
+      val body = generate(useConsumerApplication, override = null, compileSdk = 36)
+      assertThat(body).contains("ee.schimke.composeai.renderer.ShadowWearTimeSource")
+      assertThat(body).contains("androidx.wear.compose.materialcore.ResourcesKt")
+    }
+  }
+
+  @Test
   fun `useConsumerApplication drops application line but keeps sdk graphicsMode shadows`() {
     val body = generate(useConsumerApplication = true, override = null, compileSdk = 36)
     assertThat(body).contains("sdk=36")

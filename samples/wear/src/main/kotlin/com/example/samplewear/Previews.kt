@@ -74,9 +74,11 @@ private val sampleItems =
 fun WearApp() {
   MaterialTheme {
     AppScaffold(
-      // Real production app — let TimeText use the system clock.
-      // Previews that want a deterministic time supply their own
-      // `AppScaffold` with a `FixedPreviewTimeSource` (see [ActivityListPreview]).
+      // Real production app — let TimeText use the system clock. Previews that want to make the
+      // deterministic time visible in their own source supply an `AppScaffold` with a
+      // `FixedPreviewTimeSource` (see [ActivityListPreview]); previews that don't, including the
+      // activity hero and [WearAppSystemClockPreview], still render a fixed `10:10` because the
+      // renderer pins its wall clock (issue #3239).
       timeText = { TimeText() }
     ) {
       ActivityListScreen()

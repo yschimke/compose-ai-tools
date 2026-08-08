@@ -390,6 +390,7 @@ internal object AndroidPreviewClasspath {
     svgBackground: String = "false",
     fontsFailOnFallback: String = "true",
     hostTheme: String = "",
+    fixedTime: String = "",
   ): Map<String, String> =
     linkedMapOf(
       // Belt-and-braces for the graphics/looper modes. Config now
@@ -461,6 +462,11 @@ internal object AndroidPreviewClasspath {
       // module — which has no application theme to inherit — needs to name one. Forwarded even
       // when blank so the property's presence isn't a second thing to keep in sync.
       "composeai.render.hostTheme" to hostTheme,
+      // The instant the render JVM pins its wall clock to, e.g. `10:10` (the default when blank) or
+      // `off`. Read in the forked render / daemon JVM by `PreviewClock`, which is what stops an
+      // activity hero showing `TimeText` from producing a different PNG every minute (issue #3239).
+      // Forwarded here because the property has to reach the JVM that renders, not the Gradle one.
+      "composeai.render.fixedTime" to fixedTime,
     )
 }
 
@@ -647,4 +653,26 @@ internal fun composeAiHostTheme(
     .systemProperty("composeai.render.hostTheme")
     .orElse(project.providers.gradleProperty("composePreview.hostTheme"))
     .let { if (extension != null) it.orElse(extension.hostTheme) else it }
+    .orElse("")
+
+/**
+ * The resolved value to forward as the render / daemon JVM's `composeai.render.fixedTime` — the
+ * instant preview renders pin their wall clock to (see
+ * `ee.schimke.composeai.renderer.PreviewClock`). Accepts `HH:mm`, an ISO-8601 local date-time,
+ * epoch millis, or `off`.
+ *
+ * Sourced from `-Dcomposeai.render.fixedTime` first (the documented flag, matching the renderer),
+ * then `-PcomposePreview.fixedTime`, then the module's `composePreview.fixedTime` DSL value (the
+ * durable declaration — the two command-line forms are per-run overrides), else empty, which the
+ * renderer reads as "pin the default `10:10`". Forwarded even when blank so the property's presence
+ * isn't a second thing to keep in sync. Mirrors [composeAiHostTheme].
+ */
+internal fun composeAiFixedTime(
+  project: Project,
+  extension: PreviewExtension? = null,
+): org.gradle.api.provider.Provider<String> =
+  project.providers
+    .systemProperty("composeai.render.fixedTime")
+    .orElse(project.providers.gradleProperty("composePreview.fixedTime"))
+    .let { if (extension != null) it.orElse(extension.fixedTime) else it }
     .orElse("")
