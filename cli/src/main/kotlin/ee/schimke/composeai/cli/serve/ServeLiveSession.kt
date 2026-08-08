@@ -80,6 +80,8 @@ private constructor(
       pointerId = input.pointerId,
       scrollDeltaY = input.scrollDeltaY,
       keyCode = input.keyCode,
+      text = input.text,
+      pointerType = input.pointerType,
     )
   }
 

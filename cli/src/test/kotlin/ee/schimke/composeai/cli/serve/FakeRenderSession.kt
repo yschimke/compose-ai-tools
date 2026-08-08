@@ -513,6 +513,8 @@ internal class FakeRenderSession(
     pointerId: Int?,
     scrollDeltaY: Float?,
     keyCode: String?,
+    text: String?,
+    pointerType: String?,
   ) {
     interactiveInputs.add(
       InteractiveInputParams(
@@ -523,6 +525,8 @@ internal class FakeRenderSession(
         pointerId = pointerId,
         scrollDeltaY = scrollDeltaY,
         keyCode = keyCode,
+        text = text,
+        pointerType = pointerType,
       )
     )
   }

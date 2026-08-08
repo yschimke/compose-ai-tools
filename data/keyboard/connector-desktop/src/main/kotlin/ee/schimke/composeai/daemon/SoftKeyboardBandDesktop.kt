@@ -237,7 +237,14 @@ private const val ROW_TOP = "qwertyuiop"
 private const val ROW_MIDDLE = "asdfghjkl"
 private const val ROW_BOTTOM = "zxcvbnm"
 
-private const val KEYBOARD_HEIGHT_DP = 240
+internal const val KEYBOARD_HEIGHT_DP = 240
+
+/**
+ * Shortest surface the band will draw on: three band-heights, so the keyboard never takes more than
+ * a third of the frame — the proportion it occupies on a real phone. Mirrors the Android
+ * connector's constant of the same name.
+ */
+internal const val MIN_SCREEN_HEIGHT_FOR_BAND_DP = KEYBOARD_HEIGHT_DP * 3
 private const val SIDE_INSET_DP = 4
 private const val ROW_INSET_DP = 6
 private const val ROW_GAP_DP = 6

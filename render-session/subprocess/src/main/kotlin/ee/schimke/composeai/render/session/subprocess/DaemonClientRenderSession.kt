@@ -249,6 +249,8 @@ class DaemonClientRenderSession(
     pointerId: Int?,
     scrollDeltaY: Float?,
     keyCode: String?,
+    text: String?,
+    pointerType: String?,
   ) {
     checkOpen()
     client.interactiveInput(
@@ -259,6 +261,8 @@ class DaemonClientRenderSession(
       pointerId = pointerId,
       scrollDeltaY = scrollDeltaY,
       keyCode = keyCode,
+      text = text,
+      pointerType = pointerType,
     )
   }
 

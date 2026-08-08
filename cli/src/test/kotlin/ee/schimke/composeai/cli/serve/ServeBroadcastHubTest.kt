@@ -41,6 +41,8 @@ class ServeBroadcastHubTest {
           pointerId: Int?,
           scrollDeltaY: Float?,
           keyCode: String?,
+          text: String?,
+          pointerType: String?,
         ) {
           inputs.add(kind)
         }

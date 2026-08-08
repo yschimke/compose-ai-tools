@@ -11,8 +11,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.SoftwareKeyboardController
+import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.daemon.protocol.KeyboardOverride
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.keyboard.Material3KeyboardProduct
@@ -54,8 +57,19 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
 
     val shadow = remember { ObservingSoftwareKeyboardController() }
     CompositionLocalProvider(LocalSoftwareKeyboardController provides shadow) {
-      val visible by KeyboardController.softInputVisible
+      val imeVisible by KeyboardController.softInputVisible
       val pressedKey by KeyboardController.pressedKey
+      // Same size gate as the Android connector: the band models a device's on-screen keyboard, so
+      // it only draws on a surface large enough to be a screen. On a component preview the input
+      // device is the browser's own physical keyboard and there is nothing to draw — without this
+      // gate, a catalog sticker of a single text field would be buried under a 240dp keyboard the
+      // moment it took focus. Desktop has no `Configuration`; the scene's own size — already the
+      // wrapped content's size on a wrap-content preview — is the equivalent signal.
+      val containerHeightPx = LocalWindowInfo.current.containerSize.height
+      val density = LocalDensity.current
+      val screenSized =
+        with(density) { containerHeightPx.toDp() } >= MIN_SCREEN_HEIGHT_FOR_BAND_DP.dp
+      val visible = imeVisible && screenSized
       Box(modifier = Modifier.fillMaxSize()) {
         content()
         if (visible) {

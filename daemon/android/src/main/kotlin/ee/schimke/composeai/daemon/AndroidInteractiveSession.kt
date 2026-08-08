@@ -236,7 +236,10 @@ internal constructor(
     if (!isKey && !hasPixels && !rawHasTarget) return
     val target = if (hasPixels) null else rawTarget
     val hasTarget = !hasPixels && rawHasTarget
-    if (isKey && input.keyCode.isNullOrBlank()) return
+    // A key event needs *something* to act on: a physical keycode, a typed character, or both. Text
+    // without a keycode is ordinary (`€` and every other non-US-layout key has no `KEYCODE_*`), so
+    // it must not be dropped here — issue #3491.
+    if (isKey && input.keyCode.isNullOrBlank() && input.text.isNullOrEmpty()) return
     if (isKey) {
       // Mirror the keycode into the soft-keyboard band before the held-rule loop runs the actual
       // `performKeyInput` so an agent driving keyboard input through `interactive/input` sees the
@@ -261,6 +264,8 @@ internal constructor(
         pixelY = py ?: 0,
         scrollDeltaY = input.scrollDeltaY,
         keyCode = input.keyCode,
+        text = input.text,
+        pointerType = input.pointerType,
         targetRef = target?.ref,
         targetTestTag = target?.testTag,
         targetRole = target?.role,

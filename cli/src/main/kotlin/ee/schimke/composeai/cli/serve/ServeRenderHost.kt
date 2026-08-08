@@ -50,6 +50,10 @@ interface StreamHandle : AutoCloseable {
     pointerId: Int? = null,
     scrollDeltaY: Float? = null,
     keyCode: String? = null,
+    /** The character a `keyDown` typed, when it produced one (issue #3491). */
+    text: String? = null,
+    /** `"mouse"` / `"touch"` / `"pen"`; absent means touch (issue #3491). */
+    pointerType: String? = null,
   )
 }
 
@@ -1395,6 +1399,8 @@ internal constructor(
         pointerId: Int?,
         scrollDeltaY: Float?,
         keyCode: String?,
+        text: String?,
+        pointerType: String?,
       ) {
         if (handleClosed.get()) return
         runCatching {
@@ -1406,6 +1412,8 @@ internal constructor(
             pointerId,
             scrollDeltaY,
             keyCode,
+            text,
+            pointerType,
           )
         }
       }

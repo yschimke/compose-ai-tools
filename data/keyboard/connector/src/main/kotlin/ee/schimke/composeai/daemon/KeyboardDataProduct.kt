@@ -80,9 +80,23 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
     // that same call here and surface it through [KeyboardController.notifyImeVisibility].
     val shadow = remember { ObservingSoftwareKeyboardController() }
     CompositionLocalProvider(LocalSoftwareKeyboardController provides shadow) {
-      val visible by KeyboardController.softInputVisible
+      val configuration = LocalConfiguration.current
+      val imeVisible by KeyboardController.softInputVisible
       val pressedKey by KeyboardController.pressedKey
-      val night = (LocalConfiguration.current.uiMode and UI_MODE_NIGHT_MASK) == UI_MODE_NIGHT_YES
+      val night = (configuration.uiMode and UI_MODE_NIGHT_MASK) == UI_MODE_NIGHT_YES
+      // The band models a *device's* on-screen keyboard, so it belongs on device previews and
+      // nowhere else. A component preview — a catalog sticker of a single text field, say — is a
+      // few hundred pixels tall, and a 240dp band over it buries the very component under review.
+      // On those, the browser's own physical keyboard is the input device; there is nothing to
+      // draw. Focusing a `BasicTextField` raises the IME on any surface (that is what a real
+      // device does), so the surface's size is what separates "screen showing its keyboard" from
+      // "component that happens to take focus".
+      //
+      // Wrap-content previews are covered by the same rule from the other side: they compose
+      // against the generous sandbox window, so the band lands far below the measured content and
+      // the wrap crop removes it along with the rest of the empty window.
+      val screenSized = configuration.screenHeightDp >= MIN_SCREEN_HEIGHT_FOR_BAND_DP
+      val visible = imeVisible && screenSized
 
       // Publish synthetic `WindowInsetsCompat.Type.ime()` insets on the host view so consumer code
       // reading `WindowInsets.ime` (e.g. `Modifier.imePadding()`,
@@ -149,6 +163,12 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
      */
     private const val UI_MODE_NIGHT_MASK = 0x30
     private const val UI_MODE_NIGHT_YES = 0x20
+
+    /**
+     * Shortest surface the band will draw on: three band-heights, so the keyboard never takes more
+     * than a third of the frame — the proportion it occupies on a real phone.
+     */
+    internal const val MIN_SCREEN_HEIGHT_FOR_BAND_DP = KEYBOARD_HEIGHT_DP * 3
   }
 }
 

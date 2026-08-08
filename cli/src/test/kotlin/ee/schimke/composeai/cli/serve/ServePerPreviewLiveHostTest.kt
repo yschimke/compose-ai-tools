@@ -68,6 +68,8 @@ class ServePerPreviewLiveHostTest {
           pointerId: Int?,
           scrollDeltaY: Float?,
           keyCode: String?,
+          text: String?,
+          pointerType: String?,
         ) {}
 
         override fun close() {}

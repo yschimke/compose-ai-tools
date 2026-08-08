@@ -940,3 +940,61 @@ fun MaterialIconRowPreview() {
     }
   }
 }
+
+/**
+ * Editable text field for the typing / mouse-drag-selection dispatch tests (issue #3491).
+ *
+ * The Android sandbox runs fixtures under its own instrumented classloader, so a static probe the
+ * test could read is not an option — the fixture reports what happened to it in pixels. It latches:
+ * the first time the value gains characters, or gains a non-collapsed selection, the field is
+ * *replaced* by a solid colour.
+ *
+ * Replacing rather than merely recolouring is load-bearing. Compose puts a focused field's
+ * selection handles and magnifier in windows of their own, and a held session capturing while one
+ * is open streams the handle's little window instead of the preview. Disposing the field disposes
+ * those popups, so the frame under assertion is unambiguously the preview surface.
+ *
+ * Self-focusing, so keyboard dispatch needs no preparatory click.
+ */
+@Composable
+fun EditableTextFieldSquare() {
+  var outcome by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+  if (outcome != 0) {
+    val color = if (outcome == OUTCOME_SELECTED) Color(0xFF42A5F5) else Color(0xFF66BB6A)
+    Box(modifier = Modifier.fillMaxSize().background(color))
+    return
+  }
+  var value by
+    androidx.compose.runtime.remember {
+      androidx.compose.runtime.mutableStateOf(
+        androidx.compose.ui.text.input.TextFieldValue(
+          TEXT_FIELD_SEED,
+          androidx.compose.ui.text.TextRange(TEXT_FIELD_SEED.length),
+        )
+      )
+    }
+  val focusRequester = androidx.compose.runtime.remember { FocusRequester() }
+  LaunchedEffect(Unit) { focusRequester.requestFocus() }
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350))) {
+    androidx.compose.foundation.text.BasicTextField(
+      value = value,
+      onValueChange = {
+        value = it
+        outcome =
+          when {
+            it.text != TEXT_FIELD_SEED -> OUTCOME_TYPED
+            !it.selection.collapsed -> OUTCOME_SELECTED
+            else -> 0
+          }
+      },
+      textStyle = androidx.compose.ui.text.TextStyle(color = Color.Black),
+      modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+    )
+  }
+}
+
+/** Seed content of [EditableTextFieldSquare] — long enough that a drag can select part of it. */
+const val TEXT_FIELD_SEED: String = "Filled"
+
+private const val OUTCOME_TYPED = 1
+private const val OUTCOME_SELECTED = 2

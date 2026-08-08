@@ -119,9 +119,11 @@ class ServeBroadcastHub(private val opener: StreamOpener) {
           pointerId: Int?,
           scrollDeltaY: Float?,
           keyCode: String?,
+          text: String?,
+          pointerType: String?,
         ) {
           if (closed.get()) return
-          handle?.input(kind, pixelX, pixelY, pointerId, scrollDeltaY, keyCode)
+          handle?.input(kind, pixelX, pixelY, pointerId, scrollDeltaY, keyCode, text, pointerType)
         }
 
         override fun close() {

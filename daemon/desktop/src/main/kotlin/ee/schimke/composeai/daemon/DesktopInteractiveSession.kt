@@ -6,6 +6,7 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.pointer.PointerButton
@@ -16,6 +17,7 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.scene.ComposeScenePointer
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
+import ee.schimke.composeai.daemon.protocol.InteractivePointerType
 import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
 import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
 import ee.schimke.composeai.data.layoutinspector.TargetResolution
@@ -102,7 +104,10 @@ class DesktopInteractiveSession(
    * Read and written only from [sceneExecutor]'s thread, so a plain `MutableMap` is safe — no
    * `ConcurrentHashMap` needed.
    */
-  private val activePointers: MutableMap<Int, Offset> = mutableMapOf()
+  private val activePointers: MutableMap<Int, ActivePointer> = mutableMapOf()
+
+  /** A pressed pointer's scene-space position plus the device class it is being synthesised as. */
+  private data class ActivePointer(val offset: Offset, val type: PointerType)
 
   override val isClosed: Boolean
     get() = closed
@@ -119,6 +124,7 @@ class DesktopInteractiveSession(
     val resolved = resolvePointerPixels(input)
     val px = resolved?.first
     val py = resolved?.second
+    val deviceType = composePointerType(input.pointerType)
     when (input.kind) {
       InteractiveInputKind.CLICK -> {
         if (px == null || py == null) return
@@ -133,39 +139,46 @@ class DesktopInteractiveSession(
         // another pointer is already down still carries the other finger in its event.
         val nowNs = engine.currentFrameNanoTime()
         val nowMs = nowNs / 1_000_000L
-        activePointers[id] = offset
+        activePointers[id] = ActivePointer(offset, deviceType)
         dispatchMultiPointer(eventType = PointerEventType.Press, timeMillis = nowMs)
         state.scene.render(nanoTime = nowNs)
         activePointers.remove(id)
         dispatchMultiPointer(
           eventType = PointerEventType.Release,
           timeMillis = nowMs + CLICK_HOLD_MS,
-          releasedPointer = id to offset,
+          releasedPointer = ActivePointer(offset, deviceType) to id,
         )
       }
       InteractiveInputKind.POINTER_DOWN -> {
         if (px == null || py == null) return
         val id = input.pointerId ?: 0
-        activePointers[id] = sceneOffset(px, py)
+        activePointers[id] = ActivePointer(sceneOffset(px, py), deviceType)
         dispatchMultiPointer(eventType = PointerEventType.Press)
       }
       InteractiveInputKind.POINTER_MOVE -> {
         if (px == null || py == null) return
         val id = input.pointerId ?: 0
-        activePointers[id] = sceneOffset(px, py)
+        // Keep the device class the press established: a drag's moves must stay the same pointer
+        // Compose saw go down, or the selection gesture it started is handed a foreign device
+        // mid-stream.
+        val type = activePointers[id]?.type ?: deviceType
+        activePointers[id] = ActivePointer(sceneOffset(px, py), type)
         dispatchMultiPointer(eventType = PointerEventType.Move)
       }
       InteractiveInputKind.POINTER_UP -> {
         if (px == null || py == null) return
         val id = input.pointerId ?: 0
-        val offset = sceneOffset(px, py)
         // Remove BEFORE dispatch but pass the released id+position into [dispatchMultiPointer] so
         // Compose sees the up event with `pressed = false` for this pointer alongside any
         // still-active fingers. Without the explicit released entry, dropping the pointer here and
         // dispatching only remaining actives would deliver a Move-shaped event and the gesture
         // detector would never see the "finger lifted" signal.
+        val type = activePointers[id]?.type ?: deviceType
         activePointers.remove(id)
-        dispatchMultiPointer(eventType = PointerEventType.Release, releasedPointer = id to offset)
+        dispatchMultiPointer(
+          eventType = PointerEventType.Release,
+          releasedPointer = ActivePointer(sceneOffset(px, py), type) to id,
+        )
       }
       InteractiveInputKind.ROTARY_SCROLL -> {
         if (px == null || py == null) return
@@ -177,16 +190,31 @@ class DesktopInteractiveSession(
         )
       }
       InteractiveInputKind.KEY_DOWN -> {
-        val key = androidKeycodeToComposeKey(input.keyCode) ?: return
+        val key = androidKeycodeToComposeKey(input.keyCode)
+        val typed = printableChar(input.text)
+        // A key the table doesn't know AND no printable text is nothing we can dispatch — drop it
+        // silently, same forward-compat contract as before.
+        if (key == null && typed == null) return
         // Mirror the press into the soft-keyboard band so an agent driving keyboard input through
         // `interactive/input` sees the matching cap light up. The band's "press implies visible"
         // rule in `KeyboardController.softInputVisible` also raises the band even if the consumer
         // hasn't called `keyboardController.show()`.
         KeyboardBandLabels.fromAndroidKeycode(input.keyCode)?.let(KeyboardController::notifyKeyDown)
-        state.scene.sendKeyEvent(KeyEvent(key, KeyEventType.KeyDown))
+        if (key != null) state.scene.sendKeyEvent(KeyEvent(key, KeyEventType.KeyDown))
+        // Then the *typed character*, as a real AWT `KEY_TYPED` event. This second dispatch is
+        // what makes typing work: Compose desktop's `KeyEvent.isTypedEvent` — the gate on
+        // `KeyCommand.TYPE`, i.e. "insert this character into the text field" — asks the event for
+        // its backing AWT event and requires `id == KEY_TYPED` with a printable `keyChar`. The
+        // synthesised `KeyEvent(key, KeyDown)` above has no AWT event at all, so it can only ever
+        // drive the *command* keys (arrows, Backspace, Delete, Home/End) that map off `Key` alone.
+        // That asymmetry is exactly why caret movement and deletion worked on the live lanes while
+        // typing did nothing (issue #3491).
+        if (typed != null) state.scene.sendKeyEvent(typedKeyEvent(key, typed))
       }
       InteractiveInputKind.KEY_UP -> {
         val key = androidKeycodeToComposeKey(input.keyCode) ?: return
+        // No typed-character counterpart here: AWT emits `KEY_TYPED` only between press and
+        // release, and Compose only inserts on `KeyDown`.
         KeyboardBandLabels.fromAndroidKeycode(input.keyCode)?.let(KeyboardController::notifyKeyUp)
         state.scene.sendKeyEvent(KeyEvent(key, KeyEventType.KeyUp))
       }
@@ -359,26 +387,27 @@ class DesktopInteractiveSession(
   private fun dispatchMultiPointer(
     eventType: PointerEventType,
     timeMillis: Long? = null,
-    releasedPointer: Pair<Int, Offset>? = null,
+    releasedPointer: Pair<ActivePointer, Int>? = null,
   ) {
     val pointers = buildList {
-      for ((pid, off) in activePointers) {
+      for ((pid, pointer) in activePointers) {
         add(
           ComposeScenePointer(
             id = PointerId(pid.toLong()),
-            position = off,
+            position = pointer.offset,
             pressed = true,
-            type = PointerType.Touch,
+            type = pointer.type,
           )
         )
       }
       if (releasedPointer != null) {
+        val (pointer, pid) = releasedPointer
         add(
           ComposeScenePointer(
-            id = PointerId(releasedPointer.first.toLong()),
-            position = releasedPointer.second,
+            id = PointerId(pid.toLong()),
+            position = pointer.offset,
             pressed = false,
-            type = PointerType.Touch,
+            type = pointer.type,
           )
         )
       }
@@ -399,6 +428,68 @@ class DesktopInteractiveSession(
   internal fun heldScene(): androidx.compose.ui.ImageComposeScene = state.scene
 
   companion object {
+    /**
+     * The wire's `pointerType` as the Compose device class Skiko dispatches with. Absent /
+     * unrecognised ⇒ [PointerType.Touch], the behaviour every client had before the field existed.
+     */
+    internal fun composePointerType(wire: String?): PointerType =
+      when (InteractivePointerType.parse(wire)) {
+        InteractivePointerType.MOUSE -> PointerType.Mouse
+        InteractivePointerType.PEN -> PointerType.Stylus
+        InteractivePointerType.TOUCH -> PointerType.Touch
+      }
+
+    /**
+     * The single character [text] types, or `null` when there is nothing typeable in it — absent,
+     * empty, more than one code point, or a non-printing code point (control characters, the
+     * `Shift` / `ArrowLeft` style key names the browser also puts in `KeyboardEvent.key`).
+     *
+     * Deliberately narrower than "any string": this feeds a synthetic AWT `KEY_TYPED`, which
+     * carries exactly one `char`. Astral-plane input (a code point above the BMP, so two chars)
+     * would need a surrogate pair per event and no client sends it yet, so it is dropped rather
+     * than silently mangled into half a character.
+     */
+    internal fun printableChar(text: String?): Char? {
+      val single = text?.singleOrNull() ?: return null
+      if (Character.isISOControl(single)) return null
+      val block = Character.UnicodeBlock.of(single)
+      if (block == null || block == Character.UnicodeBlock.SPECIALS) return null
+      return single
+    }
+
+    /**
+     * A Compose `KeyDown` carrying [ch] as typed text: the code point Compose inserts, plus a
+     * synthetic AWT `KEY_TYPED` as the event's `nativeEvent`. The AWT event is the load-bearing
+     * half — `isTypedEvent` reaches through to it and requires `id == KEY_TYPED` with a printable
+     * `keyChar` before it will map the event to `KeyCommand.TYPE`.
+     *
+     * [key] is the physical key when the wire named one, so a consumer's `Modifier.onKeyEvent`
+     * still sees a coherent event; typing works either way, since the mapping falls through to
+     * `isTypedEvent` for any key that carries no unmodified command of its own.
+     *
+     * The AWT source component is a bare [java.awt.Canvas], never shown or added to a hierarchy —
+     * AWT only refuses a *null* source. `KEY_TYPED` carries no key code by definition
+     * (`VK_UNDEFINED`); the character is the whole payload.
+     */
+    internal fun typedKeyEvent(key: Key?, ch: Char): KeyEvent =
+      KeyEvent(
+        key = key ?: Key.Unknown,
+        type = KeyEventType.KeyDown,
+        codePoint = ch.code,
+        nativeEvent =
+          java.awt.event.KeyEvent(
+            typedEventSource,
+            java.awt.event.KeyEvent.KEY_TYPED,
+            System.currentTimeMillis(),
+            0,
+            java.awt.event.KeyEvent.VK_UNDEFINED,
+            ch,
+          ),
+      )
+
+    /** Lazily built so a session that never types never touches AWT component construction. */
+    private val typedEventSource: java.awt.Component by lazy { java.awt.Canvas() }
+
     /**
      * Synthetic hold time between Press and Release for a CLICK. 100 ms matches what Compose's UI
      * test harness uses by default and is well above `detectTapGestures`'s long-press threshold
