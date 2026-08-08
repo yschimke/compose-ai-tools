@@ -4,6 +4,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { ComposePreviewTestApi } from "../../../extension";
 import { RealGradleApi } from "../realGradleApi";
+import { assertRefreshRendered } from "./refreshOutcome";
 
 /**
  * End-to-end test for the subscription-driven accessibility chain
@@ -431,7 +432,11 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
         timeoutMs: number,
     ): Promise<PreviewSummary[]> {
         api.resetMessages();
-        await api.triggerRefresh(wearKotlinFile, /* force */ true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(wearKotlinFile, /* force */ true, "full"),
+            "samples/wear render",
+        );
         const setPreviews = await waitFor(
             "non-empty setPreviews for samples/wear",
             timeoutMs,

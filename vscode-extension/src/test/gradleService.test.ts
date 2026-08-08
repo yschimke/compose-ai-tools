@@ -8,6 +8,7 @@ import {
     TaskCancelledError,
     encodeBundlePreviewId,
     isModulePreviewSchedulable,
+    resolveTaskTimeoutMs,
 } from "../gradleService";
 import { JdkImageError } from "../jdkImageErrorDetector";
 
@@ -1827,5 +1828,34 @@ describe("isModulePreviewSchedulable", () => {
 
     it("treats a missing enabled (legacy / scan-detected) as enabled", () => {
         assert.strictEqual(isModulePreviewSchedulable(base), true);
+    });
+});
+
+describe("resolveTaskTimeoutMs", () => {
+    const DEFAULT_MS = 5 * 60 * 1000;
+
+    it("falls back to the interactive default when unset", () => {
+        assert.strictEqual(resolveTaskTimeoutMs(undefined), DEFAULT_MS);
+        assert.strictEqual(resolveTaskTimeoutMs(""), DEFAULT_MS);
+    });
+
+    it("accepts a positive override — the e2e harness raises the cap", () => {
+        assert.strictEqual(resolveTaskTimeoutMs("600000"), 600_000);
+    });
+
+    it("truncates a fractional override to whole milliseconds", () => {
+        assert.strictEqual(resolveTaskTimeoutMs("600000.7"), 600_000);
+    });
+
+    it("ignores values that would cancel every build immediately", () => {
+        // NaN / 0 / negative all make setTimeout fire on the next tick, which
+        // would kill each gradlew client the instant it spawned.
+        for (const raw of ["banana", "0", "-1", "Infinity"]) {
+            assert.strictEqual(
+                resolveTaskTimeoutMs(raw),
+                DEFAULT_MS,
+                `expected ${raw} to fall back to the default`,
+            );
+        }
     });
 });

@@ -114,7 +114,61 @@ function expandParamCaptures(
     return expanded;
 }
 
-const TASK_TIMEOUT_MS = 5 * 60 * 1000;
+/**
+ * Wall-clock ceiling for a single `gradlew` invocation, when nothing
+ * overrides it. Five minutes is sized for the interactive case this cap
+ * exists to serve: an editor user staring at a wedged build wants it
+ * abandoned and the build lock freed, not nursed indefinitely.
+ */
+const DEFAULT_TASK_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * Env override for {@link TASK_TIMEOUT_MS}, in milliseconds. Only the e2e
+ * harness sets it (`test/electron/runTest.ts`); production reads no env and
+ * keeps {@link DEFAULT_TASK_TIMEOUT_MS}.
+ */
+const TASK_TIMEOUT_ENV = "COMPOSE_PREVIEW_GRADLE_TASK_TIMEOUT_MS";
+
+/**
+ * Effective per-task ceiling. On expiry `runTask` fires `cancelRunTask`
+ * (which kills the gradlew client and releases the build lock) and rejects
+ * with a `timed out after Ns` error.
+ *
+ * Overridable because the interactive budget is wrong for CI e2e, which
+ * runs the opposite workload: a cold hosted runner pays `includeBuild`
+ * plugin compilation *plus* a cold Kotlin/Compose module compile before the
+ * first pixel, and that regularly runs past five minutes. When it does, the
+ * cap kills the render mid-flight and every `vscode-extension-e2e` shard
+ * fails — observed on 2026-08-08, where the cold `:samples:cmp` render was
+ * cancelled at exactly 5m00s while the very next render on the same runner,
+ * against the build outputs the killed one had produced, finished in 64s.
+ * The e2e harness therefore raises the cap for its own run; the workflow's
+ * per-shard `timeout-minutes` remains the real backstop against a wedge.
+ */
+export const TASK_TIMEOUT_MS = resolveTaskTimeoutMs(
+    process.env[TASK_TIMEOUT_ENV],
+);
+
+/**
+ * Parse the {@link TASK_TIMEOUT_ENV} override, falling back to
+ * {@link DEFAULT_TASK_TIMEOUT_MS} for anything that isn't a positive finite
+ * number. A malformed value must not degrade into `NaN` or `0` — either
+ * would make `setTimeout` fire immediately and cancel every build the
+ * instant it started.
+ *
+ * Exported for tests; production reads {@link TASK_TIMEOUT_MS}.
+ */
+export function resolveTaskTimeoutMs(raw: string | undefined): number {
+    if (!raw) {
+        return DEFAULT_TASK_TIMEOUT_MS;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return DEFAULT_TASK_TIMEOUT_MS;
+    }
+    return Math.floor(parsed);
+}
+
 const MANIFEST_CACHE_TTL_MS = 30_000;
 /**
  * How long after a successful `composePreviewApplied` invocation we treat
