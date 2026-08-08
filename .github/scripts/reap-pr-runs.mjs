@@ -77,6 +77,30 @@ export async function reapPrRuns({
   // cancelling live work costs someone their CI.
   const cutoff = closedAt ? Date.parse(closedAt) : NaN
 
+  // Is anything else still open on this exact head (same fork, same branch)?
+  //
+  // This decides whether the empty-`pull_requests` fallback below is safe. That
+  // fallback exists because fork runs carry no association, so demanding one
+  // would stop us reaping them at all — but "no association" and "belongs to
+  // this PR" are not the same claim. Two PRs can share one fork branch while
+  // targeting different bases, and the still-open one's runs predate this close,
+  // so every other guard passes and we would cancel its live CI.
+  //
+  // On failure, assume ambiguity. Skipping some fork leftovers costs queue
+  // slots; cancelling an open PR's checks costs someone their CI.
+  let ambiguousHead = true
+  try {
+    const openOnSameHead = await github.paginate(github.rest.pulls.list, {
+      ...repo,
+      state: 'open',
+      head: `${headRepo.split('/')[0]}:${headRef}`,
+      per_page: 100,
+    })
+    ambiguousHead = openOnSameHead.some((p) => p.number !== prNumber)
+  } catch (error) {
+    core.warning(`Could not check for other open PRs on ${headRef}: ${error.message}`)
+  }
+
   // ONE listing, filtered locally — deliberately not a query per status.
   //
   // Per-status queries are separate snapshots taken at different moments, and
@@ -140,9 +164,24 @@ export async function reapPrRuns({
     // fork leftovers this script was fixed to catch. Empty means "no claim",
     // and we fall through to the repo and cutoff checks.
     const associated = run.pull_requests ?? []
-    if (associated.length > 0 && !associated.some((p) => p.number === prNumber)) continue
+    if (associated.length > 0) {
+      if (!associated.some((p) => p.number === prNumber)) continue
+    } else if (ambiguousHead) {
+      // Empty association and something else is live on this exact head — we
+      // cannot tell whose run this is, so leave it. See `ambiguousHead` above.
+      continue
+    }
 
-    if (!Number.isNaN(cutoff) && Date.parse(run.created_at) >= cutoff) continue
+    // The *attempt's* start, not the run's creation. Re-running a workflow
+    // reuses the run id and keeps the original `created_at`, bumping
+    // `run_started_at` instead — so a `/rerun` issued on a closed PR (which
+    // pr-commands.yml supports, and which is a deliberate act by a maintainer)
+    // would otherwise look older than the close and get cancelled.
+    const began = Math.max(
+      Date.parse(run.created_at),
+      Date.parse(run.run_started_at ?? run.created_at),
+    )
+    if (!Number.isNaN(cutoff) && began >= cutoff) continue
 
     try {
       await github.rest.actions.cancelWorkflowRun({ ...repo, run_id: run.id })

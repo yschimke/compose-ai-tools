@@ -31,10 +31,23 @@ function run(id, name, status, overrides = {}) {
   }
 }
 
-function harness({ runs = [], cancelError, listError, prState = 'closed', prError } = {}) {
-  const calls = { listed: [], cancelled: [] }
+function harness({
+  runs = [],
+  cancelError,
+  listError,
+  prState = 'closed',
+  prError,
+  openOnSameHead = [],
+  openOnSameHeadError,
+} = {}) {
+  const calls = { listed: [], cancelled: [], headQueries: [] }
   const github = {
-    paginate: async (_fn, params) => {
+    paginate: async (fn, params) => {
+      if (fn === 'pulls.list') {
+        calls.headQueries.push(params.head)
+        if (openOnSameHeadError) throw openOnSameHeadError
+        return openOnSameHead
+      }
       // One snapshot, no status filter — mirrors the real call.
       calls.listed.push({ branch: params.branch, status: params.status })
       if (listError) throw listError
@@ -42,6 +55,7 @@ function harness({ runs = [], cancelError, listError, prState = 'closed', prErro
     },
     rest: {
       pulls: {
+        list: 'pulls.list',
         get: async () => {
           if (prError) throw prError
           return { data: { state: prState } }
@@ -179,6 +193,66 @@ test('a run advancing between statuses cannot escape the sweep', async () => {
   await reapPrRuns({ ...BASE, github, core })
   assert.deepEqual(calls.cancelled, [1])
   assert.equal(calls.listed.length, 1)
+})
+
+test('leaves a post-close rerun alone', async () => {
+  // `/rerun` (pr-commands.yml) reuses the run id and its original created_at,
+  // bumping run_started_at. Judging by created_at alone would cancel a rerun a
+  // maintainer deliberately started after the close.
+  const { github, core, calls } = harness({
+    runs: [
+      run(1, 'CI', 'in_progress', { created_at: BEFORE, run_started_at: AFTER }),
+      run(2, 'CI', 'queued', { created_at: BEFORE, run_started_at: BEFORE }),
+    ],
+  })
+  await reapPrRuns({ ...BASE, github, core })
+  assert.deepEqual(calls.cancelled, [2])
+})
+
+test('will not use the fork fallback while another PR shares the head', async () => {
+  // Two PRs from one fork branch against different bases. The open one's runs
+  // predate this close and carry no association, so every other guard passes.
+  const FORK = 'someone-else/compose-ai-tools'
+  const { github, core, calls } = harness({
+    runs: [run(1, 'CI', 'queued', { pull_requests: [], head_repository: { full_name: FORK } })],
+    openOnSameHead: [{ number: 77 }],
+  })
+  await reapPrRuns({ ...BASE, headRepo: FORK, github, core })
+  assert.deepEqual(calls.cancelled, [])
+  assert.deepEqual(calls.headQueries, ['someone-else:agent/some-branch'])
+})
+
+test('this PR appearing in the head query does not block the fallback', async () => {
+  // The closed PR itself can still come back from the open-PR listing mid-race;
+  // only a *different* PR makes the head ambiguous.
+  const FORK = 'someone-else/compose-ai-tools'
+  const { github, core, calls } = harness({
+    runs: [run(1, 'CI', 'queued', { pull_requests: [], head_repository: { full_name: FORK } })],
+    openOnSameHead: [{ number: 42 }],
+  })
+  await reapPrRuns({ ...BASE, headRepo: FORK, github, core })
+  assert.deepEqual(calls.cancelled, [1])
+})
+
+test('assumes ambiguity when the open-PR check fails', async () => {
+  const FORK = 'someone-else/compose-ai-tools'
+  const { github, core, calls, warnings } = harness({
+    runs: [run(1, 'CI', 'queued', { pull_requests: [], head_repository: { full_name: FORK } })],
+    openOnSameHeadError: new Error('rate limited'),
+  })
+  await reapPrRuns({ ...BASE, headRepo: FORK, github, core })
+  assert.deepEqual(calls.cancelled, [])
+  assert.equal(warnings.length, 1)
+})
+
+test('an explicit association still reaps even on an ambiguous head', async () => {
+  // Ambiguity only gates the fallback; a run that names this PR is not in doubt.
+  const { github, core, calls } = harness({
+    runs: [run(1, 'CI', 'queued', { pull_requests: [{ number: 42 }] })],
+    openOnSameHead: [{ number: 77 }],
+  })
+  await reapPrRuns({ ...BASE, github, core })
+  assert.deepEqual(calls.cancelled, [1])
 })
 
 test('refuses to reap an empty head ref', async () => {
