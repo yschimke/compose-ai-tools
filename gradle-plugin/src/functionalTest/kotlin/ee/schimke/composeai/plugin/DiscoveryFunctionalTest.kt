@@ -645,6 +645,127 @@ class DiscoveryFunctionalTest {
       .containsExactly("shape" to "round", "selected" to "false")
   }
 
+  /**
+   * The three ways an axis expansion can go wrong quietly, all in one project so the warnings are
+   * asserted against a single run.
+   *
+   * `Untyped` — a `BOOLEAN` axis whose values are not boolean literals. The renderer's seed parser
+   * drops what it cannot parse, so the cell would bake as a duplicate of the base render while the
+   * catalog published props claiming it was that cell: a wrong entry, not a missing one.
+   *
+   * `Colliding` — two axes sharing a value name. No authoring mistake required, and a name is a
+   * render output path, so the two cells would race for one file.
+   *
+   * `Hoisted` — the documented hoisting flow, which must NOT warn. A hoisted axis is reached twice
+   * by design (ClassGraph flattens it into the method's annotation list, and the meta-annotation
+   * walk finds it again), and warning on that would fire on every correct use.
+   */
+  @Test
+  fun `composePreviewDiscover rejects unusable @PreviewAxis declarations and warns`() {
+    val projectDir = createCmpTestProject()
+
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "PreviewAxis.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Repeatable
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class PreviewAxis(
+            val key: String,
+            val values: Array<String>,
+            val default: String = "",
+            val kind: PreviewAxisKind = PreviewAxisKind.STRING,
+            val slugs: Array<String> = [],
+            val namesEveryValue: Boolean = false,
+            val order: Int = 0,
+        )
+
+        enum class PreviewAxisKind { STRING, BOOLEAN, INT, FLOAT }
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/Bad.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+        import ee.schimke.composeai.preview.PreviewAxis
+        import ee.schimke.composeai.preview.PreviewAxisKind
+
+        @Preview
+        @PreviewAxis(
+            key = "selected",
+            values = ["on", "off"],
+            kind = PreviewAxisKind.BOOLEAN,
+        )
+        @Composable
+        fun UntypedPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Untyped") }
+        }
+
+        @Preview
+        @PreviewAxis(key = "a", values = ["p", "q"], order = 1)
+        @PreviewAxis(key = "b", values = ["p", "q"], order = 2)
+        @Composable
+        fun CollidingPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Colliding") }
+        }
+
+        @PreviewAxis(key = "shape", values = ["round", "square"])
+        annotation class ShapeOnly
+
+        @Preview
+        @ShapeOnly
+        @Composable
+        fun HoistedOkPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Hoisted") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+
+    // The BOOLEAN axis is ignored outright, so the function keeps only its base preview — rather
+    // than gaining a cell that bakes identically to it under a props claim.
+    assertThat(result.output).contains("are not valid BOOLEAN literals")
+    assertThat(manifest.previews.filter { it.functionName == "UntypedPreview" }).hasSize(1)
+
+    // `a=q,b=p` and `a=p,b=q` both name themselves `q`; the second is dropped, `q-q` survives.
+    assertThat(result.output).contains("collide on the name(s) q")
+    val colliding = manifest.previews.filter { it.functionName == "CollidingPreview" }
+    assertThat(colliding.mapNotNull { it.overrides?.name }).containsExactly("q", "q-q")
+
+    // …and the correct hoisted case is silent about duplicates while still producing its cell.
+    assertThat(result.output)
+      .doesNotContain("declares @PreviewAxis(key = \"shape\") more than once")
+    val hoisted = manifest.previews.filter { it.functionName == "HoistedOkPreview" }
+    assertThat(hoisted.mapNotNull { it.overrides?.name }).containsExactly("square")
+  }
+
   @Test
   fun `composePreviewDiscover aggregates @ColorCatalog tokens into catalog sheets`() {
     val projectDir = createCmpTestProject()

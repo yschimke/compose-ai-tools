@@ -67,6 +67,22 @@ package ee.schimke.composeai.preview
  * A product grows fast — five sizes by three widths by two shapes is thirty cells, times every
  * `@Preview` expansion — so discovery warns past [MAX_CELLS_WARN] cells on one function, and
  * refuses past [MAX_CELLS] rather than minting thousands of captures from a typo.
+ *
+ * ## What discovery rejects
+ *
+ * Two rules exist because breaking them produces a catalog entry that is *wrong* rather than
+ * missing, which is the worse failure:
+ *
+ * * **Every value must parse as its [kind].** A `BOOLEAN` axis with a value of `"off"` (or a
+ *   non-numeric `INT` / `FLOAT`) would have its seed silently dropped by the renderer, baking a
+ *   duplicate of the base render while the catalog published props claiming it was that cell. Such
+ *   an axis is ignored with a warning. Write `values = ["true", "false"]` and use [slugs] to name
+ *   them `on` / `off`.
+ * * **Generated names must be distinct.** A name is a render output path, so colliding cells race
+ *   for one file. This needs no mistake to happen — two axes sharing a value name are enough (`a =
+ *   [p, q]` and `b = [p, q]`, both defaulting to `p`, both generate a cell called `q`) — as are
+ *   repeated [slugs]. Colliding cells after the first are dropped with a warning; give the values
+ *   distinct slugs, or set [namesEveryValue] on one axis.
  */
 @Repeatable
 @Retention(AnnotationRetention.BINARY)

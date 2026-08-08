@@ -2007,21 +2007,42 @@ object PreviewDiscovery {
             values.first()
           }
         }
+      val kind = axisSeedKind(pv.getValue("kind"))
+      // Every value has to survive the seed parser, or the cell is a lie. `OverrideSeed
+      // .toValueOrNull` silently drops a seed it cannot parse, so a `kind = BOOLEAN` axis with a
+      // value of `"off"` would render an unmodified copy of the base while the catalog published
+      // props claiming it is the `off` cell — a wrong entry, which is worse than a missing one.
+      val unparseable = values.filterNot { parseableAs(it, kind) }
+      if (unparseable.isNotEmpty()) {
+        warnings.add(
+          "composePreview: '$owner' declares @PreviewAxis(key = \"$key\", kind = $kind) with " +
+            "value(s) ${unparseable.joinToString(", ") { "\"$it\"" }} that are not valid $kind " +
+            "literals — the renderer would drop the seed and bake a duplicate of the base render " +
+            "while the catalog claimed it was that cell. Ignoring the axis."
+        )
+        continue
+      }
       val spec =
         AxisSpec(
           key = key,
           values = values.zip(slugs),
           default = default,
-          kind = axisSeedKind(pv.getValue("kind")),
+          kind = kind,
           namesEveryValue = pv.getValue("namesEveryValue") as? Boolean ?: false,
           order = (pv.getValue("order") as? Int) ?: 0,
         )
       // Two axes on one key would square that key against itself — `size=xs` crossed with
-      // `size=m` is not a cell, it is a contradiction.
-      if (byKey.putIfAbsent(key, spec) != null) {
+      // `size=m` is not a cell, it is a contradiction. Only a *conflicting* duplicate is worth
+      // warning about, though: a hoisted axis is reached twice by design — once flattened into the
+      // method's annotation list by ClassGraph, once by the explicit meta-annotation walk — and
+      // warning on that would fire on the documented hoisting flow itself, for a single source
+      // declaration. Same rule the `@OverrideVariant` path already applies.
+      val existing = byKey.putIfAbsent(key, spec)
+      if (existing != null && existing != spec) {
         warnings.add(
-          "composePreview: '$owner' declares @PreviewAxis(key = \"$key\") more than once — " +
-            "crossing a key with itself produces contradictory cells. Keeping the first."
+          "composePreview: '$owner' declares @PreviewAxis(key = \"$key\") more than once, with " +
+            "different values — crossing a key with itself produces contradictory cells. Keeping " +
+            "the first."
         )
       }
     }
@@ -2031,6 +2052,28 @@ object PreviewDiscovery {
     // order keep their emitted order relative to each other, so a single-axis function needs
     // nothing. See `PreviewAxis.order`.
     return byKey.values.sortedBy { it.order }
+  }
+
+  /**
+   * Whether [value] is a literal the seed parser will accept for [kind].
+   *
+   * Deliberately the same predicates `OverrideSeed.toValueOrNull` applies — `toBooleanStrictOrNull`
+   * / `toIntOrNull` / `toFloatOrNull` on the trimmed text — so an axis is rejected here exactly
+   * when the renderer would have silently dropped its seed. A looser check would let a bad cell
+   * through to bake wrong; a stricter one would reject an axis that renders fine.
+   *
+   * `COLOR` is not reachable from `@PreviewAxis` (the annotation's `kind` has no colour member), so
+   * it is treated as unvalidated rather than given a hex parser that nothing can call.
+   */
+  private fun parseableAs(value: String, kind: OverrideSeedKind): Boolean {
+    val text = value.trim()
+    return when (kind) {
+      OverrideSeedKind.STRING -> true
+      OverrideSeedKind.BOOLEAN -> text.toBooleanStrictOrNull() != null
+      OverrideSeedKind.INT -> text.toIntOrNull() != null
+      OverrideSeedKind.FLOAT -> text.toFloatOrNull() != null
+      OverrideSeedKind.COLOR -> true
+    }
   }
 
   /** Adds [ann] to [into] when it is a `@PreviewAxis`, unwrapping the repeatable container. */
@@ -2116,23 +2159,60 @@ object PreviewDiscovery {
     for (axis in axes) {
       combinations = combinations.flatMap { prefix -> axis.values.map { prefix + it } }
     }
-    return combinations.mapNotNull { combination ->
-      val slugs = mutableListOf<String>()
-      val seeds = mutableListOf<OverrideSeed>()
-      val props = mutableListOf<CatalogVariantProp>()
-      for ((axis, valueAndSlug) in axes.zip(combination)) {
-        val (value, slug) = valueAndSlug
-        val isDefault = value == axis.default
-        if (axis.namesEveryValue || !isDefault) slugs.add(slug)
-        props.add(CatalogVariantProp(key = axis.key, value = value))
-        if (!isDefault) {
-          seeds.add(OverrideSeed(key = axis.key, index = null, kind = axis.kind, raw = value))
+    return combinations
+      .mapNotNull { combination ->
+        val slugs = mutableListOf<String>()
+        val seeds = mutableListOf<OverrideSeed>()
+        val props = mutableListOf<CatalogVariantProp>()
+        for ((axis, valueAndSlug) in axes.zip(combination)) {
+          val (value, slug) = valueAndSlug
+          val isDefault = value == axis.default
+          if (axis.namesEveryValue || !isDefault) slugs.add(slug)
+          props.add(CatalogVariantProp(key = axis.key, value = value))
+          if (!isDefault) {
+            seeds.add(OverrideSeed(key = axis.key, index = null, kind = axis.kind, raw = value))
+          }
         }
+        if (seeds.isEmpty()) null
+        else
+          OverrideVariantSpec(name = slugs.joinToString("-"), seeds = seeds, props = props.toList())
       }
-      if (seeds.isEmpty()) null
-      else
-        OverrideVariantSpec(name = slugs.joinToString("-"), seeds = seeds, props = props.toList())
+      .let { cells -> dedupeCellNames(cells, owner, warnings) }
+  }
+
+  /**
+   * Drops cells whose generated name collides with an earlier one, warning about each.
+   *
+   * A name is a render output path, so two cells sharing one race for the same file — and unlike
+   * the hand-written case this needs no authoring mistake to happen. Two axes that share a value
+   * name are enough: `a = [p, q]` and `b = [p, q]`, both defaulting to `p`, generate `q` for `(q,
+   * p)` and `q` again for `(p, q)`. Repeated `slugs` on one axis do it too.
+   *
+   * Dropped rather than renamed: a generated name is what the published sticker is addressed by, so
+   * inventing a disambiguating suffix would silently mint a URL nobody declared. Naming the
+   * collision and losing the cell is the honest failure — the fix (distinct slugs, or an axis that
+   * names every value) is then obvious.
+   */
+  private fun dedupeCellNames(
+    cells: List<OverrideVariantSpec>,
+    owner: String,
+    warnings: MutableList<String>,
+  ): List<OverrideVariantSpec> {
+    val byName = LinkedHashMap<String, OverrideVariantSpec>()
+    val collided = LinkedHashSet<String>()
+    for (cell in cells) {
+      if (byName.putIfAbsent(cell.name, cell) != null) collided.add(cell.name)
     }
+    if (collided.isNotEmpty()) {
+      warnings.add(
+        "composePreview: '$owner' expands @PreviewAxis to cells that collide on the name(s) " +
+          "${collided.joinToString(", ")} — a name is a render output path, so only the first of " +
+          "each is kept. Two axes sharing a value name, or repeated `slugs`, produce this; give " +
+          "the values distinct slugs, or set `namesEveryValue` on one axis so its cells stay " +
+          "distinguishable."
+      )
+    }
+    return byName.values.toList()
   }
 
   /**
