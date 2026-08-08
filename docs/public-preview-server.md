@@ -215,6 +215,30 @@ fallback token.
 
 ![Catalog theme selector (dark)](images/serve-catalog-themes-dark.png)
 
+### A Light / Dark chip is a taster of the theme it selects
+
+The two baked chips used to be identical outlined pills that differed only in the word on them, so
+"what does Dark actually look like here?" cost a click and a wait. Each now pins its **own**
+`color-scheme`, which re-resolves every `light-dark()` pair in the token layer — including the
+served catalog's own palette — in that chip's mode. On `/wear-m3/` the Dark chip is painted in
+wear-m3's near-black and cyan and the Light chip in its light projection, whichever way round the
+page itself is, so the pair reads as two swatches of one system rather than two labels. It costs
+nothing: no extra data, no render, one property per chip.
+
+![Before and after: two identical pills, then each chip painted in the theme it selects, in both page modes](images/serve-theme-chip-taster.png)
+
+Selection is marked with a **ring** rather than by swapping the fill — the fill *is* the swatch, so
+replacing it would hide the theme at the moment you picked it.
+
+Only the baked light/dark axis is tasted. **Default** and an app-declared `theme:<providerFqn>` chip
+keep the plain outlined pill, because the page has no token set for either: a declared theme's
+palette (and its typeface — a `@ThemeCatalog` is free to swap the type scale) isn't published yet.
+[design-parity#307](https://github.com/yschimke/design-parity/pull/307) added the export side —
+`themes/<theme>.dtcg.json` per declared theme, listed in `catalog.json` — so what remains is the
+driver collecting each theme's resolved tokens and this server painting the remaining chips from
+them. Inventing a swatch for a theme whose palette we don't have would be a guess at the one thing
+the chip claims to show.
+
 ## Long-press a card for a live session, in place
 
 The Theme control above re-renders the grid's *pixels*. Sometimes what you want is the component

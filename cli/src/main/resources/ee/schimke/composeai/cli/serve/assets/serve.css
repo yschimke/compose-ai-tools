@@ -543,6 +543,41 @@ html.cp-js .cp-section-head { display: none; }
 .cp-theme-btn[aria-pressed="true"], .cp-bg-btn[aria-pressed="true"] {
   background: var(--md-sys-color-secondary-container); border-color: transparent;
   color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
+/* --- A Light / Dark chip is a TASTER of the theme it selects.
+   The chips used to be identical outlined pills that differed only in the word on them, so the
+   answer to "what does Dark actually look like here?" was a click and a wait. Each of these now
+   pins its own `color-scheme`, which re-resolves every `light-dark()` pair in the token layer —
+   including a served catalog's own palette — in THAT chip's mode. So on `/wear-m3/` the Dark chip
+   is painted in wear-m3's own near-black-and-cyan and the Light chip in its light projection,
+   whichever way round the page itself is; the pair reads as two swatches of one system rather than
+   two labels. Costs nothing: no extra data, no render, one property per chip.
+   Only the baked light/dark axis is tasted. `Default` and an app-declared `theme:<providerFqn>`
+   chip keep the plain outlined pill, because the page has no token set for either — a declared
+   theme's palette isn't published yet (design-parity#307 adds the export side), and inventing a
+   swatch for it would be a guess at the one thing the chip claims to show. */
+.cp-theme-btn[data-theme-choice="light"], .cp-theme-btn[data-compare-theme="light"] {
+  color-scheme: light; }
+.cp-theme-btn[data-theme-choice="dark"], .cp-theme-btn[data-compare-theme="dark"] {
+  color-scheme: dark; }
+.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"],
+    [data-compare-theme="light"], [data-compare-theme="dark"]):not(:disabled) {
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface);
+  border-color: var(--md-sys-color-outline-variant); }
+.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"],
+    [data-compare-theme="light"], [data-compare-theme="dark"]):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%,
+    var(--md-sys-color-surface-container-low)); }
+/* Selection is a RING, not a fill swap: the fill is the swatch — the whole point of the chip — so
+   replacing it to say "selected" would hide the theme at exactly the moment you picked it. The ring
+   is drawn in the chip's own accent, and as a `box-shadow` rather than an `outline` so it doesn't
+   collide with the focus ring every control in this sheet shares. */
+.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"],
+    [data-compare-theme="light"], [data-compare-theme="dark"])[aria-pressed="true"] {
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface);
+  border-color: transparent; font-weight: 600;
+  box-shadow: 0 0 0 2px var(--md-sys-color-primary); }
 /* Trust badges. Their COLOURS stay literal (a verdict must read the same in every design system),
    but the shape is M3's: a fully-rounded tonal container, no keyline. */
 .cp-badge { display: inline-block; margin-left: 8px; padding: 4px 10px;
