@@ -2126,6 +2126,44 @@ data class FigmaSvgModel(
       else null
     }
 
+    /**
+     * The exact all-zero `(0,0,0,0)` box, which both capture producers mint to mean **"this node
+     * has no coordinates"** — not "this node is a zero-area box at the origin".
+     *
+     * The layout inspector reports it for a detached / not-yet-placed subcomposed child (the case
+     * [recoverBounds] reconstructs from the measured size), and a semantics node's `boundsInRoot`
+     * collapses to it when the node is clipped entirely away by an ancestor — a Wear `EdgeButton`
+     * label while `ScreenScaffold` still holds the button collapsed, for instance.
+     *
+     * Such a box carries no position, so feeding it to [assignTextToLayers]'s **proximity** match
+     * is a category error: every zero-bounds box sits at distance 0 from every other one, and a
+     * capture normally has several. The collapsed `EdgeButton`'s "Start" therefore matched the
+     * first zero-bounds layout node in the tree — a `TitleCard`'s 0×4 `Spacer` — which
+     * [recoverBounds] then re-anchored inside the visible card, painting a `<text>` over the card's
+     * title that the PNG never drew.
+     *
+     * So such a box is excluded from the proximity search on **both** sides, and a semantics node
+     * that has one is instead matched on **identity**: both producers key a node on the same
+     * Compose `SemanticsNode.id`, so the run either lands on its real owner or on nothing. The
+     * owner is a node the render drew nothing for (that is why it lost its coordinates), so this
+     * changes no pixels — it keeps the richer semantics typography on the layer that would
+     * otherwise fall back to its cruder `layoutText` modifier projection, and it leaves
+     * [recoverBounds]' own case (a *placed* subcomposed child whose coordinates were detached)
+     * matched exactly as before.
+     */
+    private fun LayoutInspectorBounds.isNoGeometry(): Boolean =
+      left == 0 && top == 0 && right == 0 && bottom == 0
+
+    /** [isNoGeometry] for a parsed `[l,t,r,b]` semantics box. */
+    private fun IntArray.isNoGeometry(): Boolean = all { it == 0 }
+
+    /**
+     * The match cost booked for an identity match (see [isNoGeometry]). Below every proximity cost
+     * — which is a sum of absolute pixel deltas, so never negative — so an identity match both wins
+     * its node and is never displaced by a later zero-distance neighbour.
+     */
+    private const val IDENTITY_DIST: Int = -1
+
     private fun assignTextToLayers(
       layoutRoot: LayoutInspectorNode,
       semantics: ComposeSemanticsPayload,
@@ -2134,6 +2172,9 @@ data class FigmaSvgModel(
     ): Map<String, FigmaSvgText> {
       val candidates = mutableListOf<Triple<String, IntArray, Int>>()
       val nodesWithModifierText = mutableSetOf<String>()
+      // Every layout node the (already retired-pruned) tree still carries, for the identity match
+      // a coordinate-less semantics node falls back to — see [isNoGeometry].
+      val layoutNodeIds = mutableSetOf<String>()
       // The two producers disagree about clipping, and the disagreement is invisible until a node
       // straddles a clip edge. The layout-inspector records every node's UNCLIPPED box
       // (`localBoundingBoxOf(clipBounds = false)`), while a semantics node's `boundsInRoot` is
@@ -2144,6 +2185,7 @@ data class FigmaSvgModel(
       // ADDITIONAL candidate alongside the raw one lets an edge row match without loosening the
       // tolerance for anything else.
       fun collect(n: LayoutInspectorNode, depth: Int, clip: LayoutInspectorBounds?) {
+        layoutNodeIds += n.nodeId
         if (
           n.modifiers.any { modifier -> modifier.properties["layoutText"]?.isNotBlank() == true }
         ) {
@@ -2160,15 +2202,19 @@ data class FigmaSvgModel(
               n.modifiers.mapNotNullTo(this) { it.bounds }
             }
             .distinct()
-        candidateBounds.forEach { b ->
-          candidates.add(Triple(n.nodeId, intArrayOf(b.left, b.top, b.right, b.bottom), depth))
-          clip
-            ?.let { clipped(b, it) }
-            ?.takeIf { it !== b }
-            ?.let { c ->
-              candidates.add(Triple(n.nodeId, intArrayOf(c.left, c.top, c.right, c.bottom), depth))
-            }
-        }
+        candidateBounds
+          .filterNot { it.isNoGeometry() }
+          .forEach { b ->
+            candidates.add(Triple(n.nodeId, intArrayOf(b.left, b.top, b.right, b.bottom), depth))
+            clip
+              ?.let { clipped(b, it) }
+              ?.takeIf { it !== b }
+              ?.let { c ->
+                candidates.add(
+                  Triple(n.nodeId, intArrayOf(c.left, c.top, c.right, c.bottom), depth)
+                )
+              }
+          }
         // Nested clips intersect, exactly as they do when the layers are built — and against the
         // same **rendered** box `toLayer` clips with. A lookahead-inflated node (issue #3056)
         // reports bounds taller than the frame, so clipping a descendant against `n.bounds` would
@@ -2188,25 +2234,41 @@ data class FigmaSvgModel(
       fun walk(node: ComposeSemanticsNode) {
         val measuredContent = node.layoutText?.takeIf { it.isNotBlank() }
         val legacySemanticsContent = node.text?.takeIf { it.isNotBlank() }
-        val b = parseBoundsList(node.boundsInRoot)
-        if ((measuredContent != null || legacySemanticsContent != null) && b != null) {
+        val raw = parseBoundsList(node.boundsInRoot)
+        // `(0,0,0,0)` is the "no coordinates" signature, not a box at the origin — see
+        // [isNoGeometry], which is also where the identity fallback below is motivated.
+        val b = raw?.takeUnless { it.isNoGeometry() }
+        if ((measuredContent != null || legacySemanticsContent != null) && raw != null) {
           var bestId: String? = null
           var bestDist = Int.MAX_VALUE
           var bestDepth = -1
-          for ((id, lb, depth) in candidates) {
-            val d0 = abs(lb[0] - b[0])
-            val d1 = abs(lb[1] - b[1])
-            val d2 = abs(lb[2] - b[2])
-            val d3 = abs(lb[3] - b[3])
-            if (maxOf(d0, d1, d2, d3) <= BOUNDS_TOLERANCE_PX) {
-              val d = d0 + d1 + d2 + d3
-              // Closest match wins; on an exact tie prefer the DEEPER (innermost) node — the real
-              // `Text` leaf over a wrapper that shares its bounds — so the leaf keeps its editable
-              // text and a `drawWithContent`/placeholder leaf isn't rasterised as canvas chrome.
-              if (d < bestDist || (d == bestDist && depth > bestDepth)) {
-                bestDist = d
-                bestDepth = depth
-                bestId = id
+          if (b == null) {
+            // No box to be near: fall back to the node's own identity. Both producers key a node
+            // on the same Compose `SemanticsNode.id`, so this lands the run on its real owner
+            // whenever that node survived into the layer tree — and on nothing at all when it
+            // didn't. `IDENTITY_DIST` outranks every proximity match so a coincidental zero-cost
+            // neighbour can never displace it.
+            if (node.nodeId in layoutNodeIds) {
+              bestId = node.nodeId
+              bestDist = IDENTITY_DIST
+            }
+          } else {
+            for ((id, lb, depth) in candidates) {
+              val d0 = abs(lb[0] - b[0])
+              val d1 = abs(lb[1] - b[1])
+              val d2 = abs(lb[2] - b[2])
+              val d3 = abs(lb[3] - b[3])
+              if (maxOf(d0, d1, d2, d3) <= BOUNDS_TOLERANCE_PX) {
+                val d = d0 + d1 + d2 + d3
+                // Closest match wins; on an exact tie prefer the DEEPER (innermost) node — the real
+                // `Text` leaf over a wrapper that shares its bounds — so the leaf keeps its
+                // editable text and a `drawWithContent`/placeholder leaf isn't rasterised as canvas
+                // chrome.
+                if (d < bestDist || (d == bestDist && depth > bestDepth)) {
+                  bestDist = d
+                  bestDepth = depth
+                  bestId = id
+                }
               }
             }
           }
