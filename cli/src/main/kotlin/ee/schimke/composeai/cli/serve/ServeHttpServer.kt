@@ -1113,6 +1113,7 @@ class ServeHttpServer(
         catalogSelectorEnabled = service.catalogSelectorEnabled,
         seed = seed,
         preselectCatalog = call.request.queryParameters["catalog"],
+        pinnedCatalogSystems = service.pinnedCatalogSystems,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
         version = BUNDLE_VERSION,
       ),
@@ -2069,8 +2070,9 @@ class ServeHttpServer(
 
   /**
    * `/playground?from=<system>/<previewId>` for a preview, or null when this host would not honour
-   * it — no playground lane, no source fetcher, or a preview whose catalog never recorded a source
-   * path. Checked here rather than left to the target page so a dead link is never rendered.
+   * it — no playground lane, no source fetcher, a preview whose catalog never recorded a source
+   * path, or a catalog this host cannot compile against. Checked here rather than left to the
+   * target page so a dead link is never rendered.
    *
    * Carries the access token like every other link this server builds, so the handoff survives on a
    * token-gated host.
@@ -2083,6 +2085,14 @@ class ServeHttpServer(
   ): String? {
     if (playgroundService == null || playgroundSeeds == null) return null
     if (sourceFile.isNullOrBlank()) return null
+    // The handoff is only an offer when THIS catalog is a compile target here. A serve host browses
+    // far more catalogs than its playground can compile: a pin-only host compiles exactly its pin,
+    // and a host with no Robolectric sidecar compiles no Android catalog at all — which is every
+    // Wear and app catalog on the public deployment. Without this check the viewer offered the link
+    // anyway, the editor opened that preview's Kotlin, and the compile silently retargeted at
+    // whichever catalog happened to be first in the selector, so Run answered with a screen of
+    // unresolved references against a design system the visitor never chose.
+    if (!playgroundService.compilesCatalog(system)) return null
     // The SAME condition the resolver applies, not a proxy for it. A plain daemon session or an
     // uploaded bundle can carry a `sourceFile` from its own `previews.json` while having no catalog
     // source to resolve it against — the resolver then returns null and the click lands on the
@@ -2095,10 +2105,14 @@ class ServeHttpServer(
 
   /**
    * `/playground?catalog=<system>` for a catalog landing — the lighter half of the same handoff:
-   * preselect this design system, keep the starter snippet. Null when there is no lane to open.
+   * preselect this design system, keep the starter snippet. Null when there is no lane to open, or
+   * when this host cannot compile against that design system (same reasoning as [playgroundLinkFor]
+   * — a landing that offers "try this in the playground" for a catalog the playground can't select
+   * is the same dead affordance, one page earlier).
    */
   private fun RoutingContext.playgroundLinkForCatalog(system: String): String? {
     if (playgroundService == null) return null
+    if (!playgroundService.compilesCatalog(system)) return null
     val token = if (isPublic) "" else "&token=" + WebEscaping.urlEncodeSegment(token)
     return "/playground?catalog=${WebEscaping.urlEncodeSegment(system)}$token"
   }

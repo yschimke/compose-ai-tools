@@ -2455,6 +2455,14 @@ object ServeWeb {
      * a catalog landing page. Ignored when [seed] is present, which carries its own catalog.
      */
     preselectCatalog: String? = null,
+    /**
+     * The served-catalog system ids this host's **pinned** default compiles against
+     * ([PlaygroundCompileService.pinnedCatalogSystems]). The selector reports a pin under the
+     * anonymous id `""`, so without this a `?from=compose-m3/…` handoff on a host pinned to
+     * `compose-m3` would look unrecognised — the one case where the buffer *is* opening against its
+     * own catalog.
+     */
+    pinnedCatalogSystems: Set<String> = emptySet(),
     unfurl: UnfurlMetadata? = null,
     /**
      * Running server version (`BUNDLE_VERSION`), shown in the minimal footer. Null omits the build
@@ -2469,8 +2477,16 @@ object ServeWeb {
     // only wins if this host actually offers it — a link built before a catalog loaded (or against
     // one whose backend this host can't render) falls back to the first entry rather than
     // preselecting something the Run button would refuse.
-    val wanted = (seed?.catalog ?: preselectCatalog)?.takeIf { id -> catalogs.any { it.id == id } }
-    val selectedIndex = catalogs.indexOfFirst { it.id == wanted }.takeIf { it >= 0 } ?: 0
+    val handoffCatalog = seed?.catalog ?: preselectCatalog
+    // Two ways this host can offer the named catalog: as the selector's own entry for it, or as the
+    // pinned default (which the selector reports under the anonymous id `""`).
+    val wantedIndex = handoffCatalog?.let { id ->
+      catalogs.indexOfFirst { it.id == id }.takeIf { it >= 0 }
+        ?: catalogs
+          .indexOfFirst { it.id.isEmpty() }
+          .takeIf { it >= 0 && id in pinnedCatalogSystems }
+    }
+    val selectedIndex = wantedIndex ?: 0
     // A host that pins its bundles and offers no runtime choice renders exactly the bar it always
     // did — one Mode select — rather than a one-entry "Catalog" control that decides nothing.
     // Everything else gets the control, including the two states where the list is momentarily
@@ -2532,6 +2548,36 @@ object ServeWeb {
             fetched in the background after the server starts, so this usually clears on its own —
             but a catalog also has to verify as <strong>trusted</strong> and publish a live bundle
             before the playground will compile against it.</p>"""
+    // A handoff naming a catalog this host does not compile against. The link that built it is now
+    // withheld at the source ([ServeHttpServer.playgroundLinkFor]), so reaching this means a
+    // bookmark, a shared URL, or a hand-typed one — plus the genuinely transient case of a catalog
+    // that has not finished loading. Either way the previous behaviour was the worst of the three
+    // options: preselect the first entry, open the buffer, and let Run report a screen of
+    // unresolved references against a design system nobody chose. Say it before the visitor spends
+    // a compile finding out.
+    //
+    // Suppressed while the list is empty — [emptyNote] is already explaining that same state, and
+    // better ("this usually clears on its own").
+    val unavailableNote =
+      if (handoffCatalog == null || wantedIndex != null || catalogs.isEmpty()) ""
+      else {
+        val target =
+          catalogs.getOrNull(selectedIndex)?.let { entry ->
+            val label = if (entry.id.isEmpty()) "this server's default catalog" else entry.id
+            "<code>${WebEscaping.htmlEscape(label)}</code>"
+          } ?: "the selected catalog"
+        """
+
+          <p id="pg-catalog-unavailable" class="cp-sub cp-pg-warn"><strong>This server cannot
+            compile against <code>${WebEscaping.htmlEscape(handoffCatalog)}</code>.</strong> The
+            playground compiles a snippet against one catalog's own classpath and renders it on that
+            catalog's backend, and this host offers neither for that design system — most often
+            because it serves Android and Wear catalogs for browsing while running only the desktop
+            (Skiko) render backend, which is what an Android catalog's previews need. The editor is
+            open on $target instead, so anything below that names
+            <code>${WebEscaping.htmlEscape(handoffCatalog)}</code>'s own types will not resolve.
+            Pick another catalog above, or start from the sample.</p>"""
+      }
     // Says whose code is in the buffer, and is honest that it is a starting point: a preview file
     // is ordinary module code and may reference siblings the catalog's bundle never exported, so
     // "opened from" is the claim, not "this compiles".
@@ -2583,7 +2629,7 @@ object ServeWeb {
         <h1 class="cp-head">Playground</h1>
         <p class="cp-sub">Write a Compose snippet, compile it against the live catalog, and open a
           preview. This lane runs your code on the server, so it stays behind your token.</p>
-        <div class="cp-pg">$emptyNote$seedNote
+        <div class="cp-pg">$emptyNote$unavailableNote$seedNote
           <div class="cp-pg-bar">
             $catalogRow<label class="cp-pg-modelabel" for="pg-mode">Mode</label>
             <select id="pg-mode" class="cp-pg-mode">

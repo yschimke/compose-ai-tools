@@ -1440,6 +1440,50 @@ class ServeWebFixtureTest {
             ),
           ),
       )
+    // The handoff this host cannot honour: `/playground?from=horologist/…` on a server that browses
+    // Android and Wear catalogs but runs only the desktop render backend, so no Android catalog is
+    // a compile target. The link is withheld at the source now, so reaching this page means a
+    // bookmark or a shared URL — and the page has to say so rather than silently retargeting the
+    // buffer at whichever catalog happened to be first. Committed as its own golden because the
+    // notice is a page state the ordinary playground fixture can never hold.
+    val playgroundUncompilable =
+      ServeWeb.playgroundPage(
+        token,
+        isPublic = false,
+        version = version,
+        catalogs =
+          listOf(
+            PlaygroundCatalogInfo(
+              id = "compose-m3",
+              label = "compose-m3 (desktop)",
+              backend = "desktop",
+              modes = listOf(PlaygroundMode.CMP),
+              resolved = true,
+            )
+          ),
+        catalogSelectorEnabled = true,
+        seed =
+          PlaygroundSeed(
+            catalog = "horologist",
+            previewId = "mediacontrolbuttonsplaying__ideal__default__compact",
+            fileName = "MediaControlButtons.kt",
+            text =
+              """
+              package com.google.android.horologist.media.ui.components
+
+              @Preview
+              @Composable
+              fun MediaControlButtonsPlaying() {
+                MediaControlButtons(onPlayButtonClick = {}, playing = true)
+              }
+              """
+                .trimIndent(),
+            blobUrl =
+              "https://github.com/google/horologist/blob/main/media-ui/src/main/java/com/google/" +
+                "android/horologist/media/ui/components/MediaControlButtons.kt",
+            sliced = true,
+          ),
+      )
     val docLottie =
       ServeWeb.docPage(
         ServeWeb.DocView(
@@ -1685,6 +1729,7 @@ class ServeWebFixtureTest {
         "serve-notfound.html" to notFound,
         "serve-docs-upload.html" to docUpload,
         "serve-playground.html" to playground,
+        "serve-playground-uncompilable.html" to playgroundUncompilable,
         "serve-doc-lottie.html" to docLottie,
         "serve-doc-remotecompose.html" to docRemoteCompose,
       )
