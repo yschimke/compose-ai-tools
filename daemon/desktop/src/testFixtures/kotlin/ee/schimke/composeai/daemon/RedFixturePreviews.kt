@@ -1137,3 +1137,40 @@ fun EditableTextFieldPreview() {
 
 /** Seed content of [EditableTextFieldPreview] — wide enough that a drag can select part of it. */
 const val TEXT_FIELD_SEED: String = "Filled"
+
+/**
+ * A Material 3 [androidx.compose.material3.DateRangePicker] — a component whose long scroll is
+ * **built in**, not something the caller wired up.
+ *
+ * Every other scrolling fixture here declares its own `LazyColumn`, so a scroll capture over them
+ * only proves the driver can move a scrollable the fixture handed it. `DateRangePicker` is the
+ * interesting case: it lays its months out as one continuously scrolling list inside the component,
+ * and the call site below passes no scroll state, no modifier and no list. (Its sibling
+ * `DatePicker` is *not* this — that one shows a single month with paging arrows, and keeps its only
+ * lazy list in the year picker behind a toggle.) Driving this exercises what someone screenshotting
+ * a stock M3 component actually faces: the only handle on the scroll is the semantics the component
+ * publishes for itself.
+ *
+ * `yearRange` is clamped to two years so the content is comfortably longer than any viewport it is
+ * captured in without being absurd, and the displayed month is pinned to 2024-01 (UTC) so the
+ * capture doesn't depend on the clock.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun DateRangePickerLongScrollPreview() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Surface(color = MaterialTheme.colorScheme.surface) {
+      androidx.compose.material3.DateRangePicker(
+        state =
+          androidx.compose.material3.rememberDateRangePickerState(
+            initialSelectedStartDateMillis = 1_704_067_200_000L,
+            initialDisplayedMonthMillis = 1_704_067_200_000L,
+            yearRange = 2024..2025,
+          ),
+        title = null,
+        headline = null,
+        showModeToggle = false,
+      )
+    }
+  }
+}

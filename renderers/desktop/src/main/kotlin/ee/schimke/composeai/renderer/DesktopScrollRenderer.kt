@@ -14,8 +14,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.semantics.ScrollAxisRange
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -213,6 +213,7 @@ fun renderScrollPreview(
           captureEnd(
             host = host,
             axis = axis,
+            viewportPx = if (axis == ScrollAxis.HORIZONTAL) widthPx else heightPx,
             maxScrollPx = maxScrollPx,
             outputFile = outputFile,
             fileSystem = fileSystem,
@@ -237,6 +238,13 @@ private const val DRIVE_ADVANCE_MS_PER_STEP = 250L
 private const val DRIVE_MAX_ITERATIONS = 30
 private const val SETTLED_EPSILON_PX = 0.5f
 private const val POST_SCROLL_SETTLE_MS = 1000L
+
+/**
+ * Viewports [captureGif]'s script plans for up front. The real extent isn't knowable before the
+ * scroll runs, so the script covers a few screens and the tail-fling loop continues from there
+ * until the content stops moving.
+ */
+private const val GIF_PLANNED_VIEWPORTS = 4
 
 /**
  * Virtual frames [captureEnd] lets an animated `ScrollBy` run for before it re-reads the axis
@@ -270,8 +278,7 @@ private fun captureLong(
 
   val slices = mutableListOf<SliceCapture>()
   try {
-    val firstScroll = remainingScrollPx(host, axis)
-    if (firstScroll <= SETTLED_EPSILON_PX && !axisHasScrollable(host, axis)) {
+    if (!axisHasScrollable(host, axis)) {
       System.err.println(
         "@ScrollingPreview(LONG) on $outputFile: no scrollable composable — skipping."
       )
@@ -285,14 +292,21 @@ private fun captureLong(
 
     val cap = if (maxScrollPx > 0) maxScrollPx.toFloat() else Float.POSITIVE_INFINITY
     var scrolledPx = 0f
-    repeat(DRIVE_MAX_ITERATIONS) {
-      val remaining = remainingScrollPx(host, axis)
-      if (remaining <= SETTLED_EPSILON_PX) return@repeat
+    for (iteration in 0 until DRIVE_MAX_ITERATIONS) {
       val headroom = (cap - scrolledPx).coerceAtLeast(0f)
-      if (headroom <= SETTLED_EPSILON_PX) return@repeat
-      val step = minOf(stepPx, remaining, headroom)
-      if (!performScroll(host, axis, step)) return@repeat
-      scrolledPx += step
+      if (headroom <= SETTLED_EPSILON_PX) break
+      // A viewport-relative stride in *pixels*, which is the unit `ScrollBy` speaks. Deliberately
+      // not clamped by the axis range — see [ScrollAnchor] for why that number can't size a step.
+      val step = minOf(stepPx, headroom)
+      val anchor = scrollAnchor(host, axis)
+      if (!performScroll(host, axis, step)) break
+      // What the content actually did. Short of the content end this equals `step`; on the last
+      // stride the scroller clamps and it is less, which is what keeps the final slice from being
+      // stitched below where it really sits. A recycled anchor means the step landed in full (the
+      // node travelled far enough to be discarded), so fall back to the requested distance.
+      val advanced = anchor?.let { anchorShiftPx(host, axis, it) } ?: step
+      if (advanced <= SETTLED_EPSILON_PX) break
+      scrolledPx += advanced
       val sliceFile = File(slicesDir, "slice_${slices.size}.png")
       captureRootFrame(host, sliceFile, fileSystem)
       slices += SliceCapture(scrolledLayoutPx = scrolledPx, file = sliceFile)
@@ -338,6 +352,7 @@ private fun captureLong(
 private fun captureEnd(
   host: ComposeUiTestScrollHost,
   axis: ScrollAxis,
+  viewportPx: Int,
   maxScrollPx: Int,
   outputFile: File,
   fileSystem: FileSystem = SystemFileSystem,
@@ -351,30 +366,24 @@ private fun captureEnd(
   }
 
   val cap = if (maxScrollPx > 0) maxScrollPx.toFloat() else Float.POSITIVE_INFINITY
-  val startPx = scrollOffsetPx(host, axis)
   var scrolledPx = 0f
   for (step in 0 until END_DRIVE_MAX_ITERATIONS) {
-    val remaining = remainingScrollPx(host, axis)
-    if (remaining <= SETTLED_EPSILON_PX) break
     val headroom = (cap - scrolledPx).coerceAtLeast(0f)
     if (headroom <= SETTLED_EPSILON_PX) break
 
-    val before = scrollOffsetPx(host, axis)
-    performScrollDelta(host, axis, minOf(remaining, headroom))
-    // `SemanticsActions.ScrollBy` *animates*, and [performScrollDelta] only advances a fixed
-    // slice of virtual time — long enough for the short, viewport-sized hops LONG and GIF take,
-    // but not for the single content-length jump this loop asks for. Let the animation land
-    // before re-reading the range, or every iteration would measure a scroll still in flight and
-    // the drive would creep instead of converge.
+    val anchor = scrollAnchor(host, axis)
+    // A viewport-sized stride rather than one jump to a claimed end: the axis range can't tell us
+    // where the end is (see [ScrollAnchor]), and stepping keeps a lazy container composing the
+    // items it passes, which is how its extent firms up at all.
+    performScrollDelta(host, axis, minOf(viewportPx.toFloat(), headroom))
+    // `SemanticsActions.ScrollBy` animates and [performScrollDelta] only advances a fixed slice of
+    // virtual time. Let the animation land, or the next iteration measures a scroll still in
+    // flight and the drive creeps instead of converging.
     repeat(END_STEP_SETTLE_FRAMES) { host.mainClock.advanceTimeByFrame() }
 
-    // Progress is measured from the axis range, not from what was requested: a `LazyColumn`
-    // reports an *estimated* `maxValue` that firms up as items compose, so the distance asked for
-    // and the distance travelled routinely differ. Zero progress means the scrollable is done
-    // (or refusing), and looping again would just burn iterations.
-    val advanced = scrollOffsetPx(host, axis) - before
+    val advanced = anchor?.let { anchorShiftPx(host, axis, it) } ?: viewportPx.toFloat()
     if (advanced <= SETTLED_EPSILON_PX) break
-    scrolledPx = scrollOffsetPx(host, axis) - startPx
+    scrolledPx += advanced
   }
 
   val settleFrames = (POST_SCROLL_SETTLE_MS / 16L).toInt()
@@ -416,8 +425,7 @@ private fun captureGif(
   }
 
   try {
-    val initialRemaining = remainingScrollPx(host, axis)
-    if (initialRemaining <= SETTLED_EPSILON_PX && !axisHasScrollable(host, axis)) {
+    if (!axisHasScrollable(host, axis)) {
       System.err.println(
         "@ScrollingPreview(GIF) on $outputFile: no scrollable composable — skipping."
       )
@@ -425,7 +433,11 @@ private fun captureGif(
     }
 
     val cap = if (maxScrollPx > 0) maxScrollPx.toFloat() else Float.POSITIVE_INFINITY
-    val extentHint = minOf(initialRemaining, cap)
+    // How far the script should plan for. There is no honest extent to read up front — the axis
+    // range is item-space on a lazy container (see [ScrollAnchor]) and zero until it measures — so
+    // plan a few viewports and let the tail-fling loop below carry on until the content actually
+    // stops moving. Under-planning is cheap; the tail covers it.
+    val extentHint = minOf(viewportPx * GIF_PLANNED_VIEWPORTS.toFloat(), cap)
 
     // Hold-start: one long-dwell frame at scroll position 0 so the viewer can read the top
     // before motion begins.
@@ -472,27 +484,29 @@ private fun captureGif(
       val flingMinPx = 12f * density
       val safetyCap = 200
       var safety = 0
+      // Driven on measured movement rather than the axis range: `maxValue` is item-space on a
+      // lazy container (see [ScrollAnchor]), so "how much is left" isn't a question it can answer.
+      // The bursts simply continue until a step moves nothing, which is the content end.
       while (safety < safetyCap) {
-        val liveRemaining = remainingScrollPx(host, axis)
-        if (liveRemaining <= SETTLED_EPSILON_PX) break
         val headroom = (cap - scrolledPx).coerceAtLeast(0f)
         if (headroom <= SETTLED_EPSILON_PX) break
         var step = flingStepPx
-        while (
-          step >= flingMinPx &&
-            remainingScrollPx(host, axis) > SETTLED_EPSILON_PX &&
-            (cap - scrolledPx) > SETTLED_EPSILON_PX
-        ) {
-          val target = minOf(step, remainingScrollPx(host, axis), cap - scrolledPx)
+        var burstMoved = false
+        while (step >= flingMinPx && (cap - scrolledPx) > SETTLED_EPSILON_PX) {
+          val target = minOf(step, cap - scrolledPx)
           if (target <= SETTLED_EPSILON_PX) break
-          val actual = performScrollDelta(host, axis, target)
-          if (actual <= SETTLED_EPSILON_PX) break
-          scrolledPx += actual
+          val anchor = scrollAnchor(host, axis)
+          if (performScrollDelta(host, axis, target) <= SETTLED_EPSILON_PX) break
+          val advanced = anchor?.let { anchorShiftPx(host, axis, it) } ?: target
+          if (advanced <= SETTLED_EPSILON_PX) break
+          burstMoved = true
+          scrolledPx += advanced
           captureFrame(effectiveFrameInterval)
           step *= 0.85f
           safety++
           if (safety >= safetyCap) break
         }
+        if (!burstMoved) break
       }
     }
 
@@ -566,36 +580,86 @@ private fun axisHasScrollable(host: ComposeUiTestScrollHost, axis: ScrollAxis): 
     .isNotEmpty()
 }
 
+/**
+ * A composed descendant of the scroller, pinned by semantics id, used to measure how far the
+ * content actually moved between two frames.
+ *
+ * `ScrollAxisRange` cannot do this job, and treating it as though it could is what made long
+ * captures wrong. It is not a pixel budget: a `LazyColumn` publishes `maxValue` in item space (a
+ * flat `100.0` for the 30-row fixture) and a `DateRangePicker` publishes `0.0` until its months
+ * measure, while `SemanticsActions.ScrollBy` takes *pixels*. Sizing a step as `min(stepPx,
+ * maxValue - value)` therefore turned a 336 px stride into a ~2 px one and stitched thirteen slices
+ * into a single-viewport image.
+ *
+ * Geometry doesn't lie: a node that is composed both before and after a step moved by exactly the
+ * distance the content scrolled.
+ */
+private data class ScrollAnchor(val id: Int, val edgePx: Float)
+
+/**
+ * Picks an anchor from the nodes currently inside the scroller — the one furthest along [axis],
+ * i.e. nearest the leading edge the content scrolls *towards*.
+ *
+ * That choice is what keeps the anchor alive across a step: a lazy container recycles what leaves
+ * the viewport, so a node at the trailing edge is the first to be discarded, while the leading-edge
+ * one is still composed after an 80%-viewport stride (and, past the end, doesn't move at all —
+ * which is exactly the signal the drive stops on).
+ */
 @OptIn(ExperimentalTestApi::class)
-private fun remainingScrollPx(host: ComposeUiTestScrollHost, axis: ScrollAxis): Float {
+private fun scrollAnchor(host: ComposeUiTestScrollHost, axis: ScrollAxis): ScrollAnchor? {
   val axisKey =
     when (axis) {
       ScrollAxis.VERTICAL -> SemanticsProperties.VerticalScrollAxisRange
       ScrollAxis.HORIZONTAL -> SemanticsProperties.HorizontalScrollAxisRange
     }
-  val nodes = host.provider.onAllNodes(SemanticsMatcher.keyIsDefined(axisKey)).fetchSemanticsNodes()
-  val node = nodes.firstOrNull() ?: return 0f
-  val range: ScrollAxisRange = node.config.getOrNull(axisKey) ?: return 0f
-  return (range.maxValue() - range.value()).coerceAtLeast(0f)
+  val scroller =
+    host.provider
+      .onAllNodes(SemanticsMatcher.keyIsDefined(axisKey))
+      .fetchSemanticsNodes()
+      .firstOrNull() ?: return null
+  var best: ScrollAnchor? = null
+  fun edgeOf(node: SemanticsNode): Float =
+    if (axis == ScrollAxis.HORIZONTAL) node.boundsInRoot.left else node.boundsInRoot.top
+  fun walk(node: SemanticsNode) {
+    val edge = edgeOf(node)
+    if (edge.isFinite() && (best == null || edge > best!!.edgePx)) {
+      best = ScrollAnchor(id = node.id, edgePx = edge)
+    }
+    node.children.forEach(::walk)
+  }
+  scroller.children.forEach(::walk)
+  return best
 }
 
 /**
- * How far the first scrollable on [axis] has travelled, in px — `ScrollAxisRange.value`. The
- * companion to [remainingScrollPx]: `value` is measured, while `maxValue` on a lazy container is an
- * estimate, so a drive that needs to know it actually moved reads this rather than differencing the
- * remaining distance.
+ * How far the content moved since [anchor] was taken, or `null` when that node is no longer
+ * composed (recycled out) and the distance can't be measured.
  */
 @OptIn(ExperimentalTestApi::class)
-private fun scrollOffsetPx(host: ComposeUiTestScrollHost, axis: ScrollAxis): Float {
+private fun anchorShiftPx(
+  host: ComposeUiTestScrollHost,
+  axis: ScrollAxis,
+  anchor: ScrollAnchor,
+): Float? {
   val axisKey =
     when (axis) {
       ScrollAxis.VERTICAL -> SemanticsProperties.VerticalScrollAxisRange
       ScrollAxis.HORIZONTAL -> SemanticsProperties.HorizontalScrollAxisRange
     }
-  val nodes = host.provider.onAllNodes(SemanticsMatcher.keyIsDefined(axisKey)).fetchSemanticsNodes()
-  val node = nodes.firstOrNull() ?: return 0f
-  val range: ScrollAxisRange = node.config.getOrNull(axisKey) ?: return 0f
-  return range.value()
+  val scroller =
+    host.provider
+      .onAllNodes(SemanticsMatcher.keyIsDefined(axisKey))
+      .fetchSemanticsNodes()
+      .firstOrNull() ?: return null
+  var found: Float? = null
+  fun walk(node: SemanticsNode) {
+    if (node.id == anchor.id) {
+      found = if (axis == ScrollAxis.HORIZONTAL) node.boundsInRoot.left else node.boundsInRoot.top
+    }
+    node.children.forEach(::walk)
+  }
+  scroller.children.forEach(::walk)
+  return found?.let { anchor.edgePx - it }
 }
 
 @OptIn(ExperimentalTestApi::class)
@@ -619,19 +683,23 @@ private fun performScrollDelta(
     }
   val nodes = host.provider.onAllNodes(SemanticsMatcher.keyIsDefined(axisKey)).fetchSemanticsNodes()
   val node = nodes.firstOrNull() ?: return 0f
-  val range: ScrollAxisRange = node.config.getOrNull(axisKey) ?: return 0f
   val scrollByAction = node.config.getOrNull(SemanticsActions.ScrollBy)?.action ?: return 0f
-  val remaining = (range.maxValue() - range.value()).coerceAtLeast(0f)
-  if (remaining <= SETTLED_EPSILON_PX) return 0f
-  val step = minOf(deltaPx, remaining)
+  // Dispatch the full requested distance and let the scroller clamp itself at its content end.
+  //
+  // This used to be clamped to `maxValue - value` first, which looks defensive and is in fact the
+  // bug that made every long capture wrong: those are not pixels. A `LazyColumn` publishes
+  // `maxValue` in item space — a flat `100.0` for a 30-row list — so a 336 px stride was clamped
+  // to a couple of pixels, thirteen slices stitched into a single-viewport image, and a
+  // `DateRangePicker` (which publishes `0.0` until its months measure) refused to scroll at all.
+  // See [ScrollAnchor]: distance travelled is a question for geometry, not for the axis range.
   val (dx, dy) =
     when (axis) {
-      ScrollAxis.VERTICAL -> 0f to step
-      ScrollAxis.HORIZONTAL -> step to 0f
+      ScrollAxis.VERTICAL -> 0f to deltaPx
+      ScrollAxis.HORIZONTAL -> deltaPx to 0f
     }
   scrollByAction.invoke(dx, dy)
   host.mainClock.advanceTimeBy(DRIVE_ADVANCE_MS_PER_STEP)
-  return step
+  return deltaPx
 }
 
 @Composable
