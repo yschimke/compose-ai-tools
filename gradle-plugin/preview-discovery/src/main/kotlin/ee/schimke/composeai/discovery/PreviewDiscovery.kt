@@ -1069,6 +1069,7 @@ object PreviewDiscovery {
       caption = annStringOrNull(component, "caption"),
       reference = annStringOrNull(component, "reference"),
       referenceSet = annStringOrNull(component, "referenceSet"),
+      noReference = annStringOrNull(component, "noReference"),
       parallel = annStringOrNull(component, "parallel"),
       perBreakpoint = annBoolean(component, "perBreakpoint"),
     )

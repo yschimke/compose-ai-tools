@@ -153,6 +153,12 @@ data class CatalogEntry(
    * screen rarely uses the exact variant a catalog pictured.
    */
   val referenceSet: String? = null,
+  /**
+   * COMPONENT: why there is no [reference] — a stated finding about the kit (it retired the
+   * pattern, never published it) as opposed to the silence of nobody having looked yet, which a
+   * consumer cannot tell apart from a null [reference] alone.
+   */
+  val noReference: String? = null,
   val parallel: String? = null,
   val state: String? = null,
   val props: List<CatalogVariantProp> = emptyList(),
