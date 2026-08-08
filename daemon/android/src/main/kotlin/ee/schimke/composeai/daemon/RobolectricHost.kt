@@ -3725,21 +3725,30 @@ open class RobolectricHost(
       text: String?,
       down: Boolean,
     ) {
+      // Issue #3491 — exactly one of these two may produce text, or one keystroke arrives twice.
+      //
+      // Unlike the desktop backend (whose synthesised `KeyEvent(key, KeyDown)` carries no code
+      // point and so *cannot* type), an injected Android key event resolves its own character
+      // through the virtual keyboard's `KeyCharacterMap`. That is why typing was never as broken
+      // here — and it means a keyDown that both replays the keycode and commits the carried
+      // character inserts `aa` for one `a`.
+      //
+      // The carried character wins whenever there is one. It is the only half that is right for
+      // the whole keyboard: `KeyCharacterMap` cannot produce a character for a key Android has no
+      // keycode for (`€`, most non-US layouts), and the wire's keycode is case-blind, so the
+      // keycode path would type `a` for a typed `A`. It goes in through the focused node's
+      // `InsertTextAtCursor` — the same entry point an IME commit uses, honouring caret and
+      // selection.
+      val typed = down && !text.isNullOrEmpty()
       val code = InteractiveKeyCodes.parse(keyCode)
-      if (code != null) {
+      if (code != null && !typed) {
         // Android's actual `Key(nativeKeyCode: Int)` builds a Compose `Key` directly from the
         // Android `KEYCODE_*` int — same shape the wire carries. This drives the *command* keys:
-        // caret movement, Backspace, Delete, Enter.
+        // caret movement, Backspace, Delete, Enter — and every key release, which types nothing.
         val key = androidx.compose.ui.input.key.Key(nativeKeyCode = code)
         heldSurfaceRoot(rule).performKeyInput { if (down) keyDown(key) else keyUp(key) }
       }
-      // Issue #3491 — and then the typed character, if the wire carried one. A synthesised key
-      // event alone cannot type: whether it produces a character depends on the virtual keyboard's
-      // `KeyCharacterMap` and the meta state, which is exactly the fragile, layout-dependent part
-      // we do not want between the browser and the composition. Instead the character goes in
-      // through the focused editable node's `InsertTextAtCursor` semantics action — the same entry
-      // point an IME commit uses, which replaces the current selection and honours the caret.
-      if (down) insertTypedText(rule, text)
+      if (typed) insertTypedText(rule, text)
     }
 
     /**

@@ -423,6 +423,39 @@ class AndroidInteractiveSessionTest {
   }
 
   /**
+   * One keystroke must insert exactly one character. The browser sends a printable key as *both* a
+   * mapped `keyCode` and its `text`, and Android's own `KeyCharacterMap` can turn the keycode into
+   * a character by itself — so a backend that acts on both commits the same character twice and a
+   * single `a` arrives as `aa`. The fixture distinguishes "one character" (green) from "the value
+   * changed somehow" (orange), which a latch on mere change could not.
+   */
+  @Test
+  fun keyDownWithBothKeycodeAndTextTypesTheCharacterOnce() {
+    withTextFieldSession { session ->
+      session.render(RenderHost.nextRequestId())
+
+      session.dispatch(
+        InteractiveInputParams(
+          frameStreamId = "irrelevant-on-host-side",
+          kind = InteractiveInputKind.KEY_DOWN,
+          keyCode = KEYCODE_A,
+          text = "a",
+        )
+      )
+
+      val after = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+      val once = pixelMatchPct(after, GREEN_RGB, perChannelTolerance = 8)
+      val duplicated = pixelMatchPct(after, DUPLICATED_RGB, perChannelTolerance = 8)
+      assertTrue(
+        "one keystroke must insert exactly one character; got " +
+          "${"%.2f".format(once * 100)}% green (one) / " +
+          "${"%.2f".format(duplicated * 100)}% orange (not one — a double commit)",
+        once >= 0.6,
+      )
+    }
+  }
+
+  /**
    * A character with no Android keycode at all — `€` is not on the wire's key list, and neither is
    * most of any non-US layout. Android's own `KeyCharacterMap` can turn `KEYCODE_A` into an `a`,
    * which is why typing was never as broken here as on the desktop lane; it can do nothing at all
@@ -1385,6 +1418,9 @@ class AndroidInteractiveSessionTest {
 
     /** [EditableTextFieldSquare]'s "something is selected" background. */
     private const val BLUE_RGB = 0x42A5F5
+
+    /** [EditableTextFieldSquare]'s "the value changed by something other than one char". */
+    private const val DUPLICATED_RGB = 0xFFA726
     private const val BLACK_RGB = 0x000000
     private const val WHITE_RGB = 0xFFFFFF
   }

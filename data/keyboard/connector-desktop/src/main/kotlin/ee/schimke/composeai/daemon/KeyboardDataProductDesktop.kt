@@ -37,7 +37,11 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  * observer needs to be in place even without a `KeyboardOverride` seed so app-side
  * `LocalSoftwareKeyboardController.show()` calls reach the band.
  */
-class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
+class KeyboardOverrideExtension(
+  private val seed: KeyboardOverride? = null,
+  /** See the Android connector: a device preview is a screen whatever its dimensions (#3491). */
+  private val deviceScoped: Boolean = false,
+) :
   AroundComposableExtension(
     id = ID,
     constraints =
@@ -46,6 +50,10 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
         provides = setOf(DataExtensionCapability(Material3KeyboardProduct.KIND)),
       ),
   ) {
+  /** Whether the planner marked this render device-scoped. Readable so tests can pin it. */
+  val isDeviceScoped: Boolean
+    get() = deviceScoped
+
   @Composable
   override fun AroundComposable(content: @Composable () -> Unit) {
     if (seed != null) {
@@ -59,17 +67,20 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
     CompositionLocalProvider(LocalSoftwareKeyboardController provides shadow) {
       val imeVisible by KeyboardController.softInputVisible
       val pressedKey by KeyboardController.pressedKey
-      // Same size gate as the Android connector: the band models a device's on-screen keyboard, so
-      // it only draws on a surface large enough to be a screen. On a component preview the input
-      // device is the browser's own physical keyboard and there is nothing to draw — without this
-      // gate, a catalog sticker of a single text field would be buried under a 240dp keyboard the
-      // moment it took focus. Desktop has no `Configuration`; the scene's own size — already the
-      // wrapped content's size on a wrap-content preview — is the equivalent signal.
+      // Same rule as the Android connector, same order of authority: an explicit request wins,
+      // then a device-scoped render (a screen whatever its dimensions), then the surface's own
+      // size. On a component preview the input device is the browser's own physical keyboard and
+      // there is nothing to draw — without this gate, a catalog sticker of a single text field
+      // would be buried under a 240dp keyboard the moment it took focus. Desktop has no
+      // `Configuration`; the scene's own size — already the wrapped content's size on a
+      // wrap-content preview — is the equivalent signal.
+      val requested by KeyboardController.requestedVisible
       val containerHeightPx = LocalWindowInfo.current.containerSize.height
       val density = LocalDensity.current
       val screenSized =
-        with(density) { containerHeightPx.toDp() } >= MIN_SCREEN_HEIGHT_FOR_BAND_DP.dp
-      val visible = imeVisible && screenSized
+        deviceScoped ||
+          with(density) { containerHeightPx.toDp() } >= MIN_SCREEN_HEIGHT_FOR_BAND_DP.dp
+      val visible = requested ?: (imeVisible && screenSized)
       Box(modifier = Modifier.fillMaxSize()) {
         content()
         if (visible) {
@@ -102,5 +113,8 @@ class KeyboardPreviewOverrideExtension : DataExtension<PreviewOverrides> {
   override val id: DataExtensionId = KeyboardOverrideExtension.ID
 
   override fun plan(request: PreviewOverrides): PlannedDataExtension =
-    KeyboardOverrideExtension(seed = request.keyboard)
+    KeyboardOverrideExtension(
+      seed = request.keyboard,
+      deviceScoped = !request.device.isNullOrBlank(),
+    )
 }

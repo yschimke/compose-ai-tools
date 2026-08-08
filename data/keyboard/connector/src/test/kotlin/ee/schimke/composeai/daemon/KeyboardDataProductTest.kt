@@ -60,6 +60,53 @@ class KeyboardDataProductTest {
   }
 
   @Test
+  fun `planner marks a device-scoped render so the band survives a short device`() {
+    val planner = KeyboardPreviewOverrideExtension()
+
+    // Issue #3491 — the band is gated to screens so a component preview isn't buried under a
+    // 240dp keyboard, and the surface's height is the fallback signal for "is this a screen".
+    // Height alone would strand every *short* device: a phone in landscape and a wearable are
+    // both screens and both shorter than any such rule can allow. `device` is the render saying
+    // so outright, so it must reach the extension.
+    val onDevice = planner.plan(PreviewOverrides(device = "id:wearos_small_round"))
+    assertTrue(
+      "a device-scoped render must be marked as one",
+      (onDevice as KeyboardOverrideExtension).isDeviceScoped,
+    )
+    assertFalse(
+      "a render that names no device leaves the decision to the surface size",
+      (planner.plan(PreviewOverrides(widthPx = 360, heightPx = 120))
+              as KeyboardOverrideExtension)
+          .isDeviceScoped,
+    )
+    assertFalse(
+      "a blank device string is not a device",
+      (planner.plan(PreviewOverrides(device = "  ")) as KeyboardOverrideExtension).isDeviceScoped,
+    )
+  }
+
+  @Test
+  fun `an explicitly requested band is not second-guessed by any gate`() {
+    // `KeyboardOverride(visible = …)` is a caller pinning the band. Whatever the size / device
+    // rules would infer, an explicit request has to be what the composition reads — otherwise
+    // "render this screen with its keyboard up" silently renders it down (issue #3491).
+    KeyboardController.seed(KeyboardOverride(visible = true))
+    assertEquals(true, KeyboardController.requestedVisible.value)
+
+    KeyboardController.seed(KeyboardOverride(visible = false))
+    assertEquals(false, KeyboardController.requestedVisible.value)
+
+    // Nothing pinned ⇒ null, and the gate is free to infer from the surface.
+    KeyboardController.clearOverride()
+    assertNull(KeyboardController.requestedVisible.value)
+    KeyboardController.notifyImeVisibility(true)
+    assertNull(
+      "app-side IME state is not an explicit request — it stays inferrable",
+      KeyboardController.requestedVisible.value,
+    )
+  }
+
+  @Test
   fun `controller starts hidden with no key pressed`() {
     KeyboardController.resetForNewSession()
     assertFalse(KeyboardController.softInputVisible.value)

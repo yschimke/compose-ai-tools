@@ -960,7 +960,15 @@ fun MaterialIconRowPreview() {
 fun EditableTextFieldSquare() {
   var outcome by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
   if (outcome != 0) {
-    val color = if (outcome == OUTCOME_SELECTED) Color(0xFF42A5F5) else Color(0xFF66BB6A)
+    val color =
+      when (outcome) {
+        OUTCOME_SELECTED -> Color(0xFF42A5F5)
+        OUTCOME_TYPED_ONE -> Color(0xFF66BB6A)
+        // A distinct colour for "more characters arrived than were typed" — the shape a
+        // double-committed keystroke takes. Latching on a bare "the value changed" would report
+        // that as success, which is exactly how a duplicate would slip through.
+        else -> Color(0xFFFFA726)
+      }
     Box(modifier = Modifier.fillMaxSize().background(color))
     return
   }
@@ -980,9 +988,11 @@ fun EditableTextFieldSquare() {
       value = value,
       onValueChange = {
         value = it
+        val inserted = it.text.length - TEXT_FIELD_SEED.length
         outcome =
           when {
-            it.text != TEXT_FIELD_SEED -> OUTCOME_TYPED
+            inserted == 1 -> OUTCOME_TYPED_ONE
+            it.text != TEXT_FIELD_SEED -> OUTCOME_TYPED_OTHER
             !it.selection.collapsed -> OUTCOME_SELECTED
             else -> 0
           }
@@ -996,5 +1006,10 @@ fun EditableTextFieldSquare() {
 /** Seed content of [EditableTextFieldSquare] — long enough that a drag can select part of it. */
 const val TEXT_FIELD_SEED: String = "Filled"
 
-private const val OUTCOME_TYPED = 1
+/** Exactly one character arrived for one keystroke — what typing is supposed to do. */
+private const val OUTCOME_TYPED_ONE = 1
+
 private const val OUTCOME_SELECTED = 2
+
+/** The value changed by something other than one character (a duplicate, most likely). */
+private const val OUTCOME_TYPED_OTHER = 3

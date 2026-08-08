@@ -473,8 +473,15 @@ test.beforeAll(async ({ request }) => {
     previews.find((p) => /^textfield-/.test(p.id ?? ""))?.id ?? null;
 });
 
+/**
+ * The one catalog that is expected to carry a text field. The suite also runs against the Android
+ * lane's `androidlane` system, whose bundle is a single-card fixture with no text field at all —
+ * demanding one there fails a job for serving exactly what it was built to serve.
+ */
+const TEXT_FIELD_SYSTEM = "compose-m3";
+
 function requireTextField() {
-  if (!textFieldPreviewId && process.env.CI) {
+  if (!textFieldPreviewId && process.env.CI && SYSTEM === TEXT_FIELD_SYSTEM) {
     throw new Error(
       `no textfield-* preview at /${SYSTEM}/api/previews — refusing to green-skip the live text-input suite`,
     );
