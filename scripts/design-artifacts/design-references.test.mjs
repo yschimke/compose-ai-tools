@@ -259,6 +259,32 @@ test("planDesignReferences maps design-map entries onto serve preview ids", () =
   assert.equal(records[1].origin.ref, "design/ContactChat.dark.html");
 });
 
+test("planDesignReferences carries a declared board density to the driver", () => {
+  // Only the design-map author knows a board's scale, and it is what lets the reference column be
+  // quoted in dp/sp instead of the board's own pixels (design-parity#279). It is driver input, not
+  // part of the served manifest, so it rides on `origin` — and is absent, never guessed, when the
+  // entry says nothing.
+  const designMap = {
+    components: [
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatPreview",
+        source: "figma",
+        ref: "figma:abc/73:5",
+        density: 3,
+      },
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatDarkPreview",
+        source: "claude-design",
+        ref: "design/ContactChat.dark.html",
+      },
+    ],
+  };
+
+  const { records } = planDesignReferences({ designMap, spec: SPEC, catalog: CATALOG });
+  assert.equal(records[0].origin.density, 3);
+  assert.equal(records[1].origin.density, undefined);
+});
+
 test("planDesignReferences warns rather than throwing when a handle maps to nothing", () => {
   const designMap = {
     components: [{ code: "ui/Other.kt#NotInTheSpec", source: "claude-design", ref: "x.html" }],

@@ -230,11 +230,19 @@ async function rasterizeFigma(ref, target) {
   if (!png.ok) throw new Error(`figma image download ${png.status}`);
   const decoded = PNG.sync.read(Buffer.from(await png.arrayBuffer()));
   // The node document rides along so the caller can capture layout geometry from the same fetch
-  // that sized the raster — one round trip, and the geometry provably describes these pixels.
-  const document =
-    nodeJson?.nodes?.[parsed.nodeId]?.document ??
-    nodeJson?.nodes?.[parsed.nodeId.replace("-", ":")]?.document;
-  return { width: decoded.width, height: decoded.height, data: decoded.data, document };
+  // that sized the raster — one round trip, and the geometry provably describes these pixels. The
+  // file-level `styles` map rides along with it: a text node references a published style by id,
+  // and only this map turns that id into the name the design itself uses (`Body/Large`), so the
+  // reference column can say `body/large` rather than the anonymous `text`.
+  const entry =
+    nodeJson?.nodes?.[parsed.nodeId] ?? nodeJson?.nodes?.[parsed.nodeId.replace("-", ":")];
+  return {
+    width: decoded.width,
+    height: decoded.height,
+    data: decoded.data,
+    document: entry?.document,
+    styles: entry?.styles,
+  };
 }
 
 /** A pre-rendered PNG for this ref under `--reference-images`, or null. */
@@ -284,6 +292,30 @@ async function sourceRaster(record) {
   return null;
 }
 
+/**
+ * The reference board's scale for one record — source pixels per dp — from the design-map entry
+ * that planned it, or `undefined`.
+ *
+ * Only the design-map author knows this: a Figma file reports its own pixels and nothing in it says
+ * what they are pixels *of*. Declared, the annotation layer quotes the design's spacing and type in
+ * the same dp/sp the render resolved, and the two columns of the compare page can finally be read
+ * against each other. Undeclared, the layer names the board's unit (`text 52.5px`) and leaves the
+ * number checkable — which is where design-parity#277 left it.
+ *
+ * A non-positive or non-finite value is dropped with a warning rather than applied: it would divide
+ * every spec on the reference side by nonsense, silently, and a wrong number that looks like dp is
+ * worse than an honest px.
+ */
+function referenceDensity(record) {
+  const density = record.origin?.density;
+  if (density === undefined) return undefined;
+  if (typeof density !== "number" || !Number.isFinite(density) || density <= 0) {
+    warn(`${record.id}: ignoring density '${density}' — it must be a positive number`);
+    return undefined;
+  }
+  return density;
+}
+
 const referencesDir = path.join(OUT, REFERENCES_DIR);
 fs.mkdirSync(referencesDir, { recursive: true });
 
@@ -305,7 +337,12 @@ for (const record of records) {
   }
 
   // Captured before the fit rewrites `raster`, then moved onto the published raster below.
-  const capturedLayout = raster.document ? layoutFromNode(raster.document) : undefined;
+  const capturedLayout = raster.document
+    ? layoutFromNode(raster.document, {
+        styles: raster.styles,
+        density: referenceDensity(record),
+      })
+    : undefined;
 
   // Where the artwork ends up inside the published raster. Full-bleed unless a fit letterboxes it.
   let placement = { width: target.width, height: target.height, x: 0, y: 0 };
