@@ -1,7 +1,5 @@
 package ee.schimke.composeai.mcp.protocol
 
-import kotlinx.serialization.EncodeDefault
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -16,9 +14,37 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 
 // ---------------------------------------------------------------------------
-// Trimmed daemon-facing MCP message shapes. The SDK owns the wire/session layer;
-// these internal DTOs keep the supervisor/tool catalog code decoupled from SDK
-// types.
+// Internal DTOs for the daemon-facing tool/resource catalog.
+//
+// The MCP Kotlin SDK owns the wire and session layer — transport, JSON-RPC
+// framing, request dispatch, and the `initialize` handshake. These types are
+// deliberately NOT a second implementation of that: they are the boundary
+// between the SDK and the ~5k lines of tool/resource code in `DaemonMcpServer`,
+// so an SDK bump touches one adapter (`McpServer.kt`'s `toSdk*` functions)
+// rather than every tool. That indirection is the reason the file still exists.
+//
+// What it must NOT hold is a parallel copy of a shape the SDK already owns on
+// the wire. It used to: an entire JSON-RPC envelope layer (`McpRequest` /
+// `McpResponse` / `McpNotification` / `McpError` / `McpErrorCodes`), the
+// `initialize` handshake (`InitializeParams` / `InitializeResult` /
+// `Implementation` / `ClientCapabilities` / `ServerCapabilities` /
+// `ToolsCapability` / `ResourcesCapability`), and the request-param types
+// (`CallToolParams` / `ReadResourceParams` / `SubscribeParams` /
+// `UnsubscribeParams` / `ResourceUpdatedParams`). Every one was superseded by
+// the SDK and left behind, referenced by nothing.
+//
+// Several were actively hazardous rather than merely dead, because they shared
+// a simple name with a live type from another package: `InitializeResult`,
+// `ServerCapabilities`, `ClientCapabilities` and `InitializeParams` all also
+// exist in `ee.schimke.composeai.daemon.protocol` (the daemon's own wire
+// contract, which is a different protocol), and `Implementation` /
+// `ServerCapabilities` also exist in the SDK. An IDE auto-import had three
+// candidates for one name, only one of them correct, and picking the dead one
+// compiled clean.
+//
+// Keep that shape: types here exist to decouple the tool catalog, not to
+// restate the SDK. If a new type would just mirror an SDK wire shape, use the
+// SDK's.
 //
 // References:
 // - https://modelcontextprotocol.io/specification/2025-06-18/basic
@@ -27,90 +53,11 @@ import kotlinx.serialization.json.jsonObject
 // ---------------------------------------------------------------------------
 
 // =====================================================================
-// JSON-RPC envelope (id is string | number per spec; we accept both via
-// JsonElement and let the caller round-trip the original on responses).
-// =====================================================================
-
-@OptIn(ExperimentalSerializationApi::class)
-@Serializable
-data class McpRequest(
-  @EncodeDefault val jsonrpc: String = "2.0",
-  val id: JsonElement,
-  val method: String,
-  val params: JsonElement? = null,
-)
-
-@OptIn(ExperimentalSerializationApi::class)
-@Serializable
-data class McpResponse(
-  @EncodeDefault val jsonrpc: String = "2.0",
-  val id: JsonElement,
-  val result: JsonElement? = null,
-  val error: McpError? = null,
-)
-
-@OptIn(ExperimentalSerializationApi::class)
-@Serializable
-data class McpNotification(
-  @EncodeDefault val jsonrpc: String = "2.0",
-  val method: String,
-  val params: JsonElement? = null,
-)
-
-@Serializable data class McpError(val code: Int, val message: String, val data: JsonElement? = null)
-
-object McpErrorCodes {
-  const val PARSE_ERROR: Int = -32700
-  const val INVALID_REQUEST: Int = -32600
-  const val METHOD_NOT_FOUND: Int = -32601
-  const val INVALID_PARAMS: Int = -32602
-  const val INTERNAL_ERROR: Int = -32603
-}
-
-// =====================================================================
-// initialize
-// =====================================================================
-
-@Serializable
-data class InitializeParams(
-  val protocolVersion: String,
-  val capabilities: ClientCapabilities = ClientCapabilities(),
-  val clientInfo: Implementation? = null,
-)
-
-@Serializable
-data class InitializeResult(
-  val protocolVersion: String,
-  val capabilities: ServerCapabilities,
-  val serverInfo: Implementation,
-  val instructions: String? = null,
-)
-
-@Serializable data class Implementation(val name: String, val version: String)
-
-@Serializable data class ClientCapabilities(val experimental: Map<String, JsonElement>? = null)
-
-@Serializable
-data class ServerCapabilities(
-  val tools: ToolsCapability? = null,
-  val resources: ResourcesCapability? = null,
-)
-
-@Serializable data class ToolsCapability(val listChanged: Boolean = false)
-
-@Serializable
-data class ResourcesCapability(val subscribe: Boolean = false, val listChanged: Boolean = false)
-
-// =====================================================================
 // tools/list, tools/call
 // =====================================================================
 
-@Serializable data class ListToolsResult(val tools: List<ToolDef>)
-
 @Serializable
 data class ToolDef(val name: String, val description: String, val inputSchema: JsonElement)
-
-@Serializable data class CallToolParams(val name: String, val arguments: JsonElement? = null)
 
 @Serializable
 data class CallToolResult(val content: List<ContentBlock>, val isError: Boolean? = null)
@@ -140,14 +87,8 @@ sealed interface ContentBlock {
 }
 
 // =====================================================================
-// resources/list, resources/read, resources/subscribe, resources/unsubscribe
+// resources/list, resources/read
 // =====================================================================
-
-@Serializable
-data class ListResourcesResult(
-  val resources: List<ResourceDescriptor>,
-  val nextCursor: String? = null,
-)
 
 @Serializable
 data class ResourceDescriptor(
@@ -157,8 +98,6 @@ data class ResourceDescriptor(
   val mimeType: String? = null,
   val size: Long? = null,
 )
-
-@Serializable data class ReadResourceParams(val uri: String)
 
 @Serializable data class ReadResourceResult(val contents: List<ResourceContents>)
 
@@ -203,13 +142,3 @@ object ResourceContentsSerializer : KSerializer<ResourceContents> {
     }
   }
 }
-
-@Serializable data class SubscribeParams(val uri: String)
-
-@Serializable data class UnsubscribeParams(val uri: String)
-
-// =====================================================================
-// notifications: resources/updated, resources/list_changed
-// =====================================================================
-
-@Serializable data class ResourceUpdatedParams(val uri: String)
