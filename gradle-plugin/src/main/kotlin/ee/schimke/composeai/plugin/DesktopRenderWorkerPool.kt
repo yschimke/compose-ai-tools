@@ -49,6 +49,17 @@ import java.util.concurrent.atomic.AtomicInteger
  * makes safe: repeated in-process renders draw identical pixels, and a capture does not inherit the
  * `@OverrideVariant` seed of the one before it.
  *
+ * **What reuse gives up.** A fork gave each capture a fresh JVM, so a preview that mutates
+ * top-level or `object` state during composition could not affect any other. A warm worker loads
+ * consumer classes once, so that isolation is gone: an order-dependent preview can now influence a
+ * later capture. This is the trade the preview daemon has always made — it renders many previews
+ * per JVM behind a persistent classloader — so the batch lane is not held to a stricter standard
+ * than the interactive one. Bounded rather than defended against: [maxRendersPerWorker] recycles
+ * workers, the default of one worker keeps ordering deterministic rather than racy, and
+ * [SYS_PROP_ENABLED]`=off` restores per-capture forks exactly. A preview whose pixels depend on
+ * what rendered before it is not reproducible for the catalogs either, so the fix in that case is
+ * the preview, not the pool.
+ *
  * **Failure posture**, mirroring the cmp-jvm pool and the two defects review found there:
  * * anything the pool cannot serve reports [WorkerResult.Unusable] and the caller forks that
  *   capture instead, so the worst case is the cost that was already being paid;
@@ -110,10 +121,9 @@ internal class DesktopRenderWorkerPool(
   /** Captures served warm, for the task's one-line summary. */
   val servedWarm = AtomicInteger(0)
 
-  private val watchdog =
-    Executors.newSingleThreadScheduledExecutor { r ->
-      Thread(r, "compose-preview-render-worker-watchdog").apply { isDaemon = true }
-    }
+  private val watchdog = Executors.newSingleThreadScheduledExecutor { r ->
+    Thread(r, "compose-preview-render-worker-watchdog").apply { isDaemon = true }
+  }
 
   fun render(args: List<String>, overridesSeed: String?): WorkerResult {
     synchronized(lock) {
@@ -133,8 +143,7 @@ internal class DesktopRenderWorkerPool(
             is StartOutcome.Failed -> return WorkerResult.Unusable(started.reason)
           }
 
-      val result =
-        worker.render(args, overridesSeed.orEmpty(), requestIds.incrementAndGet())
+      val result = worker.render(args, overridesSeed.orEmpty(), requestIds.incrementAndGet())
       if (result is WorkerResult.Unusable) {
         discard(worker)
         worker = null
@@ -158,7 +167,8 @@ internal class DesktopRenderWorkerPool(
         var picked: Worker? = null
         while (picked == null) {
           val candidate = idle.pollFirst() ?: break
-          if (candidate.isAlive() && !candidate.shouldRetire(maxRendersPerWorker)) picked = candidate
+          if (candidate.isAlive() && !candidate.shouldRetire(maxRendersPerWorker))
+            picked = candidate
           else doomed += candidate
         }
         picked
@@ -209,8 +219,7 @@ internal class DesktopRenderWorkerPool(
       // blocked forever with the JVM still up. Registering first means `close()` can always reap
       // it, and a pool that closed underneath us is detected right after.
       val worker = Worker(command, watchdog, workingDir, stderrSink)
-      val tracked =
-        synchronized(lock) { if (closed) false else liveWorkers.add(worker) }
+      val tracked = synchronized(lock) { if (closed) false else liveWorkers.add(worker) }
       if (!tracked) {
         worker.close()
         return StartOutcome.Failed("render worker pool is closed")
@@ -336,8 +345,7 @@ internal class DesktopRenderWorkerPool(
         val message = String(ByteArray(len).also { fromWorker.readFully(it) }, Charsets.UTF_8)
 
         renders++
-        return if (status == STATUS_OK) WorkerResult.Ok
-        else WorkerResult.Failed(message.take(300))
+        return if (status == STATUS_OK) WorkerResult.Ok else WorkerResult.Failed(message.take(300))
       } catch (e: Exception) {
         val timedOut = guard.fired()
         close()

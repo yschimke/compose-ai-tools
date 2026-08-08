@@ -697,8 +697,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
-   * The `-D` flags a worker boots under — the per-execution half of what the per-capture
-   * `javaexec` sets inline.
+   * The `-D` flags a worker boots under — the per-execution half of what the per-capture `javaexec`
+   * sets inline.
    *
    * Deliberately the same set, and deliberately *only* the constant ones: every property here is
    * fixed for the whole task, so it can live on the worker's command line. The one genuinely
@@ -739,88 +739,88 @@ abstract class RenderPreviewsTask : DefaultTask() {
     fanoutSiblingStems: List<String>,
   ): List<String> =
     listOf(
-          preview.className,
-          preview.functionName,
-          widthPx.toString(),
-          heightPx.toString(),
-          density.toString(),
-          preview.params.showBackground.toString(),
-          preview.params.backgroundColor.toString(),
-          outputFile.absolutePath,
-          // 9th arg — empty string signals "no wrapper" (keeps arg positions stable).
-          preview.params.wrapperClassName.orEmpty(),
-          // 10th/11th — AS-parity wrap flags. When set, the renderer
-          // wraps the composable, measures it, and crops the PNG to
-          // the intrinsic bounds on that axis.
-          spec.wrapWidth.toString(),
-          spec.wrapHeight.toString(),
-          // 12th/13th — @PreviewParameter spec. Empty string signals
-          // "no provider"; otherwise the renderer enumerates the
-          // provider's values.take(limit) in-process and writes one
-          // `<id>_PARAM_<idx>.png` per value. Plugin-side can't know
-          // the count (consumer's classpath isn't loaded here), so
-          // fan-out is delegated to the renderer process that already
-          // has everything on its classpath.
-          preview.params.previewParameterProviderClassName.orEmpty(),
-          preview.params.previewParameterLimit.toString(),
-          // 14th — `@Preview(locale = ...)`. Empty string signals "no override". The renderer
-          // detects `en-XA` / `ar-XB` and applies the runtime pseudolocale wrap (currently
-          // LayoutDirection.Rtl for ar-XB on desktop; Android additionally pseudolocalises
-          // string resources via the `:data-pseudolocale-connector` Resources subclass).
-          preview.params.locale.orEmpty(),
-          // 15th–18th — @ScrollingPreview intent forwarded per capture / data product. Empty
-          // 15th signals "no scroll intent". Renderer dispatches LONG / GIF to
-          // `renderScrollPreview` (`runComposeUiTest`-driven scroll + slice or frame encode);
-          // TOP / END fall through to the default single-frame path.
-          scroll?.mode?.name.orEmpty(),
-          scroll?.axis?.name.orEmpty(),
-          (scroll?.maxScrollPx ?: 0).toString(),
-          (scroll?.frameIntervalMs ?: 0).toString(),
-          // 19th/20th — preview kind + (for kind=LOTTIE) the resource-relative asset path. Empty
-          // 19th defaults to COMPOSE on the renderer side. A LOTTIE entry has no class/function to
-          // reflect; the renderer inflates the asset at arg 20 via Compottie instead.
-          preview.params.kind.name,
-          preview.params.assetPath.orEmpty(),
-          // 21st — `@Preview(fontScale = ...)`. Compose Desktop has no resource-qualifier system,
-          // so the renderer threads this through `Density(density, fontScale)` (and re-provides it
-          // as `LocalDensity`) the same way the daemon's desktop RenderEngine does. `1.0` is the
-          // annotation default / no-op; omitting it keeps older callers at 1.0 on the renderer
-          // side.
-          preview.params.fontScale.toString(),
-          // 22nd–24th — `@Preview(showSystemUi = ...)` (issue #1930). When set on a phone-shape
-          // capture, DesktopRendererMain wraps the composition in the synthetic `SystemBarsFrame`
-          // (status bar + gesture-nav pill) so the desktop capture matches the Android renderer
-          // instead of coming back chrome-less. uiMode carries the night bit for dark chrome;
-          // device is forwarded only so the renderer can skip round/Wear surfaces.
-          preview.params.showSystemUi.toString(),
-          preview.params.uiMode.toString(),
-          preview.params.device.orEmpty(),
-          // 25th–27th — `@AnimatedPreview` window. `-1` durationMs signals "no animation intent"
-          // (the renderer falls through to scroll / single-frame). `>= 0` means the annotation is
-          // present and dispatches to `renderAnimatedPreview` (a `runSkikoComposeUiTest`
-          // paused-clock loop that advances `mainClock` by frameIntervalMs across the window and
-          // encodes the frames as a GIF) — the desktop counterpart of the Android renderer's
-          // `@AnimatedPreview` path. `0` is the annotation's auto-detect sentinel and must NOT be
-          // collapsed into "no animation": a default-args `@AnimatedPreview` still needs the
-          // animated path or the `.gif` renderOutput gets a single PNG frame (issue #2190). An
-          // older renderer that predates the `-1` protocol parses it via `takeIf { it > 0 } ?: 0`,
-          // so the sentinel degrades to the old "no animation" behaviour rather than breaking. The
-          // reverse skew (an older plugin driving a newer renderer pinned on the
-          // `composePreviewRenderer` configuration) is guarded renderer-side: a bare `0` is only
-          // read as auto-detect when the capture is animation-shaped (a `.gif` output with no
-          // scroll intent).
-          // `showCurves` is forwarded for parity; the desktop path emits a screenshot-only GIF (no
-          // curve strip).
-          (animation?.durationMs ?: -1).toString(),
-          (animation?.frameIntervalMs ?: 0).toString(),
-          (animation?.showCurves ?: false).toString(),
-          // 28th — sibling stems the renderer's `@PreviewParameter` stale fan-out cleanup must
-          // leave alone (issue #2193): manifest outputs in the same directory whose stem extends
-          // this capture's (`Foo` vs the `@Preview(name = "Dark")` sibling's `Foo_Dark`). The
-          // subprocess has no manifest, so without this it treats every `<stem>_*` file as its
-          // own fan-out and deletes the sibling's renders. Empty string signals "no siblings".
-          fanoutSiblingStems.joinToString("|"),
-        )
+      preview.className,
+      preview.functionName,
+      widthPx.toString(),
+      heightPx.toString(),
+      density.toString(),
+      preview.params.showBackground.toString(),
+      preview.params.backgroundColor.toString(),
+      outputFile.absolutePath,
+      // 9th arg — empty string signals "no wrapper" (keeps arg positions stable).
+      preview.params.wrapperClassName.orEmpty(),
+      // 10th/11th — AS-parity wrap flags. When set, the renderer
+      // wraps the composable, measures it, and crops the PNG to
+      // the intrinsic bounds on that axis.
+      spec.wrapWidth.toString(),
+      spec.wrapHeight.toString(),
+      // 12th/13th — @PreviewParameter spec. Empty string signals
+      // "no provider"; otherwise the renderer enumerates the
+      // provider's values.take(limit) in-process and writes one
+      // `<id>_PARAM_<idx>.png` per value. Plugin-side can't know
+      // the count (consumer's classpath isn't loaded here), so
+      // fan-out is delegated to the renderer process that already
+      // has everything on its classpath.
+      preview.params.previewParameterProviderClassName.orEmpty(),
+      preview.params.previewParameterLimit.toString(),
+      // 14th — `@Preview(locale = ...)`. Empty string signals "no override". The renderer
+      // detects `en-XA` / `ar-XB` and applies the runtime pseudolocale wrap (currently
+      // LayoutDirection.Rtl for ar-XB on desktop; Android additionally pseudolocalises
+      // string resources via the `:data-pseudolocale-connector` Resources subclass).
+      preview.params.locale.orEmpty(),
+      // 15th–18th — @ScrollingPreview intent forwarded per capture / data product. Empty
+      // 15th signals "no scroll intent". Renderer dispatches LONG / GIF to
+      // `renderScrollPreview` (`runComposeUiTest`-driven scroll + slice or frame encode);
+      // TOP / END fall through to the default single-frame path.
+      scroll?.mode?.name.orEmpty(),
+      scroll?.axis?.name.orEmpty(),
+      (scroll?.maxScrollPx ?: 0).toString(),
+      (scroll?.frameIntervalMs ?: 0).toString(),
+      // 19th/20th — preview kind + (for kind=LOTTIE) the resource-relative asset path. Empty
+      // 19th defaults to COMPOSE on the renderer side. A LOTTIE entry has no class/function to
+      // reflect; the renderer inflates the asset at arg 20 via Compottie instead.
+      preview.params.kind.name,
+      preview.params.assetPath.orEmpty(),
+      // 21st — `@Preview(fontScale = ...)`. Compose Desktop has no resource-qualifier system,
+      // so the renderer threads this through `Density(density, fontScale)` (and re-provides it
+      // as `LocalDensity`) the same way the daemon's desktop RenderEngine does. `1.0` is the
+      // annotation default / no-op; omitting it keeps older callers at 1.0 on the renderer
+      // side.
+      preview.params.fontScale.toString(),
+      // 22nd–24th — `@Preview(showSystemUi = ...)` (issue #1930). When set on a phone-shape
+      // capture, DesktopRendererMain wraps the composition in the synthetic `SystemBarsFrame`
+      // (status bar + gesture-nav pill) so the desktop capture matches the Android renderer
+      // instead of coming back chrome-less. uiMode carries the night bit for dark chrome;
+      // device is forwarded only so the renderer can skip round/Wear surfaces.
+      preview.params.showSystemUi.toString(),
+      preview.params.uiMode.toString(),
+      preview.params.device.orEmpty(),
+      // 25th–27th — `@AnimatedPreview` window. `-1` durationMs signals "no animation intent"
+      // (the renderer falls through to scroll / single-frame). `>= 0` means the annotation is
+      // present and dispatches to `renderAnimatedPreview` (a `runSkikoComposeUiTest`
+      // paused-clock loop that advances `mainClock` by frameIntervalMs across the window and
+      // encodes the frames as a GIF) — the desktop counterpart of the Android renderer's
+      // `@AnimatedPreview` path. `0` is the annotation's auto-detect sentinel and must NOT be
+      // collapsed into "no animation": a default-args `@AnimatedPreview` still needs the
+      // animated path or the `.gif` renderOutput gets a single PNG frame (issue #2190). An
+      // older renderer that predates the `-1` protocol parses it via `takeIf { it > 0 } ?: 0`,
+      // so the sentinel degrades to the old "no animation" behaviour rather than breaking. The
+      // reverse skew (an older plugin driving a newer renderer pinned on the
+      // `composePreviewRenderer` configuration) is guarded renderer-side: a bare `0` is only
+      // read as auto-detect when the capture is animation-shaped (a `.gif` output with no
+      // scroll intent).
+      // `showCurves` is forwarded for parity; the desktop path emits a screenshot-only GIF (no
+      // curve strip).
+      (animation?.durationMs ?: -1).toString(),
+      (animation?.frameIntervalMs ?: 0).toString(),
+      (animation?.showCurves ?: false).toString(),
+      // 28th — sibling stems the renderer's `@PreviewParameter` stale fan-out cleanup must
+      // leave alone (issue #2193): manifest outputs in the same directory whose stem extends
+      // this capture's (`Foo` vs the `@Preview(name = "Dark")` sibling's `Foo_Dark`). The
+      // subprocess has no manifest, so without this it treats every `<stem>_*` file as its
+      // own fan-out and deletes the sibling's renders. Empty string signals "no siblings".
+      fanoutSiblingStems.joinToString("|"),
+    )
 }
 
 private fun Float.roundHalfUpPx(): Int = kotlin.math.floor(this + 0.5f).toInt().coerceAtLeast(1)
