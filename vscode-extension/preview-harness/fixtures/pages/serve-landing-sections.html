@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>meshcore-mobile — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
-        <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
@@ -31,10 +31,7 @@
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
   <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="9"></span>
-  <span class="cp-bg" role="group" aria-label="Sticker background">
-    <button type="button" class="cp-bg-btn" data-bg-choice="on">Background</button>
-    <button type="button" class="cp-bg-btn" data-bg-choice="off">Transparent</button>
-  </span>
+  <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind each preview">Transparent</button>
 </div>
 </div>
         <nav class="cp-tabs" id="cp-tabs" role="tablist" aria-label="Catalog sections">
@@ -170,6 +167,7 @@
 </div>
 <p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
 <script src="/assets/serve/fixture/url-state.js"></script>
+<script src="/assets/serve/fixture/bg-toggle.js"></script>
 <script>(function () {
   var cards = document.querySelectorAll(".cp-card");
   var input = document.getElementById("cp-search");
@@ -184,10 +182,6 @@
   function pushUrl(v) { if (urlState) urlState.push(v); }
   function replaceUrl(v) { if (urlState) urlState.replace(v); }
   if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
-  // What Back falls back to when an entry carries no `bg` — read off the class the pre-paint
-  // script set, i.e. what THIS load resolved to. Re-reading localStorage here would return the
-  // value a later click wrote, so Back out of Transparent would stay transparent.
-  var initialBg = document.documentElement.classList.contains("cp-bg-transparent") ? "off" : "on";
   var navGroups = document.querySelectorAll(".cp-subgroup");
   var tabBtns = document.querySelectorAll(".cp-tab");
   var tabSections = document.querySelectorAll(".cp-section");
@@ -248,26 +242,6 @@
       apply();
     });
   });
-  // Background/Transparent toggle: flips the whole page between a solid surface (default) and the
-  // transparent-checkerboard backing, persisting the choice. Independent of theme/search filters.
-  var bgBtns = document.querySelectorAll(".cp-bg-btn");
-  function reflectBg() {
-    var off = document.documentElement.classList.contains("cp-bg-transparent");
-    bgBtns.forEach(function (b) {
-      b.setAttribute("aria-pressed",
-        b.getAttribute("data-bg-choice") === (off ? "off" : "on") ? "true" : "false");
-    });
-  }
-  bgBtns.forEach(function (b) {
-    b.addEventListener("click", function () {
-      var choice = b.getAttribute("data-bg-choice");
-      document.documentElement.classList.toggle("cp-bg-transparent", choice === "off");
-      try { localStorage.setItem("cp-bg", choice); } catch (e) {}
-      pushUrl({ bg: choice });
-      reflectBg();
-    });
-  });
-  reflectBg();
   if (urlState) {
     urlState.onPop(function () {
       var poppedTab = urlParam("tab") || initialTab;
@@ -276,9 +250,6 @@
       });
       reflectTabs();
       if (input) input.value = urlParam("q");
-      var poppedBg = urlParam("bg") || initialBg;
-      document.documentElement.classList.toggle("cp-bg-transparent", poppedBg === "off");
-      reflectBg();
       apply();
     });
   }

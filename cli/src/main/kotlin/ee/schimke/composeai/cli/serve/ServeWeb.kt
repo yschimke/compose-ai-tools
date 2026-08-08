@@ -1143,17 +1143,42 @@ object ServeWeb {
    * Progressive enhancement throughout — a no-JS client sees the full grid on its baked renders.
    */
   private fun themePickerHtml(hasBaked: Boolean, declared: List<ServeTheme>): String {
-    val builtInLabels = if (hasBaked) setOf("light", "dark") else setOf("default")
+    val builtIns =
+      if (hasBaked) listOf("light" to "Light", "dark" to "Dark") else listOf("default" to "Default")
+    val chips = themeChipsHtml(builtIns, declared)
+    return """
+    <div class="cp-toolbar">
+      <span class="cp-theme" role="group" aria-label="Preview theme">
+        $chips
+      </span>
+    </div>
+    """
+      .trimIndent()
+  }
+
+  /**
+   * The theme chips themselves, shared by the landing picker ([themePickerHtml]) and the viewer bar
+   * ([viewerThemePickerHtml]) so one control appears on both pages instead of two that drift.
+   *
+   * [builtIns] are the `(choice value, label)` pairs the page offers before any app-declared theme
+   * — the landing's baked `light`/`dark` swap (or its lone `default`), the viewer's Day/Night
+   * uiMode pair (or Night alone on a dark-first system). [declared] follows as one
+   * `theme:<providerFqn>` chip each, qualified with its group when its bare name would collide with
+   * a built-in label or with another declared theme.
+   */
+  private fun themeChipsHtml(
+    builtIns: List<Pair<String, String>>,
+    declared: List<ServeTheme>,
+    /** Indentation for every chip after the first, so the emitted block reads as written HTML. */
+    indent: String = "        ",
+  ): String {
+    val builtInLabels = builtIns.map { it.second.lowercase() }.toSet() + builtIns.map { it.first }
     val declaredNameCounts = declared.groupingBy { it.name.lowercase() }.eachCount()
-    val chips = buildString {
-      if (hasBaked) {
-        append("<button type=\"button\" class=\"cp-theme-btn\" data-theme-choice=\"light\">")
-        append("Light</button>\n        ")
-        append("<button type=\"button\" class=\"cp-theme-btn\" data-theme-choice=\"dark\">")
-        append("Dark</button>")
-      } else {
-        append("<button type=\"button\" class=\"cp-theme-btn\" data-theme-choice=\"default\">")
-        append("Default</button>")
+    return buildString {
+      builtIns.forEachIndexed { index, (value, label) ->
+        if (index > 0) append("\n$indent")
+        append("<button type=\"button\" class=\"cp-theme-btn\" data-theme-choice=\"$value\">")
+        append("$label</button>")
       }
       declared.forEach { t ->
         val qualified =
@@ -1166,20 +1191,29 @@ object ServeWeb {
           t.group
             ?.takeIf { !qualified }
             ?.let { " title=\"${WebEscaping.htmlEscape(it)} · $label\"" } ?: ""
-        append("\n        <button type=\"button\" class=\"cp-theme-btn\"")
+        append("\n$indent<button type=\"button\" class=\"cp-theme-btn\"")
         append(" data-theme-choice=\"theme:${WebEscaping.htmlEscape(t.providerFqn)}\"$title>")
         append("$label</button>")
       }
     }
-    return """
-    <div class="cp-toolbar">
-      <span class="cp-theme" role="group" aria-label="Preview theme">
-        $chips
-      </span>
-    </div>
-    """
-      .trimIndent()
   }
+
+  /**
+   * The **Transparent** toggle: flips the page between the solid stage the previews are normally
+   * read on and the transparent checkerboard that shows a sticker's real alpha.
+   *
+   * One button rather than a Background / Transparent pair — a two-state axis with a default is
+   * what `aria-pressed` on a single toggle says, and the pair spent twice the toolbar width to say
+   * it while always showing one segment that did nothing when clicked.
+   *
+   * Emitted identically on the landing grid and on the single-preview viewer — the `<html>` class
+   * it drives (`cp-bg-transparent`) already backs both `.cp-imgwrap` and `.cp-stage`, and the
+   * pre-paint script in [document] already restores the choice on every page, so the viewer was
+   * simply missing the control rather than the behaviour. `bg-toggle.js` wires both.
+   */
+  private fun bgPickerHtml(title: String): String =
+    "<button type=\"button\" class=\"cp-bg-btn cp-bg-toggle\" aria-pressed=\"false\"" +
+      " title=\"${WebEscaping.htmlEscape(title)}\">Transparent</button>"
 
   /**
    * The search box for the landing grid: a text input that filters cards to those whose label or id
@@ -1194,10 +1228,7 @@ object ServeWeb {
       <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
         autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
       <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="$count"></span>
-      <span class="cp-bg" role="group" aria-label="Sticker background">
-        <button type="button" class="cp-bg-btn" data-bg-choice="on">Background</button>
-        <button type="button" class="cp-bg-btn" data-bg-choice="off">Transparent</button>
-      </span>
+      ${bgPickerHtml("Show the transparent checkerboard behind each preview")}
     </div>
     """
       .trimIndent()
@@ -1740,9 +1771,6 @@ object ServeWeb {
       "\n      if (urlState) {" +
         "\n        urlState.onPop(function () {$themePop$tabPop" +
         "\n          if (input) input.value = urlParam(\"q\");" +
-        "\n          var poppedBg = urlParam(\"bg\") || initialBg;" +
-        "\n          document.documentElement.classList.toggle(\"cp-bg-transparent\", poppedBg === \"off\");" +
-        "\n          reflectBg();" +
         "\n          apply();" +
         "\n        });" +
         "\n      }"
@@ -1760,11 +1788,7 @@ object ServeWeb {
       function urlParam(n) { return urlState ? urlState.get(n) : ""; }
       function pushUrl(v) { if (urlState) urlState.push(v); }
       function replaceUrl(v) { if (urlState) urlState.replace(v); }
-      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
-      // What Back falls back to when an entry carries no `bg` — read off the class the pre-paint
-      // script set, i.e. what THIS load resolved to. Re-reading localStorage here would return the
-      // value a later click wrote, so Back out of Transparent would stay transparent.
-      var initialBg = document.documentElement.classList.contains("cp-bg-transparent") ? "off" : "on";$groupDecls$tabDecls
+      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }$groupDecls$tabDecls
       ${listOf(themeInit, themeRenderInit).filter { it.isNotEmpty() }.joinToString("\n")}
       function apply() {
         $applyTheme
@@ -1788,27 +1812,7 @@ object ServeWeb {
         replaceUrl({ q: input.value.trim() });
         apply();
       });
-      $themeWiring$tabWiring
-      // Background/Transparent toggle: flips the whole page between a solid surface (default) and the
-      // transparent-checkerboard backing, persisting the choice. Independent of theme/search filters.
-      var bgBtns = document.querySelectorAll(".cp-bg-btn");
-      function reflectBg() {
-        var off = document.documentElement.classList.contains("cp-bg-transparent");
-        bgBtns.forEach(function (b) {
-          b.setAttribute("aria-pressed",
-            b.getAttribute("data-bg-choice") === (off ? "off" : "on") ? "true" : "false");
-        });
-      }
-      bgBtns.forEach(function (b) {
-        b.addEventListener("click", function () {
-          var choice = b.getAttribute("data-bg-choice");
-          document.documentElement.classList.toggle("cp-bg-transparent", choice === "off");
-          try { localStorage.setItem("cp-bg", choice); } catch (e) {}
-          pushUrl({ bg: choice });
-          reflectBg();
-        });
-      });
-      reflectBg();$popWiring
+      $themeWiring$tabWiring$popWiring
       apply();$presenceWiring
     })();
     """
@@ -4061,7 +4065,7 @@ object ServeWeb {
       else orderedCards.joinToString(", ", "[", "]") { WebEscaping.jsString(themeBase(it)) }
     val filterScript =
       if (hasPreviews)
-        "\n${scriptTag("url-state.js")}\n<script>${catalogFilterScript(
+        "\n${scriptTag("url-state.js")}\n${scriptTag("bg-toggle.js")}\n<script>${catalogFilterScript(
           hasThemes,
           hasTabs,
           hasGroups,
@@ -5544,21 +5548,23 @@ $rows
     // One Theme axis replaces the separate Day/Night + app-theme controls. The two defaults map to
     // uiMode; every `theme:<provider>` option maps to themeProvider and deliberately clears uiMode,
     // because an app-declared theme already owns its day/night palette.
+    //
+    // A theme specimen documents ONE named theme, so the whole Theme axis is withdrawn here
+    // exactly as the landing withholds its themed-render URL. Without this the annotation stopped
+    // working the moment the card was opened: the viewer received every declared theme and
+    // happily re-rendered the specimen under another one, contradicting its own caption.
+    //
+    // BOTH axes go, not just `theme:<provider>`. Day/Night is not a navigation control — it maps
+    // to a `uiMode` override, and `CatalogLiveRouting.overridesAffectRender` routes a uiMode
+    // differing from the id's baked `__light`/`__dark` segment to a fresh daemon render. So on a
+    // specimen it either redraws a supposedly fixed sheet in the opposite mode, or (when the
+    // sheet hard-codes its theme) leaves the selector reading "Night" over unchanged light
+    // pixels. A light/dark pair of specimens is authored as two previews with their own cards;
+    // this control never reached the sibling.
+    val themeFixed = isThemeSpecimen(preview)
+    val viewerDeclaredThemes = if (themeFixed) emptyList() else declaredThemes
     val themeSelectorHtml = run {
-      // A theme specimen documents ONE named theme, so the whole Theme axis is withdrawn here
-      // exactly as the landing withholds its themed-render URL. Without this the annotation stopped
-      // working the moment the card was opened: the viewer received every declared theme and
-      // happily re-rendered the specimen under another one, contradicting its own caption.
-      //
-      // BOTH axes go, not just `theme:<provider>`. Day/Night is not a navigation control — it maps
-      // to a `uiMode` override, and `CatalogLiveRouting.overridesAffectRender` routes a uiMode
-      // differing from the id's baked `__light`/`__dark` segment to a fresh daemon render. So on a
-      // specimen it either redraws a supposedly fixed sheet in the opposite mode, or (when the
-      // sheet hard-codes its theme) leaves the selector reading "Night" over unchanged light
-      // pixels. A light/dark pair of specimens is authored as two previews with their own cards;
-      // this control never reached the sibling.
-      val themeFixed = isThemeSpecimen(preview)
-      val declaredThemes = if (themeFixed) emptyList() else declaredThemes
+      val declaredThemes = viewerDeclaredThemes
       val themeDis =
         if (
           !themeFixed &&
@@ -5594,15 +5600,42 @@ $rows
           "<option value=\"light\"$daySelected>Day (Default)</option>\n" +
             "            <option value=\"dark\"$nightSelected>Night (Default)</option>"
       val providerOptions = body.trimEnd().let { if (it.isEmpty()) "" else "\n            $it" }
+      // Visually removed, deliberately — the same treatment the render-mode radios get. The Theme
+      // axis is now picked from the chips on the viewer bar ([themeBarHtml]), but this select stays
+      // the axis's single state holder: viewer.js reads it for every render (`activeThemeChoice`),
+      // the sticky script seeds it from the URL + localStorage, and Back/Forward hydration writes
+      // to it. Two visible controls for one value is worse than one, so only the chips are shown.
+      // `tabindex="-1"` keeps the hidden select out of the tab order, which is what makes the
+      // `aria-hidden` wrapper legitimate.
       """
-        <label>Theme
-          <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="${declaredThemes.isNotEmpty()}" data-fixed-theme="$themeFixed"$themeDis>
+        <span class="cp-modes-inputs" aria-hidden="true">
+          <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="${declaredThemes.isNotEmpty()}" data-fixed-theme="$themeFixed" tabindex="-1"$themeDis>
             $defaults$providerOptions
           </select>
-        </label>
+        </span>
         """
         .trimIndent()
     }
+    // The Theme BAR: the same chips the catalog grid carries ([themePickerHtml]), on the viewer's
+    // own toolbar — so picking a theme is one visible click on both pages instead of a chip row on
+    // the grid and a select buried in the ⚙ Overrides drawer here. The values are exactly the
+    // select's option values (`light` / `dark` / `theme:<providerFqn>`), which is what lets
+    // viewer.js drive one from the other: a chip click writes the select and fires its `change`,
+    // and every existing lane (daemon re-render, Wasm ?uiMode, URL state, the catalog-scoped sticky
+    // key) keeps working untouched. Day/Night rather than Light/Dark to match the labels the select
+    // used; a dark-first (Wear) system offers Night alone, as its select did.
+    val themeBarHtml =
+      themeChipsHtml(
+          builtIns =
+            if (wearAlwaysDark) listOf("dark" to "Night")
+            else listOf("light" to "Day", "dark" to "Night"),
+          declared = viewerDeclaredThemes,
+          indent = "          ",
+        )
+        .let {
+          "<span class=\"cp-theme cp-theme-bar\" role=\"group\" aria-label=\"Preview theme\">\n" +
+            "          $it\n        </span>"
+        }
     // Live overlay toggles (accessibility / touch visualization). The daemon composites these onto
     // the held session's frames, so they mean nothing on a baked PNG — offered only when a Live
     // Compose stream is available, and omitted entirely otherwise rather than left permanently
@@ -5827,10 +5860,9 @@ $rows
       </div>
       <div class="cp-viewer-bar">
         $navToggle
-        <span class="cp-bg" role="group" aria-label="Preview zoom">
-          <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="fit" aria-pressed="true">Fit screen</button>
-          <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="width" aria-pressed="false">Fit width</button>
-        </span>
+        $themeBarHtml
+        ${bgPickerHtml("Show the transparent checkerboard behind the preview")}
+        <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
       $historyInlineHtml
@@ -5903,6 +5935,7 @@ $rows
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
       ${scriptTag("url-state.js")}
+      ${scriptTag("bg-toggle.js")}
       ${scriptTag("viewer-groups.js")}
       ${scriptTag("viewer-drawers.js")}
       ${scriptTag("viewer-history.js")}
@@ -6067,7 +6100,7 @@ $rows
         <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
         <title>${WebEscaping.htmlEscape(title)}</title>
         <link rel="stylesheet" href="${assetHref("serve.css")}">$themeBlock
-        <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>

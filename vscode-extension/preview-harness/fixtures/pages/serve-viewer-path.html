@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Profile screen — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
-        <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
@@ -46,10 +46,12 @@
       </div>
       <div class="cp-viewer-bar">
         <button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button>
-        <span class="cp-bg" role="group" aria-label="Preview zoom">
-          <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="fit" aria-pressed="true">Fit screen</button>
-          <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="width" aria-pressed="false">Fit width</button>
+        <span class="cp-theme cp-theme-bar" role="group" aria-label="Preview theme">
+          <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
         </span>
+        <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind the preview">Transparent</button>
+        <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
 
@@ -72,12 +74,12 @@
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
             <div class="cp-group-body">
-              <label>Theme
-  <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" data-fixed-theme="false" disabled>
+              <span class="cp-modes-inputs" aria-hidden="true">
+  <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" data-fixed-theme="false" tabindex="-1" disabled>
     <option value="light" selected>Day (Default)</option>
     <option value="dark">Night (Default)</option>
   </select>
-</label>
+</span>
               <label>Background
                 <select id="cp-background" disabled>
                   <option value="">(default)</option>
@@ -172,6 +174,7 @@
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
       <script src="/assets/serve/fixture/url-state.js"></script>
+      <script src="/assets/serve/fixture/bg-toggle.js"></script>
       <script src="/assets/serve/fixture/viewer-groups.js"></script>
       <script src="/assets/serve/fixture/viewer-drawers.js"></script>
       <script src="/assets/serve/fixture/viewer-history.js"></script>

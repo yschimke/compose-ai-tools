@@ -409,20 +409,15 @@ html.cp-js .cp-section-head { display: none; }
   line-height: var(--md-sys-typescale-label-medium-line); font-weight: 500; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--cp-fg-faint); }
 .cp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; }
-/* The Theme picker is an M3 *segmented button*: one connected track, `outline` keyline, per-segment
-   dividers, and the selected segment carrying the `secondary-container` tonal fill. */
-.cp-theme { display: inline-flex; flex-wrap: wrap;
-  border: 1px solid var(--md-sys-color-outline); border-radius: var(--md-sys-shape-corner-full);
-  overflow: hidden; max-width: 100%; }
-.cp-theme-btn { border: 0; background: transparent; color: var(--md-sys-color-on-surface);
-  font: inherit; font-size: var(--md-sys-typescale-label-large-size);
-  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
-  min-height: 40px; padding: 8px 16px; cursor: pointer;
-  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
-.cp-theme-btn:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
-.cp-theme-btn + .cp-theme-btn { border-left: 1px solid var(--md-sys-color-outline); }
-.cp-theme-btn[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
+/* The Theme picker carries one chip per configured theme (the baked light/dark pair plus any
+   app-declared @ThemeCatalog theme), so it wraps rather than overflowing a narrow viewport.
+   That is exactly why it is NOT an M3 segmented button: a segmented track is specified for a
+   small, fixed set of connected options, and a connected track that wraps draws one keyline
+   around two or three ragged rows. A catalog with a handful of declared themes lands there
+   immediately, so the picker is a flow row of M3 *filter chips* instead — the component M3
+   specifies for a wrapping, variable-length set — sharing .cp-state-btn's shape and the same
+   `secondary-container` selected fill the segmented track used. */
+.cp-theme { display: inline-flex; flex-wrap: wrap; gap: 8px; max-width: 100%; }
 .cp-states { display: inline-flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
 .cp-axis-label { align-self: center; margin-right: 2px; color: var(--cp-fg-faint);
   font-size: var(--md-sys-typescale-label-small-size); font-weight: 500; letter-spacing: 0.06em;
@@ -440,6 +435,29 @@ html.cp-js .cp-section-head { display: none; }
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
 .cp-state-btn[aria-current="page"] { background: var(--md-sys-color-secondary-container);
   border-color: transparent; color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
+/* …and the same filter chip for the theme chips and for the two standalone toggles that used to
+   be segmented pairs — Transparent (.cp-bg-toggle) and the viewer's Fit width (.cp-zoom-toggle).
+   One rule so everything on the viewer bar cannot drift apart. `aria-pressed` is a toggle chip's
+   selected state, exactly as `aria-current` is a navigation chip's. A disabled chip keeps M3's 38%
+   on-surface treatment rather than vanishing — a theme this lane cannot render is information. */
+.cp-theme-btn, .cp-bg-btn { display: inline-flex; align-items: center; min-height: 32px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small); background: transparent;
+  color: var(--md-sys-color-on-surface-variant); font: inherit;
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  padding: 6px 16px; cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-theme-btn:hover:not(:disabled), .cp-bg-btn:hover:not(:disabled) {
+  color: var(--md-sys-color-on-surface);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-theme-btn:disabled, .cp-bg-btn:disabled {
+  color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+  border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+  cursor: default; }
+.cp-theme-btn[aria-pressed="true"], .cp-bg-btn[aria-pressed="true"] {
+  background: var(--md-sys-color-secondary-container); border-color: transparent;
+  color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
 /* Trust badges. Their COLOURS stay literal (a verdict must read the same in every design system),
    but the shape is M3's: a fully-rounded tonal container, no keyline. */
 .cp-badge { display: inline-block; margin-left: 8px; padding: 4px 10px;
@@ -619,7 +637,7 @@ html.cp-js .cp-section-head { display: none; }
 .cp-imgwrap .cp-crop img { position: absolute; max-width: none; max-height: none; margin: 0; }
 /* Sticker backing: the preview server shows components on a solid surface by DEFAULT, so a
    transparent sticker reads like a real component instead of washing out. The header's
-   Background/Transparent toggle flips the whole page to a checkerboard (html.cp-bg-transparent)
+   Transparent toggle flips the whole page to a checkerboard (html.cp-bg-transparent)
    to inspect the raw transparent PNG; the choice persists per-visitor in localStorage['cp-bg']. */
 html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
   background: repeating-conic-gradient(var(--cp-surface-2) 0% 25%, var(--cp-surface) 0% 50%) 50% / 16px 16px; }
@@ -642,18 +660,6 @@ html:not(.cp-bg-transparent) .cp-card[data-bg-theme="dark"] .cp-imgwrap { backgr
    Solid mode only; the Transparent checkerboard still wins via cp-bg-transparent. */
 html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="dark"] .cp-stage { background: #1d1d20; }
 html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { background: #fff; }
-/* Background/Transparent — a second M3 segmented button, same track as the Theme picker. */
-.cp-bg { display: inline-flex; border: 1px solid var(--md-sys-color-outline);
-  border-radius: var(--md-sys-shape-corner-full); overflow: hidden; }
-.cp-bg-btn { border: 0; background: transparent; color: var(--md-sys-color-on-surface); font: inherit;
-  font-size: var(--md-sys-typescale-label-large-size);
-  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
-  min-height: 40px; padding: 8px 16px; cursor: pointer;
-  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
-.cp-bg-btn:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
-.cp-bg-btn + .cp-bg-btn { border-left: 1px solid var(--md-sys-color-outline); }
-.cp-bg-btn[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
 .cp-meta { padding: 12px 16px 14px; font-size: var(--md-sys-typescale-body-medium-size); }
 .cp-label { font-size: var(--md-sys-typescale-title-small-size);
   line-height: var(--md-sys-typescale-title-small-line);

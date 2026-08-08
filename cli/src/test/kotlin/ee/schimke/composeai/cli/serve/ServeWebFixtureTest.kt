@@ -2976,11 +2976,12 @@ class ServeWebFixtureTest {
   @Test
   fun `viewer defaults to fit screen and offers an explicit fit width mode`() {
     val view = ServeWeb.viewerPage(previews.first(), token)
+    // One toggle, unpressed: screen fit is the default, and "Fit width" names the state the
+    // button turns on rather than a second segment that re-selects what is already showing.
     assertTrue(
-      view.contains("aria-label=\"Preview zoom\"") &&
-        view.contains("data-zoom-mode=\"fit\" aria-pressed=\"true\">Fit screen</button>") &&
-        view.contains("data-zoom-mode=\"width\" aria-pressed=\"false\">Fit width</button>"),
-      "the viewer exposes screen and width fit modes with screen fit selected",
+      view.contains("class=\"cp-bg-btn cp-zoom-toggle\" aria-pressed=\"false\"") &&
+        view.contains(">Fit width</button>"),
+      "the viewer offers width fit as an unpressed toggle over the default screen fit",
     )
     assertTrue(
       assetText("viewer.js").contains("var maxHeight = mode === \"fit\" ? \"72vh\" : \"\";") &&

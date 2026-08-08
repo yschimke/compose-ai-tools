@@ -94,6 +94,12 @@ const STYLED_FIXTURES = new Set([
     // read as "not available here". Captured bare it is an ordinary underlined link, so the styling
     // that IS the change would move no baseline — the exact trap the entries above record.
     "serve-viewer-signin",
+    // The only viewer fixture that carries app-declared themes, and so the only one where the
+    // viewer bar's Theme chips are more than the Day/Night pair. That row IS the control now (the
+    // `#cp-theme` select behind it is visually removed), and which chips are pressed / greyed is
+    // decided by viewer.js at runtime — captured bare it is an unstyled run of buttons in which
+    // neither the pill treatment nor the enabled-state sync moves a baseline at all.
+    "serve-viewer-themes",
     // The grid's long-press live lane. Both halves of its claim are styling: the "hold for live"
     // affordance that appears under a pointer, and the canvas overlay + accent chip a streaming
     // card wears. Captured bare there is no overlay at all — the script never loads — so the whole
@@ -110,6 +116,7 @@ const STYLED_FIXTURES = new Set([
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
     ["url-state.js", "text/javascript"],
+    ["bg-toggle.js", "text/javascript"],
     ["viewer.js", "text/javascript"],
     ["viewer-groups.js", "text/javascript"],
     ["viewer-drawers.js", "text/javascript"],
@@ -755,8 +762,16 @@ test("contract · snapshot overrides stay composed with a declared theme", async
         await assertSingleRender(before, expected);
     };
 
+    // Through the viewer bar's theme chip, which is the visible control now — `#cp-theme` is still
+    // the state it writes, but a test that drives the hidden select would pass even if the chips
+    // were wired to nothing.
     await change(
-        () => page.locator("#cp-theme").selectOption(`theme:${themeProvider}`),
+        () =>
+            page
+                .locator(
+                    `.cp-theme-bar .cp-theme-btn[data-theme-choice="theme:${themeProvider}"]`,
+                )
+                .click(),
         {},
     );
     await change(() => page.locator("#cp-background").selectOption("clear"), {
