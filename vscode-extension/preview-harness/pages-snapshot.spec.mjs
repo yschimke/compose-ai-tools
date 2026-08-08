@@ -99,6 +99,12 @@ const STYLED_FIXTURES = new Set([
     // card wears. Captured bare there is no overlay at all — the script never loads — so the whole
     // feature would move no baseline.
     "serve-landing-live",
+    // The design-spec lane. meshcore-mobile is the catalog that publishes Figma-backed references,
+    // so its viewer is where the Spec chip appears — and the chip's whole claim is visual: it reads
+    // as a peer of the renderer chips, wears the amber "this is the design, not a render" accent
+    // when pressed, and swaps the stage. Captured bare, the chip is an unstyled button and the
+    // `spec-lane` state below could not even be entered (the lane needs `viewer.js`).
+    "serve-viewer-path",
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
@@ -227,6 +233,22 @@ const FIXTURE_STATES = [
                 content: "*, *::before, *::after { transition-duration: 0ms !important; }",
             });
             await page.hover(".cp-grid .cp-card");
+        },
+    },
+    {
+        // The design-spec lane with the spec actually on the stage. The committed HTML always
+        // opens on the render — the imported reference is only fetched once the chip is pressed —
+        // so this is the only way the lane's *end state* is diffed: the amber-pressed chip, the
+        // "imported design spec — not a render" hint, the ◇ badge, and the reference filling the
+        // stage where the render was. The raster comes from the harness's existing
+        // `**/reference/**` stub, so no design tool is contacted here either.
+        fixture: "serve-viewer-path",
+        suffix: "spec-lane",
+        apply: async (page) => {
+            await page.click("#cp-spec-btn");
+            await page.waitForFunction(
+                () => document.getElementById("cp-spec-img")?.hidden === false,
+            );
         },
     },
     {

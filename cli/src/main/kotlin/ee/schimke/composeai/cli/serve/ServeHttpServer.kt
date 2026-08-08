@@ -3190,6 +3190,11 @@ class ServeHttpServer(
           // design reference for it. Resolved from data the catalog already carries — nothing is
           // fetched from Figma, here or anywhere else in serve.
           figmaSpec = ServeFigmaSpec.of(renderHost.designReferencesFor(preview.id)),
+          // …and the spec itself, as a lane the viewer can put on the stage beside the players.
+          // First reference, the same precedence [ServeFigmaSpec] uses: a preview with several has
+          // one canonical spec, and the manifest's order is the producer's own. Absent for every
+          // catalog that publishes no references, which omits the lane entirely.
+          designReference = renderHost.designReferencesFor(preview.id).firstOrNull(),
           // "open in playground" — offered only when this host has the lane AND this preview
           // records a source path, so the link never lands on a page that opens the generic
           // sample and quietly ignores what was asked for.

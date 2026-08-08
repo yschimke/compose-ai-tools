@@ -383,6 +383,37 @@ per-visitor Figma OAuth flow (a second token to custody, which is exactly what t
 avoids). Figma comments also carry no image attachments, so the "paste the render" trick above has
 no equivalent there.
 
+### Putting the spec on the stage beside the players
+
+The link above sends you to Figma. The **Spec lane** keeps you here: when the catalog publishes a
+design reference for a preview, the viewer's renderer row grows a `SPEC:` group beside the
+Remote Compose player chips, so the same control strip that chooses *which player draws the code*
+also offers *what the design says*.
+
+| Before | After |
+| --- | --- |
+| ![The renderer row with no spec lane](images/serve-viewer-spec-lane-before.png) | ![…plus a SPEC group with a Figma chip](images/serve-viewer-spec-lane-chip.png) |
+
+Pressing the chip swaps the imported reference onto the stage in place of the render, flips the
+corner badge to `◇ Figma`, and labels the lane "imported design spec — not a render" — the render is
+one press away again, which is what makes flipping between the two a comparison rather than a
+navigation. `view diff →` beside the chip steps into the focused
+[Reference / Diff / Actual](#design-references-and-ui-mocks) page for that exact mapping.
+
+![The imported spec on the stage](images/serve-viewer-spec-lane-open.png)
+
+![The same lane on a dark catalog](images/serve-viewer-spec-lane-open-dark.png)
+
+The lane is bookmarkable (`?mode=spec`) and Back/Forward-able like every other lane, and while it
+owns the stage the override controls are disabled: no device size, locale or theme re-points a
+fixed imported raster, so they would be dead knobs rather than useful ones.
+
+**Still nothing is fetched from Figma.** The raster is the catalog's own canonical, inert PNG,
+served by this box from `/reference/<id>.png` — the same bytes the comparison page scores against.
+The lane is therefore provider-neutral: a reference imported from a committed PNG bundle, an HTML
+export or Stitch gets the same chip (labelled `Spec` rather than `Figma`), and a catalog that
+publishes no references gets no lane at all.
+
 ## Design references and UI mocks
 
 A bundle or published catalog can map independently-authored UI mocks to exact preview ids. The

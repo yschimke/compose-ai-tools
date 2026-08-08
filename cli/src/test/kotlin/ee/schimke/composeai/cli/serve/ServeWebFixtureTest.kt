@@ -80,17 +80,16 @@ class ServeWebFixtureTest {
   // Figma-backed design reference the catalog published, not from a hand-written URL. Mirrors a
   // real
   // meshcore-mobile design-map entry (`figma:gYzowY4cQ7rNr2gYoco1M6/73:6`).
-  private val fixtureFigmaSpec =
-    ServeFigmaSpec.of(
-      DesignReference(
-        id = "contact-chat-figma",
-        previewId = "com.example.ProfileScreenPreview",
-        label = "Contact chat",
-        raster = DesignReferenceRaster(path = "references/contact-chat-figma.png"),
-        source =
-          DesignReferenceSource(provider = "figma", uri = "figma:gYzowY4cQ7rNr2gYoco1M6/73:6"),
-      )
+  private val fixtureDesignReference =
+    DesignReference(
+      id = "contact-chat-figma",
+      previewId = "com.example.ProfileScreenPreview",
+      label = "Contact chat",
+      raster = DesignReferenceRaster(path = "references/contact-chat-figma.png"),
+      source = DesignReferenceSource(provider = "figma", uri = "figma:gYzowY4cQ7rNr2gYoco1M6/73:6"),
     )
+
+  private val fixtureFigmaSpec = ServeFigmaSpec.of(fixtureDesignReference)
 
   private fun fixtureReportIssue(previewId: String, label: String, sourceFile: String) =
     ServeIssueReport.Context(
@@ -845,8 +844,10 @@ class ServeWebFixtureTest {
         basePath = "/meshcore-mobile",
         siblings = previews,
         // meshcore-mobile is the catalog that really publishes Figma-backed references, so its
-        // golden is where the affordance is captured in context.
+        // golden is where the affordance is captured in context — both the provenance link and the
+        // Spec lane chip that puts the imported reference on the stage beside the renderers.
         figmaSpec = fixtureFigmaSpec,
+        designReference = fixtureDesignReference,
       )
     // The Wear counterpart of [viewerPath]: a screen served under a Wear system path. Its Size
     // panel must offer the watch shapes (not Pixel phones / a foldable / a tablet) and drop the
@@ -2885,8 +2886,7 @@ class ServeWebFixtureTest {
     // disables them on the wasm lane rather than leaving dead-but-enabled knobs.
     assertTrue(
       assetText("viewer.js").contains("var onWasm = wasmActive();") &&
-        assetText("viewer.js")
-          .contains("!onWasm && !onRc && (!staticSnapshot || canRenderOverrides"),
+        assetText("viewer.js").contains("!onWasm && !onRc && !onSpec &&"),
       "server-only controls are gated off while the Wasm lane is active",
     )
     assertTrue(

@@ -5149,6 +5149,21 @@ $rows
      */
     figmaSpec: FigmaSpec? = null,
     /**
+     * The design reference this preview is specified by — the imported spec design-parity published
+     * into `references/index.json` (see [ServeDesignReferenceStore]) — when the served catalog
+     * carries one for this exact preview id.
+     *
+     * Present ⇒ the viewer offers a **Spec lane** beside the renderer chips: the same chip row that
+     * chooses which Remote Compose player draws the stage also offers the imported spec, so the
+     * visitor can flip between what the code renders and what the design says without leaving the
+     * page (and step into the focused Reference/Diff/Actual comparison from the same group).
+     *
+     * The raster is the catalog's own canonical, inert PNG, served from this server's
+     * `/reference/<id>.png` — nothing is fetched from Figma, here or anywhere else in `serve`. Null
+     * (every catalog that has not adopted design-parity) omits the lane entirely.
+     */
+    designReference: DesignReference? = null,
+    /**
      * `/playground?from=…` for this preview — opens its Kotlin in the editor against the catalog it
      * came from. Null on a host with no playground lane, or for a preview whose source path the
      * catalog never recorded; the affordance is then omitted rather than offered dead.
@@ -5344,6 +5359,62 @@ $rows
           "aria-label=\"Remote Compose renderer\" data-default=\"$defaultBackend\">" +
           "<span class=\"cp-rc-backends-label\">RC:</span>$chips</span>"
       }
+    // The **Spec lane**: the imported design reference for this exact preview, offered as a peer of
+    // the renderer chips. Where the RC chips choose *which player draws the code*, this chooses to
+    // look at *what the design says* instead — the catalog's own inert PNG, served from
+    // `/reference/<id>.png` (never fetched from Figma), swapped onto the same stage. Rendered only
+    // when the catalog published a reference for this preview id, i.e. only when design-parity is
+    // configured for the system; every other catalog's viewer is byte-identical to before.
+    val specLabel = designReference?.let { it.label.takeIf { l -> l.isNotBlank() } ?: it.id }
+    val specProviderLabel =
+      when (designReference?.source?.provider?.trim()?.lowercase()) {
+        "figma" -> "Figma"
+        null -> null
+        else -> "Spec"
+      }
+    val specRasterUrl = designReference?.let {
+      "$basePath/reference/${WebEscaping.urlEncodeSegment(it.id)}.png$q"
+    }
+    // The focused Reference / Diff / Actual page for this exact mapping — the same link the
+    // comparison grid offers, so the chip's neighbour steps from "look at the spec" to "diff it".
+    val specCompareHref = designReference?.let { reference ->
+      val query =
+        listOf(
+            linkQuery(token, sessionId, basePath, isPublic),
+            "reference=${WebEscaping.urlEncodeSegment(reference.id)}",
+          )
+          .filter { it.isNotEmpty() }
+          .joinToString("&")
+      "$basePath/compare/$idSeg${querySuffix(query)}"
+    }
+    val specSelector =
+      if (specRasterUrl == null || specProviderLabel == null || specLabel == null) ""
+      else {
+        val tip = "Show the imported design spec for this preview — $specLabel"
+        "<span class=\"cp-spec-lane\" id=\"cp-spec-lane\" role=\"group\" " +
+          "aria-label=\"Design spec\" " +
+          "data-spec-src=\"${WebEscaping.htmlEscape(specRasterUrl)}\" " +
+          "data-spec-label=\"${WebEscaping.htmlEscape(specProviderLabel)}\">" +
+          "<span class=\"cp-rc-backends-label\">Spec:</span>" +
+          "<button type=\"button\" class=\"cp-live-toggle cp-spec-btn\" id=\"cp-spec-btn\" " +
+          "aria-pressed=\"false\" title=\"${WebEscaping.htmlEscape(tip)}\">" +
+          "<span class=\"cp-live-dot\" aria-hidden=\"true\"></span>" +
+          "<span>${WebEscaping.htmlEscape(specProviderLabel)}</span></button>" +
+          "<a class=\"cp-format-link cp-spec-diff\" " +
+          "href=\"${WebEscaping.htmlEscape(specCompareHref.orEmpty())}\" " +
+          "title=\"Compare this render against the spec\">view diff →</a></span>"
+      }
+    // The stage image the Spec lane paints into: a sibling of the snapshot `<img>`, left `hidden`
+    // (and src-less) until the lane is entered, so a viewer that never opens it costs no request.
+    val specImg =
+      if (specRasterUrl == null) ""
+      else
+        "<img id=\"cp-spec-img\" class=\"cp-spec-img\" hidden alt=\"" +
+          "${WebEscaping.htmlEscape("$displayName — design spec")}\">"
+    val specModeInput =
+      if (specRasterUrl == null) ""
+      else
+        "<input type=\"radio\" name=\"cp-mode\" value=\"spec\" id=\"cp-spec-toggle\" tabindex=\"-1\">"
     val isAppScreen = isScreenPreview(preview)
     // A Wear catalog's screens are watch faces/tiles/activities — offering Pixel phones, a foldable
     // and a tablet there is nonsense (and renders a watch-shaped composable onto a 1280dp stage).
@@ -5699,7 +5770,7 @@ $rows
     val switchers =
       listOf(stateSwitcher, variantSwitcher).filter { it.isNotBlank() }.joinToString("\n")
     val primaryControls =
-      listOf(liveToggleHtml, wasmToggleBtn, rcBackendSelector, svgFmtToggle, svgMatch)
+      listOf(liveToggleHtml, wasmToggleBtn, rcBackendSelector, specSelector, svgFmtToggle, svgMatch)
         .filter { it.isNotBlank() }
         .joinToString("\n")
     // Both or neither: a timeline the visitor cannot click through to an old render is worse than
@@ -5735,6 +5806,7 @@ $rows
           wasmModeInput,
           rcModeInput,
           rcWasmModeInput,
+          specModeInput,
         )
         .filter { it.isNotBlank() }
         .joinToString("\n")
@@ -5764,7 +5836,7 @@ $rows
       $historyInlineHtml
       <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
         $navDrawer
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>

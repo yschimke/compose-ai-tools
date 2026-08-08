@@ -545,6 +545,15 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-rc-backends-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em;
   text-transform: uppercase; color: var(--cp-fg-faint); }
 .cp-rc-backend { padding: 5px 11px; }
+/* The design-spec lane, offered beside the renderer chips when the catalog publishes an imported
+   reference for this preview. Same segmented-group shape as the RC selector — it is picked the
+   same way — with the "view diff →" step into the focused comparison as its trailing link. */
+.cp-spec-lane { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cp-spec-btn { padding: 5px 11px; }
+/* Amber rather than the renderers' green: what is on the stage is the design's claim, not this
+   server's output, and the accent is the standing reminder of that while the lane is open. */
+.cp-spec-btn[aria-pressed="true"] .cp-live-dot { background: #c07800;
+  box-shadow: 0 0 0 3px rgba(192, 120, 0, 0.2); }
 .cp-mode-hint { font-size: 0.72rem; color: var(--cp-fg-muted); }
 /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
    It swaps the static snapshot between the raster PNG and the resolution-independent vector

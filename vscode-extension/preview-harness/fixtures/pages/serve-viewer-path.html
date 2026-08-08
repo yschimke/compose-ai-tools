@@ -36,10 +36,12 @@
             <span class="cp-live-dot" aria-hidden="true"></span>
             <span id="cp-live-toggle-label">Live preview</span>
           </button>
+<span class="cp-spec-lane" id="cp-spec-lane" role="group" aria-label="Design spec" data-spec-src="/meshcore-mobile/reference/contact-chat-figma.png?token=demo-token-fixture" data-spec-label="Figma"><span class="cp-rc-backends-label">Spec:</span><button type="button" class="cp-live-toggle cp-spec-btn" id="cp-spec-btn" aria-pressed="false" title="Show the imported design spec for this preview — Contact chat"><span class="cp-live-dot" aria-hidden="true"></span><span>Figma</span></button><a class="cp-format-link cp-spec-diff" href="/meshcore-mobile/compare/com.example.ProfileScreenPreview?token=demo-token-fixture&amp;reference=contact-chat-figma" title="Compare this render against the spec">view diff →</a></span>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
 <input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
+<input type="radio" name="cp-mode" value="spec" id="cp-spec-toggle" tabindex="-1">
         </span>
       </div>
       <div class="cp-viewer-bar">
@@ -65,7 +67,7 @@
         </ul>
         <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>
       </aside>
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas><img id="cp-spec-img" class="cp-spec-img" hidden alt="Profile screen — design spec"><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
