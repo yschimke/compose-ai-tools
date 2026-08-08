@@ -1548,7 +1548,7 @@
     "functionName": "Brand Dark theme",
     "module": "samples:android",
     "renderBasename": "themecatalog__Brand_Dark.png",
-    "sha256": "80a6d1eb67bc9e75d64eb24d3abe6a8f46d7f39244dbd145d49fa8c11ee6f640",
+    "sha256": "5c15d936de49132d18608f1ed78ee87500312952763e2e50745c9da092240f8b",
     "sourceFile": null
   },
   "samples:android/themecatalog__Brand_Light": {
@@ -1556,7 +1556,7 @@
     "functionName": "Brand Light theme",
     "module": "samples:android",
     "renderBasename": "themecatalog__Brand_Light.png",
-    "sha256": "dab701f6b61079c6d08cc2b4609ffd9d062b710f55b3ba948499ca7d6cc81251",
+    "sha256": "ed2a449f75feb6044946049e8ed6954e3dcd9ce5f662838fb8298fafb6778f17",
     "sourceFile": null
   },
   "samples:android/typographycatalog__Body": {
@@ -3044,7 +3044,7 @@
     "functionName": "Google Sans Flex theme",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "wearthemecatalog__Google_Sans_Flex.png",
-    "sha256": "ee941f4e63f2d982dae61714e1054e591d891cfb136d336ccbb81d24a59284d6",
+    "sha256": "4a3b9e82ee6b9634705848622d9f375b8ea591cc060708cbf5ecfdae4633b26a",
     "sourceFile": null
   },
   "samples:design-catalog-remote-m3/wearthemecatalog__Roboto_Flex": {
@@ -3052,7 +3052,7 @@
     "functionName": "Roboto Flex theme",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "wearthemecatalog__Roboto_Flex.png",
-    "sha256": "ee941f4e63f2d982dae61714e1054e591d891cfb136d336ccbb81d24a59284d6",
+    "sha256": "4a3b9e82ee6b9634705848622d9f375b8ea591cc060708cbf5ecfdae4633b26a",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/colorcatalog__Wear_palette": {
@@ -3500,7 +3500,7 @@
     "functionName": "Coral theme",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "wearthemecatalog__Coral.png",
-    "sha256": "abf7a62a61b6819a029798c88752ea734a58bf3865bba69726099a41b4fc073e",
+    "sha256": "ab67b5aaca4deb80565f7e1ca7b249a41f01498fbbd9a5b29f000214c3804caa",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/wearthemecatalog__Google_Sans_Flex": {
@@ -3508,7 +3508,7 @@
     "functionName": "Google Sans Flex theme",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "wearthemecatalog__Google_Sans_Flex.png",
-    "sha256": "ee941f4e63f2d982dae61714e1054e591d891cfb136d336ccbb81d24a59284d6",
+    "sha256": "d3444a1e45a41781b582018027f8b678a71579a735754a11aae3effd1eed213e",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/wearthemecatalog__KotlinConf": {
@@ -3516,7 +3516,7 @@
     "functionName": "KotlinConf theme",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "wearthemecatalog__KotlinConf.png",
-    "sha256": "f17cddbf320693e3c1b76b04d91d3f3a14780ab9d67b3c2d1b6403d845002abf",
+    "sha256": "a842d91ee06a86f226436d8d6f39aad392df51eea972f933c3591d886eed0288",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/wearthemecatalog__M3": {
@@ -3524,7 +3524,7 @@
     "functionName": "M3 theme",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "wearthemecatalog__M3.png",
-    "sha256": "ee941f4e63f2d982dae61714e1054e591d891cfb136d336ccbb81d24a59284d6",
+    "sha256": "4a3b9e82ee6b9634705848622d9f375b8ea591cc060708cbf5ecfdae4633b26a",
     "sourceFile": null
   },
   "samples:design-catalog-wear-m3/wearthemecatalog__Teal": {
@@ -3532,7 +3532,7 @@
     "functionName": "Teal theme",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "wearthemecatalog__Teal.png",
-    "sha256": "0ea67fc9bda172672d0d35cdb5aed240ca31a469c8c38b54e529573176931bc6",
+    "sha256": "0dd9f1f7fdd2c4cc11ff114eb23450065ba9b34a98dd7945bff822594b767424",
     "sourceFile": null
   },
   "samples:desktop-daemon-bench/com.example.desktopdaemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel": {
