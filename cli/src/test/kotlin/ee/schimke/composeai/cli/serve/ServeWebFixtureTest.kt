@@ -6,9 +6,10 @@ import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import java.awt.Color
-import java.awt.Font
 import java.awt.GradientPaint
 import java.awt.RenderingHints
+import java.awt.geom.Ellipse2D
+import java.awt.geom.RoundRectangle2D
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
@@ -4442,6 +4443,13 @@ class ServeWebFixtureTest {
    * endpoint (which has no backend in CI). Gives every preview tile a realistic size so the
    * captured layout doesn't collapse on broken images. Deterministic so it never churns the visual
    * diff.
+   *
+   * Deliberately **font-free**: it used to draw the word "preview" with `Font("SansSerif", …)`,
+   * which resolves to whatever font files the host JDK/OS maps that logical family to, so the
+   * committed PNG was a function of the machine that last regenerated it and churned the diff for
+   * anyone else. The label is now a geometric stand-in for a rendered screen — the same shapes
+   * [renderPlaceholderSvg] uses for its vector counterpart — making the bytes a pure function of
+   * this code.
    */
   private fun writePlaceholderPng(file: File) {
     val w = 200
@@ -4452,11 +4460,19 @@ class ServeWebFixtureTest {
     g.paint =
       GradientPaint(0f, 0f, Color(0xCF, 0xD8, 0xFF), 0f, h.toFloat(), Color(0x9A, 0xA7, 0xE6))
     g.fillRect(0, 0, w, h)
-    g.color = Color(0x33, 0x33, 0x3A)
-    g.font = Font("SansSerif", Font.BOLD, 18)
-    val label = "preview"
-    val fm = g.fontMetrics
-    g.drawString(label, (w - fm.stringWidth(label)) / 2, h / 2)
+    // App bar, title line, hero card, two list rows, FAB — mirrors the SVG placeholder's layout,
+    // scaled to this tile's 200×420 (the SVG is 200×400).
+    g.color = Color(0x67, 0x50, 0xA4)
+    g.fill(RoundRectangle2D.Float(18f, 26f, 164f, 28f, 28f, 28f))
+    g.color = Color(0x79, 0x74, 0x7E)
+    g.fill(RoundRectangle2D.Float(18f, 76f, 112f, 14f, 14f, 14f))
+    g.color = Color(0xE8, 0xDE, 0xF8)
+    g.fill(RoundRectangle2D.Float(18f, 104f, 164f, 90f, 32f, 32f))
+    g.color = Color(0xFF, 0xFF, 0xFF)
+    g.fill(RoundRectangle2D.Float(18f, 212f, 164f, 60f, 32f, 32f))
+    g.fill(RoundRectangle2D.Float(18f, 292f, 164f, 60f, 32f, 32f))
+    g.color = Color(0x67, 0x50, 0xA4)
+    g.fill(Ellipse2D.Float(88f, 374f, 24f, 24f))
     g.dispose()
     ImageIO.write(img, "png", file)
   }
