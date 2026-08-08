@@ -447,6 +447,13 @@ fun main(args: Array<String>) {
             maxScrollPx = scrollMaxScrollPx,
             frameIntervalMs = scrollFrameIntervalMs,
             fontScale = fontScale,
+            // END writes an ordinary primary PNG, so it has to honour the same `@Preview` framing
+            // the fall-through path below applies. It only reaches that path when it DECLINES, so
+            // a successful drive previously produced a capture with none of it — a night preview
+            // rendered light, a phone without its system bars, a round device unclipped.
+            uiMode = uiMode,
+            showSystemUi = showSystemUi,
+            device = device,
           )
         if (!didCapture) {
           if (isDataProductOutput(targetFile)) {
@@ -1101,7 +1108,7 @@ internal fun renderPreview(
   }
 }
 
-private fun applyRoundClip(source: java.awt.image.BufferedImage): java.awt.image.BufferedImage {
+internal fun applyRoundClip(source: java.awt.image.BufferedImage): java.awt.image.BufferedImage {
   val output =
     java.awt.image.BufferedImage(
       source.width,
@@ -1122,7 +1129,7 @@ private fun applyRoundClip(source: java.awt.image.BufferedImage): java.awt.image
   return output
 }
 
-private fun isRoundPreviewDevice(device: String?): Boolean {
+internal fun isRoundPreviewDevice(device: String?): Boolean {
   val lower = device?.lowercase() ?: return false
   return lower.contains("_round") || lower.contains("isround=true") || lower.contains("shape=round")
 }
@@ -1140,7 +1147,7 @@ private val overridesSidecarJson =
  * sidecar so a preview that stopped declaring knobs doesn't keep an old one. The `overrides.json`
  * suffix is kept in lockstep with `PreviewBundleFormat.BUNDLE_OVERRIDES_SIDECAR_EXT`.
  */
-private fun writePreviewOverridesSidecar(outputFile: File, fileSystem: FileSystem) {
+internal fun writePreviewOverridesSidecar(outputFile: File, fileSystem: FileSystem) {
   val declarations = ee.schimke.composeai.overrides.PreviewOverrideController.declarations()
   val parent = outputFile.parentFile ?: return
   val sidecar = File(parent, "${outputFile.nameWithoutExtension}.overrides.json").path.toPath()

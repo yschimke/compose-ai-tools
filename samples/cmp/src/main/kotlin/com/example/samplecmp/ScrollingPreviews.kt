@@ -1,6 +1,7 @@
 package com.example.samplecmp
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -9,6 +10,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -90,6 +93,57 @@ fun ScrollingListPreview() {
         ) {
           Text(text = "Row $index", style = MaterialTheme.typography.titleMedium)
           Text(text = "Item content for row $index", style = MaterialTheme.typography.bodyMedium)
+        }
+      }
+    }
+  }
+}
+
+/**
+ * The night/light pair for a DRIVEN END capture — the surface that regressed when END stopped
+ * inheriting the framing an ordinary render gets.
+ *
+ * [ScrollToEndPreview] above cannot see that class of bug: it renders under the default
+ * `MaterialTheme`, which is light whatever `LocalSystemTheme` says, so its `_end` capture looks the
+ * same whether `uiMode` was honoured or dropped entirely. This one resolves its scheme from
+ * `isSystemInDarkTheme()`, so the two captures differ if and only if the night bit reached the
+ * driven composition — and the visual-diff bot then reports any future regression as moved pixels
+ * rather than as nothing at all.
+ *
+ * `showBackground = true` is load-bearing too: on a night preview the resolved ground is dark, so a
+ * capture that fell back to white shows up here as a white surround rather than a subtle shift.
+ */
+@Preview(
+  name = "Scroll To End Night",
+  widthDp = 240,
+  heightDp = 240,
+  showBackground = true,
+  uiMode = 32,
+)
+@Preview(name = "Scroll To End Day", widthDp = 240, heightDp = 240, showBackground = true)
+@ScrollingPreview(modes = [ScrollMode.END])
+@Composable
+fun ScrollToEndThemedPreview() {
+  val scheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
+  MaterialTheme(colorScheme = scheme) {
+    Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.background) {
+      LazyColumn(modifier = Modifier.fillMaxWidth()) {
+        items((1..30).toList()) { index ->
+          Text(
+            text = "Row $index",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+          )
+        }
+        item {
+          Text(
+            text = "That's everything",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onPrimary,
+            modifier =
+              Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary).padding(16.dp),
+          )
         }
       }
     }
