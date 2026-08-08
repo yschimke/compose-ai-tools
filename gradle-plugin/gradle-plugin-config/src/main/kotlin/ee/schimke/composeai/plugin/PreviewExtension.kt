@@ -358,13 +358,44 @@ constructor(private val extensionName: String, objects: ObjectFactory) : Named {
   val checks: ListProperty<String> =
     objects.listProperty(String::class.java).convention(emptyList())
 
-  // No `failOnErrors` / `failOnWarnings` / `annotateScreenshots` here on purpose. They existed
-  // while a11y ran as a *gate* inside the render task; that model is gone (a11y is daemon-only
-  // now, a data producer rather than a build gate — see docs/DATA_PRODUCTS.md). The properties
-  // outlived the gate and were read by nothing, so a consumer setting `failOnErrors = true` got a
-  // silently green build and believed findings were blocking. Removed rather than reimplemented:
-  // if build-failing checks come back, they should be wired to the daemon's producer surface and
-  // named for what they actually gate.
+  // `failOnErrors` / `failOnWarnings` / `annotateScreenshots` below are **no-ops**, kept only to
+  // honour the binary-stability contract in docs/CONFIG_ONLY_PLUGIN.md § "The binary-stability
+  // contract": this artifact can land on the buildscript classpath at two versions at once (the
+  // one the consumer pinned, and the one the CLI-injected runtime plugin drags in), Gradle
+  // conflict-resolves to a single copy, so deleting a documented DSL property breaks the *other*
+  // version's build script with an unresolved reference — for a consumer who did nothing wrong,
+  // and in a way that stops them rendering at all.
+  //
+  // They existed while a11y ran as a gate inside the render task. That model is gone: a11y is
+  // daemon-only, a data producer rather than a build gate (docs/DATA_PRODUCTS.md), and nothing has
+  // read these since. Deprecating rather than deleting also fixes the actual harm — the old KDoc
+  // promised behaviour that never ran, so `failOnErrors = true` bought a silently green build.
+  // A deprecation warning is visible; a silent no-op is not.
+  //
+  // Remove on the next deliberate binary break of `compose-preview-config`. If build-failing
+  // checks return, wire them to the daemon's producer surface and name them for what they gate.
+
+  @Deprecated(
+    "No-op since a11y became a daemon-side data product rather than a build gate; it never " +
+      "fails the build. Remove it from your composePreview { } block.",
+    level = DeprecationLevel.WARNING,
+  )
+  val failOnErrors: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+
+  @Deprecated(
+    "No-op since a11y became a daemon-side data product rather than a build gate; it never " +
+      "fails the build. Remove it from your composePreview { } block.",
+    level = DeprecationLevel.WARNING,
+  )
+  val failOnWarnings: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+
+  @Deprecated(
+    "No-op. Annotated screenshots are produced by the daemon's a11y data product, not by this " +
+      "flag. Remove it from your composePreview { } block.",
+    level = DeprecationLevel.WARNING,
+  )
+  val annotateScreenshots: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(true)
 }
 
 abstract class ComposeAiTracePreviewExtension
