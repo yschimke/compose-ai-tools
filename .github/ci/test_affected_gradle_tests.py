@@ -56,7 +56,21 @@ class ModuleUnitTestsGateTest(unittest.TestCase):
 
     def test_ci_gates_module_unit_tests_on_a_non_none_task_list(self):
         ci = (HERE.parents[1] / ".github" / "workflows" / "ci.yml").read_text()
-        self.assertIn("needs.changes.outputs.module_test_tasks != 'none'", ci)
+        self.assertIn("needs.module-test-scope.outputs.tasks != 'none'", ci)
+
+    def test_module_unit_tests_consumes_the_resolved_task_list(self):
+        """The gate and the task list must come from the same job.
+
+        `Resolve affected Gradle tests` lives in its own job so it stops blocking the ~11
+        jobs that never read it. That split is only safe while the `if:` gate above and
+        the `TEST_TASKS` the job actually runs both read `module-test-scope` — if one is
+        left pointing at a stale producer, the job passes its gate and then invokes a task
+        list it never resolved.
+        """
+        ci = (HERE.parents[1] / ".github" / "workflows" / "ci.yml").read_text()
+        self.assertIn("TEST_TASKS: ${{ needs.module-test-scope.outputs.tasks }}", ci)
+        self.assertIn("needs: [changes, module-test-scope]", ci)
+        self.assertNotIn("module_test_tasks", ci)
 
 
 if __name__ == "__main__":

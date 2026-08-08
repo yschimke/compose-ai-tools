@@ -54,10 +54,19 @@ permissions:
   contents: read
 
 concurrency:
-  # One in-flight e2e per commit; manual dispatches get their own slot
-  # via run_id.
-  group: vscode-extension-e2e-${{ github.sha }}-${{ github.run_id }}
-  cancel-in-progress: false
+  # One in-flight e2e per ref, NOT per run. The group used to include
+  # `github.run_id`, which is unique per run — so the group was unique per run
+  # and nothing was ever deduplicated. At a high merge rate that stacked
+  # several full five-shard runs on `main` at once (four concurrently, aged
+  # 80+ min, observed 2026-08-08), each holding five runner slots to verify a
+  # commit already superseded by the time a runner freed up. Keying on the ref
+  # lets a newer commit cancel the run it replaces.
+  #
+  # `workflow_dispatch` keeps a per-run slot and stays uncancellable: a manual
+  # one-off (reproducing a regression on a branch) is deliberate work that
+  # ordinary push/PR traffic on the same ref must not kill.
+  group: vscode-extension-e2e-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   e2e:
