@@ -67,8 +67,14 @@ class DesktopRendererReentrancyTest {
 
     val firstMs = timingsNanos.first() / 1_000_000
     val laterMs = timingsNanos.drop(1).map { it / 1_000_000 }
+    // Deliberately NOT called a JVM/Skiko-boot saving. This JVM is already up, and the companion's
+    // `SKIKO_LOADED` probe has touched `FontMgr` before the first timer starts, so `firstMs` is
+    // in-process Compose warm-up only — it understates a real cold start. The number that bounds
+    // the win is `laterMs` against the *whole* `javaexec` a capture costs today (2.15 s/preview
+    // measured end-to-end by m3-catalog), not against `firstMs`.
     System.err.println(
-      "renderer reentrancy: $RENDER_COUNT renders in one JVM — first ${firstMs}ms, " +
+      "renderer reentrancy: $RENDER_COUNT renders in one JVM — first ${firstMs}ms " +
+        "(in-process warm-up only; JVM + Skiko boot already paid before the timer), " +
         "subsequent ${laterMs.joinToString("/")}ms (mean ${laterMs.average().toInt()}ms). " +
         "Each of these is a whole `javaexec` today."
     )
@@ -96,6 +102,65 @@ class DesktopRendererReentrancyTest {
   }
 
   /**
+   * The other half of worker safety, and the one repetition alone cannot see: a render must not
+   * inherit state from whatever the process drew *before* it.
+   *
+   * `@OverrideVariant` seeds are the sharp edge. `main()` applies a seed only when
+   * `composeai.overrides.seed` is set, and `clearDeclarations()` deliberately keeps seeds alive
+   * across compositions — so before this gate, a seeded variant followed by an ordinary preview
+   * left the ordinary preview rendering with the variant's knobs. A fresh JVM per capture hid it; a
+   * pooled worker would not.
+   */
+  @Test
+  fun aRenderDoesNotInheritTheSeedOfThePreviousOne() {
+    val outDir = tempFolder.newFolder("override-renders")
+
+    // Baseline: the fixture with nothing seeded, drawn before any seed exists in this process.
+    val baseline = File(outDir, "baseline.png").also { renderOnce(it, overrideFixture = true) }
+
+    // A seeded render, which must look different — otherwise the probe proves nothing.
+    val seeded =
+      File(outDir, "seeded.png").also {
+        withSeed(SEED_JSON) { renderOnce(it, overrideFixture = true) }
+      }
+
+    // The same unseeded render again, now *after* a seeded one. This is the contamination case.
+    val afterSeeded =
+      File(outDir, "after-seeded.png").also { renderOnce(it, overrideFixture = true) }
+
+    val baselinePixels = decode(baseline.readBytes())
+    val seededPixels = decode(seeded.readBytes())
+    val afterPixels = decode(afterSeeded.readBytes())
+
+    val seedTook =
+      baselinePixels.argb.indices.count { baselinePixels.argb[it] != seededPixels.argb[it] }
+    assertTrue(
+      "the seed changed nothing, so this test cannot detect a leak — fixture or seed is wrong",
+      seedTook > 0,
+    )
+
+    val leaked =
+      baselinePixels.argb.indices.count { baselinePixels.argb[it] != afterPixels.argb[it] }
+    assertEquals(
+      "an unseeded render inherited the previous render's @OverrideVariant seed " +
+        "($leaked of ${baselinePixels.argb.size} pixels differ from the clean baseline) — a " +
+        "pooled renderer worker would render previews with knobs belonging to whichever variant " +
+        "it happened to draw before them",
+      0,
+      leaked,
+    )
+  }
+
+  private fun <T> withSeed(seedJson: String, block: () -> T): T {
+    System.setProperty(SEED_PROPERTY, seedJson)
+    return try {
+      block()
+    } finally {
+      System.clearProperty(SEED_PROPERTY)
+    }
+  }
+
+  /**
    * One capture through the real entry point, with the same argument shape
    * `RenderPreviewsTask.invokeRenderer` passes. Calling [main] rather than a private helper is the
    * point: a worker would call exactly this, so anything the gate misses the worker would inherit.
@@ -103,11 +168,11 @@ class DesktopRendererReentrancyTest {
    * Safe to call in-process because every `exitProcess` in [main] is on the argument-validation
    * prologue — a *render* failure writes an `.error.json` sidecar and returns normally.
    */
-  private fun renderOnce(target: File) {
+  private fun renderOnce(target: File, overrideFixture: Boolean = false) {
     main(
       arrayOf(
-        FIXTURE_CLASS,
-        FIXTURE_FUNCTION,
+        if (overrideFixture) OVERRIDE_FIXTURE_CLASS else FIXTURE_CLASS,
+        if (overrideFixture) OVERRIDE_FIXTURE_FUNCTION else FIXTURE_FUNCTION,
         WIDTH.toString(),
         HEIGHT.toString(),
         DENSITY.toString(),
@@ -137,6 +202,14 @@ class DesktopRendererReentrancyTest {
     const val HEIGHT = 200
     const val DENSITY = 2.0f
     const val RENDER_COUNT = 8
+
+    const val OVERRIDE_FIXTURE_CLASS = "ee.schimke.composeai.renderer.OverrideLeakTestFixturesKt"
+    const val OVERRIDE_FIXTURE_FUNCTION = "OverrideLeakSticker"
+    const val SEED_PROPERTY = "composeai.overrides.seed"
+
+    /** Seeds [LEAK_KNOB_KEY] to a colour far from the fixture's default green. */
+    const val SEED_JSON =
+      """{"name":"leak","seeds":[{"key":"$LEAK_KNOB_KEY","kind":"COLOR","raw":"#FFB71C1C"}]}"""
 
     var skikoLoadFailure: String? = null
 

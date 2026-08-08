@@ -223,6 +223,15 @@ fun main(args: Array<String>) {
   // not derail the render. Set once here (each subprocess renders one preview);
   // `clearDeclarations()`
   // below leaves seeds intact so the `.overrides.json` declaration drain still works.
+  // Drop any seed a PREVIOUS render left behind before applying this one. In the
+  // one-process-per-capture world this is a no-op (the JVM is fresh every time), which is why the
+  // note above could say "set once here". A pooled renderer worker breaks that assumption: a
+  // seeded `@OverrideVariant` followed by an ordinary preview would leave the variant's values in
+  // the controller — `clearDeclarations()` deliberately keeps seeds — and the ordinary preview
+  // would silently render with someone else's knobs. Resetting per render makes each capture
+  // independent of what the process drew before it, which is exactly what lets the caller stop
+  // paying for a JVM per capture.
+  ee.schimke.composeai.overrides.PreviewOverrideController.resetForNewSession()
   System.getProperty("composeai.overrides.seed")
     ?.takeIf { it.isNotBlank() }
     ?.let { seedJson ->
