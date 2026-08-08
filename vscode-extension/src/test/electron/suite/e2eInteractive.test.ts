@@ -4,6 +4,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { ComposePreviewTestApi } from "../../../extension";
 import { RealGradleApi } from "../realGradleApi";
+import { assertRefreshRendered } from "./refreshOutcome";
 
 /**
  * Exploratory scenario driver targeting the failure modes reported as
@@ -91,7 +92,7 @@ const describeE2E = E2E ? describe : describe.skip;
  * Without it the disk assertions can't hold on CI hardware. `triggerRefresh`
  * runs the production `composePreviewRenderAll`, which renders the *whole*
  * module, and `gradleService` caps every Gradle task at `TASK_TIMEOUT_MS`
- * (5 minutes) — `:samples:android` alone carries 160+ `@Preview`s behind
+ * — `:samples:android` alone carries 160+ `@Preview`s behind
  * Robolectric, so a cold full-module render is killed at the cap long before
  * it reaches `TypographyGallery.kt`. The extension then behaves exactly as
  * designed (`renderWithDiskFallback` paints the on-disk manifest and records
@@ -312,7 +313,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
 
         // --- Cmp cold ---
         const cmpStart = Date.now();
-        await api.triggerRefresh(cmpFile, true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(cmpFile, true, "full"),
+            ":samples:cmp render",
+        );
         const cmpFirst = await waitFor(
             "first cmp setPreviews",
             this.timeout(),
@@ -360,7 +365,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         // --- Switch to android ---
         api.resetMessages();
         const androidStart = Date.now();
-        await api.triggerRefresh(androidFile, true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(androidFile, true, "full"),
+            ":samples:android render",
+        );
         const androidFirst = await waitFor(
             "first android setPreviews",
             this.timeout(),
@@ -440,7 +449,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         // --- Switch back to cmp ---
         api.resetMessages();
         const cmpReStart = Date.now();
-        await api.triggerRefresh(cmpFile, true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(cmpFile, true, "full"),
+            ":samples:cmp render",
+        );
         const cmpSecond = await waitFor(
             "second cmp setPreviews",
             this.timeout(),
@@ -482,7 +495,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         const observations: Record<string, unknown> = {};
         const cmpNeedle = path.join("samples", "cmp");
 
-        await api.triggerRefresh(cmpFile, true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(cmpFile, true, "full"),
+            ":samples:cmp render",
+        );
         const baseline = await waitFor(
             "cmp baseline setPreviews",
             this.timeout(),
@@ -515,7 +532,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         let editPhaseError: Error | null = null;
         try {
             api.resetMessages();
-            await api.triggerRefresh(cmpFile, true, "full");
+            assertRefreshRendered(
+                api,
+                await api.triggerRefresh(cmpFile, true, "full"),
+                ":samples:cmp render",
+            );
             const afterAdd = await waitFor(
                 `setPreviews after adding ${tag}`,
                 this.timeout(),
@@ -570,7 +591,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         if (editPhaseError) throw editPhaseError;
 
         api.resetMessages();
-        await api.triggerRefresh(cmpFile, true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(cmpFile, true, "full"),
+            ":samples:cmp render",
+        );
         const afterRevert = await waitFor(
             `setPreviews after reverting ${tag}`,
             this.timeout(),
@@ -667,7 +692,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         const racing = api.triggerRefresh(cmpFile, true, "full");
         // Give the cmp refresh enough wall time to enter Gradle.
         await new Promise((r) => setTimeout(r, 250));
-        await api.triggerRefresh(androidFile, true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(androidFile, true, "full"),
+            ":samples:android render",
+        );
         await racing.catch(() => {
             /* cancellation expected */
         });
@@ -735,7 +764,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         const NEW = /\.RedBoxPreviewRenamed_/;
 
         // --- Baseline: the pre-rename manifest must contain RedBoxPreview ---
-        await api.triggerRefresh(cmpFile, true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(cmpFile, true, "full"),
+            ":samples:cmp render",
+        );
         const baseline = await waitFor(
             "cmp baseline setPreviews (with RedBoxPreview)",
             this.timeout(),
@@ -780,7 +813,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         let renamePhaseError: Error | null = null;
         try {
             api.resetMessages();
-            await api.triggerRefresh(cmpFile, true, "full");
+            assertRefreshRendered(
+                api,
+                await api.triggerRefresh(cmpFile, true, "full"),
+                ":samples:cmp render",
+            );
             const afterRename = await waitFor(
                 "setPreviews after rename (new id present, old id gone)",
                 this.timeout(),
@@ -861,7 +898,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
             // module round-trip must not resurrect RedBoxPreview from a stale
             // `previewModuleIndex` entry.
             api.resetMessages();
-            await api.triggerRefresh(cmpFile, true, "full");
+            assertRefreshRendered(
+                api,
+                await api.triggerRefresh(cmpFile, true, "full"),
+                ":samples:cmp render",
+            );
             const reRefreshed = await waitFor(
                 "second post-rename cmp setPreviews",
                 this.timeout(),
@@ -890,7 +931,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
 
         // --- Revert: the original RedBoxPreview must come back, renamed gone ---
         api.resetMessages();
-        await api.triggerRefresh(cmpFile, true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(cmpFile, true, "full"),
+            ":samples:cmp render",
+        );
         const afterRevert = await waitFor(
             "setPreviews after reverting the rename",
             this.timeout(),
@@ -952,7 +997,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         // from a loaded panel for the assertion to mean anything. The caller
         // path (`triggerRefresh(cmpFile, …)`) scopes by argument, not by a
         // visible editor, so the warm stays deterministic without reopening one.
-        await api.triggerRefresh(cmpFile, true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(cmpFile, true, "full"),
+            ":samples:cmp render",
+        );
         const loaded = await waitFor(
             "cmp setPreviews before dropping scope",
             this.timeout(),
@@ -1022,7 +1071,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
 
         // Restore a real scope so a later test in the suite doesn't inherit
         // the empty state.
-        await api.triggerRefresh(cmpFile, true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(cmpFile, true, "full"),
+            ":samples:cmp render",
+        );
     });
 
     it("G. compile error surfaces a banner without wiping cards; fix clears it", async function () {
@@ -1031,7 +1084,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         const cmpNeedle = path.join("samples", "cmp");
 
         // --- Baseline: a clean render so there are cards to keep ---
-        await api.triggerRefresh(cmpFile, true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(cmpFile, true, "full"),
+            ":samples:cmp render",
+        );
         const baseline = await waitFor(
             "cmp baseline setPreviews before injecting the error",
             this.timeout(),
@@ -1108,7 +1165,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
 
         // --- Fix: the banner clears and a clean manifest returns ---
         api.resetMessages();
-        await api.triggerRefresh(cmpFile, true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(cmpFile, true, "full"),
+            ":samples:cmp render",
+        );
         const recovered = await waitFor(
             "clean cmp setPreviews after fixing the error",
             this.timeout(),

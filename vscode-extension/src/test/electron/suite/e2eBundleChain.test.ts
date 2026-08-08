@@ -4,6 +4,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { ComposePreviewTestApi } from "../../../extension";
 import { RealGradleApi } from "../realGradleApi";
+import { assertRefreshRendered } from "./refreshOutcome";
 
 /**
  * Electron-driven e2e for the bundle chip ↔ tab ↔ overlay chain
@@ -190,7 +191,11 @@ describeE2E("Compose Preview bundle chip↔tab↔overlay e2e (wear)", function (
         // the first visible card, which is the previewId the chip's
         // outbound subscribe targets.
         api.resetMessages();
-        await api.triggerRefresh(wearKotlinFile, /* force */ true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(wearKotlinFile, /* force */ true, "full"),
+            "samples/wear render",
+        );
         const setPreviews = await waitFor(
             "non-empty setPreviews for samples/wear",
             this.timeout(),

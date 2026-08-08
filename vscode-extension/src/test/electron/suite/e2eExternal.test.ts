@@ -5,6 +5,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { ComposePreviewTestApi } from "../../../extension";
 import { RealGradleApi } from "../realGradleApi";
+import { assertRefreshRendered } from "./refreshOutcome";
 
 /**
  * External-consumer end-to-end test. Drives the VS Code extension against a
@@ -342,7 +343,11 @@ describeExternal(
             );
 
             const tRefresh = phaseStart();
-            await api.triggerRefresh(kotlinFile, /* force */ true, "full");
+            assertRefreshRendered(
+                api,
+                await api.triggerRefresh(kotlinFile, /* force */ true, "full"),
+                "external consumer render",
+            );
 
             const previewsMessage = await waitFor(
                 "non-empty setPreviews from external composePreviewRenderAll",

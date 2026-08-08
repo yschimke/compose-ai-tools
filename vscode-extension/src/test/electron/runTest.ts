@@ -2,6 +2,24 @@ import * as path from "path";
 import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 
 /**
+ * Per-Gradle-task ceiling handed to the extension host for e2e runs, via
+ * `COMPOSE_PREVIEW_GRADLE_TASK_TIMEOUT_MS` (see `gradleService.ts`).
+ *
+ * The production default is 5 minutes, tuned for an interactive user who
+ * wants a wedged build abandoned quickly. E2E is a different workload: a
+ * cold hosted runner compiles the `includeBuild` plugin and the sample
+ * module before rendering anything, which routinely takes longer than that
+ * — and when it does, the cap cancels the render and the suite fails with
+ * no useful signal. Ten minutes clears the observed cold cost with room to
+ * spare while staying well inside every suite's Mocha timeout and the
+ * workflow's 60-minute per-shard cap, which remain the wedge backstops.
+ *
+ * Set `COMPOSE_PREVIEW_GRADLE_TASK_TIMEOUT_MS` in the environment to
+ * override (e.g. to reproduce the production cap locally).
+ */
+const E2E_GRADLE_TASK_TIMEOUT_MS = 10 * 60_000;
+
+/**
  * Entry point for `npm run test:electron`.
  *
  * Downloads a stable VS Code if needed, installs the test-only fake
@@ -132,6 +150,16 @@ async function main(): Promise<void> {
             ELECTRON_RUN_AS_NODE: undefined,
             COMPOSE_PREVIEW_TEST_MODE: "1",
             ...(e2eMode ? { COMPOSE_PREVIEW_E2E: "1" } : {}),
+            // Both e2e modes drive real cold Gradle builds, so both need the
+            // longer per-task ceiling. The fast suite keeps the production
+            // default — its Gradle API is a stub and never blocks.
+            ...(e2eMode || e2eExternal
+                ? {
+                      COMPOSE_PREVIEW_GRADLE_TASK_TIMEOUT_MS:
+                          process.env.COMPOSE_PREVIEW_GRADLE_TASK_TIMEOUT_MS ??
+                          String(E2E_GRADLE_TASK_TIMEOUT_MS),
+                  }
+                : {}),
             ...(process.env.COMPOSE_PREVIEW_E2E_FILES
                 ? {
                       COMPOSE_PREVIEW_E2E_FILES:

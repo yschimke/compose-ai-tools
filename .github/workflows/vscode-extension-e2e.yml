@@ -95,6 +95,17 @@ jobs:
             grep: ''
     # Per-shard ceiling. The complete suite is deliberately split because
     # its serial worst case exceeds an hour; each shard remains bounded.
+    #
+    # This is also the real backstop against a wedged Gradle build. The
+    # extension's own per-task cap (`TASK_TIMEOUT_MS`) is raised to 10
+    # minutes for e2e by `test/electron/runTest.ts`, because a cold hosted
+    # runner compiles the `includeBuild` plugin plus the sample module
+    # before rendering and routinely runs past the 5-minute interactive
+    # default — which killed every shard mid-render on 2026-08-08. Raising
+    # the cap further (`COMPOSE_PREVIEW_GRADLE_TASK_TIMEOUT_MS`) means
+    # raising this too: the cached-preload suite derives a ~48m worst case
+    # from the cap, and a job that dies here never reaches the suite's
+    # attributable failure.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

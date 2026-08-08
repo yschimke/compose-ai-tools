@@ -4,6 +4,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { ComposePreviewTestApi } from "../../../extension";
 import { RealGradleApi } from "../realGradleApi";
+import { assertRefreshRendered } from "./refreshOutcome";
 
 /**
  * End-to-end test. Drives the extension against a real Gradle build of
@@ -158,7 +159,11 @@ describeE2E("Compose Preview e2e (real Gradle)", function () {
 
     it("renders previews for samples/cmp through the real Gradle plugin", async () => {
         api.resetMessages();
-        await api.triggerRefresh(kotlinFile, /* force */ true, "full");
+        assertRefreshRendered(
+            api,
+            await api.triggerRefresh(kotlinFile, /* force */ true, "full"),
+            "cold :samples:cmp render",
+        );
 
         // The panel may emit several setPreviews on its way through the
         // refresh flow; the last one is the one carrying the rendered

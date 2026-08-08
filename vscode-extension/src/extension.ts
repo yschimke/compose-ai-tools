@@ -597,12 +597,23 @@ function showClassVersionRemediation(err: ClassVersionError): void {
 export interface ComposePreviewTestApi {
     /** Replace the GradleService with one wired to the supplied stub API. */
     injectGradleApi(api: GradleApi): void;
-    /** Drive {@link refresh} synchronously from a test. */
+    /**
+     * Drive {@link refresh} synchronously from a test, resolving with the
+     * outcome it reported.
+     *
+     * The outcome matters to the e2e suites: `refresh` swallows a Gradle
+     * failure (it belongs on the panel, not in a rejected promise), so a
+     * test that only polls `getPostedMessages()` for `setPreviews` cannot
+     * tell "still rendering" from "the render died ten minutes ago" and
+     * burns its whole Mocha budget before failing with a bare timeout. Tests
+     * that expect pixels should assert on `'failed'` immediately — see
+     * `assertRefreshRendered` in `test/electron/suite/refreshOutcome.ts`.
+     */
     triggerRefresh(
         filePath: string,
         force?: boolean,
         tier?: "fast" | "full",
-    ): Promise<void>;
+    ): Promise<RefreshOutcome>;
     /**
      * Drive the production save path for a file — the same `startEditJourney`
      * + `refreshQueue.dispatchSave(..., { allowImmediate: true })` the
@@ -2525,8 +2536,8 @@ export async function activate(
                 filePath: string,
                 force = false,
                 tier: "fast" | "full" = "full",
-            ): Promise<void> {
-                return refresh(force, filePath, tier).then(() => {});
+            ): Promise<RefreshOutcome> {
+                return refresh(force, filePath, tier);
             },
             triggerSave(filePath: string): void {
                 // Mirror the onDidSaveTextDocument handler so tests measure
@@ -4608,7 +4619,7 @@ function sourceLooksLikePreviewDeclaration(
  *   over the previous (now stale) cards; the next save with a clean buffer
  *   will run a real refresh.
  */
-type RefreshOutcome =
+export type RefreshOutcome =
     "completed" | "cancelled" | "no-module" | "failed" | "gated";
 
 /**

@@ -4,6 +4,8 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { ComposePreviewTestApi } from "../../../extension";
 import { RealGradleApi } from "../realGradleApi";
+import { TASK_TIMEOUT_MS } from "../../../gradleService";
+import { assertRefreshRendered } from "./refreshOutcome";
 
 /**
  * End-to-end coverage for the "switching modules shows cached PNGs
@@ -98,13 +100,18 @@ function firstNonEmptySetPreviews(
  * Wall-clock ceiling for one whole prime attempt — the awaited Gradle
  * render *and* the subsequent wait for its `setPreviews`, together (see
  * `primeModule`). A render runs through `gradleService`, which caps each
- * Gradle task at 5 minutes (`TASK_TIMEOUT_MS`) and fires `cancelRunTask`
- * on expiry; budget just past that cap so a render completing near it
- * still posts its `setPreviews`, while a wedged one is abandoned shortly
- * after the cap kills it. Because this bounds the *entire* attempt (not
- * just the wait), `SUITE_TIMEOUT_MS` below can be derived from it directly.
+ * Gradle task at `TASK_TIMEOUT_MS` and fires `cancelRunTask` on expiry;
+ * budget just past that cap so a render completing near it still posts its
+ * `setPreviews`, while a wedged one is abandoned shortly after the cap
+ * kills it. Because this bounds the *entire* attempt (not just the wait),
+ * `SUITE_TIMEOUT_MS` below can be derived from it directly.
+ *
+ * Derived from the cap rather than hardcoded so the two can't drift: the
+ * e2e harness raises `TASK_TIMEOUT_MS` above the interactive default (see
+ * `runTest.ts`), and a budget stuck at the old value would abandon a
+ * healthy-but-slow cold render before the cap ever fired.
  */
-const PRIME_ATTEMPT_BUDGET_MS = 6 * 60_000;
+const PRIME_ATTEMPT_BUDGET_MS = TASK_TIMEOUT_MS + 60_000;
 /** Prime attempts per module (one retry on a freed build lock). */
 const PRIME_MAX_ATTEMPTS = 2;
 /** Modules primed by the before-hook: `:samples:cmp` + `:samples:wear`. */
@@ -120,8 +127,10 @@ const PRIME_OVERHEAD_MS = 4 * 60_000;
  * the worst case — every attempt for both modules exhausting its budget —
  * and `primeModule` reaches its attributable `throw lastErr` instead of
  * degrading into a bare Mocha "hook timeout" with no Gradle context. With
- * the values above this is 28 minutes, comfortably under the workflow's
- * 60m job cap.
+ * the e2e task cap of 10 minutes this is 48 minutes, still under the
+ * workflow's 60m job cap; raising the cap further via
+ * `COMPOSE_PREVIEW_GRADLE_TASK_TIMEOUT_MS` needs that job cap raised to
+ * match, or the job dies before the suite reaches its diagnostic throw.
  */
 const SUITE_TIMEOUT_MS =
     PRIME_MODULE_COUNT * PRIME_MAX_ATTEMPTS * PRIME_ATTEMPT_BUDGET_MS +
@@ -133,7 +142,7 @@ const SUITE_TIMEOUT_MS =
  * to preload.
  *
  * Bounded + retried on purpose. `triggerRefresh` *awaits* the Gradle
- * render (gradleService caps it at the 5-minute `TASK_TIMEOUT_MS` and, via
+ * render (gradleService caps it at `TASK_TIMEOUT_MS` and, via
  * `RealGradleApi`, kills the gradlew client + releases its build lock on
  * expiry); on a render that times out without producing a manifest the
  * refresh resolves *without* posting `setPreviews`. So the render's
@@ -145,7 +154,7 @@ const SUITE_TIMEOUT_MS =
  * `PRIME_ATTEMPT_BUDGET_MS` deadline, then retry once on the freed lock
  * (the retry's refresh cancels any render still in flight from the
  * abandoned attempt). A healthy render always completes inside the
- * 5-minute task cap and posts `setPreviews` before the refresh resolves,
+ * task cap and posts `setPreviews` before the refresh resolves,
  * so the budget never truncates a healthy-but-slow cold render. On failure
  * we dump the Compose Preview output channel — the underlying render
  * rejection is otherwise swallowed by the refresh scheduler, leaving only
@@ -181,7 +190,11 @@ async function primeModule(
             );
         });
         const work = (async () => {
-            await api.triggerRefresh(file, /* force */ true, "full");
+            assertRefreshRendered(
+                api,
+                await api.triggerRefresh(file, /* force */ true, "full"),
+                `${label} prime`,
+            );
             await waitFor(
                 `non-empty setPreviews for ${label} prime`,
                 PRIME_ATTEMPT_BUDGET_MS,
