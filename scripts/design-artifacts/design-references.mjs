@@ -345,8 +345,17 @@ export function planDesignReferences({ designMap, spec, catalog }) {
           provider: providerFor(entry.source),
           attributes: { code: entry.code, preview: fn, componentId },
         },
-        // How the driver is to obtain the pixels. Not part of the served manifest.
-        origin: { source: entry.source, ref: entry.ref, previewId: entry.previewId },
+        // How the driver is to obtain the pixels, plus what it needs to describe them. Not part of
+        // the served manifest. `density` is the design-map author's statement of the reference
+        // board's scale (source px per dp); it is what lets the annotation layer quote the design's
+        // spacing and type in the same dp/sp the render resolved instead of the board's own pixels
+        // (design-parity#279). Absent when the entry doesn't declare it, and never guessed.
+        origin: {
+          source: entry.source,
+          ref: entry.ref,
+          previewId: entry.previewId,
+          density: entry.density,
+        },
       };
       if (entry.ref) record.source.uri = entry.ref;
       records.push(record);

@@ -604,6 +604,22 @@ a catalog must never lose its render to a reference lane. Pass `--strict` to gat
 A repo with no `design-map.json` is a clean no-op, so the step runs unconditionally for every
 catalog.
 
+The same step also writes the **reference side of the annotation layers** — the numbered spec boxes
+the compare page draws over each column. Two things decide whether those numbers can be read against
+the render's:
+
+- **`density` on the design-map entry** — the reference board's scale, in source pixels per dp. A
+  Figma file reports its own pixels and nothing in it says what they are pixels *of*, so only the
+  map's author knows. Declared, the reference column is quoted in the same `dp`/`sp` the render
+  resolved (`text 17.5sp` for a 3× board's 52.5px), with the factor and the source unit recorded in
+  the annotation's `detail` so the original number stays recoverable. Undeclared, the column names
+  the board's own unit (`text 52.5px`) rather than guessing — a wrong factor silently rescales every
+  spec, which is worse than an honest `px`. Omit it unless you know it.
+- **`≈` in a label** — the spacing was measured off the frame's child geometry, not declared. Only an
+  auto-layout frame carries Figma's `padding` / `itemSpacing`, so a hand-placed mock would otherwise
+  publish a type layer and no layout layer at all. The measurement fills that gap; the mark keeps it
+  from reading as a number the design file actually asserts.
+
 The lane only appears once a catalog actually publishes references — before the producer existed
 every catalog served the format controls on the left:
 

@@ -45,6 +45,13 @@ test("preserves non-geometry fields so labels and roles survive", () => {
   assert.equal(scaled.root.children[0].label, "Send");
 });
 
+test("keeps the tree's density, which describes tokens rather than boxes", () => {
+  // Only bounds are relocated into the raster; the specs the annotations quote stay in the
+  // design's own pixels, so the factor that converts them must survive unchanged.
+  const scaled = scaleTree({ ...tree, density: 3 }, 400);
+  assert.equal(scaled.density, 3);
+});
+
 test("returns undefined when there is no frame to scale against", () => {
   // Nothing to anchor a ratio to; annotating with an assumed scale would be worse than not at all.
   assert.equal(scaleTree(undefined, 400), undefined);
