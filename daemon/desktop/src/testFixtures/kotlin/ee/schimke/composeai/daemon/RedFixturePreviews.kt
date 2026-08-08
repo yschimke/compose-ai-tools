@@ -1174,3 +1174,21 @@ fun DateRangePickerLongScrollPreview() {
     }
   }
 }
+
+/**
+ * [DarkAwareSquare]'s scrollable sibling: rows that read `isSystemInDarkTheme()`, white under light
+ * and black under dark, with enough of them to make the daemon's LONG stitcher take several
+ * viewports.
+ *
+ * Exists because the daemon's scroll dispatch is a SECOND call into `renderScrollPreview`, separate
+ * from the standalone renderer's. A dark-aware fixture that does not scroll cannot reach it, and
+ * every scrolling fixture here pins its own `lightColorScheme()` — so nothing in the suite could
+ * observe a scroll data product being rendered in the wrong theme.
+ */
+@Composable
+fun DarkAwareLongScrollPreview() {
+  val bg = if (androidx.compose.foundation.isSystemInDarkTheme()) Color.Black else Color.White
+  androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxSize().background(bg)) {
+    items(60) { Box(modifier = Modifier.fillMaxWidth().height(60.dp).background(bg)) }
+  }
+}

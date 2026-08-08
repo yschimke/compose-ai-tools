@@ -1217,6 +1217,13 @@ class RenderEngine(
         maxScrollPx = scroll.maxScrollPx,
         frameIntervalMs = scroll.frameIntervalMs,
         fontScale = spec.fontScale ?: 1.0f,
+        // The night flip and the resolved background apply to every scroll mode, LONG and GIF
+        // included — a stitched strip or a scroll GIF of a dark preview is as wrong in light
+        // colours as a still is. This is the daemon's own dispatch, so leaving the argument
+        // defaulted would have fixed the standalone renderer and left every daemon-served scroll
+        // data product rendering light on white.
+        // 0x20 == Configuration.UI_MODE_NIGHT_YES — the only bit the renderer inspects.
+        uiMode = if (spec.uiMode == RenderSpec.SpecUiMode.DARK) 0x20 else 0,
         classLoader = classLoader,
       )
     if (!handled) {
