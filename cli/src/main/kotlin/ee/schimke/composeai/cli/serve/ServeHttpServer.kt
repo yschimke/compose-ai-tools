@@ -3212,6 +3212,11 @@ class ServeHttpServer(
           // carries a captured `.rc` document to replay (the browser fetches it from
           // `/render/<id>.rc`).
           hasRemoteComposeDoc = renderHost.hasRemoteComposeDoc(preview.id),
+          // Per-preview: a server render replays the captured document instead of recomposing, so
+          // the viewer greys the controls [droppedOverridesFor] would answer with a 409. Same host
+          // question that predicate asks, deliberately read here rather than derived from
+          // `hasRemoteComposeDoc` on the client — the two must not drift apart.
+          irReplay = droppedOverridesAreTerminal(renderHost, preview.id),
           // Per-preview: the Remote Compose backend selector's enabled lanes. The host advertises
           // its server/client lanes; the opt-in CMP/Wasm distribution contributes the browser
           // lane when this preview has an RC document. Empty for a non-RC preview ⇒ no selector.
