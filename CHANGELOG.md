@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.19.50](https://github.com/yschimke/compose-ai-tools/compare/v0.19.49...v0.19.50) (2026-08-08)
+
+
+### Features
+
+* **daemon-desktop:** honour @ScrollingPreview(END) in the served render ([#3517](https://github.com/yschimke/compose-ai-tools/issues/3517)) ([5e80c40](https://github.com/yschimke/compose-ai-tools/commit/5e80c406678d8628a0d5bdca521a89ff6b709216))
+* **design-catalog-remote-m3:** declare Roboto Flex and Google Sans Flex typeface themes ([#3516](https://github.com/yschimke/compose-ai-tools/issues/3516)) ([9817e3d](https://github.com/yschimke/compose-ai-tools/commit/9817e3dbad05fc00926ab6777fb6a945356e966d))
+* **preview-annotations:** let @OverrideVariant sit on an annotation class ([#3523](https://github.com/yschimke/compose-ai-tools/issues/3523)) ([a41e0af](https://github.com/yschimke/compose-ai-tools/commit/a41e0af3a0706018b6a53e302d9b1eaac03e267b))
+* **serve:** offer diff, triptych and slider on the viewer's spec lane ([#3521](https://github.com/yschimke/compose-ai-tools/issues/3521)) ([8400c6d](https://github.com/yschimke/compose-ai-tools/commit/8400c6d08849d1e7d45b113a8344752bd476b294))
+
+
+### Bug Fixes
+
+* **daemon:** deliver printable key events where nothing can type them, and type astral characters ([#3519](https://github.com/yschimke/compose-ai-tools/issues/3519)) ([5a2b72c](https://github.com/yschimke/compose-ai-tools/commit/5a2b72cc95d90e93ef2d14947b842835bc89c311))
+* **design-catalog-wear-m3:** make theme catalogs change the typeface, not just the palette ([#3515](https://github.com/yschimke/compose-ai-tools/issues/3515)) ([e52f4f3](https://github.com/yschimke/compose-ai-tools/commit/e52f4f3c8ee365ef960cc1ede549e680223a6f7e))
+* **renderer-desktop:** drive long scrolls on geometry, not the axis range ([#3520](https://github.com/yschimke/compose-ai-tools/issues/3520)) ([8da4dd1](https://github.com/yschimke/compose-ai-tools/commit/8da4dd14bd07fccd7c863c4b06c2ed07aed298f9))
+* **serve:** make typing and mouse selection work on the live preview lanes ([#3504](https://github.com/yschimke/compose-ai-tools/issues/3504)) ([93d3a11](https://github.com/yschimke/compose-ai-tools/commit/93d3a1138adcf64a814ba074198ed6f739e4351c))
+* **vscode:** let the panel type into text fields and select with the mouse ([#3524](https://github.com/yschimke/compose-ai-tools/issues/3524)) ([66af0c1](https://github.com/yschimke/compose-ai-tools/commit/66af0c1193726d565ea1a022952ceb9a6ed297f5))
+
+
+### Performance Improvements
+
+* **serve:** pool the cmp-jvm render workers instead of a JVM per document ([#3514](https://github.com/yschimke/compose-ai-tools/issues/3514)) ([b727a21](https://github.com/yschimke/compose-ai-tools/commit/b727a21f4e66c202849ee99d3073f0d3b344274d))
+
 ## [0.19.49](https://github.com/yschimke/compose-ai-tools/compare/v0.19.48...v0.19.49) (2026-08-08)
 
 
