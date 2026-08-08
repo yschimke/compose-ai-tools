@@ -978,6 +978,7 @@ class ServeHttpServer(
         token,
         isPublic,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+        version = BUNDLE_VERSION,
       ),
       ContentType.Text.Html,
       HttpStatusCode.NotFound,
@@ -997,6 +998,7 @@ class ServeHttpServer(
         ttlSeconds = store.ttlSeconds,
         urlUploadAllowed = store.urlFetchAllowed,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+        version = BUNDLE_VERSION,
       ),
       ContentType.Text.Html,
     )
@@ -1105,6 +1107,7 @@ class ServeHttpServer(
         seed = seed,
         preselectCatalog = call.request.queryParameters["catalog"],
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+        version = BUNDLE_VERSION,
       ),
       ContentType.Text.Html,
     )
@@ -1138,6 +1141,7 @@ class ServeHttpServer(
         token = token,
         isPublic = isPublic,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+        version = BUNDLE_VERSION,
       ),
       ContentType.Text.Html,
       HttpStatusCode.ServiceUnavailable,
@@ -1305,6 +1309,7 @@ class ServeHttpServer(
         token = token,
         isPublic = isPublic,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+        version = BUNDLE_VERSION,
       ),
       ContentType.Text.Html,
     )
@@ -1655,6 +1660,7 @@ class ServeHttpServer(
           rcCompare = rcCompare,
           referencesFor = renderHost::designReferencesFor,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
         ),
         ContentType.Text.Html,
@@ -1725,6 +1731,7 @@ class ServeHttpServer(
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           hasReferenceFor = hasReference,
         ),
@@ -1807,6 +1814,7 @@ class ServeHttpServer(
           // must not drop back to the built-in chrome mid-journey.
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           referenceAnnotations = renderHost.annotationsForReference(reference.id),
           actualAnnotations = renderHost.annotationsForPreview(previewId),
@@ -2179,6 +2187,7 @@ class ServeHttpServer(
           data.toView(),
           token,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          version = BUNDLE_VERSION,
         ),
         ContentType.Text.Html,
       )
@@ -3184,6 +3193,7 @@ class ServeHttpServer(
           degradations = renderHost.degradations,
           engagement = engagement,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = imageUrl),
+          version = BUNDLE_VERSION,
           sourceHref = sourceHref,
           reportIssue = reportIssue,
           // The Figma node this preview is specified by, when the catalog publishes a Figma-backed
@@ -3969,6 +3979,7 @@ class ServeHttpServer(
           token,
           isPublic,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          version = BUNDLE_VERSION,
         ),
         ContentType.Text.Html,
         HttpStatusCode.Forbidden,

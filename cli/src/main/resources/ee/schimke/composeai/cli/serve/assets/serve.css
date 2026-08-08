@@ -252,7 +252,9 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 /* M3 *filled* card: a container-role fill with no outline and no shadow. The border this used to
    carry is what made every panel on the page read as a box; M3 separates panels from the page by
    tone instead, which is why the surface-container ladder exists. */
-.cp-about { margin: 0 0 34px; padding: 16px 20px; border: 0;
+/* The about disclosure closes the page: it sits under the content it explains and above the site
+   footer, so its separation is above it, not below. */
+.cp-about { margin: 34px 0 0; padding: 16px 20px; border: 0;
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface-container-low); max-width: 720px; }
 .cp-about-title { font-size: var(--md-sys-typescale-title-small-size);
