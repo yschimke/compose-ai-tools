@@ -285,6 +285,14 @@ internal object AndroidPreviewSupport {
    * Read eagerly: every caller runs from the Android registration's `afterEvaluate`, so the
    * consumer's build script has already declared its dependencies and applied its plugins. The
    * identity check makes the answer independent of whether our injections have happened yet.
+   *
+   * The compiler-plugin shortcut below is a *positive* signal only, and it is sound in the one
+   * direction it is used: a module that applies the Compose compiler plugin is compiling
+   * `@Composable` code, which cannot compile without a Compose runtime on its graph — so it has
+   * Compose of its own even when the coordinate arrives transitively and the walk below would miss
+   * it. It does not misfire on a tile-only consumer that merely *declares* the plugin: `hasPlugin`
+   * is per-project, so a root-level `alias(...) apply false` (WearTilesKotlin's shape) is false
+   * here, which is what the end-to-end tiles leg exercises.
    */
   internal fun consumerBringsOwnCompose(project: Project, configuration: Configuration?): Boolean {
     if (COMPOSE_COMPILER_PLUGIN_IDS.any(project.plugins::hasPlugin)) return true
@@ -420,9 +428,11 @@ internal object AndroidPreviewSupport {
    * modules (`-desktop` / `-jvmstubs` siblings of the same coordinate) to their `-android` sibling.
    * Kotlin's `org.jetbrains.kotlin.platform.type` attribute (`androidJvm` vs `jvm`) is the official
    * disambiguator, but its compatibility/disambiguation rules are only registered when the Kotlin
-   * plugin is applied — consumers that build Kotlin via AGP alone (e.g. WearTilesKotlin: tile-only
-   * app, only `kotlin.compose` applied through `compose-compiler`, no `kotlin.android` anywhere)
-   * never pick `androidJvm` and Gradle then selects the desktop variant. The desktop
+   * plugin is applied — a consumer that builds Kotlin via AGP alone never picks `androidJvm` and
+   * Gradle then selects the desktop variant. (WearTilesKotlin was that shape when this rule was
+   * written; upstream has since moved its app module to `kotlin.android`, so it no longer is. The
+   * rule stays: it is scoped to coordinates that publish `-android` siblings and is a no-op once
+   * the attribute resolves correctly, and AGP-only consumers still exist.) The desktop
    * `ViewModelProvider` is the KMP rewrite (only `<init>(ViewModelProviderImpl)` survives — the
    * legacy `(ViewModelStoreOwner, Factory)` constructor is gone), while
    * `lifecycle-viewmodel-savedstate-android:2.8.7`'s `getSavedStateHandlesVM` bytecode at line 107
@@ -1373,10 +1383,17 @@ internal object AndroidPreviewSupport {
       //    `R.txt` has no such id; [RENDERER_COMPOSE_CMP_RUNTIME_VERSION]'s
       //    has it.) So a Compose-less consumer gets the CMP runtime version,
       //    keeping its resources and our classes on the same line.
+      //
+      // Resolved once and reused for the `foundation` pin below AND for both
+      // `recordInjectedDependency` entries: `composePreviewDoctor` exists to
+      // explain this exact compatibility scenario, so reporting the floor while
+      // injecting the CMP runtime version would misreport precisely where the
+      // report is load-bearing.
+      val mainComposeVersion = mainVariantComposeVersion(project, variantName)
       addPluginDependency(
         project,
         "${variantName}Implementation",
-        "androidx.compose.ui:ui:${mainVariantComposeVersion(project, variantName)}",
+        "androidx.compose.ui:ui:$mainComposeVersion",
       )
       // Pin `androidx.compose.foundation:foundation` on the main variant for
       // the same reason as compose-ui above — but for class-loading rather
@@ -1396,7 +1413,7 @@ internal object AndroidPreviewSupport {
       addPluginDependency(
         project,
         "${variantName}Implementation",
-        "androidx.compose.foundation:foundation:${mainVariantComposeVersion(project, variantName)}",
+        "androidx.compose.foundation:foundation:$mainComposeVersion",
       )
       recordInjectedDependency(
         project,
@@ -1446,20 +1463,20 @@ internal object AndroidPreviewSupport {
       recordInjectedDependency(
         project,
         injectedDependencies,
-        coordinate = "androidx.compose.ui:ui:$RENDERER_COMPOSE_FLOOR_VERSION",
+        coordinate = "androidx.compose.ui:ui:$mainComposeVersion",
         configuration = "${variantName}Implementation",
         outcome = "APPLIED",
         reason =
-          "compose-ui's AndroidComposeViewAccessibilityDelegateCompat.<clinit> reads androidx.compose.ui.R.id.*; merged test APK needs the compose-ui R class on tile-only consumers without compose-ui in main",
+          "compose-ui's AndroidComposeViewAccessibilityDelegateCompat.<clinit> reads androidx.compose.ui.R.id.*; merged test APK needs the compose-ui R class on tile-only consumers without compose-ui in main. Versioned by whichever Compose actually runs: the renderer's compile floor when the consumer brings its own Compose, the CMP runtime version when ours is the only Compose on the render classpath",
       )
       recordInjectedDependency(
         project,
         injectedDependencies,
-        coordinate = "androidx.compose.foundation:foundation:$RENDERER_COMPOSE_FLOOR_VERSION",
+        coordinate = "androidx.compose.foundation:foundation:$mainComposeVersion",
         configuration = "${variantName}Implementation",
         outcome = "APPLIED",
         reason =
-          "TilePreviewRenderer.TilePreviewComposable calls Modifier.fillMaxSize() from androidx.compose.foundation.layout.SizeKt; tile-only consumers without compose-foundation in main hit NoClassDefFoundError at render time",
+          "TilePreviewRenderer.TilePreviewComposable calls Modifier.fillMaxSize() from androidx.compose.foundation.layout.SizeKt; tile-only consumers without compose-foundation in main hit NoClassDefFoundError at render time. Versioned with compose-ui above — foundation and ui have to stay on one line",
       )
     } else {
       recordInjectedDependency(
