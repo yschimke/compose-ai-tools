@@ -4,12 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.ColorScheme
@@ -28,7 +30,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import java.util.Locale
 
@@ -464,12 +468,14 @@ private fun WearThemeSpecimen(previewId: String, themeName: String, loader: Clas
         types.map { (label, style) -> CatalogTokenSidecar.ResolvedToken.Type(label, style) },
     )
   }
-  Box(Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(16.dp)) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-      for ((label, color) in roles) CatalogSwatchRow(label = label, color = color)
-      for ((label, style) in types) CatalogTypeRow(label = label, style = style)
+  CatalogSpecimenSheet(
+    buildList {
+      add(sectionCell("Colour"))
+      roles.forEach { (label, color) -> add(swatchCell(label, color)) }
+      add(sectionCell("Type"))
+      types.forEach { (label, style) -> add(typeCell(label, style)) }
     }
-  }
+  )
 }
 
 /**
@@ -530,13 +536,16 @@ private fun ThemeSpecimen(previewId: String, themeName: String) {
         shapeRoles.map { (label, shape) -> CatalogTokenSidecar.ResolvedToken.ShapeToken(label, shape) },
     )
   }
-  Box(Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(16.dp)) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-      for ((label, color) in roles) CatalogSwatchRow(label = label, color = color)
-      for ((label, style) in types) CatalogTypeRow(label = label, style = style)
-      for ((label, shape) in shapeRoles) CatalogShapeRow(label = label, shape = shape)
+  CatalogSpecimenSheet(
+    buildList {
+      add(sectionCell("Colour"))
+      roles.forEach { (label, color) -> add(swatchCell(label, color)) }
+      add(sectionCell("Type"))
+      types.forEach { (label, style) -> add(typeCell(label, style)) }
+      add(sectionCell("Shape"))
+      shapeRoles.forEach { (label, shape) -> add(shapeCell(label, shape)) }
     }
-  }
+  )
 }
 
 /** A resolved catalog row — a colour swatch, a type specimen, or a shape — ready to lay out. */
@@ -719,12 +728,137 @@ private fun CatalogShapeRow(label: String, shape: Shape) {
 /** Sample text for type specimens — the canonical pangram, so ascenders/descenders/kerning show. */
 private const val CATALOG_TYPE_SAMPLE = "The quick brown fox"
 
+/**
+ * One row of a specimen sheet, carrying the height [CatalogSpecimenSheet] packs it by.
+ *
+ * The height is an *estimate*, not a measurement — the sheet has to decide column breaks before it
+ * can measure, and a row's real height only settles once its text has laid out. Estimating high is
+ * the safe direction: it starts a new column early and leaves slack at the bottom, where being
+ * wrong the other way would clip, which is the bug this whole type exists to remove.
+ */
+private class SpecimenCell(
+  val height: Dp,
+  /** True for a section heading, which must never be the last row in a column. */
+  val keepWithNext: Boolean = false,
+  val content: @Composable () -> Unit,
+)
+
+/**
+ * Lays specimen rows out in **as many columns as the canvas needs**, left to right.
+ *
+ * A single `Column` is what these sheets used to be, and it silently truncated: the canvas is fixed,
+ * so every row past the bottom edge was simply not drawn. That cost the Wear sheet all six of its
+ * type rows (21 colour swatches alone overflow a 768dp content box) and the mobile sheet four of its
+ * five shape rows — in both cases the *last* section, which is the one a reader is least likely to
+ * notice is missing. Neither sheet reported anything; the PNG just ended.
+ *
+ * Packing is greedy and order-preserving, so a sheet still reads colours → type → shapes, top to
+ * bottom then left to right. Columns share the width evenly via `weight`, which keeps the swatch
+ * labels and hex codes on one line at the canvas sizes discovery assigns these sheets.
+ */
+@Composable
+private fun CatalogSpecimenSheet(cells: List<SpecimenCell>) {
+  BoxWithConstraints(
+    Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(CATALOG_SHEET_PADDING)
+  ) {
+    val available = maxHeight
+    val columns = mutableListOf<List<SpecimenCell>>()
+    var current = mutableListOf<SpecimenCell>()
+    var used = 0.dp
+    for ((index, cell) in cells.withIndex()) {
+      // A heading reserves room for the row it introduces too, so a column never ends on a heading
+      // whose section starts in the next one.
+      val needed = if (cell.keepWithNext) cell.height + (cells.getOrNull(index + 1)?.height ?: 0.dp)
+      else cell.height
+      if (current.isNotEmpty() && used + needed > available) {
+        columns += current
+        current = mutableListOf()
+        used = 0.dp
+      }
+      current += cell
+      used += cell.height
+    }
+    if (current.isNotEmpty()) columns += current
+    Row(horizontalArrangement = Arrangement.spacedBy(CATALOG_COLUMN_GAP)) {
+      for (column in columns) {
+        Column(
+          modifier = Modifier.weight(1f),
+          verticalArrangement = Arrangement.spacedBy(CATALOG_ROW_GAP),
+        ) {
+          for (cell in column) cell.content()
+        }
+      }
+    }
+  }
+}
+
+/** A section heading, so a multi-column sheet still says which scale each block belongs to. */
+@Composable
+private fun CatalogSectionHeader(label: String) {
+  BasicText(text = label.uppercase(Locale.ROOT), style = CATALOG_SECTION_STYLE)
+}
+
+/** Cell for a colour role. Fixed geometry: the 40dp swatch plus its row padding and the row gap. */
+private fun swatchCell(label: String, color: Color) =
+  SpecimenCell(CATALOG_SWATCH_ROW_HEIGHT) { CatalogSwatchRow(label = label, color = color) }
+
+/** Cell for a shape token — same fixed geometry as a swatch row. */
+private fun shapeCell(label: String, shape: Shape) =
+  SpecimenCell(CATALOG_SWATCH_ROW_HEIGHT) { CatalogShapeRow(label = label, shape = shape) }
+
+/**
+ * Cell for a type role. Height scales with the style's own size, because a `displaySmall` sample is
+ * several times the height of a `labelSmall` one and packing by a single average would either waste
+ * a column or overflow it.
+ */
+private fun typeCell(label: String, style: TextStyle) =
+  SpecimenCell(catalogTypeRowHeight(style)) { CatalogTypeRow(label = label, style = style) }
+
+private fun sectionCell(label: String) =
+  SpecimenCell(CATALOG_SECTION_HEIGHT, keepWithNext = true) { CatalogSectionHeader(label) }
+
+/**
+ * Estimated height of a [CatalogTypeRow]: the caption, the sample, and the row's padding plus the
+ * sheet's row gap. The `1.5x` on font size covers the default line height plus the descender slack
+ * a specimen line needs; an unspecified size falls back to a body-ish 16sp.
+ *
+ * A display-sized sample **wraps** in a column — the pangram at 36sp does not fit ~300dp — so
+ * anything above [CATALOG_TYPE_WRAP_SP] is budgeted at two lines. Guessing high is deliberate: the
+ * cost is slack at the bottom of a column, where guessing low is the clipped row this layout exists
+ * to prevent.
+ */
+private fun catalogTypeRowHeight(style: TextStyle): Dp {
+  val fontSize = style.fontSize
+  val size = if (fontSize.isSpecified && fontSize.value > 0f) fontSize.value else 16f
+  val lines = if (size > CATALOG_TYPE_WRAP_SP) 2 else 1
+  return (CATALOG_TYPE_CAPTION_DP +
+      size * 1.5f * lines +
+      CATALOG_ROW_PADDING_DP +
+      CATALOG_ROW_GAP_DP)
+    .dp
+}
+
+/** Sheet padding, column gap and row gap — shared by the layout and by the height estimates. */
+private val CATALOG_SHEET_PADDING: Dp = 16.dp
+private val CATALOG_COLUMN_GAP: Dp = 20.dp
+private const val CATALOG_ROW_GAP_DP: Float = 4f
+private val CATALOG_ROW_GAP: Dp = CATALOG_ROW_GAP_DP.dp
+/** `CatalogSwatchRow` / `CatalogShapeRow`: a 40dp box, 2dp padding either side, plus the row gap. */
+private val CATALOG_SWATCH_ROW_HEIGHT: Dp = (40f + 4f + CATALOG_ROW_GAP_DP).dp
+private const val CATALOG_ROW_PADDING_DP: Float = 4f
+private const val CATALOG_TYPE_CAPTION_DP: Float = 16f
+/** Above this sample size the pangram wraps to a second line in a sheet column. */
+private const val CATALOG_TYPE_WRAP_SP: Float = 24f
+private val CATALOG_SECTION_HEIGHT: Dp = 24.dp
+
 private val CATALOG_SHEET_BACKGROUND: Color = Color(0xFFFFFFFF)
 private val CATALOG_SWATCH_BORDER: Color = Color(0xFF9E9E9E)
 private val CATALOG_SHAPE_FILL: Color = Color(0xFFE3E1EC)
 private val CATALOG_LABEL_STYLE: TextStyle = TextStyle(color = Color(0xFF1B1B1F), fontSize = 13.sp)
 private val CATALOG_HEX_STYLE: TextStyle =
   TextStyle(color = Color(0xFF5F5F66), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+private val CATALOG_SECTION_STYLE: TextStyle =
+  TextStyle(color = Color(0xFF5F5F66), fontSize = 11.sp, letterSpacing = 1.sp)
 
 /**
  * Reads design-token property *values* off the consumer's loaded classes at render time. A

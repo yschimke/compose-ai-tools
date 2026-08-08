@@ -1168,6 +1168,26 @@ object PreviewDiscovery {
    * around a canned specimen. `optional` exactly when the backend can't render (desktop), like the
    * token catalogs.
    */
+  /**
+   * Canvas for a synthetic theme sheet: 640x900dp at density 1 (`dpi=160`), so the PNG is 640x900px.
+   *
+   * These previews have no `@Preview` of their own to size them, so they used to fall back to the
+   * 400x800dp sandbox — and a theme sheet does not fit in it. A Wear scheme alone is 21 colour rows
+   * at 48dp = 1008dp against a 768dp content box, so its type scale was never drawn; the mobile
+   * sheet lost four of its five shape rows the same way. The renderer now packs the rows into
+   * columns ([CatalogSpecimenSheet]), and this is the canvas that gives it room to do so: wide
+   * enough for three columns of swatch-plus-hex, tall enough that a scheme rarely needs a fourth.
+   *
+   * Density 1 rather than the 2.625 phone default because the sheet is a document, not a device
+   * capture — the dp figures above are the pixels, which is what keeps the geometry legible here
+   * and in the numbers this KDoc quotes.
+   */
+  internal const val THEME_CATALOG_SHEET_DEVICE: String = "spec:width=640dp,height=900dp,dpi=160"
+
+  /** [THEME_CATALOG_SHEET_DEVICE] resolved once — 640x900dp at density 1. */
+  internal val THEME_CATALOG_SHEET: DeviceDimensions.DeviceSpec =
+    DeviceDimensions.resolve(THEME_CATALOG_SHEET_DEVICE, null, null)
+
   private fun buildThemeCatalogPreviews(
     themes: List<RawThemeCatalog>,
     renderSupported: Boolean,
@@ -1200,6 +1220,14 @@ object PreviewDiscovery {
             group = theme.group.ifEmpty { null },
             kind = if (theme.wear) PreviewKind.WEAR_THEME_CATALOG else PreviewKind.THEME_CATALOG,
             wrapperClassName = theme.className,
+            // Resolved to concrete dp + density, not left to the renderer: `device` alone is only
+            // honoured on the `@Preview`-annotation path (which calls `DeviceDimensions.resolve`
+            // itself). A synthetic preview that sets the string and nothing else still renders at
+            // the 400x800 sandbox default — which is exactly the canvas these sheets outgrew.
+            device = THEME_CATALOG_SHEET_DEVICE,
+            widthDp = THEME_CATALOG_SHEET.widthDp,
+            heightDp = THEME_CATALOG_SHEET.heightDp,
+            density = THEME_CATALOG_SHEET.density,
           ),
         captures = listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
         // A `@ThemeCatalog` sheet renders ONE named theme as its subject — that is the whole point
