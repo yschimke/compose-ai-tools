@@ -554,9 +554,8 @@ data class PreviewParams(
    */
   val density: Float? = null,
   /**
-   * Bound a **wrapped** width axis is measured against, replacing the renderer's generic
-   * 400×800 dp sandbox ([DeviceDimensions.SANDBOX_WIDTH_DP]). `null` (the default) keeps that
-   * sandbox.
+   * Bound a **wrapped** width axis is measured against, replacing the renderer's generic 400×800 dp
+   * sandbox ([DeviceDimensions.SANDBOX_WIDTH_DP]). `null` (the default) keeps that sandbox.
    *
    * Deliberately not [widthDp]: setting `widthDp` FIXES the axis, so the capture keeps the whole
    * frame and the intrinsic crop never runs. The sandbox bound changes only what
@@ -811,8 +810,9 @@ data class CatalogEntry(
    * COMPONENT only: `@CatalogComponent.perBreakpoint` — split this function's multipreview fan-out
    * into a component per breakpoint rather than folding every render onto one. Which breakpoints
    * those are is NOT recorded here: they come from the renders themselves (each `@Preview`'s device
-   * / width, resolved against the catalog's `breakpoints` table), so the annotation can't contradict
-   * what the function actually rendered. `false` — the default — is the pre-existing behaviour.
+   * / width, resolved against the catalog's `breakpoints` table), so the annotation can't
+   * contradict what the function actually rendered. `false` — the default — is the pre-existing
+   * behaviour.
    */
   val perBreakpoint: Boolean = false,
 )
