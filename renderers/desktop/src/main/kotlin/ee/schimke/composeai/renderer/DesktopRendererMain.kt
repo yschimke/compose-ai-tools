@@ -137,10 +137,11 @@ fun main(args: Array<String>) {
   val previewParameterLimit = args.getOrNull(12)?.toIntOrNull()?.coerceAtLeast(0) ?: Int.MAX_VALUE
   val localeTag = args.getOrNull(13)?.takeIf { it.isNotBlank() }
   // `@ScrollingPreview` knobs. Empty / missing scrollMode means "no scroll intent — render
-  // a single frame via the default ImageComposeScene path". LONG / GIF dispatch to the
-  // `runComposeUiTest`-driven `renderScrollPreview` instead. TOP / END fall through to the
-  // default path; the desktop renderer doesn't yet drive a scrollable for END (issue #1207
-  // tracks the followup), so an END capture is functionally identical to TOP on this side.
+  // a single frame via the default ImageComposeScene path". LONG / GIF / END dispatch to the
+  // `runComposeUiTest`-driven `renderScrollPreview`, which is the only path here with a paused
+  // clock and semantic-node interactions to drive a scrollable with. TOP stays on the default
+  // path: it *is* the undriven first viewport, so routing it through the test harness would buy
+  // nothing but a second composition.
   val scrollModeArg = args.getOrNull(14)?.takeIf { it.isNotBlank() }
   val scrollAxis =
     when (args.getOrNull(15)?.takeIf { it.isNotBlank() }?.uppercase()) {
@@ -153,6 +154,7 @@ fun main(args: Array<String>) {
     when (scrollModeArg?.uppercase()) {
       "LONG" -> DesktopScrollMode.LONG
       "GIF" -> DesktopScrollMode.GIF
+      "END" -> DesktopScrollMode.END
       else -> null
     }
 
@@ -405,10 +407,13 @@ fun main(args: Array<String>) {
           fontScale = fontScale,
         )
       } else if (scrollDispatchMode != null) {
-        // @ScrollingPreview(modes = [LONG, GIF]) — drive the dedicated scroll path. For a
+        // @ScrollingPreview(modes = [LONG, GIF, END]) — drive the dedicated scroll path. For a
         // primary *capture*, falls through to the default single-frame render on "no
         // scrollable found" so a misuse produces SOMETHING on disk rather than a missing
-        // file. For a *data product* output (under `data/render-scroll-*/`), mirror the
+        // file. END is always a primary capture and leans on that fall-through by design: an
+        // END capture of a screen that doesn't scroll is exactly its top frame, and the
+        // default path is the one that knows about wrap crops and `showSystemUi` chrome.
+        // For a *data product* output (under `data/render-scroll-*/`), mirror the
         // Android renderer's rule (see RobolectricRenderTest's `productFellThrough`): a
         // fall-through would write PNG bytes into a `.gif`-named product, or stamp the
         // unscrolled first viewport into the long-scroll path, and the panel would surface

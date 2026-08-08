@@ -12,10 +12,53 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
+
+/**
+ * `@ScrollingPreview(modes = [TOP, END])` — the pair that proves the desktop renderer actually
+ * *drives* a scrollable rather than approximating.
+ *
+ * The two captures differ only in scroll position, so they are a self-checking fixture: `_top` must
+ * show `Row 1` with the footer nowhere in sight, `_end` must show `Row 40` and the `That's
+ * everything` footer. The footer exists to make the difference unmistakable — before END was driven
+ * on this backend both files were the same unscrolled first viewport.
+ *
+ * Deliberately a different function from [ScrollingListPreview]: `@ScrollingPreview` is
+ * non-repeatable and applies to every `@Preview` on the function, so LONG/GIF (data products) and
+ * TOP/END (captures) can't share one without also crossing the fan-outs.
+ */
+@Preview(name = "Scroll To End", widthDp = 240, heightDp = 240, showBackground = true)
+@ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END])
+@Composable
+fun ScrollToEndPreview() {
+  Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.background) {
+    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+      items((1..40).toList()) { index ->
+        Text(
+          text = "Row $index",
+          style = MaterialTheme.typography.titleMedium,
+          modifier = Modifier.fillMaxWidth().padding(12.dp),
+        )
+      }
+      item {
+        Text(
+          text = "That's everything",
+          style = MaterialTheme.typography.titleMedium,
+          modifier =
+            Modifier.fillMaxWidth().background(Color(0xFF6750A4)).padding(16.dp).semantics {
+              contentDescription = "footer"
+            },
+          color = Color.White,
+        )
+      }
+    }
+  }
+}
 
 /**
  * `@ScrollingPreview(modes = [LONG, GIF])` smoke test for the CMP Desktop renderer (issue #1207).
