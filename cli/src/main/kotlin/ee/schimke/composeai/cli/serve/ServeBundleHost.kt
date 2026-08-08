@@ -199,28 +199,43 @@ class ServeBundleHost(
   }
 
   /**
-   * Per-preview body-line anchors from the bundle's root `previews.json`, feeding
-   * [ServePreview.bodyLine] so the playground handoff can seed one declaration instead of a whole
-   * section file.
+   * Per-preview body-line anchors, feeding [ServePreview.bodyLine] so the playground handoff can
+   * seed one declaration instead of a whole section file.
    *
-   * Read only from the manifest, unlike [sourceFilesById] which prefers the catalog's
-   * `variants.json`. A `VariantMeta` is per *image* and a body line is per *function*, so carrying
-   * it there would restate the same number on every theme and state of a component; the manifest
-   * already keys it the right way. A catalog bundle carries both files, so nothing is lost — and a
-   * bundle with no manifest simply contributes no anchors and seeds whole files.
+   * Read exactly the way [sourceFilesById] is — the catalog's `previews/variants.json` first, then
+   * a root `previews.json` for ids it didn't cover — and that is load-bearing rather than tidiness.
+   * A **catalog** stages no root manifest at all and keys its previews by flattened route ids
+   * (`button-filled__ideal__default__dark`), not the discovery ids a bundle manifest carries, so a
+   * manifest-only read resolves nothing for exactly the case this feature exists to serve and the
+   * handoff silently stays whole-file. The `variants.json` path is where a catalog's anchors live;
+   * the manifest path is the plain uploaded bundle.
+   *
+   * A `VariantMeta` is per *image* and an anchor is per *function*, so this does restate the same
+   * number across a component's themes and states — the same duplication `sourceFile` already
+   * accepts there, for the same reason: it is the only per-preview record a catalog publishes.
    */
   private val bodyLinesById: Map<String, Int> by lazy {
-    val previewsJson = File(bundleDir, PREVIEWS_JSON).toOkioPath()
-    if (!fileSystem.exists(previewsJson)) return@lazy emptyMap()
-    try {
-      val text = fileSystem.read(previewsJson) { readUtf8() }
-      OVERRIDES_JSON.decodeFromString(ee.schimke.composeai.cli.PreviewManifest.serializer(), text)
-        .previews
-        .mapNotNull { preview -> preview.bodyLine?.let { preview.id to it } }
-        .toMap()
-    } catch (e: Exception) {
-      emptyMap()
+    val out = LinkedHashMap<String, Int>()
+    for ((id, meta) in variantMeta) {
+      meta.bodyLine?.takeIf { it > 0 }?.let { out[id] = it }
     }
+    val previewsJson = File(bundleDir, PREVIEWS_JSON).toOkioPath()
+    if (fileSystem.exists(previewsJson)) {
+      try {
+        val text = fileSystem.read(previewsJson) { readUtf8() }
+        val manifest =
+          OVERRIDES_JSON.decodeFromString(
+            ee.schimke.composeai.cli.PreviewManifest.serializer(),
+            text,
+          )
+        for (p in manifest.previews) {
+          if (p.id !in out) p.bodyLine?.takeIf { it > 0 }?.let { out[p.id] = it }
+        }
+      } catch (e: Exception) {
+        // Leave whatever the variants map already contributed.
+      }
+    }
+    out
   }
 
   /**

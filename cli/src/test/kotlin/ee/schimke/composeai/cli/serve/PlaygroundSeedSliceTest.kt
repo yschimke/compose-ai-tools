@@ -101,6 +101,68 @@ class PlaygroundSeedSliceTest {
     assertFalse(slice.contains("FilledButton"))
   }
 
+  /**
+   * A blank line inside a body is ordinary formatted Kotlin, not an oddity — this fixture is
+   * `samples/cmp`'s `OverridableListPreview`, which separates its `previewOverride*` declarations
+   * from the `Surface` they feed. The anchor is the *first* statement, so an end rule that stopped
+   * at the first blank line would cut the declaration off before `Surface` and emit a buffer with
+   * unbalanced braces: not a smaller slice, an uncompilable one.
+   */
+  @Test
+  fun `a blank line inside the body does not end the declaration`() {
+    val withBlankLine =
+      """
+      package example
+
+      import androidx.compose.runtime.Composable
+
+      @Preview(name = "Overridable List", showBackground = true)
+      @Composable
+      fun OverridableListPreview() {
+        val title = previewOverrideString("title", default = "Shopping list")
+        val itemCount = previewOverrideInt("itemCount", default = 3)
+
+        Surface {
+          Column {
+            Text(title)
+
+            repeat(itemCount) { i -> Text("Item ${'$'}i") }
+          }
+        }
+      }
+
+      @Composable
+      fun Unrelated() {
+        Text("nope")
+      }
+      """
+        .trimIndent()
+    val anchor = withBlankLine.lines().indexOfFirst { it.contains("val title") } + 1
+
+    val slice = PlaygroundSeedResolver.sliceDeclaration(withBlankLine, anchor)
+    assertNotNull(slice)
+    // Everything past the internal blank lines, including the closing braces.
+    assertTrue(slice.contains("Surface {"))
+    assertTrue(slice.contains("repeat(itemCount)"))
+    // Balanced: the declaration was not truncated mid-body.
+    assertEquals(slice.count { it == '{' }, slice.count { it == '}' })
+    // …and still bounded at the next declaration.
+    assertFalse(slice.contains("Unrelated"))
+  }
+
+  /**
+   * The counterpart guard: a top-level closing brace is at column 0, so a boundary test that looked
+   * only at indentation would end every declaration at its own `}` minus one line.
+   */
+  @Test
+  fun `a declaration is not ended by its own closing brace`() {
+    val slice =
+      PlaygroundSeedResolver.sliceDeclaration(sectionFile, lineOf("""val c = counted("Filled")"""))
+    assertNotNull(slice)
+    assertTrue(slice.trimEnd().endsWith("}"))
+    assertEquals(slice.count { it == '{' }, slice.count { it == '}' })
+  }
+
   @Test
   fun `no anchor seeds the whole file`() {
     assertNull(PlaygroundSeedResolver.sliceDeclaration(sectionFile, null))

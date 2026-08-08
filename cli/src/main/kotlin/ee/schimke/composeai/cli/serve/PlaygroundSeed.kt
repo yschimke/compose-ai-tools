@@ -222,25 +222,36 @@ class PlaygroundSeedResolver(
      *
      * ### How the declaration's bounds are found
      *
-     * From **one** anchor, walked outwards in both directions over non-blank lines.
+     * From **one** anchor, expanded to the enclosing *top-level declaration*.
      *
      * A span would be the obvious input, and the classfile appears to offer one — but its upper
      * bound is fiction on Kotlin whenever the method inlines anything (see `PreviewInfo.bodyLine`),
      * and a wrong end here silently cuts into the next declaration. One line known to be *inside*
-     * the body is enough, because the same blank-line rule that finds the top finds the bottom.
+     * the body is enough, because the boundaries are findable from the source.
      *
-     * The rule works because ktfmt (Google style, which every catalog in this repo is formatted
-     * with) separates top-level declarations by exactly one blank line, and never puts a blank line
-     * inside an annotation stack or between KDoc and what it documents. So walking up from the
-     * anchor collects the `fun` line, the annotations and the KDoc — the last of those for free,
-     * rather than needing a doc-comment-matching special case — and walking down collects the
-     * closing braces.
+     * A boundary is [startsTopLevelDeclaration]: a non-blank line at **column 0** whose predecessor
+     * is **blank**. The declaration containing the anchor runs from the nearest such line at or
+     * above it, to the last non-blank line before the next one.
      *
-     * A brace-counting scan would be more general, but it has to model strings, char literals,
-     * comments and nested lambdas to not go wrong, and going wrong means silently truncating
-     * somebody's code mid-expression. Blank-line bounds fail in the other direction: on
-     * unconventionally formatted source they over-select (two declarations with no blank line
-     * between them come out together), which is a slightly bigger buffer rather than a broken one.
+     * Both halves of that test earn their place, and the first version of this had only one of them
+     * — "walk outwards over non-blank lines" — which was wrong in a way worth recording. A blank
+     * line *inside* a body is ordinary formatted Kotlin, not an oddity (`OverridablePreviews`
+     * separates its `previewOverride*` declarations from the `Surface` they feed), and treating it
+     * as the end truncated the declaration mid-body, closing braces and all. Requiring column 0
+     * *and* a preceding blank is what tells a separator from a breath inside a body: an internal
+     * blank line is followed by indented code, and a top-level closing brace sits at column 0 but
+     * is not preceded by a blank.
+     *
+     * A brace-counting scan would be more general still, but it has to model strings, char
+     * literals, comments and nested lambdas to not go wrong, and going wrong means silently
+     * truncating somebody's code mid-expression. This rule fails in the safer direction: on source
+     * that puts no blank line between two declarations it over-selects, taking both — a bigger
+     * buffer rather than a broken one.
+     *
+     * ktfmt (Google style, which every catalog in this repo is formatted with) guarantees the
+     * separating blank line, and never puts one inside an annotation stack or between KDoc and what
+     * it documents — so the annotations and the KDoc come along for free rather than needing a
+     * doc-comment-matching special case.
      *
      * Returns null — meaning "seed the whole file" — when there is no anchor, when the anchor does
      * not fall inside the text (the file moved under a branch `ref` since discovery ran), or when
@@ -252,17 +263,20 @@ class PlaygroundSeedResolver(
       // An anchor past the end means the source has changed since the manifest was built. Slicing
       // on a stale offset would hand over an arbitrary fragment, so fall back to the file.
       if (bodyLine < 1 || bodyLine > lines.size) return null
-      // A blank anchor line means the same thing: the file moved under us, and the walk from here
-      // would collapse to nothing.
+      // A blank anchor line means the same thing: the file moved under us.
       if (lines[bodyLine - 1].isBlank()) return null
 
+      // Up to the declaration this anchor sits in…
       var start = bodyLine - 1 // to 0-based
-      while (start > 0 && lines[start - 1].isNotBlank()) start--
-      var end = bodyLine - 1
-      while (end < lines.lastIndex && lines[end + 1].isNotBlank()) end++
+      while (start > 0 && !startsTopLevelDeclaration(lines, start)) start--
+      // …and down to the last non-blank line before the next declaration begins.
+      var next = start + 1
+      while (next <= lines.lastIndex && !startsTopLevelDeclaration(lines, next)) next++
+      var end = next - 1
+      while (end > start && lines[end].isBlank()) end--
 
       val headerEnd = headerEndExclusive(lines)
-      // The declaration starting at or inside the header means the walk escaped upwards past the
+      // The declaration starting at or inside the header means the scan escaped upwards past the
       // imports — unusual formatting, and re-emitting the header would then duplicate lines.
       if (start < headerEnd) return null
       if (headerEnd == 0 && start == 0 && end == lines.lastIndex) return null
@@ -271,6 +285,23 @@ class PlaygroundSeedResolver(
       val declaration = lines.subList(start, end + 1).joinToString("\n")
       val slice = if (header.isEmpty()) declaration else "$header\n\n$declaration"
       return slice.takeIf { it.trimEnd() != text.trimEnd() }
+    }
+
+    /**
+     * Whether `lines[i]` begins a top-level declaration: non-blank, at **column 0**, and preceded
+     * by a **blank** line (or the start of the file).
+     *
+     * Both conditions matter. Column 0 alone would match a top-level closing brace, ending the
+     * declaration one line early. A preceding blank alone would match the first indented statement
+     * after a blank line inside a body — the case that broke the first version of the slice.
+     * Together they match what a reader would call the start of a declaration: its KDoc, its first
+     * annotation, or its `fun`/`val`/`class` line.
+     */
+    private fun startsTopLevelDeclaration(lines: List<String>, i: Int): Boolean {
+      val line = lines[i]
+      if (line.isBlank()) return false
+      if (line.first().isWhitespace()) return false
+      return i == 0 || lines[i - 1].isBlank()
     }
 
     /**
