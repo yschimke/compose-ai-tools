@@ -88,24 +88,28 @@ class PreviewManifestRouter(
     val baseDensity = deviceSpec?.density ?: resolved.density
     val effectiveDevice = deviceOverride ?: resolved.device
     // Issue #1208 — `orientation` on desktop is a `widthPx ↔ heightPx` swap; explicit pixel
-    // overrides (or device-derived dims) win over the hint. The hint is idempotent: only swap
-    // when the requested orientation conflicts with the current aspect ratio (e.g. a base that
-    // is already landscape + `orientation=landscape` stays put). We apply the swap here, before
-    // the rewritten payload reaches `DesktopHost`, because the router unconditionally emits
-    // widthPx/heightPx tokens which would otherwise hide the "no explicit dims" signal from the
-    // downstream `DesktopHost.specFromPreviewIdPayload` swap branch.
-    val requestedOrientation = inbound["orientation"]?.lowercase()
-    val orientationCanSwap =
-      inbound["widthPx"] == null && inbound["heightPx"] == null && deviceOverride == null
-    val shouldSwapOrientation =
-      orientationCanSwap &&
-        when (requestedOrientation) {
-          "landscape" -> baseHeightPx > baseWidthPx
-          "portrait" -> baseWidthPx > baseHeightPx
-          else -> false
-        }
-    val effectiveBaseWidthPx = if (shouldSwapOrientation) baseHeightPx else baseWidthPx
-    val effectiveBaseHeightPx = if (shouldSwapOrientation) baseWidthPx else baseHeightPx
+    // overrides win over the hint. The hint is idempotent: only swap when the requested
+    // orientation conflicts with the current aspect ratio (e.g. a base that is already landscape
+    // + `orientation=landscape` stays put). We apply the swap here, before the rewritten payload
+    // reaches `DesktopHost`, because the router unconditionally emits widthPx/heightPx tokens
+    // which would otherwise hide the "no explicit dims" signal from the downstream
+    // `DesktopHost.specFromPreviewIdPayload` swap branch.
+    //
+    // A `device=` token is deliberately NOT treated as "explicit dims" here (#3547). The device
+    // supplies the frame's *natural* geometry — `id:pixel_tablet` is 1280×800, landscape — and
+    // rotating that frame is the whole point of asking for `orientation=portrait` alongside it.
+    // Excluding the device lane meant the commonest spelling of the request (pick a tablet, then
+    // pick portrait) silently rendered landscape. Only `widthPx` / `heightPx`, where the caller
+    // named the pixels outright, outrank the rotation.
+    val orientationCanSwap = inbound["widthPx"] == null && inbound["heightPx"] == null
+    val (effectiveBaseWidthPx, effectiveBaseHeightPx) =
+      if (orientationCanSwap)
+        ee.schimke.composeai.daemon.devices.FrameOrientation.orientedPx(
+          baseWidthPx,
+          baseHeightPx,
+          inbound["orientation"],
+        )
+      else baseWidthPx to baseHeightPx
     val routed =
       RenderRequest.Render(
         id = typed.id,

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.devices.FrameOrientation
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.GestureOverride
@@ -268,14 +269,26 @@ fun mergePreviewOverrides(
   val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
   val deviceSpec = deviceOverride?.let { DeviceDimensions.resolve(it) }
   val effectiveDensity = overrides.density ?: deviceSpec?.density ?: base.density
-  val widthPx =
+  val naturalWidthPx =
     overrides.widthPx
       ?: deviceSpec?.let { (it.widthDp * effectiveDensity).toInt().coerceAtLeast(1) }
       ?: base.widthPx
-  val heightPx =
+  val naturalHeightPx =
     overrides.heightPx
       ?: deviceSpec?.let { (it.heightDp * effectiveDensity).toInt().coerceAtLeast(1) }
       ?: base.heightPx
+  val effectiveOrientation = overrides.orientation ?: base.orientation
+  // Rotate the frame when the effective orientation contradicts it (#3547) — the live-session
+  // (`stream/start`, `setOverrides`) twin of the same swap in `JsonRpcServer.encodeRenderPayload`
+  // and both routers, so the viewer's Orientation control means the same thing on every lane.
+  // Explicit `widthPx` / `heightPx` outrank it; `device` does not, being the frame under rotation.
+  // Safe to apply over an already-rotated base because `orientedPx` only swaps a frame that
+  // contradicts the request.
+  val orientationCanSwap = overrides.widthPx == null && overrides.heightPx == null
+  val (widthPx, heightPx) =
+    if (orientationCanSwap)
+      FrameOrientation.orientedPx(naturalWidthPx, naturalHeightPx, effectiveOrientation)
+    else naturalWidthPx to naturalHeightPx
   return MergedPreviewOverrides(
     widthPx = widthPx,
     heightPx = heightPx,
@@ -284,7 +297,7 @@ fun mergePreviewOverrides(
     localeTag = overrides.localeTag?.takeIf { it.isNotBlank() } ?: base.localeTag,
     fontScale = overrides.fontScale ?: base.fontScale,
     uiMode = overrides.uiMode ?: base.uiMode,
-    orientation = overrides.orientation ?: base.orientation,
+    orientation = effectiveOrientation,
     inspectionMode = overrides.inspectionMode ?: base.inspectionMode,
     material3Theme = overrides.material3Theme ?: base.material3Theme,
     wallpaper = overrides.wallpaper ?: base.wallpaper,

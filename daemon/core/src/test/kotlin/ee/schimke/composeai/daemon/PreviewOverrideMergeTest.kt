@@ -431,4 +431,100 @@ class PreviewOverrideMergeTest {
       lottie = LottieOverride(progress = 0.5f),
       namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("base")),
     )
+
+  @Test
+  fun `orientation rotates a device-derived frame on the live-session lane`() {
+    // #3547 — the viewer's Orientation control has to mean the same thing on `stream/start` /
+    // `setOverrides` as it does on `renderNow`. Pixel Tablet is 1280x800dp at density 2.0, i.e.
+    // 2560x1600px landscape; portrait trades the axes.
+    val merged =
+      mergePreviewOverrides(
+        baseSpec(),
+        PreviewOverrides(device = "id:pixel_tablet", orientation = Orientation.PORTRAIT),
+      )
+
+    assertEquals(1600, merged.widthPx)
+    assertEquals(2560, merged.heightPx)
+    assertEquals(Orientation.PORTRAIT, merged.orientation)
+  }
+
+  @Test
+  fun `orientation matching the device frame leaves it alone`() {
+    val merged =
+      mergePreviewOverrides(
+        baseSpec(),
+        PreviewOverrides(device = "id:pixel_tablet", orientation = Orientation.LANDSCAPE),
+      )
+
+    assertEquals(2560, merged.widthPx)
+    assertEquals(1600, merged.heightPx)
+  }
+
+  @Test
+  fun `explicit pixels outrank the orientation request`() {
+    val merged =
+      mergePreviewOverrides(
+        baseSpec(),
+        PreviewOverrides(
+          device = "id:pixel_tablet",
+          orientation = Orientation.PORTRAIT,
+          widthPx = 900,
+        ),
+      )
+
+    // Naming exact pixels wins over every derived value, the rotation included — so 900 stays on
+    // the width axis rather than being swapped onto the height.
+    assertEquals(900, merged.widthPx)
+    assertEquals(1600, merged.heightPx)
+  }
+
+  @Test
+  fun `an orientation inherited from the base rotates the frame too`() {
+    // The base carries the discovery-time orientation; a per-call override that doesn't mention
+    // orientation must not quietly un-rotate the frame.
+    val merged =
+      mergePreviewOverrides(
+        baseSpec(orientation = Orientation.PORTRAIT),
+        PreviewOverrides(device = "id:pixel_tablet"),
+      )
+
+    assertEquals(1600, merged.widthPx)
+    assertEquals(2560, merged.heightPx)
+  }
+
+  @Test
+  fun `merging twice does not oscillate the frame`() {
+    // Idempotence: the merge output fed back in as a base must stay put. Without it, a live
+    // session that re-merges on every override edit would flip orientation on alternate edits.
+    val once =
+      mergePreviewOverrides(
+        baseSpec(),
+        PreviewOverrides(device = "id:pixel_tablet", orientation = Orientation.PORTRAIT),
+      )
+    val twice =
+      mergePreviewOverrides(
+        baseSpec(widthPx = once.widthPx, heightPx = once.heightPx, orientation = once.orientation),
+        PreviewOverrides(orientation = Orientation.PORTRAIT),
+      )
+
+    assertEquals(once.widthPx, twice.widthPx)
+    assertEquals(once.heightPx, twice.heightPx)
+  }
+
+  private fun baseSpec(
+    widthPx: Int = 100,
+    heightPx: Int = 200,
+    orientation: Orientation? = null,
+  ): PreviewOverrideBaseSpec =
+    PreviewOverrideBaseSpec(
+      widthPx = widthPx,
+      heightPx = heightPx,
+      density = 1.0f,
+      device = null,
+      localeTag = null,
+      fontScale = null,
+      uiMode = null,
+      orientation = orientation,
+      inspectionMode = null,
+    )
 }

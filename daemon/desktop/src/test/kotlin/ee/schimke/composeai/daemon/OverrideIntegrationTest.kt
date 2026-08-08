@@ -160,6 +160,77 @@ class OverrideIntegrationTest {
   }
 
   /**
+   * Issue #3547 — the orientation hint must apply to a **device-derived** frame too. It used to be
+   * suppressed whenever `device=` was present (the swap was gated on `deviceOverride == null`),
+   * which killed the commonest spelling of the request: pick a tablet in the viewer, then pick
+   * Portrait. `?device=id:pixel_tablet&orientation=portrait` rendered the tablet's natural
+   * 2560×1600 landscape frame and the Portrait control looked broken.
+   *
+   * A device supplies the frame's *natural* geometry, so rotating it is the point of asking; only
+   * explicit `widthPx`/`heightPx` — the caller naming exact pixels — outrank the hint.
+   */
+  @Test
+  fun orientationOverrideRotatesADeviceDerivedFrame() {
+    val outputDir = tempFolder.newFolder("renders-orientation-device")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "red-square",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "RedSquare",
+              widthPx = 64,
+              heightPx = 64,
+              density = 1.0f,
+              outputBaseName = "red-square-device-orientation",
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      // `id:desktop_small` is 1366×768dp at density 1.0 — landscape by nature.
+      val natural = renderAndDecode(host, "previewId=red-square;device=id:desktop_small", "natural")
+      assertEquals("device width should be honoured", 1366, natural.width)
+      assertEquals("device height should be honoured", 768, natural.height)
+
+      val portrait =
+        renderAndDecode(
+          host,
+          "previewId=red-square;device=id:desktop_small;orientation=portrait",
+          "device-portrait",
+        )
+      assertEquals("portrait should swap the device frame's width", 768, portrait.width)
+      assertEquals("portrait should swap the device frame's height", 1366, portrait.height)
+
+      // Idempotent against the device's own orientation: landscape on a landscape device is a
+      // no-op, so the routers can re-apply the same rule without rotating it back.
+      val landscape =
+        renderAndDecode(
+          host,
+          "previewId=red-square;device=id:desktop_small;orientation=landscape",
+          "device-landscape",
+        )
+      assertEquals("landscape should leave a landscape device alone", 1366, landscape.width)
+      assertEquals("landscape should leave a landscape device alone", 768, landscape.height)
+
+      // Explicit pixels still outrank the rotation, device or no device.
+      val explicit =
+        renderAndDecode(
+          host,
+          "previewId=red-square;device=id:desktop_small;orientation=portrait;widthPx=300",
+          "device-explicit",
+        )
+      assertEquals("explicit widthPx should win over the orientation hint", 300, explicit.width)
+      assertEquals("height stays the device's own", 768, explicit.height)
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
    * Issue #1208 — the orientation hint must be idempotent: a request that already matches the base
    * aspect ratio should be a no-op, never a blind swap. Otherwise a landscape-shaped base (e.g.
    * 120×60) plus `orientation = landscape` would flip to portrait (60×120), and the same payload
