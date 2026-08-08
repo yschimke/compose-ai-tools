@@ -45,7 +45,9 @@
       "scripts/design-artifacts/rc-compare*",
       "scripts/design-artifacts/rc-chromium*",
       "scripts/design-artifacts/rc-cmp-wasm-*",
-      ".github/workflows/design-artifacts-reusable.yml"
+      ".github/workflows/design-artifacts-reusable.yml",
+      "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts/**",
+      "samples/cmp-wasm-catalog/src/wasmJsMain/resources/js-joda.esm.js"
     ],
     "module_unit_tests": [
       "api/**",

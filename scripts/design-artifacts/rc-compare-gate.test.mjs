@@ -6,65 +6,37 @@ import test from "node:test";
 
 import {
   applyCmpWasmPerformanceBudgets,
-  applyCmpWasmPixelTolerances,
   evaluateCmpWasmGate,
   formatCmpWasmGate,
   readCmpWasmAllowlist,
-  readCmpWasmPixelTolerances,
+  summarizeCmpWasmPixelParity,
 } from "./rc-compare-gate.mjs";
 
-test("pixel parity uses a strict default and only reviewed per-preview exceptions", () => {
+test("pixel parity is reported, never gated", () => {
+  // The whole point of the change this covers: a row three times over the advisory line is listed,
+  // and the lane still passes. Publication must not hinge on a number the publish job is the first
+  // thing to see.
   const rows = [
     { id: "exact", cmpWasmRendered: true, cmpWasmMismatchPct: 0.4 },
-    { id: "accepted", cmpWasmRendered: true, cmpWasmMismatchPct: 2.4 },
     { id: "drifted", cmpWasmRendered: true, cmpWasmMismatchPct: 3.1 },
-    { id: "unreviewed", cmpWasmRendered: true, cmpWasmMismatchPct: 1.1 },
+    { id: "over", cmpWasmRendered: true, cmpWasmMismatchPct: 1.1 },
+    { id: "blank-reference", cmpWasmRendered: true, referenceBlank: true, cmpWasmMismatchPct: 9 },
+    { id: "unrendered", cmpWasmRendered: false, cmpWasmMismatchPct: null },
   ];
-  const tolerances = new Map([
-    ["accepted", { maxMismatchPct: 2.5, classification: "backend", reason: "Skia edge" }],
-    ["drifted", { maxMismatchPct: 3, classification: "font", reason: "font metrics" }],
-  ]);
 
-  const gate = applyCmpWasmPixelTolerances(
-    evaluateCmpWasmGate(rows.map((row) => row.id), rows),
+  const gate = summarizeCmpWasmPixelParity(
+    evaluateCmpWasmGate(["exact", "drifted", "over"], rows),
     rows,
-    tolerances,
   );
 
-  assert.equal(gate.passed, false);
-  assert.equal(gate.pixelTolerances.length, 1);
-  assert.match(gate.failures[0].note, /exceeds reviewed 3.00%/);
-  assert.match(gate.failures[1].note, /without a reviewed tolerance/);
-});
-
-test("a tolerance whose preview improved past the strict default is not stale", () => {
-  // `improved` is the shape that used to fail the whole lane: it carries a reviewed tolerance and
-  // now measures *under* the strict 1% default, which is the tolerance working, not rotting.
-  // `vanished` is real rot — nothing measured it at all — and has to stay a failure.
-  const rows = [
-    { id: "improved", cmpWasmRendered: true, cmpWasmMismatchPct: 0.98 },
-    { id: "still-over", cmpWasmRendered: true, cmpWasmMismatchPct: 1.2 },
-  ];
-  const tolerances = new Map([
-    ["improved", { maxMismatchPct: 1.5, classification: "backend", reason: "subpixel edges" }],
-    ["still-over", { maxMismatchPct: 1.4, classification: "backend", reason: "glyph coverage" }],
-    ["vanished", { maxMismatchPct: 2, classification: "backend", reason: "renamed away" }],
-  ]);
-
-  const gate = applyCmpWasmPixelTolerances(
-    evaluateCmpWasmGate(rows.map((row) => row.id), rows),
-    rows,
-    tolerances,
-  );
-
-  assert.deepEqual(gate.failures, [
-    { id: "pixels-vanished", note: "reviewed tolerance is stale or unmeasured" },
-  ]);
+  assert.equal(gate.passed, true);
+  assert.deepEqual(gate.failures, []);
+  assert.equal(gate.pixelParity.measured, 3);
   assert.deepEqual(
-    gate.obsoletePixelTolerances.map((entry) => [entry.id, entry.actualPct]),
-    [["improved", 0.98]],
+    gate.pixelParity.above.map((row) => row.id),
+    ["drifted", "over"],
   );
-  assert.deepEqual(gate.pixelTolerances.map((entry) => entry.id), ["still-over"]);
+  assert.match(formatCmpWasmGate(gate), /pixel parity \(report-only\): 2 of 3 row\(s\) above 1%/);
 });
 
 test("cold and warm first-frame budgets fail on the slowest measured render", () => {
@@ -154,23 +126,4 @@ test("allowlist requires reasons and rejects expired entries", () => {
     JSON.stringify({ entries: [{ id: "x", reason: "tracked", expires: "2026-08-02" }] }),
   );
   assert.throws(() => readCmpWasmAllowlist(file, "2026-08-03"), /expired/);
-});
-
-test("pixel tolerance entries require a widened ceiling and rationale", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rc-cmp-wasm-pixels-"));
-  const file = path.join(dir, "tolerances.json");
-  fs.writeFileSync(
-    file,
-    JSON.stringify({
-      entries: [{ id: "x", maxMismatchPct: 1, classification: "backend", reason: "known" }],
-    }),
-  );
-  assert.throws(() => readCmpWasmPixelTolerances(file), /above the strict 1%/);
-  fs.writeFileSync(
-    file,
-    JSON.stringify({
-      entries: [{ id: "x", maxMismatchPct: 2, classification: "backend", reason: "known" }],
-    }),
-  );
-  assert.equal(readCmpWasmPixelTolerances(file).get("x").maxMismatchPct, 2);
 });

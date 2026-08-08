@@ -38,34 +38,6 @@ export function readCmpWasmAllowlist(file, today = new Date().toISOString().slic
   return result;
 }
 
-/** Read reviewed, catalog-specific mismatch ceilings for rows above the strict 1% default. */
-export function readCmpWasmPixelTolerances(file) {
-  if (!file) return new Map();
-  const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-  if (!parsed || !Array.isArray(parsed.entries)) {
-    throw new Error("CMP/Wasm pixel tolerances must be an object with an entries array");
-  }
-  const result = new Map();
-  for (const [index, entry] of parsed.entries.entries()) {
-    const label = `CMP/Wasm pixel tolerance ${index + 1}`;
-    if (!entry || typeof entry.id !== "string" || !entry.id.trim()) {
-      throw new Error(`${label} must have a non-empty id`);
-    }
-    if (!Number.isFinite(entry.maxMismatchPct) || entry.maxMismatchPct <= 1) {
-      throw new Error(`${label} (${entry.id}) must set maxMismatchPct above the strict 1% default`);
-    }
-    if (typeof entry.classification !== "string" || !entry.classification.trim()) {
-      throw new Error(`${label} (${entry.id}) must have a classification`);
-    }
-    if (typeof entry.reason !== "string" || !entry.reason.trim()) {
-      throw new Error(`${label} (${entry.id}) must have a reason`);
-    }
-    if (result.has(entry.id)) throw new Error(`${label} duplicates id ${entry.id}`);
-    result.set(entry.id, entry);
-  }
-  return result;
-}
-
 /** Return the strict-lane verdict without throwing, so callers can write all evidence first. */
 export function evaluateCmpWasmGate(expectedIds, rows, allowlist = new Map()) {
   const byId = new Map(rows.map((row) => [row.id, row]));
@@ -132,61 +104,35 @@ export function applyCmpWasmPerformanceBudgets(gate, rows, coldBudgetMs, warmBud
 }
 
 /**
- * Enforce 1% by default, with reviewed per-preview ceilings for classified backend variance.
+ * Report which rows sit above the advisory per-preview mismatch line — **without gating on it.**
  *
- * An entry is *stale* when its preview produced no comparable measurement at all — the id was
- * renamed, the preview was dropped from the catalog, the render failed, the reference baked blank.
- * That is config rot and stays a failure: a ceiling nothing is measured against is a claim nobody
- * is checking.
+ * This used to enforce 1% with a checked-in file of reviewed per-preview ceilings, and it is
+ * deliberately no longer a pass/fail signal. The check ran in the publish job, on `main`, after the
+ * change that moved a number had already landed: it could never stop a regression arriving, only
+ * strand `design-artifacts/<system>` on the last render that happened to be under the line. That is
+ * the worst of both — the divergence lands anyway, and the published catalog silently rots while the
+ * page that would have shown the divergence stops being republished. (Which is exactly what
+ * happened: five text-bearing `remote-m3` rows drifted past 1% on 7 Aug 2026 and the delivery branch
+ * froze on the 3 Aug render, whose CMP/Wasm column was four days of fixed player bugs out of date.)
  *
- * An entry whose preview **improved to inside the strict default** is a different thing, and it is
- * the case this used to get wrong. `seen` was only filled from rows above 1%, so a preview that got
- * *better* fell out of the loop before its tolerance was marked used and then failed the lane as
- * "stale or unmeasured" — the gate reporting an improvement as rot, on a row that passes the strict
- * default on its own. Marking the tolerance seen for every measured row fixes that; the entry is
- * reported as `withinStrictDefault` so it is visible and can be retired deliberately, rather than
- * turning the lane red the moment a backend difference closes.
+ * The measurement itself is worth keeping and stays: every row's mismatch is in
+ * `rc-compare-summary.json`, on the comparison page, and listed here in the job summary. What is
+ * gone is its power to block publication. A guard that should stop a regression has to run on the
+ * pull request, against the change proposing it.
  */
-export function applyCmpWasmPixelTolerances(gate, rows, tolerances = new Map()) {
-  gate.pixelTolerances = [];
-  gate.obsoletePixelTolerances = [];
-  const seen = new Set();
+export function summarizeCmpWasmPixelParity(gate, rows, advisoryPct = 1) {
+  const above = [];
+  let measured = 0;
   for (const row of rows) {
     if (!row.cmpWasmRendered || row.referenceBlank) continue;
-    const tolerance = tolerances.get(row.id);
-    if (tolerance) seen.add(row.id);
-    if (row.cmpWasmMismatchPct <= 1) {
-      if (tolerance) {
-        gate.obsoletePixelTolerances.push({
-          id: row.id,
-          actualPct: row.cmpWasmMismatchPct,
-          ...tolerance,
-        });
-      }
-      continue;
-    }
-    if (!tolerance) {
-      gate.failures.push({
-        id: `pixels-${row.id}`,
-        note: `${row.cmpWasmMismatchPct.toFixed(2)}% exceeds 1% without a reviewed tolerance`,
-      });
-    } else if (row.cmpWasmMismatchPct > tolerance.maxMismatchPct) {
-      gate.failures.push({
-        id: `pixels-${row.id}`,
-        note:
-          `${row.cmpWasmMismatchPct.toFixed(2)}% exceeds reviewed ` +
-          `${tolerance.maxMismatchPct.toFixed(2)}% tolerance`,
-      });
-    } else {
-      gate.pixelTolerances.push({ id: row.id, actualPct: row.cmpWasmMismatchPct, ...tolerance });
+    if (!Number.isFinite(row.cmpWasmMismatchPct)) continue;
+    measured += 1;
+    if (row.cmpWasmMismatchPct > advisoryPct) {
+      above.push({ id: row.id, mismatchPct: row.cmpWasmMismatchPct });
     }
   }
-  for (const id of tolerances.keys()) {
-    if (!seen.has(id)) {
-      gate.failures.push({ id: `pixels-${id}`, note: "reviewed tolerance is stale or unmeasured" });
-    }
-  }
-  gate.passed = gate.failures.length === 0;
+  above.sort((a, b) => b.mismatchPct - a.mismatchPct);
+  gate.pixelParity = { advisoryPct, measured, above };
   return gate;
 }
 
@@ -207,19 +153,17 @@ export function formatCmpWasmGate(gate) {
       );
     }
   }
-  if (gate.pixelTolerances?.length) {
+  // Report-only, and said out loud rather than left to be found on the page: these rows are how a
+  // human notices a backend divergence, but none of them can fail the lane or hold back a publish.
+  const parity = gate.pixelParity;
+  if (parity) {
     lines.push(
-      `- pixel parity: strict 1% default; ${gate.pixelTolerances.length} reviewed ` +
-        `per-preview tolerance(s) applied`,
+      `- pixel parity (report-only): ${parity.above.length} of ${parity.measured} row(s) ` +
+        `above ${parity.advisoryPct}%`,
     );
-  }
-  // Said out loud rather than left to be noticed: an entry the lane no longer needs is one a human
-  // can retire, and printing the measurement is what makes that call reviewable.
-  for (const entry of gate.obsoletePixelTolerances ?? []) {
-    lines.push(
-      `- ${entry.id}: reviewed tolerance no longer needed — measured ` +
-        `${entry.actualPct.toFixed(2)}%, inside the strict 1% default`,
-    );
+    for (const row of parity.above) {
+      lines.push(`  · ${row.id}: ${row.mismatchPct.toFixed(2)}%`);
+    }
   }
   return lines.join("\n");
 }

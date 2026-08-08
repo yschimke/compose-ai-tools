@@ -109,6 +109,29 @@ class RepositoryConfigsTest(unittest.TestCase):
             {"desktop": False, "android": False, "bundle": True, "playground": False},
         )
 
+    def test_wasm_distribution_resources_run_the_rc_player_jobs(self):
+        # `wasmPlayerDist` syncs these two paths straight into the shipped player (see
+        # rc-player/wasm/build.gradle.kts), so a font swap or a fonts.json edit changes production
+        # pixels. Without them in `rc_player_tests` the CMP/Wasm parity and frame-pacing jobs both
+        # skip on exactly the change most likely to move a parity number.
+        for changed in (
+            "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts/fonts.json",
+            "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts/RobotoFlex.ttf",
+            "samples/cmp-wasm-catalog/src/wasmJsMain/resources/js-joda.esm.js",
+        ):
+            with self.subTest(changed=changed):
+                result = mod.decide([changed], self.load("ci-paths.json"))
+                self.assertTrue(result["rc_player_tests"])
+
+    def test_other_wasm_catalog_sources_do_not_run_the_rc_player_jobs(self):
+        # Scoped to what the distribution actually copies: the catalog's own Kotlin is not a player
+        # input, and pulling the whole module in would run these jobs on every catalog edit.
+        result = mod.decide(
+            ["samples/cmp-wasm-catalog/src/wasmJsMain/kotlin/App.kt"],
+            self.load("ci-paths.json"),
+        )
+        self.assertFalse(result["rc_player_tests"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
