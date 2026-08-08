@@ -691,9 +691,26 @@ abstract class RenderPreviewsTask : DefaultTask() {
     )
   }
 
+  /**
+   * The launcher a worker is spawned with, when the plugin has not raised the render JDK.
+   *
+   * Taken from the **running process** rather than assembled from `java.home`: the file is
+   * `bin/java` on Linux and macOS but `bin\java.exe` on Windows, so a hand-built `bin/java` path
+   * fails `canExecute()` there and falls back to searching `PATH` — which a Gradle launched via
+   * `JAVA_HOME` need not be on. Every spawn would then fail and the task would quietly revert to
+   * per-capture forks after three attempts, losing the whole point of the pool on that platform.
+   * `ExecOperations.javaexec` never had this problem because Gradle resolves the launcher itself.
+   */
   private fun defaultJavaExecutable(): String {
-    val candidate = java.io.File(System.getProperty("java.home"), "bin/java")
-    return if (candidate.canExecute()) candidate.absolutePath else "java"
+    ProcessHandle.current().info().command().orElse(null)?.let { running ->
+      if (java.io.File(running).canExecute()) return running
+    }
+    // Fallbacks for a JVM that hides its command line, still platform-correct.
+    val home = java.io.File(System.getProperty("java.home"), "bin")
+    return listOf("java", "java.exe")
+      .map { java.io.File(home, it) }
+      .firstOrNull { it.canExecute() }
+      ?.absolutePath ?: "java"
   }
 
   /**

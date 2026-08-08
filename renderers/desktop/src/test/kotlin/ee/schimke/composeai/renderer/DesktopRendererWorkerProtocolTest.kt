@@ -173,9 +173,16 @@ class DesktopRendererWorkerProtocolTest {
    * that have nothing to do with pooling.
    */
   private fun jvmCommand(mainClass: String): List<String> {
-    val java = File(System.getProperty("java.home"), "bin/java")
+    // The running launcher, not a hand-built `bin/java` — that name is `java.exe` on Windows.
+    val launcher =
+      ProcessHandle.current().info().command().orElse(null)?.takeIf { File(it).canExecute() }
+        ?: listOf("java", "java.exe")
+          .map { File(System.getProperty("java.home"), "bin/$it") }
+          .firstOrNull { it.canExecute() }
+          ?.absolutePath
+        ?: "java"
     return listOf(
-      if (java.canExecute()) java.absolutePath else "java",
+      launcher,
       "-Dapple.awt.UIElement=true",
       "-cp",
       System.getProperty("java.class.path"),
