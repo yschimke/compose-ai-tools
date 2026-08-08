@@ -1,5 +1,5 @@
     <!doctype html>
-    <html lang="en">
+    <html lang="en" data-cp-theme-key="cp-theme:jetnews">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,109 +7,59 @@
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
         <style>
         :root {
-          --md-sys-color-primary: #bf0031;
-          --md-sys-color-on-primary: #ffffff;
-          --md-sys-color-primary-container: #ffdad9;
-          --md-sys-color-on-primary-container: #680e24;
-          --md-sys-color-secondary: #6c6668;
-          --md-sys-color-on-secondary: #ffffff;
-          --md-sys-color-secondary-container: #ffdad9;
-          --md-sys-color-on-secondary-container: #680e24;
-          --md-sys-color-tertiary: #bf0031;
-          --md-sys-color-on-tertiary: #ffffff;
-          --md-sys-color-tertiary-container: #f0d2dc;
-          --md-sys-color-on-tertiary-container: #111114;
-          --md-sys-color-error: #b3261e;
-          --md-sys-color-on-error: #ffffff;
-          --md-sys-color-error-container: #f9dedc;
-          --md-sys-color-on-error-container: #111114;
-          --md-sys-color-surface: #f8f4f8;
-          --md-sys-color-on-surface: #201a1a;
-          --md-sys-color-surface-variant: #efebef;
-          --md-sys-color-on-surface-variant: #6c6668;
-          --md-sys-color-surface-dim: #e5e0e4;
-          --md-sys-color-surface-bright: #f8f4f8;
-          --md-sys-color-surface-container-lowest: #fffdff;
-          --md-sys-color-surface-container-low: #fffbff;
-          --md-sys-color-surface-container: #f7f3f7;
-          --md-sys-color-surface-container-high: #efebef;
-          --md-sys-color-surface-container-highest: #e5e1e4;
-          --md-sys-color-outline: #8e898b;
-          --md-sys-color-outline-variant: #dedadd;
-          --md-sys-color-inverse-surface: #201a1a;
-          --md-sys-color-inverse-on-surface: #f8f4f8;
-          --md-sys-color-inverse-primary: #581122;
-          --cp-bg: #f8f4f8;
-          --cp-surface: #fffbff;
-          --cp-surface-2: #efebef;
-          --cp-fg: #201a1a;
-          --cp-fg-soft: #453f40;
-          --cp-fg-muted: #6c6668;
-          --cp-fg-faint: #8e898b;
-          --cp-border: #dedadd;
-          --cp-border-strong: #c8c4c7;
-          --cp-accent: #bf0031;
-          --cp-accent-strong: #680e24;
-          --cp-accent-soft: #ffdad9;
-          --cp-accent-ring: #e49fb2;
-          --cp-on-accent: #ffffff;
-          --cp-on-accent-soft: #680e24;
-        }
-        @media (prefers-color-scheme: dark) {
-          :root {
-            --md-sys-color-primary: #cb4368;
-            --md-sys-color-on-primary: #ffffff;
-            --md-sys-color-primary-container: #2e1923;
-            --md-sys-color-on-primary-container: #da99af;
-            --md-sys-color-secondary: #9d98a0;
-            --md-sys-color-on-secondary: #ffffff;
-            --md-sys-color-secondary-container: #2e1923;
-            --md-sys-color-on-secondary-container: #da99af;
-            --md-sys-color-tertiary: #cb4368;
-            --md-sys-color-on-tertiary: #ffffff;
-            --md-sys-color-tertiary-container: #2e1923;
-            --md-sys-color-on-tertiary-container: #ffffff;
-            --md-sys-color-error: #f2b8b5;
-            --md-sys-color-on-error: #111114;
-            --md-sys-color-error-container: #8c1d18;
-            --md-sys-color-on-error-container: #ffffff;
-            --md-sys-color-surface: #141218;
-            --md-sys-color-on-surface: #e6e0e9;
-            --md-sys-color-surface-variant: #2b2930;
-            --md-sys-color-on-surface-variant: #9d98a0;
-            --md-sys-color-surface-dim: #141218;
-            --md-sys-color-surface-bright: #363339;
-            --md-sys-color-surface-container-lowest: #0c0b0d;
-            --md-sys-color-surface-container-low: #1d1b20;
-            --md-sys-color-surface-container: #242228;
-            --md-sys-color-surface-container-high: #2b2930;
-            --md-sys-color-surface-container-highest: #343239;
-            --md-sys-color-outline: #7b777e;
-            --md-sys-color-outline-variant: #2d2b31;
-            --md-sys-color-inverse-surface: #e6e0e9;
-            --md-sys-color-inverse-on-surface: #141218;
-            --md-sys-color-inverse-primary: #dda9bc;
-            --cp-bg: #141218;
-            --cp-surface: #1d1b20;
-            --cp-surface-2: #2b2930;
-            --cp-fg: #e6e0e9;
-            --cp-fg-soft: #c2bdc5;
-            --cp-fg-muted: #9d98a0;
-            --cp-fg-faint: #7b777e;
-            --cp-border: #2d2b31;
-            --cp-border-strong: #423f46;
-            --cp-accent: #cb4368;
-            --cp-accent-strong: #da99af;
-            --cp-accent-soft: #2e1923;
-            --cp-accent-ring: #542334;
-            --cp-on-accent: #ffffff;
-            --cp-on-accent-soft: #da99af;
-          }
+          --md-sys-color-primary: light-dark(#bf0031, #cb4368);
+          --md-sys-color-on-primary: light-dark(#ffffff, #ffffff);
+          --md-sys-color-primary-container: light-dark(#ffdad9, #2e1923);
+          --md-sys-color-on-primary-container: light-dark(#680e24, #da99af);
+          --md-sys-color-secondary: light-dark(#6c6668, #9d98a0);
+          --md-sys-color-on-secondary: light-dark(#ffffff, #ffffff);
+          --md-sys-color-secondary-container: light-dark(#ffdad9, #2e1923);
+          --md-sys-color-on-secondary-container: light-dark(#680e24, #da99af);
+          --md-sys-color-tertiary: light-dark(#bf0031, #cb4368);
+          --md-sys-color-on-tertiary: light-dark(#ffffff, #ffffff);
+          --md-sys-color-tertiary-container: light-dark(#f0d2dc, #2e1923);
+          --md-sys-color-on-tertiary-container: light-dark(#111114, #ffffff);
+          --md-sys-color-error: light-dark(#b3261e, #f2b8b5);
+          --md-sys-color-on-error: light-dark(#ffffff, #111114);
+          --md-sys-color-error-container: light-dark(#f9dedc, #8c1d18);
+          --md-sys-color-on-error-container: light-dark(#111114, #ffffff);
+          --md-sys-color-surface: light-dark(#f8f4f8, #141218);
+          --md-sys-color-on-surface: light-dark(#201a1a, #e6e0e9);
+          --md-sys-color-surface-variant: light-dark(#efebef, #2b2930);
+          --md-sys-color-on-surface-variant: light-dark(#6c6668, #9d98a0);
+          --md-sys-color-surface-dim: light-dark(#e5e0e4, #141218);
+          --md-sys-color-surface-bright: light-dark(#f8f4f8, #363339);
+          --md-sys-color-surface-container-lowest: light-dark(#fffdff, #0c0b0d);
+          --md-sys-color-surface-container-low: light-dark(#fffbff, #1d1b20);
+          --md-sys-color-surface-container: light-dark(#f7f3f7, #242228);
+          --md-sys-color-surface-container-high: light-dark(#efebef, #2b2930);
+          --md-sys-color-surface-container-highest: light-dark(#e5e1e4, #343239);
+          --md-sys-color-outline: light-dark(#8e898b, #7b777e);
+          --md-sys-color-outline-variant: light-dark(#dedadd, #2d2b31);
+          --md-sys-color-inverse-surface: light-dark(#201a1a, #e6e0e9);
+          --md-sys-color-inverse-on-surface: light-dark(#f8f4f8, #141218);
+          --md-sys-color-inverse-primary: light-dark(#581122, #dda9bc);
+          --cp-bg: light-dark(#f8f4f8, #141218);
+          --cp-surface: light-dark(#fffbff, #1d1b20);
+          --cp-surface-2: light-dark(#efebef, #2b2930);
+          --cp-fg: light-dark(#201a1a, #e6e0e9);
+          --cp-fg-soft: light-dark(#453f40, #c2bdc5);
+          --cp-fg-muted: light-dark(#6c6668, #9d98a0);
+          --cp-fg-faint: light-dark(#8e898b, #7b777e);
+          --cp-border: light-dark(#dedadd, #2d2b31);
+          --cp-border-strong: light-dark(#c8c4c7, #423f46);
+          --cp-accent: light-dark(#bf0031, #cb4368);
+          --cp-accent-strong: light-dark(#680e24, #da99af);
+          --cp-accent-soft: light-dark(#ffdad9, #2e1923);
+          --cp-accent-ring: light-dark(#e49fb2, #542334);
+          --cp-on-accent: light-dark(#ffffff, #ffffff);
+          --cp-on-accent-soft: light-dark(#680e24, #da99af);
         }
         </style>
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||p.get("uiMode")||localStorage.getItem("cp-theme:jetnews"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
@@ -127,6 +77,26 @@
     <a href="/?token=demo-token-fixture">Catalogs</a>
     <a href="/status?token=demo-token-fixture">Status</a>
     <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+    <details class="cp-settings">
+      <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+        <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+      </summary>
+      <div class="cp-settings-panel">
+        <fieldset class="cp-settings-group">
+          <legend class="cp-settings-legend">Page theme</legend>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+            <span>Match the preview theme</span>
+          </label>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+            <span>Follow my system</span>
+          </label>
+          <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+            match. Turn it off to keep the page on your operating system's setting.</p>
+        </fieldset>
+      </div>
+    </details>
   </nav>
 </header>
         <main class="cp-main">
@@ -339,6 +309,8 @@
     el.setAttribute("data-theme-active", "1");
     try { localStorage.setItem("cp-theme:jetnews", el.value); } catch (e) {}
     syncBg();
+    // …and the page around the stage, when the Page theme setting says to follow the choice.
+    if (window.cpPageTheme) window.cpPageTheme.follow(el.value);
   });
   syncBg();
 })();</script>
@@ -349,5 +321,6 @@
           <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
           <a href="/version">/version</a>
         </footer>
+        <script src="/assets/serve/fixture/page-theme.js"></script>
       </body>
     </html>

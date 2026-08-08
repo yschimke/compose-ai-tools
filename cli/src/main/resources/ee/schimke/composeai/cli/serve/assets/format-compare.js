@@ -945,6 +945,9 @@
       theme = button.getAttribute("data-compare-theme");
       try { localStorage.setItem(root.getAttribute("data-theme-key"), theme); } catch (ignore) {}
       pushUrl({ theme: theme });
+      // Paint the page to match the theme being compared, when the visitor's Page theme setting
+      // asks for that (page-theme.js decides; it is loaded after this file, hence the guard).
+      if (window.cpPageTheme) window.cpPageTheme.follow(theme);
       run();
     });
   });
@@ -962,6 +965,7 @@
       var poppedTheme = popped.get("theme");
       theme = (poppedTheme === "light" || poppedTheme === "dark") ? poppedTheme : initialTheme;
       if (search) search.value = popped.get("q") || "";
+      if (window.cpPageTheme) window.cpPageTheme.follow(theme);
       run();
     });
   }

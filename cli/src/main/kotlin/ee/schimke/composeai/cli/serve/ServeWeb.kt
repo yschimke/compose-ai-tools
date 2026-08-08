@@ -329,11 +329,49 @@ object ServeWeb {
           <a href="/$navSuffix">Catalogs</a>
           <a href="/status$navSuffix">Status</a>
           <a href="https://github.com/$SOURCE_REPO">GitHub</a>$actionHtml
+          ${settingsMenuHtml().prependIndent("          ").trimStart()}
         </nav>
       </header>
       """
       .trimIndent()
   }
+
+  /**
+   * The header's **Settings** menu: standing per-visitor preferences, as opposed to the controls
+   * that describe what is on screen (the Theme chips, Transparent, the override drawers). One
+   * setting lives here today — **Page theme**, whether the chrome follows the selected preview
+   * theme or the visitor's operating system (see `page-theme.js`) — and it is a setting rather than
+   * another toolbar control precisely because it is answered once and then applies to every catalog
+   * and every page.
+   *
+   * A plain `<details>`, so it opens and the radios record a choice with **no JavaScript at all**;
+   * `page-theme.js` only reflects the stored value into them and repaints when one changes. It sits
+   * in the nav so it is in the same place on every page, and last so it never displaces the links.
+   */
+  private fun settingsMenuHtml(): String =
+    """
+    <details class="cp-settings">
+      <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+        <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+      </summary>
+      <div class="cp-settings-panel">
+        <fieldset class="cp-settings-group">
+          <legend class="cp-settings-legend">Page theme</legend>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+            <span>Match the preview theme</span>
+          </label>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+            <span>Follow my system</span>
+          </label>
+          <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+            match. Turn it off to keep the page on your operating system's setting.</p>
+        </fieldset>
+      </div>
+    </details>
+    """
+      .trimIndent()
 
   /**
    * A "back to all design systems" button for a catalog landing — replaces the in-catalog
@@ -1689,7 +1727,11 @@ object ServeWeb {
         // actually changed, so typing never restarts an in-flight themed-render queue.
         function applyThemeChoice() {
           if (theme === appliedTheme) return;
-          appliedTheme = theme;$applyDeclaredThemeIndented
+          appliedTheme = theme;
+          // Turn the page over with the previews: with the Page theme setting on, the chrome
+          // follows an explicit Light/Dark pick (page-theme.js decides; a declared theme leaves it
+          // alone). Guarded because that file is deferred to the end of the body.
+          if (window.cpPageTheme) window.cpPageTheme.follow(theme);$applyDeclaredThemeIndented
           var k = theme === "dark" ? "d" : "l";
           cards.forEach(function (c, i) {
             if (c.getAttribute("data-swap") === "1") { applyVariant(c, k, true); return; }$restoreBakedSrc
@@ -2029,6 +2071,8 @@ object ServeWeb {
         el.setAttribute("data-theme-active", "1");
         try { localStorage.setItem("$themeStorageKey", el.value); } catch (e) {}
         syncBg();
+        // …and the page around the stage, when the Page theme setting says to follow the choice.
+        if (window.cpPageTheme) window.cpPageTheme.follow(el.value);
       });
       syncBg();
     })();
@@ -4209,6 +4253,7 @@ object ServeWeb {
       headerBreadcrumb = back,
       version = version,
       themeCss = themeCss,
+      themeStorageKey = themeStorageKey(sessionId, basePath),
       body =
         """
         <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
@@ -4418,6 +4463,7 @@ object ServeWeb {
       navSuffix = navSuffix,
       headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Compare formats"),
       themeCss = themeCss,
+      themeStorageKey = themeStorageKey(sessionId, basePath),
       // The PNG ↔ Remote Compose comparison plays the document in a canvas on this page and
       // *scores*
       // the result, so an unregistered typeface here doesn't just look wrong — it lands in the
@@ -6294,6 +6340,7 @@ $rows
           "Component",
         ),
       themeCss = themeCss,
+      themeStorageKey = themeStorageKey(sessionId, basePath),
       // Only the `js` chip paints in this document's canvas, and it only exists when the preview
       // carries a captured document.
       rcFonts = hasRemoteComposeDoc,
@@ -6400,6 +6447,14 @@ $rows
      */
     themeCss: String = "",
     /**
+     * The catalog-scoped `localStorage` key this page's theme choice is remembered under (as
+     * produced by [themeStorageKey]) — published to the client on `<html data-cp-theme-key>` and
+     * read back by the pre-paint script and `page-theme.js`, which need the remembered choice to
+     * resolve the page's colour scheme. Empty for a page with no theme control at all (the front
+     * door, `/status`, a shared document): those never pin a scheme.
+     */
+    themeStorageKey: String = "",
+    /**
      * Register the vendored Remote Compose typefaces ([ServeRcFonts]) on this page. True for the
      * pages that play a `.rc` document **client-side** — without the faces the player's `Roboto,
      * sans-serif` request falls through to whatever the *viewer's* machine calls `sans-serif`, so
@@ -6457,9 +6512,13 @@ $rows
       themeCss
         .takeIf { it.isNotBlank() }
         ?.let { "\n" + ("<style>\n" + it.trimEnd() + "\n</style>").prependIndent("        ") } ?: ""
+    val themeKeyAttr =
+      themeStorageKey
+        .takeIf { it.isNotBlank() }
+        ?.let { " data-cp-theme-key=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
     return """
     <!doctype html>
-    <html lang="en">
+    <html lang="en"$themeKeyAttr>
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
@@ -6468,16 +6527,45 @@ $rows
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        ${pageThemeScript(themeStorageKey)}
       </head>
       <body>
         ${siteHeader(navSuffix, headerAction, headerBreadcrumb)}
         <main class="cp-main">
         $body
         </main>$footerBlock
+        ${scriptTag("page-theme.js")}
       </body>
     </html>
     """
       .trimIndent() + "\n"
+  }
+
+  /**
+   * Pin the page's colour scheme to the selected preview theme **before first paint**, when the
+   * Page theme setting is on (its default — see `page-theme.js` for why it is a setting).
+   *
+   * Inline and in the `<head>` for the same reason the Transparent restore above is: resolving this
+   * from the deferred `page-theme.js` would paint the page in the wrong mode first and correct it a
+   * frame later, which on a dark-to-light swap is a full-screen flash. It is deliberately the whole
+   * resolution rather than a call into that file — the file has not loaded yet.
+   *
+   * The order is the same one the grid and the viewer use for the theme itself: the URL wins
+   * (`?theme=` on a catalog landing, `?uiMode=` in the viewer — someone picked that chip or was
+   * handed the link), then the choice this catalog remembers. Only an explicit `light` / `dark`
+   * moves the chrome; `default` and an app-declared `theme:<providerFqn>` carry no light/dark axis,
+   * so they leave the page on the visitor's OS preference rather than guessing a mode for it.
+   */
+  private fun pageThemeScript(themeStorageKey: String): String {
+    val storedTheme =
+      themeStorageKey
+        .takeIf { it.isNotBlank() }
+        ?.let { "||localStorage.getItem(${WebEscaping.jsString(it)})" } ?: ""
+    return "<script>try{var p=new URLSearchParams(location.search)," +
+      "t=localStorage.getItem(\"cp-page-theme\")===\"system\"?\"\"" +
+      ":(p.get(\"theme\")||p.get(\"uiMode\")$storedTheme);" +
+      "if(t===\"light\"||t===\"dark\")document.documentElement.classList.add(\"cp-scheme-\"+t);" +
+      "}catch(e){}</script>"
   }
 
   /**

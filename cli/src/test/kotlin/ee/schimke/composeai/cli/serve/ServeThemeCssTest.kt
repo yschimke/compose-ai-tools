@@ -60,14 +60,20 @@ class ServeThemeCssTest {
       "outline" to "#0000001f",
     )
 
-  /** The `--cp-*` declarations of one `:root` block of the emitted sheet. */
-  private fun vars(css: String, dark: Boolean): Map<String, String> {
-    val blocks = css.split("@media (prefers-color-scheme: dark)")
-    val block = if (dark) blocks[1] else blocks[0]
-    return Regex("(--cp-[a-z0-9-]+):\\s*(#[0-9a-f]{6})").findAll(block).associate {
-      it.groupValues[1] to it.groupValues[2]
-    }
-  }
+  /**
+   * The `--cp-*` declarations of the emitted sheet, resolved for one mode.
+   *
+   * The projection emits ONE `:root` block of `light-dark(<light>, <dark>)` pairs rather than a
+   * light block plus a `prefers-color-scheme` block (that is what lets the page-theme setting pin a
+   * mode), so reading a mode out means taking one half of each pair.
+   */
+  private fun vars(css: String, dark: Boolean): Map<String, String> = half(css, "--cp", dark)
+
+  /** One half of every `light-dark()` pair whose property starts with [prefix]. */
+  private fun half(css: String, prefix: String, dark: Boolean): Map<String, String> =
+    Regex("($prefix-[a-z0-9-]+):\\s*light-dark\\((#[0-9a-f]{6}), (#[0-9a-f]{6})\\)")
+      .findAll(css)
+      .associate { it.groupValues[1] to it.groupValues[if (dark) 3 else 2] }
 
   private fun rgb(hex: String) = ServeThemeCss.parse(hex)!!.first
 
@@ -172,14 +178,9 @@ class ServeThemeCssTest {
     assertEquals(emptySet(), used - emitted, "custom properties used but never themed")
   }
 
-  /** The `--md-sys-color-*` (Material 3 role) declarations of one `:root` block. */
-  private fun roles(css: String, dark: Boolean): Map<String, String> {
-    val blocks = css.split("@media (prefers-color-scheme: dark)")
-    val block = if (dark) blocks[1] else blocks[0]
-    return Regex("(--md-sys-color-[a-z0-9-]+):\\s*(#[0-9a-f]{6})").findAll(block).associate {
-      it.groupValues[1] to it.groupValues[2]
-    }
-  }
+  /** The `--md-sys-color-*` (Material 3 role) declarations, resolved for one mode. */
+  private fun roles(css: String, dark: Boolean): Map<String, String> =
+    half(css, "--md-sys-color", dark)
 
   @Test
   fun `the M3 roles the stylesheet declares are all themed, and agree with the aliases`() {
@@ -293,6 +294,21 @@ class ServeThemeCssTest {
           assertTrue(contrast(label, fill) >= 4.0, "$family container label, $where")
         }
       }
+    }
+  }
+
+  @Test
+  fun `both modes are emitted as one block of light-dark pairs`() {
+    // The shape is load-bearing, not incidental: `serve.css` pins a mode with `color-scheme` alone
+    // (the Page theme setting), which can only re-resolve values written as `light-dark()` pairs. A
+    // `prefers-color-scheme` block would ignore the pin and leave a catalog's palette on the OS
+    // preference while the built-in chrome around it followed the selected theme.
+    val css = assertNotNull(ServeThemeCss.fromDtcg(wearM3))
+    assertEquals(1, Regex(":root \\{").findAll(css).count(), "one :root block")
+    assertTrue("@media" !in css, "no media query")
+    // Every declaration carries both halves — a bare colour would be stuck in one mode.
+    for (line in css.lines().filter { it.trim().startsWith("--") }) {
+      assertTrue(line.contains("light-dark("), line)
     }
   }
 
