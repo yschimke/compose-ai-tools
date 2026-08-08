@@ -43,14 +43,18 @@ import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image as SkiaImage
 
 /**
- * Mode driving the desktop scroll capture path. Mirrors the LONG / GIF subset of
- * `ee.schimke.composeai.discovery.ScrollMode` — TOP / END are still served by the default
- * single-frame [renderPreview] path in [DesktopRendererMain] because they don't need to leave the
- * existing [ImageComposeScene]-based pipeline.
+ * Mode driving the desktop scroll capture path. Mirrors the driven subset of
+ * `ee.schimke.composeai.discovery.ScrollMode`.
+ *
+ * `TOP` is absent on purpose: it *is* the undriven first viewport, which the default single-frame
+ * [renderPreview] path in [DesktopRendererMain] already produces, so routing it here would only
+ * cost a second composition. `END` needs the drive and so lives here, even though — unlike LONG /
+ * GIF — its output is an ordinary single-frame PNG rather than a data product.
  */
 enum class DesktopScrollMode {
   LONG,
   GIF,
+  END,
 }
 
 /**
@@ -205,6 +209,14 @@ fun renderScrollPreview(
             outputFile = outputFile,
             fileSystem = fileSystem,
           )
+        DesktopScrollMode.END ->
+          captureEnd(
+            host = host,
+            axis = axis,
+            maxScrollPx = maxScrollPx,
+            outputFile = outputFile,
+            fileSystem = fileSystem,
+          )
       }
   }
   return captured
@@ -225,6 +237,21 @@ private const val DRIVE_ADVANCE_MS_PER_STEP = 250L
 private const val DRIVE_MAX_ITERATIONS = 30
 private const val SETTLED_EPSILON_PX = 0.5f
 private const val POST_SCROLL_SETTLE_MS = 1000L
+
+/**
+ * Virtual frames [captureEnd] lets an animated `ScrollBy` run for before it re-reads the axis
+ * range. ~0.5 s, comfortably past Compose's default scroll animation, so each iteration measures a
+ * landed scroll rather than one still in flight.
+ */
+private const val END_STEP_SETTLE_FRAMES = 32
+
+/**
+ * Iteration bound for [captureEnd]'s drive. Higher than [DRIVE_MAX_ITERATIONS] because a
+ * `LazyColumn` only firms up its estimated extent as items compose, so reaching a long list's true
+ * end takes several rounds of "jump to the end I can currently see". The loop exits on the first
+ * iteration that makes no progress, so this is a runaway guard rather than the usual exit.
+ */
+private const val END_DRIVE_MAX_ITERATIONS = 60
 
 @OptIn(ExperimentalTestApi::class)
 private fun captureLong(
@@ -283,6 +310,81 @@ private fun captureLong(
   } finally {
     slicesDir.deleteRecursively()
   }
+}
+
+/**
+ * `@ScrollingPreview(modes = [END])` — the scrollable driven to its content end, then one frame.
+ *
+ * Unlike [captureLong] / [captureGif] this writes an ordinary preview PNG, so it is the one scroll
+ * mode whose product is the sticker itself. That is what makes it worth driving rather than
+ * approximating: the bottom-anchored chrome a screen reveals only once its list settles — a Wear
+ * `ScreenScaffold`'s `EdgeButton`, a "load more" footer, a scroll-linked app bar — is simply absent
+ * from the resting-top capture the desktop renderer produced before.
+ *
+ * The drive is [captureLong]'s loop with the per-slice capture removed: step by the remaining
+ * distance, bounded by [DRIVE_MAX_ITERATIONS] and by the annotation's `maxScrollPx` cap, until the
+ * axis range reports nothing left. Stepping rather than one big jump keeps a `LazyColumn` composing
+ * the items it passes, so item-count-dependent layout settles the same way it does under a real
+ * fling.
+ *
+ * Then [POST_SCROLL_SETTLE_MS] of virtual time before the shot, for the same reason the GIF path
+ * settles before its final frame: chrome that animates *in response to* the scroll landing would
+ * otherwise be caught mid-reveal.
+ *
+ * Returns `false` when the axis carries no scrollable — the caller falls back to the undriven frame
+ * rather than failing, since an END capture of a non-scrolling screen is exactly its top.
+ */
+@OptIn(ExperimentalTestApi::class)
+private fun captureEnd(
+  host: ComposeUiTestScrollHost,
+  axis: ScrollAxis,
+  maxScrollPx: Int,
+  outputFile: File,
+  fileSystem: FileSystem = SystemFileSystem,
+): Boolean {
+  if (!axisHasScrollable(host, axis)) {
+    System.err.println(
+      "@ScrollingPreview(END) on $outputFile: no scrollable composable on axis ${axis.name} — " +
+        "capturing the initial frame."
+    )
+    return false
+  }
+
+  val cap = if (maxScrollPx > 0) maxScrollPx.toFloat() else Float.POSITIVE_INFINITY
+  val startPx = scrollOffsetPx(host, axis)
+  var scrolledPx = 0f
+  for (step in 0 until END_DRIVE_MAX_ITERATIONS) {
+    val remaining = remainingScrollPx(host, axis)
+    if (remaining <= SETTLED_EPSILON_PX) break
+    val headroom = (cap - scrolledPx).coerceAtLeast(0f)
+    if (headroom <= SETTLED_EPSILON_PX) break
+
+    val before = scrollOffsetPx(host, axis)
+    performScrollDelta(host, axis, minOf(remaining, headroom))
+    // `SemanticsActions.ScrollBy` *animates*, and [performScrollDelta] only advances a fixed
+    // slice of virtual time — long enough for the short, viewport-sized hops LONG and GIF take,
+    // but not for the single content-length jump this loop asks for. Let the animation land
+    // before re-reading the range, or every iteration would measure a scroll still in flight and
+    // the drive would creep instead of converge.
+    repeat(END_STEP_SETTLE_FRAMES) { host.mainClock.advanceTimeByFrame() }
+
+    // Progress is measured from the axis range, not from what was requested: a `LazyColumn`
+    // reports an *estimated* `maxValue` that firms up as items compose, so the distance asked for
+    // and the distance travelled routinely differ. Zero progress means the scrollable is done
+    // (or refusing), and looping again would just burn iterations.
+    val advanced = scrollOffsetPx(host, axis) - before
+    if (advanced <= SETTLED_EPSILON_PX) break
+    scrolledPx = scrollOffsetPx(host, axis) - startPx
+  }
+
+  val settleFrames = (POST_SCROLL_SETTLE_MS / 16L).toInt()
+  repeat(settleFrames) { host.mainClock.advanceTimeByFrame() }
+
+  captureRootFrame(host, outputFile, fileSystem)
+  System.err.println(
+    "@ScrollingPreview(END) on $outputFile: scrolled ${scrolledPx.toInt()}px to the content end."
+  )
+  return true
 }
 
 @OptIn(ExperimentalTestApi::class)
@@ -475,6 +577,25 @@ private fun remainingScrollPx(host: ComposeUiTestScrollHost, axis: ScrollAxis): 
   val node = nodes.firstOrNull() ?: return 0f
   val range: ScrollAxisRange = node.config.getOrNull(axisKey) ?: return 0f
   return (range.maxValue() - range.value()).coerceAtLeast(0f)
+}
+
+/**
+ * How far the first scrollable on [axis] has travelled, in px — `ScrollAxisRange.value`. The
+ * companion to [remainingScrollPx]: `value` is measured, while `maxValue` on a lazy container is an
+ * estimate, so a drive that needs to know it actually moved reads this rather than differencing the
+ * remaining distance.
+ */
+@OptIn(ExperimentalTestApi::class)
+private fun scrollOffsetPx(host: ComposeUiTestScrollHost, axis: ScrollAxis): Float {
+  val axisKey =
+    when (axis) {
+      ScrollAxis.VERTICAL -> SemanticsProperties.VerticalScrollAxisRange
+      ScrollAxis.HORIZONTAL -> SemanticsProperties.HorizontalScrollAxisRange
+    }
+  val nodes = host.provider.onAllNodes(SemanticsMatcher.keyIsDefined(axisKey)).fetchSemanticsNodes()
+  val node = nodes.firstOrNull() ?: return 0f
+  val range: ScrollAxisRange = node.config.getOrNull(axisKey) ?: return 0f
+  return range.value()
 }
 
 @OptIn(ExperimentalTestApi::class)
