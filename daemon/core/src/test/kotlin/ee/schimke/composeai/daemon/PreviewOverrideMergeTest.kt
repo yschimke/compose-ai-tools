@@ -22,8 +22,10 @@ import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PreviewOverrideMergeTest {
@@ -509,6 +511,33 @@ class PreviewOverrideMergeTest {
 
     assertEquals(once.widthPx, twice.widthPx)
     assertEquals(once.heightPx, twice.heightPx)
+  }
+
+  @Test
+  fun `reports rotation so per-axis state can follow the frame`() {
+    // `DesktopHost` swaps wrapWidth/wrapHeight off this flag. It cannot re-derive the answer from
+    // the returned dimensions — those are already rotated, so re-asking "does the orientation
+    // contradict this frame?" always says no, and a one-wrapped-axis preview would keep wrapping
+    // the axis that is no longer free (#3552 review).
+    val rotated =
+      mergePreviewOverrides(baseSpec(), PreviewOverrides(orientation = Orientation.LANDSCAPE))
+    assertTrue("100x200 asked for landscape should report rotated", rotated.rotated)
+    assertEquals(200, rotated.widthPx)
+    assertEquals(100, rotated.heightPx)
+
+    // Already satisfied: no swap, so nothing downstream should trade its axes either.
+    val untouched =
+      mergePreviewOverrides(baseSpec(), PreviewOverrides(orientation = Orientation.PORTRAIT))
+    assertFalse("100x200 is already portrait", untouched.rotated)
+
+    // Explicit pixels outrank the request, so the frame is the caller's and never rotates.
+    val explicit =
+      mergePreviewOverrides(
+        baseSpec(),
+        PreviewOverrides(widthPx = 300, heightPx = 400, orientation = Orientation.LANDSCAPE),
+      )
+    assertFalse("explicit pixels outrank the rotation", explicit.rotated)
+    assertEquals(300, explicit.widthPx)
   }
 
   private fun baseSpec(

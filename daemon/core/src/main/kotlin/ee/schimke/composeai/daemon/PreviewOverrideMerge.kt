@@ -66,6 +66,18 @@ data class MergedPreviewOverrides(
   val remoteCompose: RemoteComposeOverride?,
   val launcherWidget: LauncherWidgetOverride?,
   val namedOverrides: Map<String, PreviewOverrideValue>?,
+  /**
+   * Whether [widthPx] / [heightPx] came back with their axes traded because [orientation]
+   * contradicted the resolved frame.
+   *
+   * Callers that carry **per-axis** state alongside the frame have to rotate it in step, and they
+   * can't re-derive the answer from the returned dimensions — those are already rotated, so asking
+   * "does the orientation contradict this?" a second time always says no. `DesktopHost` is the case
+   * in point: its `wrapWidth` / `wrapHeight` describe which axis wrap-contents, and a one-wrapped-
+   * axis preview that rotates without swapping them measures the wrong axis and crops (#3552
+   * review). Anything holding only whole-frame state can ignore this.
+   */
+  val rotated: Boolean = false,
 ) {
   /**
    * Project the merged overrides down to a [PreviewOverrides] bag that only carries fields
@@ -292,6 +304,7 @@ fun mergePreviewOverrides(
   return MergedPreviewOverrides(
     widthPx = widthPx,
     heightPx = heightPx,
+    rotated = widthPx != naturalWidthPx || heightPx != naturalHeightPx,
     density = effectiveDensity,
     device = deviceOverride ?: base.device,
     localeTag = overrides.localeTag?.takeIf { it.isNotBlank() } ?: base.localeTag,

@@ -1109,14 +1109,39 @@ open class RobolectricHost(
       append("functionName=").append(base.functionName).append(';')
       // Inbound explicit override wins over the spec's per-preview default. `device=` overrides are
       // pre-resolved into widthPx/heightPx/density by `JsonRpcServer.encodeRenderPayload`.
-      append("widthPx=").append(inbound["widthPx"] ?: base.widthPx).append(';')
-      append("heightPx=").append(inbound["heightPx"] ?: base.heightPx).append(';')
+      //
+      // #3547 — a device-less `orientation` request reaches here with no dimensions at all
+      // (`encodeRenderPayload` has none to rotate), so this is the only lane that can rotate the
+      // preview's own discovery-time frame. Skipping it captured a landscape bitmap while
+      // `applyPreviewQualifiers` derived a `port` qualifier from the same spec: a frame
+      // contradicting its own Configuration. Explicit pixels still outrank the request, and
+      // `orientedPx` only swaps a frame that contradicts it, so a device override (already rotated
+      // upstream) passes through untouched.
+      val orientationCanSwap = inbound["widthPx"] == null && inbound["heightPx"] == null
+      val requestedOrientation = inbound["orientation"] ?: base.orientation?.name?.lowercase()
+      val (framedWidthPx, framedHeightPx) =
+        if (orientationCanSwap)
+          ee.schimke.composeai.daemon.devices.FrameOrientation.orientedPx(
+            base.widthPx,
+            base.heightPx,
+            requestedOrientation,
+          )
+        else base.widthPx to base.heightPx
+      val rotated = framedWidthPx != base.widthPx || framedHeightPx != base.heightPx
+      append("widthPx=").append(inbound["widthPx"] ?: framedWidthPx).append(';')
+      append("heightPx=").append(inbound["heightPx"] ?: framedHeightPx).append(';')
       // AS-parity wrap flags must ride the serialized payload — `parseFromPayloadOrNull` defaults
       // them false, so a held/stream render of a no-height preview would otherwise reflow past the
       // frame to zero height. An inbound explicit size (a `device=` override arrives pre-resolved as
       // widthPx/heightPx per encodeRenderPayload) pins the axis, dropping its wrap flag.
-      if (base.wrapWidth && inbound["widthPx"] == null) append("wrapWidth=true;")
-      if (base.wrapHeight && inbound["heightPx"] == null) append("wrapHeight=true;")
+      //
+      // The flags name an *axis*, so a rotated frame has to trade them too — a fixed-width /
+      // wrapped-height preview turned landscape must now wrap width, or the measure-and-crop pass
+      // sizes the wrong axis.
+      val wrapWidth = if (rotated) base.wrapHeight else base.wrapWidth
+      val wrapHeight = if (rotated) base.wrapWidth else base.wrapHeight
+      if (wrapWidth && inbound["widthPx"] == null) append("wrapWidth=true;")
+      if (wrapHeight && inbound["heightPx"] == null) append("wrapHeight=true;")
       append("density=").append(inbound["density"] ?: base.density).append(';')
       append("showBackground=").append(base.showBackground).append(';')
       if (base.backgroundColor != 0L) {

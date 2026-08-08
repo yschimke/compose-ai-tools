@@ -110,6 +110,12 @@ class PreviewManifestRouter(
           inbound["orientation"],
         )
       else baseWidthPx to baseHeightPx
+    // The wrap flags name an *axis*, so a rotated frame trades them with the dimensions: a
+    // fixed-width / wrapped-height preview turned landscape must wrap width instead, or the
+    // measure-and-crop pass sizes the axis that is no longer the free one.
+    val rotated = effectiveBaseWidthPx != baseWidthPx || effectiveBaseHeightPx != baseHeightPx
+    val resolvedWrapWidth = if (rotated) resolved.wrapHeight else resolved.wrapWidth
+    val resolvedWrapHeight = if (rotated) resolved.wrapWidth else resolved.wrapHeight
     val routed =
       RenderRequest.Render(
         id = typed.id,
@@ -128,10 +134,10 @@ class PreviewManifestRouter(
             // `widthPx`/`heightPx` (or a device-derived size) pins that axis, so wrap is emitted
             // only
             // when neither an inbound override nor a device forced a size on it.
-            if (inbound["widthPx"] == null && deviceSpec == null && resolved.wrapWidth) {
+            if (inbound["widthPx"] == null && deviceSpec == null && resolvedWrapWidth) {
               append("wrapWidth=true;")
             }
-            if (inbound["heightPx"] == null && deviceSpec == null && resolved.wrapHeight) {
+            if (inbound["heightPx"] == null && deviceSpec == null && resolvedWrapHeight) {
               append("wrapHeight=true;")
             }
             append("density=").append(inbound["density"] ?: baseDensity).append(';')

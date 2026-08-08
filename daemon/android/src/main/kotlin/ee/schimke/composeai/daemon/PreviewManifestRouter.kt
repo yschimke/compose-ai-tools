@@ -123,6 +123,12 @@ class PreviewManifestRouter(
           inbound["orientation"],
         )
       else baseWidthPx to baseHeightPx
+    // The wrap flags name an *axis*, so a rotated frame trades them with the dimensions: a
+    // fixed-width / wrapped-height preview turned landscape must wrap width instead, or the
+    // measure-and-crop pass sizes the axis that is no longer the free one.
+    val rotated = effectiveBaseWidthPx != baseWidthPx || effectiveBaseHeightPx != baseHeightPx
+    val resolvedWrapWidth = if (rotated) resolved.wrapHeight else resolved.wrapWidth
+    val resolvedWrapHeight = if (rotated) resolved.wrapWidth else resolved.wrapHeight
     return buildString {
       append("previewId=").append(previewId).append(';')
       append("className=").append(entry.className).append(';')
@@ -136,10 +142,10 @@ class PreviewManifestRouter(
       // measure-and-crop path and no-height previews reflow past the frame to zero height. An
       // inbound explicit size or a device override pins the axis, so the wrap flag drops on that
       // axis (the base px above already reflect the device/override size).
-      if (resolved.wrapWidth && inbound["widthPx"] == null && deviceOverride == null) {
+      if (resolvedWrapWidth && inbound["widthPx"] == null && deviceOverride == null) {
         append("wrapWidth=true;")
       }
-      if (resolved.wrapHeight && inbound["heightPx"] == null && deviceOverride == null) {
+      if (resolvedWrapHeight && inbound["heightPx"] == null && deviceOverride == null) {
         append("wrapHeight=true;")
       }
       append("density=").append(inbound["density"] ?: baseDensity).append(';')
