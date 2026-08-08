@@ -1129,6 +1129,54 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-annotation-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 14px;
   margin: 14px 0 0; color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-annotation-toggle { display: inline-flex; align-items: center; gap: 6px; }
+/* ---------------------------------------------------------------------------
+   Viewer inspection layers (see inspect.js): accessibility focus map, resolved
+   typography, resolved theme attributes. The layer is absolutely positioned over
+   the stage's <img> and sized in JS from that image's rendered box, because every
+   source reports bounds in the render's own pixel space.
+   --------------------------------------------------------------------------- */
+.cp-inspect-layer { position: absolute; pointer-events: none; }
+.cp-viewer[data-inspect="on"] .cp-inspect-layer { pointer-events: auto; }
+.cp-inspect-box { position: absolute; box-sizing: border-box; border-radius: 2px;
+  border: 1px solid var(--cp-inspect-color, rgba(37, 99, 235, 0.9));
+  background: color-mix(in srgb, var(--cp-inspect-color, rgba(37, 99, 235, 1)) 12%, transparent); }
+.cp-inspect-box[data-cp-kind="typography"] { border-style: dashed;
+  --cp-inspect-color: rgba(37, 99, 235, 0.9); }
+.cp-inspect-box[data-cp-kind="theme"] { --cp-inspect-color: rgba(214, 51, 108, 0.9); }
+.cp-inspect-box[data-level="warning"] { --cp-inspect-color: rgba(217, 119, 6, 0.95); }
+.cp-inspect-box[data-level="error"] { --cp-inspect-color: rgba(220, 38, 38, 0.95); }
+.cp-inspect-box-active { border-width: 2px;
+  background: color-mix(in srgb, var(--cp-inspect-color, rgba(37, 99, 235, 1)) 28%, transparent); }
+/* Only an index on the box — the readable spec lives in the legend beside the stage. Same reasoning
+   as the compare page's annotation layers: a label wide enough to read truncates its neighbours
+   exactly where the boxes nest most densely. */
+.cp-inspect-badge { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; font-size: 0.6rem;
+  font-weight: 700; line-height: 1; color: #fff;
+  background: var(--cp-inspect-color, rgba(37, 99, 235, 0.95)); }
+.cp-inspect-box .cp-inspect-badge { position: absolute; top: -7px; left: -7px; }
+.cp-inspect-legend { flex: 0 0 232px; min-width: 200px; align-self: stretch;
+  position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto;
+  border-radius: var(--md-sys-shape-corner-large); padding: 12px 14px;
+  background: var(--md-sys-color-surface-container-low); font-size: 0.75rem; }
+.cp-inspect-legend[hidden] { display: none; }
+.cp-inspect-legend-head { display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; font-weight: 650; color: var(--cp-fg); margin: 0 0 8px; }
+.cp-inspect-legend-count { color: var(--cp-fg-faint); font-variant-numeric: tabular-nums; }
+.cp-inspect-section + .cp-inspect-section { margin-top: 10px; }
+.cp-inspect-section-head { color: var(--cp-fg-muted); font-weight: 650; margin: 0 0 4px; }
+.cp-inspect-list { margin: 0; padding: 0; list-style: none; }
+.cp-inspect-entry { display: flex; align-items: flex-start; gap: 6px; padding: 3px 4px;
+  border-radius: 6px; cursor: default; }
+.cp-inspect-entry[data-cp-kind="typography"] { --cp-inspect-color: rgba(37, 99, 235, 0.9); }
+.cp-inspect-entry[data-cp-kind="theme"] { --cp-inspect-color: rgba(214, 51, 108, 0.9); }
+.cp-inspect-entry[data-level="warning"] { --cp-inspect-color: rgba(217, 119, 6, 0.95); }
+.cp-inspect-entry[data-level="error"] { --cp-inspect-color: rgba(220, 38, 38, 0.95); }
+.cp-inspect-entry-active { background: var(--md-sys-color-surface-container-high); }
+.cp-inspect-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cp-inspect-text strong { font-weight: 650; color: var(--cp-fg); overflow-wrap: anywhere; }
+.cp-inspect-detail { color: var(--cp-fg-muted); overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums; }
 .cp-overlay-control { display: flex; align-items: center; gap: 10px; max-width: 420px;
   margin: 22px 0 8px; color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-overlay-control input { flex: 1; }

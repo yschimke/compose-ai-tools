@@ -57,6 +57,79 @@ const REFERENCE_PLACEHOLDER = `
   <rect x="20" y="258" width="160" height="64" rx="18" fill="#ffffff"/>
   <circle cx="100" cy="378" r="18" fill="#7657b5"/>
 </svg>`;
+// The viewer's inspection lanes (`/render/<id>.a11y`, `/render/<id>.annotations`) are daemon data
+// products, so like the image lanes they have no backend here. These stand in for them, shaped
+// exactly as `ServeRenderHost.renderA11y` / `renderAnnotations` emit them and with bounds inside
+// the 200×420 placeholder render, so the captured overlay is the production drawing code fed
+// production-shaped data. The mix is deliberate: a clean focus stop, one carrying an ATF error, and
+// one whose touch target is undersized — the three states the legend has to tell apart.
+const A11Y_PAYLOAD = {
+    previewId: "com.example.ProfileCardPreview",
+    nodes: [
+        { label: "Ada Lovelace", role: "TextView", states: [], boundsInScreen: "20,28,180,70" },
+        {
+            label: "Follow",
+            role: "Button",
+            states: ["clickable"],
+            boundsInScreen: "20,132,110,168",
+        },
+        { label: "", role: "ImageView", states: [], boundsInScreen: "20,258,60,298" },
+        {
+            label: "Share profile",
+            role: "Button",
+            states: ["clickable"],
+            boundsInScreen: "120,258,168,290",
+        },
+    ],
+    findings: [
+        {
+            level: "ERROR",
+            type: "SpeakableTextPresentCheck",
+            message: "View is missing speakable text needed for a screen reader",
+            viewDescription: "ImageView",
+            boundsInScreen: "20,258,60,298",
+        },
+    ],
+    touchTargets: [
+        {
+            nodeId: "7",
+            boundsInScreen: "120,258,168,290",
+            widthDp: 24,
+            heightDp: 16,
+            findings: ["TouchTargetTooSmall"],
+        },
+    ],
+};
+const ANNOTATIONS_PAYLOAD = {
+    previewId: "com.example.ProfileCardPreview",
+    annotations: [
+        {
+            kind: "typography",
+            bounds: { x: 20, y: 28, width: 160, height: 42 },
+            label: "22.0sp/28.0sp · Roboto · 500",
+            role: "Ada Lovelace",
+        },
+        {
+            kind: "typography",
+            bounds: { x: 20, y: 92, width: 116, height: 18 },
+            label: "14.0sp/20.0sp · Roboto · 400",
+            role: "Analytical engine",
+        },
+        {
+            kind: "theme",
+            bounds: { x: 20, y: 132, width: 160, height: 104 },
+            label: "fill #FF6750A4 · radius 18.0dp",
+            role: "Card",
+        },
+        {
+            kind: "theme",
+            bounds: { x: 20, y: 258, width: 160, height: 64 },
+            label: "fill #FFFFFBFE · radius 18.0dp · border 1.0dp #FF79747E",
+            role: "OutlinedCard",
+        },
+    ],
+};
+
 // Fixtures captured with the REAL production CSS/JS routed in, rather than the older static-page
 // contract (bare HTML). Anything whose whole point is how the page is *painted* has to be here —
 // the catalog-palette pair exists to show a served design system re-theming the chrome from its own
@@ -112,6 +185,10 @@ const STYLED_FIXTURES = new Set([
     // an unstyled button and the `spec-lane` state below could not even be entered (the lane
     // needs `viewer.js`).
     "serve-viewer-path",
+    // The inspection layers (accessibility / typography / theme attributes). The whole surface is
+    // painted at runtime by `inspect.js` — boxes over the stage, a legend beside it — so captured
+    // bare there is nothing to see at all. Its `layers` state below is what actually draws them.
+    "serve-viewer-inspect",
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
@@ -124,6 +201,7 @@ const SERVE_ASSETS = [
     ["format-compare.js", "text/javascript"],
     ["rc-lanes.js", "text/javascript"],
     ["catalog-live.js", "text/javascript"],
+    ["inspect.js", "text/javascript"],
 ];
 
 // Runtime *states* of a page fixture that the committed HTML can't express on its own, captured as
@@ -212,6 +290,26 @@ const FIXTURE_STATES = [
             await page.click("#pg-run");
             await page.waitForFunction(
                 () => document.getElementById("pg-previews")?.hidden === false,
+            );
+        },
+    },
+    {
+        // Every inspection layer on at once: the accessibility focus map, the resolved typography,
+        // and the resolved theme attributes, drawn as numbered boxes over the stage with the legend
+        // beside it. This is the state the feature exists for and the committed HTML cannot hold it
+        // — the boxes only exist once `inspect.js` has fetched the (stubbed) data products — so
+        // without this shot a change to the overlay or legend would move no baseline at all.
+        fixture: "serve-viewer-inspect",
+        suffix: "layers",
+        apply: async (page) => {
+            // The Overrides drawer's groups open on demand; the checkboxes aren't clickable (or
+            // visible in the shot) until the Overlays group is expanded.
+            await page.click('[data-cp-group="overlays"] > summary');
+            await page.check("#cp-inspect-a11y");
+            await page.check("#cp-inspect-typography");
+            await page.check("#cp-inspect-theme");
+            await page.waitForFunction(
+                () => document.querySelectorAll(".cp-inspect-box").length > 0,
             );
         },
     },
@@ -582,6 +680,21 @@ for (const fixture of listPageFixtures()) {
                     });
                 });
             }
+            // After the image lanes on purpose: Playwright matches the most recently registered
+            // route first, and `**/render/**` above would otherwise answer an inspection fetch with
+            // a PNG.
+            await page.route("**/render/*.a11y*", (route) =>
+                route.fulfill({
+                    contentType: "application/json",
+                    body: JSON.stringify(A11Y_PAYLOAD),
+                }),
+            );
+            await page.route("**/render/*.annotations*", (route) =>
+                route.fulfill({
+                    contentType: "application/json",
+                    body: JSON.stringify(ANNOTATIONS_PAYLOAD),
+                }),
+            );
             await page.emulateMedia({ colorScheme: theme });
             await page.goto(`/preview-harness/fixtures/pages/${fixture}.html`);
 

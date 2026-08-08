@@ -24,6 +24,9 @@ internal object ServeWebAssets {
       // stream (see [ServeWeb.catalogLiveScript]).
       "catalog-live.js" to "text/javascript; charset=utf-8",
       "viewer.js" to "text/javascript; charset=utf-8",
+      // The viewer's inspection layers (accessibility / typography / theme attributes); loaded only
+      // by a viewer whose host can produce at least one of them.
+      "inspect.js" to "text/javascript; charset=utf-8",
       "viewer-groups.js" to "text/javascript; charset=utf-8",
       "viewer-drawers.js" to "text/javascript; charset=utf-8",
       "viewer-history.js" to "text/javascript; charset=utf-8",

@@ -221,14 +221,14 @@
     if (fontScaleTouched && fs) o.fontScale = fs.value;
     var size = sizeOverrides();
     Object.keys(size).forEach(function (k) { o[k] = size[k]; });
-    // Overlay toggles (talkBack / touchOverlay). Their id is "cp-<key>", so the daemon key is the
+    // Overlay toggles (touchOverlay). Their id is "cp-<key>", so the daemon key is the
     // id minus the prefix. Collected HERE, in the map query() serializes, rather than only in
     // liveOverrides(): the daemon renders these on the ordinary render path, so they belong on the
     // page URL, the export links, and the live socket's connect query — which is what makes a
     // ticked box arrive with `stream/start` instead of a second setOverrides that restarts the
     // stream a frame later. Only a CHECKED overlay is sent: every consumer re-parses this whole
     // map, so an absent key already means "off", and omitting the false ones keeps
-    // `&talkBack=false` out of every link.
+    // `&touchOverlay=false` out of every link.
     document.querySelectorAll(".cp-overlay").forEach(function (el) {
       if (el.disabled || !el.checked) return;
       o[el.id.replace(/^cp-/, "")] = "true";
@@ -1520,7 +1520,7 @@
       refreshSnapshot();
     });
   }
-  // The overlay toggles (talkBack / touchOverlay) are rendered by the daemon, so they're enabled
+  // The overlay toggles (touchOverlay) are rendered by the daemon, so they're enabled
   // whenever the daemon lane is REACHABLE — not only while it's the active mode. Ticking one from
   // the static snapshot switches into Live Compose (see onOverlayChanged), which is what the
   // visitor meant; greying them out until "Live preview" was clicked made the group look broken.
@@ -1952,7 +1952,7 @@
   // with.
   var URL_STATE_PARAMS = [
     "device", "localeTag", "orientation", "background", "fontScale",
-    "uiMode", "themeProvider", "focus", "gestures", "talkBack", "touchOverlay",
+    "uiMode", "themeProvider", "focus", "gestures", "touchOverlay",
     "scroll", "mode", "sizeMode", "rcPlayer",
     "widthPx", "heightPx", "minWidthPx", "minHeightPx", "maxWidthPx", "maxHeightPx",
   ];
@@ -2017,7 +2017,7 @@
       if (el) el.checked = q.get(f) !== null;
     });
     // Overlays ride the URL now that they're collected outside the live lane, so a shared
-    // `?talkBack=true&mode=live` link opens with the box already ticked (and Back restores it).
+    // `?touchOverlay=true&mode=live` link opens with the box already ticked (and Back restores it).
     // Only `true` is ever written, so presence-with-that-value is the whole state.
     document.querySelectorAll(".cp-overlay").forEach(function (el) {
       el.checked = q.get(el.id.replace(/^cp-/, "")) === "true";

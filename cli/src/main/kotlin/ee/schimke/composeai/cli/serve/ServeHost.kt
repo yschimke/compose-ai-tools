@@ -458,6 +458,38 @@ interface ServeHost : AutoCloseable {
     SlotsOutcome.NotFound
 
   /**
+   * Whether this host can produce the accessibility products the viewer's overlay + legend draw
+   * from (`a11y/hierarchy`, plus `a11y/atf` / `a11y/touchTargets` where the backend has them).
+   * Defaults to false — only the daemon-backed [ServeRenderHost] carries an a11y producer, and a
+   * static bundle has no daemon to walk a semantics tree.
+   */
+  val hasA11yOverlay: Boolean
+    get() = false
+
+  /**
+   * Fetch [previewId]'s merged accessibility products at [overrides] as JSON (`{previewId, nodes,
+   * findings, touchTargets}`), or [A11yOutcome.NotFound] when this host can't produce them. See
+   * [ServeRenderHost.renderA11y].
+   */
+  fun renderA11y(previewId: String, overrides: PreviewOverrides): A11yOutcome = A11yOutcome.NotFound
+
+  /**
+   * Whether this host can derive the viewer's typography + theme inspection layers from a render's
+   * `compose/semantics` tree ([renderAnnotations]). Tracks [canApplyOverrides]: capturing a
+   * semantics tree needs a daemon, exactly like [renderSlots].
+   */
+  val hasDesignAnnotations: Boolean
+    get() = canApplyOverrides
+
+  /**
+   * Render [previewId] at [overrides] and return its typography + theme inspection layers as JSON
+   * (`{previewId, annotations}`), or [AnnotationsOutcome.NotFound] when this host has no daemon.
+   * See [ServeRenderHost.renderAnnotations].
+   */
+  fun renderAnnotations(previewId: String, overrides: PreviewOverrides): AnnotationsOutcome =
+    AnnotationsOutcome.NotFound
+
+  /**
    * Join the shared live stream for [previewId], or `null` when this host has no live lane (the
    * snapshot fallback is used instead — always the case for [ServeBundleHost]).
    *

@@ -36,6 +36,8 @@ import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTokens
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTypography
 import ee.schimke.composeai.data.layoutinspector.PreviewSlots
 import ee.schimke.composeai.render.session.NotificationListener
 import ee.schimke.composeai.render.session.RenderSession
@@ -293,11 +295,28 @@ internal class FakeRenderSession(
                   nodeId = "1",
                   boundsInRoot = "8,8,40,40",
                   testTag = "${PreviewSlots.SLOT_TAG_PREFIX}leadingIcon",
+                  // Container tokens: the theme inspection layer's input.
+                  tokens =
+                    ComposeSemanticsTokens(
+                      backgroundColor = "#FF6750A4",
+                      cornerRadius = "12.0dp",
+                      borderColor = "#FF79747E",
+                      borderWidth = "1.0dp",
+                    ),
                 ),
                 ComposeSemanticsNode(
                   nodeId = "2",
                   boundsInRoot = "48,44,192,64",
                   testTag = "${PreviewSlots.SLOT_TAG_PREFIX}supporting",
+                  // Resolved type: the typography inspection layer's input.
+                  text = "Supporting text",
+                  typography =
+                    ComposeSemanticsTypography(
+                      fontSize = "14.0sp",
+                      lineHeight = "20.0sp",
+                      fontFamily = "/fonts/Roboto-Medium.ttf",
+                      fontWeight = 500,
+                    ),
                 ),
               ),
           )
