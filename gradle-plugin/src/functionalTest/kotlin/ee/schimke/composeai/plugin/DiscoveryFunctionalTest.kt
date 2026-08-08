@@ -441,6 +441,210 @@ class DiscoveryFunctionalTest {
       )
   }
 
+  /**
+   * `@PreviewAxis`: the declarative form of a variant matrix. Two axes on one function multiply
+   * into their cross product minus the base cell, each carrying its full assignment as props.
+   *
+   * The assertions are exactly the properties a naive expansion gets wrong: axes multiply (rather
+   * than unioning, which is how stacked `@OverrideVariant`s combine); the all-defaults cell is
+   * skipped rather than emitted as a duplicate of the base render; a default value is never seeded
+   * but IS part of the cell's props; and `namesEveryValue` puts an axis in every name.
+   */
+  @Test
+  fun `composePreviewDiscover expands @PreviewAxis into the cross product`() {
+    val projectDir = createCmpTestProject()
+
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "PreviewAxis.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Repeatable
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class PreviewAxis(
+            val key: String,
+            val values: Array<String>,
+            val default: String = "",
+            val kind: PreviewAxisKind = PreviewAxisKind.STRING,
+            val slugs: Array<String> = [],
+            val namesEveryValue: Boolean = false,
+            val order: Int = 0,
+        )
+
+        enum class PreviewAxisKind { STRING, BOOLEAN, INT, FLOAT }
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/Matrix.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+        import ee.schimke.composeai.preview.PreviewAxis
+
+        @Preview
+        @PreviewAxis(
+            key = "size",
+            values = ["xs", "s", "m"],
+            default = "s",
+            namesEveryValue = true,
+            order = 1,
+        )
+        @PreviewAxis(key = "shape", values = ["round", "square"], order = 2)
+        @Composable
+        fun MatrixPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Matrix") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val matrix = manifest.previews.filter { it.functionName == "MatrixPreview" }
+    // 3 sizes x 2 shapes = 6 cells, minus the all-defaults one, plus the base preview.
+    assertThat(matrix).hasSize(6)
+    assertThat(matrix.mapNotNull { it.overrides?.name })
+      .containsExactly("xs", "xs-square", "s-square", "m", "m-square")
+
+    // `size` names every cell (`s-square`, not `square`); `shape` only when off its default.
+    val sSquare = matrix.single { it.overrides?.name == "s-square" }
+    // A default value is never seeded — an unseeded knob already resolves to it…
+    assertThat(sSquare.overrides!!.seeds)
+      .containsExactly(
+        OverrideSeed(key = "shape", index = null, kind = OverrideSeedKind.STRING, raw = "square")
+      )
+    // …but it IS part of what the cell is, so it rides on the props.
+    assertThat(sSquare.overrides!!.props.map { it.key to it.value })
+      .containsExactly("size" to "s", "shape" to "square")
+
+    val xsSquare = matrix.single { it.overrides?.name == "xs-square" }
+    assertThat(xsSquare.overrides!!.seeds).hasSize(2)
+    assertThat(xsSquare.overrides!!.props.map { it.key to it.value })
+      .containsExactly("size" to "xs", "shape" to "square")
+
+    // The base render is untouched: no seeds, no props, no `_VARIANT_` tag.
+    val base = matrix.single { it.overrides == null }
+    assertThat(base.captures.single().renderOutput).doesNotContain("_VARIANT_")
+  }
+
+  /** Axes hoisted onto an annotation class multiply with a function's own — the composable case. */
+  @Test
+  fun `composePreviewDiscover multiplies hoisted @PreviewAxis with a direct one`() {
+    val projectDir = createCmpTestProject()
+
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "PreviewAxis.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Repeatable
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class PreviewAxis(
+            val key: String,
+            val values: Array<String>,
+            val default: String = "",
+            val kind: PreviewAxisKind = PreviewAxisKind.STRING,
+            val slugs: Array<String> = [],
+            val namesEveryValue: Boolean = false,
+            val order: Int = 0,
+        )
+
+        enum class PreviewAxisKind { STRING, BOOLEAN, INT, FLOAT }
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/Hoisted.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+        import ee.schimke.composeai.preview.PreviewAxis
+        import ee.schimke.composeai.preview.PreviewAxisKind
+
+        @PreviewAxis(key = "shape", values = ["round", "square"], order = 1)
+        annotation class ShapeAxis
+
+        @Preview
+        @ShapeAxis
+        @PreviewAxis(
+            key = "selected",
+            values = ["true", "false"],
+            default = "true",
+            kind = PreviewAxisKind.BOOLEAN,
+            slugs = ["on", "off"],
+            order = 2,
+        )
+        @Composable
+        fun HoistedPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Hoisted") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val hoisted = manifest.previews.filter { it.functionName == "HoistedPreview" }
+    // 2 shapes x 2 selected = 4 cells, minus the all-defaults one, plus the base. A hoisted axis
+    // MULTIPLIES with a direct one — a union would have given 2 variants, not 3.
+    assertThat(hoisted).hasSize(4)
+    assertThat(hoisted.mapNotNull { it.overrides?.name })
+      .containsExactly("square", "off", "square-off")
+
+    // `slugs` renames the values for the name only; the seed still carries the value, typed
+    // BOOLEAN so a `previewOverrideBoolean` read honours it.
+    val off = hoisted.single { it.overrides?.name == "off" }
+    assertThat(off.overrides!!.seeds)
+      .containsExactly(
+        OverrideSeed(key = "selected", index = null, kind = OverrideSeedKind.BOOLEAN, raw = "false")
+      )
+    assertThat(off.overrides!!.props.map { it.key to it.value })
+      .containsExactly("shape" to "round", "selected" to "false")
+  }
+
   @Test
   fun `composePreviewDiscover aggregates @ColorCatalog tokens into catalog sheets`() {
     val projectDir = createCmpTestProject()

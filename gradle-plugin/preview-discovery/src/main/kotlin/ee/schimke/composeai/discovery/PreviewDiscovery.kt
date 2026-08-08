@@ -231,6 +231,29 @@ object PreviewDiscovery {
   private const val OVERRIDE_VARIANT_FQN = "ee.schimke.composeai.preview.OverrideVariant"
   private const val OVERRIDE_VARIANT_CONTAINER_FQN =
     "ee.schimke.composeai.preview.OverrideVariant.Container"
+  // `@PreviewAxis` — repeatable; declares ONE dimension, and discovery expands the cross product of
+  // every axis on a function into one seeded variant per cell. Unlike stacked `@OverrideVariant`s
+  // (which union), axes multiply. See `PreviewAxis.kt`.
+  private const val PREVIEW_AXIS_FQN = "ee.schimke.composeai.preview.PreviewAxis"
+  private const val PREVIEW_AXIS_CONTAINER_FQN =
+    "ee.schimke.composeai.preview.PreviewAxis.Container"
+
+  /**
+   * Annotations the meta-annotation walk treats as leaves — the hoistable ones themselves. Their
+   * own meta-annotations are `@Retention` / `@Target`, never more of the same, so descending into
+   * them only costs a scan.
+   */
+  /** Mirrors `PreviewAxis.MAX_CELLS_WARN` / `MAX_CELLS`; see that annotation's KDoc. */
+  private const val PREVIEW_AXIS_MAX_CELLS_WARN = 64L
+  private const val PREVIEW_AXIS_MAX_CELLS = 512L
+
+  private val HOISTABLE_LEAF_FQNS =
+    setOf(
+      OVERRIDE_VARIANT_FQN,
+      OVERRIDE_VARIANT_CONTAINER_FQN,
+      PREVIEW_AXIS_FQN,
+      PREVIEW_AXIS_CONTAINER_FQN,
+    )
   // The stable FQN is shared by both Android's ui-tooling-preview and CMP's
   // `org.jetbrains.compose.components:components-ui-tooling-preview` — Kotlin
   // `expect`/`actual` collapses onto the same `androidx...` class name on
@@ -1579,12 +1602,23 @@ object PreviewDiscovery {
     // `@OverrideVariant` (repeatable) — each spec yields one extra synthetic preview per @Preview
     // expansion below, rendered with its `previewOverride*` seeds applied. Applies to every
     // expansion, the same "one annotation, applies to every preview" policy as the capture specs.
+    //
+    // `@PreviewAxis` (also repeatable) produces the same kind of spec, but by expanding the CROSS
+    // PRODUCT of the declared axes rather than by being written out per cell — and each of its
+    // cells carries its full axis assignment as typed props, which a hand-written variant has no
+    // way to say. The two are unioned: a component that is a clean product except for one odd extra
+    // state stays expressible. Axes go first so their cells win a name collision, which is the
+    // useful precedence — a hand-written variant that shadows a generated cell is the mistake, and
+    // `mergeVariantSpecs` warns about it either way.
+    val owner = "${classInfo.name}.${method.name}"
+    val axisSpecs =
+      expandAxes(extractPreviewAxes(annotations, scanResult, owner, warnings), owner, warnings)
     val overrideVariantSpecs =
-      extractOverrideVariantSpecs(
-        annotations,
-        scanResult,
-        owner = "${classInfo.name}.${method.name}",
-        warnings = warnings,
+      mergeVariantSpecs(
+        axisSpecs,
+        extractOverrideVariantSpecs(annotations, scanResult, owner, warnings),
+        owner,
+        warnings,
       )
     // @RoboComposePreviewOptions, similarly, applies to the function as a
     // whole — each timing fans out into its own manifest entry, orthogonal
@@ -1870,16 +1904,265 @@ object PreviewDiscovery {
     scanResult: ScanResult,
     visited: MutableSet<String>,
     into: MutableList<AnnotationInfo>,
+  ) = walkMetaAnnotations(ann, scanResult, visited) { collectOverrideVariants(it, into) }
+
+  /**
+   * The shared meta-annotation traversal: visit [ann]'s annotation class, hand every annotation on
+   * it to [collect], and recurse into those in turn.
+   *
+   * One walk for both hoistable annotation families (`@OverrideVariant`, `@PreviewAxis`) so they
+   * cannot disagree about what "hoisted" reaches — which they would, being two copies of a
+   * traversal with a cycle guard. [visited] is shared per call site, so a diamond of annotation
+   * classes is visited once.
+   */
+  private fun walkMetaAnnotations(
+    ann: AnnotationInfo,
+    scanResult: ScanResult,
+    visited: MutableSet<String>,
+    collect: (AnnotationInfo) -> Unit,
   ) {
     if (ann.name in visited) return
     if (isDirectPreview(ann) || isPreviewContainer(ann)) return
-    if (ann.name == OVERRIDE_VARIANT_FQN || ann.name == OVERRIDE_VARIANT_CONTAINER_FQN) return
+    // The hoistable annotations themselves are leaves: their own meta-annotations are
+    // `@Retention` / `@Target`, never more variants, and descending into them wastes a scan.
+    if (ann.name in HOISTABLE_LEAF_FQNS) return
     visited.add(ann.name)
     val annClassInfo = scanResult.getClassInfo(ann.name) ?: return
     for (metaAnn in annClassInfo.annotationInfo.toList()) {
-      collectOverrideVariants(metaAnn, into)
-      overrideVariantsFromMetaAnnotation(metaAnn, scanResult, visited, into)
+      collect(metaAnn)
+      walkMetaAnnotations(metaAnn, scanResult, visited, collect)
     }
+  }
+
+  /** One resolved `@PreviewAxis`: its knob, its values (with name slugs), and its default. */
+  private data class AxisSpec(
+    val key: String,
+    val values: List<Pair<String, String>>, // value → name slug
+    val default: String,
+    val kind: OverrideSeedKind,
+    val namesEveryValue: Boolean,
+    val order: Int,
+  )
+
+  /**
+   * Reads every `@PreviewAxis` on a function — direct or hoisted onto an annotation class — into an
+   * [AxisSpec], in declaration order.
+   *
+   * Malformed axes are dropped with a warning rather than failing the build, matching how the rest
+   * of discovery treats an annotation it cannot use: a broken axis costs the cells it would have
+   * added, and saying so beats failing every other preview in the module.
+   */
+  private fun extractPreviewAxes(
+    annotations: List<AnnotationInfo>,
+    scanResult: ScanResult,
+    owner: String,
+    warnings: MutableList<String>,
+  ): List<AxisSpec> {
+    val infos = mutableListOf<AnnotationInfo>()
+    val visited = mutableSetOf<String>()
+    for (ann in annotations) {
+      collectPreviewAxes(ann, infos)
+      walkMetaAnnotations(ann, scanResult, visited) { collectPreviewAxes(it, infos) }
+    }
+    val byKey = LinkedHashMap<String, AxisSpec>()
+    for (info in infos) {
+      val pv = info.parameterValues
+      val key = (pv.getValue("key") as? String)?.takeIf { it.isNotBlank() } ?: continue
+      val values = readStringArray(pv.getValue("values")).distinct()
+      if (values.size < 2) {
+        warnings.add(
+          "composePreview: '$owner' declares @PreviewAxis(key = \"$key\") with " +
+            "${values.size} distinct value(s) — an axis with fewer than two multiplies nothing. " +
+            "Ignoring it."
+        )
+        continue
+      }
+      val slugsRaw = readStringArray(pv.getValue("slugs"))
+      val slugs =
+        when {
+          slugsRaw.isEmpty() -> values
+          slugsRaw.size == values.size -> slugsRaw
+          else -> {
+            warnings.add(
+              "composePreview: '$owner' declares @PreviewAxis(key = \"$key\") with " +
+                "${slugsRaw.size} slugs for ${values.size} values — positional, so a mismatch " +
+                "would misname cells. Using the values as their own slugs."
+            )
+            values
+          }
+        }
+      val declaredDefault = (pv.getValue("default") as? String).orEmpty()
+      val default =
+        when {
+          declaredDefault.isEmpty() -> values.first()
+          declaredDefault in values -> declaredDefault
+          else -> {
+            warnings.add(
+              "composePreview: '$owner' declares @PreviewAxis(key = \"$key\", default = " +
+                "\"$declaredDefault\") but that is not one of its values — every cell would then " +
+                "count as non-default and one would duplicate the base render. Using " +
+                "\"${values.first()}\"."
+            )
+            values.first()
+          }
+        }
+      val spec =
+        AxisSpec(
+          key = key,
+          values = values.zip(slugs),
+          default = default,
+          kind = axisSeedKind(pv.getValue("kind")),
+          namesEveryValue = pv.getValue("namesEveryValue") as? Boolean ?: false,
+          order = (pv.getValue("order") as? Int) ?: 0,
+        )
+      // Two axes on one key would square that key against itself — `size=xs` crossed with
+      // `size=m` is not a cell, it is a contradiction.
+      if (byKey.putIfAbsent(key, spec) != null) {
+        warnings.add(
+          "composePreview: '$owner' declares @PreviewAxis(key = \"$key\") more than once — " +
+            "crossing a key with itself produces contradictory cells. Keeping the first."
+        )
+      }
+    }
+    // Stable sort on the declared order: the order repeated annotations are EMITTED in is a
+    // compiler detail, not a contract, and Kotlin's does not match the order they were written in
+    // — a two-axis function came back swapped, which silently renames every cell. Axes sharing an
+    // order keep their emitted order relative to each other, so a single-axis function needs
+    // nothing. See `PreviewAxis.order`.
+    return byKey.values.sortedBy { it.order }
+  }
+
+  /** Adds [ann] to [into] when it is a `@PreviewAxis`, unwrapping the repeatable container. */
+  private fun collectPreviewAxes(ann: AnnotationInfo, into: MutableList<AnnotationInfo>) {
+    when (ann.name) {
+      PREVIEW_AXIS_FQN -> into.add(ann)
+      PREVIEW_AXIS_CONTAINER_FQN -> {
+        when (val value = ann.parameterValues.getValue("value")) {
+          is Array<*> -> value.filterIsInstance<AnnotationInfo>().forEach { into.add(it) }
+          is AnnotationInfo -> into.add(value)
+          else -> {
+            val len = runCatching { java.lang.reflect.Array.getLength(value) }.getOrNull() ?: 0
+            for (i in 0 until len) {
+              (java.lang.reflect.Array.get(value, i) as? AnnotationInfo)?.let { into.add(it) }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * `PreviewAxisKind` → [OverrideSeedKind]. ClassGraph surfaces an enum-valued annotation parameter
+   * as an `AnnotationEnumValue`, so the name is read off it rather than the class being loaded.
+   */
+  private fun axisSeedKind(raw: Any?): OverrideSeedKind {
+    val name =
+      when (raw) {
+        is AnnotationEnumValue -> raw.valueName
+        is String -> raw
+        else -> null
+      }
+    return when (name) {
+      "BOOLEAN" -> OverrideSeedKind.BOOLEAN
+      "INT" -> OverrideSeedKind.INT
+      "FLOAT" -> OverrideSeedKind.FLOAT
+      else -> OverrideSeedKind.STRING
+    }
+  }
+
+  /**
+   * Expands [axes] into one [OverrideVariantSpec] per cell of their cross product, skipping the
+   * all-defaults cell.
+   *
+   * Cells come out in axis-major order (the first axis varies slowest), so the emitted order tracks
+   * the declaration order a reader sees. A cell:
+   * * **seeds** only its non-default values — seeding a knob with the value it already resolves to
+   *   is a no-op, and leaving it out keeps the seed list saying exactly what moved;
+   * * is **named** by its non-default slugs joined by `-`, plus any axis marked
+   *   [AxisSpec.namesEveryValue];
+   * * publishes its **full** assignment as props, defaults included, because that is what the cell
+   *   *is* and what a design kit's component set carries on the other side of a parity pairing.
+   *
+   * The all-defaults cell is detected on having no seeds rather than an empty name, since
+   * `namesEveryValue` leaves it named (`s`) even though it moves nothing. Emitting it would bake a
+   * second capture identical to the base render.
+   */
+  private fun expandAxes(
+    axes: List<AxisSpec>,
+    owner: String,
+    warnings: MutableList<String>,
+  ): List<OverrideVariantSpec> {
+    if (axes.isEmpty()) return emptyList()
+    val total = axes.fold(1L) { acc, axis -> acc * axis.values.size }
+    if (total > PREVIEW_AXIS_MAX_CELLS) {
+      warnings.add(
+        "composePreview: '$owner' declares @PreviewAxis axes whose cross product is $total cells " +
+          "(${axes.joinToString(" x ") { "${it.key}(${it.values.size})" }}), over the " +
+          "$PREVIEW_AXIS_MAX_CELLS cap — that is a render bill, not a matrix. Ignoring the axes; " +
+          "split the component or drop an axis."
+      )
+      return emptyList()
+    }
+    if (total > PREVIEW_AXIS_MAX_CELLS_WARN) {
+      warnings.add(
+        "composePreview: '$owner' expands to $total @PreviewAxis cells " +
+          "(${axes.joinToString(" x ") { "${it.key}(${it.values.size})" }}), each rendered for " +
+          "every @Preview on the function. Intentional?"
+      )
+    }
+
+    var combinations: List<List<Pair<String, String>>> = listOf(emptyList())
+    for (axis in axes) {
+      combinations = combinations.flatMap { prefix -> axis.values.map { prefix + it } }
+    }
+    return combinations.mapNotNull { combination ->
+      val slugs = mutableListOf<String>()
+      val seeds = mutableListOf<OverrideSeed>()
+      val props = mutableListOf<CatalogVariantProp>()
+      for ((axis, valueAndSlug) in axes.zip(combination)) {
+        val (value, slug) = valueAndSlug
+        val isDefault = value == axis.default
+        if (axis.namesEveryValue || !isDefault) slugs.add(slug)
+        props.add(CatalogVariantProp(key = axis.key, value = value))
+        if (!isDefault) {
+          seeds.add(OverrideSeed(key = axis.key, index = null, kind = axis.kind, raw = value))
+        }
+      }
+      if (seeds.isEmpty()) null
+      else
+        OverrideVariantSpec(name = slugs.joinToString("-"), seeds = seeds, props = props.toList())
+    }
+  }
+
+  /**
+   * Unions the `@PreviewAxis` cells with the hand-written `@OverrideVariant`s, first wins on a name
+   * collision.
+   *
+   * Both produce the same kind of spec and both are keyed by name — the `_VARIANT_<name>` render
+   * output's identity — so a name carried by both would have the second overwrite the first's file.
+   * [axisCells] goes first because a generated cell is the one whose name is derived rather than
+   * typed: if a hand-written variant shadows it, the hand-written one is the mistake.
+   */
+  private fun mergeVariantSpecs(
+    axisCells: List<OverrideVariantSpec>,
+    handWritten: List<OverrideVariantSpec>,
+    owner: String,
+    warnings: MutableList<String>,
+  ): List<OverrideVariantSpec> {
+    if (axisCells.isEmpty()) return handWritten
+    if (handWritten.isEmpty()) return axisCells
+    val merged = LinkedHashMap<String, OverrideVariantSpec>()
+    axisCells.forEach { merged[it.name] = it }
+    val shadowed = handWritten.filter { it.name in merged }.map { it.name }
+    handWritten.forEach { merged.putIfAbsent(it.name, it) }
+    if (shadowed.isNotEmpty()) {
+      warnings.add(
+        "composePreview: '$owner' has @OverrideVariant(s) named ${shadowed.joinToString(", ")} " +
+          "that a @PreviewAxis cell already produces — one render output per name, so the " +
+          "hand-written one is ignored. Rename it, or drop it if the axes already cover the cell."
+      )
+    }
+    return merged.values.toList()
   }
 
   /** Parses `"key=value"` / `"key#index=value"` string-array entries into typed [OverrideSeed]s. */
