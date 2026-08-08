@@ -2102,15 +2102,19 @@ class RenderEngine(
       // set (issue #3309).
       addAll(ee.schimke.composeai.data.render.previewSizeQualifiers(widthDp, heightDp))
       if (isRound) add("round")
+      // The **frame decides**, not the request — see `previewOrientationQualifier`. The two agree
+      // whenever the rotation was applied; they diverge only when explicit pixels outranked it,
+      // and there the bitmap is the truth (#3552 review).
       val derivedOrientation =
-        when (orientation) {
-          RenderSpec.SpecOrientation.PORTRAIT -> "port"
-          RenderSpec.SpecOrientation.LANDSCAPE -> "land"
-          null ->
-            if (widthDp > 0 && heightDp > 0) {
-              if (widthDp > heightDp) "land" else "port"
-            } else null
-        }
+        ee.schimke.composeai.data.render.previewOrientationQualifier(
+          widthDp,
+          heightDp,
+          when (orientation) {
+            RenderSpec.SpecOrientation.PORTRAIT -> "port"
+            RenderSpec.SpecOrientation.LANDSCAPE -> "land"
+            null -> null
+          },
+        )
       if (derivedOrientation != null) add(derivedOrientation)
       when (uiMode) {
         RenderSpec.SpecUiMode.LIGHT -> add("notnight")

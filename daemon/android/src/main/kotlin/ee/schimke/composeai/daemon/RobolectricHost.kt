@@ -1734,6 +1734,15 @@ open class RobolectricHost(
    * the field is recording-only on the wire but reusing the same merge path keeps the override
    * application byte-identical between the two acquire paths.
    */
+  /**
+   * Test seam for [applyOverrides] — the held-session (interactive / recording) merge is otherwise
+   * reachable only by standing up a full session, which needs a live Robolectric sandbox.
+   */
+  internal fun applyOverridesForTest(
+    base: RenderSpec,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
+  ): RenderSpec = applyOverrides(base, overrides, "test-session")
+
   private fun applyOverrides(
     base: RenderSpec,
     overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
@@ -1774,6 +1783,12 @@ open class RobolectricHost(
     return base.copy(
       widthPx = merged.widthPx,
       heightPx = merged.heightPx,
+      // The wrap flags name an *axis*, so a rotated frame trades them — the held-session twin of
+      // the swap in `reshapeRenderPayload` and `DesktopHost.applyOverrides`. Without it an
+      // interactive / recording session starting from a one-wrapped-axis preview measures and
+      // crops the axis that is no longer the free one (#3552 review).
+      wrapWidth = if (merged.rotated) base.wrapHeight else base.wrapWidth,
+      wrapHeight = if (merged.rotated) base.wrapWidth else base.wrapHeight,
       density = merged.density,
       device = merged.device,
       localeTag = merged.localeTag,
@@ -2661,13 +2676,19 @@ open class RobolectricHost(
       val widthDp = pxToDp(start.widthPx, start.density)
       val heightDp = pxToDp(start.heightPx, start.density)
       val isRound = isRoundDevice(start.device)
+      // The frame decides, not the request — shared with `RenderEngine.applyPreviewQualifiers` so
+      // the held-session and one-shot captures of the same spec can't disagree about orientation
+      // (the whole point of the "mirrors it verbatim" note above).
       val derivedOrientation =
-        when (start.orientation) {
-          "portrait" -> "port"
-          "landscape" -> "land"
-          else ->
-            if (widthDp > 0 && heightDp > 0) (if (widthDp > heightDp) "land" else "port") else null
-        }
+        ee.schimke.composeai.data.render.previewOrientationQualifier(
+          widthDp,
+          heightDp,
+          when (start.orientation) {
+            "portrait" -> "port"
+            "landscape" -> "land"
+            else -> null
+          },
+        )
       val qualifiers = buildList {
         if (!start.localeTag.isNullOrBlank()) add(localeTagToQualifier(start.localeTag))
         // Same `sw<n>dp-w<n>dp-h<n>dp` triple RenderEngine emits — without the smallest-width

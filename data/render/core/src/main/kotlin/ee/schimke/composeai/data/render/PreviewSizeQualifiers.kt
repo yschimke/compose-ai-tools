@@ -30,3 +30,34 @@ fun previewSizeQualifiers(widthDp: Int, heightDp: Int): List<String> = buildList
   if (widthDp > 0) add("w${widthDp}dp")
   if (heightDp > 0) add("h${heightDp}dp")
 }
+
+/**
+ * The `port` / `land` half of the same qualifier string, or null when there is nothing to say.
+ *
+ * **The frame decides, not the request.** Normally the two agree: every lane rotates the frame to
+ * satisfy an `orientation` override before a qualifier is built (issue #3547), so the dimensions
+ * already encode it. They diverge in exactly one case — explicit `widthPx`/`heightPx` outrank the
+ * rotation (PROTOCOL.md § 5), so `widthPx=1000;heightPx=200;orientation=portrait` keeps its
+ * landscape frame. Trusting the request there would tell the resource framework and
+ * `Configuration.orientation` a shape the bitmap does not have, which is the frame-vs-qualifier
+ * contradiction the rotation work exists to remove, arriving from the other direction.
+ *
+ * Deriving from the dimensions is self-correcting: when the rotation did happen they already carry
+ * the requested orientation, and when it was outranked they carry the truth.
+ *
+ * [requested] (`"port"` / `"land"`, anything else ignored) is consulted only for a **square**
+ * frame, where the dimensions genuinely cannot say. A square frame with no request reports `port`,
+ * which is what Android's own `Configuration` does at equal width and height.
+ *
+ * Shared with [previewSizeQualifiers] by every qualifier builder so a one-shot render and a
+ * held-session render of the same preview cannot disagree about its orientation.
+ */
+fun previewOrientationQualifier(widthDp: Int, heightDp: Int, requested: String?): String? {
+  if (widthDp <= 0 || heightDp <= 0) return null
+  if (widthDp != heightDp) return if (widthDp > heightDp) "land" else "port"
+  return when (requested) {
+    "port",
+    "land" -> requested
+    else -> "port"
+  }
+}

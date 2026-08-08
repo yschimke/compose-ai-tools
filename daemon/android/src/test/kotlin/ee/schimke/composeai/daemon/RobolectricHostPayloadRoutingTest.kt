@@ -2,6 +2,8 @@ package ee.schimke.composeai.daemon
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import ee.schimke.composeai.daemon.protocol.Orientation
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -86,6 +88,32 @@ class RobolectricHostPayloadRoutingTest {
 
     assertTrue("rotated frame should now wrap width: $routed", routed.contains("wrapWidth=true"))
     assertFalse("...and no longer wrap height: $routed", routed.contains("wrapHeight=true"))
+  }
+
+  @Test
+  fun `held-session overrides trade the wrap axis with a rotated frame`() {
+    // `applyOverrides` is the interactive / recording lane. It copies the merged dimensions onto
+    // the base spec, so without consuming `merged.rotated` the wrap flags stayed on the old axis
+    // and the held-session measure-and-crop pass sized the wrong one (#3552 review).
+    val host = host(widthPx = 800, heightPx = 400, wrapHeight = true)
+
+    val spec =
+      host.applyOverridesForTest(
+        RenderSpec(
+          previewId = "p",
+          className = "com.example.PlainPreviewKt",
+          functionName = "PlainPreview",
+          widthPx = 800,
+          heightPx = 400,
+          wrapHeight = true,
+        ),
+        PreviewOverrides(orientation = Orientation.PORTRAIT),
+      )
+
+    assertEquals(400, spec.widthPx)
+    assertEquals(800, spec.heightPx)
+    assertTrue("rotated frame should now wrap width", spec.wrapWidth)
+    assertFalse("...and no longer wrap height", spec.wrapHeight)
   }
 
   private fun host(
