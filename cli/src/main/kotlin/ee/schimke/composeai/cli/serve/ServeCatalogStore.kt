@@ -192,6 +192,7 @@ class ServeCatalogStore(
     val section: String?,
     val group: String?,
     val componentSourceFile: String?,
+    val componentBodyLine: Int?,
   )
 
   /**
@@ -288,6 +289,7 @@ class ServeCatalogStore(
         val group = component.group?.takeIf { it.isNotBlank() }
         val componentId = component.componentId?.takeIf { it.isNotBlank() }
         val componentSourceFile = component.sourceFile?.takeIf { it.isNotBlank() }
+        val componentBodyLine = component.bodyLine?.takeIf { it > 0 }
         component.images.mapNotNull { image ->
           val path = image.path
           // Only image-directory PNGs; reject traversal. The path is from a trusted branch, but a
@@ -300,7 +302,17 @@ class ServeCatalogStore(
             File(previewsDir, "$id.png").takeIf {
               it.canonicalFile.toPath().startsWith(previewsRoot)
             }
-          PlannedImage(path, id, target, image, componentId, section, group, componentSourceFile)
+          PlannedImage(
+            path,
+            id,
+            target,
+            image,
+            componentId,
+            section,
+            group,
+            componentSourceFile,
+            componentBodyLine,
+          )
         }
       }
 
@@ -365,6 +377,7 @@ class ServeCatalogStore(
               group = planned.group,
               order = if (hasSectionInfo) count else null,
               sourceFile = planned.componentSourceFile,
+              bodyLine = planned.componentBodyLine,
             )
         }
         count++
@@ -1560,6 +1573,13 @@ class ServeCatalogStore(
      * its source on GitHub. Null for an older catalog that predates the export change.
      */
     val sourceFile: String? = null,
+    /**
+     * A 1-based line inside the `@Preview` function's body within [sourceFile], stamped by the same
+     * export pass from discovery's `previews.json`. Carried into `previews/variants.json` so the
+     * playground handoff can open just that declaration rather than the whole section file. Null
+     * for an older catalog, or a preview whose classfile carried no line numbers.
+     */
+    val bodyLine: Int? = null,
   )
 
   @Serializable
@@ -1651,6 +1671,13 @@ class ServeCatalogStore(
      * source link. Null for a catalog with no recorded source (older export) or a deferred record.
      */
     val sourceFile: String? = null,
+    /**
+     * A 1-based line inside the preview function's body within [sourceFile] (from the catalog
+     * component's [Component.bodyLine]). Shared by every image of a component, like [sourceFile].
+     * Read back by [ServeBundleHost] to populate `ServePreview.bodyLine` so the playground handoff
+     * seeds one declaration instead of the whole file. Null for a catalog that recorded none.
+     */
+    val bodyLine: Int? = null,
   )
 
   /**

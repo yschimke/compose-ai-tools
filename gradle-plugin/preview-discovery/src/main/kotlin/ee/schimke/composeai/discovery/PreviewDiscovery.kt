@@ -3236,6 +3236,7 @@ object PreviewDiscovery {
       functionName = method.name,
       className = classInfo.name,
       sourceFile = previewSourceFile,
+      bodyLine = bodyLineOf(method),
       params = params,
       captures = outputPlan.captures,
       dataProducts = outputPlan.dataProducts,
@@ -3247,6 +3248,19 @@ object PreviewDiscovery {
       fixedTheme = method.annotationInfo.any { it.name == FIXED_THEME_FQN },
     )
   }
+
+  /**
+   * The first line of the method body, from the classfile's `LineNumberTable`, or null when it
+   * carries none (ClassGraph reports `0`, which is what the guard rejects).
+   *
+   * `enableMethodInfo()` is already on for the whole scan, so this costs nothing beyond reading an
+   * int — no extra pass, no source parsing.
+   *
+   * Only the *first* line, never the last: `maxLineNum` is unreliable on Kotlin because an inline
+   * function's body carries SMAP line numbers past the end of the calling file. See
+   * [PreviewInfo.bodyLine].
+   */
+  private fun bodyLineOf(method: MethodInfo): Int? = method.minLineNum.takeIf { it > 0 }
 
   // Module-relative source path, e.g. "src/main/kotlin/com/example/samplewear/Previews.kt".
   // Fall back to the old package-qualified path when source files were not wired into the task.

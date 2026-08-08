@@ -298,8 +298,9 @@ function sourceByFunction(bundle) {
   for (const preview of bundle.previews ?? []) {
     const fn = preview.functionName ?? preview.id;
     if (out.has(fn) && !prefer(preview.id)) continue;
-    if (preview.sourceFile) out.set(fn, { sourceFile: preview.sourceFile });
-    else if (!out.has(fn)) out.set(fn, { sourceFile: undefined });
+    if (preview.sourceFile)
+      out.set(fn, { sourceFile: preview.sourceFile, bodyLine: preview.bodyLine });
+    else if (!out.has(fn)) out.set(fn, { sourceFile: undefined, bodyLine: undefined });
   }
   return out;
 }

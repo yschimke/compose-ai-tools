@@ -147,6 +147,25 @@ class DiscoveryFunctionalTest {
     // bytecode `SourceFile` attribute and rewritten to a package-qualified
     // path in DiscoverPreviewsTask — see PreviewData.sourceFile.
     assertThat(manifest.previews.any { !it.sourceFile.isNullOrBlank() }).isTrue()
+
+    // …and where in that file it is, from the classfile's LineNumberTable. This addresses the
+    // *declaration* rather than the file, which is what lets the playground handoff seed one
+    // composable instead of every component in a section file.
+    //
+    // The anchor points INSIDE the body: the fixture declares `RedBoxPreview` with `@Preview` and
+    // `@Composable` above it and a `Box { Text(…) }` inside, so what is recorded is the `Box` line
+    // — strictly below the `fun` line. Both previews live in one file, `RedBoxPreview` first, so
+    // the two anchors are ordered. Asserting the relationship rather than exact numbers keeps this
+    // from breaking every time the fixture gains a line.
+    val red = manifest.previews.single { it.functionName == "RedBoxPreview" }
+    val blue = manifest.previews.single { it.functionName == "BlueBoxPreview" }
+    assertThat(red.bodyLine).isNotNull()
+    assertThat(blue.bodyLine).isNotNull()
+    assertThat(red.bodyLine!!).isGreaterThan(0)
+    assertThat(blue.bodyLine!!).isGreaterThan(red.bodyLine!!)
+    // Deliberately NOT asserted against a recorded *end* line: there isn't one. Kotlin emits an
+    // inlined body into its caller with SMAP line numbers past the end of the caller's file, so a
+    // method's last line is not a number worth publishing — see `PreviewInfo.bodyLine`.
   }
 
   @Test
