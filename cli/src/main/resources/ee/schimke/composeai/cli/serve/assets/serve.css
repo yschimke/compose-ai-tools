@@ -810,37 +810,39 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-overlays-head { font-size: 0.72rem; color: var(--cp-fg-muted); }
 .cp-knobs input:disabled { opacity: 0.7; }
 .cp-links { border-top: 1px solid var(--cp-border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-/* The under-stage column: the lane toggles (Live / Wasm / SVG), the static-snapshot note, and
-   the Export & direct links card. Page-level, not part of the collapsible overrides drawer, so
-   picking a lane and grabbing the /render URLs stay visible with the drawer closed. */
+/* The under-stage column: the static-snapshot note and the export bar. Page-level, not part of
+   the collapsible overrides drawer, so grabbing the /render URLs stays visible with the drawer
+   closed. (Lane selection lives above the stage, beside the preview heading.) */
 .cp-below { margin: 18px 0 0; max-width: 720px; display: flex; flex-direction: column; gap: 12px; }
-/* Export & direct links: its own border is the card's, so the .cp-links divider rule above is
-   dropped inside it. */
-.cp-export { padding: 14px 18px; border: 0;
+/* Export bar: ONE always-visible line — "Export  PNG Copy link · Copy PNG · Download  SVG …" —
+   rather than a disclosure hiding a stack of full-width URL fields. Wraps as a flow row on narrow
+   screens; each format's actions stay glued together as a group so a wrap never splits "SVG" from
+   its own buttons. */
+.cp-export { margin: 12px 0 0; padding: 8px 16px; border: 0;
   border-radius: var(--md-sys-shape-corner-medium);
-  background: var(--md-sys-color-surface-container-low); }
-.cp-export > summary { color: var(--cp-fg-soft);
+  background: var(--md-sys-color-surface-container-low);
+  display: flex; align-items: center; flex-wrap: wrap; gap: 2px 12px; }
+.cp-export-head { color: var(--cp-fg-soft);
   font-size: var(--md-sys-typescale-title-small-size);
   letter-spacing: var(--md-sys-typescale-title-small-tracking); font-weight: 500; }
-.cp-export .cp-links { border-top: 0; padding-top: 0; }
-.cp-link-row { display: flex; align-items: center; gap: 8px; }
+.cp-link-group { display: inline-flex; align-items: center; gap: 2px; }
 .cp-link-kind { font-size: var(--md-sys-typescale-label-medium-size);
   letter-spacing: var(--md-sys-typescale-label-medium-tracking); font-weight: 500;
-  color: var(--cp-fg-muted); width: 30px; flex: none; }
-.cp-url { flex: 1; min-width: 0; font-family: var(--md-sys-typescale-mono-font);
-  font-size: 0.72rem; padding: 8px 10px; border: 1px solid var(--md-sys-color-outline);
-  border-radius: var(--md-sys-shape-corner-extra-small);
-  background: transparent; color: var(--cp-fg); cursor: pointer; }
-.cp-url.cp-url-copied { border-color: var(--md-sys-color-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 30%, transparent); }
-/* M3 text buttons on the link rows. */
-.cp-copyimg, .cp-dl { font-size: var(--md-sys-typescale-label-large-size);
+  color: var(--cp-fg-muted); flex: none; margin-right: 4px; }
+/* The URL itself: a real input (refreshLinks writes it, both copy buttons and the lane e2e read
+   it) that nobody needs to look at, so it is taken out of the flow rather than given a third of
+   the line. Not `hidden` / `display:none` — `field.select()` in the copy fallback needs a laid-out
+   control. */
+.cp-url { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+/* M3 text buttons on the export line. */
+.cp-copyurl, .cp-copyimg, .cp-dl { font-size: var(--md-sys-typescale-label-large-size);
   letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
-  padding: 8px 14px; border-radius: var(--md-sys-shape-corner-full); border: 0;
+  padding: 8px 10px; border-radius: var(--md-sys-shape-corner-full); border: 0;
   background: transparent; color: var(--md-sys-color-primary); cursor: pointer;
-  text-decoration: none; flex: none; white-space: nowrap;
+  text-decoration: none; flex: none; white-space: nowrap; font-family: inherit;
   transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
-.cp-copyimg:hover, .cp-dl:hover {
+.cp-copyurl:hover, .cp-copyimg:hover, .cp-dl:hover {
   background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent); }
 /* Drawer toggles + the two collapsible drawers (left component nav, right overrides). The open
    state is a class on .cp-viewer — cp-controls-open (default on) and cp-nav-open (default off) —
@@ -952,31 +954,27 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-live-signin { border-style: dashed; text-decoration: none; color: var(--cp-fg); }
 .cp-live-signin:hover, .cp-live-signin:focus-visible { background: var(--cp-surface-2);
   border-style: solid; text-decoration: none; }
-/* The idle half of a status light, so it stays literal beside its lit green — the pair reads as
-   one indicator and must not drift apart with the palette. */
-.cp-live-dot { width: 9px; height: 9px; border-radius: 50%; background: #b9b9c6; flex: none; }
-.cp-live-toggle[aria-pressed="true"] .cp-live-dot { background: #1e9c3f;
+/* The status light. It is the whole answer to "is what I'm looking at live?", so the two states
+   are made to differ in SHAPE as well as colour: idle is a hollow grey ring (a light that is off),
+   lit is a filled green disc inside a halo. Literal colours by design — the pair reads as one
+   indicator and must not drift apart with the palette. */
+.cp-live-dot { width: 9px; height: 9px; border-radius: 50%; background: transparent;
+  border: 2px solid #b9b9c6; box-sizing: border-box; flex: none; }
+.cp-live-toggle[aria-pressed="true"] .cp-live-dot { background: #1e9c3f; border-color: #1e9c3f;
   box-shadow: 0 0 0 3px rgba(30, 156, 63, 0.2); }
-/* The Remote Compose backend selector: a segmented row of .cp-live-toggle chips (js / java /
-   cmp-android / cmp-jvm) sharing one visual group. */
-.cp-rc-backends { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.cp-rc-backends-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em;
-  text-transform: uppercase; color: var(--cp-fg-faint); }
-.cp-rc-backend { padding: 5px 11px; }
-/* The design-spec lane, offered beside the renderer chips when the catalog publishes an imported
-   reference for this preview. Same segmented-group shape as the RC selector — it is picked the
-   same way — with the "view diff →" step into the focused comparison as its trailing link. */
+/* The renderer combo box: every OTHER lane this preview can be drawn by, beside the chip that
+   names the current one. An M3 outlined field at the same 40dp height as the chip and the SVG
+   toggle, so the three read as one row of peers rather than a control that fell out of a form. */
+.cp-lane-select { min-height: 40px; font: inherit;
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  padding: 8px 12px; border-radius: var(--md-sys-shape-corner-full);
+  border: 1px solid var(--md-sys-color-outline);
+  background: transparent; color: var(--md-sys-color-on-surface-variant); cursor: pointer;
+  max-width: 200px; }
+.cp-lane-select:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+/* The spec lane's carrier — no chrome of its own any more, just the "spec diff →" link. */
 .cp-spec-lane { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.cp-spec-btn { padding: 5px 11px; }
-/* Pressed, it wears the design side's colour rather than the renderers' green — the same pairing
-   the parity dashboard already speaks (`.cp-parity-lane--code` green / `--figma` purple), so "this
-   is the design's claim, not this server's output" reads the same wherever it appears. Overrides
-   the generic `.cp-live-toggle[aria-pressed="true"]` green it would otherwise inherit, dot
-   included; the dark half lives with the other dark overrides below. */
-.cp-spec-btn[aria-pressed="true"] { background: #e5deff; border-color: transparent;
-  color: #3c2b80; }
-.cp-spec-btn[aria-pressed="true"] .cp-live-dot { background: #5b45b8;
-  box-shadow: 0 0 0 3px rgba(91, 69, 184, 0.2); }
 .cp-mode-hint { font-size: 0.72rem; color: var(--cp-fg-muted); }
 /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
    It swaps the static snapshot between the raster PNG and the resolution-independent vector
@@ -1306,7 +1304,6 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
      cannot express: the SEMANTIC colour pairs, which are literal by design and so need a dark
      re-mix of their own. They keep M3's *container / on-container* relationship — a low-chroma
      tonal fill with a high-chroma label — rather than reverting to bordered chips. */
-  .cp-url.cp-url-copied { box-shadow: 0 0 0 2px rgba(208, 188, 255, 0.35); }
   .cp-imgwrap, .cp-stage { background: var(--cp-surface); }
   html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage { background: repeating-conic-gradient(var(--cp-surface-2) 0% 25%, var(--cp-surface) 0% 50%) 50% / 16px 16px; }
   .cp-badge--trusted { background: #0d3a1c; color: #86dc9d; border-color: transparent; }
@@ -1316,9 +1313,6 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-degrade { background: #4a3000; color: #ffd8a3; border-color: transparent; }
   .cp-doc-expiry { background: #4a3000; color: #ffd8a3; border-color: transparent; }
   .cp-live-toggle[aria-pressed="true"] { background: #0d3a1c; border-color: transparent; color: #86dc9d; }
-  .cp-spec-btn[aria-pressed="true"] { background: #372b70; border-color: transparent; color: #c9c0ff; }
-  .cp-spec-btn[aria-pressed="true"] .cp-live-dot { background: #c9c0ff;
-    box-shadow: 0 0 0 3px rgba(201, 192, 255, 0.2); }
   .cp-match--good { color: #86dc9d; background: #0d3a1c; border-color: transparent; }
   .cp-match--warn { color: #ffd8a3; background: #4a3000; border-color: transparent; }
   .cp-match--bad { color: #ffb4ab; background: #601410; border-color: transparent; }
@@ -1391,10 +1385,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-card.cp-sys { grid-template-rows: 220px 1fr; }
   .cp-imgwrap img { max-height: 200px; }
   .cp-syslist .cp-imgwrap > img { max-height: none; }
-  /* Copyable direct-link rows: the URL field takes its own line above the Copy/Download
-     buttons instead of squeezing all three onto one narrow row. */
-  .cp-link-row { flex-wrap: wrap; }
-  .cp-url { flex: 1 1 100%; }
+  /* The export line wraps to one group per row rather than squeezing six buttons across. */
+  .cp-export { gap: 2px 10px; }
+  .cp-link-group { flex: 1 1 100%; }
   /* The paired Min/Max (and Fixed W/H) size inputs stack rather than sit side by side. */
   .cp-size-row:not([hidden]) { flex-direction: column; gap: 6px; }
   .cp-compare-table th, .cp-compare-table td { padding: 8px; }

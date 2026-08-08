@@ -1,5 +1,11 @@
 # Remote Compose backend selector (`compose-preview serve`)
 
+> **Superseded.** This records the chip row as it shipped. The viewer now picks a renderer from a
+> single combo box (`#cp-lane-select`) beside one chip that names the current player and toggles it
+> live — same players, same `rcPlayer=<wire>` wiring, one control instead of six. The current
+> surface is captured by the `serve-viewer-rc-players` page fixture. The tables below still describe
+> which player is which and where each one runs.
+
 The viewer's per-preview **RC renderer selector** — a chip row that chooses which Remote Compose
 player draws a preview's captured `ir/<id>.rc` document. It replaces the former single "RC (browser)"
 toggle with the full set of backends the offline `rc-compare` pipeline diffs, surfaced live:

@@ -83,11 +83,11 @@
 
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
-      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false">
+      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" title="Static snapshot — click for the live, interactive preview">
             <span class="cp-live-dot" aria-hidden="true"></span>
-            <span id="cp-live-toggle-label">Live preview</span>
+            <span id="cp-live-toggle-label">Snapshot</span>
           </button>
-<button type="button" id="cp-wasm-btn" class="cp-live-toggle" aria-pressed="false" title="Run this component in your browser (Kotlin/Wasm)"><span class="cp-live-dot" aria-hidden="true"></span><span>In-browser (Wasm)</span></button>
+<select id="cp-lane-select" class="cp-lane-select" aria-label="Switch renderer" title="Draw this preview with a different renderer" data-default="png" data-rc-default=""><option value="" selected>Switch renderer…</option><option value="png">Snapshot</option><option value="wasm">In browser (Wasm)</option></select>
 <button type="button" id="cp-svg-toggle" class="cp-fmt-toggle" aria-pressed="false" title="Show the vector (SVG) render">SVG</button>
 <span id="cp-svg-match" class="cp-match" role="status" aria-live="polite" hidden></span><a id="cp-svg-diff" class="cp-format-link" href="/compare?format=svg&preview=button-filled__ideal__default__light&token=demo-token-fixture&session=compose-m3" hidden>view diff →</a>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
@@ -254,31 +254,34 @@
         </div>
       </div>
       <!-- Export remains below the workspace; renderer selection is kept beside the preview
-           heading so it is visible before a tall stage. -->
+           heading so it is visible before a tall stage. The export bar is a SIBLING of the note
+           column rather than a child: the note is prose and reads better at `.cp-below`'s measure,
+           while the bar has to run the full content width to stay on one line. -->
       <div class="cp-below">
 
-              <details class="cp-export cp-disclosure">
-        <summary id="cp-export-head">Export &amp; direct links</summary>
-        <div class="cp-links cp-disclosure-body">
-          <div class="cp-knobs-head">The current view as a URL (overrides applied)</div>
-          <div class="cp-link-row">
+      </div>
+            <div class="cp-export" aria-label="Export the current view">
+        <span class="cp-export-head" id="cp-export-head">Export</span>
+        <span class="cp-link-group">
   <span class="cp-link-kind">PNG</span>
-  <input id="cp-url-png" class="cp-url" type="text" readonly aria-label="PNG URL"
-    title="Click to copy the URL">
+  <button type="button" class="cp-copyurl" data-copyurl-target="cp-url-png"
+    title="Copy the PNG URL of the current view (overrides applied)">Copy link</button>
   <button type="button" class="cp-copyimg" data-copyimg-target="cp-url-png"
-    data-copyimg-ext=".png">Copy PNG</button>
-  <a id="cp-dl-png" class="cp-dl" download>Download</a>
-</div>
-<div class="cp-link-row">
+    data-copyimg-ext=".png" title="Copy the PNG itself to the clipboard">Copy PNG</button>
+  <a id="cp-dl-png" class="cp-dl" download title="Save the PNG to a file">Download</a>
+  <input id="cp-url-png" class="cp-url" type="text" readonly tabindex="-1"
+    aria-label="PNG URL">
+</span>
+<span class="cp-link-group">
   <span class="cp-link-kind">SVG</span>
-  <input id="cp-url-svg" class="cp-url" type="text" readonly aria-label="SVG URL"
-    title="Click to copy the URL">
+  <button type="button" class="cp-copyurl" data-copyurl-target="cp-url-svg"
+    title="Copy the SVG URL of the current view (overrides applied)">Copy link</button>
   <button type="button" class="cp-copyimg" data-copyimg-target="cp-url-svg"
-    data-copyimg-ext=".svg">Copy SVG</button>
-  <a id="cp-dl-svg" class="cp-dl" download>Download</a>
-</div>
-        </div>
-      </details>
+    data-copyimg-ext=".svg" title="Copy the SVG itself to the clipboard">Copy SVG</button>
+  <a id="cp-dl-svg" class="cp-dl" download title="Save the SVG to a file">Download</a>
+  <input id="cp-url-svg" class="cp-url" type="text" readonly tabindex="-1"
+    aria-label="SVG URL">
+</span>
       </div>
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->

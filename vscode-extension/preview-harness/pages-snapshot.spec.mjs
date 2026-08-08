@@ -179,16 +179,22 @@ const STYLED_FIXTURES = new Set([
     // feature would move no baseline.
     "serve-landing-live",
     // The design-spec lane. meshcore-mobile is the catalog that publishes Figma-backed references,
-    // so its viewer is where the Spec chip appears — and the chip's whole claim is visual: it reads
-    // as a peer of the renderer chips, wears the design side's purple accent when pressed (the
-    // same pairing the parity dashboard speaks), and swaps the stage. Captured bare, the chip is
-    // an unstyled button and the `spec-lane` state below could not even be entered (the lane
-    // needs `viewer.js`).
+    // so its viewer is where the spec becomes one of the renderer options — and the claim is
+    // visual: selecting it swaps the stage, renames the chip, and drops the "spec diff →" step
+    // beside it. Captured bare, the row is an unstyled select and the `spec-lane` state below
+    // could not even be entered (the lane needs `viewer.js`).
     "serve-viewer-path",
     // The inspection layers (accessibility / typography / theme attributes). The whole surface is
     // painted at runtime by `inspect.js` — boxes over the stage, a legend beside it — so captured
     // bare there is nothing to see at all. Its `layers` state below is what actually draws them.
     "serve-viewer-inspect",
+    // The Remote Compose viewer, and the page the renderer picker exists for: five players for one
+    // captured document. The picker's whole claim is visual — one chip naming the current renderer
+    // beside one combo of alternatives, where a row of six pressed-state chips used to be — so
+    // captured bare it is an unstyled button next to an unstyled select and nothing about the
+    // simplification would move a baseline. `viewer.js` is needed too, for the `player-cmp-android`
+    // state below.
+    "serve-viewer-rc-players",
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
@@ -343,17 +349,33 @@ const FIXTURE_STATES = [
     },
     {
         // The design-spec lane with the spec actually on the stage. The committed HTML always
-        // opens on the render — the imported reference is only fetched once the chip is pressed —
-        // so this is the only way the lane's *end state* is diffed: the pressed chip, the
+        // opens on the render — the imported reference is only fetched once the lane is selected —
+        // so this is the only way the lane's *end state* is diffed: the combo naming the spec, the
         // "imported design spec — not a render" hint, the ◇ badge, and the reference filling the
         // stage where the render was. The raster comes from the harness's existing
         // `**/reference/**` stub, so no design tool is contacted here either.
         fixture: "serve-viewer-path",
         suffix: "spec-lane",
         apply: async (page) => {
-            await page.click("#cp-spec-btn");
+            await page.selectOption("#cp-lane-select", "spec");
             await page.waitForFunction(
                 () => document.getElementById("cp-spec-img")?.hidden === false,
+            );
+        },
+    },
+    {
+        // Switching player through the combo. The committed HTML always opens on the default
+        // (`Java`), so this is the only way the picker's *moved* state is diffed: the combo on
+        // `CMP Android`, and — the point of the whole control — the chip beside it renaming itself
+        // to match instead of the visitor having to read which of six chips lit up.
+        fixture: "serve-viewer-rc-players",
+        suffix: "player-cmp-android",
+        apply: async (page) => {
+            await page.selectOption("#cp-lane-select", "rc:cmp-android");
+            await page.waitForFunction(
+                () =>
+                    document.getElementById("cp-live-toggle-label")?.textContent ===
+                    "CMP Android",
             );
         },
     },

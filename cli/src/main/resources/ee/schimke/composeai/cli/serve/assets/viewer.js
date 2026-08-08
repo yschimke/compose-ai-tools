@@ -290,18 +290,19 @@
     if (gc && !gc.disabled && gc.checked) o["gestures"] = "true";
     return o;
   }
-  // RC backend selector state (the #cp-rc-backends chips). `rcPlayerBackend` is the current pick
-  // and `rcPlayerPicked` gates whether it rides the render URL — so page load stays on the
-  // instant default snapshot until the visitor actually chooses a server-side backend.
-  var rcBackendsEl = document.getElementById("cp-rc-backends");
-  var rcPlayerBackend = rcBackendsEl ? (rcBackendsEl.getAttribute("data-default") || "") : "";
+  // Renderer-picker state (the #cp-lane-select combo). `rcPlayerBackend` is the current Remote
+  // Compose player pick and `rcPlayerPicked` gates whether it rides the render URL — so page load
+  // stays on the instant default snapshot until the visitor actually chooses a server-side player.
+  var laneSelect = document.getElementById("cp-lane-select");
+  var rcDefaultBackend = laneSelect ? (laneSelect.getAttribute("data-rc-default") || "") : "";
+  var rcPlayerBackend = rcDefaultBackend;
   var rcPlayerPicked = false;
-  // Reconcile the backend chips' pressed state with the active lane. Hoisted (the real impl is
-  // assigned in the selector block below) so the common mode-transition path (enterMode) can
-  // call it whenever the viewer leaves a lane through ANY control — not only a chip click — so
-  // the JS chip can't stay pressed after e.g. Live/Wasm/SVG takes over the stage. A no-op stub
-  // for a non-Remote-Compose preview (no selector present).
-  var syncRcBackendChips = function () {};
+  // Reconcile the picker (the combo's value AND the chip's label) with the active lane. Hoisted
+  // (the real impl is assigned in the picker block below) so the common mode-transition path
+  // (enterMode) can call it whenever the viewer leaves a lane through ANY control — not only a
+  // pick — so the combo can't keep naming a renderer that Live / SVG has taken off the stage. A
+  // no-op stub for a single-lane preview (no combo present).
+  var syncLaneSelect = function () {};
   function query() {
     var o = overrides();
     // Public routes are open, so a page that arrived without a token stays token-free — only
@@ -569,20 +570,27 @@
       svgMatch.className = "cp-match cp-match--na";
     });
   }
-  // Click the read-only URL field to copy the /render URL to the clipboard (no separate button).
-  // The text is selected either way as a fallback + visible affordance, and the field flashes via
-  // .cp-url-copied so the click reads as "copied".
-  document.querySelectorAll(".cp-url").forEach(function (field) {
-    field.addEventListener("click", function () {
-      field.select();
-      var flash = function () {
-        field.classList.add("cp-url-copied");
-        setTimeout(function () { field.classList.remove("cp-url-copied"); }, 1200);
+  // Copy the /render URL of the current view. The URL itself lives in the `#cp-url-<ext>` field
+  // (kept off-screen — nobody reads a 200-character absolute URL), so this is what puts it on the
+  // clipboard; the field is still selected as the execCommand fallback's requirement, and the
+  // button reports back in its own label rather than flashing a control the visitor can't see.
+  document.querySelectorAll(".cp-copyurl").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var field = document.getElementById(btn.getAttribute("data-copyurl-target"));
+      if (!field || !field.value) return;
+      var was = btn.getAttribute("data-copyurl-label") || btn.textContent;
+      btn.setAttribute("data-copyurl-label", was);
+      var report = function (label) {
+        btn.textContent = label;
+        setTimeout(function () { btn.textContent = was; }, 1400);
       };
+      field.select();
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(field.value).then(flash, function () {});
+        navigator.clipboard.writeText(field.value).then(
+          function () { report("Copied"); },
+          function () { report("Copy failed"); });
       } else {
-        try { document.execCommand("copy"); flash(); } catch (e) {}
+        try { document.execCommand("copy"); report("Copied"); } catch (e) { report("Copy failed"); }
       }
     });
   });
@@ -1085,7 +1093,6 @@
   // the lane element by the server. It is assigned on first entry rather than at page load, so a
   // visitor who never opens the lane never pays for the bytes.
   var specLane = document.getElementById("cp-spec-lane");
-  var specBtn = document.getElementById("cp-spec-btn");
   var specImg = document.getElementById("cp-spec-img");
   var specToggle = document.getElementById("cp-spec-toggle");
   var specSrc = specLane ? (specLane.getAttribute("data-spec-src") || "") : "";
@@ -1120,7 +1127,6 @@
       // of an origin-checked URL.
       specImg.src = specRasterSrc();
     }
-    if (specBtn) specBtn.setAttribute("aria-pressed", "true");
     if (status) status.textContent = "";
   }
   function closeSpec() {
@@ -1129,7 +1135,6 @@
     specImg.hidden = true;
     img.style.removeProperty("display");
     img.hidden = false;
-    if (specBtn) specBtn.setAttribute("aria-pressed", "false");
   }
 
   // ---- In-browser Remote Compose canvas lane ----------------------------------------------
@@ -1144,7 +1149,6 @@
   var rcWasmReady = false;
   var rcWasmBootTimer = null;
   var hasRcDoc = root.getAttribute("data-has-rc-doc") === "1";
-  var rcBtn = document.getElementById("cp-rc-btn");
   var rcPlayer = null; // the RC.RcdPlayer instance (created lazily on first open)
   var rcCtx = null; // its WebRemoteContext, for named-value overrides
   var rcReady = false; // a first frame is painted and the canvas revealed
@@ -1268,7 +1272,6 @@
     clearModeError();
     rcCanvasEl.hidden = false;
     img.style.display = "none";
-    if (rcBtn) rcBtn.setAttribute("aria-pressed", "true");
     status.textContent = "";
   }
   function closeRc() {
@@ -1278,7 +1281,6 @@
     rcCanvasEl.hidden = true;
     img.style.removeProperty("display");
     img.hidden = false;
-    if (rcBtn) rcBtn.setAttribute("aria-pressed", "false");
   }
 
   // AndroidX-conformant Compose Multiplatform/Wasm RC lane. This is an isolated app rather than
@@ -1475,10 +1477,11 @@
     }
     syncOverlayToggles();
     syncServerControls();
+    // Every lane transition passes through here, so the picker is re-reconciled whether the
+    // viewer entered/left a lane via the combo or via the Live / SVG / snapshot controls. It runs
+    // BEFORE updateLiveToggle(), which reads the combo's value for the chip's label.
+    syncLaneSelect();
     updateLiveToggle();
-    // Every lane transition passes through here, so the backend chips are re-reconciled whether
-    // the viewer entered/left the JS canvas via a chip or via Live/Wasm/SVG/snapshot controls.
-    syncRcBackendChips();
     // Render the static lane AFTER syncServerControls() has reconciled the daemon-only controls
     // for the new lane. Returning from Wasm this re-enables the `.cp-rc-knob` inputs first, so
     // query() includes an rc.* value edited before the Wasm detour in the first snapshot render
@@ -1626,19 +1629,16 @@
     function (r) {
       r.addEventListener("change", function () { if (r.checked) enterMode(r.value); });
     });
-  // The single Static⇄Live preview toggle. Off = the baked / on-demand snapshot; on = the best
-  // interactive lane this session offers (the daemon stream when present, else the in-browser
-  // Wasm app). Overrides still take effect while static (a catalog re-renders /render on
-  // demand), so this toggle is specifically about *interacting* with the running composition —
-  // clicking, scrolling, typing. The corner backend badge flips its icon/accent to match (see
-  // backendBadgeScript).
+  // The primary chip. It does two jobs at once, which is what lets one control replace the row of
+  // per-lane chips this page used to carry: it NAMES the renderer currently on the stage ("Java",
+  // "JS", "Figma spec", "Live") and its status dot says whether that render is interactive, and
+  // clicking it TOGGLES interactivity — into the best live lane this session offers (the daemon
+  // stream when present, else the in-browser Wasm app), and back out to the static snapshot.
+  // Overrides still take effect while static (a catalog re-renders /render on demand), so the
+  // toggle is specifically about *interacting* with the running composition — clicking, scrolling,
+  // typing. The corner backend badge flips its icon/accent to match (see backendBadgeScript).
   var liveToggle = document.getElementById("cp-live-toggle");
   var liveToggleLabel = document.getElementById("cp-live-toggle-label");
-  // The dedicated in-browser Wasm toggle (present only when the session has BOTH a daemon lane
-  // and a Wasm app). When it's here, "Live preview" owns the daemon lane and this owns the Wasm
-  // lane, so the Wasm tier is reachable rather than hidden behind bestLiveMode()'s daemon
-  // preference. Null in the daemon-only / wasm-only cases, where the single toggle stays generic.
-  var wasmBtn = document.getElementById("cp-wasm-btn");
   // Present only when GitHub auth is the one thing blocking the daemon lane (see ServeWeb's
   // liveSignInLink). Deliberately not `#cp-live-toggle` — it's a link, so the toggle's
   // `.disabled` / `aria-pressed` handling must not touch it — which is why it's looked up
@@ -1648,20 +1648,63 @@
   function liveTransportAvailable() { return (live && !live.disabled) || !!wasmToggle; }
   function bestLiveMode() { return (live && !live.disabled) ? "live" : (wasmToggle ? "wasm" : null); }
   function anyLiveActive() { return !!(live && live.checked) || !!(wasmToggle && wasmToggle.checked); }
+  // Every lane that paints a *running* composition rather than a finished image: the daemon
+  // stream, the in-browser Wasm app, and both Remote Compose player lanes (which replay the
+  // document client-side). This is what the status dot reports, so picking "JS" from the combo
+  // lights the same indicator that clicking into Live does — they are the same claim.
+  function anyInteractive() {
+    return anyLiveActive() || rcActive() || rcWasmActive();
+  }
+  // The lane the picker is (or would be) sitting on, in the combo's own value space. A daemon
+  // stream is not one of the offered renderers — it is the live form of whichever one is picked —
+  // so it deliberately falls through to the static player lane the toggle will return to.
+  function currentLaneValue() {
+    if (rcWasmActive()) return "rc:cmp-wasm";
+    if (rcActive()) return "rc:js";
+    if (wasmActive()) return "wasm";
+    if (specActive()) return "spec";
+    if (rcDefaultBackend) return "rc:" + (rcPlayerPicked ? rcPlayerBackend : rcDefaultBackend);
+    return "png";
+  }
+  // What the chip calls the current lane. "Live" while the daemon stream is up (that lane IS the
+  // live form of whichever renderer is picked, and the picked one is a click away again); other-
+  // wise the matching option's own label, so the chip and the combo can never name a lane two
+  // different things. With no combo at all the chip is the only control on the row, and the
+  // generic invitation reads better than "Snapshot".
+  function laneLabelText() {
+    if (live && live.checked) return "Live";
+    if (!laneSelect) return "Live preview";
+    var wanted = currentLaneValue();
+    var label = "";
+    Array.prototype.forEach.call(laneSelect.options, function (o) {
+      if (o.value === wanted) label = o.textContent;
+    });
+    return label || "Live preview";
+  }
   function updateLiveToggle() {
-    var liveOn = !!(live && live.checked);
-    var wasmOn = !!(wasmToggle && wasmToggle.checked);
+    var interactive = anyInteractive();
     if (liveToggle) {
-      // With a separate Wasm button, "Live preview" reflects the daemon lane alone; without one
-      // it's the generic interactive toggle that lights for either lane.
-      var livePressed = wasmBtn ? liveOn : (liveOn || wasmOn);
-      liveToggle.setAttribute("aria-pressed", livePressed ? "true" : "false");
-      liveToggle.disabled = wasmBtn ? !(live && !live.disabled) : !liveTransportAvailable();
+      liveToggle.setAttribute("aria-pressed", interactive ? "true" : "false");
+      // Enabled when there is a live lane to enter — or when an interactive lane is already on the
+      // stage, which is the only way back out of a Remote Compose player lane the combo entered.
+      liveToggle.disabled = !liveTransportAvailable() && !interactive;
     }
-    if (wasmBtn) { wasmBtn.setAttribute("aria-pressed", wasmOn ? "true" : "false"); }
+    if (liveToggleLabel) liveToggleLabel.textContent = laneLabelText();
+    // …and the tooltip, from the same state. The chip's meaning inverts as the visitor moves
+    // through the lanes — on the static snapshot a click enters Live, on an interactive lane it
+    // exits back to the snapshot — so a fixed `title` would end up describing the opposite of what
+    // the control now does. The sign-in case never reaches here (that affordance is an <a> with no
+    // `#cp-live-toggle` id, so `liveToggle` is null), which is why its wording isn't repeated.
+    if (liveToggle) {
+      liveToggle.title = interactive
+        ? "Interactive — click to return to the static snapshot"
+        : (liveTransportAvailable()
+          ? "Static snapshot — click for the live, interactive preview"
+          : "Static snapshot — this session has no live lane to switch to");
+    }
     if (modeHint) {
       modeHint.textContent = specActive() ? "imported design spec — not a render"
-        : (liveOn || wasmOn) ? "interactive — click / scroll the preview"
+        : interactive ? "interactive — click / scroll the preview"
         // "no live lane" is only true when there is genuinely nothing to switch to. When the lane
         // exists and is merely behind sign-in, the transport radio is (correctly) disabled, so
         // liveTransportAvailable() is false and this used to read "no live lane" right beside a
@@ -1674,91 +1717,61 @@
   }
   if (liveToggle) {
     liveToggle.addEventListener("click", function () {
-      if (wasmBtn) {
-        // Daemon lane specifically — the Wasm button owns the in-browser lane.
-        if (live && live.checked) { setMode("png"); }
-        else if (live && !live.disabled) { setMode("live"); }
-      } else if (anyLiveActive()) { setMode("png"); }
+      // Toggling off returns to the static snapshot, which for a Remote Compose preview means the
+      // server-side player the combo will show — there is no static form of the JS canvas lane.
+      if (anyInteractive()) { setMode("png"); }
       else { var m = bestLiveMode(); if (m) setMode(m); }
     });
   }
-  if (wasmBtn) {
-    wasmBtn.addEventListener("click", function () {
-      if (wasmActive()) { setMode("png"); } else { setMode("wasm"); }
-    });
-  }
-  if (rcBtn) {
-    rcBtn.addEventListener("click", function () {
-      if (rcActive()) { setMode("png"); } else { setMode("rc"); }
-    });
-  }
-  // The Spec chip: a toggle like the lane buttons beside it — press to put the imported design
-  // reference on the stage, press again to come back to the render you were comparing it with.
-  if (specBtn && specAvailable()) {
-    specBtn.addEventListener("click", function () {
-      if (specActive()) { setMode("png"); } else { setMode("spec"); }
-    });
-  } else if (specBtn) {
-    specBtn.disabled = true;
-  }
-  // ---- RC backend selector -----------------------------------------------------------------
-  // Chips choose which Remote Compose player draws the stage: `js` (the in-browser canvas lane,
-  // via setMode("rc")), or a server-side player (`java` / `cmp-android`) that re-renders the PNG
-  // with rcPlayer=<wire> (see query()). `cmp-jvm` is rendered disabled (no Skiko draw path yet).
-  // The pressed chip tracks the active backend and stays in sync with the js canvas toggle.
-  if (rcBackendsEl) {
-    var rcChips = rcBackendsEl.querySelectorAll(".cp-rc-backend[data-rc-backend]");
-    var rcDefaultBackend = rcBackendsEl.getAttribute("data-default") || "";
+  // ---- The renderer combo box ------------------------------------------------------------------
+  // One `<select>` holding every lane this preview can be drawn by: the Remote Compose players
+  // (`rc:js` paints client-side via setMode("rc"), `rc:cmp-wasm` in its own frame, and
+  // `java` / `cmp-android` / `cmp-jvm` re-render the PNG server-side with rcPlayer=<wire>, see
+  // query()), the in-browser Wasm app, and the imported design spec. Its value tracks the active
+  // lane however the lane was entered — a pick, the Live toggle, an SVG swap, or Back/Forward.
+  if (laneSelect) {
     // Assign the hoisted stub with the real reconciler (see the declaration before query()).
-    syncRcBackendChips = function () {
-      // The js lane wins the "current" marker whenever its canvas is active; otherwise it's the
-      // picked server backend, or the default until the visitor picks one. Any OTHER active lane
-      // (Live / Wasm) means no server backend is on screen, so no chip is marked current.
-      var active =
-        rcWasmActive() ? "cmp-wasm"
-        : rcActive() ? "js"
-        // The spec lane is not a player: while it owns the stage no player's output is on screen,
-        // so — exactly as for Live / Wasm — no chip is marked current.
-        : specActive() ? ""
-        : anyLiveActive() ? ""
-        : (rcPlayerPicked ? rcPlayerBackend : rcDefaultBackend);
-      Array.prototype.forEach.call(rcChips, function (c) {
-        var on = c.getAttribute("data-rc-backend") === active;
-        c.setAttribute("aria-pressed", on ? "true" : "false");
-      });
-    };
-    function pickRcBackend(w) {
-      if (w === "js") {
-        // The client canvas lane. Leave the server pick untouched so returning to a server
-        // backend restores it. setMode("rc") (via enterMode) closes any Live/Wasm lane, opens the
-        // canvas, and re-syncs the chips; if the canvas is already up there's nothing to do but
-        // reconcile the marker.
-        rcPlayerPicked = false;
-        if (!rcActive()) setMode("rc");
-        else syncRcBackendChips();
-      } else if (w === "cmp-wasm") {
-        rcPlayerPicked = false;
-        if (!rcWasmActive()) setMode("rc-wasm");
-        else syncRcBackendChips();
+    // The combo is a command menu ("switch renderer"), not a state field — the chip beside it holds
+    // the state — so reconciling it means returning it to its placeholder. Doing that here rather
+    // than in the change handler covers every route out of a lane (the Live toggle, an SVG swap,
+    // Back/Forward), not just a pick.
+    syncLaneSelect = function () { laneSelect.value = ""; };
+    function pickLane(value) {
+      if (!value) return; // the placeholder; nothing was chosen
+      if (value.indexOf("rc:") === 0) {
+        var wire = value.substring(3);
+        if (wire === "js") {
+          // The client canvas lane. Leave the server pick untouched so returning to a server-side
+          // player restores it. setMode("rc") (via enterMode) closes any Live/Wasm lane, opens the
+          // canvas, and re-syncs the picker; if the canvas is already up there is nothing to do
+          // but reconcile.
+          rcPlayerPicked = false;
+          if (!rcActive()) setMode("rc"); else syncLaneSelect();
+        } else if (wire === "cmp-wasm") {
+          rcPlayerPicked = false;
+          if (!rcWasmActive()) setMode("rc-wasm"); else syncLaneSelect();
+        } else {
+          // A server-side player. Record the pick FIRST so the single static-lane render carries
+          // rcPlayer=<wire>, then transition to the static snapshot exactly once for EVERY other
+          // lane — js canvas, Live, or Wasm. setMode("png") → enterMode("png") closes them all and
+          // renders the snapshot once (no racing double render). Without this a pick made while
+          // Live/Wasm was active only reloaded the hidden <img> and left the interactive renderer
+          // on screen under a combo naming something else.
+          rcPlayerBackend = wire;
+          rcPlayerPicked = true;
+          setMode("png");
+        }
+      } else if (value === "wasm") {
+        if (!wasmActive()) setMode("wasm"); else syncLaneSelect();
+      } else if (value === "spec") {
+        if (!specAvailable()) { syncLaneSelect(); return; }
+        if (!specActive()) setMode("spec"); else syncLaneSelect();
       } else {
-        // A server-side backend. Record the pick FIRST so the single static-lane render carries
-        // rcPlayer=<wire>, then transition to the static snapshot exactly once for EVERY other
-        // lane — js canvas, Live, or Wasm. setMode("png") → enterMode("png") closes them all,
-        // renders the snapshot once (no racing double render), and re-syncs the chips. Without
-        // this a pick made while Live/Wasm was active only reloaded the hidden <img> and left the
-        // interactive renderer on screen under a pressed chip.
-        rcPlayerBackend = w;
-        rcPlayerPicked = true;
         setMode("png");
       }
     }
-    Array.prototype.forEach.call(rcChips, function (c) {
-      if (c.disabled) return;
-      c.addEventListener("click", function () {
-        pickRcBackend(c.getAttribute("data-rc-backend"));
-      });
-    });
-    syncRcBackendChips();
+    laneSelect.addEventListener("change", function () { pickLane(laneSelect.value); });
+    syncLaneSelect();
   }
   // Keep the live canvas overlay tracking the snapshot's slot when the page reflows (the Wasm
   // overlay has its own resize hook below; this covers a live session with no Wasm app).
@@ -2067,6 +2080,23 @@
       themeChoice.setAttribute("data-theme-active", offered ? "1" : initialThemeActive);
       syncThemeBar();
     }
+    // The Remote Compose player pick already rode the URL as `rcPlayer=<wire>` (query() emits it,
+    // URL_STATE_PARAMS owns it) but nothing ever read it back, so a shared `?rcPlayer=cmp-android`
+    // link opened on the default player under a combo naming it — the link described a render the
+    // page wasn't showing. Restore it here, from the offered options only, so an unknown or
+    // unavailable wire falls back to this preview's default rather than pinning a dead param.
+    if (rcDefaultBackend) {
+      var wantedPlayer = q.get("rcPlayer");
+      var playerOffered = false;
+      if (wantedPlayer && laneSelect) {
+        Array.prototype.forEach.call(laneSelect.options, function (o) {
+          if (o.value === "rc:" + wantedPlayer && !o.disabled) playerOffered = true;
+        });
+      }
+      rcPlayerPicked = playerOffered;
+      rcPlayerBackend = playerOffered ? wantedPlayer : rcDefaultBackend;
+    }
+    syncLaneSelect();
   }
   hydrateFromUrl(false);
   // Read the bookmarked lane NOW, before the first refreshSnapshot's sync clears a param no

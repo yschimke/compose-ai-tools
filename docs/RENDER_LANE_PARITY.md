@@ -32,7 +32,7 @@ lane's intrinsic buffer size and the on-screen rect of the element showing it.
 | Snapshot PNG (baked, from the delivery branch) | ✅ | ✅ |
 | On-demand `/render/<id>.png` (daemon, static) | ✅ desktop | ✅ Android |
 | Live stream (`#cp-live-toggle`, daemon-pushed frames) | ✅ desktop | ✅ Android |
-| In-browser Wasm (`#cp-wasm-btn`) | ✅ `:samples:cmp-wasm-catalog` | ❌ (Wear Compose is Android-only) |
+| In-browser Wasm (`#cp-lane-select` → `wasm`) | ✅ `:samples:cmp-wasm-catalog` | ❌ (Wear Compose is Android-only) |
 | SVG export (`#cp-svg-toggle`, `compose/figma-svg`) | ✅ | ✅ |
 
 Capture density differs per catalog and is **not** a lane property: `compose-m3` renders at
@@ -258,7 +258,7 @@ rather than every component preview inheriting a tile.
 
 `renders/lane-parity/` holds the strips above (snapshot / other lane / 6× amplified
 difference). To regenerate, stand up the server as at the top of this file and drive the
-viewer's `#cp-svg-toggle`, `#cp-live-toggle` and `#cp-wasm-btn` with a headless browser,
+viewer's `#cp-svg-toggle`, `#cp-live-toggle` and `#cp-lane-select` with a headless browser,
 screenshotting `.cp-stage` in each lane; the sizes table comes straight from
 `/render/<id>.png` and `/render/<id>.svg` (the SVG's root `width`/`height` and its
 `translate`, from which the drawn-content extent inside the PNG frame is recovered).
