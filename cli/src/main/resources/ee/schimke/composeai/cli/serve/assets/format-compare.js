@@ -381,8 +381,22 @@
    */
   function scoreImageUrls(referenceUrl, candidateUrl) {
     return Promise.all([loadImage(referenceUrl), loadImage(candidateUrl)]).then(function (images) {
-      var referenceImage = images[0];
-      var candidateImage = images[1];
+      return scoreImages(images[0], images[1]);
+    });
+  }
+
+  /**
+   * [scoreImageUrls] over frames that are already decoded.
+   *
+   * Split out so a caller holding the images — the viewer's spec lane, which has just normalised
+   * them onto its canvases — can score the very frames it drew instead of re-requesting the URLs.
+   * That matters beyond the wasted work: an override-bearing `/render` is `no-store`, so a second
+   * request is a second render, and the score could end up describing a different frame than the
+   * diff beside it. The downscale still starts from the ORIGINAL images (not from the normalised
+   * canvases), so this is one resample exactly as before and the numbers are unchanged.
+   */
+  function scoreImages(referenceImage, candidateImage) {
+    return Promise.resolve().then(function () {
       var boxes = normalisedBoxes(referenceImage, candidateImage);
       var referenceBox = boxes.reference;
       var candidateBox = boxes.candidate;
@@ -411,6 +425,92 @@
   }
 
   /**
+   * One image's content box redrawn into a fresh canvas of the shared comparison size.
+   *
+   * `willReadFrequently` because the very next thing anyone does with these is `getImageData` (the
+   * diff walks both of them pixel by pixel), and the flag has to be set on the FIRST getContext —
+   * a later call with different attributes silently returns the existing context.
+   */
+  function boxCanvas(image, box, width, height) {
+    var canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas
+      .getContext("2d", { willReadFrequently: true })
+      .drawImage(image, box.x, box.y, box.width, box.height, 0, 0, width, height);
+    return canvas;
+  }
+
+  /**
+   * Both frames redrawn at ONE shared size: each side's content box (see [normalisedBoxes]) scaled
+   * onto the candidate's box.
+   *
+   * This is the step every pixel-for-pixel surface needs before it can say anything true — the diff
+   * map, the triptych's three panels, the wipe's two halves. A design reference exported at a
+   * different scale, or with different padding, than the render is the normal case, not the
+   * exception; comparing the raw frames would put the two components' pixels at different addresses
+   * and every downstream surface would be reporting the offset rather than the divergence.
+   */
+  function normaliseImageUrls(referenceUrl, candidateUrl) {
+    return Promise.all([loadImage(referenceUrl), loadImage(candidateUrl)]).then(function (images) {
+      var boxes = normalisedBoxes(images[0], images[1]);
+      var width = boxes.candidate.width;
+      var height = boxes.candidate.height;
+      return {
+        width: width,
+        height: height,
+        geometry: boxes.geometry,
+        reference: boxCanvas(images[0], boxes.reference, width, height),
+        candidate: boxCanvas(images[1], boxes.candidate, width, height),
+        // The decoded originals, so a caller can score (see scoreImages) without asking the
+        // network for the same two frames a second time.
+        images: images
+      };
+    });
+  }
+
+  /**
+   * Paint the magenta delta map of two already-normalised, same-sized canvases into `target`, and
+   * report how many pixels actually moved.
+   *
+   * A pixel is "changed" once any channel — alpha included, so a mark appearing over transparency
+   * counts — differs by more than 3/255, which is PNG round-tripping and resampling noise. The mark
+   * grows more opaque with the size of the delta, so a wholesale colour swap reads louder than a
+   * one-pixel edge shift.
+   */
+  function diffCanvases(reference, candidate, target) {
+    var width = reference.width;
+    var height = reference.height;
+    target.width = width;
+    target.height = height;
+    var context = target.getContext("2d", { willReadFrequently: true });
+    var referenceData = reference.getContext("2d", { willReadFrequently: true })
+      .getImageData(0, 0, width, height);
+    var candidateData = candidate.getContext("2d", { willReadFrequently: true })
+      .getImageData(0, 0, width, height);
+    var diff = context.createImageData(width, height);
+    var changed = 0;
+    for (var i = 0; i < referenceData.data.length; i += 4) {
+      var delta = Math.max(
+        Math.abs(referenceData.data[i] - candidateData.data[i]),
+        Math.abs(referenceData.data[i + 1] - candidateData.data[i + 1]),
+        Math.abs(referenceData.data[i + 2] - candidateData.data[i + 2]),
+        Math.abs(referenceData.data[i + 3] - candidateData.data[i + 3])
+      );
+      if (delta > 3) {
+        changed++;
+        diff.data[i] = 229;
+        diff.data[i + 1] = 46;
+        diff.data[i + 2] = 115;
+        diff.data[i + 3] = Math.min(255, 96 + delta);
+      }
+    }
+    context.clearRect(0, 0, width, height);
+    context.putImageData(diff, 0, 0);
+    return changed;
+  }
+
+  /**
    * The pixel diff behind the Reference / Diff / Actual detail page.
    *
    * Diffed over the same content-box normalisation the score uses. Diffing raw canvases only worked
@@ -419,47 +519,14 @@
    * wants to see where the two drift apart.
    */
   function compareImageUrls(referenceUrl, actualUrl, canvas) {
-    return Promise.all([loadImage(referenceUrl), loadImage(actualUrl)]).then(function (images) {
-      var boxes = normalisedBoxes(images[0], images[1]);
-      var referenceBox = boxes.reference;
-      var actualBox = boxes.candidate;
-      var width = actualBox.width;
-      var height = actualBox.height;
-      canvas.width = width;
-      canvas.height = height;
-      var context = canvas.getContext("2d", { willReadFrequently: true });
-      function readNormalised(image, box) {
-        context.clearRect(0, 0, width, height);
-        context.drawImage(image, box.x, box.y, box.width, box.height, 0, 0, width, height);
-        return context.getImageData(0, 0, width, height);
-      }
-      var reference = readNormalised(images[0], referenceBox);
-      var actual = readNormalised(images[1], actualBox);
-      var diff = context.createImageData(width, height);
-      var changed = 0;
-      for (var i = 0; i < reference.data.length; i += 4) {
-        var delta = Math.max(
-          Math.abs(reference.data[i] - actual.data[i]),
-          Math.abs(reference.data[i + 1] - actual.data[i + 1]),
-          Math.abs(reference.data[i + 2] - actual.data[i + 2]),
-          Math.abs(reference.data[i + 3] - actual.data[i + 3])
-        );
-        if (delta > 3) {
-          changed++;
-          diff.data[i] = 229;
-          diff.data[i + 1] = 46;
-          diff.data[i + 2] = 115;
-          diff.data[i + 3] = Math.min(255, 96 + delta);
-        }
-      }
-      context.clearRect(0, 0, width, height);
-      context.putImageData(diff, 0, 0);
-      return scoreImageUrls(referenceUrl, actualUrl).then(function (score) {
+    return normaliseImageUrls(referenceUrl, actualUrl).then(function (frames) {
+      var changed = diffCanvases(frames.reference, frames.candidate, canvas);
+      return scoreImages(frames.images[0], frames.images[1]).then(function (score) {
         return {
           score: score.percent,
           geometry: score.geometry,
           changed: changed,
-          pixels: width * height
+          pixels: frames.width * frames.height
         };
       });
     });
@@ -470,6 +537,9 @@
     scoreSvgUrls: scoreSvgUrls,
     scoreCanvas: scoreCanvas,
     scoreImageUrls: scoreImageUrls,
+    scoreImages: scoreImages,
+    normaliseImageUrls: normaliseImageUrls,
+    diffCanvases: diffCanvases,
     compareImageUrls: compareImageUrls
   };
 

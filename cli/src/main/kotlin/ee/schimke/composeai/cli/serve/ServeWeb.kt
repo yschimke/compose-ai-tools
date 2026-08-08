@@ -5429,17 +5429,46 @@ $rows
           .joinToString("&")
       "$basePath/compare/$idSeg${querySuffix(query)}"
     }
+    // The four ways to look at the render/spec pair, offered on the stage itself the moment the
+    // spec lane is up. The lane used to be a flip — spec on the stage instead of the render — which
+    // answers "are these different?" only by asking the eye to hold one frame while looking at the
+    // other. That finds a wholesale colour change and misses the 4dp of padding that is the actual
+    // bug. The focused `/compare/<id>` page has always had the real instruments, but reaching it
+    // means leaving the viewer, and with it the overrides, knobs and theme that produced the render
+    // worth comparing. So the instruments come to the lane. `spec` is first and is the default, so
+    // a visitor who ignores this row sees exactly what the lane always showed.
+    val specViews =
+      listOf(
+        "spec" to ("Spec" to "The imported design reference on its own"),
+        "diff" to ("Diff" to "Highlight every pixel where the render and the spec disagree"),
+        "triptych" to ("Triptych" to "Spec, diff and render side by side"),
+        "slider" to ("Slider" to "One frame, wiped between the spec and the render"),
+      )
     // The spec lane's *carrier*, not a control: `data-spec-src` is the raster viewer.js paints onto
-    // the stage when the picker selects `spec`, and the trailing link is the step from "look at the
-    // spec" to "diff it". The lane no longer has a chip of its own — it is one `<option>` in
-    // [laneSelectHtml] like every other renderer.
+    // the stage when the picker selects `spec`, the comparison group beside it chooses how that
+    // pair is drawn, and the trailing link is the step out to the focused comparison page. The lane
+    // has no chip of its own — it is one `<option>` in [laneSelectHtml] like every other renderer.
     val specSelector =
       if (specRasterUrl == null || specProviderLabel == null || specLabel == null) ""
       else {
         val tip = "Compare this render against the imported design spec — $specLabel"
+        // Hidden until the lane is entered: while a render is on the stage there is no pair to
+        // compare, and a control that acts on nothing is worse than no control. spec-compare.js
+        // reveals it from openSpec() and hides it again on the way out.
+        val viewButtons =
+          specViews.joinToString("") { (value, text) ->
+            val (viewLabel, viewTip) = text
+            "<button type=\"button\" class=\"cp-spec-view\" data-cp-spec-view=\"$value\" " +
+              "aria-pressed=\"${value == "spec"}\" " +
+              "title=\"${WebEscaping.htmlEscape(viewTip)}\">${WebEscaping.htmlEscape(viewLabel)}</button>"
+          }
         "<span class=\"cp-spec-lane\" id=\"cp-spec-lane\" " +
           "data-spec-src=\"${WebEscaping.htmlEscape(specRasterUrl)}\" " +
           "data-spec-label=\"${WebEscaping.htmlEscape(specProviderLabel)}\">" +
+          "<span class=\"cp-spec-views\" id=\"cp-spec-views\" role=\"group\" " +
+          "aria-label=\"Design comparison\" hidden>$viewButtons</span>" +
+          "<span class=\"cp-spec-score\" id=\"cp-spec-score\" role=\"status\" " +
+          "aria-live=\"polite\" hidden></span>" +
           "<a class=\"cp-format-link cp-spec-diff\" " +
           "href=\"${WebEscaping.htmlEscape(specCompareHref.orEmpty())}\" " +
           "title=\"${WebEscaping.htmlEscape(tip)}\">spec diff →</a></span>"
@@ -5546,6 +5575,34 @@ $rows
       else
         "<img id=\"cp-spec-img\" class=\"cp-spec-img\" hidden alt=\"" +
           "${WebEscaping.htmlEscape("$displayName — design spec")}\">"
+    // The comparison surface the Diff / Triptych / Slider views paint into — a second stage child
+    // beside [specImg], `hidden` until one of them is picked. Every panel is a `<canvas>` rather
+    // than an `<img>` on purpose: spec-compare.js normalises both frames to one shared pixel space
+    // before painting (a reference exported at a different scale than the render is the normal
+    // case), and only canvases can carry that redrawn result. Nothing is fetched until a
+    // comparison view is actually chosen.
+    val specCompare =
+      if (specRasterUrl == null) ""
+      else {
+        fun panel(kind: String, id: String, caption: String, description: String) =
+          "<figure class=\"cp-spec-panel\" data-cp-spec-panel=\"$kind\">" +
+            "<canvas id=\"$id\" aria-label=\"${WebEscaping.htmlEscape(description)}\"></canvas>" +
+            "<figcaption>${WebEscaping.htmlEscape(caption)}</figcaption></figure>"
+        "<div class=\"cp-spec-compare\" id=\"cp-spec-compare\" hidden data-view=\"spec\" " +
+          "data-reference=\"${WebEscaping.htmlEscape(specRasterUrl)}\">" +
+          panel("reference", "cp-spec-reference", "Spec", "Imported design spec") +
+          panel("diff", "cp-spec-diff", "Diff", "Pixels where the render and the spec disagree") +
+          panel("actual", "cp-spec-actual", "Render", "This preview's Compose render") +
+          "<div class=\"cp-spec-wipe\">" +
+          "<canvas id=\"cp-spec-wipe-canvas\" " +
+          "aria-label=\"Spec on the left of the seam, Compose render on the right\"></canvas>" +
+          "<label class=\"cp-spec-wipe-control\"><span>Spec</span>" +
+          "<input id=\"cp-spec-wipe-range\" class=\"cp-spec-wipe-range\" type=\"range\" " +
+          "min=\"0\" max=\"100\" value=\"50\" " +
+          "aria-label=\"Wipe between the design spec and the Compose render\">" +
+          "<span>Render</span></label></div>" +
+          "</div>"
+      }
     val specModeInput =
       if (specRasterUrl == null) ""
       else
@@ -6060,6 +6117,17 @@ $rows
         )
         .filter { it.isNotBlank() }
         .joinToString("\n")
+    // `format-compare.js` holds the comparison primitives — content-box normalisation, the SSIM
+    // score, the magenta delta map — that BOTH the SVG/PNG fidelity toggle and the spec lane's
+    // Diff / Triptych / Slider views draw from, so it loads for either. `spec-compare.js` sits on
+    // top of it and must be defined before `viewer.js`, which calls into `window.cpSpecCompare` on
+    // the way into (and out of) the lane.
+    val compareScriptTags =
+      listOfNotNull(
+          scriptTag("format-compare.js").takeIf { hasSvgExport || specRasterUrl != null },
+          scriptTag("spec-compare.js").takeIf { specRasterUrl != null },
+        )
+        .joinToString("") { "$it\n      " }
     val body =
       """
       <p class="cp-breadcrumb"><a href="$basePath/$q">$catalogName</a> / Component</p>
@@ -6085,7 +6153,7 @@ $rows
       $historyInlineHtml
       <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
         $navDrawer
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
@@ -6160,7 +6228,7 @@ $rows
       ${scriptTag("viewer-drawers.js")}
       ${scriptTag("viewer-history.js")}
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
-      ${if (hasRemoteComposeDoc) "${scriptTag("rc-fonts.js")}\n      " else ""}${if (hasSvgExport) "${scriptTag("format-compare.js")}\n      " else ""}${scriptTag("viewer.js")}
+      ${if (hasRemoteComposeDoc) "${scriptTag("rc-fonts.js")}\n      " else ""}$compareScriptTags${scriptTag("viewer.js")}
       ${scriptTag("backend-badge.js")}${if (inspectRows.isEmpty()) "" else "\n      " + scriptTag("inspect.js")}
       """
         .trimIndent()

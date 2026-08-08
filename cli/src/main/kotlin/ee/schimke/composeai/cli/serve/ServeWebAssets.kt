@@ -37,6 +37,10 @@ internal object ServeWebAssets {
       "viewer-history.js" to "text/javascript; charset=utf-8",
       "backend-badge.js" to "text/javascript; charset=utf-8",
       "format-compare.js" to "text/javascript; charset=utf-8",
+      // The viewer's design-spec comparison views (diff / triptych / slider); loaded only by a
+      // viewer whose catalog published a design reference for that exact preview. Builds on
+      // `format-compare.js`, which is loaded alongside it.
+      "spec-compare.js" to "text/javascript; charset=utf-8",
       // The published Remote Compose player wall; loaded only by a compare page whose catalog
       // carries an `rc-compare` manifest.
       "rc-lanes.js" to "text/javascript; charset=utf-8",

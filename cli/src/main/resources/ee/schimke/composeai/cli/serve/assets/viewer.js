@@ -1153,13 +1153,48 @@
       specImg.src = specRasterSrc();
     }
     if (status) status.textContent = "";
+    if (window.cpSpecCompare) window.cpSpecCompare.open(specActualUrl());
   }
   function closeSpec() {
+    if (window.cpSpecCompare) window.cpSpecCompare.close();
     if (!specImg) return;
     if (root.getAttribute("data-mode") === "spec") root.setAttribute("data-mode", "snapshot");
     specImg.hidden = true;
     img.style.removeProperty("display");
     img.hidden = false;
+  }
+  /**
+   * The render the spec is compared against: the exact bytes that were on the stage when we can
+   * name them, and a fresh `/render` URL when we cannot.
+   *
+   * Reusing the blob costs no second render — an override-bearing render is `no-store`, so
+   * re-fetching the same URL renders again and can race the daemon's shared override state (see
+   * refreshSnapshot) — and it guarantees the comparison is against the pixels the visitor was
+   * actually looking at rather than a re-run that might land differently.
+   *
+   * But the blob is only THAT frame when the visitor arrived from the static raster lane. Two cases
+   * where it is a stale bystander instead, and both must fall back to asking the server:
+   *
+   *  - **An interactive lane.** Live, Wasm and the Remote Compose players paint into a canvas or an
+   *    iframe while `#cp-img` still holds the snapshot fetched at page load. Worse, those lanes
+   *    apply overrides in place (the daemon takes `setOverrides` over the socket; the Wasm app
+   *    applies them in the browser) without ever re-pointing `/render` — so a theme or locale
+   *    changed in Live mode leaves the blob describing the state BEFORE that change. Comparing it
+   *    would score a frame the visitor never saw. `enterMode` records the outgoing lane before
+   *    tearing it down, which is the only moment that fact is still knowable.
+   *  - **The SVG toggle.** The blob then holds a vector document whose intrinsic size a `<canvas>`
+   *    may not be able to resolve. `data-cp-src` names the `/render` URL that produced the blob, so
+   *    its extension is the direct evidence of what those bytes are.
+   *
+   * The fallback is the PNG of the *current* controls, which is what the server would draw for the
+   * state the visitor is in — and if it cannot honour those overrides it refuses, and the
+   * comparison honestly reports itself unavailable rather than scoring the wrong frame.
+   */
+  function specActualUrl() {
+    var blob = img.getAttribute("data-cp-blob");
+    var rendered = (img.getAttribute("data-cp-src") || "").split("?")[0];
+    if (blob && outgoingStage === "snapshot" && rendered.slice(-4) === ".png") return blob;
+    return renderUrl(".png");
   }
 
   // ---- In-browser Remote Compose canvas lane ----------------------------------------------
@@ -1444,12 +1479,20 @@
   function svgOn() {
     return !!(svgToggle && svgToggle.getAttribute("aria-pressed") === "true");
   }
+  // The stage lane the current transition is leaving, latched by enterMode before it tears that
+  // lane down. Read by specActualUrl, which cannot otherwise tell whether the snapshot <img> holds
+  // the frame the visitor was looking at. Starts on the snapshot, which is what the page opens on.
+  var outgoingStage = "snapshot";
   function enterMode(m) {
     // A lane switch is a discrete choice, so the URL sync it ends up triggering pushes a history
     // entry rather than replacing one — Back returns to the lane the visitor came from. Set here
     // rather than on each control because every transition (radio, Live/Wasm/RC toggle, or an
     // auto-enable) passes through this function.
     urlPush = true;
+    // The lane being LEFT, read before any close() below tears it down. The spec lane's comparison
+    // needs it: whether the snapshot <img> holds the frame the visitor was actually looking at
+    // depends entirely on which lane they are arriving from (see specActualUrl).
+    outgoingStage = root.getAttribute("data-mode") || "snapshot";
     // A mode switch always clears a prior lane's error; the new lane re-raises its own if it fails.
     clearModeError();
     // The spec lane is closed by EVERY other transition (it has no per-branch close call below),
@@ -1998,7 +2041,7 @@
   var URL_STATE_PARAMS = [
     "device", "localeTag", "orientation", "background", "fontScale",
     "uiMode", "themeProvider", "focus", "gestures", "touchOverlay",
-    "scroll", "mode", "sizeMode", "rcPlayer",
+    "scroll", "mode", "sizeMode", "rcPlayer", "specView",
     "widthPx", "heightPx", "minWidthPx", "minHeightPx", "maxWidthPx", "maxHeightPx",
   ];
   function ownsUrlParam(name) {
@@ -2027,6 +2070,12 @@
     if (mode !== "png") values.mode = mode;
     var sizeModeEl = document.getElementById("cp-sizeMode");
     if (sizeModeEl && sizeModeEl.value) values.sizeMode = sizeModeEl.value;
+    // The spec lane's comparison view (diff / triptych / slider). Re-emitted on every sync because
+    // `sync` drops any owned param the values don't supply — spec-compare.js pushes it the moment
+    // it is picked, and this is what stops the next knob edit from clearing it again. Only while
+    // the lane is actually up: `?specView=` on a page showing a render describes nothing.
+    var specView = window.cpSpecCompare ? window.cpSpecCompare.view() : "";
+    if (mode === "spec" && specView && specView !== "spec") values.specView = specView;
     window.cpUrlState.sync(values, ownsUrlParam, !push);
   }
   // What the controls hold when the URL names nothing — captured after the server markup and the
@@ -2128,6 +2177,10 @@
       rcPlayerPicked = playerOffered;
       rcPlayerBackend = playerOffered ? wantedPlayer : rcDefaultBackend;
     }
+    // Restore the spec lane's comparison view before the lane itself is entered (the bookmarked
+    // `?mode=spec` lands at the very bottom of this file), so a shared
+    // `?mode=spec&specView=slider` link opens on the wipe rather than flashing the plain spec.
+    if (window.cpSpecCompare) window.cpSpecCompare.hydrate(q.get("specView") || "");
     syncLaneSelect();
   }
   hydrateFromUrl(false);
