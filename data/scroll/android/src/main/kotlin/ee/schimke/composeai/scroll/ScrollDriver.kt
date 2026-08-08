@@ -122,7 +122,14 @@ fun driveScrollByViewport(
   // First slice captures the initial (unscrolled) frame.
   onSlice(0f)
 
+  // Two totals, deliberately. [scrolledPx] is how far the content is believed to have *moved* —
+  // the stitching hint, and what callers report. [dispatchedPx] is how many pixels were actually
+  // handed to `ScrollBy`, and is the only honest basis for enforcing [maxScrollPx]: `creditedPx`
+  // can credit less than was dispatched (a clamped tail on a container whose `value` is exact),
+  // and deriving headroom from an under-credited total would quietly let a capped drive scroll
+  // past its cap by up to a full stride.
   var scrolledPx = 0f
+  var dispatchedPx = 0f
   repeat(maxIterations) {
     val node = interaction.fetchSemanticsNode()
     val range: ScrollAxisRange =
@@ -131,7 +138,7 @@ fun driveScrollByViewport(
       node.config.getOrNull(SemanticsActions.ScrollBy)?.action
         ?: return ScrollDriveResult.Completed(scrolledPx)
 
-    val headroom = (cap - scrolledPx).coerceAtLeast(0f)
+    val headroom = (cap - dispatchedPx).coerceAtLeast(0f)
     if (headroom <= SETTLED_EPSILON_PX) return ScrollDriveResult.CapReached(scrolledPx)
 
     // Stride by the requested viewport fraction and let the scroller clamp itself at its content
@@ -152,6 +159,7 @@ fun driveScrollByViewport(
         ScrollAxis.HORIZONTAL -> step to 0f
       }
     scrollByAction.invoke(dx, dy)
+    dispatchedPx += step
     rule.mainClock.advanceTimeBy(advanceMsPerStep)
 
     val after = interaction.fetchSemanticsNode().config.getOrNull(axisKey)?.value?.invoke()
