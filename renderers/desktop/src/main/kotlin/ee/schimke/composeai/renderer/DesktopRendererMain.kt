@@ -916,6 +916,12 @@ internal fun renderPreview(
   // in-process render in the functional tests) never inherits the switch. See
   // [overrideJvmDefaultLocale].
   val previousDefaultLocale = overrideJvmDefaultLocale(localeTag)
+  // Held outside the try so the `finally` below can always release it. The scene owns a Skia
+  // `Surface`; closing it only on the success path leaked one per *handled* render failure — the
+  // sidecar path returns normally rather than throwing — which a fresh JVM per capture disposed of
+  // for free and a reused renderer worker does not. `RenderEngine` states the same invariant for
+  // the daemon's copy of this body; this is the standalone renderer catching up to it.
+  var sceneToRelease: ImageComposeScene? = null
   try {
 
     // `@Preview(fontScale = ...)` rides on `Density.fontScale`. Threading it through the scene's
@@ -940,7 +946,9 @@ internal fun renderPreview(
     val sceneWidthPx = sceneSize.width
     val sceneHeightPx = sceneSize.height
     val scene =
-      ImageComposeScene(width = sceneWidthPx, height = sceneHeightPx, density = sceneDensity)
+      ImageComposeScene(width = sceneWidthPx, height = sceneHeightPx, density = sceneDensity).also {
+        sceneToRelease = it
+      }
 
     // Measured content size in pixels, captured from the wrapping Box via
     // onGloballyPositioned. Only read when at least one axis wraps.
@@ -1080,13 +1088,15 @@ internal fun renderPreview(
       fileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
     }
 
-    scene.close()
+    // Released in the `finally` below rather than here, so a throw between the scene's
+    // construction and this point cannot strand its Skia surface.
 
     // After a successful render, write the editable knobs this preview declared via
     // `previewOverride*`
     // as the `renders/<stem>.overrides.json` sidecar `BundlePreviewTask` packs into the bundle.
     writePreviewOverridesSidecar(outputFile, fileSystem)
   } finally {
+    runCatching { sceneToRelease?.close() }
     restoreJvmDefaultLocale(previousDefaultLocale)
   }
 }

@@ -370,6 +370,7 @@ internal object ComposePreviewTasks {
       )
     val renderTask =
       project.tasks.register("composePreviewRender", RenderPreviewsTask::class.java) {
+        projectDirectory.set(project.layout.projectDirectory)
         onlyIf { extension.enabled.get() }
         previewsJson.set(previewOutputDir.map { it.file("previews.json") })
         outputDir.set(previewOutputDir.map { it.dir("renders") })
