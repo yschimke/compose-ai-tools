@@ -1150,13 +1150,35 @@
       specImg.src = specRasterSrc();
     }
     if (status) status.textContent = "";
+    if (window.cpSpecCompare) window.cpSpecCompare.open(specActualUrl());
   }
   function closeSpec() {
+    if (window.cpSpecCompare) window.cpSpecCompare.close();
     if (!specImg) return;
     if (root.getAttribute("data-mode") === "spec") root.setAttribute("data-mode", "snapshot");
     specImg.hidden = true;
     img.style.removeProperty("display");
     img.hidden = false;
+  }
+  /**
+   * The render the spec is compared against: the exact bytes on the stage when we can name them,
+   * and a fresh `/render` URL when we cannot.
+   *
+   * Preferring the blob matters twice over. It costs no second render — an override-bearing render
+   * is `no-store`, so re-fetching the same URL renders again and can race the daemon's shared
+   * override state (see refreshSnapshot) — and it guarantees the comparison is against the pixels
+   * the visitor is actually looking at rather than a re-run that might land differently.
+   *
+   * Only when those bytes are the raster, though. A visitor arriving from the SVG toggle leaves a
+   * vector document in the blob, whose intrinsic size a `<canvas>` may not be able to resolve — so
+   * the blob is trusted only when `data-cp-src` (the /render URL that produced it) names a `.png`,
+   * and everything else falls back to asking for the PNG of the current controls.
+   */
+  function specActualUrl() {
+    var blob = img.getAttribute("data-cp-blob");
+    var rendered = (img.getAttribute("data-cp-src") || "").split("?")[0];
+    if (blob && rendered.slice(-4) === ".png") return blob;
+    return renderUrl(".png");
   }
 
   // ---- In-browser Remote Compose canvas lane ----------------------------------------------
@@ -1995,7 +2017,7 @@
   var URL_STATE_PARAMS = [
     "device", "localeTag", "orientation", "background", "fontScale",
     "uiMode", "themeProvider", "focus", "gestures", "touchOverlay",
-    "scroll", "mode", "sizeMode", "rcPlayer",
+    "scroll", "mode", "sizeMode", "rcPlayer", "specView",
     "widthPx", "heightPx", "minWidthPx", "minHeightPx", "maxWidthPx", "maxHeightPx",
   ];
   function ownsUrlParam(name) {
@@ -2024,6 +2046,12 @@
     if (mode !== "png") values.mode = mode;
     var sizeModeEl = document.getElementById("cp-sizeMode");
     if (sizeModeEl && sizeModeEl.value) values.sizeMode = sizeModeEl.value;
+    // The spec lane's comparison view (diff / triptych / slider). Re-emitted on every sync because
+    // `sync` drops any owned param the values don't supply — spec-compare.js pushes it the moment
+    // it is picked, and this is what stops the next knob edit from clearing it again. Only while
+    // the lane is actually up: `?specView=` on a page showing a render describes nothing.
+    var specView = window.cpSpecCompare ? window.cpSpecCompare.view() : "";
+    if (mode === "spec" && specView && specView !== "spec") values.specView = specView;
     window.cpUrlState.sync(values, ownsUrlParam, !push);
   }
   // What the controls hold when the URL names nothing — captured after the server markup and the
@@ -2125,6 +2153,10 @@
       rcPlayerPicked = playerOffered;
       rcPlayerBackend = playerOffered ? wantedPlayer : rcDefaultBackend;
     }
+    // Restore the spec lane's comparison view before the lane itself is entered (the bookmarked
+    // `?mode=spec` lands at the very bottom of this file), so a shared
+    // `?mode=spec&specView=slider` link opens on the wipe rather than flashing the plain spec.
+    if (window.cpSpecCompare) window.cpSpecCompare.hydrate(q.get("specView") || "");
     syncLaneSelect();
   }
   hydrateFromUrl(false);

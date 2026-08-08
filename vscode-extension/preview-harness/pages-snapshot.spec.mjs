@@ -205,6 +205,7 @@ const SERVE_ASSETS = [
     ["viewer-drawers.js", "text/javascript"],
     ["backend-badge.js", "text/javascript"],
     ["format-compare.js", "text/javascript"],
+    ["spec-compare.js", "text/javascript"],
     ["rc-lanes.js", "text/javascript"],
     ["catalog-live.js", "text/javascript"],
     ["inspect.js", "text/javascript"],
@@ -363,6 +364,29 @@ const FIXTURE_STATES = [
             );
         },
     },
+    // The three comparison views the spec lane offers once it is up. Each is drawn entirely at
+    // runtime — pre-normalised canvases painted by `spec-compare.js` — so the committed HTML holds
+    // four empty `<canvas>` elements and none of what these views actually look like. Capturing
+    // them here is what puts the diff colouring, the triptych's three-up rhythm and the wipe's seam
+    // under the visual-diff bot, so a later change to any of them moves a baseline instead of
+    // landing unreviewed. They chain off `spec-lane` above (same page, applied in order), and both
+    // frames come from the harness's existing `**/reference/**` and `**/render/**` stubs — no
+    // design tool and no daemon are contacted.
+    ...["diff", "triptych", "slider"].map((view) => ({
+        fixture: "serve-viewer-path",
+        suffix: `spec-${view}`,
+        apply: async (page) => {
+            await page.click(`[data-cp-spec-view="${view}"]`);
+            // The comparison is asynchronous (two decodes, a normalisation pass, then SSIM), so
+            // hold for the settled readout rather than shooting the "comparing…" frame.
+            await page
+                .waitForFunction(() => {
+                    const score = document.getElementById("cp-spec-score");
+                    return score && score.textContent && score.textContent !== "comparing…";
+                })
+                .catch(() => {});
+        },
+    })),
     {
         // Switching player through the combo. The committed HTML always opens on the default
         // (`Java`), so this is the only way the picker's *moved* state is diffed: the combo on

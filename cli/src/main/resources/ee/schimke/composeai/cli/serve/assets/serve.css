@@ -774,6 +774,59 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    the snapshot img's slot — so the stage is one fixed box every transport fills and toggling a
    mode never resizes or shifts it (the img keeps its layout slot underneath via visibility). */
 .cp-stage canvas.cp-canvas-live { position: absolute; max-width: none; }
+
+/* ---- The spec lane's comparison views ------------------------------------------------------
+   The lane's default (`spec`) is untouched: the imported raster `<img>` is the whole stage, exactly
+   as before this surface existed. Picking Diff / Triptych / Slider takes that `<img>` out of flow
+   and gives the stage to `#cp-spec-compare`, whose panels are pre-normalised canvases (see
+   spec-compare.js) so the three views are all in one pixel space. Only the panels the chosen view
+   needs are in flow — one container reshaped by `data-view`, not four containers. */
+.cp-viewer[data-mode="spec"][data-spec-view="diff"] .cp-spec-img,
+.cp-viewer[data-mode="spec"][data-spec-view="triptych"] .cp-spec-img,
+.cp-viewer[data-mode="spec"][data-spec-view="slider"] .cp-spec-img { display: none; }
+.cp-spec-compare { display: flex; align-items: flex-start; justify-content: center; gap: 16px;
+  flex-wrap: wrap; width: 100%; }
+.cp-spec-compare[hidden] { display: none; }
+.cp-spec-panel { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  min-width: 0; flex: 0 1 auto; }
+/* `max-height` as well as `max-width`, both against auto dimensions, so an app-screen render
+   (tall, and often 1000+ px of raster) is bounded by the viewport rather than pushing the stage
+   past it — the aspect ratio rides along because the canvas is a replaced element. */
+.cp-spec-panel canvas { display: block; max-width: 100%; max-height: 70vh; width: auto;
+  height: auto; border-radius: var(--md-sys-shape-corner-small); }
+/* Three-up: equal columns (`min-width: 0` so a wide frame shrinks rather than overflowing). */
+.cp-spec-compare[data-view="triptych"] .cp-spec-panel { flex: 1 1 0; }
+.cp-spec-compare[data-view="triptych"] .cp-spec-panel canvas { max-height: 52vh; }
+/* The diff map is magenta-on-transparent, so it needs a ground of its own to read against —
+   without one it inherits whatever the stage (or the Transparent checkerboard) is showing. */
+.cp-spec-panel[data-cp-spec-panel="diff"] canvas {
+  background: var(--md-sys-color-surface-container-highest); }
+.cp-spec-panel figcaption { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--cp-fg-muted); }
+/* Hugs the frame (`fit-content`) so the seam control is as wide as the thing it moves the seam
+   across — a fixed-width slider under a 200px component reads as belonging to the stage rather
+   than to the frame. `min-width` keeps it draggable under a very narrow preview. */
+.cp-spec-wipe { display: flex; flex-direction: column; align-items: center; gap: 10px;
+  width: fit-content; min-width: min(260px, 100%); max-width: 100%; }
+.cp-spec-wipe canvas { display: block; max-width: 100%; max-height: 70vh; width: auto;
+  height: auto; cursor: ew-resize; border-radius: var(--md-sys-shape-corner-small);
+  touch-action: none; }
+.cp-spec-wipe-control { display: flex; align-items: center; gap: 10px; width: 100%;
+  font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--cp-fg-muted); }
+.cp-spec-wipe-control input { flex: 1; min-width: 0; }
+/* `diff` shows the delta map alone; `triptych` shows all three panels; `slider` shows only the
+   wipe. Everything else in the container stays out of flow so the stage sizes to what's shown. */
+.cp-spec-compare[data-view="diff"] .cp-spec-panel:not([data-cp-spec-panel="diff"]),
+.cp-spec-compare[data-view="diff"] .cp-spec-wipe,
+.cp-spec-compare[data-view="triptych"] .cp-spec-wipe,
+.cp-spec-compare[data-view="slider"] .cp-spec-panel { display: none; }
+/* A three-up triptych of app screens is unreadable on a phone; stack it instead, which is what
+   the focused comparison page does at the same breakpoint. */
+@media (max-width: 720px) {
+  .cp-spec-compare[data-view="triptych"] { flex-direction: column; align-items: center; }
+}
+
 .cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
 .cp-modes { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 14px;
   font-size: 0.8rem; }
@@ -973,8 +1026,31 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   background: transparent; color: var(--md-sys-color-on-surface-variant); cursor: pointer;
   max-width: 200px; }
 .cp-lane-select:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
-/* The spec lane's carrier — no chrome of its own any more, just the "spec diff →" link. */
+/* The spec lane's carrier — the comparison-view group, its score readout, and the "spec diff →"
+   step out to the focused comparison page. */
 .cp-spec-lane { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* How the render/spec pair is drawn: Spec | Diff | Triptych | Slider. A segmented button group
+   (one shared outline, dividers between the segments) rather than four loose chips, because the
+   four are one mutually-exclusive choice about one pair — the same reason the renderer picker is
+   one combo instead of a chip per lane. Revealed by spec-compare.js only while the lane is up. */
+.cp-spec-views { display: inline-flex; align-items: stretch;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full); overflow: hidden; }
+.cp-spec-views[hidden] { display: none; }
+.cp-spec-view { font: inherit; min-height: 32px; padding: 5px 12px; border: 0;
+  border-left: 1px solid var(--md-sys-color-outline-variant);
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  background: transparent; color: var(--md-sys-color-on-surface-variant); cursor: pointer;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-spec-view:first-child { border-left: 0; }
+.cp-spec-view:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-spec-view[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); }
+/* "93.4% match · 2.11% pixels differ" — the number the comparison exists to produce, beside the
+   control that produced it rather than buried under the stage. */
+.cp-spec-score { font-size: 0.72rem; color: var(--cp-fg-muted); white-space: nowrap; }
+.cp-spec-score[hidden] { display: none; }
 .cp-mode-hint { font-size: 0.72rem; color: var(--cp-fg-muted); }
 /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
    It swaps the static snapshot between the raster PNG and the resolution-independent vector
