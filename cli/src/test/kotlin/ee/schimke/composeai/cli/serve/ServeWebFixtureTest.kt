@@ -695,6 +695,9 @@ class ServeWebFixtureTest {
           .copy(sourceFile = "src/main/kotlin/com/example/ProfileScreen.kt", section = "Screens"),
         token,
         trust = "unverified",
+        // Every page ends with the minimal footer, so the goldens carry the fixed server version
+        // on a representative page of each kind — not just the landings.
+        version = version,
         // The full preview list feeds the left-hand component nav drawer (default closed) so the
         // harness captures its chrome alongside the default-open overrides drawer.
         siblings = previews,
@@ -973,6 +976,7 @@ class ServeWebFixtureTest {
         sessionId = "compose-m3",
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
+        version = version,
         hasSvgFor = { it.startsWith("button-filled") || it.startsWith("switch-on") },
         hasRemoteComposeFor = { it.startsWith("button-filled") },
         referencesFor = { id ->
@@ -1126,6 +1130,7 @@ class ServeWebFixtureTest {
         basePath = "/compose-m3",
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
+        version = version,
         displayTitle = "Compose Material 3",
         hasReferenceFor = { it.startsWith("button-filled") },
       )
@@ -1139,6 +1144,7 @@ class ServeWebFixtureTest {
         sessionId = "compose-m3",
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
+        version = version,
         // Both panels annotated, so the fixture covers the case the layers exist for: reading the
         // reference's spec against the actual's. The layout boxes agree here and the type styles
         // don't, which is what the page is meant to make obvious.
@@ -1325,7 +1331,13 @@ class ServeWebFixtureTest {
     // captures the chrome around it (title, expiry pill, facts, download row) rather than the
     // played-back document itself.
     val docUpload =
-      ServeWeb.docUploadPage(token, isPublic = true, ttlSeconds = 3600, urlUploadAllowed = true)
+      ServeWeb.docUploadPage(
+        token,
+        isPublic = true,
+        ttlSeconds = 3600,
+        urlUploadAllowed = true,
+        version = version,
+      )
     // The playground Stage-1 editor (`GET /playground`): the code box, mode selector, and result
     // pane. Always token-gated (the lane runs user code, refused under `--public`), so the fixture
     // renders the non-public form the server actually serves.
@@ -1336,6 +1348,7 @@ class ServeWebFixtureTest {
       ServeWeb.playgroundPage(
         token,
         isPublic = false,
+        version = version,
         catalogs =
           listOf(
             PlaygroundCatalogInfo(
@@ -1386,6 +1399,7 @@ class ServeWebFixtureTest {
         ),
         token,
         isPublic = true,
+        version = version,
       )
     val docRemoteCompose =
       ServeWeb.docPage(
@@ -1409,12 +1423,18 @@ class ServeWebFixtureTest {
         ),
         token,
         isPublic = true,
+        version = version,
       )
 
     // The styled 404 a browser gets when it follows a dead link to a catalog or preview page —
     // the site's own chrome with a "back to design systems" link, not a bare text/plain dead-end.
     val notFound =
-      ServeWeb.notFoundPage("That preview does not exist in this catalog.", token, isPublic = true)
+      ServeWeb.notFoundPage(
+        "That preview does not exist in this catalog.",
+        token,
+        isPublic = true,
+        version = version,
+      )
 
     // The server STATUS page (GET /status): a snapshot of the running host — published catalogs +
     // their load/trust/liveness, the render daemons up now, the effective config, and recent daemon
@@ -1425,6 +1445,7 @@ class ServeWebFixtureTest {
     val serveStatus =
       ServeWeb.statusPage(
         token = token,
+        version = version,
         view =
           ServeWeb.StatusView(
             version = version,
@@ -3381,9 +3402,21 @@ class ServeWebFixtureTest {
       home.indexOf("<footer class=\"cp-site-footer\">") < home.indexOf(">server v1.2.3<"),
       "the running server version is in the footer",
     )
-    // A null version simply omits the pill (no dangling separator crash).
+    // The about disclosure reads LAST: below the cards it explains, and above the footer.
+    assertTrue(
+      home.indexOf("class=\"cp-sys-title\"") < home.indexOf("About this preview server") &&
+        home.indexOf("About this preview server") <
+          home.indexOf("<footer class=\"cp-site-footer\">"),
+      "the about box sits under the catalog cards and above the footer",
+    )
+    // A null version simply omits the pill (no dangling separator crash), and the footer's own
+    // links survive it.
     val noVer = ServeWeb.homeIndexPage(emptyList(), token, isPublic = true)
     assertFalse(noVer.contains("class=\"cp-about-ver\""), "no version pill when version is null")
+    assertTrue(
+      noVer.contains("<footer class=\"cp-site-footer\">") && noVer.contains("href=\"/version\""),
+      "the footer still carries its links without a version",
+    )
   }
 
   @Test
@@ -3484,11 +3517,50 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `every page ends with the minimal footer carrying the running version`() {
+    // The footer is chrome, not a per-page decision: `document` emits it for every surface, so a
+    // new page cannot ship without it. One representative page per kind, public and token-gated.
+    val pages =
+      mapOf(
+        "landing" to ServeWeb.landingPage(moduleLabel, previews, token, version = "1.2.3"),
+        "landing (public)" to
+          ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true, version = "1.2.3"),
+        "home" to ServeWeb.homeIndexPage(emptyList(), token, isPublic = true, version = "1.2.3"),
+        "viewer" to ServeWeb.viewerPage(previews.first(), token, version = "1.2.3"),
+        "comparison" to ServeWeb.comparisonPage(moduleLabel, previews, token, version = "1.2.3"),
+        "not found" to ServeWeb.notFoundPage("gone", token, isPublic = true, version = "1.2.3"),
+        "doc upload" to
+          ServeWeb.docUploadPage(
+            token,
+            isPublic = true,
+            ttlSeconds = 3600,
+            urlUploadAllowed = false,
+            version = "1.2.3",
+          ),
+      )
+    for ((name, html) in pages) {
+      assertTrue(html.contains("<footer class=\"cp-site-footer\">"), "$name has no footer")
+      assertTrue(html.contains(">server v1.2.3<"), "$name footer omits the running version")
+      assertTrue(
+        html.indexOf("</main>") < html.indexOf("<footer class=\"cp-site-footer\">"),
+        "$name footer must follow the page body",
+      )
+    }
+  }
+
+  @Test
   fun `public landing shows the about intro, default landing does not`() {
     val public = ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true)
     assertTrue(public.contains("class=\"cp-about cp-disclosure\""), "expected the about disclosure")
     assertTrue(public.contains("About this preview server"), "expected the about title")
     assertTrue(public.contains("href=\"/version\""), "expected a link to /version")
+    // The about box is the last thing in the body, above the footer.
+    assertTrue(
+      public.indexOf("id=\"cp-grid\"") < public.indexOf("About this preview server") &&
+        public.indexOf("About this preview server") <
+          public.indexOf("<footer class=\"cp-site-footer\">"),
+      "the about box sits under the grid and above the footer",
+    )
 
     val default = ServeWeb.landingPage(moduleLabel, previews, token)
     assertTrue(
