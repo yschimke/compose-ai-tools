@@ -139,6 +139,14 @@ jobs:
     # superseded runs cancelled: two events on one sha (opened then edited) would
     # otherwise run byte-identical tests twice. Safe to cancel — `main` requires
     # no status checks, and the surviving run reports the same verdict.
+    #
+    # Expect to see runs of THIS workflow concluding `cancelled`, and do not read
+    # that as a failure. The `fix` job's PATCH re-fires `edited` at the same sha,
+    # so on any PR that actually gets repaired the first run's self-test is
+    # superseded by the second and cancelled — usually while still queued for a
+    # runner, which is the point: runner contention, not this workflow, is what
+    # makes waits here visible, so handing a slot back beats re-running a test
+    # whose input did not change.
     concurrency:
       group: pr-body-syntax-selftest-${{ github.sha }}
       cancel-in-progress: true
