@@ -15,6 +15,9 @@
     <span class="cp-site-mark" aria-hidden="true">◇</span>
     <span>compose-preview</span>
   </a>
+  <div class="cp-site-status">
+    <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
+  </div>
   <nav class="cp-site-nav" aria-label="Primary navigation">
     <a href="/">Catalogs</a>
     <a href="/status">Status</a>
@@ -490,6 +493,9 @@ applyThemeChoice();
       // now a genuine question with a visible answer — a theme switch is instant against a warm
       // daemon and pays a cold start against none. Same URL family as the presence ping, and the
       // endpoint reads through `peekHost`, so polling it never wakes what it is reporting on.
+      // The badge has a reserved slot in the site header (see ServeWeb.siteHeader) — it is
+      // server-rendered, hidden, and centred, so filling it never moves the brand or the nav. The
+      // create-and-append fallback is only for a surface that predates the slot.
       var daemonUrl = presenceUrl.replace("/api/presence", "/api/daemons");
       var daemonBadge = null;
       function daemonBadgeEl() {
@@ -499,7 +505,8 @@ applyThemeChoice();
           daemonBadge = document.createElement("span");
           daemonBadge.id = "cp-daemon-status";
           daemonBadge.className = "cp-daemon-status";
-          var host = document.querySelector(".cp-header-meta") || document.querySelector("header");
+          daemonBadge.setAttribute("role", "status");
+          var host = document.querySelector(".cp-site-status") || document.querySelector("header");
           (host || document.body).appendChild(daemonBadge);
         }
         return daemonBadge;

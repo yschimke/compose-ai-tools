@@ -307,15 +307,34 @@ object ServeWeb {
       .trimIndent()
   }
 
-  /** Shared, intentionally compact navigation for every browser-facing page. */
+  /**
+   * Shared, intentionally compact navigation for every browser-facing page.
+   *
+   * The bar is a **fixed three-slot layout** — brand, live status, navigation — and every page
+   * emits all three slots whether or not they have content, so nothing shifts position from one
+   * page to the next. That matters because two of the slots are conditional: the render-server
+   * badge only appears on pages that poll a daemon (and only once the first poll answers), and the
+   * GitHub session control only on pages that were served with OAuth configured. Laid out as a
+   * plain flex row those absences dragged the nav around — centred on a catalog page, hard right on
+   * the home page. Here the brand is pinned left, the status badge centred, and the nav (including
+   * [action], the GitHub session control) pinned right, so the same element sits in the same place
+   * on every page regardless of which optional pieces are present.
+   *
+   * The status slot is server-rendered but starts empty and `hidden`; `presenceScript` fills and
+   * unhides it when the daemon poll answers, so a page that never polls simply shows nothing there
+   * rather than reserving a visible gap.
+   */
   private fun siteHeader(navSuffix: String, action: String = ""): String {
-    val actionHtml = action.takeIf { it.isNotBlank() }?.let { "\n        $it" } ?: ""
+    val actionHtml = action.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
     return """
       <header class="cp-site-header">
         <a class="cp-site-brand" href="/$navSuffix" aria-label="compose-preview home">
           <span class="cp-site-mark" aria-hidden="true">◇</span>
           <span>compose-preview</span>
         </a>
+        <div class="cp-site-status">
+          <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
+        </div>
         <nav class="cp-site-nav" aria-label="Primary navigation">
           <a href="/$navSuffix">Catalogs</a>
           <a href="/status$navSuffix">Status</a>
@@ -1879,6 +1898,9 @@ object ServeWeb {
       // now a genuine question with a visible answer — a theme switch is instant against a warm
       // daemon and pays a cold start against none. Same URL family as the presence ping, and the
       // endpoint reads through `peekHost`, so polling it never wakes what it is reporting on.
+      // The badge has a reserved slot in the site header (see ServeWeb.siteHeader) — it is
+      // server-rendered, hidden, and centred, so filling it never moves the brand or the nav. The
+      // create-and-append fallback is only for a surface that predates the slot.
       var daemonUrl = presenceUrl.replace("/api/presence", "/api/daemons");
       var daemonBadge = null;
       function daemonBadgeEl() {
@@ -1888,7 +1910,8 @@ object ServeWeb {
           daemonBadge = document.createElement("span");
           daemonBadge.id = "cp-daemon-status";
           daemonBadge.className = "cp-daemon-status";
-          var host = document.querySelector(".cp-header-meta") || document.querySelector("header");
+          daemonBadge.setAttribute("role", "status");
+          var host = document.querySelector(".cp-site-status") || document.querySelector("header");
           (host || document.body).appendChild(daemonBadge);
         }
         return daemonBadge;

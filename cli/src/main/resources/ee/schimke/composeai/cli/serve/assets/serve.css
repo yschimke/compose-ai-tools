@@ -179,8 +179,17 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 /* The page's top app bar. M3's small top app bar is a plain surface with a title on the left and
    trailing actions on the right — no rule beneath it; separation comes from the surface, not from
    a line, so the keyline is gone and the bar simply sits on the page's own colour. */
+/* Three fixed slots — brand | live status | nav — rather than a flex row that redistributes.
+   Both the render-server badge and the GitHub session control are conditional, and under
+   `space-between` their absence slid the nav between centred and hard-right from page to page.
+   A `1fr auto 1fr` grid pins the brand left and the nav right whatever the middle holds. */
 .cp-site-header { min-height: 56px; margin-bottom: 26px; padding: 4px 0 10px;
-  display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 18px; }
+.cp-site-brand { justify-self: start; }
+/* min-width:0 so a long badge ("connected · 2 instances, 1 live") shrinks rather than pushing the
+   nav off the right edge. */
+.cp-site-status { justify-self: center; display: flex; align-items: center; min-width: 0; }
+.cp-site-nav { justify-self: end; }
 .cp-site-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--cp-fg);
   font-size: var(--md-sys-typescale-title-medium-size);
   line-height: var(--md-sys-typescale-title-medium-line);
@@ -1283,7 +1292,12 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    grids, size rows and copyable link rows to fit a ~320px screen without horizontal scrolling. */
 @media (max-width: 640px) {
   body { padding: 14px; }
-  .cp-site-header { margin-bottom: 18px; flex-wrap: wrap; }
+  /* Too narrow for three slots on one line: brand and nav keep their edges and the status badge
+     drops to its own centred row beneath them, rather than squeezing between the two. */
+  .cp-site-header { margin-bottom: 18px; grid-template-columns: 1fr auto; row-gap: 6px; }
+  .cp-site-brand { grid-area: 1 / 1; }
+  .cp-site-nav { grid-area: 1 / 2; }
+  .cp-site-status { grid-area: 2 / 1 / auto / -1; }
   .cp-site-mark { width: 22px; height: 22px; }
   .cp-site-nav { gap: 12px; }
   .cp-site-nav > a[href^="https://github.com/"] { display: none; }
@@ -1359,6 +1373,12 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 }
 .cp-daemon-status[data-cp-daemon-running="1"] {
   opacity: 1;
+}
+/* The `display` above outranks the UA's `[hidden] { display: none }`, so the badge has to opt back
+   out explicitly — otherwise the reserved slot paints an empty pill before the first poll answers
+   (and on every page that never polls a daemon at all). */
+.cp-daemon-status[hidden] {
+  display: none;
 }
 
 /* Render-history timeline (viewer-history.js). Sits under the viewer bar, above the stage, so the
