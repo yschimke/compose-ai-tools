@@ -36,6 +36,7 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
+import ee.schimke.composeai.data.render.extensions.loadIrReplayClass
 import ee.schimke.composeai.data.theme.ResolvedThemeTokens
 import ee.schimke.composeai.data.theme.ThemeConsumer
 import ee.schimke.composeai.data.theme.ThemePayload
@@ -1521,6 +1522,11 @@ open class RobolectricHost(
         // measured size, not at the sandbox window's. See `InteractiveCommand.Start.wrapWidth`.
         wrapWidth = spec.wrapWidth,
         wrapHeight = spec.wrapHeight,
+        // IR replay key — an IR-backed preview has no consumer class to reflect (pack-time
+        // minimisation drops it), so the held loop replays its carried bytes instead. Prefer the
+        // spec's own id and fall back to the acquire argument: both name the same preview, but a
+        // resolver-built spec is the authority on the form `BundleIrReplayStore` is keyed by.
+        previewId = spec.previewId ?: previewId,
       )
     )
     if (!replyLatch.await(INTERACTIVE_START_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
@@ -2555,7 +2561,26 @@ open class RobolectricHost(
       val isNotification = start.kind.equals(RenderEngine.NOTIFICATION_KIND, ignoreCase = true)
       val isGlanceAppWidget =
         start.kind.equals(RenderEngine.GLANCE_APPWIDGET_KIND, ignoreCase = true)
-      val nonComposableInvocation = isTile || isNotification || isGlanceAppWidget
+      // v5 IR replay — the same dispatch `RenderEngine.render` performs, which the held loop was
+      // missing. A bundle may carry this preview's intermediate representation, in which case its
+      // consumer class was dropped at pack time and `Class.forName` below can only ever throw
+      // `ClassNotFoundException`. That throw is what a fully IR-backed catalog hit on every
+      // `interactive/start`: the render lane replayed the carried document happily while live mode
+      // reported "input requires a live stream — unavailable".
+      //
+      // Resolved through the same `IrReplayComposableProvider` SPI the one-shot path uses: the
+      // protolayout branch inflates directly, Remote Compose goes through the connector's replay
+      // composable (the daemon can't compile against the alpha player SDK). A null replay class
+      // means the connector isn't on the classpath — then we fall through to reflection, which
+      // fails exactly as it did before rather than blanking the preview silently.
+      val irReplay = BundleIrReplayStore.lookup(start.previewId)
+      val isProtolayoutIr = irReplay?.format == BundleIrReplayStore.FORMAT_PROTOLAYOUT
+      val rcReplayClass: Class<*>? =
+        if (irReplay?.format == BundleIrReplayStore.FORMAT_REMOTECOMPOSE)
+          runCatching { loadIrReplayClass(BundleIrReplayStore.FORMAT_REMOTECOMPOSE) }.getOrNull()
+        else null
+      val isIrReplay = isProtolayoutIr || rcReplayClass != null
+      val nonComposableInvocation = isTile || isNotification || isGlanceAppWidget || isIrReplay
       // `@PreviewParameter` previews resolve to the `(<T>, Composer, int)` overload and are invoked
       // with the provider's first value — same contract as the one-shot render (issue #3027).
       // `resolve` also opens the method for reflective invocation, so a `private fun` preview
@@ -2862,7 +2887,25 @@ open class RobolectricHost(
                               },
                             propagateMinConstraints = true,
                           ) {
-                          if (isTile) {
+                          if (isProtolayoutIr) {
+                            // v5 IR replay, protolayout — inflate the captured `Layout` +
+                            // `Resources` protos through `TileRenderer`, with no reference to the
+                            // tile function that produced them. Same AndroidView-hosted shape as
+                            // `RenderEngine.render`'s branch, so a held frame and a one-shot
+                            // capture walk an identical Compose tree.
+                            ee.schimke.composeai.renderer.TileIrReplayComposable(
+                              layoutBytes = irReplay!!.bytes,
+                              resourcesBytes = irReplay.resourcesBytes ?: ByteArray(0),
+                              label = "IR replay ${start.previewId ?: start.outputBaseName}",
+                            )
+                          } else if (rcReplayClass != null) {
+                            // v5 IR replay, Remote Compose — paint the captured RemoteDocument
+                            // through the connector's player, reached reflectively. The view
+                            // player owns the document's own state, so the held composition stays
+                            // interactive: a tap dispatched by `interactive/input` lands on the
+                            // document exactly as it would on-device.
+                            InvokeIrReplay(rcReplayClass, irReplay!!.bytes)
+                          } else if (isTile) {
                             ee.schimke.composeai.renderer.TilePreviewComposable(
                               className = start.previewClassName,
                               functionName = start.previewFunctionName,

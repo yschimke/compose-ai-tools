@@ -349,6 +349,50 @@ override val supportsInteractive: Boolean
 `INTERACTIVE_SLOT_INDEX = 1` for v3. Slot 0 stays the always-on
 normal-render slot.
 
+## 7.1 IR-backed previews have no class to reflect
+
+`runHeldInteractiveSession` branches on preview flavour exactly like
+`RenderEngine.render`, and that includes the schema-v5 **intermediate
+representation** check — not just the tile / notification / Glance kinds.
+
+A preview whose flavour emitted a serialisable IR (a Remote Compose
+`RemoteDocument`, a Wear protolayout `Layout` proto) is replayed from the bytes
+the bundle carries under `ir/<id>.<ext>`. Its consumer bytecode is
+**deliberately absent**: `BundlePreviewTask` seeds the pack closure only from
+non-IR previews, so an IR preview contributes no module classes and a catalog
+where *every* preview is IR-backed ships an empty `classes/app.jar`. Reflecting
+`start.previewClassName` there can only ever throw `ClassNotFoundException`.
+
+So the held loop resolves the IR first, keyed by `InteractiveCommand.Start`'s
+`previewId` through `BundleIrReplayStore`:
+
+```kotlin
+val irReplay = BundleIrReplayStore.lookup(start.previewId)
+val isProtolayoutIr = irReplay?.format == BundleIrReplayStore.FORMAT_PROTOLAYOUT
+val rcReplayClass =
+    if (irReplay?.format == BundleIrReplayStore.FORMAT_REMOTECOMPOSE)
+        runCatching { loadIrReplayClass(BundleIrReplayStore.FORMAT_REMOTECOMPOSE) }.getOrNull()
+    else null
+val isIrReplay = isProtolayoutIr || rcReplayClass != null
+// isIrReplay joins isTile / isNotification / isGlanceAppWidget in
+// `nonComposableInvocation`, so Class.forName is skipped entirely.
+```
+
+and composes the matching branch inside the held `setContent`:
+`TileIrReplayComposable` for protolayout, the connector's replay composable
+(reached reflectively — the daemon can't compile against the alpha Remote
+Compose player) for `remotecompose`.
+
+The interactive contract survives the indirection: the Remote Compose view
+player owns the replayed document's own state, so a tap delivered by
+`interactive/input` lands on the document exactly as it would on-device.
+
+Without this branch, `interactive/start` against a fully IR-backed catalog
+failed on every preview and the viewer reported "input requires a live stream —
+unavailable: … ClassNotFoundException", while the *stateless* render lane on the
+same daemon replayed the same preview happily — the asymmetry that made the bug
+confusing to read. `AndroidInteractiveIrReplayTest` pins both directions.
+
 ## 10.3 RenderSpec qualifier set / PR C
 
 PR C threads dimensions through `previewSpecResolver` from

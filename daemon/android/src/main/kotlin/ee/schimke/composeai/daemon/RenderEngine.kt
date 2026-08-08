@@ -2463,7 +2463,7 @@ internal fun InvokeWithOptionalWrapper(
  * Remote Compose, whose player lives in the alpha connector the daemon can't compile against.
  */
 @Composable
-private fun InvokeIrReplay(replayClass: Class<*>, bytes: ByteArray) {
+internal fun InvokeIrReplay(replayClass: Class<*>, bytes: ByteArray) {
   val (method, instance) =
     remember(replayClass) {
       val inst = replayClass.getDeclaredConstructor().apply { isAccessible = true }.newInstance()

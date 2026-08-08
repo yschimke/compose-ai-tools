@@ -462,6 +462,21 @@ sealed interface InteractiveCommand {
      */
     val wrapWidth: Boolean = false,
     val wrapHeight: Boolean = false,
+    /**
+     * `RenderSpec.previewId` — the key `BundleIrReplayStore` files a bundle's captured
+     * intermediate representations under. The held-rule loop looks it up exactly like
+     * `RenderEngine.render` does, so an IR-backed preview (a Remote Compose doc, a Wear
+     * protolayout tile) replays from its carried bytes instead of reflecting a consumer class that
+     * pack-time minimisation deliberately dropped. Without it every preview in a fully IR-backed
+     * catalog — `samples/design-catalog-remote-m3`, whose `classes/app.jar` is empty by design —
+     * failed `interactive/start` with `ClassNotFoundException` and the viewer reported "input
+     * requires a live stream — unavailable".
+     *
+     * Threaded as the raw `java.lang.String` for the same do-not-acquire bridge reason as [kind]
+     * and the other `spec.*` fields above. `null` on a caller that predates this field, which just
+     * restores the old reflect-the-class behaviour.
+     */
+    val previewId: String? = null,
   ) : InteractiveCommand
 
   /**
