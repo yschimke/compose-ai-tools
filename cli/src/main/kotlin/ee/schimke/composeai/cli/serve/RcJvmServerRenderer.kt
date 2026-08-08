@@ -78,6 +78,34 @@ internal object RcJvmServerRenderer {
     val cp = classpath()
     if (cp.isEmpty()) return RenderResult.Unavailable(unavailableReason())
 
+    // Warm path: a pooled worker draws this on an already-booted JVM (~85 ms) instead of paying
+    // Compose Desktop + Skiko startup again (~2.3 s). Only `Unusable` falls through to the one-shot
+    // path below — a `Failed` is the player's real answer about this document, and re-rendering it
+    // cold would double the cost of every document that cannot be drawn.
+    pool(cp)?.let { pool ->
+      when (val pooled = pool.render(docBytes, spec, seedLines(seeds).joinToString("\n"), format)) {
+        is RcJvmWorkerPool.PoolResult.Ok -> return RenderResult.Ok(pooled.bytes)
+        is RcJvmWorkerPool.PoolResult.Failed -> return RenderResult.Failed(pooled.reason)
+        is RcJvmWorkerPool.PoolResult.Unusable -> Unit
+      }
+    }
+
+    return renderOneShot(cp, docBytes, spec, seeds, format)
+  }
+
+  /**
+   * The original process-per-document path, kept as the fallback for every way the pool can decline
+   * to serve: pooling switched off, a `lib-rcjvm/` too old to speak the worker protocol, a worker
+   * that could not be spawned, or one that broke mid-request. Behaviour here is unchanged, so the
+   * worst case of the pool existing is the cost that was already being paid.
+   */
+  private fun renderOneShot(
+    cp: List<File>,
+    docBytes: ByteArray,
+    spec: RcJvmRenderSpec,
+    seeds: Map<String, RemoteNamedValue>,
+    format: Format,
+  ): RenderResult {
     val input = File.createTempFile("rcjvm-in-", ".rc")
     val output = File.createTempFile("rcjvm-out-", ".${format.wire}")
     val seedsFile = writeSeedsFile(seeds)
@@ -87,18 +115,7 @@ internal object RcJvmServerRenderer {
 
       val command = buildList {
         add(javaBin())
-        add("--enable-native-access=ALL-UNNAMED")
-        // Skiko draws offscreen; keep the JVM out of the macOS Dock / app-switcher when spawned
-        // on a developer's Mac, matching BundleRenderer's desktop renderer launch.
-        add("-Dapple.awt.UIElement=true")
-        // The player's `GoogleFontTypefaceResolver` downloads a `google:`-named family into the
-        // shared font cache — the same directory the Android and desktop daemons are pointed at,
-        // so a family already fetched for another lane is reused rather than re-downloaded. With
-        // no cache directory the resolver stays off and the lane substitutes a local face, so this
-        // is what makes the cmp-jvm chip show a branded typeface at all. The offline switch is
-        // forwarded when this process carries one.
-        add("-Dcomposeai.fonts.cacheDir=${composeAiCacheDir("fonts").absolutePath}")
-        System.getProperty("composeai.fonts.offline")?.let { add("-Dcomposeai.fonts.offline=$it") }
+        addAll(renderJvmArgs())
         add("-cp")
         add(cp.joinToString(File.pathSeparator) { it.absolutePath })
         add(MAIN_CLASS)
@@ -163,17 +180,85 @@ internal object RcJvmServerRenderer {
   }
 
   /**
-   * Serialize [seeds] to the line-based file `RcJvmRenderMain` reads (`<kind> <base64Name>
-   * <value>`, kind ∈ str/float/int/color), or null when there is nothing to seed. Normalizes the
-   * wire types the jvm player does not need to distinguish — `dp` collapses to float and `bool` to
-   * int, matching the daemon's `applyConnectorOverrides` — and drops a colour whose `#AARRGGBB`
-   * string won't parse.
+   * The JVM flags every cmp-jvm render runs under, shared by the pooled worker and the one-shot
+   * subprocess.
+   *
+   * Shared deliberately, not by coincidence: the font cache directory below decides which typeface
+   * a `google:`-named family resolves to, so a pooled worker started without it would draw text
+   * differently from the one-shot fallback. Two lanes that are supposed to be interchangeable must
+   * boot identically, or "did the pool serve this?" becomes visible in the pixels — exactly the
+   * property `RcJvmHotWorkerDeterminismTest` exists to protect.
    */
-  private fun writeSeedsFile(seeds: Map<String, RemoteNamedValue>): File? {
-    if (seeds.isEmpty()) return null
+  private fun renderJvmArgs(): List<String> = buildList {
+    add("--enable-native-access=ALL-UNNAMED")
+    // Skiko draws offscreen; keep the JVM out of the macOS Dock / app-switcher when spawned
+    // on a developer's Mac, matching BundleRenderer's desktop renderer launch.
+    add("-Dapple.awt.UIElement=true")
+    // The player's `GoogleFontTypefaceResolver` downloads a `google:`-named family into the
+    // shared font cache — the same directory the Android and desktop daemons are pointed at,
+    // so a family already fetched for another lane is reused rather than re-downloaded. With
+    // no cache directory the resolver stays off and the lane substitutes a local face, so this
+    // is what makes the cmp-jvm chip show a branded typeface at all. The offline switch is
+    // forwarded when this process carries one.
+    add("-Dcomposeai.fonts.cacheDir=${composeAiCacheDir("fonts").absolutePath}")
+    System.getProperty("composeai.fonts.offline")?.let { add("-Dcomposeai.fonts.offline=$it") }
+  }
+
+  /**
+   * The process-wide worker pool, created on first use so a cli invocation that never renders a
+   * cmp-jvm document never spawns a JVM. Null when pooling is switched off
+   * ([RcJvmWorkerPool.SYS_PROP_ENABLED]`=off`), which forces every render down the one-shot path.
+   */
+  @Volatile private var poolInstance: RcJvmWorkerPool? = null
+
+  private fun pool(cp: List<File>): RcJvmWorkerPool? {
+    if (!RcJvmWorkerPool.isEnabled()) return null
+    poolInstance?.let {
+      return it
+    }
+    return synchronized(this) {
+      poolInstance
+        ?: RcJvmWorkerPool(
+            classpath = cp,
+            javaBin = javaBin(),
+            extraJvmArgs = renderJvmArgs(),
+            maxWorkers = RcJvmWorkerPool.configuredWorkers(),
+            maxRendersPerWorker = RcJvmWorkerPool.configuredMaxRenders(),
+            maxWorkerAgeMillis = RcJvmWorkerPool.configuredMaxAgeMillis(),
+            renderTimeoutSeconds = RENDER_TIMEOUT_SECONDS,
+          )
+          .also { created ->
+            poolInstance = created
+            // Workers outlive any single render, so nothing else would reap them if the cli exits
+            // while some are parked.
+            Runtime.getRuntime().addShutdownHook(Thread({ created.close() }, "rcjvm-pool-shutdown"))
+          }
+    }
+  }
+
+  /** Releases every pooled worker. Exposed for tests and for an explicit serve shutdown. */
+  fun shutdownPool() {
+    synchronized(this) {
+      poolInstance?.close()
+      poolInstance = null
+    }
+  }
+
+  /**
+   * Serialize [seeds] to the line-based format the player reads (`<kind> <base64Name> <value>`,
+   * kind ∈ str/float/int/color). Normalizes the wire types the jvm player does not need to
+   * distinguish — `dp` collapses to float and `bool` to int, matching the daemon's
+   * `applyConnectorOverrides` — and drops a colour whose `#AARRGGBB` string won't parse.
+   *
+   * One producer for both lanes: the pooled worker receives these lines inline in its request
+   * frame, the one-shot subprocess reads them from the file [writeSeedsFile] writes. The parser is
+   * `parseSeedText` in the player module.
+   */
+  internal fun seedLines(seeds: Map<String, RemoteNamedValue>): List<String> {
+    if (seeds.isEmpty()) return emptyList()
     val b64 = Base64.getEncoder()
     fun enc(s: String) = b64.encodeToString(s.toByteArray(Charsets.UTF_8))
-    val lines = seeds.mapNotNull { (name, value) ->
+    return seeds.mapNotNull { (name, value) ->
       val n = enc(name)
       when (value) {
         is RemoteNamedValue.StringValue -> "str $n ${enc(value.value)}"
@@ -184,6 +269,11 @@ internal object RcJvmServerRenderer {
         is RemoteNamedValue.ColorValue -> rcColorToArgb(value.argb)?.let { "color $n $it" }
       }
     }
+  }
+
+  /** [seedLines] as the temp file the one-shot `--seeds` flag points at, or null when empty. */
+  private fun writeSeedsFile(seeds: Map<String, RemoteNamedValue>): File? {
+    val lines = seedLines(seeds)
     if (lines.isEmpty()) return null
     return File.createTempFile("rcjvm-seeds-", ".txt").also {
       it.writeText(lines.joinToString("\n"))
