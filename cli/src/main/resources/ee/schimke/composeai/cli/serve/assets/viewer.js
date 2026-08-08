@@ -19,6 +19,12 @@
     img.style.maxHeight = maxHeight;
     var rcZoomCanvas = document.getElementById("cp-rc-canvas");
     if (rcZoomCanvas) rcZoomCanvas.style.maxHeight = maxHeight;
+    // The spec lane paints into its own <img>, so the zoom limit has to reach it too — a
+    // phone-shaped imported reference would otherwise blow the stage past the 72vh Fit-screen
+    // cap the render it is being compared against obeys. Looked up rather than closed over:
+    // applyZoom("fit") runs at page load, before the lane's own declarations.
+    var specZoomImg = document.getElementById("cp-spec-img");
+    if (specZoomImg) specZoomImg.style.maxHeight = maxHeight;
     root.setAttribute("data-zoom", mode);
     zoomBtns.forEach(function (b) {
       b.setAttribute(
@@ -1047,6 +1053,7 @@
   var specImg = document.getElementById("cp-spec-img");
   var specToggle = document.getElementById("cp-spec-toggle");
   var specSrc = specLane ? (specLane.getAttribute("data-spec-src") || "") : "";
+  var specLoaded = false; // the raster is requested once, on the lane's first entry
   function specAvailable() { return !!(specImg && specSrc); }
   function specActive() { return !!(specToggle && specToggle.checked); }
   function openSpec() {
@@ -1057,11 +1064,16 @@
     img.style.display = "none";
     canvas.hidden = true;
     specImg.hidden = false;
-    if (!specImg.getAttribute("src")) {
+    if (!specLoaded) {
+      specLoaded = true;
       specImg.addEventListener("error", function () {
         showModeError("The design spec could not be loaded.");
       });
-      specImg.setAttribute("src", specSrc);
+      // A property write, like every other image/frame lane here (`img.src`, `wasmFrame.src`).
+      // Deliberately not `setAttribute("src", …)`: that form is indistinguishable from setting a
+      // script/iframe source on an element whose type isn't known statically, which is exactly
+      // what CodeQL's "DOM text reinterpreted as HTML" rule flags — see the review on #3488.
+      specImg.src = specSrc;
     }
     if (specBtn) specBtn.setAttribute("aria-pressed", "true");
     if (status) status.textContent = "";
@@ -1443,7 +1455,12 @@
     svgToggle.addEventListener("click", function () {
       var turnOn = !svgOn();
       svgToggle.setAttribute("aria-pressed", turnOn ? "true" : "false");
-      if (turnOn && (live.checked || wasmActive())) {
+      // Every non-static lane has to be LEFT before the vector snapshot can own the stage —
+      // otherwise the badge flips to SVG and a hidden snapshot reloads underneath a canvas /
+      // iframe / spec image that is still on screen, with its chip still pressed. The daemon and
+      // Wasm lanes were already routed this way; the RC canvas, the RC/Wasm frame and the spec
+      // lane are the same case.
+      if (turnOn && (live.checked || wasmActive() || rcActive() || rcWasmActive() || specActive())) {
         setMode("png"); // enterMode("png") reads svgOn() → renders the .svg
       } else {
         snapshotExt = turnOn ? ".svg" : ".png";
