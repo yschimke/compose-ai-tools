@@ -11,6 +11,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
@@ -84,7 +85,12 @@ class DeviceClipDataProductRegistry(previewIndex: PreviewIndex) : DataProductReg
     )
   }
 
-  override fun onRender(previewId: String, result: RenderResult) {
+  override fun onRender(
+    previewId: String,
+    result: RenderResult,
+    overrides: PreviewOverrides?,
+    previewContext: PreviewContext?,
+  ) {
     val context = result.previewContext ?: return
     contexts[previewId] = context
   }

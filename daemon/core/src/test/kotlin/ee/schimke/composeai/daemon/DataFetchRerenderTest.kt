@@ -406,15 +406,16 @@ class DataFetchRerenderTest {
 
     @Volatile var lastOnRenderOverrides: PreviewOverrides? = null
 
-    override fun onRender(previewId: String, result: RenderResult) {
+    override fun onRender(
+      previewId: String,
+      result: RenderResult,
+      overrides: PreviewOverrides?,
+      previewContext: ee.schimke.composeai.data.render.PreviewContext?,
+    ) {
       onRenderCalls.incrementAndGet()
       lastOnRenderPreviewId = previewId
       lastOnRenderMetrics = result.metrics
-    }
-
-    override fun onRender(previewId: String, result: RenderResult, overrides: PreviewOverrides?) {
       lastOnRenderOverrides = overrides
-      onRender(previewId, result)
     }
 
     /** Called by [TestRenderHost] when the dispatcher submits a render. */

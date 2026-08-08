@@ -60,32 +60,23 @@ interface DataProductRegistry {
    * Render lifecycle hook. Called after a host returns [result] and before `renderFinished`
    * attachments are collected. Producers whose payload is derived from the latest render result can
    * snapshot it here; stateless producers can ignore it.
-   */
-  fun onRender(previewId: String, result: RenderResult) {}
-
-  /**
-   * Render lifecycle hook with the per-call overrides that produced [result], when available.
-   * Producers that need effective render metadata can use [overrides]; older stateless producers
-   * can keep overriding [onRender].
-   */
-  fun onRender(previewId: String, result: RenderResult, overrides: PreviewOverrides?) {
-    onRender(previewId, result)
-  }
-
-  /**
-   * Render lifecycle hook with renderer-collected context. Producers that need slot tables,
-   * composition-local snapshots, frame-clock semantics, or animation sampling metadata should read
-   * them from [previewContext] here. Older producers can keep overriding the two- or three-argument
-   * [onRender] overloads; the default forwards to the existing override chain.
+   *
+   * This is the **only** render hook, and the only one the dispatcher calls (`JsonRpcServer`'s
+   * `renderFinished` path). It used to be a three-overload fan — `(previewId, result)`, `+
+   * overrides`, `+ previewContext` — whose defaults cascaded widest-to-narrowest so a producer
+   * could implement whichever arity it needed. In practice every producer needed the widest, and
+   * the cascade ran the wrong way for them: implementing only the four-argument form left the
+   * narrow ones inert. All thirteen producers worked around that by hand-writing the *reverse*
+   * forwarder, and a new producer that forgot it compiled clean and silently received nothing. One
+   * method removes the trap; [onRender] extension overloads below keep the narrow call shapes
+   * available to callers (tests, mostly) without letting anyone override them.
    */
   fun onRender(
     previewId: String,
     result: RenderResult,
     overrides: PreviewOverrides?,
     previewContext: PreviewContext?,
-  ) {
-    onRender(previewId, result, overrides)
-  }
+  ) {}
 
   /**
    * Render failure lifecycle hook. Called before `renderFailed` is emitted so failure-oriented
@@ -194,4 +185,24 @@ interface DataProductRegistry {
         ): List<DataProductAttachment> = emptyList()
       }
   }
+}
+
+/**
+ * Narrow call shapes for [DataProductRegistry.onRender], as extensions so they resolve statically
+ * and **cannot be overridden** — the whole point of collapsing the old overload fan. Both fill
+ * `previewContext` from `result.previewContext`, which is what all thirteen producers' hand-written
+ * forwarders did before. Kept because most test call sites don't care about overrides or context
+ * and reading `onRender(id, result)` at those sites is clearer than four arguments of nulls.
+ */
+fun DataProductRegistry.onRender(previewId: String, result: RenderResult) {
+  onRender(previewId, result, overrides = null, previewContext = result.previewContext)
+}
+
+/** @see onRender */
+fun DataProductRegistry.onRender(
+  previewId: String,
+  result: RenderResult,
+  overrides: PreviewOverrides?,
+) {
+  onRender(previewId, result, overrides, previewContext = result.previewContext)
 }

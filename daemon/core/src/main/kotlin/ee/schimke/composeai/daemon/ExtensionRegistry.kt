@@ -247,14 +247,6 @@ class ExtensionRegistry(extensions: List<Extension>) {
         if (supported.isEmpty()) emptyList() else reg.attachmentsFor(previewId, supported)
       }
 
-    override fun onRender(previewId: String, result: RenderResult) {
-      onRender(previewId, result, overrides = null, previewContext = result.previewContext)
-    }
-
-    override fun onRender(previewId: String, result: RenderResult, overrides: PreviewOverrides?) {
-      onRender(previewId, result, overrides, previewContext = result.previewContext)
-    }
-
     override fun onRender(
       previewId: String,
       result: RenderResult,

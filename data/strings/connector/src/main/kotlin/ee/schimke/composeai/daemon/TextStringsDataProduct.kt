@@ -8,6 +8,7 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
+import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.strings.TextStringsProduct
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
@@ -75,7 +76,12 @@ class TextStringsDataProductRegistry(
     )
   }
 
-  override fun onRender(previewId: String, result: RenderResult, overrides: PreviewOverrides?) {
+  override fun onRender(
+    previewId: String,
+    result: RenderResult,
+    overrides: PreviewOverrides?,
+    previewContext: PreviewContext?,
+  ) {
     latestRenderMetadata[previewId] = metadataFor(previewId, overrides)
   }
 
