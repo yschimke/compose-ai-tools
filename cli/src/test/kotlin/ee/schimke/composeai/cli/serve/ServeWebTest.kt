@@ -332,7 +332,7 @@ class ServeWebTest {
   }
 
   @Test
-  fun `the rc backend selector renders every backend with the unavailable ones disabled`() {
+  fun `the renderer combo lists every player with the unavailable ones disabled`() {
     // A Remote Compose preview on an Android daemon: js (client canvas) + java + cmp-android are
     // enabled; the opt-in CMP/Wasm and unadvertised cmp-jvm lanes remain disabled.
     val preview = ServePreview(id = "widget.Chip", label = "chip")
@@ -346,23 +346,39 @@ class ServeWebTest {
         enabledRcPlayers = listOf("js", "java", "cmp-android"),
       )
 
-    assertTrue(html.contains("id=\"cp-rc-backends\""), "selector rendered")
-    // Every universe entry appears as a chip.
+    assertTrue(html.contains("id=\"cp-lane-select\""), "the renderer combo is rendered")
+    // Every universe entry is an option — the unavailable ones included, so the set of players
+    // stays legible from any session.
     for (wire in listOf("js", "cmp-wasm", "java", "cmp-android", "cmp-jvm")) {
-      assertTrue(html.contains("data-rc-backend=\"$wire\""), "chip for $wire present")
+      assertTrue(html.contains("value=\"rc:$wire\""), "option for $wire present")
     }
-    // Java is the seeded default (the server-side snapshot player).
-    assertTrue(html.contains("data-default=\"java\""), "java is the default backend")
-    // cmp-jvm is the disabled chip; the enabled ones are not.
-    val jvmChip = Regex("<button[^>]*data-rc-backend=\"cmp-jvm\"[^>]*>").find(html)?.value ?: ""
-    assertTrue(jvmChip.contains(" disabled"), "cmp-jvm chip is disabled: '$jvmChip'")
-    val androidChip =
-      Regex("<button[^>]*data-rc-backend=\"cmp-android\"[^>]*>").find(html)?.value ?: ""
-    assertFalse(androidChip.contains(" disabled"), "cmp-android chip is enabled: '$androidChip'")
+    // Java is the seeded default: both the combo's selection and the chip's opening label.
+    assertTrue(html.contains("data-rc-default=\"java\""), "java is the default player")
+    assertTrue(html.contains("<option value=\"rc:java\">Java</option>"), html)
+    // The combo itself rests on its placeholder — the chip is what names the current lane, and a
+    // combo repeating that name beside it read as two controls arguing about the same fact.
+    assertTrue(html.contains("<option value=\"\" selected>Switch renderer…</option>"), html)
+    assertTrue(
+      html.contains("<span id=\"cp-live-toggle-label\">Java</span>"),
+      "the chip names the lane it opens on",
+    )
+    // cmp-jvm is the disabled option (and says why in its own label); the enabled ones are not.
+    assertTrue(
+      html.contains("<option value=\"rc:cmp-jvm\" disabled>CMP JVM (unavailable)</option>"),
+      html,
+    )
+    val android = Regex("<option value=\"rc:cmp-android\"[^>]*>").find(html)?.value ?: ""
+    assertFalse(android.contains(" disabled"), "cmp-android is offered: '$android'")
+    // …and the step out to every player side by side.
+    assertTrue(
+      html.contains("href=\"/remote-m3/compare?format=rc&preview=widget.Chip&token=t\""),
+      html,
+    )
+    assertTrue(html.contains(">compare players →</a>"), "the compare link names what it does")
   }
 
   @Test
-  fun `a js-only host disables the server-side backend chips`() {
+  fun `a js-only host disables the server-side player options and offers no comparison`() {
     // A static bundle carries the `.rc` doc (js works client-side) but has no daemon, so the
     // server-side java / cmp-android lanes are disabled alongside the never-available cmp-jvm.
     val preview = ServePreview(id = "widget.Chip", label = "chip")
@@ -376,13 +392,18 @@ class ServeWebTest {
         enabledRcPlayers = listOf("js"),
       )
 
-    assertTrue(html.contains("data-default=\"js\""), "js is the default when it is the only lane")
+    assertTrue(
+      html.contains("data-rc-default=\"js\""),
+      "js is the default when it is the only lane",
+    )
     for (wire in listOf("cmp-wasm", "java", "cmp-android", "cmp-jvm")) {
-      val chip = Regex("<button[^>]*data-rc-backend=\"$wire\"[^>]*>").find(html)?.value ?: ""
-      assertTrue(chip.contains(" disabled"), "$wire chip disabled on a js-only host: '$chip'")
+      val option = Regex("<option value=\"rc:$wire\"[^>]*>").find(html)?.value ?: ""
+      assertTrue(option.contains(" disabled"), "$wire disabled on a js-only host: '$option'")
     }
-    val jsChip = Regex("<button[^>]*data-rc-backend=\"js\"[^>]*>").find(html)?.value ?: ""
-    assertFalse(jsChip.contains(" disabled"), "js chip enabled: '$jsChip'")
+    val js = Regex("<option value=\"rc:js\"[^>]*>").find(html)?.value ?: ""
+    assertFalse(js.contains(" disabled"), "js is offered: '$js'")
+    // One player is nothing to compare against, so the link stays off.
+    assertFalse(html.contains("compare players"), "no comparison link with a single player")
   }
 
   @Test
@@ -402,8 +423,8 @@ class ServeWebTest {
         enabledRcPlayers = listOf("js", "cmp-wasm"),
       )
 
-    val chip = Regex("<button[^>]*data-rc-backend=\"cmp-wasm\"[^>]*>").find(html)?.value ?: ""
-    assertFalse(chip.contains(" disabled"), "cmp-wasm chip enabled: '$chip'")
+    val option = Regex("<option value=\"rc:cmp-wasm\"[^>]*>").find(html)?.value ?: ""
+    assertFalse(option.contains(" disabled"), "cmp-wasm is offered: '$option'")
     assertTrue(html.contains("id=\"cp-rc-wasm\""), "dedicated CMP/Wasm iframe is present")
     assertTrue(html.contains("value=\"rc-wasm\""), "dedicated CMP/Wasm mode is present")
     assertTrue(
@@ -431,7 +452,7 @@ class ServeWebTest {
         basePath = "/compose-m3",
         siblings = listOf(preview),
       )
-    assertFalse(html.contains("id=\"cp-rc-backends\""), "no selector for a non-rc preview")
+    assertFalse(html.contains("id=\"cp-lane-select\""), "no combo for a single-lane preview")
   }
 
   @Test
@@ -591,11 +612,13 @@ class ServeWebTest {
             source = DesignReferenceSource(provider = "figma"),
           ),
       )
-    assertTrue(html.contains("id=\"cp-spec-lane\""), "the spec lane group is rendered")
-    assertTrue(html.contains("id=\"cp-spec-btn\""), "the spec chip is rendered")
-    // The chip names the provider it imported from, and the raster is served from THIS server's
-    // reference route — nothing points at figma.com.
-    assertTrue(html.contains("<span>Figma</span>"), "the chip names the provider")
+    assertTrue(html.contains("id=\"cp-spec-lane\""), "the spec lane carrier is rendered")
+    // The lane is one option in the renderer combo, named for the provider it imported from, and
+    // the raster is served from THIS server's reference route — nothing points at figma.com.
+    assertTrue(
+      html.contains("<option value=\"spec\">Figma spec</option>"),
+      "the spec is offered as a renderer option",
+    )
     assertTrue(
       html.contains("data-spec-src=\"/meshcore-mobile/reference/contact-chat-figma.png?token=t\""),
       html,
@@ -650,8 +673,11 @@ class ServeWebTest {
             source = DesignReferenceSource(provider = "png"),
           ),
       )
-    assertTrue(html.contains("id=\"cp-spec-btn\""), "the lane is offered for any provider")
-    assertTrue(html.contains("<span>Spec</span>"), "a non-Figma provider reads as a plain spec")
+    assertTrue(html.contains("id=\"cp-spec-lane\""), "the lane is offered for any provider")
+    assertTrue(
+      html.contains("<option value=\"spec\">Design spec</option>"),
+      "a non-Figma provider reads as a plain design spec",
+    )
   }
 
   @Test

@@ -1034,10 +1034,10 @@ class ServeHttpRoutingTest {
     assertEquals(200, code)
     assertTrue(html.contains("data-has-rc-doc=\"1\""), "viewer flags the rc document: $html")
     assertTrue(html.contains("id=\"cp-rc-canvas\""), "rc canvas element present")
-    // The backend selector replaces the old single toggle: a `js` chip drives the same canvas lane.
-    assertTrue(html.contains("id=\"cp-rc-backends\""), "rc backend selector present")
-    assertTrue(html.contains("data-rc-backend=\"js\""), "js backend chip present")
-    assertTrue(html.contains("data-rc-backend=\"cmp-wasm\""), "cmp-wasm backend chip present")
+    // The renderer combo replaces the old row of chips: `rc:js` drives the same canvas lane.
+    assertTrue(html.contains("id=\"cp-lane-select\""), "renderer combo present")
+    assertTrue(html.contains("value=\"rc:js\""), "js player option present")
+    assertTrue(html.contains("value=\"rc:cmp-wasm\""), "cmp-wasm player option present")
     assertTrue(html.contains("id=\"cp-rc-wasm\""), "cmp-wasm iframe present")
     assertTrue(html.contains("value=\"rc\""), "rc mode radio present")
     // The client-side lane JS loads the player and applies knob edits without a daemon round-trip.
@@ -1078,8 +1078,8 @@ class ServeHttpRoutingTest {
     )
     assertTrue(!html.contains("id=\"cp-rc-canvas\""), "no rc canvas on a docless preview")
     assertTrue(
-      !html.contains("id=\"cp-rc-backends\""),
-      "no rc backend selector on a docless preview",
+      !html.contains("id=\"cp-lane-select\""),
+      "no renderer combo on a docless single-lane preview",
     )
   }
 

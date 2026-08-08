@@ -852,6 +852,34 @@ class ServeWebFixtureTest {
         figmaSpec = fixtureFigmaSpec,
         designReference = fixtureDesignReference,
       )
+    // A **Remote Compose** viewer, the shape preview.coo.ee serves for `remote-m3`: the same
+    // captured `.rc` document is drawable by five different players, so this is the page the
+    // renderer picker exists for. Captured because it is the ONLY fixture that carries the picker
+    // at full width — the chip naming the current player ("Java"), the combo holding the
+    // alternatives (with the unavailable `CMP JVM` listed as such), the "compare players →" step
+    // out to the player wall, and the SVG toggle for whatever the chip is showing. Every other
+    // viewer fixture has one or two lanes and so shoots a degenerate version of the row.
+    val viewerRcPlayers =
+      ServeWeb.viewerPage(
+        ServePreview(
+          "appcard__ideal__default__compact",
+          "App card",
+          section = "Cards",
+          componentId = "AppCard",
+        ),
+        token,
+        sessionId = "remote-m3",
+        basePath = "/remote-m3",
+        canApplyOverrides = false,
+        canRenderOverrides = true,
+        hasLiveStream = true,
+        hasSvgExport = true,
+        hasRemoteComposeDoc = true,
+        // js + cmp-wasm play in the browser, java + cmp-android render through the daemon; cmp-jvm
+        // needs sidecars this host doesn't carry, so it is the "(unavailable)" option.
+        enabledRcPlayers = listOf("js", "cmp-wasm", "java", "cmp-android"),
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
+      )
     // The Wear counterpart of [viewerPath]: a screen served under a Wear system path. Its Size
     // panel must offer the watch shapes (not Pixel phones / a foldable / a tablet) and drop the
     // Orientation control a watch can't honour — captured so the visual-diff bot covers the Wear
@@ -1610,6 +1638,7 @@ class ServeWebFixtureTest {
         "serve-viewer-gestures.html" to viewerGestures,
         "serve-landing-path.html" to landingPath,
         "serve-viewer-path.html" to viewerPath,
+        "serve-viewer-rc-players.html" to viewerRcPlayers,
         "serve-viewer-wear-screen.html" to viewerWearScreen,
         "serve-landing-themed.html" to landingThemed,
         "serve-landing-catalog-palette.html" to landingCatalogPalette,
@@ -2877,7 +2906,10 @@ class ServeWebFixtureTest {
 
     val openLive = ServeWeb.viewerPage(card, token, canApplyOverrides = true)
     assertTrue(
-      openLive.contains("id=\"cp-live-toggle\" class=\"cp-live-toggle\" aria-pressed=\"false\">"),
+      openLive.contains(
+        "id=\"cp-live-toggle\" class=\"cp-live-toggle\" aria-pressed=\"false\" " +
+          "title=\"Static snapshot — click for the live, interactive preview\">"
+      ),
       "live preview remains an ordinary toggle when no GitHub sign-in prompt is required",
     )
 
@@ -2897,10 +2929,11 @@ class ServeWebFixtureTest {
   }
 
   @Test
-  fun `a dedicated In-browser Wasm toggle shows only when a wasm app and a daemon lane are both present`() {
+  fun `the in-browser Wasm lane is reachable from the renderer combo whenever a wasm app backs the session`() {
     val card = previews.first { it.id.endsWith("CardPreview") }
-    // Case C — daemon live lane + wasm app: "Live preview" would prefer the daemon (bestLiveMode)
-    // and hide the wasm lane, so a distinct "In-browser (Wasm)" toggle is added beside it.
+    // Case C — daemon live lane + wasm app: the chip's own toggle prefers the daemon
+    // (bestLiveMode), so without a second way in the Wasm tier would be registered and
+    // unreachable. It is an option in the renderer combo rather than a chip of its own.
     val both =
       ServeWeb.viewerPage(
         card,
@@ -2911,13 +2944,10 @@ class ServeWebFixtureTest {
         wasmSameOrigin = true,
       )
     assertTrue(
-      both.contains("id=\"cp-wasm-btn\"") && both.contains("In-browser (Wasm)"),
-      "with both a daemon lane and a wasm app, the viewer adds the In-browser (Wasm) toggle",
+      both.contains("<option value=\"wasm\">In browser (Wasm)</option>"),
+      "with a wasm app the viewer offers the in-browser lane in the renderer combo",
     )
-    assertTrue(
-      both.contains("id=\"cp-live-toggle\""),
-      "the daemon 'Live preview' toggle stays alongside it",
-    )
+    assertTrue(both.contains("id=\"cp-live-toggle\""), "the live toggle stays alongside it")
     // While the in-browser lane is active, the daemon-only controls (size/device/orientation/
     // background + the app-theme selector) can't be honoured by the iframe, so syncServerControls
     // disables them on the wasm lane rather than leaving dead-but-enabled knobs.
@@ -2931,20 +2961,25 @@ class ServeWebFixtureTest {
       "declared options in the unified Theme selector are disabled on the Wasm lane",
     )
 
-    // Case B — wasm app but NO daemon lane: the single Static⇄Live toggle already drops into wasm
-    // as
-    // its only interactive lane, so a separate button would be redundant.
+    // Case B — wasm app but NO daemon lane: the chip already drops into wasm as its only
+    // interactive lane, but the combo still names both so the visitor can read what they're on.
     val wasmOnly = ServeWeb.viewerPage(card, token, wasmSrc = "/wasm/compose-m3/?id=card-filled")
-    assertFalse(
-      wasmOnly.contains("id=\"cp-wasm-btn\""),
-      "a wasm-only session keeps the single toggle (no redundant In-browser button)",
+    assertTrue(
+      wasmOnly.contains("<option value=\"png\">Snapshot</option>") &&
+        wasmOnly.contains("<option value=\"wasm\">In browser (Wasm)</option>"),
+      "a wasm-only session names both of its lanes",
     )
 
-    // Case A — daemon lane but no wasm app: nothing to add.
+    // Case A — daemon lane but no wasm app: one lane, so no combo at all — the chip carries the
+    // whole row and keeps the plain "Live preview" invitation.
     val daemonOnly = ServeWeb.viewerPage(card, token, canApplyOverrides = true)
     assertFalse(
-      daemonOnly.contains("id=\"cp-wasm-btn\""),
-      "a daemon-only session shows no In-browser (Wasm) toggle",
+      daemonOnly.contains("id=\"cp-lane-select\""),
+      "a single-lane session grows no combo box",
+    )
+    assertTrue(
+      daemonOnly.contains("<span id=\"cp-live-toggle-label\">Live preview</span>"),
+      "with nothing to disambiguate, the chip keeps the plain invitation",
     )
   }
 
@@ -3604,11 +3639,23 @@ class ServeWebFixtureTest {
       staticView.contains("id=\"cp-live\" tabindex=\"-1\" disabled"),
       "live transport radio disabled",
     )
-    // With no live lane at all, the single Static⇄Live toggle is itself disabled.
+    // With no live lane at all, the chip is itself disabled — and its tooltip says so rather than
+    // inviting a click that would do nothing.
     assertTrue(
       staticView.contains("id=\"cp-live-toggle\"") &&
-        staticView.contains("aria-pressed=\"false\" disabled"),
-      "the Static⇄Live toggle is disabled on a pure static bundle",
+        Regex("id=\"cp-live-toggle\"[^>]* disabled>").containsMatchIn(staticView),
+      "the live toggle is disabled on a pure static bundle",
+    )
+    assertTrue(
+      staticView.contains("title=\"Static snapshot — this session has no live lane to switch to\""),
+      "a chip with nothing to switch to does not promise a live preview",
+    )
+    // The tooltip inverts with the chip's meaning, so it is re-derived on every lane transition
+    // from the same state that drives the dot — a fixed one would say "click for live" on a chip
+    // whose click now exits to the snapshot.
+    assertTrue(
+      assetText("viewer.js").contains("\"Interactive — click to return to the static snapshot\""),
+      "the chip's tooltip tracks the lane rather than being written once by the server",
     )
     assertTrue(
       Regex("<select id=\"cp-theme\"[^>]*data-has-declared-themes=\"false\"[^>]* disabled>")
@@ -3926,17 +3973,20 @@ class ServeWebFixtureTest {
     // can
     // export SVG (a catalog / daemon) also offers an SVG row. The URLs are built client-side from
     // location.origin with the current overrides so a copied link reproduces the on-screen render.
+    // …and the bar is a plain always-visible line, not a disclosure: the hand-off must not be one
+    // click deep.
     assertTrue(
-      catalogKnobs.contains("class=\"cp-links cp-disclosure-body\""),
-      "the direct-links panel is shown",
+      catalogKnobs.contains("<div class=\"cp-export\" aria-label=\"Export the current view\">") &&
+        !catalogKnobs.contains("cp-export cp-disclosure"),
+      "the export bar is shown open, not behind a summary",
     )
     assertTrue(
       catalogKnobs.contains("id=\"cp-url-png\"") && catalogKnobs.contains("id=\"cp-dl-png\""),
-      "the PNG URL row has a copyable field and a download link",
+      "the PNG group has a URL field and a download link",
     )
     assertTrue(
       catalogKnobs.contains("id=\"cp-url-svg\"") && catalogKnobs.contains("id=\"cp-dl-svg\""),
-      "an SVG-exporting session also offers an SVG URL row",
+      "an SVG-exporting session also offers an SVG group",
     )
     // Next to Download, a one-click "Copy PNG"/"Copy SVG" button that copies the rendered artefact
     // itself as clipboard text (PNG as a base64 data: URI, SVG markup verbatim) via .cp-copyimg.
@@ -3974,16 +4024,22 @@ class ServeWebFixtureTest {
         !assetText("viewer.js").contains("link.href = "),
       "the report prefill goes into a form input, not a navigation sink",
     )
-    // The URL itself is copied by clicking the field (no separate "Copy URL" button) — the handler
-    // binds to .cp-url and flashes .cp-url-copied.
-    assertFalse(
-      catalogKnobs.contains("class=\"cp-copy\"") || catalogKnobs.contains(">Copy URL<"),
-      "the separate Copy URL button is gone — the field is click-to-copy",
+    // The URL is copied by a plainly-named button rather than by clicking a field whose only clue
+    // was a `title`. The field itself stays in the DOM (refreshLinks writes it, both copy buttons
+    // read it) but off-screen — nobody reads a 200-character absolute /render URL.
+    assertTrue(
+      catalogKnobs.contains("class=\"cp-copyurl\" data-copyurl-target=\"cp-url-png\"") &&
+        catalogKnobs.contains(">Copy link</button>"),
+      "each format offers a Copy link button that says what it does",
     )
     assertTrue(
-      assetText("viewer.js").contains("querySelectorAll(\".cp-url\")") &&
-        assetText("viewer.js").contains("cp-url-copied"),
-      "clicking the URL field copies the URL and flashes the field",
+      assetText("viewer.js").contains("querySelectorAll(\".cp-copyurl\")") &&
+        assetText("viewer.js").contains("data-copyurl-target"),
+      "the Copy link handler copies the field it targets",
+    )
+    assertTrue(
+      assetText("serve.css").contains(".cp-url { position: absolute;"),
+      "the URL field is taken out of the flow rather than given a third of the line",
     )
     assertTrue(
       assetText("viewer.js").contains("function refreshLinks()") &&

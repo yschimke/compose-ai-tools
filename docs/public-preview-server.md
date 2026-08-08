@@ -375,7 +375,7 @@ fork is still the right target: that fork is where the preview code that misrend
 image (`![…](…/render/<id>.png?…)`), so GitHub shows the pixels inline and a triager sees the
 problem without clicking anything. That embed is a **live** render, though: it re-renders against
 whatever the catalog is when someone reads the issue, so it can drift away from what the reporter
-saw. The template says so, and still asks for a paste — **Copy PNG** (in *Export & direct links*)
+saw. The template says so, and still asks for a paste — **Copy PNG** (on the *Export* line)
 puts real `image/png` bytes on the clipboard rather than a base64 `data:` URI, so one Ctrl-V/Cmd-V
 uploads the exact pixels to GitHub's own CDN, where they stay put. Browsers without `ClipboardItem`
 fall back to the data URI.

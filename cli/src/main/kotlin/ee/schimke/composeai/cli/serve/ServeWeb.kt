@@ -5356,21 +5356,6 @@ $rows
         "<span id=\"cp-svg-match\" class=\"cp-match\" role=\"status\" aria-live=\"polite\" hidden></span>" +
           "<a id=\"cp-svg-diff\" class=\"cp-format-link\" href=\"$basePath/compare?$compareQuery\" hidden>view diff →</a>"
       } else ""
-    // A dedicated "In-browser (Wasm)" toggle, shown only when the session carries BOTH a daemon
-    // live
-    // lane ([hasLiveStream]) and a Wasm app ([wasmSrc]). The single Static⇄Live toggle prefers the
-    // daemon (bestLiveMode), which otherwise leaves the Wasm tier unreachable from the viewer even
-    // though it's registered. Omitted when no Wasm app backs the session, and when there's no
-    // daemon
-    // (the Static⇄Live toggle already drops into Wasm as its only interactive lane). Reuses the
-    // `.cp-live-toggle` styling so it reads as a peer of "Live preview".
-    val wasmToggleBtn =
-      if (wasmSrc != null && hasLiveStream)
-        "<button type=\"button\" id=\"cp-wasm-btn\" class=\"cp-live-toggle\" aria-pressed=\"false\" " +
-          "title=\"Run this component in your browser (Kotlin/Wasm)\">" +
-          "<span class=\"cp-live-dot\" aria-hidden=\"true\"></span><span>In-browser (Wasm)</span>" +
-          "</button>"
-      else ""
     // The in-browser Remote Compose canvas lane. Offered (a `#cp-rc-canvas`, a hidden mode radio,
     // and
     // a toggle button) only when this preview carries a captured `.rc` document
@@ -5396,50 +5381,9 @@ $rows
       if (hasRcWasm)
         "<input type=\"radio\" name=\"cp-mode\" value=\"rc-wasm\" id=\"cp-rc-wasm-toggle\" tabindex=\"-1\">"
       else ""
-    // The Remote Compose backend selector (#cp-rc-backends): one chip per RcPlayerBackend.UNIVERSE,
-    // enabled for those the host reports in [enabledRcPlayers] and disabled otherwise. It replaces
-    // the former single "RC (browser)" button — the `js` chip drives the same in-browser canvas
-    // lane (setMode("rc")), while `java` / `cmp-android` re-render the PNG server-side via
-    // `rcPlayer=<wire>`. `cmp-jvm` uses the same URL through its isolated subprocess lane. Rendered
-    // only for a Remote Compose preview (a non-empty enabled set). `data-default` seeds the
-    // initially-current chip: the server-side `java` player when it's available (the default
-    // snapshot lane), else the client `js` canvas.
-    val rcBackendSelector =
-      if (enabledRcPlayers.isEmpty()) ""
-      else {
-        val enabled = enabledRcPlayers.toSet()
-        val defaultBackend =
-          when {
-            RcPlayerBackend.JAVA.wire in enabled -> RcPlayerBackend.JAVA.wire
-            RcPlayerBackend.JS.wire in enabled -> RcPlayerBackend.JS.wire
-            else -> enabled.first()
-          }
-        val chips =
-          RcPlayerBackend.UNIVERSE.joinToString("") { backend ->
-            val on = backend.wire in enabled
-            val disabledAttr = if (on) "" else " disabled"
-            val title =
-              when {
-                on ->
-                  "Render this component's Remote Compose document with the ${backend.label} player"
-                backend == RcPlayerBackend.CMP_JVM ->
-                  "CMP JVM player — not available for this session (install lib-rcjvm and " +
-                    "lib-daemon-desktop)"
-                else -> "${backend.label} player — not available for this session"
-              }
-            "<button type=\"button\" class=\"cp-live-toggle cp-rc-backend\" " +
-              "data-rc-backend=\"${backend.wire}\" aria-pressed=\"false\"$disabledAttr " +
-              "title=\"${WebEscaping.htmlEscape(title)}\">" +
-              "<span class=\"cp-live-dot\" aria-hidden=\"true\"></span>" +
-              "<span>${WebEscaping.htmlEscape(backend.label)}</span></button>"
-          }
-        "<span class=\"cp-rc-backends\" id=\"cp-rc-backends\" role=\"group\" " +
-          "aria-label=\"Remote Compose renderer\" data-default=\"$defaultBackend\">" +
-          "<span class=\"cp-rc-backends-label\">RC:</span>$chips</span>"
-      }
-    // The **Spec lane**: the imported design reference for this exact preview, offered as a peer of
-    // the renderer chips. Where the RC chips choose *which player draws the code*, this chooses to
-    // look at *what the design says* instead — the catalog's own inert PNG, served from
+    // The **Spec lane**: the imported design reference for this exact preview, offered as one more
+    // entry in the renderer picker. Where the other lanes choose *which player draws the code*,
+    // this chooses to look at *what the design says* instead — the catalog's own inert PNG, from
     // `/reference/<id>.png` (never fetched from Figma), swapped onto the same stage. Rendered only
     // when the catalog published a reference for this preview id, i.e. only when design-parity is
     // configured for the system; every other catalog's viewer is byte-identical to before.
@@ -5454,7 +5398,7 @@ $rows
       "$basePath/reference/${WebEscaping.urlEncodeSegment(it.id)}.png$q"
     }
     // The focused Reference / Diff / Actual page for this exact mapping — the same link the
-    // comparison grid offers, so the chip's neighbour steps from "look at the spec" to "diff it".
+    // comparison grid offers, so the picker's neighbour steps from "look at the spec" to "diff it".
     val specCompareHref = designReference?.let { reference ->
       val query =
         listOf(
@@ -5465,22 +5409,115 @@ $rows
           .joinToString("&")
       "$basePath/compare/$idSeg${querySuffix(query)}"
     }
+    // The spec lane's *carrier*, not a control: `data-spec-src` is the raster viewer.js paints onto
+    // the stage when the picker selects `spec`, and the trailing link is the step from "look at the
+    // spec" to "diff it". The lane no longer has a chip of its own — it is one `<option>` in
+    // [laneSelectHtml] like every other renderer.
     val specSelector =
       if (specRasterUrl == null || specProviderLabel == null || specLabel == null) ""
       else {
-        val tip = "Show the imported design spec for this preview — $specLabel"
-        "<span class=\"cp-spec-lane\" id=\"cp-spec-lane\" role=\"group\" " +
-          "aria-label=\"Design spec\" " +
+        val tip = "Compare this render against the imported design spec — $specLabel"
+        "<span class=\"cp-spec-lane\" id=\"cp-spec-lane\" " +
           "data-spec-src=\"${WebEscaping.htmlEscape(specRasterUrl)}\" " +
           "data-spec-label=\"${WebEscaping.htmlEscape(specProviderLabel)}\">" +
-          "<span class=\"cp-rc-backends-label\">Spec:</span>" +
-          "<button type=\"button\" class=\"cp-live-toggle cp-spec-btn\" id=\"cp-spec-btn\" " +
-          "aria-pressed=\"false\" title=\"${WebEscaping.htmlEscape(tip)}\">" +
-          "<span class=\"cp-live-dot\" aria-hidden=\"true\"></span>" +
-          "<span>${WebEscaping.htmlEscape(specProviderLabel)}</span></button>" +
           "<a class=\"cp-format-link cp-spec-diff\" " +
           "href=\"${WebEscaping.htmlEscape(specCompareHref.orEmpty())}\" " +
-          "title=\"Compare this render against the spec\">view diff →</a></span>"
+          "title=\"${WebEscaping.htmlEscape(tip)}\">spec diff →</a></span>"
+      }
+    // ---- The renderer picker -------------------------------------------------------------------
+    //
+    // One chip plus one combo box, in place of the row of per-lane chips this page used to carry
+    // (`Live preview · In-browser (Wasm) · RC: JS CMP Wasm Java CMP Android CMP JVM · Spec: Figma ·
+    // SVG · static snapshot`). That row asked a visitor to read up to eight independent
+    // pressed-states to answer one question — *what is drawing this?* — and grew another chip every
+    // time a lane was added.
+    //
+    // The replacement answers it once. [laneSelectHtml] is the single control that CHOOSES the
+    // renderer; the `#cp-live-toggle` chip beside it NAMES the chosen one ("Java") and toggles it
+    // live/interactive, with its status dot as the live indicator. viewer.js drives both from one
+    // lane value (`syncLaneSelect`), so the two can never disagree about what's on the stage.
+    val rcEnabled = enabledRcPlayers.toSet()
+    // The lane the viewer opens on for a Remote Compose preview: the server-side `java` player when
+    // it's available (the default snapshot lane), else the client `js` canvas.
+    val defaultRcBackend =
+      when {
+        RcPlayerBackend.JAVA.wire in rcEnabled -> RcPlayerBackend.JAVA.wire
+        RcPlayerBackend.JS.wire in rcEnabled -> RcPlayerBackend.JS.wire
+        else -> enabledRcPlayers.firstOrNull().orEmpty()
+      }
+    // Every lane this preview can be drawn by, in display order: the Remote Compose players (or the
+    // plain snapshot, when this isn't a Remote Compose preview), the in-browser Wasm app, and the
+    // imported design spec. A player the host doesn't offer is still listed — as a disabled option,
+    // the same "shown but unavailable" treatment its chip had — so the set of players stays legible
+    // from any session.
+    data class ViewerLane(val value: String, val label: String, val enabled: Boolean)
+    val lanes = buildList {
+      if (enabledRcPlayers.isEmpty()) add(ViewerLane("png", "Snapshot", true))
+      else
+        RcPlayerBackend.UNIVERSE.forEach { backend ->
+          add(ViewerLane("rc:${backend.wire}", backend.label, backend.wire in rcEnabled))
+        }
+      if (wasmSrc != null) add(ViewerLane("wasm", "In browser (Wasm)", true))
+      if (specRasterUrl != null && specProviderLabel != null)
+        add(
+          ViewerLane(
+            "spec",
+            if (specProviderLabel == "Figma") "Figma spec" else "Design spec",
+            true,
+          )
+        )
+    }
+    val defaultLane = if (enabledRcPlayers.isEmpty()) "png" else "rc:$defaultRcBackend"
+    // Rendered only when there is genuinely something to switch *to*: a single-lane preview keeps
+    // the chip on its own rather than growing a combo box with one entry in it.
+    //
+    // It is a **command** menu, not a state field: the always-selected placeholder is what it shows
+    // at rest, and `syncLaneSelect` returns it there after every pick. The chip immediately to its
+    // left already names the current renderer, and a combo that repeated that name beside it read
+    // as two controls arguing about the same fact ("Java  [Java ▾]"). So the chip answers *what am
+    // I looking at* and this answers *what else could I look at* — which is the whole split.
+    val laneSelectHtml =
+      if (lanes.size < 2) ""
+      else
+        lanes.joinToString(
+          separator = "",
+          prefix =
+            "<select id=\"cp-lane-select\" class=\"cp-lane-select\" " +
+              "aria-label=\"Switch renderer\" " +
+              "title=\"Draw this preview with a different renderer\" " +
+              "data-default=\"$defaultLane\" data-rc-default=\"$defaultRcBackend\">" +
+              "<option value=\"\" selected>Switch renderer…</option>",
+          postfix = "</select>",
+        ) { lane ->
+          val disabledAttr = if (lane.enabled) "" else " disabled"
+          // `<option>` carries no tooltip anywhere reliable, so an unavailable lane says so in the
+          // label itself rather than in a `title` nobody sees.
+          val text = if (lane.enabled) lane.label else "${lane.label} (unavailable)"
+          "<option value=\"${lane.value}\"$disabledAttr>" +
+            "${WebEscaping.htmlEscape(text)}</option>"
+        }
+    // The chip's opening label: the lane it opens on when a combo box is there to disambiguate, and
+    // the plain "Live preview" invitation when the chip is the only control on the row.
+    val primaryLaneLabel =
+      if (laneSelectHtml.isEmpty()) "Live preview"
+      else lanes.firstOrNull { it.value == defaultLane }?.label ?: "Live preview"
+    // The step from "look at one player" to "look at them all": the format-comparison page, focused
+    // on this preview and opened on its Remote Compose lane. A subtle text link rather than another
+    // chip — it navigates away, so it deliberately stays out of the picker's affordance set.
+    val comparePlayersLink =
+      if (enabledRcPlayers.size < 2) ""
+      else {
+        val compareQuery =
+          listOf(
+              "format=rc",
+              "preview=${WebEscaping.urlEncodeSegment(preview.id)}",
+              linkQuery(token, sessionId, basePath, isPublic),
+            )
+            .filter { it.isNotEmpty() }
+            .joinToString("&")
+        "<a class=\"cp-format-link cp-compare-players\" href=\"$basePath/compare?$compareQuery\" " +
+          "title=\"See every Remote Compose player's render of this screen side by side\">" +
+          "compare players →</a>"
       }
     // The stage image the Spec lane paints into: a sibling of the snapshot `<img>`, left `hidden`
     // (and src-less) until the lane is entered, so a viewer that never opens it costs no request.
@@ -5538,13 +5575,31 @@ $rows
     val liveToggleDis =
       if ((hasLiveStream || wasmSrc != null) && !liveAuthBlocksStream) "" else " disabled"
     val liveAuthTitle = liveAuthPrompt?.let { "Sign in with GitHub to enable Live preview." }
+    // The chip names the renderer on the stage and its dot is the live indicator, so the tooltip
+    // has to say what pressing it *does* — "Java" alone reads as a label, not a switch.
+    //
+    // This is only the OPENING text. The chip's state changes under the visitor (into Live, into a
+    // client-side player lane, back out), and a fixed tooltip would then contradict the control it
+    // is attached to — promising "click for live" on a chip whose click now exits to the snapshot.
+    // `updateLiveToggle()` re-derives it on every transition from the same state that decides the
+    // dot and the pressed flag; this string is what the server-rendered markup opens on, and it
+    // matches what that function computes for the initial (static, not-yet-interactive) state —
+    // including the honest wording for a session with no live lane to enter at all.
     val liveToggleTitleAttr =
-      liveAuthTitle?.let { " title=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
+      " title=\"" +
+        WebEscaping.htmlEscape(
+          liveAuthTitle
+            ?: if (liveToggleDis.isEmpty())
+              "Static snapshot — click for the live, interactive preview"
+            else "Static snapshot — this session has no live lane to switch to"
+        ) +
+        "\""
     val liveToggleButton =
       "<button type=\"button\" id=\"cp-live-toggle\" class=\"cp-live-toggle\" " +
-        "aria-pressed=\"false\"$liveToggleDis>\n" +
+        "aria-pressed=\"false\"$liveToggleTitleAttr$liveToggleDis>\n" +
         "            <span class=\"cp-live-dot\" aria-hidden=\"true\"></span>\n" +
-        "            <span id=\"cp-live-toggle-label\">Live preview</span>\n" +
+        "            <span id=\"cp-live-toggle-label\">" +
+        "${WebEscaping.htmlEscape(primaryLaneLabel)}</span>\n" +
         "          </button>"
     // When sign-in is the ONLY thing between the visitor and the daemon lane, offer the sign-in
     // itself rather than a dead control.
@@ -5934,8 +5989,18 @@ $rows
     val variantSwitcher = variantSwitcherHtml(preview, siblings, basePath, q)
     val switchers =
       listOf(stateSwitcher, variantSwitcher).filter { it.isNotBlank() }.joinToString("\n")
+    // Left to right: the chip that names the current renderer and toggles it live, the combo box of
+    // alternatives, the two subtle "go compare this elsewhere" links, then the SVG format toggle
+    // for whatever the chip is currently showing.
     val primaryControls =
-      listOf(liveToggleHtml, wasmToggleBtn, rcBackendSelector, specSelector, svgFmtToggle, svgMatch)
+      listOf(
+          liveToggleHtml,
+          laneSelectHtml,
+          comparePlayersLink,
+          specSelector,
+          svgFmtToggle,
+          svgMatch,
+        )
         .filter { it.isNotBlank() }
         .joinToString("\n")
     // Both or neither: a timeline the visitor cannot click through to an old render is worse than
@@ -6059,11 +6124,13 @@ $rows
         </div>
       </div>
       <!-- Export remains below the workspace; renderer selection is kept beside the preview
-           heading so it is visible before a tall stage. -->
+           heading so it is visible before a tall stage. The export bar is a SIBLING of the note
+           column rather than a child: the note is prose and reads better at `.cp-below`'s measure,
+           while the bar has to run the full content width to stay on one line. -->
       <div class="cp-below">
         $snapshotNote
-        ${downloadLinksHtml(hasSvgExport)}
       </div>
+      ${downloadLinksHtml(hasSvgExport)}
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
@@ -6254,46 +6321,51 @@ $rows
   }
 
   /**
-   * The copyable direct-link panel: the `/render/<id>.png` (and, when [hasSvgExport], `.svg`) URL
-   * for the preview **with the current overrides applied**. Each row shows a read-only URL field
-   * (click it to copy the URL), a one-click "Copy PNG"/"Copy SVG" button that copies the rendered
-   * artefact itself as clipboard text (SVG markup verbatim; PNG as a base64 `data:` URI), and a
-   * Download link (`<a download>`). The viewer JS keeps the URLs in sync as the controls / knobs
-   * change (see `refreshLinks`), so the copied URL/artefact always reflects the on-screen state — a
-   * shareable, scriptable handle on the exact render (a `curl`-able PNG/SVG). The URLs are built
-   * client-side from `location.origin` + the session base, so they're absolute and work from
-   * anywhere; the fields start empty and are filled on first render.
+   * The export bar: the `/render/<id>.png` (and, when [hasSvgExport], `.svg`) URL for the preview
+   * **with the current overrides applied**, offered as three plainly-named actions per format —
+   * "Copy link" (the shareable, `curl`-able render URL), "Copy PNG"/"Copy SVG" (the rendered
+   * artefact itself onto the clipboard: real `image/png` bytes, or SVG markup verbatim), and
+   * "Download" (`<a download>`). The viewer JS keeps the URLs in sync as the controls / knobs
+   * change (see `refreshLinks`), so whatever is copied always reflects the on-screen state. The
+   * URLs are built client-side from `location.origin` + the session base, so they're absolute and
+   * work from anywhere; the `#cp-url-<ext>` fields that hold them start empty and are filled on
+   * first render.
    *
-   * This is a **page-level section under the stage**, not a group inside the collapsible overrides
-   * drawer: grabbing the URL / PNG / SVG of what's on screen is the viewer's primary hand-off, so
-   * it stays visible whether or not the ⚙ Overrides drawer is open (and, on mobile, without opening
-   * a bottom sheet). The one control that genuinely *shapes* the export — "Full page (scroll)" —
-   * lives in the overrides drawer's Scroll group instead ([scrollGroupHtml]).
+   * Two deliberate shapes here:
+   * * It is **one always-visible line**, not a `<details>`. Grabbing the URL / PNG / SVG of what's
+   *   on screen is the viewer's primary hand-off; a disclosure hid the whole hand-off behind a
+   *   click, and a URL field per format wrapped the row onto three lines for no one's benefit.
+   * * The URL itself lives in a `tabindex="-1"` field the CSS takes out of the flow rather than on
+   *   screen: an 200-character absolute `/render` URL is not something anyone reads, and "Copy
+   *   link" says what the field's `title="Click to copy"` never managed to. It stays a real input
+   *   because `refreshLinks` and both copy buttons read it, and it is what the lane e2e asserts on.
+   *
+   * The one control that genuinely *shapes* the export — "Full page (scroll)" — lives in the
+   * overrides drawer's Scroll group instead ([scrollGroupHtml]).
    */
   private fun downloadLinksHtml(hasSvgExport: Boolean): String {
-    fun row(kind: String, ext: String): String =
+    fun group(kind: String, ext: String): String =
       """
-      <div class="cp-link-row">
+      <span class="cp-link-group">
         <span class="cp-link-kind">$kind</span>
-        <input id="cp-url-$ext" class="cp-url" type="text" readonly aria-label="$kind URL"
-          title="Click to copy the URL">
+        <button type="button" class="cp-copyurl" data-copyurl-target="cp-url-$ext"
+          title="Copy the $kind URL of the current view (overrides applied)">Copy link</button>
         <button type="button" class="cp-copyimg" data-copyimg-target="cp-url-$ext"
-          data-copyimg-ext=".$ext">Copy $kind</button>
-        <a id="cp-dl-$ext" class="cp-dl" download>Download</a>
-      </div>
+          data-copyimg-ext=".$ext" title="Copy the $kind itself to the clipboard">Copy $kind</button>
+        <a id="cp-dl-$ext" class="cp-dl" download title="Save the $kind to a file">Download</a>
+        <input id="cp-url-$ext" class="cp-url" type="text" readonly tabindex="-1"
+          aria-label="$kind URL">
+      </span>
       """
         .trimIndent()
     // The SVG lane is export-only now (no on-screen SVG mode); its shape is controlled by the
     // "Full page (scroll)" toggle over in the overrides drawer's Scroll group.
-    val svgRow = if (hasSvgExport) "\n" + row("SVG", "svg") else ""
+    val svgGroup = if (hasSvgExport) "\n" + group("SVG", "svg") else ""
     return """
-      <details class="cp-export cp-disclosure">
-        <summary id="cp-export-head">Export &amp; direct links</summary>
-        <div class="cp-links cp-disclosure-body">
-          <div class="cp-knobs-head">The current view as a URL (overrides applied)</div>
-          ${row("PNG", "png")}$svgRow
-        </div>
-      </details>
+      <div class="cp-export" aria-label="Export the current view">
+        <span class="cp-export-head" id="cp-export-head">Export</span>
+        ${group("PNG", "png")}$svgGroup
+      </div>
       """
       .trimIndent()
   }

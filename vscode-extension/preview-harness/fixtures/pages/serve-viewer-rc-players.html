@@ -3,7 +3,7 @@
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Profile screen — compose-preview</title>
+        <title>App Card — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
@@ -25,31 +25,31 @@
   </nav>
 </header>
         <main class="cp-main">
-              <p class="cp-breadcrumb"><a href="/meshcore-mobile/?token=demo-token-fixture">Previews</a> / Component</p>
-      <h1 class="cp-head cp-preview-title">Profile screen <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile">✓ trusted</span></h1>
-      <p class="cp-preview-id" title="com.example.ProfileScreenPreview"><code>com.example.ProfileScreenPreview</code></p>
+              <p class="cp-breadcrumb"><a href="/remote-m3/?token=demo-token-fixture">Previews</a> / Component</p>
+      <h1 class="cp-head cp-preview-title">App Card <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/remote-m3">✓ trusted</span></h1>
+      <p class="cp-preview-id" title="appcard__ideal__default__compact"><code>appcard__ideal__default__compact</code></p>
 
-      <div class="cp-preview-links">
-      <p class="cp-figma"><a class="cp-figma-link" href="https://www.figma.com/design/gYzowY4cQ7rNr2gYoco1M6?node-id=73-6" target="_blank" rel="noopener noreferrer" title="Open the Figma node this preview is specified by — Contact chat"><svg class="cp-gh cp-figma-mark" viewBox="0 0 38 57" aria-hidden="true" fill="currentColor"><path d="M19 28.5a9.5 9.5 0 1 1 19 0 9.5 9.5 0 0 1-19 0z"/><path d="M0 47.5A9.5 9.5 0 0 1 9.5 38H19v9.5a9.5 9.5 0 0 1-19 0z"/><path d="M19 0v19h9.5a9.5 9.5 0 1 0 0-19H19z"/><path d="M0 9.5A9.5 9.5 0 0 0 9.5 19H19V0H9.5A9.5 9.5 0 0 0 0 9.5z"/><path d="M0 28.5A9.5 9.5 0 0 0 9.5 38H19V19H9.5A9.5 9.5 0 0 0 0 28.5z"/></svg> figma spec</a></p>
-      </div>
 
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
-      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" title="Static snapshot — this session has no live lane to switch to" disabled>
+      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" title="Static snapshot — click for the live, interactive preview">
             <span class="cp-live-dot" aria-hidden="true"></span>
-            <span id="cp-live-toggle-label">Snapshot</span>
+            <span id="cp-live-toggle-label">Java</span>
           </button>
-<select id="cp-lane-select" class="cp-lane-select" aria-label="Switch renderer" title="Draw this preview with a different renderer" data-default="png" data-rc-default=""><option value="" selected>Switch renderer…</option><option value="png">Snapshot</option><option value="spec">Figma spec</option></select>
-<span class="cp-spec-lane" id="cp-spec-lane" data-spec-src="/meshcore-mobile/reference/contact-chat-figma.png?token=demo-token-fixture" data-spec-label="Figma"><a class="cp-format-link cp-spec-diff" href="/meshcore-mobile/compare/com.example.ProfileScreenPreview?token=demo-token-fixture&amp;reference=contact-chat-figma" title="Compare this render against the imported design spec — Contact chat">spec diff →</a></span>
+<select id="cp-lane-select" class="cp-lane-select" aria-label="Switch renderer" title="Draw this preview with a different renderer" data-default="rc:java" data-rc-default="java"><option value="" selected>Switch renderer…</option><option value="rc:js">JS</option><option value="rc:cmp-wasm">CMP Wasm</option><option value="rc:java">Java</option><option value="rc:cmp-android">CMP Android</option><option value="rc:cmp-jvm" disabled>CMP JVM (unavailable)</option></select>
+<a class="cp-format-link cp-compare-players" href="/remote-m3/compare?format=rc&preview=appcard__ideal__default__compact&token=demo-token-fixture" title="See every Remote Compose player's render of this screen side by side">compare players →</a>
+<button type="button" id="cp-svg-toggle" class="cp-fmt-toggle" aria-pressed="false" title="Show the vector (SVG) render">SVG</button>
+<span id="cp-svg-match" class="cp-match" role="status" aria-live="polite" hidden></span><a id="cp-svg-diff" class="cp-format-link" href="/remote-m3/compare?format=svg&preview=appcard__ideal__default__compact&token=demo-token-fixture" hidden>view diff →</a>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
       <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
-<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
-<input type="radio" name="cp-mode" value="spec" id="cp-spec-toggle" tabindex="-1">
+<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1">
+<input type="radio" name="cp-mode" value="rc" id="cp-rc-toggle" tabindex="-1">
+<input type="radio" name="cp-mode" value="rc-wasm" id="cp-rc-wasm-toggle" tabindex="-1">
         </span>
       </div>
       <div class="cp-viewer-bar">
-        <button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button>
+
         <span class="cp-theme cp-theme-bar" role="group" aria-label="Preview theme">
           <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
           <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
@@ -59,34 +59,22 @@
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
 
-      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
-              <aside class="cp-nav" id="cp-nav" aria-label="Components">
-        <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
-        <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
-        <ul class="cp-nav-list" id="cp-nav-list">
-        <li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.ButtonPreview?token=demo-token-fixture" title="com.example.ButtonPreview" data-search="Button com.example.ButtonPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.ButtonPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Button</span></a></li>
-<li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.CardPreview?token=demo-token-fixture" title="com.example.CardPreview" data-search="Card com.example.CardPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.CardPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Card</span></a></li>
-<li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.DialogPreview?token=demo-token-fixture" title="com.example.DialogPreview" data-search="Dialog com.example.DialogPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.DialogPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Dialog</span></a></li>
-<li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.ListScreenPreview?token=demo-token-fixture" title="com.example.ListScreenPreview" data-search="List screen com.example.ListScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.ListScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">List screen</span></a></li>
-<li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.ProfileScreenPreview?token=demo-token-fixture" aria-current="page" title="com.example.ProfileScreenPreview" data-search="Profile screen com.example.ProfileScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Profile screen</span></a></li>
-<li><a class="cp-nav-item" href="/meshcore-mobile/p/com.example.SettingsScreenPreview?token=demo-token-fixture" title="com.example.SettingsScreenPreview" data-search="Settings screen com.example.SettingsScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/meshcore-mobile/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Settings screen</span></a></li>
-        </ul>
-        <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>
-      </aside>
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas><img id="cp-spec-img" class="cp-spec-img" hidden alt="Profile screen — design spec"><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+      <div class="cp-viewer cp-controls-open" data-preview-id="appcard__ideal__default__compact" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="true" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-has-rc-doc="1">
+
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="App Card"><canvas id="cp-canvas" hidden></canvas><canvas id="cp-rc-canvas" hidden></canvas><iframe id="cp-rc-wasm" hidden sandbox="allow-scripts allow-same-origin" title="App Card (Remote Compose CMP Wasm)"></iframe><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
             <div class="cp-group-body">
               <span class="cp-modes-inputs" aria-hidden="true">
-  <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" data-fixed-theme="false" tabindex="-1" disabled>
+  <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" data-fixed-theme="false" tabindex="-1">
     <option value="light" selected>Day (Default)</option>
     <option value="dark">Night (Default)</option>
   </select>
 </span>
               <label>Background
-                <select id="cp-background" disabled>
+                <select id="cp-background">
                   <option value="">(default)</option>
                   <option value="clear">Clear (crisp outline)</option>
                 </select>
@@ -96,22 +84,29 @@
           <details class="cp-group" data-cp-group="size">
             <summary>Size</summary>
             <div class="cp-group-body">
-              <label>Device size
-                <select id="cp-device" disabled>
-                  <option value="">(preview default)</option>
-                  <option value="id:pixel_5">Pixel 5 · compact phone (393 × 851 dp)</option>
-                  <option value="id:pixel_7">Pixel 7 · standard phone (411 × 914 dp)</option>
-                  <option value="id:pixel_fold">Pixel Fold · foldable (841 × 701 dp)</option>
-                  <option value="id:pixel_tablet">Pixel Tablet · tablet (1280 × 800 dp)</option>
-                </select>
-              </label>
-              <label>Orientation
-                <select id="cp-orientation" disabled>
-                  <option value="">(device default)</option>
-                  <option value="portrait">Portrait</option>
-                  <option value="landscape">Landscape</option>
-                </select>
-              </label>
+              <div class="cp-size">
+                <label>Size mode
+                  <select id="cp-sizeMode">
+                    <option value="">(default)</option>
+                    <option value="fixed">Fixed size</option>
+                    <option value="max">Max</option>
+                    <option value="min">Min</option>
+                    <option value="within">Within (min–max)</option>
+                  </select>
+                </label>
+                <div class="cp-size-row" id="cp-size-fixed" hidden>
+                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-min" hidden>
+                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-max" hidden>
+                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"></label>
+                </div>
+              </div>
             </div>
           </details>
 
@@ -119,7 +114,7 @@
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
               <label>Locale
-                <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off" disabled>
+                <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off">
                 <!-- A datalist, not a fixed <select>: the presets (pseudolocales, RTL, common
                      tags) drop down for quick picking, but any valid BCP-47 tag the server
                      accepts can still be typed in. -->
@@ -145,11 +140,20 @@
                 </datalist>
               </label>
               <label>Font scale: <span id="cp-fontScale-val">default</span>
-                <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0" disabled>
+                <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0">
               </label>
             </div>
           </details>
+                  <details class="cp-group" data-cp-group="overlays">
+          <summary>Overlays</summary>
+          <div class="cp-group-body">
 
+            <div class="cp-overlays">
+  <div class="cp-overlays-head">Overlays (Live Compose)</div>
+  <label class="cp-live-row"><input class="cp-overlay" id="cp-touchOverlay" type="checkbox"> Show touches</label>
+</div>
+          </div>
+        </details>
 
 
 
@@ -161,7 +165,7 @@
            column rather than a child: the note is prose and reads better at `.cp-below`'s measure,
            while the bar has to run the full content width to stay on one line. -->
       <div class="cp-below">
-        <div class="cp-note">Pre-rendered snapshot — overrides (device size, locale, font scale, orientation) need the live server, not a published catalog. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
+
       </div>
             <div class="cp-export" aria-label="Export the current view">
         <span class="cp-export-head" id="cp-export-head">Export</span>
@@ -174,6 +178,16 @@
   <a id="cp-dl-png" class="cp-dl" download title="Save the PNG to a file">Download</a>
   <input id="cp-url-png" class="cp-url" type="text" readonly tabindex="-1"
     aria-label="PNG URL">
+</span>
+<span class="cp-link-group">
+  <span class="cp-link-kind">SVG</span>
+  <button type="button" class="cp-copyurl" data-copyurl-target="cp-url-svg"
+    title="Copy the SVG URL of the current view (overrides applied)">Copy link</button>
+  <button type="button" class="cp-copyimg" data-copyimg-target="cp-url-svg"
+    data-copyimg-ext=".svg" title="Copy the SVG itself to the clipboard">Copy SVG</button>
+  <a id="cp-dl-svg" class="cp-dl" download title="Save the SVG to a file">Download</a>
+  <input id="cp-url-svg" class="cp-url" type="text" readonly tabindex="-1"
+    aria-label="SVG URL">
 </span>
       </div>
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
@@ -208,7 +222,7 @@
     el.setAttribute("data-theme-active", "1");
   }
   try {
-    var stored = localStorage.getItem("cp-theme:meshcore-mobile");
+    var stored = localStorage.getItem("cp-theme:remote-m3");
     var declared = stored && stored.indexOf("theme:") === 0;
     var option = null;
     Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
@@ -237,11 +251,12 @@
   // Round-trip every unified choice, including `theme:<provider>`, to the catalog page.
   el.addEventListener("change", function () {
     el.setAttribute("data-theme-active", "1");
-    try { localStorage.setItem("cp-theme:meshcore-mobile", el.value); } catch (e) {}
+    try { localStorage.setItem("cp-theme:remote-m3", el.value); } catch (e) {}
     syncBg();
   });
   syncBg();
 })();</script>
+      <script src="/assets/serve/fixture/format-compare.js"></script>
       <script src="/assets/serve/fixture/viewer.js"></script>
       <script src="/assets/serve/fixture/backend-badge.js"></script>
         </main>
