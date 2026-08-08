@@ -510,9 +510,9 @@ class DiscoveryFunctionalTest {
           val group: String = "",
           val caption: String = "",
           val reference: String = "",
-          val referenceSet: String = "",
           val parallel: String = "",
           val perBreakpoint: Boolean = false,
+          val referenceSet: String = "",
         )
 
         @Retention(AnnotationRetention.BINARY)

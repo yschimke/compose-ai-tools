@@ -18,12 +18,12 @@ package ee.schimke.composeai.preview
  *   the one-line description shown under the sticker.
  * * [reference] defaults to empty. Override with a seed-kit handle (Figma node etc.) for the
  *   one-off import; the render stays authoritative.
- * * [referenceSet] defaults to empty. Override with the handle of the component *family*
- *   [reference] is one variant of — see below.
  * * [parallel] defaults to empty. Override with the component id of the counterpart in the sibling
  *   system named by the catalog's `compareWith` setting.
  * * [perBreakpoint] defaults to false — every render of the function folds onto ONE component. Set
  *   it when the component should be a card *per* breakpoint instead; see below.
+ * * [referenceSet] defaults to empty. Override with the handle of the component *family*
+ *   [reference] is one variant of — see below.
  *
  * ```kotlin
  * @file:CatalogGroup("Buttons")
@@ -99,9 +99,13 @@ annotation class CatalogComponent(
   val group: String = "",
   val caption: String = "",
   val reference: String = "",
-  val referenceSet: String = "",
   val parallel: String = "",
   val perBreakpoint: Boolean = false,
+  // Appended, NOT slotted in beside `reference` where it reads best: a parameter inserted ahead of
+  // an existing one silently re-points a positional call. A five-string `@CatalogComponent(...)`
+  // whose fifth argument meant `parallel` would still compile and quietly mean `referenceSet`.
+  // Declaration order is source API here; the pairing is documented above instead.
+  val referenceSet: String = "",
 )
 
 /**
