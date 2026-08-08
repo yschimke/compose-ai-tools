@@ -132,12 +132,15 @@ internal object CatalogLiveRouting {
    *
    * Deliberately a **narrow allow-list of the inert axes** rather than the inverse of what replay
    * honours. Getting this set too wide turns working renders into refusals, so an axis earns its
-   * place here only by being recomposition-only by construction:
-   * - `fontScale`, `localeTag`, `uiMode` — Robolectric `Configuration` qualifiers the composable
-   *   reads during composition. Verified inert against the published `remote-m3` catalog: each
-   *   returns the baked bytes under `generation=daemon`.
+   * place here only by having **no representation in the document at all** — not merely by looking
+   * inert against one catalog:
    * - `themeProvider` and the `knob.` named overrides — both are seeded *into* a composition
-   *   (`PreviewWrapperProvider` substitution, the named-override planner). There is no composition.
+   *   (`PreviewWrapperProvider` substitution, the named-override planner). There is no composition,
+   *   and neither has a document-side counterpart to fall back on.
+   * - `localeTag` — `stringResource()` resolved to a literal during capture and the text op holds
+   *   that literal. Unlike the font/theme pair below, `RemoteContext` exposes no locale among its
+   *   system variables (`ID_*` covers time, window, touch, sensors, density, API level, font size,
+   *   dates), so a document has no way to defer the choice to the host.
    * - **string** `rc.` named values. The rest of the Remote Compose facet does reach the replayed
    *   document through the player's `StateUpdater` — `rc.shaderColor` and `rc.progress` both move
    *   pixels on `remote-m3` — but a string seed does not land in the alpha player
@@ -146,19 +149,30 @@ internal object CatalogLiveRouting {
    *   anything this repo controls). Reported as un-applied until the player honours it; the day it
    *   does, this entry comes out and `IrReplayDroppedOverridesTest` is what notices.
    *
-   * The size / density / device family is **not** listed: those reach the player through the
+   * **`fontScale` and `uiMode` are deliberately absent, and that is the subtle one.** They look
+   * inert against `remote-m3` — every render there comes back byte-identical to the baked snapshot
+   * — but that is a property of *those documents*, not of replay. A document can defer both to the
+   * host and resolve them at paint time, with no recomposition:
+   * `RemoteComposeView.getDefaultTextSize()` is `14f * density * Configuration.fontScale`, and
+   * `onDraw` derives the paint theme from `Configuration.isNightModeActive()` whenever the player's
+   * own theme is `THEME_UNSPECIFIED`. Both read the live Android `Configuration`, which
+   * `RenderEngine` already sets per render spec — so the wiring is end-to-end today and a document
+   * that reads the host values genuinely responds. The `remote-m3` catalog simply baked absolute
+   * text sizes and concrete colours at capture. Naming them here would 409 an override the replay
+   * can honour, which is exactly the false-refusal failure this list's narrowness exists to
+   * prevent. Their silence on a constant-folded document is authored behaviour, not a server lie.
+   *
+   * The size / density / device family is **not** listed either: those reach the player through the
    * capture's `displayMetrics`, so a replay can answer them.
    *
-   * Runs [withoutBakedNoOps] first for the same reason [droppedOverrideNames] does — a `uiMode`
-   * restating the variant's own baked theme is satisfied, not dropped, so naming it would refuse a
-   * request the replay answers truly.
+   * Still runs [withoutBakedNoOps] first, for the same reason [droppedOverrideNames] does. It is a
+   * no-op for the axes that remain — none of them is ever satisfied by baked pixels — but it keeps
+   * the two predicates honest about the same baseline if this list ever grows.
    */
   fun irReplayDroppedOverrideNames(previewId: String, o: PreviewOverrides): List<String> {
     val dropped = withoutBakedNoOps(previewId, o)
     val names = mutableListOf<String>()
-    if (dropped.fontScale != null) names += "fontScale"
     if (dropped.localeTag != null) names += "localeTag"
-    if (dropped.uiMode != null) names += "uiMode"
     if (dropped.themeProvider != null) names += "themeProvider"
     dropped.namedOverrides?.keys?.sorted()?.forEach { names += "${ServeOverrides.KNOB_PREFIX}$it" }
     dropped.remoteCompose

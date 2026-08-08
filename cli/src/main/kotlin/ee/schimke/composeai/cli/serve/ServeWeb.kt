@@ -5213,6 +5213,23 @@ $rows
      */
     hasRemoteComposeDoc: Boolean = false,
     /**
+     * Whether a server render of this preview **replays a captured document** rather than
+     * re-running the composable — the same host question ([ServeHost.hasRemoteComposeDoc])
+     * `ServeHttpServer.droppedOverridesFor` asks before reporting an override un-applied. Emitted
+     * as `data-ir-replay` so the viewer can grey out the controls the server would answer with a
+     * 409, instead of offering a slider that only produces an error.
+     *
+     * Deliberately its own flag rather than reusing `data-has-rc-doc`, even though the two coincide
+     * on every host today: that one means "there are `.rc` bytes for the browser canvas lane", this
+     * one means "the daemon cannot recompose this preview". Keeping them separate is what stops a
+     * future host that serves a document for a class-backed preview from greying live controls.
+     *
+     * Note this covers a *narrow* set — see the `irReplay` block in `viewer.js`. Day/Night and font
+     * scale stay live, because a document can defer both to the host and resolve them at paint
+     * time.
+     */
+    irReplay: Boolean = false,
+    /**
      * The Remote Compose render backends the viewer may offer for this preview as a per-preview
      * **backend selector** — the [RcPlayerBackend.wire] ids the host reports via
      * [ServeHost.enabledRcPlayersFor]. Non-empty for a Remote Compose preview: the viewer renders
@@ -5403,6 +5420,7 @@ $rows
     // confetti-wear live render.
     val wearAlwaysDark = SystemDisplay.isDarkFirst(basePath.trim('/').ifBlank { sessionId ?: "" })
     val alwaysDarkAttr = if (wearAlwaysDark) " data-always-dark=\"1\"" else ""
+    val irReplayAttr = if (irReplay) " data-ir-replay=\"1\"" else ""
     // The baked fallback shown before any override is chosen. The unified Theme selector displays
     // this choice without sending a redundant uiMode override on first load.
     val viewerTheme = previewTheme(preview, isDarkFirstSystem(basePath, sessionId, declaredSurface))
@@ -6242,7 +6260,7 @@ $rows
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
       $historyInlineHtml
-      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
+      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
