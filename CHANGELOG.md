@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.19.49](https://github.com/yschimke/compose-ai-tools/compare/v0.19.48...v0.19.49) (2026-08-08)
+
+
+### Features
+
+* **preview-data-api:** consume design-parity's page-backdrop manifest ([#3500](https://github.com/yschimke/compose-ai-tools/issues/3500)) ([3946b7e](https://github.com/yschimke/compose-ai-tools/commit/3946b7e7f5dad8b523c5507ecfee0ce470dc5653))
+* **renderer-desktop:** drive @ScrollingPreview(END) on CMP ([#3513](https://github.com/yschimke/compose-ai-tools/issues/3513)) ([06ec7fb](https://github.com/yschimke/compose-ai-tools/commit/06ec7fb4fa16bcacc75edac071f50e947a755754))
+
+
+### Bug Fixes
+
+* **daemon:** honour @ScrollingPreview(END) in the static render ([#3499](https://github.com/yschimke/compose-ai-tools/issues/3499)) ([501bd3f](https://github.com/yschimke/compose-ai-tools/commit/501bd3f690c77a56c3443979d665be74ec3f0810))
+* **daemon:** replay IR-backed previews in live interactive sessions ([#3510](https://github.com/yschimke/compose-ai-tools/issues/3510)) ([442e1af](https://github.com/yschimke/compose-ai-tools/commit/442e1aff7c07fafe098c7e72f8bbccffc1bf4b4a))
+* **figma-svg:** crop a clipping draw at the region it draws ([#3505](https://github.com/yschimke/compose-ai-tools/issues/3505)) ([962fe1b](https://github.com/yschimke/compose-ai-tools/commit/962fe1bec6c9cbc69637e4a0d8bdd92f5a43819e))
+* **figma-svg:** place a curved run at its drawn geometry ([#3509](https://github.com/yschimke/compose-ai-tools/issues/3509)) ([0c2d8cd](https://github.com/yschimke/compose-ai-tools/commit/0c2d8cd729b561a2ebdb8e88ab76902cb154ed3c))
+* **preview-data-api:** tolerate a page-backdrop manifest without ref ([#3511](https://github.com/yschimke/compose-ai-tools/issues/3511)) ([2fe39e2](https://github.com/yschimke/compose-ai-tools/commit/2fe39e24b0898e8f9be3e8e1a2f872c2480ee719))
+* **rc-player:** instance font axes on the variable file in the view lane ([#3503](https://github.com/yschimke/compose-ai-tools/issues/3503)) ([64d54f3](https://github.com/yschimke/compose-ai-tools/commit/64d54f3a44471400117621750c8f6affc5db31be))
+* **renderer:** mirror the capture for real RTL locales, not just ar-XB ([#3502](https://github.com/yschimke/compose-ai-tools/issues/3502)) ([820744b](https://github.com/yschimke/compose-ai-tools/commit/820744bf922323b1099a2a4469a1282858f825ae))
+* **serve:** make the render placeholder fixture font-free and host-reproducible ([#3501](https://github.com/yschimke/compose-ai-tools/issues/3501)) ([f372435](https://github.com/yschimke/compose-ai-tools/commit/f3724353e94f745311f341a1f853eeec3e582823))
+* **serve:** register the vendored typefaces for the browser Remote Compose lane ([#3507](https://github.com/yschimke/compose-ai-tools/issues/3507)) ([a5b3c17](https://github.com/yschimke/compose-ai-tools/commit/a5b3c17a7417f67cbc1d66df115f61544864f654))
+* **serve:** stop reporting overrides an IR replay never applied as applied ([#3512](https://github.com/yschimke/compose-ai-tools/issues/3512)) ([d9f9fe1](https://github.com/yschimke/compose-ai-tools/commit/d9f9fe1163920e872573180f3c5210b35e9c65f6))
+
+
+### Performance Improvements
+
+* **rc-compare:** hand the CMP/Wasm player each document in place, and capture on convergence ([#3508](https://github.com/yschimke/compose-ai-tools/issues/3508)) ([f6cb4f9](https://github.com/yschimke/compose-ai-tools/commit/f6cb4f9c1efd99b38055ee282d184a5ae1f59709))
+
 ## [0.19.48](https://github.com/yschimke/compose-ai-tools/compare/v0.19.47...v0.19.48) (2026-08-08)
 
 
