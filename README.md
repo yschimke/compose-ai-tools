@@ -501,6 +501,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-states/dark](renders/serve-viewer-states.dark.png) |
 | `light` | ![serve-viewer-states/light](renders/serve-viewer-states.light.png) |
 
+## serve-viewer-theme-overflow
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-theme-overflow/dark](renders/serve-viewer-theme-overflow.dark.png) |
+| `light` | ![serve-viewer-theme-overflow/light](renders/serve-viewer-theme-overflow.light.png) |
+
 ## serve-viewer-themes
 
 | Theme | Capture |
