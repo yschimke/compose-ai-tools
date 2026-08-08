@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "2b8effdf5d1d1c0b7f7860c4c5baab271ec6657a",
+    "generatedFrom": "761185a3ed8763c1e6af63353d9479b960a271c0",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
@@ -4373,6 +4373,13 @@
             "path": "renders/samples:cmp/ScrollingListPreview_Scrolling_List_SCROLL_long.png",
             "versions": [
                 {
+                    "blob": "e1eac9b69603a1d23dc71e24a18ce238a62be593",
+                    "commit": "761185a3ed8763c1e6af63353d9479b960a271c0",
+                    "date": "2026-08-08T15:50:07Z",
+                    "sourceSha": "b7535e57",
+                    "commits": 1
+                },
+                {
                     "blob": "6900555eb56ad65f5eb6b98ba9c740f7f783fae5",
                     "commit": "4a9fa12ae7eca7f69bf5e4158c8bce4e9beb5d5c",
                     "date": "2026-05-26T20:32:52Z",
@@ -4380,13 +4387,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List#1": {
             "path": "renders/samples:cmp/ScrollingListPreview_Scrolling_List_SCROLL_gif.gif",
             "versions": [
+                {
+                    "blob": "63445cf5ce6f79a0d3d94f3486b9912b4a438e00",
+                    "commit": "761185a3ed8763c1e6af63353d9479b960a271c0",
+                    "date": "2026-08-08T15:50:07Z",
+                    "sourceSha": "b7535e57",
+                    "commits": 1
+                },
                 {
                     "blob": "986e78ed5547110305b8e05df707f5233476b92b",
                     "commit": "4a9fa12ae7eca7f69bf5e4158c8bce4e9beb5d5c",
@@ -4395,7 +4409,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6416,6 +6430,36 @@
                 }
             ],
             "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/wearthemecatalog__Google_Sans_Flex": {
+            "path": "renders/samples:design-catalog-remote-m3/wearthemecatalog__Google_Sans_Flex.png",
+            "versions": [
+                {
+                    "blob": "ce05008bd7d5dbca14aef2d82b744f3671d27ac8",
+                    "commit": "761185a3ed8763c1e6af63353d9479b960a271c0",
+                    "date": "2026-08-08T15:50:07Z",
+                    "sourceSha": "b7535e57",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/wearthemecatalog__Roboto_Flex": {
+            "path": "renders/samples:design-catalog-remote-m3/wearthemecatalog__Roboto_Flex.png",
+            "versions": [
+                {
+                    "blob": "ce05008bd7d5dbca14aef2d82b744f3671d27ac8",
+                    "commit": "761185a3ed8763c1e6af63353d9479b960a271c0",
+                    "date": "2026-08-08T15:50:07Z",
+                    "sourceSha": "b7535e57",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
             "unstable": false,
             "flapCount": 0
         },
