@@ -1,6 +1,5 @@
 package ee.schimke.composeai.renderer
 
-import android.os.SystemClock
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -29,20 +28,29 @@ import java.time.ZoneId
  *
  * ## How it is fixed
  *
- * Two halves, and **both are load-bearing** — exactly like the coil pair in
- * [ShadowAsyncImagePainter]:
- * 1. [pin] moves Robolectric's emulated clock to a fixed instant with
- *    `SystemClock.setCurrentTimeMillis`, so `SystemClock.uptimeMillis()` — and therefore
- *    `ShadowSystem.currentTimeMillis()`, which is what an instrumented `System.currentTimeMillis()`
- *    resolves to — reports that instant instead of 100ms-past-the-epoch.
- * 2. The generated `robolectric.properties` (and the daemon's `SandboxHoldingRunner`) instrument
- *    `androidx.wear.compose.materialcore.ResourcesKt`, the one class holding the
- *    `currentTimeMillis()` that both Wear Material and Wear Material3 `TimeText` read. Dropping
- *    that line silently reverts Wear clocks to the host's wall clock.
+ * [ShadowWearTimeSource] replaces the one function Wear reads the clock through and returns
+ * [currentTimeMillis]. Two halves, and **both are load-bearing** — exactly like the coil pair in
+ * [ShadowAsyncImagePainter]: the shadow has to be registered (generated `robolectric.properties`
+ * for the Gradle path, `SandboxHoldingRunner` for the daemon), and its target class has to be
+ * instrumented, because Robolectric cannot shadow a class it did not rewrite.
  *
- * Pinning applies to **every** preview kind, not just activities: a composable preview reading the
- * clock through an instrumented path had the same drift, and pinning both lanes is what makes an
- * activity hero and a composable preview of the same screen agree on the time.
+ * ### Why not move `SystemClock` instead
+ *
+ * `SystemClock.setCurrentTimeMillis(fixed)` would make every *instrumented* `currentTimeMillis()`
+ * read the pinned value in one stroke, which looks tidier. It is worse in four concrete ways, and
+ * they're the reason this is a shadow:
+ * - Robolectric's paused clock **only moves forward**, so a pre-1970 or otherwise-earlier instant
+ *   is silently ignored rather than applied.
+ * - Setting it is a ~54-year jump from 100ms-past-the-epoch, which makes every already-scheduled
+ *   delayed message overdue. Anything a consumer `Application.onCreate` posted (and with
+ *   `useConsumerApplication = true` that runs before the test method) fires at the next idle.
+ * - It leaves `SystemClock.uptimeMillis()` reporting 54 years of uptime.
+ * - It has to happen *before* anything else in every render entry point, which is an ordering
+ *   contract that quietly breaks the moment a lane early-returns (the daemon's scroll and
+ *   `figma-svg-long` modes do exactly that).
+ *
+ * A shadow has none of those: it is read at call time, it holds no state, and it cannot be reached
+ * out of order.
  *
  * ## What it cannot reach
  *
@@ -50,6 +58,9 @@ import java.time.ZoneId
  * `java.time.*.now()` read the host clock from inside the JDK where no rewrite is possible. A
  * preview that formats `LocalTime.now()` itself still drifts; the fix for that one is the authoring
  * seam (hoist the clock, or branch on `LocalInspectionMode`), not the renderer.
+ *
+ * The Desktop / CMP lane has no Robolectric and therefore no interception point at all, so this is
+ * an Android-only guarantee — see [ee.schimke.composeai.plugin.PreviewExtension.fixedTime].
  *
  * ## Configuring it
  *
@@ -60,7 +71,8 @@ import java.time.ZoneId
  *   Wear/Remote design catalogs already paint.
  * - an ISO-8601 local date-time (`2024-01-01T10:10`) — when the date matters too.
  * - a bare epoch-millis number.
- * - `off` (also `false` / `none`) — don't pin; renders see the host wall clock as they did before.
+ * - `off` (also `false` / `none`) — don't pin; [currentTimeMillis] hands back the host wall clock
+ *   and renders drift exactly as they did before this existed.
  */
 object PreviewClock {
 
@@ -85,28 +97,37 @@ object PreviewClock {
   private val OFF_VALUES = setOf("off", "false", "none", "disabled")
 
   /**
-   * Pins Robolectric's emulated clock for the current render.
-   *
-   * No-op when the pin is switched off. Safe to call repeatedly: Robolectric's paused clock only
-   * moves forward, so re-pinning to the same instant is a no-op and re-pinning after a held daemon
-   * session has advanced the clock leaves the later value in place rather than failing.
-   *
-   * Call this **before** the `ComposeTestRule` / activity is created. `setCurrentTimeMillis` informs
-   * the clock listeners of the whole jump from 100ms-past-the-epoch, which at that point means an
-   * idle main looper and no scheduled vsync — call it later and that jump would run every message
-   * the composition had queued.
+   * Memoized resolution, keyed by the raw property value so a test (or a daemon whose launcher
+   * changed the property between renders) re-resolves instead of serving a stale instant. `resolve`
+   * is cheap, but this runs inside composition on every `TimeText` recomposition and every
+   * `ACTION_TIME_TICK`.
    */
-  fun pin() {
-    val millis = pinnedTimeMillis() ?: return
-    SystemClock.setCurrentTimeMillis(millis)
-  }
+  @Volatile private var cache: Pair<String?, Long?>? = null
+
+  /**
+   * The wall clock a render should see: the pinned instant, or the host's real clock when pinning
+   * is switched off. This is what [ShadowWearTimeSource] hands back in place of
+   * `System.currentTimeMillis()`.
+   */
+  @JvmStatic
+  fun currentTimeMillis(): Long = pinnedTimeMillis() ?: System.currentTimeMillis()
 
   /**
    * Epoch millis this render pins to, or `null` when pinning is switched off. Resolved from
    * [PROPERTY] against the JVM's default zone.
    */
-  fun pinnedTimeMillis(): Long? =
-    resolve(System.getProperty(PROPERTY), ZoneId.systemDefault())
+  fun pinnedTimeMillis(): Long? {
+    val raw = System.getProperty(PROPERTY)
+    cache?.let { (cachedRaw, cachedMillis) ->
+      if (cachedRaw == raw) return cachedMillis
+    }
+    return resolve(raw, ZoneId.systemDefault()).also { cache = raw to it }
+  }
+
+  /** Drops the memoized resolution. For tests that move [PROPERTY] around within one JVM. */
+  internal fun clearCache() {
+    cache = null
+  }
 
   /**
    * Pure resolution of [raw] against [zone] — `null` means "don't pin".

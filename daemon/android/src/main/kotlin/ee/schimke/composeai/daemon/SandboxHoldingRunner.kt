@@ -188,6 +188,14 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
     if (isCoil2Available(javaClass.classLoader)) {
       shadows += ee.schimke.composeai.renderer.ShadowAsyncImagePainter::class.java
     }
+    // Wear clock shadow — same shape and same gating rationale as the coil one above, and pairs with
+    // the `addInstrumentedPackage(WEAR_MATERIAL_CORE_RESOURCES)` call in `createClassLoaderConfig`;
+    // both are needed for it to take effect. Without it a daemon render of a clock-bearing Wear
+    // screen paints the host wall clock and disagrees with the batch render's fixed `10:10`
+    // (issue #3239).
+    if (isWearComposeMaterialCoreAvailable(javaClass.classLoader)) {
+      shadows += ee.schimke.composeai.renderer.ShadowWearTimeSource::class.java
+    }
     return shadows.toTypedArray()
   }
 }

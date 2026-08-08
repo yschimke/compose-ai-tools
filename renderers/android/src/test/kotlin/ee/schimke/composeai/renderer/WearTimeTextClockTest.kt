@@ -5,7 +5,9 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.timeTextCurvedText
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -13,25 +15,36 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The end-to-end half of issue #3239: with the clock pinned AND
+ * The end-to-end half of issue #3239: with [ShadowWearTimeSource] registered AND
  * `androidx.wear.compose.materialcore.ResourcesKt` instrumented, Wear's default `TimeText` paints
- * [PreviewClock.DEFAULT_TIME] instead of the host's wall clock.
+ * [PreviewClock.DEFAULT_TIME] instead of the host's wall clock — and `fixedTime=off` hands the host
+ * clock back, rather than substituting some other fixed value.
  *
- * Both halves are asserted, because either one alone is silently useless — the pin is invisible to
- * Wear without the instrumentation, and the instrumentation alone just moves `TimeText` onto
- * Robolectric's un-pinned clock, which sits 100ms past the epoch. `instrumentedPackages` is spelled
- * out on `@Config` to mirror what `GenerateRobolectricPropertiesTask` writes into the generated
- * `robolectric.properties`; `GenerateRobolectricPropertiesTaskTest` pins that the two agree.
+ * `shadows` / `instrumentedPackages` are spelled out on `@Config` to mirror what
+ * `GenerateRobolectricPropertiesTask` writes into the generated `robolectric.properties`;
+ * `GenerateRobolectricPropertiesTaskTest` pins that the two agree. Both are load-bearing —
+ * Robolectric can't shadow a class it didn't rewrite — which is why the instrumentation is asserted
+ * separately below.
  *
  * Robolectric matches `instrumentedPackages` entries as class-name prefixes, which is why naming a
- * *class* here works, and is why the whole of `androidx.wear.compose.materialcore` does not have to
- * be rewritten to reach the one function that reads the clock.
+ * *class* works, and is why the whole of `androidx.wear.compose.materialcore` does not have to be
+ * rewritten to reach the one function that reads the clock.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], instrumentedPackages = ["androidx.wear.compose.materialcore.ResourcesKt"])
+@Config(
+  sdk = [34],
+  instrumentedPackages = ["androidx.wear.compose.materialcore.ResourcesKt"],
+  shadows = [ShadowWearTimeSource::class],
+)
 class WearTimeTextClockTest {
 
   @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+
+  @After
+  fun restoreGlobals() {
+    System.clearProperty(PreviewClock.PROPERTY)
+    PreviewClock.clearCache()
+  }
 
   /**
    * Asserts the string `TimeText`'s content lambda receives — that is the value `DefaultTimeSource`
@@ -40,9 +53,49 @@ class WearTimeTextClockTest {
    */
   @Test
   fun `default TimeText paints the pinned clock`() {
-    PreviewClock.pin()
-    var painted: String? = null
+    assertEquals(EXPECTED, paintedTime())
+  }
 
+  /** The configured instant, not just *a* fixed one — proves the property is actually read. */
+  @Test
+  fun `an explicit fixedTime is what TimeText paints`() {
+    System.setProperty(PreviewClock.PROPERTY, "09:41")
+    PreviewClock.clearCache()
+
+    assertEquals("9:41", paintedTime())
+  }
+
+  /**
+   * The escape hatch has to mean what it says. Shadowing rather than moving Robolectric's
+   * `SystemClock` is what makes this possible: with the clock pinned by mutating `SystemClock`,
+   * `off` would still have painted the emulated clock's epoch-era time, because the instrumentation
+   * is unconditional.
+   */
+  @Test
+  fun `off hands back the host wall clock rather than a different fixed time`() {
+    System.setProperty(PreviewClock.PROPERTY, "off")
+    PreviewClock.clearCache()
+
+    val before = System.currentTimeMillis()
+    val wear = wearCurrentTimeMillis()
+
+    assertTrue(
+      "expected the host clock (~$before), got $wear",
+      wear >= before && wear - before < 60_000,
+    )
+  }
+
+  /**
+   * The instrumentation half on its own. Without the `instrumentedPackages` entry Robolectric never
+   * rewrites the class, the shadow is inert, and this reads the host clock — failing by ~55 years.
+   */
+  @Test
+  fun `the wear clock class is instrumented, so the shadow is reachable`() {
+    assertEquals(PreviewClock.pinnedTimeMillis()!!, wearCurrentTimeMillis())
+  }
+
+  private fun paintedTime(): String? {
+    var painted: String? = null
     rule.setContent {
       MaterialTheme {
         TimeText { time ->
@@ -52,22 +105,7 @@ class WearTimeTextClockTest {
       }
     }
     rule.waitForIdle()
-
-    assertEquals(EXPECTED, painted)
-  }
-
-  /**
-   * The instrumentation half on its own: an un-pinned render already reads Robolectric's emulated
-   * clock rather than the host's, which is only true because the class was rewritten. Without the
-   * `instrumentedPackages` entry this reads the wall clock and the assertion fails by ~55 years.
-   */
-  @Test
-  fun `wear reads the emulated clock, not the host wall clock`() {
-    assertEquals(android.os.SystemClock.uptimeMillis(), wearCurrentTimeMillis())
-
-    PreviewClock.pin()
-
-    assertEquals(PreviewClock.pinnedTimeMillis()!!, wearCurrentTimeMillis())
+    return painted
   }
 
   /**

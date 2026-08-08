@@ -62,6 +62,14 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    * Times are interpreted in the render JVM's default zone, so the *rendered string* — not the
    * underlying instant — is what stays identical between a laptop and CI.
    *
+   * **Android only, and only where the render can intercept the clock.** The guarantee is
+   * implemented by shadowing, under Robolectric, the one function Wear's `TimeText` reads
+   * (`androidx.wear.compose.materialcore.ResourcesKt.currentTimeMillis`). The Desktop / CMP lane
+   * has no Robolectric and so no interception point at all — this value is not forwarded there
+   * rather than forwarded and silently ignored. On Android it likewise cannot reach a preview that
+   * reads the clock through `java.time.*.now()` or `Calendar.getInstance()`, because `java.` is on
+   * Robolectric's do-not-acquire list; hoist the clock out of such a composable instead.
+   *
    * Override for a single run with `-PcomposePreview.fixedTime=09:41` (or
    * `-Dcomposeai.render.fixedTime=…`), which takes precedence over this value.
    */

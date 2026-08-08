@@ -48,14 +48,17 @@ class GenerateRobolectricPropertiesTaskTest {
   }
 
   @Test
-  fun `wear's clock-reading class is instrumented so the pinned preview clock reaches TimeText`() {
-    // Robolectric only rewrites `System.currentTimeMillis()` inside instrumented classes, and
-    // `androidx.wear.compose.materialcore.ResourcesKt` is where both Wear Material and Material3
-    // `TimeText` read it. Without this line `PreviewClock`'s pin is invisible to Wear and an
+  fun `the wear clock shadow is registered with its target class instrumented`() {
+    // Both lines are load-bearing together, exactly like the coil pair above: Robolectric can't
+    // shadow a class it didn't rewrite, and `androidx.wear.compose.materialcore.ResourcesKt` —
+    // where
+    // both Wear Material and Material3 `TimeText` read the clock — isn't instrumented by default.
+    // Dropping either one silently reverts Wear previews to painting the host wall clock, so an
     // activity hero showing the time diffs on every run (issue #3239). `WearTimeTextClockTest`
-    // asserts the same entry end-to-end; keep the two spellings identical.
+    // spells the same two entries onto its `@Config`; keep the spellings identical.
     listOf(false, true).forEach { useConsumerApplication ->
       val body = generate(useConsumerApplication, override = null, compileSdk = 36)
+      assertThat(body).contains("ee.schimke.composeai.renderer.ShadowWearTimeSource")
       assertThat(body).contains("androidx.wear.compose.materialcore.ResourcesKt")
     }
   }
