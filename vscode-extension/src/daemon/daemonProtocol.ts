@@ -1150,6 +1150,20 @@ export interface InteractiveInputParams {
     scrollDeltaY?: number;
     /** For `keyDown` / `keyUp`. */
     keyCode?: string;
+    /**
+     * The character a `keyDown` produced — the browser's `KeyboardEvent.key` when it is a single
+     * printable character. `keyCode` names the physical key and cannot type on its own: the
+     * desktop backend needs a code point to insert, and the keycode table is case-blind and has
+     * no entry for keys outside a US layout (issue #3491). Also sent on the matching `keyUp`, so
+     * a backend that suppresses a press over a focused field suppresses its release too.
+     */
+    text?: string;
+    /**
+     * DOM `PointerEvent.pointerType` — `"mouse"` / `"touch"` / `"pen"`. Absent means touch.
+     * Compose only drags out a text selection for a mouse press-drag, so a real mouse forwarded
+     * as touch can never select (issue #3491).
+     */
+    pointerType?: string;
 }
 
 export type RecordingFormat = "apng" | "mp4" | "webm";
@@ -1191,6 +1205,10 @@ export interface RecordingInputParams {
     pointerId?: number;
     scrollDeltaY?: number;
     keyCode?: string;
+    /** See `InteractiveInputParams.text` — a recorded keystroke types the same way a live one does. */
+    text?: string;
+    /** See `InteractiveInputParams.pointerType`. */
+    pointerType?: string;
 }
 
 export interface RecordingScriptEvent {

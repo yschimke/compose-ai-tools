@@ -8170,6 +8170,8 @@ async function forwardInteractiveInput(
         pixelY: input.pixelY,
         scrollDeltaY: input.scrollDeltaY,
         keyCode: input.keyCode,
+        text: input.text,
+        pointerType: input.pointerType,
     });
 }
 
@@ -8202,6 +8204,8 @@ async function forwardRecordingInput(
         pixelY: input.pixelY,
         scrollDeltaY: input.scrollDeltaY,
         keyCode: input.keyCode,
+        text: input.text,
+        pointerType: input.pointerType,
     });
 }
 

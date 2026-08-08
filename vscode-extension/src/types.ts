@@ -1082,6 +1082,14 @@ export type WebviewToExtension =
           imageHeight?: number;
           scrollDeltaY?: number;
           keyCode?: string;
+          /**
+           * The character a printable `keyDown` / `keyUp` produced. `keyCode` alone identifies a
+           * physical key and cannot type — the caret and Backspace work from it, a character does
+           * not (issue #3491).
+           */
+          text?: string;
+          /** DOM `PointerEvent.pointerType`; absent means touch. Mouse is what selects text. */
+          pointerType?: string;
       }
     /**
      * D2 — focus-mode toggle for the local a11y overlay. When `enabled`, the
