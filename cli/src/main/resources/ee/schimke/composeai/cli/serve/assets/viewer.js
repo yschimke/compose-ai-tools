@@ -1240,9 +1240,16 @@
     ensureRcScript(function (ok) {
       if (!ok || !window.RC) { showModeError("The Remote Compose player failed to load."); return; }
       if (!rcActive()) return; // toggled away while the script loaded
-      fetch(rcDocUrl())
-        .then(function (r) { if (!r.ok) throw new Error("doc " + r.status); return r.arrayBuffer(); })
-        .then(function (buf) {
+      // The page registers the vendored faces the player's generic-family stacks name
+      // (`/rc-fonts/fonts.css`), but `@font-face` is lazy and canvas neither triggers a load nor
+      // repaints when one finishes — so an unawaited first paint draws this document in the
+      // *viewer's* own `sans-serif`, at different metrics, with no Medium weight. Load the faces
+      // alongside the fetch: they're jar-local and cached, so this costs a frame at most.
+      var rcFonts = window.cpRcFonts ? window.cpRcFonts.ready() : Promise.resolve();
+      Promise.all([rcFonts, fetch(rcDocUrl())
+        .then(function (r) { if (!r.ok) throw new Error("doc " + r.status); return r.arrayBuffer(); })])
+        .then(function (settled) {
+          var buf = settled[1];
           if (!rcActive()) return null;
           // Size the canvas to the preview's real pixel dimensions BEFORE loading: the player
           // derives the document viewport from the canvas's current size at load time, and a

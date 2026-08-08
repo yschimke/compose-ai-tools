@@ -5,6 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>watchface.rc — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <link rel="stylesheet" href="/rc-fonts/fonts.css">
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
@@ -46,6 +47,7 @@
           <a href="/d/Tz3l9WcAq0Xj5RmB7dPuKw/raw" download="watchface.rc">Download the document</a> ·
           <a href="/docs">Share another</a>
         </p>
+        <script src="/assets/serve/fixture/rc-fonts.js"></script>
         <script>(function () {
   var raw = "/d/Tz3l9WcAq0Xj5RmB7dPuKw/raw";
   var mount = document.getElementById("cp-doc-mount");
@@ -56,7 +58,9 @@
   s.src = "/doc-player/remotecompose/bundle.js";
   s.onerror = function () { status.textContent = "The player failed to load."; };
   s.onload = function () {
-      fetch(raw).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+      var fonts = window.cpRcFonts ? window.cpRcFonts.ready() : Promise.resolve();
+Promise.all([fonts, fetch(raw).then(function (r) { return r.arrayBuffer(); })]).then(function (r) {
+  var buf = r[1];
   var player = new window.RC.RcdPlayer(mount);
   return Promise.resolve(player.loadFromArrayBuffer(buf)).then(function () {
     if (player.repaint) player.repaint();

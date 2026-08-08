@@ -1110,6 +1110,48 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `the rc typefaces are served as a stylesheet plus the faces it declares`() {
+    // Without these the client-side lane paints a document's generic families in whatever the
+    // *visitor's* machine calls `sans-serif` — different outlines, ~4% different line metrics, and
+    // no
+    // Medium weight — while the PNG beside it used the vendored files (issue #3480).
+    val cssReq = Request.Builder().url("http://127.0.0.1:${server.port}/rc-fonts/fonts.css").build()
+    val css =
+      client.newCall(cssReq).execute().use { r ->
+        assertEquals(200, r.code)
+        assertEquals("text/css", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
+        r.body?.string() ?: ""
+      }
+    for (face in ServeRcFonts.FACES) {
+      assertTrue(css.contains("font-family:\"${face.family}\""), "declares ${face.family}: $css")
+      assertTrue(css.contains("/rc-fonts/${face.file}"), "points at ${face.file}: $css")
+    }
+
+    val face = ServeRcFonts.FACES.first()
+    val etag: String
+    val faceReq =
+      Request.Builder().url("http://127.0.0.1:${server.port}/rc-fonts/${face.file}").build()
+    client.newCall(faceReq).execute().use { r ->
+      assertEquals(200, r.code)
+      assertEquals("font/ttf", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
+      assertTrue((r.body?.contentLength() ?: 0) > 1024, "the face carries its bytes")
+      etag = r.header("ETag") ?: ""
+      assertTrue(etag.isNotEmpty(), "carries a content-hash ETag")
+    }
+    // A repeat visitor revalidates instead of re-downloading a few hundred KB per face.
+    val conditional =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}/rc-fonts/${face.file}")
+        .header("If-None-Match", etag)
+        .build()
+    client.newCall(conditional).execute().use { r -> assertEquals(304, r.code) }
+
+    // The route serves a declared set, not an arbitrary classpath path.
+    val (undeclared, _) = get("/rc-fonts/Roboto-Black.ttf")
+    assertEquals(404, undeclared)
+  }
+
+  @Test
   fun `serve web assets are versioned and conditionally cacheable`() {
     val asset = ServeWebAssets.load("viewer.js") ?: error("viewer asset missing")
     val versionedPath = "/assets/serve/${asset.version}/viewer.js"

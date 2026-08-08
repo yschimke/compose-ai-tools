@@ -5,6 +5,11 @@
 # `--catalogs` system live-rendered from its carried liveBundle, so every render
 # lane (PNG / SVG / Live WS) exercises a real Compose render daemon.
 #
+# `--accept-docs` is on too, so the suite can drive the **client-side** Remote Compose
+# lane from a `.rc` file it uploads: that lane needs no catalog `ir/` sidecar, so its
+# typeface-registration check runs on every boot rather than skipping wherever the
+# served catalog happens to carry no documents.
+#
 # IMPORTANT: serve must run MODULE-LESS (hosting only the fetched --catalogs). It
 # decides that by NOT being inside a Gradle project — so this launches it from a
 # scratch dir OUTSIDE the repo. Run from the repo root, serve instead tries to
@@ -44,7 +49,7 @@ echo "serve-lanes: booting daemon-backed serve ($SYSTEM) on $BASE (module-less, 
 cd "$WORK"
 LIBGL_ALWAYS_SOFTWARE=1 nohup xvfb-run -a "$CLI" serve \
   --catalogs "$SYSTEM" --public --host 127.0.0.1 --port "$PORT" \
-  --trust-store "$TRUST" --allow-render-trusted --live-seats 1 \
+  --trust-store "$TRUST" --allow-render-trusted --live-seats 1 --accept-docs \
   > "$LOG" 2>&1 &
 echo $! > "$PID_FILE"
 

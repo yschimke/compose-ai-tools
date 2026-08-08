@@ -11,6 +11,12 @@ const PAINT_CONTEXT = path.resolve(
   HERE,
   "../../third_party/remote-compose-player/src/web/CanvasPaintContext.ts",
 );
+/** The served viewer's own copy of the table, and the build wiring that gives it the files. */
+const SERVE_RC_FONTS = path.resolve(
+  HERE,
+  "../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeRcFonts.kt",
+);
+const CLI_BUILD = path.resolve(HERE, "../../cli/build.gradle.kts");
 
 test("every declared face has a vendored file", () => {
   for (const { file } of FONT_FACES) {
@@ -69,6 +75,40 @@ test("each family's weight ranges are contiguous and cover every usable weight",
         `${family} has a gap or overlap around weight ${ranges[i - 1][1]}`,
       );
     }
+  }
+});
+
+// The served viewer registers the same faces for its own client-side lanes, from its own copy of the
+// table (`ServeRcFonts.FACES`, in Kotlin — it has no way to import this module). Two tables, one
+// meaning: if they drift, the offline parity numbers stop describing what a visitor's browser draws,
+// and the disagreement is invisible in both outputs. So parse the Kotlin one and compare.
+test("the serve viewer's face table matches this one", () => {
+  const src = fs.readFileSync(SERVE_RC_FONTS, "utf8");
+  const faces = [...src.matchAll(/Face\("([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\)/g)].map((m) => ({
+    family: m[1],
+    range: m[2],
+    file: m[3],
+  }));
+  assert.ok(faces.length > 0, "parsed no faces out of ServeRcFonts.kt — did FACES move?");
+  assert.deepEqual(
+    faces,
+    FONT_FACES.map(({ family, range, file }) => ({ family, range, file })),
+    "ServeRcFonts.FACES and FONT_FACES disagree — the served viewer would register different faces " +
+      "from the ones rc-compare measures parity against",
+  );
+});
+
+// The faces reach the CLI jar by a `processResources` copy from DEFAULT_FONTS_DIR — the same files
+// this module inlines — rather than a second committed copy. A face the copy doesn't stage is served
+// as nothing at all (`ServeRcFonts.css` omits it) and the lane falls back for that family only, which
+// is the quietest possible half-fix.
+test("the CLI stages every declared face into its jar", () => {
+  const build = fs.readFileSync(CLI_BUILD, "utf8");
+  const stage = build.slice(build.indexOf("val stageRcFontResources"));
+  const block = stage.slice(0, stage.indexOf("sourceSets"));
+  assert.ok(block.includes(path.basename(DEFAULT_FONTS_DIR)), "the copy must read the vendored dir");
+  for (const { file } of FONT_FACES) {
+    assert.ok(block.includes(`"${file}"`), `${file} is declared but never staged into the CLI jar`);
   }
 });
 

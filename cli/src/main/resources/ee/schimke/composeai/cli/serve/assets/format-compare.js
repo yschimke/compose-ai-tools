@@ -714,7 +714,13 @@
 
   function renderRc(row, pngUrl, documentUrl) {
     var canvas = row.querySelector("canvas");
-    return Promise.all([ensureRcPlayer(), loadImage(pngUrl), fetch(documentUrl)]).then(function (values) {
+    // The page registers the vendored faces the player's generic-family stacks name
+    // (`/rc-fonts/fonts.css`); `cpRcFonts.ready()` is what actually *loads* them, since canvas
+    // neither drives a lazy `@font-face` nor repaints when one arrives. Unawaited, this lane would
+    // score the document drawn in the visitor's own `sans-serif` against a PNG baked with Roboto —
+    // a permanent residual that reads as a layout defect.
+    var fontsReady = window.cpRcFonts ? window.cpRcFonts.ready() : Promise.resolve();
+    return Promise.all([ensureRcPlayer(), loadImage(pngUrl), fetch(documentUrl), fontsReady]).then(function (values) {
       var png = values[1];
       var response = values[2];
       if (!response.ok) throw new Error("RC " + response.status);
