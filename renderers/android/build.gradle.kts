@@ -1,7 +1,3 @@
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import com.vanniktech.maven.publish.JavadocJar
-import com.vanniktech.maven.publish.SourcesJar
-
 plugins {
   id("composeai.base-conventions")
   id("composeai.maven-publishing")
@@ -13,8 +9,8 @@ plugins {
 
 android {
   namespace = "ee.schimke.composeai.renderer"
-  // `AndroidSingleVariantLibrary` in `mavenPublishing {}` below wires the
-  // `singleVariant("release")` publication for us — don't declare it twice.
+  // The `composeai.maven-publishing` convention wires the `singleVariant("release")`
+  // publication for us — don't declare it twice.
   // wear-compose 1.7.0-alpha's AARs declare `minCompileSdk = 37`; compile against API 37 so the
   // `compileOnly` `wear.compose.foundation` types resolve. Override the conventions `compileSdk =
   // 36`.
@@ -307,16 +303,6 @@ dependencies {
   // consumer's own protolayout pulls them at runtime under Robolectric. See TilePreviewRenderer.
   compileOnly(libs.wear.protolayout.proto)
   compileOnly(libs.wear.protolayout.external.protobuf)
-}
-
-mavenPublishing {
-  configure(
-    AndroidSingleVariantLibrary(
-      javadocJar = JavadocJar.Empty(),
-      sourcesJar = SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
 }
 
 composeAiMavenPublishing {

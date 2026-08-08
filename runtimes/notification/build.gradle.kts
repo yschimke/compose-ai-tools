@@ -1,13 +1,3 @@
-@file:Suppress(
-  "DEPRECATION"
-) // AndroidSingleVariantLibrary(Boolean, Boolean) is deprecated; the replacement
-
-// types (SourcesJar/JavadocJar) vary between plugin versions. Re-visit when bumping.
-
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import com.vanniktech.maven.publish.JavadocJar
-import com.vanniktech.maven.publish.SourcesJar
-
 // `:notification-preview-runtime` — the composable-helper authoring path for notification
 // previews. Pairs with the `@NotificationPreview` annotation that ships in `:preview-annotations`:
 // the annotation drives the FQN-discovered NOTIFICATION strategy (renderer-android builds the
@@ -63,16 +53,6 @@ dependencies {
   testImplementation(libs.activity.compose)
   testImplementation("androidx.compose.ui:ui-test-junit4")
   testImplementation("androidx.compose.ui:ui-test-manifest")
-}
-
-mavenPublishing {
-  configure(
-    AndroidSingleVariantLibrary(
-      javadocJar = JavadocJar.Empty(),
-      sourcesJar = SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
 }
 
 composeAiMavenPublishing {

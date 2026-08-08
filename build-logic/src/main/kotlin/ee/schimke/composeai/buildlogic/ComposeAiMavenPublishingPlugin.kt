@@ -1,6 +1,9 @@
 package ee.schimke.composeai.buildlogic
 
+import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.MavenPublishBaseExtension
+import com.vanniktech.maven.publish.SourcesJar
 import java.io.File
 import javax.inject.Inject
 import org.gradle.api.Plugin
@@ -42,6 +45,8 @@ class ComposeAiMavenPublishingPlugin : Plugin<Project> {
     project.version =
       project.providers.environmentVariable("PLUGIN_VERSION").orNull
         ?: project.nextPatchSnapshotVersion()
+
+    project.configureAndroidLibraryPublication()
 
     project.afterEvaluate {
       val artifactId =
@@ -85,6 +90,36 @@ class ComposeAiMavenPublishingPlugin : Plugin<Project> {
           }
         }
       }
+    }
+  }
+}
+
+/**
+ * Publish an Android library as its single `release` variant, with real sources and an empty
+ * javadoc jar — Maven Central requires *a* javadoc artifact but not a useful one for a Kotlin
+ * library whose docs live in the repo.
+ *
+ * This used to be copy-pasted into all 25 Android modules that publish, each carrying the same
+ * three imports, the same `@file:Suppress("DEPRECATION")` header, and the same nine-line
+ * `mavenPublishing { configure(...) }` block. Twenty-five copies of one decision is twenty-five
+ * places to miss when the plugin's API moves — which the suppression comment itself predicted
+ * ("the replacement types vary between plugin versions"). Now it moves here, once.
+ *
+ * `withPlugin` rather than an `afterEvaluate` check so the JVM modules that share this convention
+ * plugin (65 of the 90) are untouched — vanniktech's own default handles them correctly.
+ */
+@Suppress("DEPRECATION") // AndroidSingleVariantLibrary(Boolean, Boolean); replacement types
+// (SourcesJar / JavadocJar) vary between plugin versions. Re-visit when bumping.
+private fun Project.configureAndroidLibraryPublication() {
+  pluginManager.withPlugin("com.android.library") {
+    extensions.configure<MavenPublishBaseExtension> {
+      configure(
+        AndroidSingleVariantLibrary(
+          javadocJar = JavadocJar.Empty(),
+          sourcesJar = SourcesJar.Sources(),
+          variant = "release",
+        )
+      )
     }
   }
 }
