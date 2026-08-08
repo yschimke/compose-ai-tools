@@ -115,6 +115,15 @@ Android, one piece on Desktop:
    - **Desktop** — emits the rewritten tag through the `LocaleList`
      `CompositionLocal`. Lives in `RenderEngine.localeProviders`
      (daemon) and `DesktopRendererMain` (plugin path).
+
+   **RTL is not pseudolocale-only.** A *real* RTL locale (`ar`, `he`,
+   `fa`, `ur`, …) flips layout direction on every path too — `ldrtl` on
+   Android, `LocalLayoutDirection = Rtl` on Desktop — decided by
+   [`LocaleDirection.isRtl`](https://github.com/yschimke/compose-ai-tools/blob/main/data/pseudolocale/core/src/main/kotlin/ee/schimke/composeai/data/pseudolocale/LocaleDirection.kt)
+   from the tag's language subtag. `ar-XB` is the *translation-free* way
+   to test RTL, not the only way to get it. Without this a
+   `@Preview(locale = "ar")` renders shaped Arabic inside an unmirrored
+   container, which looks like passing RTL and isn't.
 2. **Around-composable wrap.** Each platform has a
    `PreviewOverrideExtension` planner that maps `localeTag` to an
    around-composable:

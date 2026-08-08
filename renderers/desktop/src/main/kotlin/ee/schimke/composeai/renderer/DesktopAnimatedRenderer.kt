@@ -127,7 +127,9 @@ fun renderAnimatedPreview(
   val totalDuration = requestedDuration.coerceIn(frameInterval, MAX_ANIMATION_DURATION_MS)
   val frameCount = (totalDuration / frameInterval).coerceAtLeast(1)
 
-  val pseudolocale = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
+  // `ar-XB` and every real RTL locale (`ar`, `he`, `fa`, …) mirror the captured frames — see
+  // [rendersRightToLeft].
+  val rtl = rendersRightToLeft(localeTag)
   val sceneDensity = Density(density, fontScale)
 
   val frames = mutableListOf<BufferedImage>()
@@ -147,7 +149,7 @@ fun renderAnimatedPreview(
           else -> Color.Transparent
         }
       val baseProviders: @Composable (@Composable () -> Unit) -> Unit = { inner ->
-        if (pseudolocale?.isRtl == true) {
+        if (rtl) {
           CompositionLocalProvider(
             LocalInspectionMode provides false,
             LocalDensity provides sceneDensity,
