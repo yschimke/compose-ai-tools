@@ -2998,7 +2998,7 @@ class ServeHttpServer(
         // A story's args ride the same override params, and this lane is consumed by exactly the
         // tools #3449 is about — BackstopJS / reg-suit style PNG-diffing across arg values. Baked
         // pixels here would read as "this arg changes nothing".
-        val dropped = droppedOverridesFor(outcome.generation, previewId, overrides)
+        val dropped = droppedOverridesFor(renderHost, outcome.generation, previewId, overrides)
         if (dropped.isNotEmpty() && !acceptsBakedFallback()) {
           refuseDroppedOverrides(renderHost, previewId, dropped)
         } else {
@@ -3045,7 +3045,7 @@ class ServeHttpServer(
         )
       }
       is SvgOutcome.Ok -> {
-        val dropped = droppedOverridesFor(outcome.generation, previewId, overrides)
+        val dropped = droppedOverridesFor(renderHost, outcome.generation, previewId, overrides)
         if (dropped.isNotEmpty() && !acceptsBakedFallback()) {
           refuseDroppedOverrides(renderHost, previewId, dropped)
         } else {
@@ -3567,7 +3567,8 @@ class ServeHttpServer(
               // Baked pixels answering an override-bearing request are pixels that do NOT reflect
               // the override — byte-identical to the un-overridden snapshot, under a 200 (#3449).
               // Every other generation is a real render keyed by these overrides.
-              val dropped = droppedOverridesFor(outcome.generation, previewId, overrides)
+              val dropped =
+                droppedOverridesFor(renderHost, outcome.generation, previewId, overrides)
               if (dropped.isNotEmpty()) {
                 respondDroppedOverrides(
                   renderHost,
@@ -3610,15 +3611,32 @@ class ServeHttpServer(
    * overrides, cache hit or not.
    */
   private fun droppedOverridesFor(
+    renderHost: ServeHost,
     generation: RenderOutcome.Generation,
     previewId: String,
     overrides: PreviewOverrides,
   ): List<String> =
     if (generation == RenderOutcome.Generation.BAKED) {
       CatalogLiveRouting.droppedOverrideNames(previewId, overrides)
+    } else if (renderHost.hasRemoteComposeDoc(previewId)) {
+      // A real render happened — and still could not apply everything, because this preview is
+      // replayed from its captured document rather than recomposed. See
+      // [CatalogLiveRouting.irReplayDroppedOverrideNames] for which axes that costs and why the
+      // list is narrow.
+      CatalogLiveRouting.irReplayDroppedOverrideNames(previewId, overrides)
     } else {
       emptyList()
     }
+
+  /**
+   * Whether a refusal for [previewId] is **terminal** — retrying can never apply the override. True
+   * for an IR-replayed preview: there is no composition to re-run, today or in a minute, so the
+   * 503-with-`Retry-After` a live-lane-exists preview gets would be a lie the viewer turns into
+   * "retry shortly". [refuseDroppedOverrides] answers 409 instead, which the viewer already treats
+   * as final.
+   */
+  private fun droppedOverridesAreTerminal(renderHost: ServeHost, previewId: String): Boolean =
+    renderHost.hasRemoteComposeDoc(previewId)
 
   /**
    * Answer a render whose **validated overrides were not applied** — [bytes] are the preview's
@@ -3676,7 +3694,12 @@ class ServeHttpServer(
     call.response.headers.append(RENDER_HEADER, RENDER_BAKED_FALLBACK)
   }
 
-  /** The refusal half of [respondDroppedOverrides]: 503 when a live lane exists, else 409. */
+  /**
+   * The refusal half of [respondDroppedOverrides]: 503 when a live lane exists, else 409. An
+   * IR-replayed preview takes the 409 branch even though it *has* a live lane
+   * ([droppedOverridesAreTerminal]) — the lane works, it just can't recompose, so "retry shortly"
+   * would send the viewer round a loop that never converges.
+   */
   private suspend fun RoutingContext.refuseDroppedOverrides(
     renderHost: ServeHost,
     previewId: String,
@@ -3684,7 +3707,14 @@ class ServeHttpServer(
   ) {
     call.response.headers.append(DROPPED_OVERRIDES_HEADER, dropped.joinToString(","))
     val params = dropped.joinToString(", ")
-    if (renderHost.canRenderOverridesFor(previewId)) {
+    if (droppedOverridesAreTerminal(renderHost, previewId)) {
+      call.respondText(
+        "override not applied: $params — this preview is replayed from its captured document, " +
+          "which cannot be recomposed, so the override can never apply; add " +
+          "&$FALLBACK_PARAM=$FALLBACK_BAKED to accept the published snapshot (which ignores it)",
+        status = HttpStatusCode.Conflict,
+      )
+    } else if (renderHost.canRenderOverridesFor(previewId)) {
       call.response.headers.append(HttpHeaders.RetryAfter, "2")
       call.respondText(
         "override not applied: $params — this preview's live render lane is unavailable; " +
@@ -3834,7 +3864,7 @@ class ServeHttpServer(
         // the delivery branch was drawn at the preview's discovery-time axes, so serving it for a
         // `?fontScale=2.0` export is the same silent wrong answer (#3449). `?scroll=long` is
         // daemon-only (a bundle has no full-page vector), so it never lands here baked.
-        val dropped = droppedOverridesFor(outcome.generation, previewId, overrides)
+        val dropped = droppedOverridesFor(renderHost, outcome.generation, previewId, overrides)
         if (dropped.isNotEmpty()) {
           respondDroppedOverrides(
             renderHost,

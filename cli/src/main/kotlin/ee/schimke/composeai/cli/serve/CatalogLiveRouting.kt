@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.daemon.protocol.UiMode
 
 /**
@@ -116,6 +117,57 @@ internal object CatalogLiveRouting {
       rc.namedValues.keys.sorted().forEach { names += "${ServeOverrides.RC_NAMED_PREFIX}$it" }
     }
     return names.ifEmpty { listOf("overrides") }
+  }
+
+  /**
+   * The overrides an **IR replay** of [previewId] cannot honour, named as the caller spelled them —
+   * the daemon-lane counterpart of [droppedOverrideNames].
+   *
+   * A schema-v5 IR-backed preview is redrawn by replaying a captured document, never by re-running
+   * the composable that authored it (`BundleIrReplayStore` / `RemoteComposeIrReplay`). So every
+   * axis whose *only* route to the pixels is a fresh composition is inert: the daemon renders,
+   * answers `200`, and hands back bytes byte-identical to the baked snapshot. That is the #3449
+   * failure mode wearing a successful render's clothes — worse than the baked case it was written
+   * for, because `generation=daemon` reads as proof the override was applied.
+   *
+   * Deliberately a **narrow allow-list of the inert axes** rather than the inverse of what replay
+   * honours. Getting this set too wide turns working renders into refusals, so an axis earns its
+   * place here only by being recomposition-only by construction:
+   * - `fontScale`, `localeTag`, `uiMode` — Robolectric `Configuration` qualifiers the composable
+   *   reads during composition. Verified inert against the published `remote-m3` catalog: each
+   *   returns the baked bytes under `generation=daemon`.
+   * - `themeProvider` and the `knob.` named overrides — both are seeded *into* a composition
+   *   (`PreviewWrapperProvider` substitution, the named-override planner). There is no composition.
+   * - **string** `rc.` named values. The rest of the Remote Compose facet does reach the replayed
+   *   document through the player's `StateUpdater` — `rc.shaderColor` and `rc.progress` both move
+   *   pixels on `remote-m3` — but a string seed does not land in the alpha player
+   *   (`RemoteContext.setNamedStringOverride` → `overrideText` → `RemoteComposeState.overrideData`
+   *   is structurally identical to the float path that works, so the divergence is downstream of
+   *   anything this repo controls). Reported as un-applied until the player honours it; the day it
+   *   does, this entry comes out and `IrReplayDroppedOverridesTest` is what notices.
+   *
+   * The size / density / device family is **not** listed: those reach the player through the
+   * capture's `displayMetrics`, so a replay can answer them.
+   *
+   * Runs [withoutBakedNoOps] first for the same reason [droppedOverrideNames] does — a `uiMode`
+   * restating the variant's own baked theme is satisfied, not dropped, so naming it would refuse a
+   * request the replay answers truly.
+   */
+  fun irReplayDroppedOverrideNames(previewId: String, o: PreviewOverrides): List<String> {
+    val dropped = withoutBakedNoOps(previewId, o)
+    val names = mutableListOf<String>()
+    if (dropped.fontScale != null) names += "fontScale"
+    if (dropped.localeTag != null) names += "localeTag"
+    if (dropped.uiMode != null) names += "uiMode"
+    if (dropped.themeProvider != null) names += "themeProvider"
+    dropped.namedOverrides?.keys?.sorted()?.forEach { names += "${ServeOverrides.KNOB_PREFIX}$it" }
+    dropped.remoteCompose
+      ?.namedValues
+      ?.filterValues { it is RemoteNamedValue.StringValue }
+      ?.keys
+      ?.sorted()
+      ?.forEach { names += "${ServeOverrides.RC_NAMED_PREFIX}$it" }
+    return names
   }
 
   /**
