@@ -100,6 +100,17 @@ type WebviewMessage =
           imageHeight: number;
           scrollDeltaY?: number;
           keyCode?: string;
+          /**
+           * The character a printable `keyDown` produced. `keyCode` names the
+           * physical key and cannot type — the caret and Backspace work from
+           * it, a character does not (issue #3491).
+           */
+          text?: string;
+          /**
+           * DOM `PointerEvent.pointerType`; absent means touch. Mouse is what
+           * drags out a text selection.
+           */
+          pointerType?: string;
       }
     | {
           command: "setRecording";
@@ -744,6 +755,8 @@ export class BundleViewerPanel {
                 pixelY: msg.pixelY,
                 scrollDeltaY: msg.scrollDeltaY,
                 keyCode: msg.keyCode,
+                text: msg.text,
+                pointerType: msg.pointerType,
             });
         } catch (err) {
             this.deps.logLine(
@@ -771,6 +784,8 @@ export class BundleViewerPanel {
                 pixelY: msg.pixelY,
                 scrollDeltaY: msg.scrollDeltaY,
                 keyCode: msg.keyCode,
+                text: msg.text,
+                pointerType: msg.pointerType,
             });
         } catch (err) {
             this.deps.logLine(

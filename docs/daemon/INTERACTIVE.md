@@ -191,6 +191,14 @@ no-op.
   pixelY?: number;
   // For 'keyDown'/'keyUp' only.
   keyCode?: string;
+  // The literal character a printable 'keyDown' produced (the browser's
+  // KeyboardEvent.key). `keyCode` names the physical key; this names what it
+  // typed, and a TextField inserts from the code point — so caret movement and
+  // deletion work from `keyCode` alone while typing needs this (#3491).
+  text?: string;
+  // DOM PointerEvent.pointerType — 'mouse' | 'touch' | 'pen'. Absent means
+  // touch. Load-bearing for text selection: only a mouse press-drag starts one.
+  pointerType?: string;
   // Semantic target (#1784) — set instead of pixelX/pixelY to act by stable
   // handle. The daemon resolves it against the held session's *live* semantics
   // tree and dispatches at the matched node's centre. Explicit pixels win when
@@ -198,6 +206,11 @@ no-op.
   target?: { ref?: string; testTag?: string; role?: string; text?: string };
 }
 ```
+
+`recording/input` carries the same field set (plus `recordingId` in place of
+`frameStreamId`), and both lanes share one dispatch implementation per backend —
+so a live recording types and mouse-selects exactly like an ordinary interactive
+session (#3545).
 
 Notification not request: input fires-and-forgets. The daemon
 dispatches the input into the active composition and emits a fresh

@@ -2223,6 +2223,22 @@ data class RecordingInputParams(
   val scrollDeltaY: Float? = null,
   /** For `keyDown` / `keyUp`. Decimal-string Android `KEYCODE_*`; see `InteractiveKeyCodes`. */
   val keyCode: String? = null,
+  /**
+   * The literal text a `keyDown` produced — see [InteractiveInputParams.text], which this mirrors
+   * field-for-field so a live recording types exactly like an ordinary interactive session does.
+   *
+   * Recording is a second dispatch lane, not a wrapper around the interactive one, so it needs the
+   * field in its own right: without it the live tick loop's `RecordingInputParams` →
+   * `RecordingScriptEvent` → handler-registry hop silently drops the character and a recorded
+   * `TextField` stays empty while the same keystroke typed fine outside a recording (issue #3545).
+   */
+  val text: String? = null,
+  /**
+   * Which pointing device a pointer event came from — see [InteractiveInputParams.pointerType].
+   * Carried here for the same reason as [text]: mouse-drag selection is a device-class behaviour,
+   * and a recording that forwarded every pointer as touch could never select text.
+   */
+  val pointerType: String? = null,
 )
 
 /**
@@ -2278,8 +2294,32 @@ data class RecordingScriptEvent(
    * `rotaryScroll`, `recording.probe`, etc.).
    */
   val pointerId: Int? = null,
-  /** For `keyDown` / `keyUp` (no-op in v1; reserved for v2 key dispatch). */
+  /**
+   * For `input.keyDown` / `input.keyUp`. Decimal-string Android `KEYCODE_*` (see
+   * `InteractiveKeyCodes`), naming the *physical* key. Both backends dispatch it for real — desktop
+   * through `DesktopKeyDispatch`'s Compose `Key` table, Android through the held rule's
+   * `performKeyInput` (issue #1203).
+   */
   val keyCode: String? = null,
+  /**
+   * For `input.keyDown`: the literal character the key produced, mirroring
+   * [InteractiveInputParams.text]. [keyCode] names the key; this names what it typed, and Compose
+   * inserts characters from the code point, so a script carrying only [keyCode] moves the caret but
+   * types nothing (issue #3545).
+   *
+   * A *persisted* field: captured scripts are written out and replayed, so a recording that typed
+   * `"a"` replays as the same `"a"` rather than as a focus-moving `KEYCODE_A`. Distinct from
+   * [inputText], which is the whole-string payload of the UIAutomator `uia.inputText` action.
+   */
+  val text: String? = null,
+  /**
+   * For the pointer events: `"mouse"` / `"touch"` / `"pen"`, mirroring
+   * [InteractiveInputParams.pointerType]. Absent (or unrecognised) means touch — the behaviour
+   * every script had before the field existed, so old captured scripts replay byte-identically.
+   * Only a *mouse* press-drag starts a text selection in Compose, so a script that means to select
+   * has to say so (issue #3545).
+   */
+  val pointerType: String? = null,
   /** Browser wheel delta for `rotaryScroll`; positive means wheel-down. */
   val scrollDeltaY: Float? = null,
   /** Agent-supplied label for probes and state checkpoints. */
