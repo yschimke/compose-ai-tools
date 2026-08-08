@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Profile screen — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
-        <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
@@ -48,14 +48,8 @@
           <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandDarkThemeCatalog" title="Brand · Brand Dark">Brand Dark</button>
           <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.HighContrastThemeCatalog">High Contrast</button>
         </span>
-        <span class="cp-bg" role="group" aria-label="Preview background">
-          <button type="button" class="cp-bg-btn" data-bg-choice="on">Background</button>
-          <button type="button" class="cp-bg-btn" data-bg-choice="off">Transparent</button>
-        </span>
-        <span class="cp-bg" role="group" aria-label="Preview zoom">
-          <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="fit" aria-pressed="true">Fit screen</button>
-          <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="width" aria-pressed="false">Fit width</button>
-        </span>
+        <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind the preview">Transparent</button>
+        <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
 

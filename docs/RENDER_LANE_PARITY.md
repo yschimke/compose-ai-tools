@@ -172,7 +172,7 @@ background mismatch for another: the app cannot render a truly transparent surfa
 paints an opaque base), so it painted its stage checkerboard — which is right only when the
 page is in its Transparent mode and wrong on the solid default stage. The viewer now hands the
 app its resolved stage backdrop (`stageBg=#rrggbb`, or `checker`), and the app paints that;
-a `MutationObserver` on `<html>`'s class re-hands it when the Background/Transparent toggle
+a `MutationObserver` on `<html>`'s class re-hands it when the Transparent toggle
 flips.
 
 | Before | After |

@@ -1199,22 +1199,21 @@ object ServeWeb {
   }
 
   /**
-   * The **Background/Transparent** pair: flips the page between the solid stage the previews are
-   * normally read on and the transparent checkerboard that shows a sticker's real alpha.
+   * The **Transparent** toggle: flips the page between the solid stage the previews are normally
+   * read on and the transparent checkerboard that shows a sticker's real alpha.
+   *
+   * One button rather than a Background / Transparent pair — a two-state axis with a default is
+   * what `aria-pressed` on a single toggle says, and the pair spent twice the toolbar width to say
+   * it while always showing one segment that did nothing when clicked.
    *
    * Emitted identically on the landing grid and on the single-preview viewer — the `<html>` class
    * it drives (`cp-bg-transparent`) already backs both `.cp-imgwrap` and `.cp-stage`, and the
    * pre-paint script in [document] already restores the choice on every page, so the viewer was
    * simply missing the control rather than the behaviour. `bg-toggle.js` wires both.
    */
-  private fun bgPickerHtml(ariaLabel: String): String =
-    """
-    <span class="cp-bg" role="group" aria-label="$ariaLabel">
-      <button type="button" class="cp-bg-btn" data-bg-choice="on">Background</button>
-      <button type="button" class="cp-bg-btn" data-bg-choice="off">Transparent</button>
-    </span>
-    """
-      .trimIndent()
+  private fun bgPickerHtml(title: String): String =
+    "<button type=\"button\" class=\"cp-bg-btn cp-bg-toggle\" aria-pressed=\"false\"" +
+      " title=\"${WebEscaping.htmlEscape(title)}\">Transparent</button>"
 
   /**
    * The search box for the landing grid: a text input that filters cards to those whose label or id
@@ -1229,7 +1228,7 @@ object ServeWeb {
       <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
         autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
       <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="$count"></span>
-      ${bgPickerHtml("Sticker background").replace("\n", "\n      ")}
+      ${bgPickerHtml("Show the transparent checkerboard behind each preview")}
     </div>
     """
       .trimIndent()
@@ -5790,11 +5789,8 @@ $rows
       <div class="cp-viewer-bar">
         $navToggle
         $themeBarHtml
-        ${bgPickerHtml("Preview background").replace("\n", "\n        ")}
-        <span class="cp-bg" role="group" aria-label="Preview zoom">
-          <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="fit" aria-pressed="true">Fit screen</button>
-          <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="width" aria-pressed="false">Fit width</button>
-        </span>
+        ${bgPickerHtml("Show the transparent checkerboard behind the preview")}
+        <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
       $historyInlineHtml
@@ -6032,7 +6028,7 @@ $rows
         <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
         <title>${WebEscaping.htmlEscape(title)}</title>
         <link rel="stylesheet" href="${assetHref("serve.css")}">$themeBlock
-        <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>

@@ -12,7 +12,11 @@
   // contain fit; "Fit width" deliberately restores the old unconstrained-height presentation.
   // The snapshot remains the geometry source for Live/Wasm, so re-pin an active overlay after
   // changing modes.
-  var zoomBtns = document.querySelectorAll(".cp-zoom-btn");
+  // ONE button, not a Fit screen / Fit width pair: this is a two-state axis with a default, which
+  // is what `aria-pressed` on a single toggle expresses — the label names the non-default state
+  // ("Fit width") and pressed-ness says whether it is on. A two-button group spends twice the bar
+  // width to say the same thing, and always shows one button that does nothing when clicked.
+  var zoomToggle = document.querySelector(".cp-zoom-toggle");
   function applyZoom(mode) {
     if (mode !== "width") mode = "fit";
     var maxHeight = mode === "fit" ? "72vh" : "";
@@ -20,22 +24,17 @@
     var rcZoomCanvas = document.getElementById("cp-rc-canvas");
     if (rcZoomCanvas) rcZoomCanvas.style.maxHeight = maxHeight;
     root.setAttribute("data-zoom", mode);
-    zoomBtns.forEach(function (b) {
-      b.setAttribute(
-        "aria-pressed",
-        b.getAttribute("data-zoom-mode") === mode ? "true" : "false"
-      );
-    });
+    if (zoomToggle) zoomToggle.setAttribute("aria-pressed", mode === "width" ? "true" : "false");
     window.requestAnimationFrame(function () {
       if (live && live.checked && !canvas.hidden) fitLiveCanvas();
       if (wasmActive()) positionWasmFrame();
     });
   }
-  zoomBtns.forEach(function (b) {
-    b.addEventListener("click", function () {
-      applyZoom(b.getAttribute("data-zoom-mode"));
+  if (zoomToggle) {
+    zoomToggle.addEventListener("click", function () {
+      applyZoom(root.getAttribute("data-zoom") === "width" ? "fit" : "width");
     });
-  });
+  }
   applyZoom("fit");
   // Surface a mode-activation failure visibly, instead of leaving a stale frame that reads as a
   // (wrong) render. Every lane routes its failure here — a dead Live stream, a Wasm app that
@@ -1705,7 +1704,7 @@
         wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
       }
     });
-    // The page's Background/Transparent toggle (owned by bg-toggle.js, which flips
+    // The page's Transparent toggle (owned by bg-toggle.js, which flips
     // `cp-bg-transparent` on <html>) changes what the stage paints — and the app mirrors that
     // backdrop, so it has to hear about it. Watching the class beats reaching across to that
     // script's click handler: the stage also changes with the render theme, and both land here.

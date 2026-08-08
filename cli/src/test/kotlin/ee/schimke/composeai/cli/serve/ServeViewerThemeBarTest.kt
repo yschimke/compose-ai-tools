@@ -111,20 +111,20 @@ class ServeViewerThemeBarTest {
   }
 
   @Test
-  fun `the viewer offers the same Background pair as the grid`() {
+  fun `the viewer offers the same Transparent toggle as the grid, and one Fit width toggle`() {
     val html = viewer(ServePreview("plain.Button", "Button"))
+    // A two-state axis with a default is ONE aria-pressed button, not a pair whose other half is
+    // always a no-op. Both toolbars emit the identical Transparent button.
+    val transparent = """class="cp-bg-btn cp-bg-toggle" aria-pressed="false""""
+    assertTrue(html.contains(transparent), html)
     assertTrue(
-      html.contains(
-        """<button type="button" class="cp-bg-btn" data-bg-choice="on">Background</button>"""
-      ),
-      html,
+      ServeWeb.landingPage("compose-m3", listOf(ServePreview("a", "A")), token = "t")
+        .contains(transparent),
+      "the grid's toggle must be the same button, or bg-toggle.js is wiring two shapes",
     )
-    assertTrue(
-      html.contains(
-        """<button type="button" class="cp-bg-btn" data-bg-choice="off">Transparent</button>"""
-      ),
-      html,
-    )
+    assertTrue(html.contains("""class="cp-bg-btn cp-zoom-toggle" aria-pressed="false""""), html)
+    assertFalse(html.contains("data-zoom-mode="), "the Fit screen / Fit width pair is one toggle")
+    assertFalse(html.contains("data-bg-choice="), "…and so is Background / Transparent")
   }
 
   @Test

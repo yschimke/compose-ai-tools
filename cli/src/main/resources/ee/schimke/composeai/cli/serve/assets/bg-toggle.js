@@ -1,19 +1,24 @@
-// The Background/Transparent toggle, shared by the catalog grid and the single-preview viewer.
+// The Transparent toggle, shared by the catalog grid and the single-preview viewer.
 //
 // The preview server shows components on a SOLID surface by default, so a transparent sticker
-// reads like a real component instead of washing out against the page. This pair flips the whole
+// reads like a real component instead of washing out against the page. This button flips the whole
 // page to a checkerboard (`cp-bg-transparent` on <html>) to inspect the raw alpha, and persists
 // the choice per-visitor in `localStorage['cp-bg']`.
+//
+// ONE button, not a Background / Transparent pair. The axis has two states and a default, which is
+// exactly what `aria-pressed` on a single toggle expresses: the label names the non-default state
+// and pressed-ness says whether it is on. The pair spent twice the toolbar width to say the same
+// thing, and half of it was always a button that did nothing when clicked.
 //
 // Only the control lives here. The CSS backs both `.cp-imgwrap` (grid thumbnails) and `.cp-stage`
 // (the viewer) off that one class, and the pre-paint script in the page <head> restores the choice
 // before first paint — so the viewer already honoured the setting it had no way to change. This
-// file is what gives it the buttons, and is why both pages toggle identically rather than through
+// file is what gives it the button, and is why both pages toggle identically rather than through
 // two implementations.
 (function () {
   "use strict";
 
-  var btns = document.querySelectorAll(".cp-bg-btn[data-bg-choice]");
+  var btns = document.querySelectorAll(".cp-bg-toggle");
   if (!btns.length) return;
   var root = document.documentElement;
   var urlState = window.cpUrlState || null;
@@ -22,13 +27,13 @@
   // value a later click wrote, so Back out of Transparent would stay transparent.
   var initial = root.classList.contains("cp-bg-transparent") ? "off" : "on";
 
+  function transparent() {
+    return root.classList.contains("cp-bg-transparent");
+  }
+
   function reflect() {
-    var choice = root.classList.contains("cp-bg-transparent") ? "off" : "on";
     btns.forEach(function (b) {
-      b.setAttribute(
-        "aria-pressed",
-        b.getAttribute("data-bg-choice") === choice ? "true" : "false"
-      );
+      b.setAttribute("aria-pressed", transparent() ? "true" : "false");
     });
   }
 
@@ -39,7 +44,7 @@
 
   btns.forEach(function (b) {
     b.addEventListener("click", function () {
-      var choice = b.getAttribute("data-bg-choice");
+      var choice = transparent() ? "on" : "off";
       paint(choice);
       try {
         localStorage.setItem("cp-bg", choice);
