@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.47](https://github.com/yschimke/compose-ai-tools/compare/v0.19.46...v0.19.47) (2026-08-08)
+
+
+### Features
+
+* **serve:** apply Material 3 to the preview server chrome ([#3490](https://github.com/yschimke/compose-ai-tools/issues/3490)) ([9eea184](https://github.com/yschimke/compose-ai-tools/commit/9eea184cf1e5c613e08bac9542363d0d71ef0f38))
+* **serve:** give the viewer the theme bar + Background/Transparent, as flow-row buttons ([#3489](https://github.com/yschimke/compose-ai-tools/issues/3489)) ([6076899](https://github.com/yschimke/compose-ai-tools/commit/607689931c41ef0c83f4c3c69614682c38b54470))
+* **serve:** offer the imported design spec as a viewer lane beside the players ([#3488](https://github.com/yschimke/compose-ai-tools/issues/3488)) ([3e6b041](https://github.com/yschimke/compose-ai-tools/commit/3e6b041aa13700fd68b8faf69d376e06780a05d4))
+
+
+### Bug Fixes
+
+* **ci:** restore green main — iOS 26 SDK for the player, Rule 3 only where it applies ([#3485](https://github.com/yschimke/compose-ai-tools/issues/3485)) ([e9b1cb7](https://github.com/yschimke/compose-ai-tools/commit/e9b1cb756c8d70f92269b68c7aeda21ef6a33729))
+
 ## [0.19.46](https://github.com/yschimke/compose-ai-tools/compare/v0.19.45...v0.19.46) (2026-08-07)
 
 
