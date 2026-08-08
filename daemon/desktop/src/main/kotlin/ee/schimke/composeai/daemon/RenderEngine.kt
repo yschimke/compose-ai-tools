@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.ScrollAxisRange
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -218,8 +220,21 @@ class RenderEngine(
       }
     val result =
       try {
+        // `@ScrollingPreview(END)` — settle the scrollable at its content end before the capture,
+        // so the PNG *and* every tree derived from the same scene (semantics, layout, figma-svg)
+        // describe the frame the Gradle render ships. Ahead of `renderOnce`, which is also the
+        // interactive session's per-input entry point and must never re-drive under the user.
+        val driveStartNs = System.nanoTime()
+        trace.section("render:scrollToEnd") { driveStaticScrollToEnd(state) }
+        val driveNs = System.nanoTime() - driveStartNs
         trace.section("render:once") {
-          renderOnce(state, requestId, sandboxStats = sandboxStats, trace = trace)
+          renderOnce(
+            state,
+            requestId,
+            sandboxStats = sandboxStats,
+            trace = trace,
+            elapsedBeforeNs = driveNs,
+          )
         }
       } finally {
         trace.section("compose:tearDown") { tearDown(state) }
@@ -627,8 +642,16 @@ class RenderEngine(
     trace: PerfettoTraceDataProducer.Recorder =
       PerfettoTraceDataProducer.recorder(state.spec.outputBaseName, backend = "desktop"),
     useWallClockFrameTime: Boolean = false,
+    /**
+     * Wall-clock nanoseconds already spent on this render *before* this call — currently the
+     * `@ScrollingPreview(END)` drive, which runs ahead of `renderOnce` (see [render]) but is part
+     * of the render body by any honest accounting: it can cost tens of scene renders. Folded into
+     * the reported `tookMs` so the daemon's latency and cost-model numbers cover the real work. `0`
+     * for every other caller, including the interactive session.
+     */
+    elapsedBeforeNs: Long = 0L,
   ): RenderResult {
-    val startNs = System.nanoTime()
+    val startNs = System.nanoTime() - elapsedBeforeNs
 
     // Flush snapshot state written out-of-composition since the last render so the held scene
     // observes it before painting. The held-session scrub path mutates `lottieProgressState` from
@@ -869,10 +892,12 @@ class RenderEngine(
   }
 
   private fun renderFrame(state: SceneState, useWallClockFrameTime: Boolean) =
-    if (useWallClockFrameTime) {
-      state.scene.render(nanoTime = currentFrameNanoTime())
-    } else {
-      state.scene.render()
+    when {
+      useWallClockFrameTime -> state.scene.render(nanoTime = currentFrameNanoTime())
+      // A scroll drive ran and left the frame clock mid-timeline — keep going from there rather
+      // than resetting to zero. See [SceneState.virtualFrameNanos].
+      state.virtualFrameNanos > 0L -> state.scene.render(nanoTime = state.nextVirtualFrameNanos())
+      else -> state.scene.render()
     }
 
   /**
@@ -1033,6 +1058,30 @@ class RenderEngine(
      */
     internal val measuredContent: IntArray = IntArray(2),
   ) {
+    /**
+     * Frame timestamp the next one-shot capture frame renders at, in nanoseconds, or `0` for the
+     * default frozen-at-zero clock.
+     *
+     * [ImageComposeScene.render] takes the frame time `withFrameNanos` and every Compose animation
+     * sees, and the one-shot path deliberately pins it to zero so a preview renders
+     * deterministically — nothing advances, so nothing depends on how long the render took. The
+     * `@ScrollingPreview(END)` drive is the one thing here that *needs* time to pass (an animated
+     * `scrollBy` has to actually run), so it ticks this cursor forward and leaves it where it
+     * finished. The capture frames then continue from there rather than snapping back to zero,
+     * which would hand every in-flight animation a large negative delta on the very frame being
+     * captured.
+     *
+     * Stays `0` for every preview without an END drive, so their frame clock — and their pixels —
+     * are exactly what they were.
+     */
+    internal var virtualFrameNanos: Long = 0L
+
+    /** Advances [virtualFrameNanos] by one 60 Hz frame and returns the new timestamp. */
+    internal fun nextVirtualFrameNanos(): Long {
+      virtualFrameNanos += FRAME_INTERVAL_NANOS
+      return virtualFrameNanos
+    }
+
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     internal fun previewContext(): PreviewContext {
       val slotTables = slotTableCapture?.snapshot().orEmpty()
@@ -1339,6 +1388,147 @@ class RenderEngine(
   )
 
   /**
+   * `@ScrollingPreview(END)` — drive the preview's scrollable to its content end before the frame
+   * is captured, so the daemon's PNG (and the semantics / layout / figma-svg read off the same
+   * scene) show the frame the Gradle render ships, not the resting top.
+   *
+   * The desktop daemon captures through [ImageComposeScene], which has neither a test main-clock
+   * nor `onNode` interactions — the two things `:renderer-desktop`'s `renderScrollPreview` leans on
+   * for the same job. It does expose both halves needed to do it directly, though:
+   * `semanticsOwners` reaches the same `SemanticsActions.ScrollBy` the test harness invokes, and
+   * `render(nanoTime)` is the frame clock an animated scroll advances on. So this drives the scroll
+   * the same way, ticking the scene forward by hand instead of a `MainTestClock`.
+   *
+   * Progress is measured from `ScrollAxisRange.value` for the reason the CMP renderer's END path
+   * measures it: `ScrollBy` animates, and a lazy container's `maxValue` is an estimate that firms
+   * up as items compose, so neither the requested delta nor the remaining distance is a reliable
+   * account of what actually moved. The loop stops on the first step that doesn't move.
+   *
+   * That axis range is also why `maxScrollPx` is a **coarse** bound here. A `LazyColumn` reports
+   * `value` in its own estimated content space (index × average item size), not layout pixels, so
+   * the cap is checked in whatever units the scroller reports and is only enforced between steps —
+   * one step can overshoot it. It does what the annotation needs it for, which is bounding a drive
+   * over a very long list, but it is not a pixel-exact stop position and shouldn't be read as one.
+   *
+   * `reduceMotion` is deliberately not honoured here, unlike the Android daemon: it gates Wear's
+   * `TransformingLazyColumn` edge transforms, and Wear Compose is Android-only, so there is nothing
+   * on this backend for it to flatten.
+   *
+   * No-ops (leaving the frame clock at zero, so the capture is bit-for-bit what it was) when the
+   * preview has no END intent or carries nothing scrollable.
+   */
+  @OptIn(
+    androidx.compose.ui.InternalComposeUiApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+  )
+  internal fun driveStaticScrollToEnd(state: SceneState) {
+    val previewId = state.spec.previewId ?: return
+    val intent = loadPreviewIndexLazily().staticScrollFor(previewId) ?: return
+    // Under the same JVM-default-`Locale` override `renderOnce` wraps its frames in. The drive
+    // performs the *first* layout and composes every lazy item it scrolls past, and
+    // `rememberResourceEnvironment` caches what it resolves — so without this a localized END
+    // capture would bake default-language `stringResource(...)` text into the items the drive
+    // brought on screen, and re-applying the locale for the final frames alone would not undo it.
+    val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(state.spec.localeTag))
+    try {
+      driveStaticScrollToEndLocalized(state, intent)
+    } finally {
+      restoreJvmDefaultLocale(previousDefaultLocale)
+    }
+  }
+
+  @OptIn(
+    androidx.compose.ui.InternalComposeUiApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class,
+  )
+  private fun driveStaticScrollToEndLocalized(state: SceneState, intent: ScrollCaptureDto) {
+    val axisKey =
+      if (intent.axis.equals("HORIZONTAL", ignoreCase = true))
+        SemanticsProperties.HorizontalScrollAxisRange
+      else SemanticsProperties.VerticalScrollAxisRange
+
+    // Semantics only exist once the scene has laid out, and `setUp` deliberately doesn't render.
+    // At timestamp zero, and *without* touching the frame cursor: a preview that turns out to have
+    // nothing scrollable must be captured at the same deterministic frame zero as an ordinary
+    // render, which is what the "capturing the initial frame" message below promises. The cursor
+    // only starts moving once a scrollable is actually found.
+    state.scene.render()
+
+    // Re-resolved on each read rather than held: the drive recomposes the scene, and a
+    // `SemanticsNode` is a snapshot of one composition pass.
+    //
+    // First in traversal order, *not* the largest — `DesktopScrollRenderer` drives
+    // `nodes.firstOrNull()`, and `PreviewIndex.staticScrollFor` documents the contract as "the
+    // first scrollable on the annotated axis". A screen with two same-axis scrollers must settle
+    // in the same place whether it came from `compose-preview serve` or the Gradle batch render;
+    // agreeing with the other backend matters more than this one picking the scroller it guesses
+    // is the interesting one.
+    fun mainScroller(): SemanticsNode? {
+      val root = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode ?: return null
+      var found: SemanticsNode? = null
+      fun walk(node: SemanticsNode) {
+        if (found != null) return
+        if (node.config.getOrNull(axisKey) != null) {
+          found = node
+          return
+        }
+        node.children.forEach(::walk)
+      }
+      walk(root)
+      return found
+    }
+
+    fun axisRange(): ScrollAxisRange? = mainScroller()?.config?.getOrNull(axisKey)
+
+    val initial = axisRange()
+    if (initial == null) {
+      System.err.println(
+        "@ScrollingPreview(END) on ${state.spec.outputBaseName}: nothing scrollable on axis " +
+          "${intent.axis} — capturing the initial frame."
+      )
+      return
+    }
+
+    val cap = intent.maxScrollPx?.takeIf { it > 0 }?.toFloat() ?: Float.POSITIVE_INFINITY
+    val startPx = initial.value()
+    var scrolledPx = 0f
+    for (step in 0 until END_DRIVE_MAX_STEPS) {
+      val range = axisRange() ?: break
+      val remaining = (range.maxValue() - range.value()).coerceAtLeast(0f)
+      if (remaining <= SCROLL_SETTLED_EPSILON_PX) break
+      val headroom = (cap - scrolledPx).coerceAtLeast(0f)
+      if (headroom <= SCROLL_SETTLED_EPSILON_PX) break
+
+      val before = range.value()
+      val delta = minOf(remaining, headroom)
+      val action = mainScroller()?.config?.getOrNull(SemanticsActions.ScrollBy)?.action ?: break
+      if (axisKey == SemanticsProperties.HorizontalScrollAxisRange) action(delta, 0f)
+      else action(0f, delta)
+
+      // `ScrollBy` animates; tick the scene until it lands, or the next iteration would measure a
+      // scroll still in flight and the drive would creep instead of converge.
+      repeat(END_STEP_SETTLE_FRAMES) {
+        state.scene.render(nanoTime = state.nextVirtualFrameNanos())
+      }
+
+      val advanced = (axisRange()?.value() ?: before) - before
+      if (advanced <= SCROLL_SETTLED_EPSILON_PX) break
+      scrolledPx = (axisRange()?.value() ?: before) - startPx
+    }
+
+    // Let anything the scroll landing triggers finish before the capture frames.
+    repeat(END_POST_SCROLL_SETTLE_FRAMES) {
+      state.scene.render(nanoTime = state.nextVirtualFrameNanos())
+    }
+    // Reported in the scroller's own axis-range units, not pixels — see the note on `maxScrollPx`
+    // above.
+    System.err.println(
+      "@ScrollingPreview(END) on ${state.spec.outputBaseName}: drove the scrollable " +
+        "${scrolledPx.toInt()} unit(s) to the content end."
+    )
+  }
+
+  /**
    * Measures the tallest vertically-scrollable node in [scene] and how far its composed content
    * reaches, or null when nothing is vertically scrollable. Used by [runScrollSvgScenario] to size
    * the full-page render by *geometry* rather than the LazyList scroll-range estimate (which is
@@ -1469,6 +1659,29 @@ class RenderEngine(
      * side uses; the gradle plugin's daemon launch descriptor sets it once at JVM start.
      */
     const val OUTPUT_DIR_PROP: String = "composeai.render.outputDir"
+
+    /** One 60 Hz frame, in nanoseconds — the tick [SceneState.virtualFrameNanos] advances by. */
+    private const val FRAME_INTERVAL_NANOS: Long = 16_666_667L
+
+    /** Sub-pixel scroll movement that counts as "didn't move". */
+    private const val SCROLL_SETTLED_EPSILON_PX: Float = 0.5f
+
+    /**
+     * Frames [driveStaticScrollToEnd] lets an animated `ScrollBy` run for before re-reading the
+     * axis range. ~0.5 s, comfortably past Compose's default scroll animation.
+     */
+    private const val END_STEP_SETTLE_FRAMES: Int = 32
+
+    /**
+     * Iteration bound for the END drive. A lazy container only firms up its estimated extent as
+     * items compose, so reaching a long list's true end takes several rounds of "jump to the end I
+     * can currently see". The loop exits on the first step that makes no progress, so this is a
+     * runaway guard rather than the usual exit.
+     */
+    private const val END_DRIVE_MAX_STEPS: Int = 60
+
+    /** Frames of settle after the drive, so scroll-triggered chrome isn't caught mid-reveal. */
+    private const val END_POST_SCROLL_SETTLE_FRAMES: Int = 60
 
     /**
      * Issue #1604 — scroll scenarios the daemon's `data/fetch` re-render path can request. The
