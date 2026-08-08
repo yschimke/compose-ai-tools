@@ -143,6 +143,27 @@ class ServePageThemeTest {
   }
 
   @Test
+  fun `the baked Light and Dark chips are painted in their own theme`() {
+    // The chips are a taster, not two labels: each pins its own `color-scheme`, which re-resolves
+    // every `light-dark()` pair — including a served catalog's palette — in THAT chip's mode. The
+    // same property the page-theme setting uses, applied one level down.
+    val sheet = ServeWebAssets.load("serve.css")!!.bytes.decodeToString()
+    assertTrue(
+      sheet.contains(""".cp-theme-btn[data-theme-choice="light"]""") &&
+        sheet.contains(""".cp-theme-btn[data-theme-choice="dark"]"""),
+      "the baked chips must pin their own colour scheme",
+    )
+    // Selection is a ring rather than a fill swap: the fill IS the swatch, so replacing it would
+    // hide the theme at the moment it is picked.
+    val pressed =
+      sheet
+        .substringAfter("""[data-compare-theme="dark"])[aria-pressed="true"]""")
+        .substringBefore("}")
+    assertTrue(pressed.contains("box-shadow: 0 0 0 2px"), pressed)
+    assertTrue(pressed.contains("--md-sys-color-surface-container-low"), pressed)
+  }
+
+  @Test
   fun `the stylesheet resolves both modes from color-scheme alone`() {
     // The setting is implemented as `color-scheme` on <html>, which can only re-resolve values
     // written as `light-dark()` pairs. A `prefers-color-scheme` block anywhere in the sheet would
