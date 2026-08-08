@@ -697,6 +697,30 @@
       "sha256": "f542d500f989aca09914974d099829dbb8223043a30a99bfddd359df1cbee4ff",
       "size": 69037
     },
+    "serve-viewer-inspect-layers.dark.png": {
+      "fixture": "serve-viewer-inspect-layers",
+      "theme": "dark",
+      "sha256": "4d9aa424d23a88833e2c24d55cb7c5d5749154599f8edb16117597c4e6802b03",
+      "size": 110015
+    },
+    "serve-viewer-inspect-layers.light.png": {
+      "fixture": "serve-viewer-inspect-layers",
+      "theme": "light",
+      "sha256": "7929a1cc413306c6ec4e8e518f8895b8c2cbc8d0bf978a9f9f430079e324d067",
+      "size": 107030
+    },
+    "serve-viewer-inspect.dark.png": {
+      "fixture": "serve-viewer-inspect",
+      "theme": "dark",
+      "sha256": "370d692c80db827851b6e1bc301ab68d9b91fd72ee507bf9db6705164b6da3e8",
+      "size": 48351
+    },
+    "serve-viewer-inspect.light.png": {
+      "fixture": "serve-viewer-inspect",
+      "theme": "light",
+      "sha256": "142762bf51586047ae40ac487cc0cdb3bfd9ed708dc920117eb965f7d08632e3",
+      "size": 46006
+    },
     "serve-viewer-nav-collapsed.dark.png": {
       "fixture": "serve-viewer-nav-collapsed",
       "theme": "dark",

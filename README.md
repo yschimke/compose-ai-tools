@@ -417,6 +417,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-history-local/dark](renders/serve-viewer-history-local.dark.png) |
 | `light` | ![serve-viewer-history-local/light](renders/serve-viewer-history-local.light.png) |
 
+## serve-viewer-inspect
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-inspect/dark](renders/serve-viewer-inspect.dark.png) |
+| `light` | ![serve-viewer-inspect/light](renders/serve-viewer-inspect.light.png) |
+
+## serve-viewer-inspect-layers
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-inspect-layers/dark](renders/serve-viewer-inspect-layers.dark.png) |
+| `light` | ![serve-viewer-inspect-layers/light](renders/serve-viewer-inspect-layers.light.png) |
+
 ## serve-viewer-nav-collapsed
 
 | Theme | Capture |
