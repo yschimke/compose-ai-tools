@@ -154,6 +154,40 @@ test('skips rather than guesses when the PR cannot be re-read', async () => {
   assert.match(result.skipped, /could not re-read/)
 })
 
+test('leaves a concurrent open PR’s runs on the same branch alone', async () => {
+  // One branch, two open PRs against different bases. The other PR's runs
+  // predate this close, so the cutoff alone would not save them.
+  const { github, core, calls } = harness({
+    runs: [
+      run(1, 'CI', 'queued', { pull_requests: [{ number: 42 }] }),
+      run(2, 'CI', 'queued', { pull_requests: [{ number: 77 }] }),
+    ],
+  })
+  await reapPrRuns({ ...BASE, github, core })
+  assert.deepEqual(calls.cancelled, [1])
+})
+
+test('an absent PR association does not stop a fork run being reaped', async () => {
+  // `pull_requests` is empty for fork runs. Requiring a match would re-break
+  // the fork case, so an empty association must fall through to the other guards.
+  const FORK = 'someone-else/compose-ai-tools'
+  const { github, core, calls } = harness({
+    runs: [run(1, 'CI', 'queued', { pull_requests: [], head_repository: { full_name: FORK } })],
+  })
+  await reapPrRuns({ ...BASE, headRepo: FORK, github, core })
+  assert.deepEqual(calls.cancelled, [1])
+})
+
+test('a run created in the same second as the close is left alone', async () => {
+  // GitHub timestamps are second-precision, so this is ambiguous. Prefer
+  // leaving a leftover over cancelling live work.
+  const { github, core, calls } = harness({
+    runs: [run(1, 'CI', 'queued', { created_at: CLOSED_AT })],
+  })
+  await reapPrRuns({ ...BASE, github, core })
+  assert.deepEqual(calls.cancelled, [])
+})
+
 test('leaves runs created after the PR closed alone', async () => {
   // A new PR on the same branch, or a reopen that then re-closed: its checks
   // are live work, not leftovers.

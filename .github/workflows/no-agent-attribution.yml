@@ -65,14 +65,20 @@ permissions:
 # holding a queue slot behind the heavy lanes. Grouping PR runs by ref fixes
 # that: a new push to the PR supersedes the run it replaces.
 #
-# Push runs are keyed per-SHA so they never share a group and can never cancel
+# Push runs are keyed per-RUN so they never share a group and can never cancel
 # each other. That is load-bearing, not an oversight: `drift` scans only the
 # commits *this push* added to main, so it is not idempotent across commits.
 # Any shared group would let GitHub cancel a pending run — it keeps only the
 # newest pending per group even with `cancel-in-progress: false` — and the
 # commits that run was going to scan would never be checked by anything.
+#
+# `github.run_id`, not `github.sha`: a SHA is not unique per push event. A
+# force-push can make an earlier SHA the tip again (X→A, A→B, B→A), which would
+# put two push events in one group and evict the pending run for the first —
+# leaving that event's commit range scanned by nothing. This workflow exists to
+# handle force-pushed history, so it cannot assume tips are never revisited.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

@@ -63,8 +63,12 @@ export async function reapPrRuns({
   }
   if (pr.state !== 'closed') return skip(`PR #${prNumber} is ${pr.state} again`)
 
-  // Anything created after the PR closed belongs to whatever came next — a
+  // Anything created at or after the close belongs to whatever came next — a
   // reopen, or a fresh PR on the same branch — not to the PR we are cleaning up.
+  // `>=` rather than `>` because GitHub timestamps are second-precision: a run
+  // created in the same second as the close is ambiguous, and the two mistakes
+  // are not equally bad. Skipping a real leftover costs one queue slot;
+  // cancelling live work costs someone their CI.
   const cutoff = closedAt ? Date.parse(closedAt) : NaN
 
   for (const status of ['queued', 'in_progress']) {
@@ -93,7 +97,18 @@ export async function reapPrRuns({
       // leftover runs, which are recorded in this repo, still get reaped.
       if (run.head_repository?.full_name !== headRepo) continue
 
-      if (!Number.isNaN(cutoff) && Date.parse(run.created_at) > cutoff) continue
+      // One branch can carry two open PRs at once (different bases), and the
+      // other PR's runs can predate this close, so they clear the cutoff. When
+      // GitHub tells us which PRs a run belongs to, believe it.
+      //
+      // Only when it says something, though: `pull_requests` is empty for fork
+      // runs, so *requiring* a match would silently stop reaping exactly the
+      // fork leftovers this script was fixed to catch. Empty means "no claim",
+      // and we fall through to the repo and cutoff checks.
+      const associated = run.pull_requests ?? []
+      if (associated.length > 0 && !associated.some((p) => p.number === prNumber)) continue
+
+      if (!Number.isNaN(cutoff) && Date.parse(run.created_at) >= cutoff) continue
 
       try {
         await github.rest.actions.cancelWorkflowRun({ ...repo, run_id: run.id })
