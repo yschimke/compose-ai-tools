@@ -24,6 +24,10 @@ package ee.schimke.composeai.preview
  *   it when the component should be a card *per* breakpoint instead; see below.
  * * [referenceSet] defaults to empty. Override with the handle of the component *family*
  *   [reference] is one variant of — see below.
+ * * [noReference] defaults to empty. Override with the REASON there is no [reference], when the
+ *   absence is a finding rather than a gap — the kit retired the pattern, never published it, or
+ *   publishes something close enough to mislead. An empty [reference] otherwise means only "nobody
+ *   has looked yet", and a consumer cannot tell the two apart.
  *
  * ```kotlin
  * @file:CatalogGroup("Buttons")
@@ -101,11 +105,12 @@ annotation class CatalogComponent(
   val reference: String = "",
   val parallel: String = "",
   val perBreakpoint: Boolean = false,
-  // Appended, NOT slotted in beside `reference` where it reads best: a parameter inserted ahead of
+  // Appended, NOT slotted in beside `reference` where they read best: a parameter inserted ahead of
   // an existing one silently re-points a positional call. A five-string `@CatalogComponent(...)`
-  // whose fifth argument meant `parallel` would still compile and quietly mean `referenceSet`.
-  // Declaration order is source API here; the pairing is documented above instead.
+  // whose fifth argument meant `parallel` would still compile and quietly mean something else.
+  // Declaration order is source API here; the grouping is documented above instead.
   val referenceSet: String = "",
+  val noReference: String = "",
 )
 
 /**

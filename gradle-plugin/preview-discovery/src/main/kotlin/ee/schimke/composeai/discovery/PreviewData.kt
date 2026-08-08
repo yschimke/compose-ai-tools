@@ -809,6 +809,12 @@ data class CatalogEntry(
    * code. A screen rarely uses the exact variant a catalog pictured, so the set is what matches.
    */
   val referenceSet: String? = null,
+  /**
+   * COMPONENT only: why there is no [reference], when the absence is a finding rather than a gap. A
+   * null [reference] otherwise means only "nobody has looked yet"; this separates that from "the
+   * kit retired this", which a consumer cannot infer from silence.
+   */
+  val noReference: String? = null,
   /** COMPONENT only: component id of the counterpart in the `compareWith` sibling system. */
   val parallel: String? = null,
   /** VARIANT only: the interaction/state this render shows (`pressed`, `disabled`, …). */

@@ -857,6 +857,7 @@ class DiscoveryFunctionalTest {
           val parallel: String = "",
           val perBreakpoint: Boolean = false,
           val referenceSet: String = "",
+          val noReference: String = "",
         )
 
         @Retention(AnnotationRetention.BINARY)
@@ -915,6 +916,13 @@ class DiscoveryFunctionalTest {
         // rendered at. WHICH breakpoints is decided by the renders, not restated here.
         @CatalogComponent(id = "Layout/List", perBreakpoint = true)
         @Preview @Composable fun ListLayout() {}
+
+        // No reference, but for a stated reason — which is not the same as nobody having looked.
+        @CatalogComponent(
+          id = "Button/Retired",
+          noReference = "the kit files this under Deprecated and publishes no replacement",
+        )
+        @Preview @Composable fun RetiredButton() {}
 
         // No catalog annotation at all: stays out of the inventory (catalog == null).
         @Preview @Composable fun NotACatalogPreview() {}
@@ -975,6 +983,17 @@ class DiscoveryFunctionalTest {
     assertThat(plain.parallel).isNull()
     assertThat(plain.reference).isNull()
     assertThat(plain.referenceSet).isNull()
+    // Said nothing either way, so `noReference` is silent too. This is the "nobody has looked yet"
+    // case the stated-absence assertion below has to stay distinguishable from.
+    assertThat(plain.noReference).isNull()
+
+    // A stated absence: still no reference, but the reason travels with the component, so a
+    // consumer can tell a finding about the kit apart from an unfilled gap.
+    val retired = byFn.getValue("RetiredButton").catalog
+    assertThat(retired).isNotNull()
+    assertThat(retired!!.reference).isNull()
+    assertThat(retired.noReference)
+      .isEqualTo("the kit files this under Deprecated and publishes no replacement")
 
     // The fan-out intent rides the component entry as a flag; the export resolves the actual
     // breakpoints from the renders (`Layout/List/smallRound`, `…/largeRound`) rather than from a
