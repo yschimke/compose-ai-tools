@@ -107,6 +107,54 @@ class DesktopRecordingSessionLiveInputTest {
   }
 
   @Test
+  fun `toScriptEvent threads the typed text and the pointer device through`() {
+    // Issue #3545 — the same drop this file was written about, one field-pair over. Anything not on
+    // the synthesised script event is gone by the time the handler registry dispatches, so a `text`
+    // left off here meant a live recording could never type a character, and a `pointerType` left
+    // off meant every mouse drag reached the composition as touch and never selected.
+    val typed =
+      RecordingInputParams(
+        recordingId = "live-rec",
+        kind = InteractiveInputKind.KEY_DOWN,
+        keyCode = "29", // KEYCODE_A
+        text = "a",
+      )
+    val mouseDown =
+      RecordingInputParams(
+        recordingId = "live-rec",
+        kind = InteractiveInputKind.POINTER_DOWN,
+        pixelX = 10,
+        pixelY = 20,
+        pointerType = "mouse",
+      )
+
+    val typedEvent = typed.toScriptEvent(tMs = 5L)
+    val mouseEvent = mouseDown.toScriptEvent(tMs = 5L)
+
+    assertEquals("a", typedEvent.text)
+    assertEquals("29", typedEvent.keyCode)
+    assertEquals("mouse", mouseEvent.pointerType)
+  }
+
+  @Test
+  fun `toScriptEvent leaves text and pointerType absent for the pre-3545 wire shape`() {
+    // A client that predates the fields sends neither. Both must stay null so the dispatch falls
+    // back to exactly what it did before: no typed character, and a touch pointer.
+    val legacy =
+      RecordingInputParams(
+        recordingId = "live-rec",
+        kind = InteractiveInputKind.POINTER_DOWN,
+        pixelX = 10,
+        pixelY = 20,
+      )
+
+    val event = legacy.toScriptEvent(tMs = 0L)
+
+    assertEquals(null, event.text)
+    assertEquals(null, event.pointerType)
+  }
+
+  @Test
   fun `toScriptEvent threads a semantic target through for agent-driven live recordings`() {
     // The record-live bridge (issue #2047): an agent driving a live recording by handle posts a
     // target on the wire, which must survive into the captured script verbatim (no pixel math).

@@ -5,15 +5,7 @@
 
 package ee.schimke.composeai.daemon
 
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.key.KeyEvent
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.pointer.PointerButton
-import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.PointerId
-import androidx.compose.ui.input.pointer.PointerType
-import androidx.compose.ui.scene.ComposeScenePointer
 import ee.schimke.composeai.cli.AccessibilityNode
 import ee.schimke.composeai.cli.TalkBackOverlayFrames
 import ee.schimke.composeai.cli.TalkBackTraversal
@@ -376,10 +368,13 @@ class DesktopRecordingSession(
    *
    * Built-in input kinds (`click`, `pointerDown`, `pointerMove`, `pointerUp`) are registered as
    * real Skiko `sendPointerEvent` calls. `rotaryScroll` reuses the pointer pipeline's
-   * `PointerEventType.Scroll`; `keyDown` / `keyUp` route through `sendKeyEvent` with the desktop
-   * key translation table (`DesktopKeyDispatch.kt`). Issue #1203 closed the no-op gap that lived
-   * here pre-v3. The probe extension handler appears once, here, instead of leaking into the
-   * dispatch loop's special-case branch.
+   * `PointerEventType.Scroll`; `keyDown` / `keyUp` route through the shared [SceneKeyDispatch],
+   * which pairs the desktop key translation table (`DesktopKeyDispatch.kt`) with the
+   * typed-character dispatch a `TextField` actually inserts from. Issue #1203 closed the no-op gap
+   * that lived here pre-v3; issue #3545 replaced the recording lane's private copies of the key and
+   * pointer dispatch with the interactive lane's, so typing and mouse-selection reach recordings
+   * too. The probe extension handler appears once, here, instead of leaking into the dispatch
+   * loop's special-case branch.
    */
   private val scriptHandlers: RecordingScriptHandlerRegistry = buildScriptHandlers()
 
@@ -400,8 +395,8 @@ class DesktopRecordingSession(
           pointerHandler(PointerEventType.Release),
         )
         put("input.rotaryScroll", rotaryScrollHandler())
-        put(InputKeyboardRecordingScriptEvents.KEY_DOWN_EVENT, keyHandler(KeyEventType.KeyDown))
-        put(InputKeyboardRecordingScriptEvents.KEY_UP_EVENT, keyHandler(KeyEventType.KeyUp))
+        put(InputKeyboardRecordingScriptEvents.KEY_DOWN_EVENT, keyDownHandler())
+        put(InputKeyboardRecordingScriptEvents.KEY_UP_EVENT, keyUpHandler())
         put(
           RecordingScriptDataExtensions.ASSERT_VISIBLE_EVENT,
           assertVisibilityHandler(expectVisible = true),
@@ -426,14 +421,17 @@ class DesktopRecordingSession(
     )
 
   /**
-   * Per-pointer-id active state — keyed by [RecordingScriptEvent.pointerId] (`null` collapses to
-   * `0` for backwards compatibility). Updated by [pointerHandler] on every `pointerDown` /
-   * `pointerMove` / `pointerUp` so the next multi-pointer dispatch sees the full set of currently-
-   * pressed fingers. Cleared per id on `pointerUp`. This is what enables real pinch-to-zoom in
-   * scripted recordings — Compose's gesture pipeline needs to see both fingers simultaneously to
-   * fire `Modifier.transformable {}`'s zoom handler.
+   * Pointer translation + per-pointer-id active state, keyed by [RecordingScriptEvent.pointerId]
+   * (`null` collapses to `0` for backwards compatibility). This is what enables real pinch-to-zoom
+   * in recordings — Compose's gesture pipeline needs to see both fingers simultaneously to fire
+   * `Modifier.transformable {}`'s zoom handler.
+   *
+   * The same [ScenePointerDispatch] [DesktopInteractiveSession] uses, so a recording synthesises
+   * mouse / pen / touch pointers exactly like the interactive lane does (issue #3545). Every
+   * dispatch passes the event's virtual `tMs` explicitly, so the wall-clock default is never used.
    */
-  private val activePointers: MutableMap<Int, Offset> = mutableMapOf()
+  private val pointers: ScenePointerDispatch =
+    ScenePointerDispatch(scene = { state.scene }, defaultTimeMillis = { 0L })
 
   private fun pointerIdOrDefault(event: RecordingScriptEvent): Int = event.pointerId ?: 0
 
@@ -646,15 +644,10 @@ class DesktopRecordingSession(
         }
       val id = pointerIdOrDefault(event)
       val offset = sceneOffset(px, py)
-      activePointers[id] = offset
-      dispatchMultiPointer(eventType = PointerEventType.Press, timeMillis = ctx.tMs)
+      val type = composePointerType(event.pointerType)
+      pointers.press(id, offset, type, timeMillis = ctx.tMs)
       state.scene.render(nanoTime = ctx.tNanos)
-      activePointers.remove(id)
-      dispatchMultiPointer(
-        eventType = PointerEventType.Release,
-        timeMillis = ctx.tMs,
-        releasedPointer = id to offset,
-      )
+      pointers.release(id, offset, type, timeMillis = ctx.tMs)
       appliedEvidence(event)
     }
 
@@ -664,11 +657,16 @@ class DesktopRecordingSession(
    * [DesktopInteractiveSession] uses so `Modifier.clickable {}` and other tap-gesture detectors see
    * consistent down→up sequences regardless of mode.
    *
-   * Multi-pointer aware via [RecordingScriptEvent.pointerId]: each event updates [activePointers]
-   * for its own id, then dispatches a single multi-pointer `sendPointerEvent` carrying every
+   * Multi-pointer aware via [RecordingScriptEvent.pointerId]: each event updates [pointers] for its
+   * own id, then dispatches a single multi-pointer `sendPointerEvent` carrying every
    * currently-pressed pointer. That's what pinch-to-zoom needs — without seeing both fingers at the
    * same `tMs`, Compose's `Modifier.transformable` zoom detector treats the two fingers as
    * independent drags and never fires the zoom callback.
+   *
+   * Device-class aware via [RecordingScriptEvent.pointerType] (issue #3545): a script that means to
+   * mouse-drag a text selection says `"mouse"`, and a move / release inherits whatever class its
+   * press established, so a drag can't change device mid-stream. Absent ⇒ touch, so every script
+   * written before the field existed replays exactly as it did.
    */
   private fun pointerHandler(eventType: PointerEventType): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, ctx ->
@@ -684,82 +682,15 @@ class DesktopRecordingSession(
         }
       val id = pointerIdOrDefault(event)
       val offset = sceneOffset(px, py)
-      val releasedPointer: Pair<Int, Offset>?
+      val type = composePointerType(event.pointerType)
       when (eventType) {
-        PointerEventType.Press -> {
-          activePointers[id] = offset
-          releasedPointer = null
-        }
-        PointerEventType.Move -> {
-          activePointers[id] = offset
-          releasedPointer = null
-        }
-        PointerEventType.Release -> {
-          // Remove BEFORE dispatch but pass the released id+position into [dispatchMultiPointer]
-          // so Compose sees the up event with `pressed = false` for this pointer alongside any
-          // still-active fingers. Without the explicit released entry, dropping the pointer here
-          // and dispatching only remaining actives would deliver a Move-shaped event and the
-          // gesture detector would never see the "finger lifted" signal.
-          activePointers.remove(id)
-          releasedPointer = id to offset
-        }
-        else -> releasedPointer = null
+        PointerEventType.Press -> pointers.press(id, offset, type, timeMillis = ctx.tMs)
+        PointerEventType.Move -> pointers.move(id, offset, type, timeMillis = ctx.tMs)
+        PointerEventType.Release -> pointers.release(id, offset, type, timeMillis = ctx.tMs)
+        else -> Unit
       }
-      dispatchMultiPointer(
-        eventType = eventType,
-        timeMillis = ctx.tMs,
-        releasedPointer = releasedPointer,
-      )
       appliedEvidence(event)
     }
-
-  /**
-   * Dispatch one multi-pointer event carrying every currently-active pointer (and, optionally, a
-   * just-released pointer with `pressed = false`). Skiko's `BaseComposeScene.sendPointerEvent`
-   * overload that takes `List<ComposeScenePointer>` is what makes pinch-to-zoom work — Compose's
-   * pointer pipeline tracks gesture id-by-id and fires `Modifier.transformable {}`'s rotation /
-   * zoom / pan callbacks only when it sees ≥ 2 pointers in a single event.
-   *
-   * Falls back to a no-op when there are no pointers to dispatch (defensive — the handlers always
-   * provide either an active set, a releasedPointer, or both).
-   */
-  private fun dispatchMultiPointer(
-    eventType: PointerEventType,
-    timeMillis: Long,
-    releasedPointer: Pair<Int, Offset>? = null,
-  ) {
-    val pointers = buildList {
-      for ((pid, off) in activePointers) {
-        add(
-          ComposeScenePointer(
-            id = PointerId(pid.toLong()),
-            position = off,
-            pressed = true,
-            type = PointerType.Touch,
-          )
-        )
-      }
-      if (releasedPointer != null) {
-        add(
-          ComposeScenePointer(
-            id = PointerId(releasedPointer.first.toLong()),
-            position = releasedPointer.second,
-            pressed = false,
-            type = PointerType.Touch,
-          )
-        )
-      }
-    }
-    if (pointers.isEmpty()) return
-    val anyPressed = pointers.any { it.pressed }
-    state.scene.sendPointerEvent(
-      eventType = eventType,
-      pointers = pointers,
-      buttons = PointerButtons(isPrimaryPressed = anyPressed),
-      timeMillis = timeMillis,
-      button = if (eventType == PointerEventType.Press) PointerButton.Primary else null,
-    )
-  }
 
   /**
    * Reuses Skiko's pointer-event pipeline for rotary scrolling — the same path a wheel input on a
@@ -786,31 +717,48 @@ class DesktopRecordingSession(
           "${event.kind} requires scrollDeltaY",
         )
       }
-      state.scene.sendPointerEvent(
-        eventType = PointerEventType.Scroll,
-        position = sceneOffset(px, py),
-        timeMillis = ctx.tMs,
-        scrollDelta = Offset(0f, deltaY),
-      )
+      pointers.scroll(sceneOffset(px, py), deltaY, timeMillis = ctx.tMs)
       appliedEvidence(event)
     }
 
   /**
-   * Translate the wire `keyCode` (Android `KEYCODE_*` int as a decimal string — see
-   * `InteractiveKeyCodes`) to a Compose [androidx.compose.ui.input.key.Key] and dispatch via
-   * `BaseComposeScene.sendKeyEvent`. Unmapped codes surface as `unsupported` script evidence so the
-   * agent learns which key didn't make it through.
+   * `input.keyDown` through the shared [SceneKeyDispatch] — the same implementation
+   * [DesktopInteractiveSession] uses, so a recorded keystroke behaves exactly like a live one
+   * (issue #3545).
+   *
+   * Both halves go out: the wire `keyCode` (Android `KEYCODE_*` as a decimal string, see
+   * `InteractiveKeyCodes`) as a Compose `Key`, and the `text` it typed as a `KEY_TYPED`-backed
+   * event — the only half a `TextField` inserts from. Either half alone is enough, so a
+   * non-US-layout character with no `KEYCODE_*` still types.
+   *
+   * An event carrying neither a mapped keycode nor printable text surfaces as `unsupported` script
+   * evidence, so the agent learns which key didn't make it through.
    */
-  private fun keyHandler(type: KeyEventType): RecordingScriptEventHandler =
+  private fun keyDownHandler(): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
-      val key = androidKeycodeToComposeKey(event.keyCode)
-      if (key == null) {
+      if (!SceneKeyDispatch.keyDown(state.scene, event.keyCode, event.text)) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} has nothing to dispatch: keyCode '${event.keyCode}' is not in the " +
+            "desktop key translation table and text ${event.text?.let { "'$it'" } ?: "(absent)"} " +
+            "is not a single printable character",
+        )
+      }
+      appliedEvidence(event)
+    }
+
+  /**
+   * `input.keyUp` counterpart. No typed-character half — AWT emits `KEY_TYPED` only between press
+   * and release — so an unmapped keycode is all there is to fail on.
+   */
+  private fun keyUpHandler(): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, _ ->
+      if (!SceneKeyDispatch.keyUp(state.scene, event.keyCode)) {
         return@RecordingScriptEventHandler unsupportedEvidence(
           event,
           "${event.kind} keyCode '${event.keyCode}' is not in the desktop key translation table",
         )
       }
-      state.scene.sendKeyEvent(KeyEvent(key, type))
       appliedEvidence(event)
     }
 
@@ -1164,6 +1112,12 @@ class DesktopRecordingSession(
  * zoom / rotate callbacks never fired despite the multi-pointer dispatch the same PR landed. See
  * compose-ai-tools#1360 finding #2.
  *
+ * `text` and `pointerType` are threaded for the same reason (issue #3545): everything not on the
+ * script event is gone by the time [scriptHandlers] dispatches, so a viewer sending the character a
+ * key typed — or saying a drag came from a mouse — used to have both silently discarded the moment
+ * a recording was active. They also ride into [RecordingStopResult.capturedScript], so a captured
+ * session replays as the keystrokes and the selection it actually was.
+ *
  * Top-level (not a member of [DesktopRecordingSession]) so the unit test can exercise the data
  * mapping without standing up an `ImageComposeScene` / `RenderEngine` per assertion.
  */
@@ -1177,6 +1131,8 @@ internal fun RecordingInputParams.toScriptEvent(tMs: Long): RecordingScriptEvent
     pointerId = pointerId,
     scrollDeltaY = scrollDeltaY,
     keyCode = keyCode,
+    text = text,
+    pointerType = pointerType,
   )
 
 /**

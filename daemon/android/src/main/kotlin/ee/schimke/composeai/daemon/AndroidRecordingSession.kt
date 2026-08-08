@@ -657,6 +657,13 @@ class AndroidRecordingSession(
             target = target,
             scrollDeltaY = event.scrollDeltaY,
             keyCode = event.keyCode,
+            // #3545 — the character the key typed and the device class the pointer came from. The
+            // sandbox needs both to do more than move a caret: `performKeyInput` inserts from the
+            // code point, and only `performMouseInput` drags out a text selection. Without them a
+            // recorded `TextField` stayed empty and a recorded drag never selected, even though the
+            // very same events dispatched fine outside a recording.
+            text = event.text,
+            pointerType = event.pointerType,
           )
         )
       } catch (t: SemanticsTargetUnresolvedException) {
@@ -1049,9 +1056,11 @@ class AndroidRecordingSession(
    * both modes through one registry. `tMs` is the **frame's** virtual time (live mode stamps the
    * input at the current frame boundary, same convention scripted playback uses).
    *
-   * `RecordingInputParams` doesn't carry `scrollDeltaY` today (the wire shape is set by
-   * `JsonRpcServer.handleRecordingInput`); future rotary-aware live drivers can extend this
-   * synthesisation when the new payload field is wired through.
+   * Every field the wire carries is mapped: anything left off the script event is gone by the time
+   * [scriptHandlers] dispatches. `text` and `pointerType` (issue #3545) are what let a live recording
+   * type printable characters and mouse-select, matching the desktop lane and the ordinary
+   * interactive session; `target` and `scrollDeltaY` were dropped here for the same reason and are
+   * mapped alongside them.
    */
   private fun RecordingInputParams.toScriptEvent(tMs: Long): RecordingScriptEvent =
     RecordingScriptEvent(
@@ -1059,7 +1068,12 @@ class AndroidRecordingSession(
       kind = kind.wireName(),
       pixelX = pixelX,
       pixelY = pixelY,
+      target = target,
+      pointerId = pointerId,
+      scrollDeltaY = scrollDeltaY,
       keyCode = keyCode,
+      text = text,
+      pointerType = pointerType,
     )
 
   override fun encode(format: RecordingFormat): EncodedRecording {

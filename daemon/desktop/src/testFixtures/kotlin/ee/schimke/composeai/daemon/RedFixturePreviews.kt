@@ -1098,9 +1098,27 @@ object TextFieldProbe {
 
   @Volatile var selected: String = ""
 
+  /**
+   * The widest selection seen across every value change, rather than whatever is selected right
+   * now.
+   *
+   * Releasing a mouse drag collapses the selection back to a caret — real Compose behaviour, and
+   * what a user sees when they let go — so [selected] read after a completed drag is legitimately
+   * empty. A test that drives a whole press → drag → release and wants to assert "this drag
+   * selected" has to look at what the drag produced, not at the resting state after it.
+   */
+  @Volatile var widestSelection: String = ""
+
+  fun record(value: TextFieldValue) {
+    text = value.text
+    selected = value.text.substring(value.selection.min, value.selection.max)
+    if (selected.length > widestSelection.length) widestSelection = selected
+  }
+
   fun reset() {
     text = ""
     selected = ""
+    widestSelection = ""
   }
 }
 
@@ -1126,8 +1144,7 @@ fun EditableTextFieldPreview() {
       value = value,
       onValueChange = {
         value = it
-        TextFieldProbe.text = it.text
-        TextFieldProbe.selected = it.text.substring(it.selection.min, it.selection.max)
+        TextFieldProbe.record(it)
       },
       textStyle = TextStyle(color = Color.Black, fontSize = 20.sp),
       modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),

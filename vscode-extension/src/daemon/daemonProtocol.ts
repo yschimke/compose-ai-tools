@@ -1221,6 +1221,13 @@ export interface RecordingScriptEvent {
     pointerId?: number;
     scrollDeltaY?: number;
     keyCode?: string;
+    /**
+     * See `InteractiveInputParams.text` — the character a `input.keyDown` typed. Persisted in
+     * captured scripts, so a replayed recording types what it originally typed (issue #3545).
+     */
+    text?: string;
+    /** See `InteractiveInputParams.pointerType`. Absent means touch. */
+    pointerType?: string;
     label?: string;
     checkpointId?: string;
     lifecycleEvent?: string;
