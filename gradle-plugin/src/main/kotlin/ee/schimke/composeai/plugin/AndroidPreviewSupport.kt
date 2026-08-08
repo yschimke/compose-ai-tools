@@ -8,6 +8,8 @@ import com.android.build.api.variant.ScopedArtifacts
 import com.android.build.api.variant.Variant
 import ee.schimke.composeai.daemonlaunch.*
 import ee.schimke.composeai.discovery.*
+import java.util.Collections
+import java.util.IdentityHashMap
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
@@ -256,11 +258,37 @@ internal object AndroidPreviewSupport {
    * Compose Multiplatform transitives stay on the graph — they are the render classpath's only
    * Compose, and with nothing to conflict against there is no version pressure to remove.
    *
+   * **Our own injected Compose does not count.** The plugin puts `androidx.compose.ui:ui` and
+   * `androidx.compose.foundation:foundation` (at [RENDERER_COMPOSE_FLOOR_VERSION]) on the main
+   * variant precisely *because* a tile-only consumer has none — the merged unit-test resource APK
+   * needs those R classes. Counting them as "the consumer brings Compose" is circular, and it is
+   * exactly what made the first attempt at this gate a no-op on `wear-os-samples/WearTilesKotlin`:
+   * the probe saw a declared `androidx.compose.ui`, kept Rule 3 on, dropped the Compose
+   * Multiplatform transitives that carry compose-ui 1.11.x, and left the render classpath on the
+   * 1.9.5 floor — against which the renderer's own bytecode does not link:
+   * ```
+   * NoSuchMethodError: 'kotlin.jvm.functions.Function1
+   *   androidx.compose.ui.node.ComposeUiNode$Companion.getApplyOnDeactivatedNodeAssertion()'
+   *     at …renderer.RobolectricRenderTestBase.MeasuredWrapBox(RobolectricRenderTest.kt:2998)
+   * ```
+   *
+   * So the probe skips every dependency the plugin itself contributed, tracked by identity via
+   * [addPluginDependency]. Identity rather than coordinate matching keeps a consumer's own
+   * `androidx.compose.ui:ui` visible even though we inject that same coordinate beside it.
+   *
+   * One deliberate limit: Gradle's `DependencySet` collapses *equal* dependencies, so a consumer
+   * declaring the identical coordinate **and** version we inject leaves one instance — ours — and
+   * reads as Compose-less. That is the safe direction. Such a consumer's only Compose would be the
+   * floor itself, and Rule 3 ON would strip our transitives and leave the renderer unlinkable
+   * against it, exactly as above.
+   *
    * Read eagerly: every caller runs from the Android registration's `afterEvaluate`, so the
-   * consumer's build script has already declared its dependencies and applied its plugins.
+   * consumer's build script has already declared its dependencies and applied its plugins. The
+   * identity check makes the answer independent of whether our injections have happened yet.
    */
   internal fun consumerBringsOwnCompose(project: Project, configuration: Configuration?): Boolean {
     if (COMPOSE_COMPILER_PLUGIN_IDS.any(project.plugins::hasPlugin)) return true
+    val ours = pluginInjectedDependencies(project)
     // Walk `extendsFrom` ourselves rather than calling `Configuration.getHierarchy()`, which is on
     // the Gradle 10 removal list; the closure is tiny and cycles are impossible in Gradle's own
     // model, but `seen` keeps this total either way.
@@ -271,6 +299,7 @@ internal object AndroidPreviewSupport {
       if (!seen.add(candidate)) continue
       val declaresCompose =
         candidate.dependencies.any { dependency ->
+          if (dependency in ours) return@any false
           val group = dependency.group.orEmpty()
           // Bare `androidx.compose` too: that is the BOM's group (`androidx.compose:compose-bom`),
           // which is often the only Compose coordinate a consumer names directly.
@@ -283,6 +312,41 @@ internal object AndroidPreviewSupport {
     }
     return false
   }
+
+  /**
+   * Adds a dependency the PLUGIN contributes (as opposed to one the consumer declared) and records
+   * it so [consumerBringsOwnCompose] can tell the two apart. Use this for every
+   * `androidx.compose.*` / `org.jetbrains.compose.*` coordinate the plugin injects; anything else
+   * is optional, since the probe only ever looks at Compose groups.
+   */
+  internal fun addPluginDependency(
+    project: Project,
+    configurationName: String,
+    notation: Any,
+  ): Dependency {
+    val dependency = project.dependencies.add(configurationName, notation)
+    if (dependency != null) pluginInjectedDependencies(project).add(dependency)
+    return dependency ?: project.dependencies.create(notation)
+  }
+
+  /**
+   * Per-project identity set of the dependencies [addPluginDependency] contributed. Stored on the
+   * project's extra properties so it is scoped to (and collected with) the project rather than held
+   * in a static map. Identity-based, so two equal-but-distinct `Dependency` instances — ours and a
+   * consumer's — never alias.
+   */
+  private fun pluginInjectedDependencies(project: Project): MutableSet<Dependency> {
+    val extra = project.extensions.extraProperties
+    if (extra.has(PLUGIN_INJECTED_DEPENDENCIES_KEY)) {
+      @Suppress("UNCHECKED_CAST")
+      return extra.get(PLUGIN_INJECTED_DEPENDENCIES_KEY) as MutableSet<Dependency>
+    }
+    val set = Collections.newSetFromMap(IdentityHashMap<Dependency, Boolean>())
+    extra.set(PLUGIN_INJECTED_DEPENDENCIES_KEY, set)
+    return set
+  }
+
+  private const val PLUGIN_INJECTED_DEPENDENCIES_KEY = "composeai.pluginInjectedDependencies"
 
   /**
    * Compose compiler plugin ids — the Kotlin 2.x plugin every consumer with `@Composable` code
@@ -1156,11 +1220,13 @@ internal object AndroidPreviewSupport {
     // ui-test entry points are guaranteed to exist. Bumping it later means bumping the renderer's
     // compile floor in lockstep — keep the two in sync.
     if (manageDependencies) {
-      project.dependencies.add(
+      addPluginDependency(
+        project,
         "testImplementation",
         "androidx.compose.ui:ui-test-manifest:$RENDERER_COMPOSE_FLOOR_VERSION",
       )
-      project.dependencies.add(
+      addPluginDependency(
+        project,
         "testImplementation",
         "androidx.compose.ui:ui-test-junit4:$RENDERER_COMPOSE_FLOOR_VERSION",
       )
@@ -1256,7 +1322,8 @@ internal object AndroidPreviewSupport {
       // with consumer-aligned versions, so this is a no-op for Compose-app
       // consumers that already get a newer ui via their BOM, and a fix for
       // tile-only consumers that don't.
-      project.dependencies.add(
+      addPluginDependency(
+        project,
         "${variantName}Implementation",
         "androidx.compose.ui:ui:$RENDERER_COMPOSE_FLOOR_VERSION",
       )
@@ -1276,7 +1343,8 @@ internal object AndroidPreviewSupport {
       // Gradle picks the max with consumer-aligned versions, so this is a
       // no-op for Compose-app consumers that already get foundation via
       // their BOM, and a fix for tile-only consumers that don't.
-      project.dependencies.add(
+      addPluginDependency(
+        project,
         "${variantName}Implementation",
         "androidx.compose.foundation:foundation:$RENDERER_COMPOSE_FLOOR_VERSION",
       )
@@ -1439,7 +1507,8 @@ internal object AndroidPreviewSupport {
           // Pinned to the same renderer-compile-floor as ui-test-manifest above so consumers
           // without a Compose BOM (tile-only / older-Compose) still resolve a version. See the
           // [RENDERER_COMPOSE_FLOOR_VERSION] KDoc for the resolution model.
-          project.dependencies.add(
+          addPluginDependency(
+            project,
             "testImplementation",
             "androidx.compose.runtime:runtime-tracing:$RENDERER_COMPOSE_FLOOR_VERSION",
           )
