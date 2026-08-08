@@ -383,16 +383,26 @@ internal constructor(
    * revealed. `TOP` is the unscrolled initial frame, i.e. exactly what a render without any drive
    * already produces, so it resolves to `null` rather than a no-op drive.
    *
-   * Deliberately narrowed to a preview with **exactly one** capture. `@ScrollingPreview(modes =
-   * [TOP, END])` plans *two* captures under one preview id — two PNGs, `…_SCROLL_top.png` and
-   * `…_SCROLL_end.png` — and the daemon's surface is one frame per id, so there is no honest answer
-   * to "which one" without a per-capture id. Those previews keep the undriven frame they render
-   * today rather than having the daemon silently pick a side.
+   * Resolved only when the preview's captures are **unanimous**: every capture that carries a
+   * scroll block asks for `END`. The capture grid is the cross-product of the scroll, time and
+   * focus fan-outs, so a single `@ScrollingPreview(END)` paired with a two-timing
+   * `@RoboComposePreviewOptions` plans two captures that both carry the same `END` — unambiguous,
+   * even though there is more than one. `@ScrollingPreview(modes = [TOP, END])` is the case this
+   * guards against: it plans `…_SCROLL_top.png` *and* `…_SCROLL_end.png` under one preview id, the
+   * daemon's surface is one frame per id, and there is no honest answer to "which one" without a
+   * per-capture id — so those previews keep the undriven frame they render today rather than having
+   * the daemon silently pick a side.
+   *
+   * Captures with no scroll at all don't vote. A `@ScrollingPreview(END)` function that also
+   * carries `@AnimatedPreview` plans a scroll-less GIF capture beside the END one, but that GIF is
+   * a separate output rather than a rival static frame.
    */
   fun staticScrollFor(previewId: String): ScrollCaptureDto? {
     val info = byId(previewId) ?: return null
-    val only = info.captures.singleOrNull() ?: return null
-    return only.scroll?.takeIf { it.mode.equals("END", ignoreCase = true) }
+    val scrolls = info.captures.mapNotNull { it.scroll }
+    if (scrolls.isEmpty()) return null
+    if (!scrolls.all { it.mode.equals("END", ignoreCase = true) }) return null
+    return scrolls.first()
   }
 
   /** All known preview ids. Phase 2 will diff a fresh scan against this set. */

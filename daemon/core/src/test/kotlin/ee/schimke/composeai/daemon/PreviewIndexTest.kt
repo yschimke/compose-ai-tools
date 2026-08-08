@@ -372,6 +372,33 @@ class PreviewIndexTest {
                 "scroll": { "mode": "END", "axis": "VERTICAL" }
               }
             ]
+          },
+          {
+            "id": "EndTimedPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "EndTimed",
+            "captures": [
+              {
+                "renderOutput": "renders/EndTimed_TIME_100ms.png",
+                "scroll": { "mode": "END", "axis": "HORIZONTAL", "maxScrollPx": 400 }
+              },
+              {
+                "renderOutput": "renders/EndTimed_TIME_500ms.png",
+                "scroll": { "mode": "END", "axis": "HORIZONTAL", "maxScrollPx": 400 }
+              }
+            ]
+          },
+          {
+            "id": "EndPlusGifPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "EndPlusGif",
+            "captures": [
+              {
+                "renderOutput": "renders/EndPlusGif.png",
+                "scroll": { "mode": "END", "axis": "VERTICAL" }
+              },
+              { "renderOutput": "renders/EndPlusGif_anim.gif" }
+            ]
           }
         ]
       }
@@ -391,6 +418,13 @@ class PreviewIndexTest {
       // TOP + END plans two PNGs under one id; the daemon renders one frame per id, so it must not
       // pick a side.
       assertNull(index.staticScrollFor("TopAndEndPreview_1"))
+      // A time fan-out repeats the SAME END intent across captures — unanimous, so it resolves.
+      val timed = index.staticScrollFor("EndTimedPreview_1")
+      assertNotNull("unanimous END captures must resolve a drive", timed)
+      assertEquals("HORIZONTAL", timed!!.axis)
+      assertEquals(400, timed.maxScrollPx)
+      // A scroll-less GIF capture beside the END one is a separate output, not a rival frame.
+      assertEquals("END", index.staticScrollFor("EndPlusGifPreview_1")?.mode)
     } finally {
       Files.deleteIfExists(tmp)
     }

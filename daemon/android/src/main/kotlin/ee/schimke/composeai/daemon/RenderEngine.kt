@@ -444,7 +444,8 @@ class RenderEngine(
                           spec.clearBackground
                       )
                       // Flatten Wear `TransformingLazyColumn` scaling for the grown scroll-SVG
-                      // render (see `prepareRenderEnvironment`); no-op provider when not a Wear app.
+                      // render and for `@ScrollingPreview(reduceMotion = true)` (see
+                      // `prepareRenderEnvironment`); no-op provider when not a Wear app.
                       if (environment.wearReduceMotionLocal != null) {
                         add(environment.wearReduceMotionLocal provides true)
                       }
@@ -649,9 +650,11 @@ class RenderEngine(
             // as an `EdgeButton` sticker whose SVG carried the collapsed button and the list's
             // resting top while its PNG carried the settled bottom.
             //
-            // The intent is annotation-sourced, so it needs a previewId to look up; an interactive
-            // render (`renderNow` with no id) simply doesn't scroll, as before.
-            val staticScroll = spec.previewId?.let { loadPreviewIndexLazily().staticScrollFor(it) }
+            // Resolved back in `prepareRenderEnvironment`, before composition, so the annotation's
+            // `reduceMotion` could be provided as a composition local. The intent is
+            // annotation-sourced, so it needs a previewId to look up; an interactive render
+            // (`renderNow` with no id) simply doesn't scroll, as before.
+            val staticScroll = environment.staticScroll
             if (staticScroll != null) {
               trace.section("compose:scrollToEnd") {
                 val driven =
@@ -1964,6 +1967,15 @@ class RenderEngine(
     val isRound: Boolean,
     val flattenWearScroll: Boolean,
     val wearReduceMotionLocal: ProvidableCompositionLocal<Boolean>?,
+    /**
+     * The `@ScrollingPreview(END)` drive this render owes before it captures, resolved from the
+     * preview index — see [PreviewIndex.staticScrollFor]. Resolved *here*, ahead of composition,
+     * rather than at the capture site: the annotation also carries `reduceMotion`, which has to be
+     * provided as a composition local before `setContent` to have any effect. Driving the scroll
+     * afterwards cannot undo `TransformingLazyColumn` edge transforms that were already composed
+     * with motion enabled.
+     */
+    val staticScroll: ScrollCaptureDto?,
     val sizeOverrides: PreviewOverrides?,
     val sandboxWidthPx: Int,
     val sandboxHeightPx: Int,
@@ -1986,8 +1998,16 @@ class RenderEngine(
     // natural size. Same knob the raster LONG path uses; resolved reflectively via the request
     // classloader, and a no-op when the consumer isn't a Wear app.
     val flattenWearScroll = isRound && spec.heightPx > spec.widthPx
+
+    // `@ScrollingPreview(END)`: resolved before composition, because the same annotation's
+    // `reduceMotion` (default `true`) is a composition local — a Wear `TransformingLazyColumn`
+    // composed with motion enabled has already baked its edge transforms by the time a scroll
+    // drive could run, so the daemon's frame would disagree with the Gradle render's. Mirrors
+    // `RobolectricRenderTest`, which reads the same flag off the preview's captures and wraps
+    // `setContent` in the provider.
+    val staticScroll = spec.previewId?.let { loadPreviewIndexLazily().staticScrollFor(it) }
     val wearReduceMotionLocal =
-      if (flattenWearScroll)
+      if (flattenWearScroll || staticScroll?.reduceMotion == true)
         ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
       else null
 
@@ -2028,6 +2048,7 @@ class RenderEngine(
       isRound = isRound,
       flattenWearScroll = flattenWearScroll,
       wearReduceMotionLocal = wearReduceMotionLocal,
+      staticScroll = staticScroll,
       sizeOverrides = sizeOverrides,
       sandboxWidthPx = sandboxWidthPx,
       sandboxHeightPx = sandboxHeightPx,
