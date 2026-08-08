@@ -239,6 +239,189 @@ class DiscoveryFunctionalTest {
       )
   }
 
+  /**
+   * The hoisted form: a matrix declared once on an annotation class and applied with one line.
+   *
+   * This is what stops a catalog retyping a cross product per component — five sizes by two shapes
+   * is nine cells, and m3-catalog had 237 near-identical annotations across thirteen blocks before
+   * `@OverrideVariant` could sit on an annotation class.
+   *
+   * Three properties are asserted together because they are the ones a naive implementation gets
+   * wrong: hoisted variants are found at all; stacking two annotations is a **union** (2 + 1 = 3
+   * variants, not 2 x 1 = 2 or some product); and a name carried by both is de-duplicated rather
+   * than emitted twice onto the same `_VARIANT_` output path.
+   */
+  @Test
+  fun `composePreviewDiscover expands @OverrideVariant hoisted onto an annotation class`() {
+    val projectDir = createCmpTestProject()
+
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "OverrideVariant.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Repeatable
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class OverrideVariant(
+            val name: String,
+            val booleans: Array<String> = [],
+            val strings: Array<String> = [],
+            val ints: Array<String> = [],
+            val floats: Array<String> = [],
+            val colors: Array<String> = [],
+        )
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/Sized.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+        import ee.schimke.composeai.preview.OverrideVariant
+
+        @OverrideVariant(name = "xs", strings = ["size=xs"])
+        @OverrideVariant(name = "l", strings = ["size=l"])
+        annotation class SizeMatrix
+
+        @OverrideVariant(name = "square", strings = ["shape=square"])
+        annotation class ShapeMatrix
+
+        @Preview
+        @SizeMatrix
+        @ShapeMatrix
+        @Composable
+        fun SizedPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Sized") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val sized = manifest.previews.filter { it.functionName == "SizedPreview" }
+    // Base + three variants. Union, not product: two annotations carrying 2 and 1 cells give 3.
+    assertThat(sized).hasSize(4)
+    assertThat(sized.mapNotNull { it.overrides?.name }).containsExactly("xs", "l", "square")
+
+    val xs = sized.single { it.overrides?.name == "xs" }
+    assertThat(xs.id).endsWith("_VARIANT_xs")
+    assertThat(xs.captures.single().renderOutput).contains("_VARIANT_xs")
+    assertThat(xs.overrides!!.seeds)
+      .containsExactly(
+        OverrideSeed(key = "size", index = null, kind = OverrideSeedKind.STRING, raw = "xs")
+      )
+
+    // The annotation is reachable both through ClassGraph's meta-annotation flattening and through
+    // the explicit closure walk. Reaching it twice must still produce one variant, not two.
+    assertThat(sized.count { it.overrides?.name == "square" }).isEqualTo(1)
+  }
+
+  /**
+   * Two hoisted matrices that disagree about one cell. The name is the rendered output's identity,
+   * so emitting both would have the second silently overwrite the first's PNG.
+   */
+  @Test
+  fun `composePreviewDiscover keeps the first of a colliding @OverrideVariant name and warns`() {
+    val projectDir = createCmpTestProject()
+
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "OverrideVariant.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Repeatable
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class OverrideVariant(
+            val name: String,
+            val booleans: Array<String> = [],
+            val strings: Array<String> = [],
+            val ints: Array<String> = [],
+            val floats: Array<String> = [],
+            val colors: Array<String> = [],
+        )
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/Clash.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+        import ee.schimke.composeai.preview.OverrideVariant
+
+        @OverrideVariant(name = "wide", strings = ["size=xl"])
+        annotation class FirstMatrix
+
+        @OverrideVariant(name = "wide", strings = ["width=wide"])
+        annotation class SecondMatrix
+
+        @Preview
+        @FirstMatrix
+        @SecondMatrix
+        @Composable
+        fun ClashPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Clash") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.output).contains("more than one @OverrideVariant named 'wide'")
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val clash = manifest.previews.filter { it.functionName == "ClashPreview" }
+    // Base + exactly one `wide`, seeded from the annotation that won.
+    assertThat(clash).hasSize(2)
+    assertThat(clash.single { it.overrides != null }.overrides!!.seeds)
+      .containsExactly(
+        OverrideSeed(key = "size", index = null, kind = OverrideSeedKind.STRING, raw = "xl")
+      )
+  }
+
   @Test
   fun `composePreviewDiscover aggregates @ColorCatalog tokens into catalog sheets`() {
     val projectDir = createCmpTestProject()

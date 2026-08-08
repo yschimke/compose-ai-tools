@@ -46,10 +46,40 @@ package ee.schimke.composeai.preview
  * `SwitchOn_*_VARIANT_off` and the rest from these annotations, with matching `figma/…` vectors —
  * so a desktop catalog has no reason to keep a hand-written wrapper for a variant that differs only
  * by a knob.
+ *
+ * ## Hoisting a whole matrix onto one annotation
+ *
+ * `@Target` includes `ANNOTATION_CLASS`, so a set of variants that several components share can be
+ * declared **once** on an annotation class and applied with one line each — the same "declare the
+ * fan-out once, tag the functions" move a multi-preview annotation makes for `@Preview`:
+ * ```
+ * @OverrideVariant(name = "xs", strings = ["size=xs"])
+ * @OverrideVariant(name = "xs-square", strings = ["size=xs", "shape=square"])
+ * // … one per cell …
+ * annotation class SizeShapeMatrix
+ *
+ * @CatalogModes @SizeShapeMatrix @Composable fun FilledButton() = …
+ * ```
+ *
+ * That is what the M3 catalogs need: five sizes by two shapes is nine cells, and writing them out
+ * per component put 237 near-identical annotations across thirteen blocks, which drifted.
+ *
+ * Two properties worth knowing before reaching for it:
+ * * **Stacking is a union, not a product.** A function tagged with a five-cell size annotation and
+ *   a two-cell shape annotation gets **seven** variants, not ten — each annotation contributes its
+ *   own cells, and nothing crosses them. Declare the cross product on one annotation if that is
+ *   what you want.
+ * * **Names must be unique across everything the function ends up carrying**, direct and hoisted
+ *   alike, because the name is what distinguishes the rendered `_VARIANT_<name>` output. Discovery
+ *   keeps the first of a repeated name and warns, rather than emitting two captures that overwrite
+ *   each other's file.
+ *
+ * Resolution walks the whole meta-annotation closure, so an annotation class that is itself tagged
+ * with another one contributes both sets.
  */
 @Repeatable
 @Retention(AnnotationRetention.BINARY)
-@Target(AnnotationTarget.FUNCTION)
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
 @MustBeDocumented
 annotation class OverrideVariant(
   /**
