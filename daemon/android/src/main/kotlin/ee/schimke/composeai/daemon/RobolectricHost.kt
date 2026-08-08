@@ -3746,7 +3746,10 @@ open class RobolectricHost(
           }
         }
         "keyDown" -> dispatchHeldKeyEvent(rule, cmd.keyCode, cmd.text, down = true)
-        "keyUp" -> dispatchHeldKeyEvent(rule, cmd.keyCode, text = null, down = false)
+        // The release carries its character too, so a focused field suppresses both halves of the
+        // keystroke. Dropping it here would dispatch a physical key-up whose key-down was
+        // suppressed — the unpaired release this pairing exists to avoid.
+        "keyUp" -> dispatchHeldKeyEvent(rule, cmd.keyCode, cmd.text, down = false)
       }
     }
 
@@ -3758,6 +3761,17 @@ open class RobolectricHost(
      * this shape. Unmapped / unparseable codes drop silently so a forward-looking client can't
      * crash the loop.
      */
+    /**
+     * Keycodes whose key-down was suppressed because a focused field was going to receive the
+     * character instead. The matching key-up is suppressed on the strength of this rather than by
+     * asking again where focus is: a keystroke can change focus between press and release (typing
+     * into a field that then hides itself), and a release whose press never happened is not merely
+     * untidy — Compose's injection scope rejects it outright and fails the whole dispatch.
+     *
+     * Per-sandbox, and entries live only between a press and its release.
+     */
+    private val suppressedKeyDowns: MutableSet<Int> = mutableSetOf()
+
     @OptIn(ExperimentalTestApi::class)
     private fun dispatchHeldKeyEvent(
       rule:
@@ -3792,7 +3806,15 @@ open class RobolectricHost(
       // selection.
       val editable = if (text.isNullOrEmpty()) null else focusedEditableNode(rule)
       val code = InteractiveKeyCodes.parse(keyCode)
-      if (code != null && editable == null) {
+      val suppressed =
+        if (down) {
+          val suppress = editable != null
+          if (suppress && code != null) suppressedKeyDowns.add(code)
+          suppress
+        } else {
+          code != null && suppressedKeyDowns.remove(code)
+        }
+      if (code != null && !suppressed) {
         // Android's actual `Key(nativeKeyCode: Int)` builds a Compose `Key` directly from the
         // Android `KEYCODE_*` int — same shape the wire carries. This drives the *command* keys:
         // caret movement, Backspace, Delete, Enter — and every key a focused field won't swallow.
