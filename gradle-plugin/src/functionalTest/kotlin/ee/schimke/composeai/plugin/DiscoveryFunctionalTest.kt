@@ -510,6 +510,7 @@ class DiscoveryFunctionalTest {
           val group: String = "",
           val caption: String = "",
           val reference: String = "",
+          val referenceSet: String = "",
           val parallel: String = "",
           val perBreakpoint: Boolean = false,
         )
@@ -547,6 +548,8 @@ class DiscoveryFunctionalTest {
         @CatalogComponent(
           id = "Button/Filled",
           caption = "Highest emphasis; the primary action.",
+          reference = "figma:AbCdEf/10:5",
+          referenceSet = "figma:AbCdEf/10:1",
           parallel = "FilledButton",
         )
         @Preview @Composable fun FilledButton() {}
@@ -606,6 +609,10 @@ class DiscoveryFunctionalTest {
     assertThat(filled.section).isEqualTo("Components")
     assertThat(filled.caption).isEqualTo("Highest emphasis; the primary action.")
     assertThat(filled.parallel).isEqualTo("FilledButton")
+    // The two kit handles travel side by side: `reference` is the one node a parity run diffs
+    // against, `referenceSet` the family a screen's sibling variant matches through.
+    assertThat(filled.reference).isEqualTo("figma:AbCdEf/10:5")
+    assertThat(filled.referenceSet).isEqualTo("figma:AbCdEf/10:1")
 
     // Variant: parent id on componentId, state + parsed `key=value` prop, own caption.
     val pressed = byFn.getValue("FilledButtonPressed").catalog
@@ -622,6 +629,8 @@ class DiscoveryFunctionalTest {
     assertThat(plain.group).isEqualTo("Buttons")
     assertThat(plain.caption).isNull()
     assertThat(plain.parallel).isNull()
+    assertThat(plain.reference).isNull()
+    assertThat(plain.referenceSet).isNull()
 
     // The fan-out intent rides the component entry as a flag; the export resolves the actual
     // breakpoints from the renders (`Layout/List/smallRound`, `…/largeRound`) rather than from a

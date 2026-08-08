@@ -437,6 +437,35 @@ The spec shape is described by
 [`scripts/design-artifacts/catalog.spec.schema.json`](../../scripts/design-artifacts/catalog.spec.schema.json)
 (referenced via `$schema` in each sample spec for editor validation).
 
+### Seed-kit handles: `reference` (one variant) and `referenceSet` (the family)
+
+`reference` names the **single** kit node this sticker corresponds to — the frame a
+[design-parity](https://github.com/yschimke/design-parity) run diffs the render
+against. It has to be one variant: point it at a Figma component *set* and the
+comparison is against a grid of every variant at once, which says nothing.
+
+`referenceSet` names the **family** that variant belongs to (the component set), and
+exists for the opposite direction — matching a whole *screen* back to code. An
+instance placed on a screen reports its own variant and its set, and a screen almost
+never uses the exact variant a catalog chose to picture, so matching on `reference`
+alone misses. Measured on the Material 3 kit: per-variant handles alone linked 3 of 11
+instances on a real screen; the misses were a list item and a carousel whose screens
+used *sibling* variants of components the catalog already maps.
+
+```kotlin
+@CatalogComponent(
+  id = "Lists/ListItem",
+  reference = "figma:AbCdEf/51964:64241",     // the one variant this sticker renders
+  referenceSet = "figma:AbCdEf/51964:63037",  // the family every sibling variant shares
+)
+```
+
+Two fields rather than one because the two readers want incompatible things: a parity
+diff needs the narrowest renderable node, screen matching needs the widest. Both travel
+onto `previews.json` as `catalog.reference` / `catalog.referenceSet` and out to the
+exported inventory, and both have a same-named spec field that overrides the annotation.
+`referenceSet` is optional — omit it and everything behaves exactly as before.
+
 ### Breakpoints and multipreviews: `select`, not a split `@Preview`
 
 A multipreview annotation (`@WearPreviewDevices`, a local `@CatalogWearBreakpoints`)

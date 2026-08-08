@@ -1045,6 +1045,7 @@ object PreviewDiscovery {
       section = fileGroup?.section,
       caption = annStringOrNull(component, "caption"),
       reference = annStringOrNull(component, "reference"),
+      referenceSet = annStringOrNull(component, "referenceSet"),
       parallel = annStringOrNull(component, "parallel"),
       perBreakpoint = annBoolean(component, "perBreakpoint"),
     )
@@ -1859,8 +1860,8 @@ object PreviewDiscovery {
 
   /**
    * Recursively collects `@OverrideVariant`s hoisted onto a multi-preview-style annotation class
-   * (and onto its own meta-annotations), mirroring [wrapperFromMetaAnnotation]'s traversal and cycle
-   * guard. Skips `@Preview` and its container — a hoisted variant only ever rides on a custom
+   * (and onto its own meta-annotations), mirroring [wrapperFromMetaAnnotation]'s traversal and
+   * cycle guard. Skips `@Preview` and its container — a hoisted variant only ever rides on a custom
    * annotation. Contributes nothing when the annotation class is off the discovery classpath, which
    * is the same limit every other meta-annotation walk here has.
    */

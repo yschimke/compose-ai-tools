@@ -785,7 +785,8 @@ enum class CatalogRole {
  * The two [CatalogRole]s reuse one shape: [componentId] is the component's own id for a
  * [CatalogRole.COMPONENT] and the *parent* component id (`@CatalogVariant.of`) for a
  * [CatalogRole.VARIANT]. Fields that only apply to one role are `null`/empty on the other ([group]
- * / [section] / [reference] / [parallel] are component-only; [state] / [props] are variant-only).
+ * / [section] / [reference] / [referenceSet] / [parallel] are component-only; [state] / [props] are
+ * variant-only).
  */
 @Serializable
 data class CatalogEntry(
@@ -800,6 +801,14 @@ data class CatalogEntry(
   val caption: String? = null,
   /** COMPONENT only: seed-kit handle for the one-off import. */
   val reference: String? = null,
+  /**
+   * COMPONENT only: handle of the component **family** [reference] is one variant of (a Figma
+   * component set). [reference] must stay one concrete node — that is what a parity run diffs
+   * against — so the family travels separately, for the opposite direction: matching a component
+   * *instance* found on a whole screen, which reports its own variant and its set, back to this
+   * code. A screen rarely uses the exact variant a catalog pictured, so the set is what matches.
+   */
+  val referenceSet: String? = null,
   /** COMPONENT only: component id of the counterpart in the `compareWith` sibling system. */
   val parallel: String? = null,
   /** VARIANT only: the interaction/state this render shows (`pressed`, `disabled`, …). */

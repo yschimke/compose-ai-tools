@@ -146,6 +146,13 @@ data class CatalogEntry(
   val section: String? = null,
   val caption: String? = null,
   val reference: String? = null,
+  /**
+   * COMPONENT: the component **family** [reference] is one variant of. Kept apart from [reference]
+   * because the two answer opposite questions — a parity diff needs the one concrete node this
+   * sticker renders, while matching an instance found on a whole screen needs the family, since a
+   * screen rarely uses the exact variant a catalog pictured.
+   */
+  val referenceSet: String? = null,
   val parallel: String? = null,
   val state: String? = null,
   val props: List<CatalogVariantProp> = emptyList(),
