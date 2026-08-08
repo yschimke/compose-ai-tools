@@ -53,11 +53,40 @@ class PageBackdropParseTest {
 
   @Test
   fun `every placement carries a ref, linked or not`() {
-    val page = parse(fixture()).pages.single()
+    val manifest = parse(fixture())
+    val page = manifest.pages.single()
     assertTrue(
-      page.placements.all { it.ref.startsWith("figma:") },
+      page.placements.all { it.ref?.startsWith("figma:") == true },
       "a bare ref is what makes an unlinked hotspot still clickable",
     )
+  }
+
+  @Test
+  fun `a manifest from a producer predating ref still parses, and the ref is reconstructed`() {
+    // The field was added without a version bump, so an older producer's output is still a v1
+    // manifest -- just without `ref`. Requiring it would turn every pre-existing artifact into a
+    // hard parse failure instead of a degraded read.
+    val original = parse(fixture())
+    val stripped = parse(fixture().replace(Regex("\\s*\"ref\": \"[^\"]*\",\n"), "\n"))
+
+    val page = stripped.pages.single()
+    assertEquals(9, page.placements.size, "dropping ref must not drop placements")
+    assertTrue(
+      page.placements.all { it.ref == null },
+      "the fixture under test must actually lack refs",
+    )
+
+    // Reconstruction is exact, not approximate: it rebuilds the very string the producer wrote.
+    val expected = original.pages.single().placements.map { it.ref }
+    val derived = page.placements.map { stripped.refFor(it) }
+    assertEquals(expected, derived)
+  }
+
+  @Test
+  fun `refFor passes through a ref the producer did write`() {
+    val manifest = parse(fixture())
+    val placement = manifest.pages.single().placements.first()
+    assertEquals(placement.ref, manifest.refFor(placement))
   }
 
   @Test

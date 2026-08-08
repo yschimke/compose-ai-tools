@@ -107,10 +107,16 @@ public data class Placement(
   /** Nesting depth below the page frame; `0` for a top-level instance. */
   val depth: Int = 0,
   /**
-   * The instance's own design ref, `"figma:<fileKey>/<nodeId>"`. Always present, linked or not, so
-   * a hotspot can deep-link into the design tool even where no code implements it.
+   * The instance's own design ref, `"figma:<fileKey>/<nodeId>"` — what lets a hotspot deep-link
+   * into the design tool even where no code implements it.
+   *
+   * **Nullable on purpose.** The producer emits it for every placement, linked or not, but only
+   * since the release that introduced it; manifests written by an earlier producer have no `ref` at
+   * all, and a required field here would make those a hard parse failure rather than a degraded
+   * read. Prefer [PageBackdropManifest.refFor], which fills the gap from the manifest's `fileKey` —
+   * the same string the producer would have written.
    */
-  val ref: String,
+  val ref: String? = null,
   /**
    * Code handle, e.g. `"ui/Button.kt#PrimaryButton"`. Null when [link] is [PlacementLink.UNLINKED].
    */
@@ -179,4 +185,18 @@ public data class PageBackdropManifest(
   /** Whether this build understands the manifest's version. */
   public val isSupported: Boolean
     get() = supportsPageBackdropVersion(version)
+
+  /**
+   * The design ref for [placement], deriving it when the producer didn't write one.
+   *
+   * Use this rather than [Placement.ref] directly. A ref is `"figma:<fileKey>/<nodeId>"`, and both
+   * halves are already here — so a manifest from a producer predating the field loses nothing but
+   * the literal string, and reconstructing it is exact rather than a guess.
+   *
+   * This is the tolerance a consumer owes a contract whose producer releases separately. The
+   * version-range check covers *breaking* changes; this covers the ordinary case of running against
+   * an older producer, which no version bump announces.
+   */
+  public fun refFor(placement: Placement): String =
+    placement.ref ?: "figma:$fileKey/${placement.nodeId}"
 }
