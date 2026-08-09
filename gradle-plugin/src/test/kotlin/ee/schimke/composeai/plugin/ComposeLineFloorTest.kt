@@ -45,7 +45,7 @@ class ComposeLineFloorTest {
 
   @Test
   fun `material and material3 are left alone`() {
-    // They version independently of the ui line — there is no androidx.compose.material3 1.11.2,
+    // They version independently of the ui line — there is no androidx.compose.material3 on it —
     // so raising them to the floor would resolve to a version that does not exist.
     assertThat(upgrade("androidx.compose.material3", "1.3.1")).isNull()
     assertThat(upgrade("androidx.compose.material", "1.7.6")).isNull()
@@ -60,9 +60,23 @@ class ComposeLineFloorTest {
 
   @Test
   fun `an alpha of the floor is still below it`() {
-    assertThat(upgrade("androidx.compose.ui", "1.11.2-alpha01")).isEqualTo(floor)
+    // Derived from the constant rather than hard-coded, so moving the floor cannot leave this
+    // asserting the opposite of its name (issue #3603 moved it from 1.11.2 to 1.11.0).
+    assertThat(upgrade("androidx.compose.ui", "$floor-alpha01")).isEqualTo(floor)
     // …but an alpha of a HIGHER version is not.
     assertThat(upgrade("androidx.compose.ui", "1.12.0-alpha01")).isNull()
+  }
+
+  @Test
+  fun `the floor sits inside the bracket the published artifacts prove`() {
+    // Probing androidx.compose.ui:ui-android for the accessor that actually fails:
+    //   1.9.5  — ComposeUiNode$Companion.getApplyOnDeactivatedNodeAssertion ABSENT
+    //   1.10.0 — PRESENT
+    // and yschimke/horologist renders its full 80-component catalog on 1.11.0. So the floor must
+    // raise 1.9.5 (provably unlinkable) and must NOT raise 1.11.0 (proven to work end to end) —
+    // the second half is what #3603 was: a 1.11.2 floor raised a consumer that was already fine.
+    assertThat(upgrade("androidx.compose.ui", "1.9.5")).isEqualTo(floor)
+    assertThat(upgrade("androidx.compose.ui", "1.11.0")).isNull()
   }
 
   @Test
@@ -104,6 +118,10 @@ class ComposeLineFloorTest {
     // opt-out branch deliberately leaves those to the consumer ("consumer must ensure
     // androidx.compose.ui:ui is on the main variant"). Raising the render graph there would put
     // floor-version classes over the consumer's older resources — the #3484 R$id NoSuchFieldError.
+    //
+    // The DECISION is still "do not raise"; the resolution rule additionally throws
+    // composeFloorOptOutMessage for this case, so the consumer gets told rather than silently
+    // rendering nothing. Kept separate so the pure decision stays testable on its own.
     assertThat(
         AndroidPreviewSupport.renderGraphTarget(
           group = "androidx.compose.ui",
@@ -131,6 +149,24 @@ class ComposeLineFloorTest {
   fun `a non-compose module with no sibling is left alone entirely`() {
     assertThat(AndroidPreviewSupport.renderGraphTarget("com.example", "thing", "1.0.0", true))
       .isNull()
+  }
+
+  @Test
+  fun `the opt-out message names the versions and both ways out`() {
+    // The hole this closes: validateExternallyManagedDependencies checks that coordinates are
+    // DECLARED, never what they resolve to, so a below-floor opt-out consumer got #3590's
+    // NoSuchMethodError on every preview with nothing explaining why.
+    val message = AndroidPreviewSupport.composeFloorOptOutMessage("androidx.compose.ui:ui", "1.7.6")
+
+    assertThat(message).contains("manageDependencies = false")
+    // Both numbers a reader needs: what they have, and what is required.
+    assertThat(message).contains("1.7.6")
+    assertThat(message).contains(floor)
+    // Both escape hatches, so the message is actionable rather than merely accurate.
+    assertThat(message).contains("compose-bom")
+    assertThat(message).contains("manageDependencies = true")
+    // …and the symptom, so someone who already hit it can connect the two.
+    assertThat(message).contains("getApplyOnDeactivatedNodeAssertion")
   }
 
   @Test

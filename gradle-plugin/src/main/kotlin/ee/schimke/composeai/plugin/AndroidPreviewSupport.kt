@@ -10,6 +10,7 @@ import ee.schimke.composeai.daemonlaunch.*
 import ee.schimke.composeai.discovery.*
 import java.util.Collections
 import java.util.IdentityHashMap
+import org.gradle.api.GradleException
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
@@ -386,18 +387,37 @@ internal object AndroidPreviewSupport {
    * (issue #3590 — `yschimke/home-assistant-android` on `compose-bom` 2025.01.00 lost all 13 phone
    * and 22 Wear catalog entries, republishing both design-artifacts branches empty.)
    *
-   * Set to [RENDERER_COMPOSE_CMP_RUNTIME_VERSION] deliberately: that is the version the Rule-3-off
-   * path already renders against, so it is the one Compose line the renderer is known-good on. Keep
-   * the two in lockstep.
+   * **Deliberately NOT [RENDERER_COMPOSE_CMP_RUNTIME_VERSION].** The two answer different questions
+   * — "what does the Rule-3-off path happen to resolve?" versus "what is the lowest version the
+   * renderer can link against?" — and tying them together set the floor too high, raising consumers
+   * that already rendered fine (issue #3603: `yschimke/horologist` on compose-ui 1.11.0 published
+   * 80/80 components, yet sat below a 1.11.2 floor). Over-raising is not free: the main-variant pin
+   * moves with this floor, dragging in newer transitives with their own constraints — that is how a
+   * minSdk-21 consumer's manifest merge broke on `androidx.window:window-core-android:1.5.0`
+   * (issue #3602).
+   *
+   * Bracketed against the published artifacts rather than assumed. Probing
+   * `androidx.compose.ui:ui-android` for the accessor that actually fails:
+   * ```
+   * 1.9.5   ComposeUiNode$Companion — getApplyOnDeactivatedNodeAssertion ABSENT
+   * 1.10.0  ComposeUiNode$Companion — getApplyOnDeactivatedNodeAssertion PRESENT
+   * ```
+   *
+   * so the floor is above 1.9.5 (matching the #3484 report that 1.9.5 is unlinkable) and at most
+   * 1.10.0 for *that* symbol. Set to **1.11.0** — the lowest version with end-to-end evidence, a
+   * real consumer rendering its whole catalog — rather than 1.10.0, because the probe proves one
+   * symbol and not the renderer's whole reference set. Lower it to 1.10.x once a consumer on that
+   * line is verified to render; the cost of the gap is only that a 1.10.x consumer is raised
+   * needlessly, and today no consumer sits there.
    */
-  internal const val RENDERER_COMPOSE_LINK_FLOOR_VERSION: String =
-    RENDERER_COMPOSE_CMP_RUNTIME_VERSION
+  internal const val RENDERER_COMPOSE_LINK_FLOOR_VERSION: String = "1.11.0"
 
   /**
-   * The `androidx.compose.*` groups that share the compose-ui version line (1.7.6 / 1.9.5 / 1.11.2
+   * The `androidx.compose.*` groups that share the compose-ui version line (1.7.6 / 1.9.5 / 1.11.0
    * move together). Deliberately NOT `androidx.compose.material` / `material3`, which version
-   * independently — material3 has no 1.11.2 — nor a bare `androidx.compose.` prefix, which would
-   * sweep them in.
+   * independently — there is no `androidx.compose.material3:material3` on the compose-ui line, so
+   * raising them to the floor would resolve a version that does not exist — nor a bare
+   * `androidx.compose.` prefix, which would sweep them in.
    */
   private val COMPOSE_UI_LINE_GROUPS =
     setOf(
@@ -450,32 +470,45 @@ internal object AndroidPreviewSupport {
 
   /**
    * Version for the main-variant `androidx.compose.ui` / `foundation` pins, which decide the R
-   * class in the merged unit-test resource APK. Always the link floor, because the resource APK has
-   * to sit on whichever Compose actually **runs** — and after [applyRenderGraphResolutionRules]
-   * floors the render graph, that is never below [RENDERER_COMPOSE_LINK_FLOOR_VERSION] in either
-   * case:
+   * class in the merged unit-test resource APK. The resource APK has to sit on whichever Compose
+   * actually **runs**, and the two cases run different ones:
    * * a **Compose-less** consumer renders against OUR compose-ui, which arrives via Compose
-   *   Multiplatform at exactly this version;
-   * * a **Compose** consumer renders against its own, raised to this floor when it resolves below.
+   *   Multiplatform at [RENDERER_COMPOSE_CMP_RUNTIME_VERSION];
+   * * a **Compose** consumer renders against its own, which [applyRenderGraphResolutionRules]
+   *   raises to [RENDERER_COMPOSE_LINK_FLOOR_VERSION] only when it resolves below that — so the
+   *   floor is the lowest version its resource APK can need.
+   *
+   * These were briefly collapsed into one unconditional return, which was only ever correct while
+   * the two constants happened to hold the same value. #3603 gave them different values and the
+   * `main-variant compose pin follows whichever compose actually runs` test caught it at once — a
+   * Compose-less consumer would have been pinned to the floor while rendering against the higher
+   * CMP runtime, which is the resource skew this function exists to prevent.
    *
    * This used to hand a Compose consumer [RENDERER_COMPOSE_FLOOR_VERSION] (1.9.5) on the reasoning
    * that its own BOM wins over ours anyway. That holds only while the consumer is *above* our pin.
    * A consumer below it — `home-assistant-android` on `compose-bom` 2025.01.00 — got the pin
-   * instead, so flooring only the render graph would have left 1.11.2 classes reading a 1.9.5 R
-   * class and traded #3590's `NoSuchMethodError` for the `NoSuchFieldError` of #3484:
+   * instead, so flooring only the render graph would have left floor-version classes reading a
+   * 1.9.5 R class and traded #3590's `NoSuchMethodError` for the `NoSuchFieldError` of #3484:
    * ```
    * NoSuchFieldError: Class androidx.compose.ui.R$id does not have member field
    *   'int androidx_compose_ui_view_compose_view_context'
    * ```
    *
    * (verified against the published artifacts: `ui-android` 1.9.5's `R.txt` has no such id,
-   * 1.11.2's does). Both sides move on one floor or neither does.
+   * 1.11.0's does). Both sides move on one floor or neither does.
    *
    * Consumers already above the floor are unaffected: this is a pin, so Gradle's max-version
    * conflict resolution leaves their own Compose line in place.
    */
-  internal fun mainVariantComposeVersion(project: Project, variantName: String): String =
-    RENDERER_COMPOSE_LINK_FLOOR_VERSION
+  internal fun mainVariantComposeVersion(project: Project, variantName: String): String {
+    val unitTestClasspath =
+      project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
+    return if (consumerBringsOwnCompose(project, unitTestClasspath)) {
+      RENDERER_COMPOSE_LINK_FLOOR_VERSION
+    } else {
+      RENDERER_COMPOSE_CMP_RUNTIME_VERSION
+    }
+  }
 
   /**
    * Compose compiler plugin ids — the Kotlin 2.x plugin every consumer with `@Composable` code
@@ -637,6 +670,40 @@ internal object AndroidPreviewSupport {
    * only safe while the main-variant `ui` / `foundation` pins move with it, and the opt-out branch
    * deliberately leaves those to the consumer.
    */
+  /**
+   * The configuration error for a consumer whose Compose is below
+   * [RENDERER_COMPOSE_LINK_FLOOR_VERSION] on a graph we are not allowed to raise.
+   *
+   * Under `composePreview.manageDependencies = false` the main-variant `ui` / `foundation` pins are
+   * the consumer's to declare, so flooring the render graph alone would put floor-version classes
+   * over their older resources — the #3484 `R$id` `NoSuchFieldError`. Leaving the graph alone
+   * instead means the renderer cannot link against it at all — #3590's `NoSuchMethodError`, on
+   * every preview, with nothing explaining why.
+   *
+   * Both silent outcomes are worse than saying so. `validateExternallyManagedDependencies` cannot:
+   * it checks that coordinates are DECLARED, never what they resolve to, and a BOM consumer
+   * declares no version at all. This fires from the resolution rule, which is the first place the
+   * real version exists.
+   */
+  internal fun composeFloorOptOutMessage(module: String, resolved: String): String =
+    """
+    compose-ai-tools cannot render with composePreview.manageDependencies = false.
+
+      Renderer requires  androidx.compose.ui >= $RENDERER_COMPOSE_LINK_FLOOR_VERSION
+      $module resolves to $resolved
+
+    Fix one of:
+      * raise the module's Compose (e.g. a newer androidx.compose:compose-bom) to
+        $RENDERER_COMPOSE_LINK_FLOOR_VERSION or above;
+      * set composePreview.manageDependencies = true, which lets the plugin raise the render
+        classpath and the main-variant pins together.
+
+    Rendering against $resolved fails every preview before user code runs:
+      NoSuchMethodError androidx.compose.ui.node.ComposeUiNode${'$'}Companion
+        .getApplyOnDeactivatedNodeAssertion()
+    """
+      .trimIndent()
+
   internal fun renderGraphTarget(
     group: String,
     name: String,
@@ -665,6 +732,14 @@ internal object AndroidPreviewSupport {
     // exactly the artifact the floor exists to keep off the graph.
     configuration.resolutionStrategy.eachDependency {
       val req = requested
+      // Opt-out: we may not raise this graph, so a below-floor consumer cannot be rendered at all.
+      // Say so here rather than letting every preview die with a Compose-internal stack trace —
+      // resolution is the first point the real version is known (see [composeFloorOptOutMessage]).
+      if (!floorComposeLine && composeLineFloorUpgrade(req.group, req.version) != null) {
+        throw GradleException(
+          composeFloorOptOutMessage("${req.group}:${req.name}", req.version.orEmpty())
+        )
+      }
       val decision = renderGraphTarget(req.group, req.name, req.version, floorComposeLine)
       when {
         decision == null -> Unit
