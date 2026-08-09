@@ -577,7 +577,21 @@ data class ComposeSemanticsTokens(
  * whose chain merely contains `padding(0.dp)`) (issue #2852).
  */
 fun ComposeSemanticsInsets.insetsPaint(): Boolean =
-  listOf(start, top, end, bottom).any { (it?.removeSuffix("dp")?.toDoubleOrNull() ?: 0.0) > 0.0 }
+  insetsPaintHorizontally() || insetsPaintVertically()
+
+/**
+ * The horizontal half of [insetsPaint]. A leading padding insets only the axes it actually pads, so
+ * the two are asked separately: Wear's `CompactButton` pads `top`/`bottom` by 8dp *before* its fill
+ * and `start`/`end` by 12dp *after* it, so its drawn pill is the placed height but the measured
+ * width. Suppressing both axes together squashed it to the narrow content box (issue #3573).
+ */
+fun ComposeSemanticsInsets.insetsPaintHorizontally(): Boolean = positive(start) || positive(end)
+
+/** The vertical half of [insetsPaint] — see there. */
+fun ComposeSemanticsInsets.insetsPaintVertically(): Boolean = positive(top) || positive(bottom)
+
+private fun positive(edge: String?): Boolean =
+  (edge?.removeSuffix("dp")?.toDoubleOrNull() ?: 0.0) > 0.0
 
 /** Per-edge insets in dp (`"16.0dp"`), as resolved from `Modifier.padding` (issue #1897). */
 @Serializable

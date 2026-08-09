@@ -1026,10 +1026,23 @@ internal object ModifierTokenResolver {
     if (all != null) return ComposeSemanticsInsets(start = all, top = all, end = all, bottom = all)
     val horizontal = el("horizontal")
     val vertical = el("vertical")
-    val start = el("start") ?: horizontal ?: reflectDp(mod, "start")
-    val top = el("top") ?: vertical ?: reflectDp(mod, "top")
-    val end = el("end") ?: horizontal ?: reflectDp(mod, "end")
-    val bottom = el("bottom") ?: vertical ?: reflectDp(mod, "bottom")
+    // `Modifier.padding(PaddingValues)` lowers to a `PaddingValuesElement`, which exposes neither
+    // per-edge `Dp` elements nor per-edge fields — just the whole `PaddingValues`, whose own
+    // `start`/`top`/`end`/`bottom` fields carry the dp. Wear M3 pads this way throughout (its
+    // `CompactButton` touch target is a `padding(PaddingValues)`), so without this every Wear
+    // padding resolved to null: no `padding` token, and no `paintInset` to hold the growth
+    // heuristic off a fill that is already at its painted size (issue #3573).
+    val values = elements["paddingValues"] ?: reflectField(mod, "paddingValues")
+    val start =
+      el("start") ?: horizontal ?: reflectDp(mod, "start") ?: values?.let { reflectDp(it, "start") }
+    val top = el("top") ?: vertical ?: reflectDp(mod, "top") ?: values?.let { reflectDp(it, "top") }
+    val end =
+      el("end") ?: horizontal ?: reflectDp(mod, "end") ?: values?.let { reflectDp(it, "end") }
+    val bottom =
+      el("bottom")
+        ?: vertical
+        ?: reflectDp(mod, "bottom")
+        ?: values?.let { reflectDp(it, "bottom") }
     if (start == null && top == null && end == null && bottom == null) return null
     return ComposeSemanticsInsets(start = start, top = top, end = end, bottom = bottom)
   }

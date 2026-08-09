@@ -1358,7 +1358,12 @@ data class FigmaSvgModel(
       // ring back out to the padded root (the 85×85-vs-63×63 defect). Suppress the growth for such
       // a
       // node so the ring stays on the inner control it actually rings (issue #2852).
-      val paddedPaint = tokens?.paintInset?.insetsPaint() == true
+      // Asked per axis: a leading padding insets only the axes it actually pads. Wear's
+      // `CompactButton` pads 8dp `top`/`bottom` *before* its fill and 12dp `start`/`end` *after*
+      // it, so the pill it draws is the placed height but the measured width — one flag for both
+      // axes squashed it to the narrow content box (issue #3573).
+      val paddedPaintX = tokens?.paintInset?.insetsPaintHorizontally() == true
+      val paddedPaintY = tokens?.paintInset?.insetsPaintVertically() == true
       val minWidthPx =
         tokens?.minWidth?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density * scaleX }
       val minHeightPx =
@@ -1387,11 +1392,10 @@ data class FigmaSvgModel(
       // (`background(brush, RoundedCornerShape(12.dp)).clickable().padding(16.dp)`) paints its
       // gradient across the whole node and pads only its label, but exported as a 966×56 pill
       // floating inside the 1050×140 button the PNG draws edge to edge (issue #3569).
-      val expand =
-        !paddedPaint &&
-          (fill != null || stroke != null || fillGradient != null || strokeGradient != null) &&
-          ctx.textByNodeId[nodeId] == null &&
-          (drawW > boundsW || drawH > boundsH)
+      val paints = fill != null || stroke != null || fillGradient != null || strokeGradient != null
+      val mayExpand = paints && ctx.textByNodeId[nodeId] == null
+      val expandW = mayExpand && !paddedPaintX && drawW > boundsW
+      val expandH = mayExpand && !paddedPaintY && drawH > boundsH
       // Center the grown shape on the placed bounds, then pull the whole rectangle back inside the
       // parent's placed bounds. Clamping only the grown *width/height* (above) isn't enough to keep
       // the promise that a child never paints beyond its parent: a fill whose bounds sit off-center
@@ -1409,7 +1413,7 @@ data class FigmaSvgModel(
       // satisfied. The node's own placement is ground truth; the parent clamp is a guard against
       // *centering* drift, not a licence to move a node somewhere it never drew (issue #2615).
       val drawLeft =
-        if (!expand) bounds.left
+        if (!expandW) bounds.left
         else
           growthOrigin(
             centered = (bounds.left + bounds.right - drawW) / 2,
@@ -1420,7 +1424,7 @@ data class FigmaSvgModel(
             parentEnd = parentBounds?.right,
           )
       val drawTop =
-        if (!expand) bounds.top
+        if (!expandH) bounds.top
         else
           growthOrigin(
             centered = (bounds.top + bounds.bottom - drawH) / 2,
@@ -1430,8 +1434,8 @@ data class FigmaSvgModel(
             parentStart = parentBounds?.top,
             parentEnd = parentBounds?.bottom,
           )
-      val drawRight = if (expand) drawLeft + drawW else bounds.right
-      val drawBottom = if (expand) drawTop + drawH else bounds.bottom
+      val drawRight = if (expandW) drawLeft + drawW else bounds.right
+      val drawBottom = if (expandH) drawTop + drawH else bounds.bottom
       return FigmaSvgLayer(
         name = layerName(),
         left = drawLeft,
