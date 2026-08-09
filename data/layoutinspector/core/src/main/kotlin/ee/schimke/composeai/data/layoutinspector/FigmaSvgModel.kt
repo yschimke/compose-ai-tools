@@ -1394,8 +1394,24 @@ data class FigmaSvgModel(
       // floating inside the 1050×140 button the PNG draws edge to edge (issue #3569).
       val paints = fill != null || stroke != null || fillGradient != null || strokeGradient != null
       val mayExpand = paints && ctx.textByNodeId[nodeId] == null
-      val expandW = mayExpand && !paddedPaintX && drawW > boundsW
-      val expandH = mayExpand && !paddedPaintY && drawH > boundsH
+      // The measured paint box supersedes every guess below (issue #3572). It is the rect the
+      // fill/ring modifier's own coordinator reports, so it needs no growth, no `paintInset`
+      // suppression and no parent clamp — a modifier cannot paint outside the coordinator it hangs
+      // off. Still held to the node's own mask: a clipped node's fill stops at the clip, which the
+      // coordinator box doesn't know about.
+      //
+      // Scoped to the same nodes the heuristic governed — a node that paints and carries no text of
+      // its own — so a text-bearing layer keeps the layout box its baseline was placed against.
+      //
+      // Anything that re-places a captured node has to carry `paintBox` with it — it is root-space
+      // px like `bounds`, so a rewrite that moves one must move the other
+      // (`WearScrollSliceStitcher`
+      // is the one place that does).
+      val measuredPaintBox =
+        tokens
+          ?.paintBox
+          ?.takeIf { mayExpand }
+          ?.let { box -> maskBox?.let { intersectBounds(box, it) } ?: box }
       // Center the grown shape on the placed bounds, then pull the whole rectangle back inside the
       // parent's placed bounds. Clamping only the grown *width/height* (above) isn't enough to keep
       // the promise that a child never paints beyond its parent: a fill whose bounds sit off-center
@@ -1412,30 +1428,34 @@ data class FigmaSvgModel(
       // (`[bounds.end - draw, bounds.start]`), and that window wins when the two can't both be
       // satisfied. The node's own placement is ground truth; the parent clamp is a guard against
       // *centering* drift, not a licence to move a node somewhere it never drew (issue #2615).
+      val expandW = mayExpand && measuredPaintBox == null && !paddedPaintX && drawW > boundsW
+      val expandH = mayExpand && measuredPaintBox == null && !paddedPaintY && drawH > boundsH
       val drawLeft =
-        if (!expandW) bounds.left
-        else
-          growthOrigin(
-            centered = (bounds.left + bounds.right - drawW) / 2,
-            start = bounds.left,
-            end = bounds.right,
-            extent = drawW,
-            parentStart = parentBounds?.left,
-            parentEnd = parentBounds?.right,
-          )
+        measuredPaintBox?.left
+          ?: if (!expandW) bounds.left
+          else
+            growthOrigin(
+              centered = (bounds.left + bounds.right - drawW) / 2,
+              start = bounds.left,
+              end = bounds.right,
+              extent = drawW,
+              parentStart = parentBounds?.left,
+              parentEnd = parentBounds?.right,
+            )
       val drawTop =
-        if (!expandH) bounds.top
-        else
-          growthOrigin(
-            centered = (bounds.top + bounds.bottom - drawH) / 2,
-            start = bounds.top,
-            end = bounds.bottom,
-            extent = drawH,
-            parentStart = parentBounds?.top,
-            parentEnd = parentBounds?.bottom,
-          )
-      val drawRight = if (expandW) drawLeft + drawW else bounds.right
-      val drawBottom = if (expandH) drawTop + drawH else bounds.bottom
+        measuredPaintBox?.top
+          ?: if (!expandH) bounds.top
+          else
+            growthOrigin(
+              centered = (bounds.top + bounds.bottom - drawH) / 2,
+              start = bounds.top,
+              end = bounds.bottom,
+              extent = drawH,
+              parentStart = parentBounds?.top,
+              parentEnd = parentBounds?.bottom,
+            )
+      val drawRight = measuredPaintBox?.right ?: if (expandW) drawLeft + drawW else bounds.right
+      val drawBottom = measuredPaintBox?.bottom ?: if (expandH) drawTop + drawH else bounds.bottom
       val builtChildren = children.map {
         // A `Modifier.clip` here becomes the clip box its subtree inherits; nested clips
         // intersect. Without one the subtree keeps whatever (if anything) clipped it above —

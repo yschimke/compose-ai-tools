@@ -343,6 +343,29 @@ internal object ModifierTokenResolver {
    * the final height-limited viewport, while the shape clip farther out in the chain can report the
    * taller lookahead content box (issue #3056).
    */
+  /**
+   * Whether [modifier] is the one that *paints a node's container* — a `Modifier.background`, the
+   * `Modifier.paint` Wear's `surface()` fills through, or a `Modifier.border` ring. Its own
+   * coordinator carries the box it drew into, which is what
+   * [ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTokens.paintBox] records
+   * (issue #3572).
+   *
+   * Deliberately NOT a shape-bearing `clip` or `shadow`: those change what a fill looks like but
+   * are not themselves the fill, and their coordinators sit at a different point in the chain.
+   * Matched on both the inspector name and the element class, like every other lookup here — the
+   * desktop/skiko build doesn't always populate inspector info.
+   */
+  fun paintsContainer(modifier: Any): Boolean {
+    val name = (modifier as? InspectableValue)?.nameFallback
+    val simpleName = modifier.javaClass.simpleName
+    return name == "background" ||
+      simpleName == "BackgroundElement" ||
+      name == "paint" ||
+      simpleName == "PainterElement" ||
+      name == "border" ||
+      simpleName.startsWith("BorderModifier")
+  }
+
   internal fun appliedClipsContent(coordinates: Any): Boolean =
     reflectedField(coordinates, "isClipping") as? Boolean ?: false
 

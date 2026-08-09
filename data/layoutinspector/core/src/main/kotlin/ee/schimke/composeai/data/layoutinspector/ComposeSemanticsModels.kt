@@ -545,6 +545,24 @@ data class ComposeSemanticsTokens(
    */
   val paintInset: ComposeSemanticsInsets? = null,
   /**
+   * The box the node's fill/ring modifier actually painted into, in the same root-space px as
+   * [LayoutInspectorNode.bounds] — measured from that modifier's own coordinator, not inferred
+   * (issue #3572).
+   *
+   * Everything above ([paintInset], and the measured-size growth heuristic it holds off) exists to
+   * *guess* this rect from the signals a node exposes: its placed `bounds` against its measured
+   * `size`, plus where a `padding` sits in the chain. Those signals cannot separate chains that
+   * paint differently — `background(brush).padding(16.dp)` (paints the outer box) and
+   * `size(120.dp).wrapContentSize().size(40.dp).background(…)` (paints the inner one) present
+   * identically. A modifier's coordinator carries the box it drew into directly, so when this is
+   * present the export uses it and skips the inference entirely.
+   *
+   * Null when the capture couldn't read it (a backend whose `ModifierInfo` carries no usable
+   * coordinates, or a node with no fill/ring at all), which is what keeps the heuristic alive as
+   * the fallback.
+   */
+  val paintBox: LayoutInspectorBounds? = null,
+  /**
    * Resolved shadow elevation in dp from a `Modifier.graphicsLayer { shadowElevation = … }` (what
    * `Surface`/`Card`/`FloatingActionButton` use to cast a Material drop shadow), e.g. `"6.0dp"`.
    * Null when the node casts no shadow. The figma-svg export turns this into an SVG `feDropShadow`
