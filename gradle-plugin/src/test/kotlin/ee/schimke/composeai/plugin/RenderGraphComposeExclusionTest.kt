@@ -305,12 +305,18 @@ class RenderGraphComposeExclusionTest {
     assertThat(AndroidPreviewSupport.mainVariantComposeVersion(tileOnly, "debug"))
       .isEqualTo(AndroidPreviewSupport.RENDERER_COMPOSE_CMP_RUNTIME_VERSION)
 
-    // A Compose consumer keeps Rule 3, so its own Compose runs and its BOM wins over our floor —
-    // raising the floor there would push it off its own Compose line for no reason.
+    // A Compose consumer keeps Rule 3, so its OWN Compose runs — but the render graph is floored at
+    // the link floor, so that Compose is never below it either. The resource APK has to follow
+    // whichever Compose actually runs, so this is the same floor: pinning 1.9.5 here while the
+    // render classpath ran 1.11.2 is the #3484 `NoSuchFieldError` on `R$id` all over again.
+    //
+    // It stays a pin, so a consumer already above the floor keeps its own line via max-version
+    // conflict resolution; only one below it is raised — and one below it renders nothing at all
+    // without the raise (#3590).
     val composeApp = project()
     val unitTest = composeApp.configurations.create("debugUnitTestRuntimeClasspath")
     composeApp.dependencies.add(unitTest.name, "androidx.compose.ui:ui:1.10.6")
     assertThat(AndroidPreviewSupport.mainVariantComposeVersion(composeApp, "debug"))
-      .isEqualTo(AndroidPreviewSupport.RENDERER_COMPOSE_FLOOR_VERSION)
+      .isEqualTo(AndroidPreviewSupport.RENDERER_COMPOSE_LINK_FLOOR_VERSION)
   }
 }

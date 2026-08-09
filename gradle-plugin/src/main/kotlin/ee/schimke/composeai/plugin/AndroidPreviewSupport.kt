@@ -369,22 +369,113 @@ internal object AndroidPreviewSupport {
   internal const val RENDERER_COMPOSE_CMP_RUNTIME_VERSION: String = "1.11.2"
 
   /**
-   * Version for the main-variant `androidx.compose.ui` / `foundation` pins, which decide the R
-   * class in the merged unit-test resource APK. See the call site for why the two cases differ: a
-   * Compose consumer's own BOM wins over our floor anyway, while a Compose-less consumer runs
-   * against OUR compose-ui and needs its resources on that same line.
+   * Lowest `androidx.compose` version on the **compose-ui version line** that the renderer's own
+   * bytecode links against. Rule 3 defers the render classpath to the consumer's Compose (see
+   * [applyRenderGraphResolutionRules]); this is the floor under which deferring stops being safe.
    *
-   * Probes the variant's unit-test runtime classpath — where a consumer's Compose sits, and what
-   * the render configuration is built from. Our own injections into `${variantName}Implementation`
-   * reach it too, but [consumerBringsOwnCompose] skips those by identity, so this does not answer
-   * itself.
+   * Distinct from [RENDERER_COMPOSE_FLOOR_VERSION], which is only ever stamped on plugin-injected
+   * coordinates that have no version source of their own (`ui-test-manifest`, `ui-test-junit4`,
+   * `runtime-tracing`). Nothing pinned `ui` / `foundation` / `runtime` / `animation`, so a consumer
+   * below this floor handed the renderer a classpath its bytecode cannot link against and every
+   * preview died identically:
+   * ```
+   * NoSuchMethodError: 'kotlin.jvm.functions.Function1
+   *   androidx.compose.ui.node.ComposeUiNode$Companion.getApplyOnDeactivatedNodeAssertion()'
+   * ```
+   *
+   * (issue #3590 — `yschimke/home-assistant-android` on `compose-bom` 2025.01.00 lost all 13 phone
+   * and 22 Wear catalog entries, republishing both design-artifacts branches empty.)
+   *
+   * Set to [RENDERER_COMPOSE_CMP_RUNTIME_VERSION] deliberately: that is the version the Rule-3-off
+   * path already renders against, so it is the one Compose line the renderer is known-good on. Keep
+   * the two in lockstep.
    */
-  internal fun mainVariantComposeVersion(project: Project, variantName: String): String {
-    val unitTestClasspath =
-      project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
-    return if (consumerBringsOwnCompose(project, unitTestClasspath)) RENDERER_COMPOSE_FLOOR_VERSION
-    else RENDERER_COMPOSE_CMP_RUNTIME_VERSION
+  internal const val RENDERER_COMPOSE_LINK_FLOOR_VERSION: String =
+    RENDERER_COMPOSE_CMP_RUNTIME_VERSION
+
+  /**
+   * The `androidx.compose.*` groups that share the compose-ui version line (1.7.6 / 1.9.5 / 1.11.2
+   * move together). Deliberately NOT `androidx.compose.material` / `material3`, which version
+   * independently — material3 has no 1.11.2 — nor a bare `androidx.compose.` prefix, which would
+   * sweep them in.
+   */
+  private val COMPOSE_UI_LINE_GROUPS =
+    setOf(
+      "androidx.compose.animation",
+      "androidx.compose.foundation",
+      "androidx.compose.runtime",
+      "androidx.compose.ui",
+    )
+
+  /**
+   * [RENDERER_COMPOSE_LINK_FLOOR_VERSION] if [group] is on the compose-ui line and [version] is
+   * below the floor, else `null` (leave the dependency alone).
+   *
+   * Kept pure and separate from the `eachDependency` wiring so the decision is unit-testable
+   * without resolving a configuration. An unparseable or dynamic version (`+`, `1.9.+`, a range,
+   * empty) returns `null`: we only ever raise a version we can prove is too low, since forcing one
+   * we cannot compare risks dragging a consumer *backwards*.
+   */
+  internal fun composeLineFloorUpgrade(group: String, version: String?): String? {
+    if (group !in COMPOSE_UI_LINE_GROUPS) return null
+    val current = version?.takeIf { it.isNotBlank() } ?: return null
+    return if (isBelowVersion(current, RENDERER_COMPOSE_LINK_FLOOR_VERSION)) {
+      RENDERER_COMPOSE_LINK_FLOOR_VERSION
+    } else {
+      null
+    }
   }
+
+  /**
+   * Whether [candidate] orders below [floor], comparing dotted numeric components left to right and
+   * treating a pre-release suffix as lower than the same numbers without one (`1.11.2-alpha01` <
+   * `1.11.2`), which matches how AndroidX ships alphas ahead of a stable.
+   *
+   * Returns `false` for anything non-numeric or dynamic — see [composeLineFloorUpgrade] for why
+   * "cannot compare" must mean "do not touch".
+   */
+  private fun isBelowVersion(candidate: String, floor: String): Boolean {
+    val candidateBase = candidate.substringBefore('-')
+    val floorBase = floor.substringBefore('-')
+    val candidateParts = candidateBase.split('.').map { it.toIntOrNull() ?: return false }
+    val floorParts = floorBase.split('.').map { it.toIntOrNull() ?: return false }
+    for (index in 0 until maxOf(candidateParts.size, floorParts.size)) {
+      val left = candidateParts.getOrElse(index) { 0 }
+      val right = floorParts.getOrElse(index) { 0 }
+      if (left != right) return left < right
+    }
+    // Numerically equal: a pre-release of the floor is still below it.
+    return candidate.contains('-') && !floor.contains('-')
+  }
+
+  /**
+   * Version for the main-variant `androidx.compose.ui` / `foundation` pins, which decide the R
+   * class in the merged unit-test resource APK. Always the link floor, because the resource APK has
+   * to sit on whichever Compose actually **runs** — and after [applyRenderGraphResolutionRules]
+   * floors the render graph, that is never below [RENDERER_COMPOSE_LINK_FLOOR_VERSION] in either
+   * case:
+   * * a **Compose-less** consumer renders against OUR compose-ui, which arrives via Compose
+   *   Multiplatform at exactly this version;
+   * * a **Compose** consumer renders against its own, raised to this floor when it resolves below.
+   *
+   * This used to hand a Compose consumer [RENDERER_COMPOSE_FLOOR_VERSION] (1.9.5) on the reasoning
+   * that its own BOM wins over ours anyway. That holds only while the consumer is *above* our pin.
+   * A consumer below it — `home-assistant-android` on `compose-bom` 2025.01.00 — got the pin
+   * instead, so flooring only the render graph would have left 1.11.2 classes reading a 1.9.5 R
+   * class and traded #3590's `NoSuchMethodError` for the `NoSuchFieldError` of #3484:
+   * ```
+   * NoSuchFieldError: Class androidx.compose.ui.R$id does not have member field
+   *   'int androidx_compose_ui_view_compose_view_context'
+   * ```
+   *
+   * (verified against the published artifacts: `ui-android` 1.9.5's `R.txt` has no such id,
+   * 1.11.2's does). Both sides move on one floor or neither does.
+   *
+   * Consumers already above the floor are unaffected: this is a pin, so Gradle's max-version
+   * conflict resolution leaves their own Compose line in place.
+   */
+  internal fun mainVariantComposeVersion(project: Project, variantName: String): String =
+    RENDERER_COMPOSE_LINK_FLOOR_VERSION
 
   /**
    * Compose compiler plugin ids — the Kotlin 2.x plugin every consumer with `@Composable` code
@@ -520,20 +611,94 @@ internal object AndroidPreviewSupport {
    * needs Compose Multiplatform and is aligned by a different mechanism
    * (`alignDesktopToolWithConsumerGraph`).
    */
-  internal fun applyRenderGraphResolutionRules(configuration: Configuration) {
+  /**
+   * What the render graph should resolve a requested module to: a [name] to substitute (the
+   * KMP-Android sibling) and/or a [version] to use, plus whether that version came from the
+   * compose-line floor. `null` from [renderGraphTarget] means "leave it alone".
+   */
+  internal class RenderGraphTarget(
+    val name: String?,
+    val version: String?,
+    val flooredComposeLine: Boolean,
+  )
+
+  /**
+   * The single decision behind [applyRenderGraphResolutionRules]' first rule, kept pure so the
+   * interaction between its two halves is unit-testable without resolving a configuration.
+   *
+   * Both halves have to be decided together. Gradle hands every `eachDependency` action the
+   * ORIGINAL `requested` selector, so a `useTarget` carrying `requested.version` through undoes a
+   * `useVersion` an earlier action applied. A below-floor KMP sibling
+   * (`androidx.compose.ui:ui-jvmstubs:1.9.5`) hits exactly that: floored to
+   * [RENDERER_COMPOSE_LINK_FLOOR_VERSION], then re-pinned to `ui-android:1.9.5` — the artifact the
+   * floor exists to keep off the graph. So the substitution carries the floored version.
+   *
+   * [floorComposeLine] is `false` under `composePreview.manageDependencies = false`: the floor is
+   * only safe while the main-variant `ui` / `foundation` pins move with it, and the opt-out branch
+   * deliberately leaves those to the consumer.
+   */
+  internal fun renderGraphTarget(
+    group: String,
+    name: String,
+    version: String?,
+    floorComposeLine: Boolean,
+  ): RenderGraphTarget? {
+    val floored = if (floorComposeLine) composeLineFloorUpgrade(group, version) else null
+    val sibling = kmpAndroidSiblingName(group, name)
+    return when {
+      sibling != null -> RenderGraphTarget(sibling, floored ?: version, floored != null)
+      floored != null -> RenderGraphTarget(null, floored, true)
+      else -> null
+    }
+  }
+
+  internal fun applyRenderGraphResolutionRules(
+    configuration: Configuration,
+    floorComposeLine: Boolean = true,
+  ) {
+    // ONE rule for both the sibling substitution and the compose-line floor, because
+    // `eachDependency` actions all see the ORIGINAL `requested` selector: a later `useTarget` that
+    // passes `requested.version` through silently undoes an earlier `useVersion`. Split across two
+    // blocks, a below-floor KMP sibling (`androidx.compose.ui:ui-jvmstubs:1.9.5` — the shape the
+    // sibling tests already cover) would be floored to
+    // `$RENDERER_COMPOSE_LINK_FLOOR_VERSION` and then re-pinned to `ui-android:1.9.5`, landing on
+    // exactly the artifact the floor exists to keep off the graph.
     configuration.resolutionStrategy.eachDependency {
       val req = requested
-      val targetName = kmpAndroidSiblingName(req.group, req.name)
-      if (targetName != null) {
-        useTarget(mapOf("group" to req.group, "name" to targetName, "version" to req.version))
-        because(
-          "Gradle resolved a desktop/JVM-stub KMP sibling on a config without the " +
-            "Kotlin-plugin platform-type compat rule. Force the Android sibling so the " +
-            "renderer's bytecode links against the AGP-flavoured class shapes (e.g. the " +
-            "legacy `ViewModelProvider(ViewModelStoreOwner, Factory)` constructor that " +
-            "lifecycle-viewmodel-savedstate-android still calls but the desktop variant " +
-            "removed in the KMP rewrite)."
-        )
+      val decision = renderGraphTarget(req.group, req.name, req.version, floorComposeLine)
+      when {
+        decision == null -> Unit
+        decision.name != null -> {
+          useTarget(
+            mapOf("group" to req.group, "name" to decision.name, "version" to decision.version)
+          )
+          because(
+            "Gradle resolved a desktop/JVM-stub KMP sibling on a config without the " +
+              "Kotlin-plugin platform-type compat rule. Force the Android sibling so the " +
+              "renderer's bytecode links against the AGP-flavoured class shapes (e.g. the " +
+              "legacy `ViewModelProvider(ViewModelStoreOwner, Factory)` constructor that " +
+              "lifecycle-viewmodel-savedstate-android still calls but the desktop variant " +
+              "removed in the KMP rewrite)." +
+              if (decision.flooredComposeLine) {
+                " Carries the compose-line floor into the substitution, which would otherwise " +
+                  "drop it (issue #3590)."
+              } else {
+                ""
+              }
+          )
+        }
+        decision.version != null -> {
+          useVersion(decision.version)
+          because(
+            "Rule 3 hands the render classpath to the consumer's Compose, but the renderer's own " +
+              "bytecode still has to link against it. Below " +
+              "$RENDERER_COMPOSE_LINK_FLOOR_VERSION the compose-ui line lacks entry points the " +
+              "renderer calls and every preview dies before user code runs: " +
+              "NoSuchMethodError androidx.compose.ui.node.ComposeUiNode\$Companion" +
+              ".getApplyOnDeactivatedNodeAssertion(). Raise to the floor; consumers already at or " +
+              "above it keep their own version (issue #3590)."
+          )
+        }
       }
     }
     configuration.resolutionStrategy.eachDependency {
@@ -1756,7 +1921,22 @@ internal object AndroidPreviewSupport {
         // live in a shared helper because `composePreviewAndroidDaemon$capVariant` extends this
         // configuration and needs the identical graph: `extendsFrom` inherits dependencies but
         // NOT `resolutionStrategy`, so the rules have to be applied to each config by hand.
-        applyRenderGraphResolutionRules(this)
+        // `floorComposeLine` follows `manageDependencies`: the floor only holds if the matching
+        // main-variant `ui`/`foundation` pins move with it, and the opt-out branch deliberately
+        // skips those ("consumer must ensure androidx.compose.ui:ui is on the main variant").
+        // Raising the render graph there would put floor-version classes over the consumer's
+        // own resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's
+        // line, whatever it is.
+        //
+        // KNOWN GAP: an opt-out consumer whose Compose is BELOW the floor still hits #3590's
+        // NoSuchMethodError, and nothing reports it — `validateExternallyManagedDependencies`
+        // checks that the required coordinates are DECLARED, never what they resolve to. Failing
+        // that validation on a below-floor compose-ui line is the fix, and it wants the resolved
+        // version rather than the declared one (a BOM consumer declares no version at all). Same
+        // root as the `enforcedPlatform` case: whenever the resource graph cannot be moved to the
+        // floor, the honest outcome is a configuration-time failure naming the required version,
+        // not a silently-raised render graph.
+        applyRenderGraphResolutionRules(this, floorComposeLine = manageDependencies)
       }
 
     if (useLocalRenderer) {
@@ -1876,7 +2056,22 @@ internal object AndroidPreviewSupport {
         // daemon resolves `-desktop` KMP siblings and Hamcrest 2.x while the render task resolves
         // the Android siblings and 1.3. Two JVMs rendering the same previews off different graphs
         // is precisely the divergence this change exists to remove.
-        applyRenderGraphResolutionRules(this)
+        // `floorComposeLine` follows `manageDependencies`: the floor only holds if the matching
+        // main-variant `ui`/`foundation` pins move with it, and the opt-out branch deliberately
+        // skips those ("consumer must ensure androidx.compose.ui:ui is on the main variant").
+        // Raising the render graph there would put floor-version classes over the consumer's
+        // own resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's
+        // line, whatever it is.
+        //
+        // KNOWN GAP: an opt-out consumer whose Compose is BELOW the floor still hits #3590's
+        // NoSuchMethodError, and nothing reports it — `validateExternallyManagedDependencies`
+        // checks that the required coordinates are DECLARED, never what they resolve to. Failing
+        // that validation on a below-floor compose-ui line is the fix, and it wants the resolved
+        // version rather than the declared one (a BOM consumer declares no version at all). Same
+        // root as the `enforcedPlatform` case: whenever the resource graph cannot be moved to the
+        // floor, the honest outcome is a configuration-time failure naming the required version,
+        // not a silently-raised render graph.
+        applyRenderGraphResolutionRules(this, floorComposeLine = manageDependencies)
       }
 
     val daemonRendererProjectDir = project.rootDir.resolve("daemon/android")
