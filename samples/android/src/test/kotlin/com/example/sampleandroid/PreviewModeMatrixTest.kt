@@ -58,6 +58,14 @@ class PreviewModeMatrixTest {
       "MatrixTvDevicePreview_TV" to (1920 to 1080),
       // spec: grammar with an explicit dpi= term → 360×640dp @2.0×.
       "MatrixDeviceSpecPreview_Device_spec" to (720 to 1280),
+      // orientation=portrait on a landscape spec — AndroidX's own @PreviewScreenSizes "Tablet"
+      // string. 1280×800dp @1.5× rotated is 800×1280dp; we used to render it 1920×1200 landscape
+      // because only `orientation=landscape` was honoured (issue #3547).
+      "MatrixRotatedDeviceSpecPreview_Rotated_device_spec" to (1200 to 1920),
+      // spec:parent= + orientation= — Small Phone (360×640dp @2.0×) rotated to landscape, so the
+      // frame is 640×360dp. `parent=` used to be unread, collapsing this to the 400×800dp default
+      // (2100×1050 once rotated).
+      "MatrixParentDeviceSpecPreview_Parent_device_spec" to (1280 to 720),
       // showSystemUi with no device promotes to the default phone frame: 400×800dp @2.625×.
       "MatrixSystemUiPreview_System_UI" to (1050 to 2100),
     )
@@ -135,6 +143,21 @@ class PreviewModeMatrixTest {
         assertThat(img.height).isGreaterThan(0)
       }
     }
+  }
+
+  @Test
+  fun `PreviewScreenSizes renders its tablet screen portrait and its sibling landscape`() {
+    // AndroidX spells its "Tablet" entry `spec:width=1280dp,height=800dp,dpi=240,orientation=
+    // portrait` and its "Tablet - Landscape" sibling as the same string without the rotation. With
+    // `orientation=portrait` dropped at resolve-time the two were the same landscape pixels, so the
+    // fan-out counted six screens while showing five (issue #3547). The pair is the assertion: same
+    // frame, transposed.
+    val tablet = readRender("MatrixScreenSizesMultiPreview_Tablet")
+    val landscape = readRender("MatrixScreenSizesMultiPreview_Tablet_Landscape")
+    assertThat(tablet.height).isGreaterThan(tablet.width)
+    assertThat(landscape.width).isGreaterThan(landscape.height)
+    assertThat(tablet.width).isEqualTo(landscape.height)
+    assertThat(tablet.height).isEqualTo(landscape.width)
   }
 
   @Test

@@ -73,6 +73,72 @@ class DeviceDimensionsTest {
   }
 
   @Test
+  fun `spec string portrait orientation rotates a landscape spec`() {
+    // #3547, one layer earlier than the daemon's override lane: `orientation=portrait` was dropped
+    // here (only `landscape` was handled), so `@PreviewScreenSizes`' own "Tablet" entry —
+    // `spec:width=1280dp,height=800dp,dpi=240,orientation=portrait` — rendered landscape, pixel for
+    // pixel identical to its "Tablet - Landscape" sibling.
+    val spec = DeviceDimensions.resolve("spec:width=1280dp,height=800dp,dpi=240,orientation=portrait")
+    assertThat(spec.widthDp).isEqualTo(800)
+    assertThat(spec.heightDp).isEqualTo(1280)
+    assertThat(spec.density).isEqualTo(1.5f)
+  }
+
+  @Test
+  fun `spec string orientation is idempotent in both directions`() {
+    // "Make it look like this", not "flip it" — a request the spec already satisfies is a no-op.
+    val portrait = DeviceDimensions.resolve("spec:width=400dp,height=800dp,orientation=portrait")
+    assertThat(portrait.widthDp).isEqualTo(400)
+    assertThat(portrait.heightDp).isEqualTo(800)
+    val landscape = DeviceDimensions.resolve("spec:width=800dp,height=400dp,orientation=landscape")
+    assertThat(landscape.widthDp).isEqualTo(800)
+    assertThat(landscape.heightDp).isEqualTo(400)
+  }
+
+  @Test
+  fun `spec string never swaps a square frame or an unrecognised orientation`() {
+    val square = DeviceDimensions.resolve("spec:width=227dp,height=227dp,orientation=landscape")
+    assertThat(square.widthDp).isEqualTo(227)
+    assertThat(square.heightDp).isEqualTo(227)
+    val nonsense = DeviceDimensions.resolve("spec:width=400dp,height=800dp,orientation=sideways")
+    assertThat(nonsense.widthDp).isEqualTo(400)
+    assertThat(nonsense.heightDp).isEqualTo(800)
+  }
+
+  @Test
+  fun `spec string parent inherits the catalog device`() {
+    // Studio's device picker writes `spec:parent=…` the moment you pick a device and change
+    // anything about it. Unresolved, the picked device vanished into the 400x800 default.
+    assertThat(DeviceDimensions.resolve("spec:parent=pixel_tablet"))
+      .isEqualTo(DeviceDimensions.resolve("id:pixel_tablet"))
+    assertThat(DeviceDimensions.resolve("spec:parent=id:wearos_small_round"))
+      .isEqualTo(DeviceDimensions.resolve("id:wearos_small_round"))
+  }
+
+  @Test
+  fun `spec string parent rotates and accepts restated terms`() {
+    // The reported gesture — pick a tablet, then pick Portrait — as Studio spells it in an
+    // annotation. Pixel Tablet is 1280x800dp @2.0x.
+    val rotated = DeviceDimensions.resolve("spec:parent=pixel_tablet,orientation=portrait")
+    assertThat(rotated.widthDp).isEqualTo(800)
+    assertThat(rotated.heightDp).isEqualTo(1280)
+    assertThat(rotated.density).isEqualTo(2.0f)
+    // Restated terms outrank the parent; unstated ones still come from it.
+    val resized = DeviceDimensions.resolve("spec:parent=pixel_tablet,height=600dp,dpi=640")
+    assertThat(resized.widthDp).isEqualTo(1280)
+    assertThat(resized.heightDp).isEqualTo(600)
+    assertThat(resized.density).isEqualTo(4.0f)
+  }
+
+  @Test
+  fun `spec string unknown parent falls back like a device id`() {
+    assertThat(DeviceDimensions.resolve("spec:parent=typo_phone"))
+      .isEqualTo(DeviceDimensions.resolve("id:typo_phone"))
+    assertThat(DeviceDimensions.resolve("spec:parent=some_wear_thing").isRound).isTrue()
+    assertThat(DeviceDimensions.resolve("spec:parent=some_wear_thing").widthDp).isEqualTo(227)
+  }
+
+  @Test
   fun `spec string preserves isRound parameter`() {
     val spec = DeviceDimensions.resolve("spec:width=227dp,height=227dp,dpi=320,isRound=true")
     assertThat(spec.isRound).isTrue()
