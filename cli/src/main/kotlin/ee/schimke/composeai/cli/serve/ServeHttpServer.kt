@@ -1565,7 +1565,9 @@ class ServeHttpServer(
           // 409. Same predicate that refusal is derived from, deliberately read here rather than
           // re-derived — the viewer greys the identical choice off `irReplay`, and a grid that
           // disagreed with either would offer chips that turn every card into an error.
-          irReplayFor = { id -> droppedOverridesAreTerminal(renderHost, id) },
+          irReplayFor = { id ->
+            droppedOverridesAreTerminal(renderHost, id) && !renderHost.canThemeByReplay()
+          },
           // Long-press a card to open a live daemon session inside it. Same two conditions the
           // viewer's Live toggle answers to — the session offers the stream lane, and this preview
           // has a daemon twin to stream — so a card only takes the gesture when the socket behind
@@ -2954,7 +2956,10 @@ class ServeHttpServer(
           }
           .toMap()
       val normalizedOverrideParams =
-        ServeWeb.SystemDisplay.normalizeOverrideParams(sessionId, overrideParams)
+        ServeWeb.SystemDisplay.normalizeOverrideParams(
+          sessionId,
+          expandThemeProvider(renderHost, previewId, overrideParams),
+        )
       val knobKinds =
         ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
       // Reject a themeProvider this catalog never declared instead of quietly rendering the
@@ -3442,7 +3447,10 @@ class ServeHttpServer(
           }
           .toMap()
       val normalizedOverrideParams =
-        ServeWeb.SystemDisplay.normalizeOverrideParams(sessionId, overrideParams)
+        ServeWeb.SystemDisplay.normalizeOverrideParams(
+          sessionId,
+          expandThemeProvider(renderHost, previewId, overrideParams),
+        )
       // Type a bare `knob.<key>=<value>` from the preview's declared knobs (an explicit
       // `<kind>:<value>` still wins) so the viewer never has to spell the type in the URL.
       val knobKinds =
@@ -3663,6 +3671,41 @@ class ServeHttpServer(
     renderHost.hasRemoteComposeDoc(previewId)
 
   /**
+   * [params] with a `themeProvider` **expanded into the named-value seeds that apply it to a
+   * replayed document** ([ServeHost.themeReplayColors]) — or unchanged, when that can't be done.
+   *
+   * Expanding rather than passing the provider through is the whole trick. A replayed preview has
+   * no composition for a `PreviewWrapperProvider` to wrap, so `themeProvider` reaches the render
+   * lane as an override nothing can honour and is refused. Its *colours*, though, are named state
+   * the player can rewrite, so the same request expressed as `rc.<role>=color:…` seeds succeeds.
+   * The `themeProvider` key is dropped from the result once expanded: it has been satisfied, and
+   * leaving it would have [droppedOverridesFor] report an un-applied override on a render that
+   * applied it.
+   *
+   * Only for previews that **replay**. A preview whose lane can recompose keeps its `themeProvider`
+   * untouched, because re-running the composable applies the whole theme — the typeface included,
+   * which no named value can carry. Seeding colours there would silently narrow what a theme means.
+   */
+  private fun expandThemeProvider(
+    renderHost: ServeHost,
+    previewId: String,
+    params: Map<String, String>,
+  ): Map<String, String> {
+    val provider = params["themeProvider"]?.takeIf { it.isNotBlank() } ?: return params
+    if (!droppedOverridesAreTerminal(renderHost, previewId)) return params
+    val colors = renderHost.themeReplayColors(provider)
+    if (colors.isEmpty()) return params
+    val seeded = params.toMutableMap()
+    seeded.remove("themeProvider")
+    for ((name, value) in colors) {
+      // An explicit `rc.` seed on the URL is the caller being more specific than the theme, so it
+      // wins — same precedence a per-role override has over a scheme anywhere else.
+      seeded.putIfAbsent("${ServeOverrides.RC_NAMED_PREFIX}$name", "color:$value")
+    }
+    return seeded
+  }
+
+  /**
    * Answer a render whose **validated overrides were not applied** — [bytes] are the preview's
    * baked artifact, produced without a renderer, while the request asked for [dropped]. Shared by
    * the PNG and SVG lanes so the two can't drift: a vector read off the delivery branch ignores a
@@ -3781,9 +3824,13 @@ class ServeHttpServer(
     // the JS lane's in-browser knob application.
     val seeds =
       ServeOverrides.rcNamedValueSeeds(
-        call.request.queryParameters.entries().associate { (key, values) ->
-          key to (values.firstOrNull() ?: "")
-        }
+        expandThemeProvider(
+          renderHost,
+          previewId,
+          call.request.queryParameters.entries().associate { (key, values) ->
+            key to (values.firstOrNull() ?: "")
+          },
+        )
       )
     val result =
       withContext(Dispatchers.IO) {
