@@ -167,7 +167,16 @@ internal object ModifierTokenResolver {
           }
         }
       }
-      if (name == "padding" || simpleName.startsWith("PaddingElement")) {
+      // `PaddingValuesElement` is the `Modifier.padding(PaddingValues)` overload — a different
+      // class
+      // from the per-edge `PaddingElement`, so the class arm has to name it too or the reflection
+      // fallback in [paddingInsets] is unreachable on any build that leaves `nameFallback` null
+      // (desktop/skiko), which is exactly where the fallback matters (issue #3573).
+      if (
+        name == "padding" ||
+          simpleName.startsWith("PaddingElement") ||
+          simpleName.startsWith("PaddingValuesElement")
+      ) {
         val insets = paddingInsets(mod, elements, inspectable?.valueOverride)
         if (padding == null) padding = insets
         // Leading padding (before any paint modifier) insets the drawn shape; record the first one
@@ -355,15 +364,22 @@ internal object ModifierTokenResolver {
    * Matched on both the inspector name and the element class, like every other lookup here — the
    * desktop/skiko build doesn't always populate inspector info.
    */
-  fun paintsContainer(modifier: Any): Boolean {
+  fun paintsContainer(modifier: Any): Boolean = fillsContainer(modifier) || ringsContainer(modifier)
+
+  /** The fill half of [paintsContainer] — `Modifier.background` / `Modifier.paint`. */
+  fun fillsContainer(modifier: Any): Boolean {
     val name = (modifier as? InspectableValue)?.nameFallback
     val simpleName = modifier.javaClass.simpleName
     return name == "background" ||
       simpleName == "BackgroundElement" ||
       name == "paint" ||
-      simpleName == "PainterElement" ||
-      name == "border" ||
-      simpleName.startsWith("BorderModifier")
+      simpleName == "PainterElement"
+  }
+
+  /** The ring half of [paintsContainer] — `Modifier.border`. */
+  fun ringsContainer(modifier: Any): Boolean {
+    val name = (modifier as? InspectableValue)?.nameFallback
+    return name == "border" || modifier.javaClass.simpleName.startsWith("BorderModifier")
   }
 
   internal fun appliedClipsContent(coordinates: Any): Boolean =

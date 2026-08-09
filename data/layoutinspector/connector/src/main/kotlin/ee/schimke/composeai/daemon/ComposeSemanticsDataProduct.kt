@@ -1248,12 +1248,19 @@ internal object ComposeLayoutInspector {
           )
           // The box the fill/ring modifier drew into, measured off its own coordinator in the same
           // root space as `placedBounds` — the direct answer to the question `paintInset` and the
-          // measured-size growth heuristic can only estimate (issue #3572). Taken from the FIRST
-          // such modifier: the resolver reads its colour/shape the same way, so shape and box come
-          // from one modifier rather than two.
+          // measured-size growth heuristic can only estimate (issue #3572).
+          //
+          // The FILL's modifier is preferred over a ring's, matching the precedence the resolver
+          // itself uses: one box cannot describe both when a chain pads between them, and the fill
+          // is the layer's dominant paint (a ring that resolves fully transparent is dropped by the
+          // renderer outright, so taking its outer box would stretch a visible background over a
+          // region nothing painted). A ring-only node — an `OutlinedCard`, a divider — still gets
+          // its own box from the `border`.
           ?.let { resolved ->
-            modifiers
-              .firstOrNull { ModifierTokenResolver.paintsContainer(it.modifier) }
+            val paint =
+              modifiers.firstOrNull { ModifierTokenResolver.fillsContainer(it.modifier) }
+                ?: modifiers.firstOrNull { ModifierTokenResolver.ringsContainer(it.modifier) }
+            paint
               ?.coordinates
               ?.boundsIn(rootCoords)
               ?.takeIf { it.right > it.left && it.bottom > it.top }
