@@ -80,6 +80,76 @@ class FigmaSvgPaintInsetTest {
     assertEquals(85, r.bottom - r.top)
   }
 
+  /**
+   * The gradient counterpart of [ringUnderParent]: Pocket Casts' `GradientRowButton` is
+   * `background(brush, RoundedCornerShape(12.dp)).clickable().padding(16.dp)`, so the brush covers
+   * the whole node and the padding insets only the label. The button is placed at the padded 966×56
+   * content rect but measured at the full 1050×140 box, and its brush resolves no flat
+   * [ComposeSemanticsTokens.backgroundColor] — only [ComposeSemanticsTokens.backgroundGradient]
+   * (issue #2852). The padding trails the paint, so no [ComposeSemanticsTokens.paintInset] is
+   * captured and the growth must run (issue #3569).
+   */
+  private fun gradientButton(paintInset: ComposeSemanticsInsets?): FigmaSvgLayer {
+    val payload =
+      LayoutInspectorPayload(
+        LayoutInspectorNode(
+          nodeId = "root-1",
+          component = "Box",
+          bounds = bounds(0, 0, 1050, 140),
+          size = LayoutInspectorSize(1050, 140),
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFF0EB"),
+          children =
+            listOf(
+              LayoutInspectorNode(
+                nodeId = "button-1",
+                component = "Box",
+                bounds = bounds(42, 42, 1008, 98),
+                size = LayoutInspectorSize(1050, 140),
+                tokens =
+                  ComposeSemanticsTokens(
+                    backgroundGradient =
+                      LayoutInspectorGradient(colors = listOf("#FFFFD846", "#FFFEB525")),
+                    cornerRadius = "12.0dp",
+                    padding = paintInset,
+                    paintInset = paintInset,
+                  ),
+              )
+            ),
+        )
+      )
+    val root = FigmaSvgModel.from(layout = payload, density = 1f).root
+    return firstGradient(root) ?: error("gradient layer not found")
+  }
+
+  private fun firstGradient(layer: FigmaSvgLayer): FigmaSvgLayer? =
+    if (layer.fillGradient != null) layer
+    else layer.children.firstNotNullOfOrNull { firstGradient(it) }
+
+  @Test
+  fun aBrushFillGrowsToTheMeasuredBoxLikeAFlatOne() {
+    // Before the fix the `expand` gate read the flat `fill`/`stroke` only, so the gradient stayed
+    // on the placed 966×56 content rect — a pill floating inside the button the PNG paints edge to
+    // edge.
+    val b = gradientButton(paintInset = null)
+    assertEquals(0, b.left)
+    assertEquals(0, b.top)
+    assertEquals(1050, b.right - b.left)
+    assertEquals(140, b.bottom - b.top)
+  }
+
+  @Test
+  fun aBrushFillBehindALeadingPaddingStaysOnItsPlacedBounds() {
+    // The mirror of [leadingPaddingKeepsTheRingOnTheInnerControl]: when the padding really does
+    // lead the paint, a brush must be suppressed exactly like a flat fill.
+    val inset =
+      ComposeSemanticsInsets(start = "16.0dp", top = "16.0dp", end = "16.0dp", bottom = "16.0dp")
+    val b = gradientButton(inset)
+    assertEquals(42, b.left)
+    assertEquals(42, b.top)
+    assertEquals(966, b.right - b.left)
+    assertEquals(56, b.bottom - b.top)
+  }
+
   @Test
   fun aZeroLeadingPaddingDoesNotSuppressGrowth() {
     // `padding(0.dp)` resolves to an all-"0.0dp" inset that changes no geometry; it must not be

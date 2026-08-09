@@ -1380,9 +1380,16 @@ data class FigmaSvgModel(
             ?: boundsH
       val drawW = maxOf(boundsW, minWidthPx?.roundToInt() ?: 0, measuredW)
       val drawH = maxOf(boundsH, minHeightPx?.roundToInt() ?: 0, measuredH)
+      // A brush fill/ring counts as painted here just like a flat one. `Modifier.background(brush,
+      // …)` resolves no `backgroundColor` — the brush rides on `fillGradient` instead — so gating
+      // the growth on the flat tokens alone left every gradient container pinned to its placed
+      // `bounds`. Pocket Casts' `GradientRowButton`
+      // (`background(brush, RoundedCornerShape(12.dp)).clickable().padding(16.dp)`) paints its
+      // gradient across the whole node and pads only its label, but exported as a 966×56 pill
+      // floating inside the 1050×140 button the PNG draws edge to edge (issue #3569).
       val expand =
         !paddedPaint &&
-          (fill != null || stroke != null) &&
+          (fill != null || stroke != null || fillGradient != null || strokeGradient != null) &&
           ctx.textByNodeId[nodeId] == null &&
           (drawW > boundsW || drawH > boundsH)
       // Center the grown shape on the placed bounds, then pull the whole rectangle back inside the

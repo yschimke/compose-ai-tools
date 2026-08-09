@@ -107,6 +107,13 @@ internal object ModifierTokenResolver {
         // bleed past (issue #2852). A shadow/alpha-only graphicsLayer keeps `clip = false`.
         if (!clipsContent && graphicsLayerClips(mod, elements)) clipsContent = true
         shadowElevationDp(mod, elements, density)?.let { dp ->
+          // A positive elevation *paints* — unlike a clip, which only masks — so a padding behind
+          // it does not inset what this modifier drew, and the layer keeps its pre-padding box
+          // (issue #3569). The exported layer carries one rect for both the fill and its
+          // `feDropShadow`, so `shadow(8.dp, shape).padding(16.dp).background(…)` — where Compose
+          // draws the shadow at the outer box and the fill at the inner one — cannot satisfy both;
+          // the outer box wins, which is the behaviour that predates #3569.
+          sawPaint = true
           if (elevation == null || dp > (elevation.removeSuffix("dp").toDoubleOrNull() ?: 0.0)) {
             elevation = "${dp}dp"
           }
@@ -186,9 +193,14 @@ internal object ModifierTokenResolver {
         if (PlaceholderModifiers.isPlaceholderModifier(name, simpleName)) null
         else shapeOf(mod, elements)
       if (nodeShape != null) {
-        // A shape-bearing `clip`/`background`/`border` is a paint modifier, so a padding after it
-        // no longer insets the drawn shape (issue #2852).
-        sawPaint = true
+        // Deliberately NOT `sawPaint = true`. A shape alone paints nothing: a `clip(shape)` only
+        // masks, so a `padding` behind it still insets the fill that follows —
+        // `clip(shape).padding(16.dp).background(brush)` really does draw in the padded box, and
+        // reading the clip as paint left that padding uncaptured and the fill grown back out to the
+        // node's measured size (issue #3569). Every shape-bearing modifier that *does* paint sets
+        // the flag in its own branch above — `background`/`paint`/`border`, and a `graphicsLayer`
+        // carrying a positive shadow elevation — which is what stops a trailing content `padding`
+        // from being read as a paint inset (#2852).
         val effectiveShape = nodeShape.effectiveCornerShape()
         if (cornerRadius == null) cornerRadius = effectiveShape.cornerRadiusWire(minSidePx, density)
         // A `RoundedCornerShape(<px>f)` has no dp `cornerRadius`; capture its raw-pixel radii so
