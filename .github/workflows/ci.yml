@@ -1158,6 +1158,13 @@ jobs:
       # kept the public host's playground pinned to one catalog with the Android modes off.
       - name: Run deploy compose env-passthrough tests
         run: ./deploy/image/test-compose-env-passthrough.sh
+      # A sandbox profile the docs recommend but the image cannot launch is silent in the posture
+      # this image ships in: a repo-access-gated host admits the playground before it looks at the
+      # jail, so a missing binary logs a preflight warning and serves UNCONTAINED rather than
+      # refusing. That is how preview.coo.ee ran with `active: true` and every containment check
+      # false (issue #3211).
+      - name: Run deploy sandbox tooling tests
+        run: ./deploy/image/test-sandbox-tooling.sh
       # The seed-config reconcile POSTs to a live server's admin API during publish, so its
       # ordering (trust before catalogs) and payload-shape rules are gated rather than eyeballed —
       # a dropped `listed: false` or `group` silently moves a card on the front page.

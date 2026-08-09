@@ -19,6 +19,14 @@ ARG CP_VERSION=0.19.52
 # ---------------------------------------------------------------------------
 # Stage 0: base — JDK + Skiko's native deps (same rationale as the cloudrun image:
 # libGL via libgl1, Mesa software GLX/DRI, fonts; force software GL).
+#
+# `bubblewrap` is here for the playground jail, and only for that. Without it
+# `--playground-sandbox bwrap` cannot launch, so the lane either runs a snippet
+# unconfined (issue #3211) or an operator reaches for a `custom:` argv — which
+# cannot work, because a custom argv is a STATIC prefix (PlaygroundSandbox.command,
+# `Profile.CUSTOM -> customCommand`) and so cannot bind the per-session work dir
+# that only exists at compile time. `Profile.BWRAP` builds its argv from `Paths`
+# and binds it correctly. See deploy/image/README.md § "Containment".
 # ---------------------------------------------------------------------------
 FROM eclipse-temurin:21.0.11_10-jdk AS base
 RUN apt-get update \
@@ -26,6 +34,7 @@ RUN apt-get update \
       libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \
       libgl1 libglx-mesa0 libgl1-mesa-dri \
       curl ca-certificates git \
+      bubblewrap \
  && rm -rf /var/lib/apt/lists/*
 ENV LIBGL_ALWAYS_SOFTWARE=1 \
     GRADLE_USER_HOME=/root/.gradle
