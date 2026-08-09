@@ -40,10 +40,7 @@ private constructor(
     when (val message = ServeStreamProtocol.parseClient(text)) {
       is ServeStreamProtocol.ClientMessage.SetOverrides -> {
         val normalized = normalize(message.overrides)
-        when (
-          val parsed =
-            ServeOverrides.parse(normalized, knobKindsFor(previewId), declaredThemeFqns())
-        ) {
+        when (val parsed = parseFor(previewId, normalized)) {
           is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
           is OverrideParse.Ok -> {
             // stream/start fixes overrides for the held session, so an override change restarts it.
@@ -104,10 +101,7 @@ private constructor(
   private fun switchTo(message: ServeStreamProtocol.ClientMessage.Switch) {
     val nextOverrides = message.overrides?.let(::normalize) ?: overrides
     val parsed =
-      when (
-        val p =
-          ServeOverrides.parse(nextOverrides, knobKindsFor(message.previewId), declaredThemeFqns())
-      ) {
+      when (val p = parseFor(message.previewId, nextOverrides)) {
         is OverrideParse.Invalid -> {
           send(ServeStreamProtocol.errorMessage(p.message))
           return
@@ -125,6 +119,27 @@ private constructor(
     previewId = message.previewId
     overrides = nextOverrides
   }
+
+  /**
+   * Parse [params] as [id]'s overrides, with a `themeProvider` first expanded into the named colour
+   * seeds that apply it to a replayed document ([ServeThemeReplay]).
+   *
+   * The expansion belongs on this lane for the same reason it belongs on the render handlers: a
+   * replayed preview has no composition to wrap, so forwarding the raw provider would stream frames
+   * the theme never touched while the viewer showed it as selected. Every message that carries
+   * overrides goes through here — `setOverrides` and `switch` — as does the socket's initial query
+   * in [tryStart], so a stream can't be opened by a route that skipped it.
+   *
+   * [params] itself is stored un-expanded by the callers: the seeds are derived per preview, and a
+   * `switch` that keeps the current overrides must re-derive them for the preview it lands on
+   * rather than carrying the previous one's.
+   */
+  private fun parseFor(id: String, params: Map<String, String>): OverrideParse =
+    ServeOverrides.parse(
+      ServeThemeReplay.expand(renderHost, id, params).params,
+      knobKindsFor(id),
+      declaredThemeFqns(),
+    )
 
   /**
    * Declared knob kinds for [id], so a bare `knob.<key>=<value>` message is typed from the preview.
@@ -193,7 +208,7 @@ private constructor(
         when (
           val parsed =
             ServeOverrides.parse(
-              normalizedOverrides,
+              ServeThemeReplay.expand(renderHost, previewId, normalizedOverrides).params,
               knobKinds,
               renderHost.declaredThemes.map { it.providerFqn }.toSet(),
             )

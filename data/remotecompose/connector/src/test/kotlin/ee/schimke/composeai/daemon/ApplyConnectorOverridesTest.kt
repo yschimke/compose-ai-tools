@@ -97,6 +97,48 @@ class ApplyConnectorOverridesTest {
     assertEquals(listOf(Triple("color", "seed", 0xFF3366FF.toInt() as Any?)), updater.calls)
   }
 
+  /**
+   * Six digits is the ordinary spelling of a colour — it is what a hand-typed
+   * `?rc.WearM3.primary=color:%23FF6F61` carries, and what `ServeHost.themeReplayColors` publishes
+   * for a declared theme — so it has to mean the opaque colour it looks like. Read as-is it becomes
+   * `0x00RRGGBB`, alpha zero: a seed meant to *recolour* an element instead **erases** it, and the
+   * render comes back a themed-looking request with a hole in it. The cmp-jvm lane
+   * (`RcJvmServerRenderer.rcColorToArgb`) has always prepended `FF`; this is the replay players
+   * agreeing with it rather than each lane deciding for itself.
+   */
+  @Test
+  fun `six-digit color value is opaque`() {
+    val updater = CapturingStateUpdater()
+    applyConnectorOverrides(updater, mapOf("seed" to RemoteNamedValue.ColorValue("#FF6F61")))
+    assertEquals(listOf(Triple("color", "seed", 0xFFFF6F61.toInt() as Any?)), updater.calls)
+  }
+
+  /** …and an 8-digit value keeps the alpha it was given, including a deliberately transparent one. */
+  @Test
+  fun `eight-digit color value keeps its alpha`() {
+    val updater = CapturingStateUpdater()
+    applyConnectorOverrides(updater, mapOf("seed" to RemoteNamedValue.ColorValue("#80FF6F61")))
+    assertEquals(listOf(Triple("color", "seed", 0x80FF6F61.toInt() as Any?)), updater.calls)
+  }
+
+  /**
+   * The wire model carries `argb` as an arbitrary string, so a length no colour spelling produces is
+   * skipped rather than thrown — a typo in a panel value must not crash the render path.
+   */
+  @Test
+  fun `an unparseable color is skipped`() {
+    val updater = CapturingStateUpdater()
+    applyConnectorOverrides(
+      updater,
+      linkedMapOf(
+        "short" to RemoteNamedValue.ColorValue("#F61"),
+        "notHex" to RemoteNamedValue.ColorValue("#ZZTOPZZ"),
+        "good" to RemoteNamedValue.ColorValue("#FF3366FF"),
+      ),
+    )
+    assertEquals(listOf(Triple("color", "good", 0xFF3366FF.toInt() as Any?)), updater.calls)
+  }
+
   @Test
   fun `multiple entries dispatch in iteration order without prefixing names`() {
     val updater = CapturingStateUpdater()

@@ -56,10 +56,7 @@ class ServeStreamSession(
         // Validate before committing: a bad override message is reported but must not poison the
         // session — the previous (valid) overrides stay in effect for subsequent frames.
         val normalized = normalize(message.overrides)
-        when (
-          val parsed =
-            ServeOverrides.parse(normalized, knobKindsFor(previewId), declaredThemeFqns())
-        ) {
+        when (val parsed = parseFor(previewId, normalized)) {
           is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
           is OverrideParse.Ok -> {
             overrides = normalized
@@ -93,10 +90,7 @@ class ServeStreamSession(
     // lane.
     val nextOverrides = message.overrides?.let(::normalize) ?: overrides
     val parsed =
-      when (
-        val p =
-          ServeOverrides.parse(nextOverrides, knobKindsFor(message.previewId), declaredThemeFqns())
-      ) {
+      when (val p = parseFor(message.previewId, nextOverrides)) {
         is OverrideParse.Invalid -> {
           send(ServeStreamProtocol.errorMessage(p.message))
           return
@@ -107,6 +101,27 @@ class ServeStreamSession(
     overrides = nextOverrides
     sendFrame(parsed)
   }
+
+  /**
+   * Parse [params] as [id]'s overrides, with a `themeProvider` first expanded into the named colour
+   * seeds that apply it to a replayed document ([ServeThemeReplay]).
+   *
+   * The expansion belongs on this lane for the same reason it belongs on the render handlers: a
+   * replayed preview has no composition to wrap, so forwarding the raw provider would stream frames
+   * the theme never touched while the viewer showed it as selected. Every message that carries
+   * overrides goes through here — `setOverrides`, `switch`, and the re-parse behind `requestFrame`
+   * — so a socket can't reach the renderer by a route that skipped it.
+   *
+   * [params] itself is stored un-expanded by the callers: the seeds are derived per preview, and a
+   * `switch` that keeps the current overrides must re-derive them for the preview it lands on
+   * rather than carrying the previous one's.
+   */
+  private fun parseFor(id: String, params: Map<String, String>): OverrideParse =
+    ServeOverrides.parse(
+      ServeThemeReplay.expand(renderHost, id, params).params,
+      knobKindsFor(id),
+      declaredThemeFqns(),
+    )
 
   /**
    * Declared knob kinds for [id], so a bare `knob.<key>=<value>` frame is typed from the preview.
@@ -132,9 +147,7 @@ class ServeStreamSession(
     else "input requires a live stream — unavailable: $liveUnavailableReason"
 
   private fun renderCurrent() {
-    when (
-      val parsed = ServeOverrides.parse(overrides, knobKindsFor(previewId), declaredThemeFqns())
-    ) {
+    when (val parsed = parseFor(previewId, overrides)) {
       is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
       is OverrideParse.Ok -> sendFrame(parsed.overrides)
     }

@@ -1565,11 +1565,13 @@ class ServeHttpServer(
           // 409. Same predicate that refusal is derived from, deliberately read here rather than
           // re-derived — the viewer greys the identical choice off `irReplay`, and a grid that
           // disagreed with either would offer chips that turn every card into an error.
-          // A replayed card is theme-overridable exactly when the session publishes a mapping for
-          // something — the chips themselves are narrowed to those themes just below, so a card
-          // passing this gate can apply every theme it is offered.
+          // A replayed card is theme-overridable exactly when it can apply every theme this page
+          // offers. On a pure-replay catalog the chips below are already narrowed to the mapped
+          // ones, so that is the whole declared set and nothing changes. In a **mixed** catalog the
+          // chips are the union — one recomposing preview is enough to publish all of them — and a
+          // replayed card mapped for only some would light up chips that 409 it.
           irReplayFor = { id ->
-            droppedOverridesAreTerminal(renderHost, id) && renderHost.replayableThemes().isEmpty()
+            droppedOverridesAreTerminal(renderHost, id) && !everyThemeApplies(renderHost, id)
           },
           // Long-press a card to open a live daemon session inside it. Same two conditions the
           // viewer's Live toggle answers to — the session offers the stream lane, and this preview
@@ -3244,7 +3246,7 @@ class ServeHttpServer(
           irReplay = droppedOverridesAreTerminal(renderHost, preview.id),
           // …but a replayed preview can still take a declared theme when the session publishes its
           // colours, so the viewer greys the recomposition-only controls without greying this one.
-          replayThemes = renderHost.replayableThemes().isNotEmpty(),
+          replayThemes = applicableThemes(renderHost, preview.id).isNotEmpty(),
           // Per-preview: the Remote Compose backend selector's enabled lanes. The host advertises
           // its server/client lanes; the opt-in CMP/Wasm distribution contributes the browser
           // lane when this preview has an RC document. Empty for a non-RC preview ⇒ no selector.
@@ -3259,7 +3261,7 @@ class ServeHttpServer(
           wasmSameOrigin = wasmSameOrigin,
           basePath = basePath,
           isPublic = isPublic,
-          declaredThemes = applicableThemes(renderHost),
+          declaredThemes = applicableThemes(renderHost, preview.id),
           // Android-daemon-only: gates the "Show gesture hints" row so a `@GestureHintPreview`
           // doesn't show a toggle that would do nothing on a desktop-backed session.
           gesturesRenderable = renderHost.gesturesRenderable,
@@ -3678,12 +3680,26 @@ class ServeHttpServer(
    * as final.
    */
   /**
-   * The declared themes this session can actually render something under — all of them once any
-   * preview can recompose, else only those with a published replay mapping.
+   * The declared themes [previewId] can actually be rendered under: all of them when it recomposes,
+   * else only those with a published replay mapping.
    *
    * Offering a theme no lane can apply is the failure this filter exists for: the control looks
    * live, the click 409s, and the visitor is told the preview "can't render live" for a theme the
    * catalog advertised.
+   */
+  private fun applicableThemes(renderHost: ServeHost, previewId: String): List<ServeTheme> =
+    if (droppedOverridesAreTerminal(renderHost, previewId)) renderHost.replayableThemes()
+    else renderHost.declaredThemes
+
+  /**
+   * The declared themes a **page showing many previews** can offer — the union over its previews,
+   * since one control drives cards of both kinds.
+   *
+   * A union is only honest paired with a per-card gate, and it is [everyThemeApplies] that carries
+   * it: a mixed catalog offering a theme mapped for its replayed cards and a second one that isn't
+   * would otherwise light up every chip on every card, and the unmapped chip would 409 the replayed
+   * ones. Per-theme narrowing isn't expressible per card here, so a replayed card that can't take
+   * the whole offered set is gated out of the control entirely rather than into an error.
    */
   private fun applicableThemes(renderHost: ServeHost): List<ServeTheme> =
     if (renderHost.previews.any { !droppedOverridesAreTerminal(renderHost, it.id) }) {
@@ -3692,64 +3708,25 @@ class ServeHttpServer(
       renderHost.replayableThemes()
     }
 
+  /** Whether [previewId] can be rendered under every theme [applicableThemes] offers this page. */
+  private fun everyThemeApplies(renderHost: ServeHost, previewId: String): Boolean =
+    applicableThemes(renderHost, previewId)
+      .map { it.providerFqn }
+      .containsAll(applicableThemes(renderHost).map { it.providerFqn })
+
   private fun droppedOverridesAreTerminal(renderHost: ServeHost, previewId: String): Boolean =
-    renderHost.hasRemoteComposeDoc(previewId)
+    ServeThemeReplay.isReplayed(renderHost, previewId)
 
   /**
-   * [params] with a `themeProvider` **expanded into the named-value seeds that apply it to a
-   * replayed document** ([ServeHost.themeReplayColors]) — or unchanged, when that can't be done.
-   *
-   * Expanding rather than passing the provider through is the whole trick. A replayed preview has
-   * no composition for a `PreviewWrapperProvider` to wrap, so `themeProvider` reaches the render
-   * lane as an override nothing can honour and is refused. Its *colours*, though, are named state
-   * the player can rewrite, so the same request expressed as `rc.<role>=color:…` seeds succeeds.
-   * The `themeProvider` key is dropped from the result once expanded: it has been satisfied, and
-   * leaving it would have [droppedOverridesFor] report an un-applied override on a render that
-   * applied it.
-   *
-   * Only for previews that **replay**. A preview whose lane can recompose keeps its `themeProvider`
-   * untouched, because re-running the composable applies the whole theme — the typeface included,
-   * which no named value can carry. Seeding colours there would silently narrow what a theme means.
+   * [ServeThemeReplay.expand], as a member so the render handlers read the same way they did when
+   * the expansion lived here. The logic moved out because the WebSocket lanes need it too — see
+   * [ServeThemeReplay].
    */
   private fun expandThemeProvider(
     renderHost: ServeHost,
     previewId: String,
     params: Map<String, String>,
-  ): ThemeSeeding {
-    val provider =
-      params["themeProvider"]?.takeIf { it.isNotBlank() } ?: return ThemeSeeding(params)
-    if (!droppedOverridesAreTerminal(renderHost, previewId)) return ThemeSeeding(params)
-    val colors = renderHost.themeReplayColors(provider)
-    if (colors.isEmpty()) return ThemeSeeding(params)
-    val seeded = params.toMutableMap()
-    seeded.remove("themeProvider")
-    for ((name, value) in colors) {
-      // An explicit `rc.` seed on the URL is the caller being more specific than the theme, so it
-      // wins — same precedence a per-role override has over a scheme anywhere else.
-      //
-      // A **blank** one is not that. `ServeOverrides.parse` skips an empty `rc.` value outright, so
-      // honouring the bare key here would drop the theme's seed for that role and leave the
-      // document
-      // on its authored colour — a theme applied in part, reported as applied in full. Blank means
-      // absent for this merge, and the theme fills the role.
-      val key = "${ServeOverrides.RC_NAMED_PREFIX}$name"
-      if (seeded[key].isNullOrBlank()) seeded[key] = "color:$value"
-    }
-    return ThemeSeeding(seeded, provider)
-  }
-
-  /**
-   * [params] after [expandThemeProvider], plus the provider it consumed (null when it expanded
-   * nothing).
-   *
-   * The provider is carried out rather than inferred later because expansion *removes* it from the
-   * params: every downstream classification that keys off `themeProvider` — the theme-render lease
-   * admission most of all — would otherwise read a plain seeded render and silently skip. A themed
-   * thumbnail burst that stops being admitted doesn't fail; it just stops sharing the catalog's
-   * allocation, so every page runs the full advertised concurrency straight at the global render
-   * semaphore.
-   */
-  private data class ThemeSeeding(val params: Map<String, String>, val provider: String? = null)
+  ): ServeThemeReplay.Seeding = ServeThemeReplay.expand(renderHost, previewId, params)
 
   /**
    * Answer a render whose **validated overrides were not applied** — [bytes] are the preview's
