@@ -16,6 +16,24 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  * declares. They populate the preview server's **Theme** select, so any sticker can be re-rendered
  * in either face without a preview change.
  *
+ * ## Where the Theme select actually offers them
+ *
+ * On a session that **re-runs these composables** — `compose-preview serve` against this module, or
+ * any daemon carrying its classes. A provider is a `PreviewWrapperProvider`: applying one means
+ * composing the preview again inside `Wrap`, which authors a *new* `RemoteDocument`.
+ *
+ * The **published catalog** (`design-artifacts/remote-m3`, served at `preview.coo.ee/remote-m3/`)
+ * is not such a session. Every sticker here emits a Remote Compose document, so `bundle pack`
+ * carries the captured `ir/<id>.rc` and drops the module bytecode that authored it
+ * (`BundlePreviewTask` — "an IR preview contributes no module bytecode"), and the bundle daemon
+ * redraws by replaying that document. There is no composition left to wrap, so the server refuses a
+ * `?themeProvider=` render with a terminal 409 and the preview server omits these chips there
+ * rather than offering a click that can only fail. What still carries the evidence on the published
+ * catalog is the pair of synthesised specimen sheets below — one baked render per theme.
+ *
+ * Making the published catalog themable means capturing a document **per declared theme** at pack
+ * time; nothing in the replay path can substitute a typeface after the fact.
+ *
  * ## What they change, and what they deliberately don't
  *
  * A Remote Compose document names its typeface in one of three ways (see

@@ -1279,6 +1279,36 @@ class ServeWebFixtureTest {
         // pages-snapshot.spec.mjs).
         presenceUrl = "/compose-m3/api/presence",
       )
+    // The same catalog, IR-replayed: every card is redrawn by replaying a captured Remote Compose
+    // document instead of re-running its composable, so a `themeProvider` render is refused 409 and
+    // the declared chips must NOT be offered — picking one could only paint the grid with "This
+    // preview can't render live". Captured beside [landingDeclaredThemes] so the diff is exactly
+    // the widened control collapsing back to the baked Light/Dark pair, which is the claim: the
+    // per-preview axes a replay CAN honour stay, only the composition-only one goes.
+    val landingIrReplayThemes =
+      ServeWeb.landingPage(
+        "remote-m3",
+        themedPreviews,
+        token,
+        sessionId = "remote-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
+        isPublic = true,
+        hasHomeIndex = true,
+        version = version,
+        declaredThemes =
+          listOf(
+            ServeTheme("Roboto Flex", "com.example.RobotoFlexThemeCatalog", group = "Typeface"),
+            ServeTheme(
+              "Google Sans Flex",
+              "com.example.GoogleSansFlexThemeCatalog",
+              group = "Typeface",
+            ),
+          ),
+        // Fully live — a daemon twin for every card. Only the replay gate withholds the chips.
+        canRenderThemeFor = { true },
+        irReplayFor = { true },
+        themeRenderBurstCapacity = 5,
+      )
     // A live catalog: every card can be long-pressed to open a daemon session inside it. The
     // committed HTML holds the affordance's static half (the header note + the emitted config);
     // the gesture's two runtime states — the hover hint and a card actually streaming — are
@@ -1717,6 +1747,7 @@ class ServeWebFixtureTest {
         "serve-reference-compare.html" to referenceComparison,
         "serve-parity.html" to parity,
         "serve-landing-declared-themes.html" to landingDeclaredThemes,
+        "serve-landing-ir-replay-themes.html" to landingIrReplayThemes,
         "serve-landing-live.html" to landingLive,
         "serve-landing-states.html" to landingStates,
         "serve-landing-sections.html" to landingSections,
@@ -2126,6 +2157,23 @@ class ServeWebFixtureTest {
           "data-theme-choice=\"theme:com.example.HighContrastThemeCatalog\""
         ),
       "the catalog Theme control offers the baked pair plus every declared theme",
+    )
+    // …unless the cards are replayed from a captured document, which a theme provider has no
+    // composition to wrap: the declared chips go, the baked pair (which a replay CAN honour, via
+    // the player's own paint-time theme) stays. Both catalogs are equally live — the difference is
+    // only whether the render re-runs the composable.
+    assertTrue(
+      landingIrReplayThemes.contains("data-theme-choice=\"light\"") &&
+        landingIrReplayThemes.contains("data-theme-choice=\"dark\""),
+      "an IR-replayed catalog keeps its baked light/dark axis",
+    )
+    assertFalse(
+      landingIrReplayThemes.contains("data-theme-choice=\"theme:"),
+      "…and offers no declared theme, whose render the server refuses 409",
+    )
+    assertFalse(
+      landingIrReplayThemes.contains("var themeBase = ["),
+      "…nor any themed-render URL for the script to fetch",
     )
     // Picking a declared theme re-renders through `themeProvider`. The per-card base URLs are
     // emitted by the SERVER (in the grid's document order) and never read back out of the DOM, so
