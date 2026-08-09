@@ -47,12 +47,18 @@ public object RcTextMeasurement {
   /** Bottom edge, relative to the baseline. Positive for descenders. */
   public const val BOTTOM: Int = 5
 
-  /** Character count. Included for completeness; the fixtures don't draw it. */
+  /**
+   * String length in **UTF-16 code units**, not characters — every implementation reads
+   * `text.length`, so one supplementary code point (an emoji, most CJK extension blocks) counts
+   * twice. Included for completeness; the fixtures don't draw it.
+   */
   public const val LENGTH: Int = 6
 
   /**
-   * `MEASURE_MONOSPACE_FLAG`. Keeps the ink left edge but reports the *advance* as the right one,
-   * so the width comes out as `advance - inkLeft`.
+   * `MEASURE_MONOSPACE_FLAG`. Leaves the left edge at the ink left and moves the right edge to
+   * `advance - inkLeft` — so [RIGHT] reports that shifted edge, and [WIDTH], being `right - left`,
+   * comes out as `advance - 2 * inkLeft`. It equals the advance only for a run whose first glyph
+   * has no left side bearing, so this is the wrong way to ask for one: use [FLAG_ADVANCE].
    */
   public const val FLAG_MONOSPACE: Int = 0x100
 
@@ -216,7 +222,10 @@ public enum class RcTextGuide(
     orientation = RcGuideOrientation.VERTICAL,
     colorArgb = 0xffc2185b.toInt(),
     label = "adv",
-    description = "Advance width — where the next run would start. Never the same as `ink R`.",
+    description =
+      "Advance width — where the next run would start. Usually right of `ink R`, but they " +
+        "coincide when the last glyph has no right side bearing, or when the float advance and " +
+        "the integer-quantised ink box round to the same coordinate.",
   );
 
   /** The packed `TextMeasure` type word for this guide. */
