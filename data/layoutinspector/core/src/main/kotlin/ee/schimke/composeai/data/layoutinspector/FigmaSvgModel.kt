@@ -1542,10 +1542,26 @@ data class FigmaSvgModel(
      */
     private fun FigmaSvgLayer.rasterCovers(left: Int, top: Int, right: Int, bottom: Int): Boolean =
       (raster != null &&
+        // A raster the emitter then hides or trims does not stand in for the text it baked in.
+        // Faded to nothing, or masked to less than the box, it must leave the live text alone —
+        // otherwise the glyphs end up in neither the pixels nor the `<text>`.
+        opacity > 0.0 &&
+        contentOpacity > 0.0 &&
+        clipBox.covers(left, top, right, bottom) &&
         this.left <= left &&
         this.top <= top &&
         this.right >= right &&
         this.bottom >= bottom) || children.any { it.rasterCovers(left, top, right, bottom) }
+
+    /** Whether this mask (null = unmasked) leaves the given box entirely visible. */
+    private fun LayoutInspectorBounds?.covers(
+      left: Int,
+      top: Int,
+      right: Int,
+      bottom: Int,
+    ): Boolean =
+      this == null ||
+        (this.left <= left && this.top <= top && this.right >= right && this.bottom >= bottom)
 
     /**
      * Editable-text fallback for a Compose Text whose semantics were intentionally cleared.
