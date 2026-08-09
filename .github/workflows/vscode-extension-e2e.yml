@@ -114,22 +114,22 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      # Read-only BuildFetch access. `setup` only wires the GitHub Actions
-      # cache of the Gradle *home* (dependencies) — it does not touch the
-      # remote build cache, which is opt-in per workflow. Without this step
-      # every shard compiled the whole build from scratch: measured on
-      # 2026-08-08, the same five shards went 1m41s→8m32s (wear), 5m15s→10m14s
-      # (cmp-smoke) and 5m48s→13m00s (cached-preload) once a build-logic
-      # change invalidated the Actions cache contents, because there was no
-      # remote cache to fall back on. Reads alone recover that.
+      # Read-only BuildFetch access. `setup` restores the Gradle home from the
+      # Actions cache, which does include the local build cache — but only as a
+      # point-in-time snapshot: setup-gradle skips the save on an exact key
+      # match, so it never accumulates, and a build-wide key change strands it.
+      # BuildFetch is the durable layer a seeder keeps refilling. Without it,
+      # measured on 2026-08-08, the same five shards went 1m41s→8m32s (wear),
+      # 5m15s→10m14s (cmp-smoke) and 5m48s→13m00s (cached-preload) once a
+      # build-logic change invalidated the snapshot. Reads alone recover that.
       #
       # Read-only on purpose, including on main. A write token would set
       # `ON_CI=true`, and settings.gradle.kts then *disables the local build
       # cache* on pushing runs so tasks execute-and-push — correct for a
       # designated seeder, actively harmful here, because this workflow is
       # cancelled often enough (22 of 30 recent runs) that it would mostly be
-      # paying for no-cache builds that never finish. `ci.yml` on main stays
-      # the seeder.
+      # paying for no-cache builds that never finish. gradle-cache-seed.yml is
+      # the sole writer, and runs uncancelled precisely so it can be.
       - uses: ./.github/actions/buildfetch-cache
         with:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}

@@ -134,9 +134,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      # Read-only BuildFetch access: `setup` wires only the Actions cache of the
-      # Gradle home, not the remote build cache. See vscode-extension-e2e.yml for
-      # why this is read-only rather than read/write.
+      # Read-only BuildFetch access: `setup`'s Actions-cached Gradle home is a
+      # snapshot that stops matching after a build-wide key change; BuildFetch is
+      # the durable layer. See vscode-extension-e2e.yml for why read-only.
       - uses: ./.github/actions/buildfetch-cache
         with:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
@@ -227,9 +227,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      # Read-only BuildFetch access: `setup` wires only the Actions cache of the
-      # Gradle home, not the remote build cache. See vscode-extension-e2e.yml for
-      # why this is read-only rather than read/write.
+      # Read-only BuildFetch access: `setup`'s Actions-cached Gradle home is a
+      # snapshot that stops matching after a build-wide key change; BuildFetch is
+      # the durable layer. See vscode-extension-e2e.yml for why read-only.
       - uses: ./.github/actions/buildfetch-cache
         with:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
@@ -309,9 +309,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      # Read-only BuildFetch access: `setup` wires only the Actions cache of the
-      # Gradle home, not the remote build cache. See vscode-extension-e2e.yml for
-      # why this is read-only rather than read/write.
+      # Read-only BuildFetch access: `setup`'s Actions-cached Gradle home is a
+      # snapshot that stops matching after a build-wide key change; BuildFetch is
+      # the durable layer. See vscode-extension-e2e.yml for why read-only.
       - uses: ./.github/actions/buildfetch-cache
         with:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
@@ -396,9 +396,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      # Read-only BuildFetch access: `setup` wires only the Actions cache of the
-      # Gradle home, not the remote build cache. See vscode-extension-e2e.yml for
-      # why this is read-only rather than read/write.
+      # Read-only BuildFetch access: `setup`'s Actions-cached Gradle home is a
+      # snapshot that stops matching after a build-wide key change; BuildFetch is
+      # the durable layer. See vscode-extension-e2e.yml for why read-only.
       - uses: ./.github/actions/buildfetch-cache
         with:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
