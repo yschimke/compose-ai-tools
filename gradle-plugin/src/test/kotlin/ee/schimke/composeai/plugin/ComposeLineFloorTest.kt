@@ -45,7 +45,7 @@ class ComposeLineFloorTest {
 
   @Test
   fun `material and material3 are left alone`() {
-    // They version independently of the ui line — there is no androidx.compose.material3 1.11.2,
+    // They version independently of the ui line — there is no androidx.compose.material3 on it —
     // so raising them to the floor would resolve to a version that does not exist.
     assertThat(upgrade("androidx.compose.material3", "1.3.1")).isNull()
     assertThat(upgrade("androidx.compose.material", "1.7.6")).isNull()
@@ -118,6 +118,10 @@ class ComposeLineFloorTest {
     // opt-out branch deliberately leaves those to the consumer ("consumer must ensure
     // androidx.compose.ui:ui is on the main variant"). Raising the render graph there would put
     // floor-version classes over the consumer's older resources — the #3484 R$id NoSuchFieldError.
+    //
+    // The DECISION is still "do not raise"; the resolution rule additionally throws
+    // composeFloorOptOutMessage for this case, so the consumer gets told rather than silently
+    // rendering nothing. Kept separate so the pure decision stays testable on its own.
     assertThat(
         AndroidPreviewSupport.renderGraphTarget(
           group = "androidx.compose.ui",
@@ -145,6 +149,24 @@ class ComposeLineFloorTest {
   fun `a non-compose module with no sibling is left alone entirely`() {
     assertThat(AndroidPreviewSupport.renderGraphTarget("com.example", "thing", "1.0.0", true))
       .isNull()
+  }
+
+  @Test
+  fun `the opt-out message names the versions and both ways out`() {
+    // The hole this closes: validateExternallyManagedDependencies checks that coordinates are
+    // DECLARED, never what they resolve to, so a below-floor opt-out consumer got #3590's
+    // NoSuchMethodError on every preview with nothing explaining why.
+    val message = AndroidPreviewSupport.composeFloorOptOutMessage("androidx.compose.ui:ui", "1.7.6")
+
+    assertThat(message).contains("manageDependencies = false")
+    // Both numbers a reader needs: what they have, and what is required.
+    assertThat(message).contains("1.7.6")
+    assertThat(message).contains(floor)
+    // Both escape hatches, so the message is actionable rather than merely accurate.
+    assertThat(message).contains("compose-bom")
+    assertThat(message).contains("manageDependencies = true")
+    // …and the symptom, so someone who already hit it can connect the two.
+    assertThat(message).contains("getApplyOnDeactivatedNodeAssertion")
   }
 
   @Test

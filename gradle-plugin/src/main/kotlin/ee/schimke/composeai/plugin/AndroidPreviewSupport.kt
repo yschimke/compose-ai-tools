@@ -10,6 +10,7 @@ import ee.schimke.composeai.daemonlaunch.*
 import ee.schimke.composeai.discovery.*
 import java.util.Collections
 import java.util.IdentityHashMap
+import org.gradle.api.GradleException
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
@@ -669,6 +670,40 @@ internal object AndroidPreviewSupport {
    * only safe while the main-variant `ui` / `foundation` pins move with it, and the opt-out branch
    * deliberately leaves those to the consumer.
    */
+  /**
+   * The configuration error for a consumer whose Compose is below
+   * [RENDERER_COMPOSE_LINK_FLOOR_VERSION] on a graph we are not allowed to raise.
+   *
+   * Under `composePreview.manageDependencies = false` the main-variant `ui` / `foundation` pins are
+   * the consumer's to declare, so flooring the render graph alone would put floor-version classes
+   * over their older resources — the #3484 `R$id` `NoSuchFieldError`. Leaving the graph alone
+   * instead means the renderer cannot link against it at all — #3590's `NoSuchMethodError`, on
+   * every preview, with nothing explaining why.
+   *
+   * Both silent outcomes are worse than saying so. `validateExternallyManagedDependencies` cannot:
+   * it checks that coordinates are DECLARED, never what they resolve to, and a BOM consumer
+   * declares no version at all. This fires from the resolution rule, which is the first place the
+   * real version exists.
+   */
+  internal fun composeFloorOptOutMessage(module: String, resolved: String): String =
+    """
+    compose-ai-tools cannot render with composePreview.manageDependencies = false.
+
+      Renderer requires  androidx.compose.ui >= $RENDERER_COMPOSE_LINK_FLOOR_VERSION
+      $module resolves to $resolved
+
+    Fix one of:
+      * raise the module's Compose (e.g. a newer androidx.compose:compose-bom) to
+        $RENDERER_COMPOSE_LINK_FLOOR_VERSION or above;
+      * set composePreview.manageDependencies = true, which lets the plugin raise the render
+        classpath and the main-variant pins together.
+
+    Rendering against $resolved fails every preview before user code runs:
+      NoSuchMethodError androidx.compose.ui.node.ComposeUiNode${'$'}Companion
+        .getApplyOnDeactivatedNodeAssertion()
+    """
+      .trimIndent()
+
   internal fun renderGraphTarget(
     group: String,
     name: String,
@@ -697,6 +732,14 @@ internal object AndroidPreviewSupport {
     // exactly the artifact the floor exists to keep off the graph.
     configuration.resolutionStrategy.eachDependency {
       val req = requested
+      // Opt-out: we may not raise this graph, so a below-floor consumer cannot be rendered at all.
+      // Say so here rather than letting every preview die with a Compose-internal stack trace —
+      // resolution is the first point the real version is known (see [composeFloorOptOutMessage]).
+      if (!floorComposeLine && composeLineFloorUpgrade(req.group, req.version) != null) {
+        throw GradleException(
+          composeFloorOptOutMessage("${req.group}:${req.name}", req.version.orEmpty())
+        )
+      }
       val decision = renderGraphTarget(req.group, req.name, req.version, floorComposeLine)
       when {
         decision == null -> Unit
