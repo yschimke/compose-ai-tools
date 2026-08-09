@@ -3087,6 +3087,14 @@
     "sha256": "8c838ebdc9d0f2cc7572293463dbcb9480c273394feb8f1c9eb7c6584b43fb9b",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt"
   },
+  "samples:design-catalog-remote-m3/wearthemecatalog__Coral": {
+    "captureLabel": "",
+    "functionName": "Coral theme",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "wearthemecatalog__Coral.png",
+    "sha256": "4a3b9e82ee6b9634705848622d9f375b8ea591cc060708cbf5ecfdae4633b26a",
+    "sourceFile": null
+  },
   "samples:design-catalog-remote-m3/wearthemecatalog__Google_Sans_Flex": {
     "captureLabel": "",
     "functionName": "Google Sans Flex theme",
@@ -3095,11 +3103,27 @@
     "sha256": "4a3b9e82ee6b9634705848622d9f375b8ea591cc060708cbf5ecfdae4633b26a",
     "sourceFile": null
   },
-  "samples:design-catalog-remote-m3/wearthemecatalog__Roboto_Flex": {
+  "samples:design-catalog-remote-m3/wearthemecatalog__KotlinConf": {
     "captureLabel": "",
-    "functionName": "Roboto Flex theme",
+    "functionName": "KotlinConf theme",
     "module": "samples:design-catalog-remote-m3",
-    "renderBasename": "wearthemecatalog__Roboto_Flex.png",
+    "renderBasename": "wearthemecatalog__KotlinConf.png",
+    "sha256": "4a3b9e82ee6b9634705848622d9f375b8ea591cc060708cbf5ecfdae4633b26a",
+    "sourceFile": null
+  },
+  "samples:design-catalog-remote-m3/wearthemecatalog__M3": {
+    "captureLabel": "",
+    "functionName": "M3 theme",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "wearthemecatalog__M3.png",
+    "sha256": "4a3b9e82ee6b9634705848622d9f375b8ea591cc060708cbf5ecfdae4633b26a",
+    "sourceFile": null
+  },
+  "samples:design-catalog-remote-m3/wearthemecatalog__Teal": {
+    "captureLabel": "",
+    "functionName": "Teal theme",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "wearthemecatalog__Teal.png",
     "sha256": "4a3b9e82ee6b9634705848622d9f375b8ea591cc060708cbf5ecfdae4633b26a",
     "sourceFile": null
   },
