@@ -1238,10 +1238,18 @@ jobs:
           # exit this step at its first check. Guarded on xvfb-run, so a desktop-render caller --
           # which already installed the same stack -- doesn't pay for it twice.
           if [ "${{ inputs.rc-embedded-jvm-lane }}" = "true" ]; then
-            if ! command -v xvfb-run >/dev/null 2>&1; then
-              sudo apt-get update -qq
-              sudo apt-get install -y -qq --no-install-recommends \
-                xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig
+            # Fail-soft, and it has to be spelled this way. The step runs under `set -e` and is only
+            # `continue-on-error` in the cmp-wasm configuration, so a bare `apt-get` here would take
+            # the whole step down — skipping the publish — on a runner where the install can't work:
+            # a non-Debian `runs-on` (a caller input), or a transient apt outage. Both are exactly
+            # the "runner can't host this lane" case the harness below already degrades on, so they
+            # degrade the same way. Wrapped in the `if` condition, where `set -e` does not fire; if
+            # xvfb-run is still missing afterwards the Gradle invocation fails and the else branch
+            # drops the column, which is the intended end state either way.
+            if ! command -v xvfb-run >/dev/null 2>&1 \
+               && ! (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends \
+                       xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig); then
+              echo "::warning::could not install libGL/xvfb; the cmp-jvm lane will degrade to a missing column"
             fi
             RC_JVM_OUT="$RUNNER_TEMP/rc-embedded-jvm-out"
             rm -rf "$RC_JVM_OUT"
