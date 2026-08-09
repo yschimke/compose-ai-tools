@@ -1,6 +1,7 @@
 package ee.schimke.composeai.rcplayer.metrics
 
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
+import ee.schimke.composeai.rcplayer.protocol.RcColorConstant
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
 import ee.schimke.composeai.rcplayer.protocol.RcDraw4
@@ -112,6 +113,27 @@ class RcTextMetricDocumentsTest {
         declared.toSet().size,
         "${fixture.id} declares the same text id twice",
       )
+    }
+  }
+
+  @Test
+  fun everyAllocatedIdIsAboveTheSystemRange() {
+    // `RemoteComposeState.START_ID`. Below it the ids belong to the player — 10..18 alone are
+    // `ID_OFFSET_TO_UTC` through `ID_ACCELERATION_Y` — and a listener registry keyed by the bare
+    // number means a document reusing one gets its text invalidated by unrelated sensor traffic.
+    // Nothing here fails at render time, which is exactly why it needs a test.
+    val startId = 42
+    RcTextMetricDocuments.all().forEach { fixture ->
+      val allocated =
+        fixture.document.operations.filterIsInstance<RcTextData>().map { "text" to it.id } +
+          fixture.document.operations.filterIsInstance<RcTextFromFloat>().map {
+            "text" to it.outId
+          } +
+          fixture.document.operations.filterIsInstance<RcColorConstant>().map { "color" to it.id } +
+          fixture.document.operations.filterIsInstance<RcTextMeasure>().map { "float" to it.outId }
+      allocated.forEach { (kind, id) ->
+        assertTrue(id >= startId, "${fixture.id} allocates $kind id $id below START_ID ($startId)")
+      }
     }
   }
 

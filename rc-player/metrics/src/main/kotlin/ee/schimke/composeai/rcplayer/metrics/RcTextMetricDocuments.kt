@@ -759,16 +759,16 @@ public object RcTextMetricDocuments {
   private const val LEGEND_ROW_HEIGHT = 18f
   private const val LEGEND_VALUE_OFFSET = 76f
 
-  // Text ids. Kept clear of the low ids AndroidX reserves for built-ins, and grouped so a fixture's
-  // ids never collide with a guide's.
-  private const val TEXT_SPECIMEN = 10
-  private const val TEXT_CAP_PROBE = 11
-  private const val TEXT_X_PROBE = 12
-  private const val TEXT_TITLE = 13
-  private const val TEXT_BASELINE_NOTE = 14
-  private const val TEXT_MODE_ADVANCE_VALUE = 15
-  private const val TEXT_MODE_BOX_NOTE = 16
-  private const val COLOR_SPECIMEN = 18
+  // Text and colour ids. Every one is at or above [FIRST_USER_ID], and grouped so a fixture's ids
+  // never collide with a guide's.
+  private const val TEXT_SPECIMEN = 42
+  private const val TEXT_CAP_PROBE = 43
+  private const val TEXT_X_PROBE = 44
+  private const val TEXT_TITLE = 45
+  private const val TEXT_BASELINE_NOTE = 46
+  private const val TEXT_MODE_ADVANCE_VALUE = 47
+  private const val TEXT_MODE_BOX_NOTE = 48
+  private const val COLOR_SPECIMEN = 49
 
   // `CoreText` style property ids, from AndroidX `CoreText`. The player resolves them by number.
   private const val CORE_TEXT_COMPONENT_ID = 1
@@ -785,6 +785,18 @@ public object RcTextMetricDocuments {
   private const val TEXT_SWEEP_LABEL = 180
   private const val TEXT_SWEEP_VALUE = 190
   private const val TEXT_SWEEP_INK_VALUE = 200
+
+  /**
+   * `RemoteComposeState.START_ID` — the first id a document may allocate for its own data.
+   *
+   * Below it the ids are the player's, not the document's: 10..18 are `ID_OFFSET_TO_UTC` through
+   * `ID_ACCELERATION_Y`, and the rest are clock, touch and window variables. They are not inert. A
+   * player's listener registry is keyed by the bare number — `DrawText` and `CoreText` both call
+   * `listensTo(textId)` — so a document whose text id is 18 has that text re-laid-out every time
+   * the host publishes an accelerometer sample. A static render survives it; anything animated or
+   * long-lived does not, and the fault would look like a text bug.
+   */
+  private const val FIRST_USER_ID = 42
 
   // Float ids the measurements write into.
   private const val GUIDE_FLOAT_BASE = 300

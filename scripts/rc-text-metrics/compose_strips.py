@@ -43,17 +43,28 @@ STRIPS: dict[str, list[str]] = {
 }
 
 
-def load_font() -> ImageFont.ImageFont:
-    for candidate in (
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    ):
-        if Path(candidate).exists():
-            return ImageFont.truetype(candidate, 13)
-    return ImageFont.load_default()
+LABEL_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+LABEL_FONT_SIZE = 13
 
 
-def compose(lanes_dir: Path, fixtures: list[str], font: ImageFont.ImageFont) -> Image.Image:
+def load_font() -> ImageFont.FreeTypeFont:
+    """One font, or nothing.
+
+    A fallback chain would be friendlier and wrong. These strips are *committed*, so a host with a
+    different font package would rewrite every one of them with the lane labels reshaped, producing
+    a diff that looks like the renders moved when only the caption did. Failing here is noisy; a
+    silent five-file pixel diff on an unrelated PR is worse.
+    """
+    if not Path(LABEL_FONT).exists():
+        raise SystemExit(
+            f"missing {LABEL_FONT}, which the committed strips are labelled with.\n"
+            "  apt-get install fonts-dejavu-core\n"
+            "Deliberately not falling back to another face: it would rewrite every tracked strip."
+        )
+    return ImageFont.truetype(LABEL_FONT, LABEL_FONT_SIZE)
+
+
+def compose(lanes_dir: Path, fixtures: list[str], font: ImageFont.FreeTypeFont) -> Image.Image:
     rows = []
     for fixture in fixtures:
         row = [Image.open(lanes_dir / lane / f"{fixture}.png").convert("RGB") for lane in LANES]

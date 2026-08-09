@@ -27,9 +27,23 @@ cd "$repo_root"
 lanes_dir="${1:-$(mktemp -d -t rc-text-metrics-XXXXXX)}"
 fixtures_dir="$repo_root/rc-player/metrics/build/fixtures"
 
+# Fail before the renders rather than after them. Composition is the last step and takes seconds;
+# discovering a missing Pillow after ~2 minutes of Gradle is a bad trade.
+python3 -c 'import PIL' 2>/dev/null || {
+  echo "error: this needs Pillow for the strip composition." >&2
+  echo "       pip install --user Pillow   (or apt-get install python3-pil)" >&2
+  exit 1
+}
+
 echo "==> fixtures"
 rm -rf "$fixtures_dir"
 ./gradlew --quiet :rc-player-metrics:rcTextMetricFixtures
+
+# Reusing a lane directory is supported, so the previous run's PNGs have to go before this one
+# starts. A harness that skips — Skiko natives failing to load is the realistic case — leaves the old
+# files in place, and a check that only counts PNGs would accept them and recompose the tracked
+# strips from the *previous* run while reporting success.
+rm -rf "$lanes_dir/java" "$lanes_dir/cmp-android" "$lanes_dir/cmp-jvm"
 
 echo "==> java + cmp-android lanes"
 ./gradlew --quiet :third-party-rc-embedded-player:testDebugUnitTest --rerun \
@@ -44,14 +58,18 @@ echo "==> cmp-jvm lane"
   "-Prc.jvm.input=$fixtures_dir" \
   "-Prc.jvm.output=$lanes_dir/cmp-jvm"
 
-# A lane that rendered nothing is the failure this script exists to make loud, because the composed
-# strip would otherwise just come out narrower and still look like a picture of three lanes.
+# A lane that rendered nothing — or rendered only some of the set — is the failure this script
+# exists to make loud, because the composed strip would otherwise come out narrower, or built from
+# whatever the last run left behind, and still look like a picture of three lanes. Compare against
+# the fixture count rather than against zero, so a partial lane fails too.
+expected=$(find "$fixtures_dir" -name '*.rc' | wc -l | tr -d ' ')
 for lane in java cmp-android cmp-jvm; do
   count=$(find "$lanes_dir/$lane" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
   errors=$(find "$lanes_dir/$lane" -name '*.error' 2>/dev/null | wc -l | tr -d ' ')
-  echo "    $lane: $count png, $errors error"
-  if [ "$count" -eq 0 ]; then
-    echo "    ^ no renders — check that the input path above is absolute" >&2
+  echo "    $lane: $count/$expected png, $errors error"
+  if [ "$count" -ne "$expected" ]; then
+    echo "    ^ $lane rendered $count of $expected fixtures." >&2
+    [ "$count" -eq 0 ] && echo "      Zero usually means the input path was not absolute." >&2
     exit 1
   fi
 done

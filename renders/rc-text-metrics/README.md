@@ -92,8 +92,16 @@ from:
   first staged document up as if it were a catalog capture and fail against it — after the PNGs have
   already been written, so the regeneration looks broken when it isn't.
 
-The script fails loudly if a lane produced no renders, since a missing lane would otherwise compose
-into a narrower strip that still looks like a picture of three lanes.
+The script fails loudly if a lane rendered fewer than the full fixture set — not merely if it
+rendered none — because a missing or partial lane would otherwise compose into a narrower strip, or
+one built from a previous run's leftovers, that still looks like a picture of three lanes. It clears
+the lane directories first for the same reason.
+
+It needs **Pillow** and the **DejaVu Sans** font (`pip install Pillow`, `apt-get install
+fonts-dejavu-core`). Both are checked before the renders start rather than after them, and the font
+is pinned with no fallback on purpose: labelling the strips with whatever face a host happens to
+have would rewrite all five committed PNGs and read as a rendering change when only the caption
+moved.
 
 Pass a directory to keep the per-lane PNGs somewhere predictable
 (`scripts/rc-text-metrics/render-strips.sh /tmp/rc-metrics`); otherwise they go to a temporary
