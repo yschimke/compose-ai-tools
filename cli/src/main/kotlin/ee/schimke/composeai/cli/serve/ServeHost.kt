@@ -116,6 +116,41 @@ interface ServeHost : AutoCloseable {
   fun canRenderOverridesFor(previewId: String): Boolean = canRenderOverrides
 
   /**
+   * The **named-value overrides that apply a declared theme to an already-recorded document** —
+   * `<name>` to a colour literal (`#RRGGBB`), keyed by the document's own state names.
+   *
+   * This is what lets a theme reach a preview whose composable is gone. A Remote Compose document
+   * emits the roles it draws through as named state (`USER:WearM3.primary` and friends) rather than
+   * folding them into constants, so the player's `setNamedColorOverride` can re-theme a *replayed*
+   * document with no recomposition. Seeding these is that operation, and it is the only route a
+   * theme has on a session that cannot recompose — a published catalog whose module bytecode was
+   * dropped at pack time.
+   *
+   * Empty (the default) means this host publishes no such mapping for [providerFqn], and a
+   * `themeProvider` render of a replayed preview stays the terminal refusal it is today. That is
+   * deliberate: applying nothing and answering `200` would be the #3449 failure — a render that
+   * claims a theme it never applied, indistinguishable from one where the theme changed nothing.
+   *
+   * Only consulted for previews that replay. A session that can recompose applies the provider by
+   * re-running the composable, which reaches everything a theme does — including the typeface,
+   * which has no named value to carry it.
+   */
+  fun themeReplayColors(providerFqn: String): Map<String, String> = emptyMap()
+
+  /**
+   * The declared themes a **replayed** preview can actually be rendered under — those this host
+   * publishes a [themeReplayColors] mapping for.
+   *
+   * Per theme, not per host: a catalog may publish mappings for some of its themes and not others,
+   * and a theme that moves only typography legitimately has no colours to seed at all. Offering the
+   * whole declared set because *one* of them is mapped puts the unmapped ones back on the terminal
+   * 409 the gate exists to prevent.
+   */
+  fun replayableThemes(): List<ServeTheme> = declaredThemes.filter {
+    themeReplayColors(it.providerFqn).isNotEmpty()
+  }
+
+  /**
    * Maximum browser-side concurrency a short-lived themed-thumbnail burst may request. A plain
    * daemon has one render lock, so the default remains serial. A composite backed by independent
    * per-preview daemons may opt into a larger temporary burst; the HTTP server still clamps it to

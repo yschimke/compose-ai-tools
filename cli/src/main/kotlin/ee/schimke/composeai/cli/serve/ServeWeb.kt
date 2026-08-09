@@ -5306,6 +5306,17 @@ $rows
      */
     irReplay: Boolean = false,
     /**
+     * Whether a declared theme can still be applied to this preview **despite** [irReplay] — the
+     * session publishes the theme's colours as named values (`ServeHost.themeReplayColors`), which
+     * the player rewrites on a replayed document with no recomposition.
+     *
+     * Its own flag rather than a softening of [irReplay], because the two say different things and
+     * only one of them moves: everything else [irReplay] greys out — locale, author knobs, string
+     * `rc.` seeds — still cannot be honoured by a replay. Emitted as `data-replay-themes` so
+     * `viewer.js` re-enables exactly the provider-theme options and nothing beside them.
+     */
+    replayThemes: Boolean = false,
+    /**
      * The Remote Compose render backends the viewer may offer for this preview as a per-preview
      * **backend selector** — the [RcPlayerBackend.wire] ids the host reports via
      * [ServeHost.enabledRcPlayersFor]. Non-empty for a Remote Compose preview: the viewer renders
@@ -5497,6 +5508,7 @@ $rows
     val wearAlwaysDark = SystemDisplay.isDarkFirst(basePath.trim('/').ifBlank { sessionId ?: "" })
     val alwaysDarkAttr = if (wearAlwaysDark) " data-always-dark=\"1\"" else ""
     val irReplayAttr = if (irReplay) " data-ir-replay=\"1\"" else ""
+    val replayThemesAttr = if (replayThemes) " data-replay-themes=\"1\"" else ""
     // The baked fallback shown before any override is chosen. The unified Theme selector displays
     // this choice without sending a redundant uiMode override on first load.
     val viewerTheme = previewTheme(preview, isDarkFirstSystem(basePath, sessionId, declaredSurface))
@@ -6336,7 +6348,7 @@ $rows
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
       $historyInlineHtml
-      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
+      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml
