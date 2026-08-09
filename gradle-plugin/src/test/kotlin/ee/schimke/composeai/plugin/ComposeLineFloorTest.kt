@@ -15,6 +15,7 @@ import org.junit.Test
  * NoSuchMethodError: 'kotlin.jvm.functions.Function1
  *   androidx.compose.ui.node.ComposeUiNode$Companion.getApplyOnDeactivatedNodeAssertion()'
  * ```
+ *
  * (issue #3590 — `yschimke/home-assistant-android` on `compose-bom` 2025.01.00.)
  */
 class ComposeLineFloorTest {

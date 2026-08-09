@@ -382,12 +382,13 @@ internal object AndroidPreviewSupport {
    * NoSuchMethodError: 'kotlin.jvm.functions.Function1
    *   androidx.compose.ui.node.ComposeUiNode$Companion.getApplyOnDeactivatedNodeAssertion()'
    * ```
+   *
    * (issue #3590 — `yschimke/home-assistant-android` on `compose-bom` 2025.01.00 lost all 13 phone
    * and 22 Wear catalog entries, republishing both design-artifacts branches empty.)
    *
    * Set to [RENDERER_COMPOSE_CMP_RUNTIME_VERSION] deliberately: that is the version the Rule-3-off
-   * path already renders against, so it is the one Compose line the renderer is known-good on.
-   * Keep the two in lockstep.
+   * path already renders against, so it is the one Compose line the renderer is known-good on. Keep
+   * the two in lockstep.
    */
   internal const val RENDERER_COMPOSE_LINK_FLOOR_VERSION: String =
     RENDERER_COMPOSE_CMP_RUNTIME_VERSION
@@ -410,10 +411,10 @@ internal object AndroidPreviewSupport {
    * [RENDERER_COMPOSE_LINK_FLOOR_VERSION] if [group] is on the compose-ui line and [version] is
    * below the floor, else `null` (leave the dependency alone).
    *
-   * Kept pure and separate from the `eachDependency` wiring so the decision is unit-testable without
-   * resolving a configuration. An unparseable or dynamic version (`+`, `1.9.+`, a range, empty)
-   * returns `null`: we only ever raise a version we can prove is too low, since forcing one we
-   * cannot compare risks dragging a consumer *backwards*.
+   * Kept pure and separate from the `eachDependency` wiring so the decision is unit-testable
+   * without resolving a configuration. An unparseable or dynamic version (`+`, `1.9.+`, a range,
+   * empty) returns `null`: we only ever raise a version we can prove is too low, since forcing one
+   * we cannot compare risks dragging a consumer *backwards*.
    */
   internal fun composeLineFloorUpgrade(group: String, version: String?): String? {
     if (group !in COMPOSE_UI_LINE_GROUPS) return null
