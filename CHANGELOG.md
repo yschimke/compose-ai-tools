@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.19.52](https://github.com/yschimke/compose-ai-tools/compare/v0.19.51...v0.19.52) (2026-08-09)
+
+
+### Features
+
+* **deploy:** forward the playground selector env into the preview container ([#3577](https://github.com/yschimke/compose-ai-tools/issues/3577)) ([b7d068a](https://github.com/yschimke/compose-ai-tools/commit/b7d068ab5ac126dcabeffbe26450e8e714196f20))
+* **design-artifacts:** carry referenceSet onto the published catalog ([#3560](https://github.com/yschimke/compose-ai-tools/issues/3560)) ([f2793ec](https://github.com/yschimke/compose-ai-tools/commit/f2793ec32acca4fda828fa8b013da5428ac1c119))
+* **design-artifacts:** publish each declared theme's token set ([#3573](https://github.com/yschimke/compose-ai-tools/issues/3573)) ([4d51aa1](https://github.com/yschimke/compose-ai-tools/commit/4d51aa1affd846d16862b25b469c74139e5460f1))
+* **design-artifacts:** resolve each published theme's dark flag ([#3575](https://github.com/yschimke/compose-ai-tools/issues/3575)) ([a3a1b16](https://github.com/yschimke/compose-ai-tools/commit/a3a1b1667b8207a561d363cb17c272f22fa90519))
+* **preview:** anchored `=&lt;id&gt;` id patterns, so a generated exclusion list is safe ([#3561](https://github.com/yschimke/compose-ai-tools/issues/3561)) ([40680b2](https://github.com/yschimke/compose-ai-tools/commit/40680b2fe74314c73ff4864ca9a84d03afb4d3f7))
+* **serve:** paint each Light/Dark chip in the theme it selects ([#3562](https://github.com/yschimke/compose-ai-tools/issues/3562)) ([fcca191](https://github.com/yschimke/compose-ai-tools/commit/fcca1912163bdabc8870bf2103f007b6b85da259))
+
+
+### Bug Fixes
+
+* **design-artifacts:** anchor every generated render exclusion ([#3570](https://github.com/yschimke/compose-ai-tools/issues/3570)) ([923a622](https://github.com/yschimke/compose-ai-tools/commit/923a622f398e8acbc0745de0c0f0d5812668f09f))
+* **discovery:** rotate a spec: device for orientation=portrait, and read parent= ([#3582](https://github.com/yschimke/compose-ai-tools/issues/3582)) ([0ad9720](https://github.com/yschimke/compose-ai-tools/commit/0ad97206a1d1cf11b08155572298df0bcd15a487))
+* **figma-svg:** grow a brush-filled container to its measured box ([#3571](https://github.com/yschimke/compose-ai-tools/issues/3571)) ([ccc7afd](https://github.com/yschimke/compose-ai-tools/commit/ccc7afd4e95ab07c8c672ea787defb1087c4089e))
+* **figma-svg:** measure the paint box, and fix the two defects that sweep found ([#3580](https://github.com/yschimke/compose-ai-tools/issues/3580)) ([5a31445](https://github.com/yschimke/compose-ai-tools/commit/5a3144528c555f11bb936ba36d4652d19a6c2caa))
+* **figma-svg:** tighten the paint-box capture and the raster-text rule ([#3581](https://github.com/yschimke/compose-ai-tools/issues/3581)) ([7677a3f](https://github.com/yschimke/compose-ai-tools/commit/7677a3f24b3b9b5f972523dca4f9652e33959d61))
+* **serve:** keep the theme chip's ring and disabled state inside its own box ([#3567](https://github.com/yschimke/compose-ai-tools/issues/3567)) ([5b1df46](https://github.com/yschimke/compose-ai-tools/commit/5b1df46f432a5852ef22f45e8ab86be0fee421de))
+* **vscode:** give the e2e Gradle render a cold-CI budget, and fail fast when it dies ([#3568](https://github.com/yschimke/compose-ai-tools/issues/3568)) ([0c0d208](https://github.com/yschimke/compose-ai-tools/commit/0c0d2088e81a31e56c200f738ce2542a6aa3c60b))
+
 ## [0.19.51](https://github.com/yschimke/compose-ai-tools/compare/v0.19.50...v0.19.51) (2026-08-08)
 
 
