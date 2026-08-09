@@ -22,10 +22,11 @@ So: stop diffing the glyphs, and diff the numbers the glyphs were laid out with.
 
 ## How it works
 
-No player needed teaching. The mechanism is three facts that were already true:
+No new opcode was needed. The mechanism is three facts that were already true:
 
 1. `TextMeasure` (opcode 155) measures the current paint's text and writes **one number into a float
-   id**. It is marked implemented on every lane.
+   id**. It is *marked* implemented on every lane — the coverage tables say so, and the first
+   readings below show two lanes where it does nothing.
 2. A float id is a legal **draw coordinate** — `DrawLine` takes NaN-boxed references like any other
    operation.
 3. Therefore a line drawn *at* that float is the lane's own measurement, rendered by the lane itself,
@@ -134,7 +135,10 @@ would read as a text bug if you met them from the other end. They are pinned by 
   (`RcProfileDocuments` has this shape; its documents are only ever played by the CMP player, where
   it is harmless.)
 - **`CoreText` (239) needs the profiled header.** AndroidX keeps several operation registries, and
-  header property 27 decides which are installed. With a legacy header the reader raises `Unknown
+  the profile mask in header property **14** (`DOC_PROFILES`) decides which are installed —
+  `RcProfiles.PROFILE_ANDROIDX` is `512`. Property 27 is a different axis entirely
+  (`DOC_DENSITY_BEHAVIOR`, where `2` is `DENSITY_BEHAVIOR_DP`); both are small ints, so confusing
+  them changes density silently instead of failing. With a legacy header the reader raises `Unknown
   operation encountered 239` and **abandons the rest of the buffer** — so the document renders
   truncated, not merely plainer. Every fixture therefore carries the header shape the connector emits
   for real previews.

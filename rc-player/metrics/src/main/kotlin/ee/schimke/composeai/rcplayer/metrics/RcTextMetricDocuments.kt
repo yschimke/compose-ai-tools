@@ -39,11 +39,17 @@ import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
  * of diffing the *glyphs*, these fixtures make each lane draw the *numbers it laid the glyphs out
  * with*, and diff those.
  *
- * Nothing here needs a player change, because the mechanism is already universal:
- * 1. `TextMeasure` (opcode 155, implemented on every lane) measures the current paint's text and
- *    writes one number into a float id;
+ * The mechanism needs no *new* opcode, only one that a lane already executes:
+ * 1. `TextMeasure` (opcode 155) measures the current paint's text and writes one number into a
+ *    float id;
  * 2. a float id is a legal draw coordinate;
  * 3. so a line drawn *at* that float is the lane's own measurement, rendered by the lane itself.
+ *
+ * That holds wherever `TextMeasure` is implemented, which is not everywhere: rendering these
+ * fixtures showed the `cmp-android` and `cmp-jvm` embedded players write nothing for it, so every
+ * guide there reads `0.0` and collapses onto the origin. Those two lanes do need a player change
+ * before they can answer — see `docs/design/RC_TEXT_METRICS.md`. The fixtures themselves are
+ * unchanged by that: a lane reporting zeros is a finding the harness produced, not a fixture bug.
  *
  * The canvas is translated to the text origin before the guides are drawn, which is what keeps this
  * arithmetic-free: `getTextBounds` reports origin-relative horizontals and baseline-relative
@@ -484,9 +490,10 @@ public object RcTextMetricDocuments {
       alignmentModeSpec("align-right", RcTextLayout.ALIGN_RIGHT, "align right"),
       alignmentModeSpec("align-start", RcTextLayout.ALIGN_START, "align start"),
       alignmentModeSpec("align-end", RcTextLayout.ALIGN_END, "align end"),
-      // The same two semantic alignments against an RTL paragraph. Start must flip to the right
-      // edge and end to the left; a lane where these match their LTR twins has resolved `START` to
-      // `LEFT` rather than to the paragraph direction.
+      // The same two semantic alignments against an RTL paragraph. See [RTL_ALIGNMENT_SPECIMEN]:
+      // these ask the question rather than answer it. The harnesses run an LTR container and
+      // `CoreText` cannot state otherwise, so matching their LTR twins is what a correct lane and a
+      // hard-coded start→left both look like from here.
       LayoutMode(
         "align-start-rtl",
         2,
@@ -819,12 +826,18 @@ public object RcTextMetricDocuments {
    * The header a *captured* document carries, not the minimal legacy one.
    *
    * This matters more than it looks. AndroidX keeps several operation registries — a base map plus
-   * `sMapV7AndroidX` / `sMapV7Widgets` — and the document **profile** (header property 27) is what
-   * decides which of them the reader installs. `CoreText` (opcode 239) lives only in the profiled
-   * maps, so a legacy header makes the AOSP player raise `Unknown operation encountered 239` and
-   * abandon the rest of the buffer. Since these fixtures exist to be compared across lanes, they
-   * carry the same header shape the connector emits for real previews rather than a smaller one
-   * that happens to work for the three ops a canvas fixture needs.
+   * `sMapV7AndroidX` / `sMapV7Widgets` — and the document **profile mask** ([HEADER_PROFILES],
+   * property 14) is what decides which of them the reader installs. `CoreText` (opcode 239) lives
+   * only in the profiled maps, so a legacy header makes the AOSP player raise `Unknown operation
+   * encountered 239` and abandon the rest of the buffer. Since these fixtures exist to be compared
+   * across lanes, they carry the same header shape the connector emits for real previews rather
+   * than a smaller one that happens to work for the three ops a canvas fixture needs.
+   *
+   * The other non-obvious property is [HEADER_DENSITY_BEHAVIOR] (27), which is a *separate* axis
+   * and is not what selects the profile. It decides how dp-typed values in the document are
+   * converted at playback, and [DENSITY_BEHAVIOR_DP] is what makes `RcPaddingModifier`'s dp scale
+   * by the document density while `RcWidthModifier(EXACT)` stays in pixels. Both numbers happen to
+   * be small ints, so mistaking one for the other silently changes layout rather than failing.
    */
   private fun header(width: Int, height: Int) =
     RcHeader(
@@ -838,8 +851,8 @@ public object RcTextMetricDocuments {
             RcHeaderValue.FloatValue(literal(1f)),
           ),
           RcHeaderProperty(HEADER_CONTENT_DESCRIPTION, RcHeaderValue.StringValue("")),
-          RcHeaderProperty(HEADER_CAPABILITIES, RcHeaderValue.IntValue(512)),
-          RcHeaderProperty(HEADER_PROFILE, RcHeaderValue.IntValue(PROFILE_ANDROIDX)),
+          RcHeaderProperty(HEADER_PROFILES, RcHeaderValue.IntValue(PROFILE_ANDROIDX)),
+          RcHeaderProperty(HEADER_DENSITY_BEHAVIOR, RcHeaderValue.IntValue(DENSITY_BEHAVIOR_DP)),
         ),
       // No legacy width/height: a modern header does not serialize them, so setting them here
       // would only make the model disagree with its own bytes on the way back in.
@@ -847,9 +860,18 @@ public object RcTextMetricDocuments {
     )
 
   private const val HEADER_CONTENT_DESCRIPTION = 9
-  private const val HEADER_CAPABILITIES = 14
-  private const val HEADER_PROFILE = 27
-  private const val PROFILE_ANDROIDX = 2
+
+  /** `Header.DOC_PROFILES` — the profile *mask*, which selects the operation registries. */
+  private const val HEADER_PROFILES = 14
+
+  /** `Header.DOC_DENSITY_BEHAVIOR` — how dp-typed values are converted at playback. */
+  private const val HEADER_DENSITY_BEHAVIOR = 27
+
+  /** `RcProfiles.PROFILE_ANDROIDX`, the profile `CoreText` (239) is registered under. */
+  private const val PROFILE_ANDROIDX = 512
+
+  /** `CoreDocument.DENSITY_BEHAVIOR_DP`: dp values are multiplied by the document density. */
+  private const val DENSITY_BEHAVIOR_DP = 2
 
   private fun background(width: Int, height: Int): List<RcOperation> =
     fillPaint(BACKGROUND) +

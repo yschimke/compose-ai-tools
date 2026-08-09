@@ -5,6 +5,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
 import ee.schimke.composeai.rcplayer.protocol.RcDraw4
 import ee.schimke.composeai.rcplayer.protocol.RcDrawText
+import ee.schimke.composeai.rcplayer.protocol.RcHeaderValue
 import ee.schimke.composeai.rcplayer.protocol.RcOperation
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
@@ -207,6 +208,18 @@ class RcTextMetricDocumentsTest {
       assertTrue(header.modern, "${fixture.id} would fall back to the legacy header")
       assertEquals(fixture.width, header.width, "${fixture.id} header width")
       assertEquals(fixture.height, header.height, "${fixture.id} header height")
+      // Both of these are small ints in adjacent properties, and swapping them is not an error a
+      // reader reports — it renders, at the wrong density or without `CoreText`. Pin the values.
+      assertEquals(
+        RcHeaderValue.IntValue(512),
+        header.properties.firstOrNull { it.key == 14 }?.value,
+        "${fixture.id} DOC_PROFILES must carry RcProfiles.PROFILE_ANDROIDX",
+      )
+      assertEquals(
+        RcHeaderValue.IntValue(2),
+        header.properties.firstOrNull { it.key == 27 }?.value,
+        "${fixture.id} DOC_DENSITY_BEHAVIOR must carry DENSITY_BEHAVIOR_DP",
+      )
     }
   }
 

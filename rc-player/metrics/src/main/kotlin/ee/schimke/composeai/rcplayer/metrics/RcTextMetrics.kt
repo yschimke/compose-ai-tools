@@ -3,11 +3,11 @@ package ee.schimke.composeai.rcplayer.metrics
 /**
  * The metric vocabulary a Remote Compose document can ask a *player* for about its own text.
  *
- * This is the whole reason the harness works across five unrelated renderers without any of them
- * being taught anything: `TextMeasure` (opcode 155) is already implemented everywhere, it writes
- * its answer into a float id, and a float id can be a draw coordinate. So a document can measure
- * itself and then draw a line at the answer — each lane drawing *its own* metrics, in its own
- * render, with nothing to reconcile afterwards.
+ * This is the whole reason the harness needs no new opcode: `TextMeasure` (opcode 155) writes its
+ * answer into a float id, and a float id can be a draw coordinate. So a document can measure itself
+ * and then draw a line at the answer — each lane drawing *its own* metrics, in its own render, with
+ * nothing to reconcile afterwards. It works on any lane that actually executes op 155, which the
+ * two embedded players currently do not (see [RcTextMetricDocuments]).
  *
  * `type` is a packed word: the low byte selects *which* number, the high bits select *how the box
  * is derived*. The authority is `AndroidPaintContext.getTextBounds` in `remote-player-core`, whose
