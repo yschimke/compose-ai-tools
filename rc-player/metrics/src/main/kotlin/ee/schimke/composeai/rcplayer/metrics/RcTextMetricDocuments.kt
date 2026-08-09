@@ -674,6 +674,11 @@ public object RcTextMetricDocuments {
 
       add(END) // content 4
       add(END) // box 3
+      // ...and the root. The three AndroidX-backed harnesses tolerate an unterminated container at
+      // EOF, so leaving this off renders perfectly on the very lanes the fixtures were developed
+      // against and then throws `Unclosed RcRootLayout container` the moment this repo's own
+      // `RcDocumentLinker` — the path the CMP lanes take — tries to link it.
+      add(END) // root 1
     }
     return RcTextMetricFixture(
       id = "text-metrics-layout-${mode.id}",

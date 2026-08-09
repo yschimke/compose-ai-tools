@@ -88,19 +88,24 @@ public enum class RcGuideOrientation {
  * Which string a guide is measured from.
  *
  * Cap height and x-height have no measurement selector of their own — but they don't need one. The
- * ink top of a capital `H` *is* the cap height, and the ink top of a lowercase `x` *is* the
+ * ink top of a capital `H` gives the cap height, and the ink top of a lowercase `x` gives the
  * x-height, both measured by the lane itself with the same paint as the specimen. So two extra
  * strings buy two more metrics for free, and the values are the lane's, not a font table read by
  * this repo and asserted at it.
+ *
+ * Note the guides are named `capTop` / `xTop` rather than `capHeight` / `xHeight`. Everything in
+ * this vocabulary is a **coordinate**, and a vertical one is baseline-relative — so these read
+ * `-35.0`, not `35.0`. They are drawn at that coordinate, and a consumer reading a key called
+ * `capHeight` would get the metric sign-reversed. The height is the magnitude.
  */
 public enum class RcMetricProbe(public val text: String) {
   /** The fixture's own specimen string. */
   SPECIMEN(""),
 
-  /** `H` — its ink top is the cap height. */
+  /** `H` — the magnitude of its ink top is the cap height. */
   CAP("H"),
 
-  /** `x` — its ink top is the x-height. */
+  /** `x` — the magnitude of its ink top is the x-height. */
   X_HEIGHT("x"),
 }
 
@@ -163,25 +168,25 @@ public enum class RcTextGuide(
     label = "ink bot",
     description = "Lowest ink in the specimen.",
   ),
-  CAP_HEIGHT(
-    key = "capHeight",
+  CAP_TOP(
+    key = "capTop",
     probe = RcMetricProbe.CAP,
     measurement = RcTextMeasurement.TOP,
     flags = 0,
     orientation = RcGuideOrientation.HORIZONTAL,
     colorArgb = 0xffb26b00.toInt(),
-    label = "cap",
-    description = "Ink top of `H`, which is the cap height as this lane measures it.",
+    label = "cap top",
+    description = "Ink top of `H`. Baseline-relative, so negative; the cap height is its magnitude.",
   ),
-  X_HEIGHT(
-    key = "xHeight",
+  X_TOP(
+    key = "xTop",
     probe = RcMetricProbe.X_HEIGHT,
     measurement = RcTextMeasurement.TOP,
     flags = 0,
     orientation = RcGuideOrientation.HORIZONTAL,
     colorArgb = 0xff7b3fbf.toInt(),
-    label = "x-ht",
-    description = "Ink top of `x`, which is the x-height as this lane measures it.",
+    label = "x top",
+    description = "Ink top of `x`. Baseline-relative, so negative; the x-height is its magnitude.",
   ),
   INK_LEFT(
     key = "inkLeft",

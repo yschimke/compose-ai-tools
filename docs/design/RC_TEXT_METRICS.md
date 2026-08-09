@@ -60,10 +60,12 @@ it.
 `RcTextGuide` turns that into nine guides. Blue is the font box, green is the ink box, magenta is the
 advance — and the colours are a contract, not decoration, because the images are read side by side.
 
-Cap height and x-height have no selector of their own and need none: the ink top of `H` **is** the
-cap height and the ink top of `x` **is** the x-height, measured by the lane with the same paint. Two
-extra strings buy two more metrics, and the values are the lane's own rather than a font table this
-repo read and asserted at it.
+Cap height and x-height have no selector of their own and need none: the ink top of `H` gives the cap
+height and the ink top of `x` gives the x-height, measured by the lane with the same paint. Two extra
+strings buy two more metrics, and the values are the lane's own rather than a font table this repo
+read and asserted at it. They are named `capTop` / `xTop`, not `capHeight` / `xHeight`, because every
+vertical number here is a **baseline-relative coordinate** — these read `-35.0`, and that is the
+value the guide is drawn at. The height is the magnitude.
 
 ### The two text paths
 

@@ -11,6 +11,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcTextFromFloat
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
+import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -90,13 +91,13 @@ class RcTextMetricDocumentsTest {
         measures.values.firstOrNull { texts[it.textId] == RcMetricProbe.CAP.text },
         "no measurement reads the cap-height probe",
       )
-    assertEquals(RcTextGuide.CAP_HEIGHT.type, capMeasure.type)
+    assertEquals(RcTextGuide.CAP_TOP.type, capMeasure.type)
     val xMeasure =
       assertNotNull(
         measures.values.firstOrNull { texts[it.textId] == RcMetricProbe.X_HEIGHT.text },
         "no measurement reads the x-height probe",
       )
-    assertEquals(RcTextGuide.X_HEIGHT.type, xMeasure.type)
+    assertEquals(RcTextGuide.X_TOP.type, xMeasure.type)
   }
 
   @Test
@@ -182,6 +183,17 @@ class RcTextMetricDocumentsTest {
       "line height moves every baseline after the first without touching a glyph, which is " +
         "precisely the divergence a pixel diff cannot name",
     )
+  }
+
+  @Test
+  fun everyFixtureLinksIntoATree() {
+    // The three AndroidX-backed harnesses tolerate an unterminated container at EOF, so a fixture
+    // missing its root `ContainerEnd` renders perfectly on the very lanes it was developed against
+    // and then throws the moment this repo's own runtime — the path the CMP lanes take — tries to
+    // link it. Encoding and decoding cleanly is not enough; the tree has to close.
+    RcTextMetricDocuments.all().forEach { fixture ->
+      RcDocumentLinker.link(RcDocumentCodec.decode(RcDocumentCodec.encode(fixture.document)))
+    }
   }
 
   @Test

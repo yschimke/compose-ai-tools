@@ -72,6 +72,7 @@ specs the code actually depends on:
 - [design/RC_CMP_WASM_PLAYER.md](design/RC_CMP_WASM_PLAYER.md) — **proposal**: an original non-JVM CMP player for Remote Compose documents, with a typed binary codec, Compose/Skiko rendering boundaries, operation clusters, and per-operation conformance gates.
 - [design/RC_PLAYER_PROFILING.md](design/RC_PLAYER_PROFILING.md) — **measurement**: what `androidx.tracing` 2.x says about the CMP player's decode/link/layout/paint/input phases over four reference documents (static button, canvas, animated canvas, interactive button), why the tracing seam is an `expect`/`actual` facade, and how to re-run the profile.
 - [design/RC_PLAYER_TYPEFACES.md](design/RC_PLAYER_TYPEFACES.md) — **audit**: how each of the five Remote Compose player lanes (`js`, `cmp-wasm`, `java`, `cmp-android`, `cmp-jvm`) resolves built-in, named, downloadable, and document-embedded typefaces, and where two chips in the same viewer disagree about one document.
+- [design/RC_TEXT_METRICS.md](design/RC_TEXT_METRICS.md) — **harness**: Remote Compose documents that measure their own text with `TextMeasure` and draw the answers as guide lines, so each player lane renders *its own* metrics and a text divergence gets a name instead of a pixel percentage. Companion to the typefaces audit — that one covers *which face*, this one covers *how it is laid out once chosen*.
 
 Component-level contracts (the XR semantics tree, `FigmaLayeredSvg`, the font
 preview wrapper, `@XrSubspacePreview`) now live as **KDoc on the owning class**,
