@@ -61,6 +61,9 @@ services:
       SERVE_GITHUB_AUTH_REPO: "${SERVE_GITHUB_AUTH_REPO:-yschimke/compose-ai-tools}"
       SERVE_GITHUB_AUTH_CALLBACK_BASE_URL: "${SERVE_GITHUB_AUTH_CALLBACK_BASE_URL:-}"
       SERVE_GITHUB_AUTH_USERS: "${SERVE_GITHUB_AUTH_USERS:-}"
+      # Empty derives the OAuth scope from the gating repo's visibility (public ⇒ read:user,
+      # private ⇒ read:user repo). Only set this when a GitHub App or org policy demands one.
+      SERVE_GITHUB_AUTH_SCOPE: "${SERVE_GITHUB_AUTH_SCOPE:-}"
       # Optional ADDITIONS to that file, for one extra catalog without editing config:
       # <system>@<owner>/<repo>, comma-separated. Empty (the default) = the file decides.
       SERVE_CATALOGS: "${SERVE_CATALOGS:-}"
@@ -77,6 +80,13 @@ services:
       # Unused in public mode; required only when SERVE_PUBLIC=0.
       SERVE_TOKEN: "${SERVE_TOKEN:-}"
       SERVE_IDLE_EXIT: "0"
+      # Per-render/build budget handed to `serve --timeout`. Empty ⇒ the image's baked 1800s,
+      # generous enough that a cold first render on a slow box doesn't trip the CLI's 300s default.
+      SERVE_TIMEOUT: "${SERVE_TIMEOUT:-}"
+      # Local Wasm build for the in-browser tier. The prebuilt image has no catalog modules to
+      # build one from, so this stays empty here and the tier rides --catalogs instead (serve
+      # fetches each system's web/wasm/ from its trusted design-artifacts branch).
+      SERVE_WASM_DIR: "${SERVE_WASM_DIR:-}"
       # Live (daemon-backed) preview tier — ON by default and build-free. For a Trusted catalog that
       # carries an executable `liveBundle` (the desktop CMP `compose-m3`), serve fetches that bundle
       # from the trusted branch and launches a render daemon straight from it — no checkout, no
@@ -97,10 +107,31 @@ services:
       SERVE_REVISIONS_ALLOW: "${SERVE_REVISIONS_ALLOW:-}"
       SERVE_CATALOG_SOURCE_REPO: "${SERVE_CATALOG_SOURCE_REPO:-}"
       SERVE_CATALOG_SOURCE_REF: "${SERVE_CATALOG_SOURCE_REF:-}"
+      # Where that optional clone lands inside the container. Empty ⇒ /catalog-src.
+      SERVE_CATALOG_SOURCE_ROOT: "${SERVE_CATALOG_SOURCE_ROOT:-}"
       SERVE_LIVE_SEATS: "${SERVE_LIVE_SEATS:-}"
       # Playground compile lane. Off by default: it runs visitor-supplied Kotlin and needs both a
       # catalog liveBundle classpath plus a sandbox profile on public hosts. Set the bundle path(s)
       # to local files available inside the container, for example a bind mount under /config.
+      #
+      # SERVE_PLAYGROUND=1 turns on the RUNTIME CATALOG SELECTOR: instead of compiling every
+      # snippet against one pinned bundle, the editor offers the catalogs this box already serves
+      # and the chosen catalog's own liveBundle picks the renderer, the dependencies and the mode
+      # set. That is what makes the Android / Remote Compose modes reachable here — this image
+      # already bakes the Robolectric sidecar (/opt/lib-daemon-android) and android.jar
+      # (ANDROID_HOME=/opt/android-sdk), so an Android-backed catalog like `wear-m3` compiles and
+      # renders with no extra image content. Without it, `SERVE_PLAYGROUND_BUNDLE` alone pins the
+      # host to that single catalog and the viewer's playground handoff is hidden for every other
+      # one (see PlaygroundCompileService.compilesCatalog).
+      #
+      # It composes with the pin: SERVE_PLAYGROUND_BUNDLE stays the preselected "Server default"
+      # entry. Enabling the selector never widens who may compile — the public-host admission gate
+      # (GitHub repo access, or a sandbox that passes the preflight) is unchanged.
+      SERVE_PLAYGROUND: "${SERVE_PLAYGROUND:-}"
+      # How many DISTINCT catalogs the selector may hold resolved classpaths for at once. Empty ⇒
+      # the CLI default (6); past the bound a run naming a new catalog is refused rather than
+      # evicting a warm one.
+      SERVE_PLAYGROUND_CATALOG_LIMIT: "${SERVE_PLAYGROUND_CATALOG_LIMIT:-}"
       SERVE_PLAYGROUND_BUNDLE: "${SERVE_PLAYGROUND_BUNDLE:-}"
       SERVE_PLAYGROUND_ANDROID_BUNDLE: "${SERVE_PLAYGROUND_ANDROID_BUNDLE:-}"
       SERVE_PLAYGROUND_SANDBOX: "${SERVE_PLAYGROUND_SANDBOX:-}"
@@ -110,10 +141,33 @@ services:
       SERVE_PLAYGROUND_SANDBOX_TTL: "${SERVE_PLAYGROUND_SANDBOX_TTL:-}"
       SERVE_PLAYGROUND_SANDBOX_RO: "${SERVE_PLAYGROUND_SANDBOX_RO:-}"
       SERVE_PLAYGROUND_COMPILE_SLOTS: "${SERVE_PLAYGROUND_COMPILE_SLOTS:-}"
+      # PER-CALLER compile budget. Every other playground bound above is a whole-host one, so
+      # without this one caller can hold every compile slot. Empty ⇒ the CLI defaults (10
+      # compiles/minute, 1 concurrent); set SERVE_PLAYGROUND_RATE_LIMIT=0 to disable the limiter.
+      SERVE_PLAYGROUND_RATE_LIMIT: "${SERVE_PLAYGROUND_RATE_LIMIT:-}"
+      SERVE_PLAYGROUND_CALLER_CONCURRENCY: "${SERVE_PLAYGROUND_CALLER_CONCURRENCY:-}"
+      # Attribute a request to the X-Forwarded-For peer rather than the proxy's own address, so the
+      # per-caller budget above counts real visitors instead of lumping them under Caddy. ONLY safe
+      # behind a proxy that appends the peer address it saw — which the `caddy` service below is.
+      SERVE_TRUST_FORWARDED_FOR: "${SERVE_TRUST_FORWARDED_FOR:-}"
       # Re-check each catalog's design-artifacts branch every N seconds and re-fetch on change, so a
       # regenerated branch reaches this running server without a restart (Watchtower only rolls the
       # image). Empty ⇒ the CLI default (600s); set 0 to disable and serve the boot snapshot only.
       SERVE_CATALOG_REFRESH: "${SERVE_CATALOG_REFRESH:-}"
+      # Bundle-upload lane (POST a locally-built bundle and browse it here). Off unless asked for.
+      SERVE_ACCEPT_BUNDLES: "${SERVE_ACCEPT_BUNDLES:-}"
+      SERVE_ACCEPT_BUNDLES_FROM: "${SERVE_ACCEPT_BUNDLES_FROM:-}"
+      # Document lane (GET/POST /docs, GET /d/<id>) — data only: a Remote Compose / Lottie document
+      # is played back by a player in the visitor's browser, so nothing runs on the box. The
+      # playground's REMOTE_COMPOSE mode publishes its capture into this store, so a box that wants
+      # that mode needs the lane on. Off unless asked for.
+      SERVE_ACCEPT_DOCS: "${SERVE_ACCEPT_DOCS:-}"
+      SERVE_ACCEPT_DOCS_FROM: "${SERVE_ACCEPT_DOCS_FROM:-}"
+      SERVE_DOC_TTL: "${SERVE_DOC_TTL:-}"
+      # Extra Maven repositories the live-daemon classpath resolver may fetch from, beyond Central +
+      # Google. Empty inherits the entrypoint's baked default (jitpack, apollo-snapshots, a8c-libs),
+      # which is what the published catalogs need; `none` sends only Central + Google.
+      SERVE_EXTRA_MAVEN_REPOS: "${SERVE_EXTRA_MAVEN_REPOS:-}"
       PORT: "8080"
     # Persist the RUNTIME download caches across image rolls. A rollout (or Watchtower
     # recreate) replaces the container, discarding its writable layer — so without this the

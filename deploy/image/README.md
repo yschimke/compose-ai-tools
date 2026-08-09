@@ -148,6 +148,31 @@ The selected catalog decides the mode too: its bundle `backend` is what picks th
 Compose. Catalogs whose modes this container can't render — Android ones without the
 `lib-daemon-android` sidecar — are simply not listed.
 
+**This image already carries the Android bits**, so that exclusion does not apply here: the
+Dockerfile's `android-daemon` stage bakes the Robolectric sidecar at `/opt/lib-daemon-android`
+(pointed at by `-Dcomposeai.cli.libDaemonAndroidDir` in `JAVA_TOOL_OPTIONS`) and a minimal Android
+SDK at `/opt/android-sdk` (`ANDROID_HOME`), because the Wear catalog's *live* tier needs exactly the
+same two things. Turning the selector on is therefore all it takes for an Android-backed catalog
+here — `wear-m3`, `remote-m3`, the Wear app catalogs — to be offered and to compile. No image
+change, no extra download, no `SERVE_PLAYGROUND_ANDROID_BUNDLE`.
+
+Remote Compose mode has one extra requirement: it publishes its capture into the `/d/` document
+store, so it needs `SERVE_ACCEPT_DOCS=1`. Without it the Android catalogs still offer Compose
+(Android); only the Remote Compose mode stays absent.
+
+Confirm what actually came up rather than assuming — the startup line
+`serve: playground enabled (POST /api/1/compiler/run) — … android-render✓ catalog-selector✓(≤6)`
+in `docker compose logs preview`, and `/status.json` at `playground.catalogSelector` (null means the
+selector never came on) and `playground.modes`.
+
+> **An existing box needs its `docker-compose.yml` updated too, not just its `.env`.** Compose does
+> not forward the host environment — a variable absent from the `preview` service's `environment:`
+> block never reaches the container, and the entrypoint then skips the flag silently. Every variable
+> on this page is forwarded by the compose file in this directory, but a clone predating that is why
+> `SERVE_PLAYGROUND` could be set in `.env` for months and do nothing. `git pull` the compose file
+> before debugging a knob that appears to be ignored. CI guards the two files against drifting again
+> (`deploy/image/test-compose-env-passthrough.sh`).
+
 Each catalog resolves the first time someone compiles against it and is then held for the life of
 the process (its jars are open in live snippet JVMs, so it can't be evicted). That is what
 `SERVE_PLAYGROUND_CATALOG_LIMIT` bounds: past it, a run naming a *new* catalog is refused with a
