@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayer
+import androidx.compose.remote.player.compose.embedded.enableEncodedImageReferences
 import androidx.compose.remote.player.core.RemoteDocument
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -132,6 +133,11 @@ class RcEmbeddedRenderHarness(private val entry: Entry) {
           with(density) { entry.height.toDp() },
         )
       ) {
+        // Before the constructor, not after: `RemoteDocument(bytes)` parses inside it, so a
+        // document carrying a URL-encoded bitmap fails here — and takes the whole document with
+        // it — unless the globals are already set. This lane never enters the
+        // `RcPlayer(CapturedDocument)` overload, so it has to opt in for itself.
+        enableEncodedImageReferences()
         val document = remember { RemoteDocument(bytes) }
         ExperimentalRemoteDocumentPlayer(
           document = document,

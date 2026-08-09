@@ -24,6 +24,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.remote.player.compose.RemoteDocumentPlayer
+import androidx.compose.remote.player.compose.embedded.enableEncodedImageReferences
 import androidx.compose.remote.player.core.RemoteDocument
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -102,6 +103,9 @@ class RcViewPlayerRenderHarness(private val entry: RcEmbeddedRenderHarness.Entry
           with(density) { entry.height.toDp() },
         )
       ) {
+        // As in `RcEmbeddedRenderHarness`: `RemoteDocument(bytes)` parses in its constructor, so
+        // the globals have to be set before it or a URL-encoded bitmap fails the whole document.
+        enableEncodedImageReferences()
         val document = remember { RemoteDocument(bytes) }
         // The View player takes the document's pixel size directly rather than filling its parent.
         RemoteDocumentPlayer(
