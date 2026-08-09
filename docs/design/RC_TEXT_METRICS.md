@@ -83,8 +83,10 @@ for the `default` role; a canvas paint's built-in family id is decoded straight 
 face and the comparison is sound. On a lane that installs one (cmp-wasm does) they can differ, and an
 apparent wrapping or advance divergence there might be this fixture rather than the player. Pinning
 the face via embedded `FontData` closes it; until then, read cmp-wasm's mode fixtures with that in
-mind. Where the host stack actually broke, clipped or ellipsised the line, against where
-the player thinks the line ends, is then a picture rather than an adjective.
+mind.
+
+With that caveat noted, the point stands: where the host stack actually broke, clipped or ellipsised
+the line, against where the player thinks the line ends, is a picture rather than an adjective.
 
 ## The fixtures
 

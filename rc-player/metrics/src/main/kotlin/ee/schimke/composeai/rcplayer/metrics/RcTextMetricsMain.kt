@@ -14,11 +14,19 @@ import java.io.File
  * with no harness change at all:
  * ```
  * ./gradlew :rc-player-metrics:rcTextMetricFixtures
- * ./gradlew :third-party-rc-embedded-player:testDebugUnitTest \
+ * ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --rerun \
+ *   --tests '*RcViewPlayerRenderHarness*' --tests '*RcEmbeddedRenderHarness*' \
  *   -Prc.embedded.input=rc-player/metrics/build/fixtures \
  *   -Prc.view.output=/tmp/rc-metrics/java \
  *   -Prc.embedded.output=/tmp/rc-metrics/cmp-android
  * ```
+ *
+ * Both flags are load-bearing, and both fail quietly without it. `--tests` because
+ * `rc.embedded.input` reaches every test in that module, so an unfiltered run also hands these
+ * fixtures to `RcSemanticsExtractionTest` and `RcFigmaSvgExportTest`, which fail against them
+ * *after* the PNGs are written. `--rerun` because the input arrives as a system property rather
+ * than a declared task input, so a second run is `UP-TO-DATE` and silently keeps the old PNGs. The
+ * same commands, with the same warning, are in `renders/rc-text-metrics/README.md`.
  *
  * `fixtures.json` alongside it carries the human half — each fixture's summary and the guide
  * vocabulary — so a reader of the output directory can tell what a rule of a given colour means
