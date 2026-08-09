@@ -1,18 +1,41 @@
 /**
  * Partition a catalog's discovered preview ids across N parallel render shards.
  *
- * The design-artifacts render is one serial `bundle pack`, and it used to grow linearly with the
- * preview count: measured on m3-catalog, `render_minutes ≈ 3.7 + 2.15s × previews`. Past ~1500
- * previews that blew `render-timeout`, and past ~2400 the job timeout — so the marginal 2.15s had to
- * be divided across jobs. This module decides who renders what.
+ * The design-artifacts render is one serial `bundle pack`, and it grows linearly with the preview
+ * count. This module decides who renders what when that is split across jobs.
  *
- * **That cost model is superseded and the shard count derived from it is not currently trusted.**
- * Captures now draw on a warm renderer rather than forking a JVM each time (#3548), which collapsed
- * the marginal term and left the ~3.7 min fixed configure + compile that every shard pays in full
- * untouched. Cheaper marginal work with unchanged fixed cost moves the optimum *down*, so the old
- * "six, not sixteen" conclusion no longer follows from anything measured. #3559 tracks re-measuring
- * it. Nothing here assumes a particular count — the partition is correct at any N — but do not read
- * the arithmetic above as current guidance.
+ * **The cost model, re-measured on CI after #3548 (issue #3559).** Both terms come from the same
+ * m3-catalog job on `ubuntu-latest`, read off the render step's own task timings:
+ *
+ *   render_seconds ≈ 100 + 0.39 × previews          (one job, no sharding)
+ *
+ * against `≈ 104 + 2.55 × previews` before #3548 — same catalog, same runner, four weeks of growth
+ * apart. What moved is only the marginal term, and only part of it:
+ *
+ *   term                     before #3548        after #3548
+ *   fixed (configure+compile   104 s               100 s        ← unchanged, and never was 3.7 min
+ *     + discover + pack)
+ *   composePreviewRender       2.38 s/preview      0.202 s/preview   ← the warm renderer, 12x
+ *   semantics capture          0.17 s/preview      0.185 s/preview   ← daemon-driven, untouched
+ *
+ * so m3-catalog's full sheet went from 2893 s to 543 s (1095 → 1147 previews). The marginal term is
+ * now barely twice the semantics pass that #3548 never touched, which is the real ceiling on any
+ * further win here.
+ *
+ * **What that means for the shard count.** A shard's fixed cost is its own job prefix (~25 s) plus
+ * its own `compose-preview list --json` discovery (~87 s: configure + compile + discover) plus the
+ * render step's Gradle prologue (~20 s) and its upload/cache tail (~15 s) — about **150 s**, again
+ * not 3.7 min. So `T_shard ≈ 150 s + 0.39 s × previews/N`, plus a ~85 s merge/generate/publish tail.
+ * At m3-catalog's 1147 previews that is 9.1 min serial against 5.8 min at N=4 — three minutes of
+ * wall clock for three extra runners, with the serial render sitting at a fifth of its
+ * `render-timeout`. **The optimum moved down, exactly as cheaper marginal work with an unchanged
+ * fixed cost predicts, and at this size it moved below 2: the catalog ships `render-shards: 1`.**
+ * Sharding starts paying again around 3000 previews, and becomes necessary near 6000, where the
+ * serial render meets a 2400 s `render-timeout`.
+ *
+ * Nothing here assumes a particular count — the partition is correct at any N — and the machinery
+ * stays because the pressure that motivated it returns with the sheet, not because it is switched
+ * on today.
  *
  * The mechanism is exclusion, not selection: each shard runs the SAME `bundle pack` with
  * `--exclude-preview-id <everything that isn't mine>`, which is documented to leave the excluded

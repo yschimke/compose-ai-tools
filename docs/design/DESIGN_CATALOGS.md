@@ -629,19 +629,25 @@ pixels for a live path) and `render-shards` (which divides the work across jobs)
 
 ### Sharding the render across parallel jobs (`render-shards`)
 
-Raising `render-timeout` buys one more step and then stops. The render cost is close to linear —
-measured over four `m3-catalog` runs on `main`:
+Raising `render-timeout` buys one more step and then stops. The render cost is close to linear, and
+the coefficients were re-measured on CI after [#3548](https://github.com/yschimke/compose-ai-tools/pull/3548)
+made captures draw on a warm renderer instead of forking a JVM per preview (issue #3559). Both rows
+below are the same `m3-catalog` render step on `ubuntu-latest`, decomposed from the task timings the
+step prints:
 
-| Commit | Previews | Render step | Job total |
-| --- | --- | --- | --- |
-| `d354560` | 287 | 13.6 min | 17.2 min |
-| `323e4a2` | 519 | 22.5 min | 24.0 min |
-| `5edc70a` | 607 | 26.7 min | 29.6 min |
-| `f35c2e5` | 689 | 27.2 min | 28.9 min |
+| | fixed (configure + compile + discover + pack) | `composePreviewRender` | semantics capture | full sheet |
+| --- | --- | --- | --- | --- |
+| before #3548 (1095 previews) | 104 s | 2.38 s/preview | 0.17 s/preview | 2893 s |
+| after #3548 (1147 previews) | 100 s | 0.202 s/preview | 0.185 s/preview | 543 s |
 
-which fits `render_minutes ≈ 3.7 + 2.15s × previews`. At ~1500 previews that is ~58 min, past a
-40-minute `render-timeout`; at ~2400 it passes the 90-minute job timeout, and no number you can put
-in `render-timeout` helps.
+```
+render_seconds ≈ 100 + 0.39s × previews      (was ≈ 104 + 2.55s × previews)
+```
+
+Two things to read off that. The **fixed term did not move, and was never 3.7 min** — the older
+figure in this document conflated the whole render step with its prologue. And the surviving
+marginal cost is now roughly half semantics capture, which is daemon-driven and was never part of
+what #3548 addressed; there is no second 6x waiting in the render.
 
 `render-shards: N` splits the primary render across N jobs:
 
@@ -651,20 +657,30 @@ in `render-timeout` helps.
         └── shard N: …                          ┘
 ```
 
-**Only the marginal 2.15 s divides.** The ~3.7 min of Gradle configure + compile is paid by every
-shard in full, which is what caps the useful count:
+**Only the marginal 0.39 s divides**, and a shard's own fixed cost is ~150 s — job prefix ~25 s, its
+own `compose-preview list --json` discovery ~87 s (measured), the render step's Gradle prologue
+~20 s, upload and font-cache tail ~15 s — plus a ~85 s merge/generate/publish job. So
+`T ≈ 150 + 0.39 × previews/N + 85`, in minutes:
 
-| Previews | N=1 | N=4 | N=6 | N=8 |
-| --- | --- | --- | --- | --- |
-| 689 | 29.4 | 15.8 | 13.7 | 12.7 |
-| 1000 | 40.5 | 18.6 | 15.6 | 14.1 |
-| 1500 | 58.4 | 23.0 | 18.6 | 16.3 |
-| 2500 | 94.3 | 32.0 | 24.5 | 20.8 |
+| Previews | N=1 | N=2 | N=4 | N=6 | N=8 |
+| --- | --- | --- | --- | --- | --- |
+| 1147 (m3-catalog today) | **9.1** | 7.6 | 5.8 | 5.2 | 4.9 |
+| 2500 | 17.9 | 12.1 | 8.0 | 6.6 | 6.0 |
+| 5000 | 34.2 | 20.2 | 12.0 | 9.3 | 8.0 |
 
-(per-shard `1 min setup + 3.7 min compile + ~0.9 min discovery + 2.15s × previews/N`, plus a ~4 min
-merge/generate job). **4–6 is the range.** 6→8 at 1500 previews saves 2.3 min for two more runners;
-anyone reaching for 16 is buying compile time, not throughput. Sharding does not need to be perfect
-— it turns the worst case from impossible into ~25 min.
+**At today's size the answer is 1.** Sharding 1147 previews four ways buys ~3 min of wall clock for
+three extra runners and ~8 extra runner-minutes, while the serial render sits at under a quarter of
+its `render-timeout` — that is not a trade worth making, and it is the *opposite* of what the
+superseded model said (it recommended 4–6). Cheaper marginal work against an unchanged fixed cost
+moves the optimum down, not up. Sharding starts paying again around 3000 previews and becomes
+necessary near 6000, where a serial render meets a 2400 s `render-timeout`; the machinery stays
+wired and tested for that, because the pressure returns with the sheet.
+
+One caveat on the table: the ~85 s merge tail was measured on a run whose shards uploaded only a
+fraction of their renders (the pre-anchoring bug in
+[#3570](https://github.com/yschimke/compose-ai-tools/pull/3570)), so downloading and merging N full
+shard bundles will cost somewhat more. It makes sharding look slightly better than it is, which does
+not change the conclusion at 1147 previews.
 
 **How a shard renders only its share.** `bundle pack --exclude-preview-id` leaves the excluded
 previews *listed in the bundle*, just without a baked PNG — the same mechanism render-priority
