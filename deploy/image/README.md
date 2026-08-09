@@ -208,21 +208,49 @@ before the request body is read, so a throttled caller costs the box nothing. Wa
 > entirely. It assumes exactly one proxy hop. This matters much less than it sounds on this image,
 > where the playground is repo-access-gated and every compile therefore carries a GitHub login.
 
-> **Do not set `SERVE_PLAYGROUND_SANDBOX=bwrap` on a public host and expect it to admit the lane.**
-> Earlier revisions of this file recommended exactly that, and it is refused: `bwrap` contains a
-> snippet but applies no CPU or process-count cap, so the containment posture rejects it and points
-> at `strict`. `strict` in turn needs `systemd-run`, which a Docker container has no systemd to talk
-> to — and neither `bubblewrap` nor `systemd` is installed in this image. **The contained posture is
-> therefore unreachable in the shipped container**; that is tracked in issue #3211, along with the
-> options for changing it. Until it is resolved, a public playground here means the repo-access
-> posture. A sandbox profile may still be set as defence in depth on a host that *does* have the
-> tooling — the lane logs a warning if the configured jail fails its preflight, and serves anyway,
-> because admission never rested on the jail in that posture.
+### Containment
 
-`SERVE_PLAYGROUND_ANDROID_BUNDLE` additionally enables the Android / Remote Compose modes. Those
-need the `lib-daemon-android` sidecar plus `android.jar`, and are **not** recommended on a sandboxed
-host yet — issue #3213 tracks a suspected Robolectric `android-all` lookup failure inside the jail
-that surfaces as a silent "no image" rather than an error.
+`bubblewrap` **is** installed in this image, so `bwrap` is the profile to use here:
+
+```bash
+SERVE_PLAYGROUND_SANDBOX=bwrap
+SERVE_PLAYGROUND_SANDBOX_RO=/root/.m2/repository   # see the Android note below
+```
+
+That gives a snippet no network, no host filesystem beyond the read-only binds, no view of host
+processes, and a cleared environment (so it cannot read `--admin-token` or cloud credentials out of
+`/proc/self/environ`). Exactly one path is writable — the session work dir, which is deleted with
+the snippet's token. Confirm it took on `/status.json` → `playground.sandbox.probe`: all four of
+`egressBlocked`, `filesystemContained`, `processIsolated`, `workDirWritable` should be `true`.
+
+Two things to know about which profile admits the lane, because earlier revisions of this file got
+it wrong in both directions:
+
+- **Repo-access-gated (this image's posture).** `PlaygroundPublicGate.decide` returns `Allow` for a
+  repo-access-gated host *before* it reaches any profile check, so `bwrap` is accepted here with no
+  caveat. Its lack of a cgroup cap is covered by the container's own `--memory` / `--cpus` /
+  `--pids-limit` plus the JVM ceilings the sandbox applies (`-Xmx`, `-XX:ActiveProcessorCount`).
+- **Anonymous (no GitHub auth).** There, and only there, `bwrap` is refused for declaring no CPU or
+  process-count cap, and the gate points at `strict` — which needs `systemd-run` and so remains
+  unreachable in a container. An anonymous public playground on this image is still not a thing;
+  issue #3211 tracks that.
+
+> **Do not reach for `custom:` to work around this.** A `custom:` argv is a **static prefix**
+> (`PlaygroundSandbox.command`, `Profile.CUSTOM -> customCommand`) — it is handed no `Paths`, so it
+> cannot bind the per-session work dir, whose path does not exist until a compile starts. The two
+> reachable outcomes are a jail so tight the render cannot write (preflight fails `workDirWritable`)
+> or one loose enough to contain nothing (preflight fails the other three) — and the second is
+> admitted silently in the repo-access-gated posture, because admission never rested on the jail
+> there. `Profile.BWRAP` builds its argv from `Paths` and binds the work dir correctly. Use it.
+
+`SERVE_PLAYGROUND_ANDROID_BUNDLE` — and `SERVE_PLAYGROUND`'s runtime catalog selector, which offers
+every Android-backed catalog — additionally enable the Android / Remote Compose modes. Those need
+the `lib-daemon-android` sidecar plus `android.jar`; the sidecar lives in `/opt`, which is already
+ro-bound, but Robolectric also resolves an `android-all` jar out of `~/.m2/repository` at run time
+and the jail has no network to fetch it. That is the suspected cause of issue #3213's silent "no
+image" inside a jail, and `SERVE_PLAYGROUND_SANDBOX_RO=/root/.m2/repository` is the remedy —
+**prewarm that cache before going public**, since a cold cache inside `--unshare-net` cannot fill
+itself. Render an Android preview once with the sandbox off, then turn it on.
 
 If the bundle vars are missing, `/playground` returns a styled “Playground unavailable” page instead
 of falling through as a missing design system. If they are set but the gate refuses, you get the

@@ -134,11 +134,19 @@ services:
       SERVE_PLAYGROUND_CATALOG_LIMIT: "${SERVE_PLAYGROUND_CATALOG_LIMIT:-}"
       SERVE_PLAYGROUND_BUNDLE: "${SERVE_PLAYGROUND_BUNDLE:-}"
       SERVE_PLAYGROUND_ANDROID_BUNDLE: "${SERVE_PLAYGROUND_ANDROID_BUNDLE:-}"
+      # Use `bwrap` here — bubblewrap is installed in this image for exactly this. Do NOT use a
+      # `custom:` argv: it is a static prefix that is handed no per-session paths, so it cannot bind
+      # the work dir a compile needs, and the loose argv people write instead passes for configured
+      # while containing nothing (issue #3211). `bwrap` builds its own argv from those paths.
       SERVE_PLAYGROUND_SANDBOX: "${SERVE_PLAYGROUND_SANDBOX:-}"
       SERVE_PLAYGROUND_SANDBOX_MEMORY_MB: "${SERVE_PLAYGROUND_SANDBOX_MEMORY_MB:-}"
       SERVE_PLAYGROUND_SANDBOX_CPUS: "${SERVE_PLAYGROUND_SANDBOX_CPUS:-}"
       SERVE_PLAYGROUND_SANDBOX_PIDS: "${SERVE_PLAYGROUND_SANDBOX_PIDS:-}"
       SERVE_PLAYGROUND_SANDBOX_TTL: "${SERVE_PLAYGROUND_SANDBOX_TTL:-}"
+      # Extra host paths bound READ-ONLY into the jail. `bwrap` unshares the network, so a cache the
+      # render would otherwise download has to be on this list AND already warm: in practice
+      # /root/.m2/repository, for the Robolectric `android-all` jar the Android modes resolve at run
+      # time (issue #3213 — a cold cache in there is a silent "no image", not an error).
       SERVE_PLAYGROUND_SANDBOX_RO: "${SERVE_PLAYGROUND_SANDBOX_RO:-}"
       SERVE_PLAYGROUND_COMPILE_SLOTS: "${SERVE_PLAYGROUND_COMPILE_SLOTS:-}"
       # PER-CALLER compile budget. Every other playground bound above is a whole-host one, so
