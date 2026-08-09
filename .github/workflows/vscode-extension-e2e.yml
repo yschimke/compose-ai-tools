@@ -123,15 +123,16 @@ jobs:
       # 5m15s→10m14s (cmp-smoke) and 5m48s→13m00s (cached-preload) once a
       # build-logic change invalidated the snapshot. Reads alone recover that.
       #
-      # Read-only on purpose, including on main. A write token would set
-      # `ON_CI=true`, and settings.gradle.kts then *disables the local build
-      # cache* on pushing runs so tasks execute-and-push — correct for a
-      # designated seeder, actively harmful here, because this workflow is
-      # cancelled often enough (22 of 30 recent runs) that it would mostly be
-      # paying for no-cache builds that never finish. gradle-cache-seed.yml is
-      # the sole writer, and runs uncancelled precisely so it can be.
+      # Writes on main pushes. This shard set is the only thing in CI that runs
+      # the unfiltered whole-module render, so it produces cache entries nothing
+      # else does. Pushing used to be unaffordable here — a write token set
+      # `ON_CI=true`, which disabled the local build cache — but the local cache
+      # now stays on for pushers (see settings.gradle.kts), so a run pushes only
+      # what it genuinely had to execute and a cancelled run simply pushes less.
+      # PR runs resolve the write token to '' and stay read-only.
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

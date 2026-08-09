@@ -136,12 +136,13 @@ jobs:
       # This is the one job in this workflow that builds *this* repo's Gradle
       # tasks (the matrix jobs build external consumers, which never see our
       # settings.gradle.kts), so it's the only place the BuildFetch remote cache
-      # applies. Read-only: this workflow runs with `cancel-in-progress: true`,
-      # and a write token would set ON_CI=true and disable its local build
-      # cache — leaving a superseded run doing a full no-cache build that is
-      # killed before it has pushed much. gradle-cache-seed.yml owns writes.
+      # applies. Writes on main pushes: the publish/installDist fan-out here is
+      # expensive and shared, and with the local cache now on for pushers (see
+      # settings.gradle.kts) a cancelled run just pushes whatever it finished
+      # rather than paying for a no-cache build.
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
 
       - name: Publish plugin + renderer-android + renderer-xr + data-* + daemon-* to mavenLocal

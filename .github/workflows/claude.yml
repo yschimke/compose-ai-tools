@@ -59,8 +59,8 @@ jobs:
       # Read-only BuildFetch remote cache so agent sessions pull cached task
       # outputs instead of building cold (a cold build repeatedly blew the
       # session budget before a verified fix could be pushed). No rw-token: this
-      # workflow never runs on `push`, so it stays a read-only consumer and
-      # ci.yml remains the sole cache writer.
+      # workflow never runs on `push`, and an agent session is exactly the kind
+      # of untrusted-ish context that should read the cache, never write it.
       - uses: ./.github/actions/buildfetch-cache
         with:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
