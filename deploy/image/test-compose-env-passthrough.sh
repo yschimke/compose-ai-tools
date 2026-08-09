@@ -89,9 +89,17 @@ for v in "${read_vars[@]}"; do
     continue
   fi
   [[ -n "${CONSTANT_OK[${v}]:-}" ]] && continue
-  # Accept ${VAR}, ${VAR:-…}, ${VAR:=…}, ${VAR:?…} — anything that reads the same-named host
-  # variable. Reject a bare constant or a reference to a different variable.
-  [[ "${mapped[${v}]}" =~ \$\{${v}[}:] ]] || miswired+=("${v} → ${mapped[${v}]}")
+  # Accept ${VAR}, ${VAR:-…}, ${VAR:=…}, ${VAR:?…} — but the interpolation must be the WHOLE value,
+  # so the host's setting reaches the container unaltered. Anchoring is what rejects
+  # `"prefix-${SERVE_TIMEOUT:-}"`: a substring match would call that a pass, while `SERVE_TIMEOUT=60`
+  # would arrive as `prefix-60` and go to `--timeout` as garbage. A knob that is forwarded but
+  # mangled is no more usable than one that never arrives, which is the whole subject of this guard.
+  #
+  # The default text itself is unconstrained (`${VAR:-yschimke/compose-ai-tools}` is fine) except
+  # that it may not contain `}` — a nested interpolation is rejected rather than parsed, since it is
+  # both unused here and not something a regex should be trusted to read.
+  [[ "${mapped[${v}]}" =~ ^\"?\$\{${v}(:[-=?][^}]*)?\}\"?$ ]] ||
+    miswired+=("${v} → ${mapped[${v}]}")
 done
 
 if ((${#missing[@]})); then
@@ -153,3 +161,6 @@ selftest "SERVE_PLAYGROUND is hardcoded to a constant" \
 # The key is present and interpolated, but from the WRONG host variable — the copy-paste slip.
 selftest "SERVE_PLAYGROUND reads a different host variable" \
   sed 's|^      SERVE_PLAYGROUND: .*|      SERVE_PLAYGROUND: "${SERVE_PLAYGROUND_BUNDLE:-}"|'
+# The right variable, but wrapped — the host's value would reach the container mangled.
+selftest "SERVE_TIMEOUT interpolates its own variable but wraps it" \
+  sed 's|^      SERVE_TIMEOUT: .*|      SERVE_TIMEOUT: "prefix-${SERVE_TIMEOUT:-}"|'
