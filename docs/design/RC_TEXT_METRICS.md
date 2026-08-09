@@ -109,17 +109,16 @@ The manifest shape is not new: it is exactly what `rc-compare --stage-embedded` 
 fixtures reach three lanes with no harness change:
 
 ```bash
-./gradlew :rc-player-metrics:rcTextMetricFixtures
-./gradlew :third-party-rc-embedded-player:testDebugUnitTest --rerun \
-  --tests '*RcViewPlayerRenderHarness*' --tests '*RcEmbeddedRenderHarness*' \
-  -Prc.embedded.input=rc-player/metrics/build/fixtures \
-  -Prc.view.output=/tmp/rc-metrics/java \
-  -Prc.embedded.output=/tmp/rc-metrics/cmp-android
-./gradlew :third-party-rc-embedded-player-jvm:test --rerun \
-  --tests '*RcJvmRenderHarness*' \
-  -Prc.jvm.input=rc-player/metrics/build/fixtures \
-  -Prc.jvm.output=/tmp/rc-metrics/cmp-jvm
+scripts/rc-text-metrics/render-strips.sh
 ```
+
+That is deliberately the only copy of the invocation. Three of its details fail *quietly* — an input
+path that is not absolute skips the harness inside a green build, a missing `--rerun` serves the
+previous run's PNGs as `UP-TO-DATE`, and a missing `--tests` hands the fixtures to two unrelated
+tests that fail against them *after* the PNGs are written — and a hand-run regeneration never
+rebuilt the committed strips at all, so the evidence in `renders/rc-text-metrics/` could go stale
+while the commands all reported success. The traps are documented at the top of the script and in
+[`renders/rc-text-metrics/README.md`](../../renders/rc-text-metrics/README.md).
 
 The two browser lanes (`js`, `cmp-wasm`) are not wired yet — see [Not done yet](#not-done-yet).
 

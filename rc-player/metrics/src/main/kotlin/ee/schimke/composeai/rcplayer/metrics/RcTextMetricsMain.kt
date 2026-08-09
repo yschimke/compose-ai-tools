@@ -11,22 +11,16 @@ import java.io.File
  * height}`, which is exactly what `rc-compare --stage-embedded` produces and what
  * `RcEmbeddedRenderHarness`, `RcViewPlayerRenderHarness` (the Java reference lane) and
  * `RcJvmRenderHarness` all consume. Emitting it means the fixtures reach three of the five lanes
- * with no harness change at all:
- * ```
- * ./gradlew :rc-player-metrics:rcTextMetricFixtures
- * ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --rerun \
- *   --tests '*RcViewPlayerRenderHarness*' --tests '*RcEmbeddedRenderHarness*' \
- *   -Prc.embedded.input=rc-player/metrics/build/fixtures \
- *   -Prc.view.output=/tmp/rc-metrics/java \
- *   -Prc.embedded.output=/tmp/rc-metrics/cmp-android
- * ```
+ * with no harness change at all.
  *
- * Both flags are load-bearing, and both fail quietly without it. `--tests` because
- * `rc.embedded.input` reaches every test in that module, so an unfiltered run also hands these
- * fixtures to `RcSemanticsExtractionTest` and `RcFigmaSvgExportTest`, which fail against them
- * *after* the PNGs are written. `--rerun` because the input arrives as a system property rather
- * than a declared task input, so a second run is `UP-TO-DATE` and silently keeps the old PNGs. The
- * same commands, with the same warning, are in `renders/rc-text-metrics/README.md`.
+ * Don't invoke those harnesses by hand — run `scripts/rc-text-metrics/render-strips.sh`, which is
+ * the one place the invocation lives. Three of its details are load-bearing and each of them fails
+ * *quietly*: the input path must be absolute (a relative one skips the harness inside a green
+ * build), `--rerun` is needed because the input is a system property rather than a declared task
+ * input, and `--tests` is needed because `rc.embedded.input` reaches every test in the module. The
+ * script also composes the committed strips, which the raw commands never did — a hand-run
+ * regeneration could leave the PNGs under `renders/rc-text-metrics` stale while appearing to
+ * succeed.
  *
  * `fixtures.json` alongside it carries the human half — each fixture's summary and the guide
  * vocabulary — so a reader of the output directory can tell what a rule of a given colour means

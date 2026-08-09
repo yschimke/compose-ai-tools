@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Compose the committed `renders/rc-text-metrics/*-three-lanes.png` strips.
+
+Each strip puts the same fixture side by side across `java`, `cmp-android` and `cmp-jvm`, in that
+order, with the lane name written above its render. The order is fixed and `java` is first because
+it is the reference lane the design doc reads everything against — a strip whose columns moved
+would silently invalidate every "the third column is wider" sentence written about it.
+
+Called by `render-strips.sh`, which is what supplies a directory of freshly rendered lanes. Running
+this alone against stale lane output will happily compose stale strips, which is the failure mode
+the shell wrapper exists to prevent.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFont
+
+LANES = ("java", "cmp-android", "cmp-jvm")
+
+MARGIN = 16
+GAP = 8
+LABEL_HEIGHT = 18
+BACKGROUND = (24, 26, 30)
+LABEL_COLOR = (208, 212, 220)
+
+# The strips worth committing, and the fixtures each one stacks. Everything else in the 24-fixture
+# set is rendered but not composed: these five are the ones the README and the PR body argue from,
+# and a strip nobody cites is a file that only ever goes stale.
+STRIPS: dict[str, list[str]] = {
+    "card-three-lanes": ["text-metrics-card"],
+    "weight-sweep-three-lanes": ["text-metrics-weight-sweep"],
+    "layout-single-ellipsis-three-lanes": ["text-metrics-layout-single-ellipsis"],
+    "layout-wrap-ellipsis-three-lanes": ["text-metrics-layout-wrap-ellipsis"],
+    "alignment-ltr-vs-rtl-three-lanes": [
+        "text-metrics-layout-align-start",
+        "text-metrics-layout-align-end",
+        "text-metrics-layout-align-start-rtl",
+        "text-metrics-layout-align-end-rtl",
+    ],
+}
+
+
+def load_font() -> ImageFont.ImageFont:
+    for candidate in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    ):
+        if Path(candidate).exists():
+            return ImageFont.truetype(candidate, 13)
+    return ImageFont.load_default()
+
+
+def compose(lanes_dir: Path, fixtures: list[str], font: ImageFont.ImageFont) -> Image.Image:
+    rows = []
+    for fixture in fixtures:
+        row = [Image.open(lanes_dir / lane / f"{fixture}.png").convert("RGB") for lane in LANES]
+        rows.append(row)
+
+    cell_w = max(image.width for row in rows for image in row)
+    row_heights = [max(image.height for image in row) for row in rows]
+
+    width = MARGIN * 2 + cell_w * len(LANES) + GAP * (len(LANES) - 1)
+    height = MARGIN * 2 + sum(h + LABEL_HEIGHT for h in row_heights) + GAP * (len(rows) - 1)
+
+    strip = Image.new("RGB", (width, height), BACKGROUND)
+    draw = ImageDraw.Draw(strip)
+
+    y = MARGIN
+    for row, row_height in zip(rows, row_heights):
+        for column, image in enumerate(row):
+            x = MARGIN + column * (cell_w + GAP)
+            draw.text((x, y + 2), LANES[column], fill=LABEL_COLOR, font=font)
+            strip.paste(image, (x, y + LABEL_HEIGHT))
+        y += LABEL_HEIGHT + row_height + GAP
+
+    return strip
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 3:
+        print(f"usage: {argv[0]} <lane-output-dir> <strip-output-dir>", file=sys.stderr)
+        return 2
+
+    lanes_dir, out_dir = Path(argv[1]), Path(argv[2])
+    out_dir.mkdir(parents=True, exist_ok=True)
+    font = load_font()
+
+    for name, fixtures in STRIPS.items():
+        strip = compose(lanes_dir, fixtures, font)
+        target = out_dir / f"{name}.png"
+        strip.save(target)
+        print(f"    {target.name}  {strip.width}x{strip.height}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

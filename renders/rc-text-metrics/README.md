@@ -71,25 +71,32 @@ the one-line advance is 1098px and runs off the frame.
 ## Regenerating
 
 ```bash
-./gradlew :rc-player-metrics:rcTextMetricFixtures
-./gradlew :third-party-rc-embedded-player:testDebugUnitTest --rerun \
-  --tests '*RcViewPlayerRenderHarness*' --tests '*RcEmbeddedRenderHarness*' \
-  -Prc.embedded.input=rc-player/metrics/build/fixtures \
-  -Prc.view.output=/tmp/rc-metrics/java \
-  -Prc.embedded.output=/tmp/rc-metrics/cmp-android
-./gradlew :third-party-rc-embedded-player-jvm:test --rerun \
-  --tests '*RcJvmRenderHarness*' \
-  -Prc.jvm.input=rc-player/metrics/build/fixtures \
-  -Prc.jvm.output=/tmp/rc-metrics/cmp-jvm
+scripts/rc-text-metrics/render-strips.sh
 ```
 
-Two details in those commands are load-bearing.
+That builds the fixtures, renders all three lanes, and rewrites the five `*-three-lanes.png` files
+in this directory — the images above, not just the per-fixture PNGs. It is one script rather than a
+block of commands to copy because the underlying invocation has **three** ways to look like it
+worked while producing nothing or something stale, and the strips are what the design doc argues
+from:
 
-`--rerun` (a *task* option, so it follows the task name) is needed because the fixture directory
-arrives as a system property, not as a declared task input — without it a second run is `UP-TO-DATE`
-and quietly leaves the previous run's PNGs in place.
+- `rc.embedded.input` must be an **absolute** path. The harness resolves it against the *test*
+  working directory, not the repo root, and an unresolvable path fails an `assumeTrue` — which
+  Gradle reports as a skipped test inside a green build. A relative path prints `BUILD SUCCESSFUL`
+  and writes no PNGs whatsoever.
+- `--rerun` (a *task* option, so it follows the task name) is needed because the fixture directory
+  arrives as a system property, not as a declared task input. Without it a second run is
+  `UP-TO-DATE` and quietly leaves the previous run's PNGs in place.
+- `--tests` is needed because `rc.embedded.input` reaches **every** test in the module, not just the
+  render harnesses. Unfiltered, `RcSemanticsExtractionTest` and `RcFigmaSvgExportTest` pick the
+  first staged document up as if it were a catalog capture and fail against it — after the PNGs have
+  already been written, so the regeneration looks broken when it isn't.
 
-`--tests` is needed because `rc.embedded.input` reaches **every** test in the module, not just the
-render harnesses. Unfiltered, `RcSemanticsExtractionTest` and `RcFigmaSvgExportTest` pick the first
-staged document up as if it were a catalog capture and fail against it — after the PNGs have already
-been written, so the regeneration looks broken when it isn't.
+The script fails loudly if a lane produced no renders, since a missing lane would otherwise compose
+into a narrower strip that still looks like a picture of three lanes.
+
+Pass a directory to keep the per-lane PNGs somewhere predictable
+(`scripts/rc-text-metrics/render-strips.sh /tmp/rc-metrics`); otherwise they go to a temporary
+directory whose path is printed at the end. Which fixtures become strips is
+[`compose_strips.py`](../../scripts/rc-text-metrics/compose_strips.py)'s `STRIPS` table — all 24
+fixtures render, and only the five cited here are composed.
