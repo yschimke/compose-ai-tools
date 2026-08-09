@@ -193,17 +193,27 @@ export class RealGradleApi implements GradleApi {
         if (!child || child.pid === undefined || child.exitCode !== null) {
             return;
         }
-        this.cancelledTaskNames.push(opts.taskName);
-        this.onLog(
-            `[realGradleApi] cancel ${opts.taskName} (key=${key}) — terminating gradlew pid ${child.pid}`,
-        );
         // SIGTERM first so the Gradle client disconnects gracefully and its
         // daemon cancels the build (releasing the build lock); escalate to
         // SIGKILL if the process is still alive after the grace period.
+        //
+        // `kill` returns false (or throws) when the signal couldn't be
+        // delivered because the process is already gone — which is a real
+        // race here, since the interesting case is a build finishing right
+        // as the task cap fires. Record and log only when the signal
+        // actually went out, so `cancelledTasks` can't attribute a
+        // truncation to a render that completed on its own.
+        let signalSent = false;
         try {
-            child.kill("SIGTERM");
+            signalSent = child.kill("SIGTERM");
         } catch {
-            /* already gone */
+            signalSent = false; /* already gone */
+        }
+        if (signalSent) {
+            this.cancelledTaskNames.push(opts.taskName);
+            this.onLog(
+                `[realGradleApi] cancel ${opts.taskName} (key=${key}) — terminating gradlew pid ${child.pid}`,
+            );
         }
         const killTimer = setTimeout(() => {
             if (child.exitCode === null && child.signalCode === null) {
