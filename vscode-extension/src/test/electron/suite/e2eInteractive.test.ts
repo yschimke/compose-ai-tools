@@ -174,6 +174,54 @@ interface SetPreviewsMessage {
  */
 const PANEL_UPDATE_BUDGET_MS = 3 * 60_000;
 
+/**
+ * Budget for the awaited `triggerRefresh` itself.
+ *
+ * {@link PANEL_UPDATE_BUDGET_MS} only bounds the *poll after* the refresh
+ * resolves — it does nothing for a refresh that never resolves, because the
+ * timer has not started yet. That is not hypothetical: the first recorded
+ * scenario-E failure (run 31306997859) went silent right after
+ * `composePreviewDiscover` and sat there for 26 minutes with no Gradle
+ * output, no task-cap cancellation, and nothing for the poll to observe.
+ *
+ * Sized above `gradleService`'s 10-minute per-task cap so a genuinely slow
+ * cold render is never cut short — this fires only when something is wedged
+ * past the point the cap itself should have handled.
+ */
+const REFRESH_BUDGET_MS = 12 * 60_000;
+
+/**
+ * Await a refresh under {@link REFRESH_BUDGET_MS}, reporting panel state if it
+ * never resolves. The pending refresh is abandoned rather than cancelled —
+ * the test is failing at that point, and Mocha tears the host down.
+ */
+async function refreshWithinBudget<T>(
+    label: string,
+    refresh: Promise<T>,
+    describeState: () => string,
+): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const budget = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+            () =>
+                reject(
+                    new Error(
+                        `${label}: refresh did not resolve within ${
+                            REFRESH_BUDGET_MS / 1000
+                        }s — it is wedged, not slow.\n  ${describeState()}`,
+                    ),
+                ),
+            REFRESH_BUDGET_MS,
+        );
+    });
+    timer?.unref?.();
+    try {
+        return await Promise.race([refresh, budget]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 async function waitFor<T>(
     description: string,
     timeoutMs: number,
@@ -208,20 +256,32 @@ async function waitFor<T>(
 }
 
 /**
- * Text of the panel's "this file has no previews" empty-state message, if the
- * refresh posted one. `refresh` reaches this branch when the active file
- * resolves to zero visible previews: it posts `clearAll` + this `showMessage`,
- * posts no `setPreviews`, and still returns `'completed'`.
+ * Text of a panel empty-state message, if the refresh posted one. `refresh`
+ * has two such branches, and BOTH are terminal for a test waiting on
+ * `setPreviews`: each posts `clearAll` + a `showMessage`, posts no
+ * `setPreviews`, and still returns `'completed'` — so `assertRefreshRendered`
+ * cannot see them either.
+ *
+ *   * "No @Preview functions in this file (N in other files in this module)."
+ *     — the module has previews, the active file does not.
+ *   * "No @Preview functions found in this module"
+ *     — the whole module came back empty.
+ *
+ * Matching only the first would leave the module-wide case waiting out the
+ * full budget for a `setPreviews` that is never coming.
  */
+const EMPTY_STATE_PREFIXES = [
+    "No @Preview functions in this file",
+    "No @Preview functions found in this module",
+];
+
 function emptyStateText(messages: unknown[]): string | undefined {
     for (let i = messages.length - 1; i >= 0; i--) {
         const m = messages[i] as PostedMessage;
-        if (
-            m.command === "showMessage" &&
-            typeof m.text === "string" &&
-            m.text.startsWith("No @Preview functions in this file")
-        ) {
-            return m.text;
+        if (m.command !== "showMessage" || typeof m.text !== "string") continue;
+        const text = m.text;
+        if (EMPTY_STATE_PREFIXES.some((prefix) => text.startsWith(prefix))) {
+            return text;
         }
     }
     return undefined;
@@ -848,7 +908,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         // --- Baseline: the pre-rename manifest must contain RedBoxPreview ---
         assertRefreshRendered(
             api,
-            await api.triggerRefresh(cmpFile, true, "full"),
+            await refreshWithinBudget(
+                ":samples:cmp render",
+                api.triggerRefresh(cmpFile, true, "full"),
+                describeCmpPanelState,
+            ),
             ":samples:cmp render",
         );
         const baseline = await waitFor(
@@ -898,7 +962,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
             api.resetMessages();
             assertRefreshRendered(
                 api,
-                await api.triggerRefresh(cmpFile, true, "full"),
+                await refreshWithinBudget(
+                    ":samples:cmp render",
+                    api.triggerRefresh(cmpFile, true, "full"),
+                    describeCmpPanelState,
+                ),
                 ":samples:cmp render",
             );
             const afterRename = await waitFor(
@@ -1007,7 +1075,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
             api.resetMessages();
             assertRefreshRendered(
                 api,
-                await api.triggerRefresh(cmpFile, true, "full"),
+                await refreshWithinBudget(
+                    ":samples:cmp render",
+                    api.triggerRefresh(cmpFile, true, "full"),
+                    describeCmpPanelState,
+                ),
                 ":samples:cmp render",
             );
             const reRefreshed = await waitFor(
@@ -1041,7 +1113,11 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         api.resetMessages();
         assertRefreshRendered(
             api,
-            await api.triggerRefresh(cmpFile, true, "full"),
+            await refreshWithinBudget(
+                ":samples:cmp render",
+                api.triggerRefresh(cmpFile, true, "full"),
+                describeCmpPanelState,
+            ),
             ":samples:cmp render",
         );
         const afterRevert = await waitFor(
