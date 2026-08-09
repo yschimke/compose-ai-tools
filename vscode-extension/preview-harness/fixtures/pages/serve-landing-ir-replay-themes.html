@@ -1,0 +1,272 @@
+    <!doctype html>
+    <html lang="en" data-cp-theme-key="cp-theme:remote-m3">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>remote-m3 — compose-preview</title>
+        <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||p.get("uiMode")||localStorage.getItem("cp-theme:remote-m3"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+      </head>
+      <body>
+        <header class="cp-site-header">
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span>compose-preview</span>
+    </a>
+    <a class="cp-back" href="/">← All design systems</a>
+  </div>
+  <div class="cp-site-status">
+    <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
+  </div>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <a href="/">Catalogs</a>
+    <a href="/status">Status</a>
+    <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+    <details class="cp-settings">
+      <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+        <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+      </summary>
+      <div class="cp-settings-panel">
+        <fieldset class="cp-settings-group">
+          <legend class="cp-settings-legend">Page theme</legend>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+            <span>Match the preview theme</span>
+          </label>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+            <span>Follow my system</span>
+          </label>
+          <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+            match. Turn it off to keep the page on your operating system's setting.</p>
+        </fieldset>
+      </div>
+    </details>
+  </nav>
+</header>
+        <main class="cp-main">
+                <h1 class="cp-head cp-catalog-head">remote-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/remote-m3">✓ trusted</span></h1>
+        <p class="cp-sub">5 preview(s) ·
+          <a href="/bundle.zip?session=remote-m3">download all (.zip)</a></p>
+        <div class="cp-catalog-tools">
+        <div class="cp-toolbar">
+  <span class="cp-theme" role="group" aria-label="Preview theme">
+    <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
+  </span>
+</div>
+<div class="cp-searchbar">
+  <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
+    autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
+  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="5"></span>
+  <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind each preview">Transparent</button>
+</div>
+</div>
+        <div class="cp-grid" id="cp-grid">
+        <a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
+  data-l-src="/render/button-filled__ideal__default__light.png?session=remote-m3" data-l-href="/p/button-filled__ideal__default__light?session=remote-m3"
+  data-l-id="button-filled__ideal__default__light" data-l-label="Button · Filled (light)"
+  data-d-src="/render/button-filled__ideal__default__dark.png?session=remote-m3" data-d-href="/p/button-filled__ideal__default__dark?session=remote-m3"
+  data-d-id="button-filled__ideal__default__dark" data-d-label="Button · Filled (dark)"
+  href="/p/button-filled__ideal__default__light?session=remote-m3">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Button · Filled (light)" src="/render/button-filled__ideal__default__light.png?session=remote-m3">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="button-filled__ideal__default__light">Button · Filled (light)</div>
+    <div class="cp-id">button-filled__ideal__default__light</div>
+    
+  </div>
+</a>
+<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
+  data-l-src="/render/switch-on__ideal__default__light.png?session=remote-m3" data-l-href="/p/switch-on__ideal__default__light?session=remote-m3"
+  data-l-id="switch-on__ideal__default__light" data-l-label="Switch · On (light)"
+  data-d-src="/render/switch-on__ideal__default__dark.png?session=remote-m3" data-d-href="/p/switch-on__ideal__default__dark?session=remote-m3"
+  data-d-id="switch-on__ideal__default__dark" data-d-label="Switch · On (dark)"
+  href="/p/switch-on__ideal__default__light?session=remote-m3">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Switch · On (light)" src="/render/switch-on__ideal__default__light.png?session=remote-m3">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="switch-on__ideal__default__light">Switch · On (light)</div>
+    <div class="cp-id">switch-on__ideal__default__light</div>
+    
+  </div>
+</a>
+<a class="cp-card" href="/p/badge?session=remote-m3">
+  <div class="cp-imgwrap">
+    <img loading="lazy" alt="Badge" src="/render/badge.png?session=remote-m3">
+  </div>
+  <div class="cp-meta">
+    <div class="cp-label" title="badge">Badge</div>
+    <div class="cp-id">badge</div>
+    
+  </div>
+</a>
+        </div>
+<p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
+<script src="/assets/serve/fixture/url-state.js"></script>
+<script src="/assets/serve/fixture/bg-toggle.js"></script>
+<script>    (function () {
+      var cards = document.querySelectorAll(".cp-card");
+      var input = document.getElementById("cp-search");
+      var count = document.getElementById("cp-count");
+      var empty = document.getElementById("cp-empty");
+      var total = cards.length;
+      // Address-bar state (url-state.js). Every selection below is reflected into the URL so the
+      // page someone is looking at is the page its URL describes — bookmarkable, shareable, and
+      // reachable with Back — without ever reloading: the grid re-points its own images.
+      var urlState = window.cpUrlState || null;
+      function urlParam(n) { return urlState ? urlState.get(n) : ""; }
+      function pushUrl(v) { if (urlState) urlState.push(v); }
+      function replaceUrl(v) { if (urlState) urlState.replace(v); }
+      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
+      var stored = null;
+try { stored = localStorage.getItem("cp-theme:remote-m3"); } catch (e) {}
+var themeBtns = document.querySelectorAll(".cp-theme-btn");
+function chipOffered(t) {
+  var offered = false;
+  themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === t) offered = true; });
+  return offered;
+}
+// The GRID always opens on published pixels. A stored app-declared theme
+// (`theme:<providerFqn>`) is deliberately NOT replayed here: restoring it would re-point
+// every card at a `?themeProvider=` render and put the whole grid through the daemon on
+// what is meant to be a default page view — the single most expensive thing an idle box
+// can be made to do, and it happened on every return visit. Only the baked chips, whose
+// pixels are already published, are restored. Stickiness for app-declared themes belongs
+// to the individual preview, which reads this same key for its own Theme select.
+function validTheme(t) {
+  if (!t) return false;
+  return t === "light" || t === "dark" || t === "default";
+}
+var theme = validTheme(stored) ? stored
+  : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+// A chip is only offered when the page rendered it, so a remembered choice this catalog no
+// longer configures (a theme the app dropped) falls back to the first chip.
+var known = false;
+themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === theme) known = true; });
+if (!known && themeBtns.length) theme = themeBtns[0].getAttribute("data-theme-choice");
+// The URL wins over both. `?theme=` is on the address bar only because someone picked that
+// chip (or was handed the link), which makes it the one case where replaying an app-declared
+// theme IS what was asked for — the cost the stored-value rule above avoids is the cost of
+// an *unrequested* grid re-render, not of honouring an explicit link. An unknown value (a
+// theme this catalog no longer publishes) is ignored, exactly like a stale stored one.
+var urlTheme = urlParam("theme");
+if (urlTheme && chipOffered(urlTheme)) theme = urlTheme;
+// What the page falls back to when Back lands on an entry with no `?theme=` — the choice
+// this load resolved to, never the localStorage value a later click overwrote.
+var initialTheme = theme;
+var appliedTheme = null;
+      function apply() {
+        themeBtns.forEach(function (b) {
+  b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
+});
+// Point a swap card at one of its baked variants ("l"/"d"): pixels (unless the caller is
+// supplying themed ones), alt text, label, id, viewer link and stage backing.
+// Point a card's <img> at a plain URL, releasing whatever blob it was holding first.
+// A themed render is handed over as an object URL (see runThemeWorker); leaving a declared
+// theme for Light / Dark / Default replaces that source, and without this the blob behind
+// it would stay resident until the page unloaded — one full-resolution PNG per card, on
+// catalogs that routinely run to 80+ cards.
+function setCardSrc(img, url) {
+  var previous = img.getAttribute("data-cp-blob");
+  img.src = url;
+  if (previous) {
+    img.removeAttribute("data-cp-blob");
+    URL.revokeObjectURL(previous);
+  }
+}
+function applyVariant(c, k, withSrc) {
+  var src = c.getAttribute("data-" + k + "-src");
+  if (!src) return;
+  var img = c.querySelector("img");
+  var lab = c.querySelector(".cp-label");
+  var idn = c.querySelector(".cp-id");
+  var lbl = c.getAttribute("data-" + k + "-label");
+  if (img) { if (withSrc) setCardSrc(img, src); img.setAttribute("alt", lbl); }
+  c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
+  if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
+  if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
+  c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
+}
+// apply() also runs on every search keystroke; re-point the cards only when the THEME
+// actually changed, so typing never restarts an in-flight themed-render queue.
+function applyThemeChoice() {
+  if (theme === appliedTheme) return;
+  appliedTheme = theme;
+  // Turn the page over with the previews: with the Page theme setting on, the chrome
+  // follows an explicit Light/Dark pick (page-theme.js decides; a declared theme leaves it
+  // alone). Guarded because that file is deferred to the end of the body.
+  if (window.cpPageTheme) window.cpPageTheme.follow(theme);
+
+  var k = theme === "dark" ? "d" : "l";
+  cards.forEach(function (c, i) {
+    if (c.getAttribute("data-swap") === "1") { applyVariant(c, k, true); return; }
+  });
+}
+applyThemeChoice();
+        var q = input ? input.value.trim().toLowerCase() : "";
+        var shown = 0;
+        cards.forEach(function (c) {
+          var lab = c.querySelector(".cp-label");
+          var idn = c.querySelector(".cp-id");
+          var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
+          var searchOk = q === "" || hay.indexOf(q) !== -1;
+          c.hidden = !searchOk;
+          if (searchOk) shown++;
+        });
+        if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
+        if (empty) empty.hidden = shown !== 0;
+      }
+      if (input) input.addEventListener("input", function () {
+        // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
+        // visitor arrived from under five entries. The URL still carries the query, so the
+        // filtered grid is bookmarkable.
+        replaceUrl({ q: input.value.trim() });
+        apply();
+      });
+      themeBtns.forEach(function (b) {
+        b.addEventListener("click", function () {
+          theme = b.getAttribute("data-theme-choice");
+          try { localStorage.setItem("cp-theme:remote-m3", theme); } catch (e) {}
+          // A discrete pick gets its own history entry, so Back returns to the previous theme
+          // rather than leaving the catalog. No navigation: the grid re-points its own images.
+          pushUrl({ theme: theme });
+          apply();
+        });
+      });
+      if (urlState) {
+        urlState.onPop(function () {
+          var poppedTheme = urlParam("theme") || initialTheme;
+          if (chipOffered(poppedTheme)) theme = poppedTheme;
+          if (input) input.value = urlParam("q");
+          apply();
+        });
+      }
+      apply();
+    })();</script>
+<details class="cp-about cp-disclosure">
+  <summary>
+    <span class="cp-about-title">About this preview server</span>
+    <span class="cp-disclosure-hint">How previews run and catalogs are trusted</span>
+  </summary>
+  <div class="cp-disclosure-body">
+    <p class="cp-about-body">Compose Multiplatform components can run <strong>in your browser</strong>
+      using sandboxed Kotlin/Wasm; other previews are published as pre-rendered snapshots. The
+      server never re-runs untrusted code. Catalogs are trusted by signature or their published
+      <code>design-artifacts</code> branch, and anything unverified is badged.</p>
+  </div>
+</details>
+        </main>
+        <footer class="cp-site-footer">
+          <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
+          <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
+        </footer>
+        <script src="/assets/serve/fixture/page-theme.js"></script>
+      </body>
+    </html>

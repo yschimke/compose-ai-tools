@@ -3960,8 +3960,8 @@ object ServeWeb {
      * The app's declared `@ThemeCatalog` / `@WearThemeCatalog` themes ([ServeHost.declaredThemes]).
      * They join the baked light/dark pair on the header's single Theme control (issue #2881), so
      * the grid can be redrawn under any theme the catalog configures — not just Light/Dark. Offered
-     * only for cards the session can actually re-render ([canRenderThemeFor]); empty (default)
-     * keeps the plain light/dark axis.
+     * only for cards the session can actually re-render ([canRenderThemeFor]) **by re-running their
+     * composable** ([irReplayFor]); empty (default) keeps the plain light/dark axis.
      */
     declaredThemes: List<ServeTheme> = emptyList(),
     /**
@@ -3971,6 +3971,21 @@ object ServeWeb {
      * card can. Defaults to `{ false }`: a plain static bundle offers baked light/dark only.
      */
     canRenderThemeFor: (String) -> Boolean = { false },
+    /**
+     * Whether a server render of a given preview **replays a captured document** rather than
+     * re-running the composable — the grid's counterpart of the viewer's `irReplay` flag, read from
+     * the same host question (`ServeHttpServer.droppedOverridesAreTerminal`) that decides whether a
+     * `themeProvider` render is refused.
+     *
+     * A declared theme installs a `PreviewWrapperProvider` **around a composition**, so a replayed
+     * preview can never honour one: the server answers its render with a terminal 409
+     * ([CatalogLiveRouting.irReplayDroppedOverrideNames]). Such a card is therefore not
+     * theme-overridable however live its daemon twin is — without this the grid offered chips that
+     * turned every card into "This preview can't render live" (a whole IR-backed catalog, e.g.
+     * `remote-m3`, failing at once). The viewer already greys the same choice; this is the landing
+     * page catching up. Defaults to `{ false }`: an ordinary class-backed session recomposes.
+     */
+    irReplayFor: (String) -> Boolean = { false },
     /**
      * Maximum themed-thumbnail burst supported by this host. Values above one enable the
      * server-issued page lease endpoint; actual concurrency is granted dynamically and clamped by
@@ -4054,13 +4069,17 @@ object ServeWeb {
     // The app-declared themes join the header's Theme control only when this session can actually
     // re-render a card under one — otherwise the chips would redraw nothing.
     fun themeRenderable(p: ServePreview) = canRenderThemeFor(p.id)
-    // Whether a declared theme actually redraws this preview: it needs a daemon twin AND must not
-    // be a theme specimen, which has a twin but must keep its baked pixels ([isThemeSpecimen]).
+    // Whether a declared theme actually redraws this preview: it needs a daemon twin, must not be a
+    // theme specimen (which has a twin but must keep its baked pixels — [isThemeSpecimen]), and
+    // must be re-rendered by RE-RUNNING its composable rather than by replaying a captured document
+    // ([irReplayFor]) — a theme provider wraps a composition, so a replay has nothing to wrap and
+    // the server refuses that render 409.
     // ONE predicate feeding both the chip gate and the per-card URL, deliberately: gating the chips
     // on mere renderability while the URLs also excluded specimens would offer the control on a
     // catalog whose only twinned cards are specimens — every `themeBase` empty, the browser's
     // `if (!img || !base) return` skipping every card, and the chips a no-op.
-    fun themeOverridable(p: ServePreview) = themeRenderable(p) && !isThemeSpecimen(p)
+    fun themeOverridable(p: ServePreview) =
+      themeRenderable(p) && !isThemeSpecimen(p) && !irReplayFor(p.id)
     // The variant a card shows by default (server-side) — the one a declared theme re-renders.
     fun renderedVariant(card: GridCard) =
       if (card.swappable && darkFirst) card.dark!! else card.default

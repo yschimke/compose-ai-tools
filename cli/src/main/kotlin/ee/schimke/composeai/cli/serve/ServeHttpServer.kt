@@ -1560,6 +1560,12 @@ class ServeHttpServer(
           // a daemon-twinned card can actually re-render one, hence the per-preview predicate.
           declaredThemes = renderHost.declaredThemes,
           canRenderThemeFor = { id -> renderHost.canRenderOverridesFor(id) },
+          // …and a twin that REPLAYS a captured document rather than recomposing can't honour a
+          // theme provider either, however live it is: the render below refuses it with a terminal
+          // 409. Same predicate that refusal is derived from, deliberately read here rather than
+          // re-derived — the viewer greys the identical choice off `irReplay`, and a grid that
+          // disagreed with either would offer chips that turn every card into an error.
+          irReplayFor = { id -> droppedOverridesAreTerminal(renderHost, id) },
           // Long-press a card to open a live daemon session inside it. Same two conditions the
           // viewer's Live toggle answers to — the session offers the stream lane, and this preview
           // has a daemon twin to stream — so a card only takes the gesture when the socket behind

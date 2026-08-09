@@ -149,6 +149,12 @@ const STYLED_FIXTURES = new Set([
     // real stylesheet routed in, `/assets/serve/.../serve.css` 404s and the daemon captures shoot
     // an unstyled span, so a change to that styling would move no baseline at all.
     "serve-landing-declared-themes",
+    // Its IR-replay twin, whose whole claim is a control that ISN'T there: a catalog replayed from
+    // captured documents keeps the baked Light/Dark pair and drops the declared-theme chips, since
+    // a theme provider needs a composition to wrap and the server refuses that render 409. An
+    // absent chip is a purely visual claim — captured bare, the toolbar it belongs to isn't even
+    // laid out, so a regression that put the chips back would move no baseline at all.
+    "serve-landing-ir-replay-themes",
     // The front door is a *layout*: publisher sections, the card grid's density, and the card
     // chrome (hero region, meta rhythm, hover affordance) are the whole page. Captured bare it
     // shot an unstyled column of links, so a change to any of that moved no baseline at all —
