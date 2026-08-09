@@ -55,6 +55,14 @@
         { "file": "google-sans-flex-400.ttf", "weight": 400 },
         { "file": "google-sans-flex-700.ttf", "weight": 700 }
       ]
+    },
+    {
+      "name": "Inter",
+      "role": "named",
+      "fonts": [
+        { "file": "inter-400.ttf", "weight": 400 },
+        { "file": "inter-700.ttf", "weight": 700 }
+      ]
     }
   ]
 }

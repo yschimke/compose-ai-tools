@@ -65,7 +65,7 @@ fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
     } else {
       RemoteMaterialTheme(
         colorScheme = remoteCatalogColorScheme(themeName, RemoteMaterialTheme.colorScheme),
-        typography = remoteCatalogTypography(remoteCatalogFont(themeName)),
+        typography = remoteCatalogTypeScale(themeName),
       ) {
         RemoteBox(
           modifier = RemoteModifier.fillMaxSize(),

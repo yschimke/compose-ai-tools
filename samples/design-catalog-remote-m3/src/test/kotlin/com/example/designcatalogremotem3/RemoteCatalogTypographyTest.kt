@@ -52,15 +52,46 @@ class RemoteCatalogTypographyTest {
   }
 
   /**
-   * Only the typeface theme moves the face. A palette that also changed the type would make a
+   * Coral and Teal must not move the face: a palette that also changed the type would make a
    * side-by-side against [RemoteM3ThemeCatalog] a type *and* colour comparison, which is exactly
-   * what the Google Sans Flex / M3 pair exists to avoid.
+   * what the Google Sans Flex / M3 pair exists to avoid. KotlinConf is the deliberate exception —
+   * its identity is a palette *and* a type pairing, matching the Wear sibling.
    */
   @Test
-  fun `only the typeface theme moves the default family`() {
+  fun `only the type-moving themes move the body face`() {
     assertThat(remoteCatalogFont("Google Sans Flex")).isEqualTo("Google Sans Flex")
-    for (palette in listOf("M3", "Coral", "Teal", "KotlinConf")) {
+    assertThat(remoteCatalogFont("KotlinConf")).isEqualTo("Inter")
+    for (palette in listOf("M3", "Coral", "Teal")) {
       assertThat(remoteCatalogFont(palette)).isEqualTo("Roboto Flex")
     }
+  }
+
+  /**
+   * KotlinConf's pairing: body roles on Inter, display / title / numeral on JetBrains Mono. Asserted
+   * per role rather than on the family alone, because the bug this guards is a `defaultFontFamily`
+   * one-liner flattening the whole scale onto one face.
+   */
+  @Test
+  fun `the KotlinConf scale pairs its body and display faces`() {
+    val scale = remoteCatalogTypeScale("KotlinConf")
+    val body = RemoteFontFamily.Named("google:Inter")
+    val display = RemoteFontFamily.Named("google:JetBrains Mono")
+
+    assertThat(scale.bodyLarge.fontFamily).isEqualTo(body)
+    assertThat(scale.labelSmall.fontFamily).isEqualTo(body)
+    assertThat(scale.titleLarge.fontFamily).isEqualTo(display)
+    assertThat(scale.displaySmall.fontFamily).isEqualTo(display)
+    assertThat(scale.numeralLarge.fontFamily).isEqualTo(display)
+  }
+
+  /** Every other theme installs one family across the whole scale. */
+  @Test
+  fun `an unpaired theme keeps a single family`() {
+    val scale = remoteCatalogTypeScale("Google Sans Flex")
+    val face = RemoteFontFamily.Named("google:Google Sans Flex")
+
+    assertThat(scale.bodyLarge.fontFamily).isEqualTo(face)
+    assertThat(scale.titleLarge.fontFamily).isEqualTo(face)
+    assertThat(scale.numeralLarge.fontFamily).isEqualTo(face)
   }
 }

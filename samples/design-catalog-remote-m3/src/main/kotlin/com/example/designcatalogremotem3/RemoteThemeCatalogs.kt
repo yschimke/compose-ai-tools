@@ -21,11 +21,12 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  *
  * ## What each one moves
  *
- * Four are **palettes**, ported role-for-role from the sibling's `wearColorScheme`: the JetBrains
- * seed purple of [RemoteKotlinConfThemeCatalog], and the single-role [RemoteCoralThemeCatalog] /
- * [RemoteTealThemeCatalog] edits. One is a **typeface**, [RemoteGoogleSansFlexThemeCatalog], which
- * keeps the M3 palette exactly so a side-by-side against [RemoteM3ThemeCatalog] reads as a pure
- * type comparison rather than a type *and* colour change — the same contract the sibling documents.
+ * Three are **palettes**, ported role-for-role from the sibling's `wearColorScheme`: the single-role
+ * [RemoteCoralThemeCatalog] / [RemoteTealThemeCatalog] edits, and the JetBrains seed purple ramp of
+ * [RemoteKotlinConfThemeCatalog] — which also carries a type pairing, so it moves both axes exactly
+ * as the sibling's does. [RemoteGoogleSansFlexThemeCatalog] is the pure **typeface** theme: it keeps
+ * the M3 palette exactly, so a side-by-side against [RemoteM3ThemeCatalog] reads as a type
+ * comparison and nothing else — the same contract the sibling documents.
  *
  * [RemoteM3ThemeCatalog] is the stock scheme unchanged. Selecting it is a no-op by construction,
  * which is the point: it is the baseline the other four are read against.
@@ -43,16 +44,18 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  * That is the whole reason these are worth having here rather than only on the Wear sibling: they
  * give the Remote lane's theming a payload that a published, IR-backed catalog can actually apply.
  *
- * ## Typeface scope, and the vendoring constraint behind it
+ * ## Typeface scope, and the vendoring it requires
  *
- * The palettes keep the catalog's default face. Only [RemoteGoogleSansFlexThemeCatalog] moves the
- * typeface, and the sibling's KotlinConf type pairing (JetBrains Mono on titles, Inter on body) is
- * deliberately **not** ported with its palette. A family this catalog names has to be vendored into
- * `:samples:cmp-wasm-catalog`'s `fonts.json` — that lane is manifest-only and never fetches, so an
- * unlisted family fails `RcComposeSupport.fontFamilyIssue`'s availability check rather than
- * degrading to a substitute — and each addition carries its own redistribution clearance in
- * `fonts/README.md`. Porting two more faces is a separate change with a separate licence question;
- * the palette lands here without waiting on it.
+ * [RemoteCoralThemeCatalog] and [RemoteTealThemeCatalog] keep the catalog's default face, so a
+ * palette comparison isn't also a type comparison. Two themes move type:
+ * [RemoteGoogleSansFlexThemeCatalog], and [RemoteKotlinConfThemeCatalog], which ports the sibling's
+ * **pairing** — Inter on body, JetBrains Mono on the display / title / numeral roles.
+ *
+ * A family named here has to be vendored into `:samples:cmp-wasm-catalog`'s `fonts.json`: that lane
+ * is manifest-only and never fetches, so an unlisted family fails
+ * `RcComposeSupport.fontFamilyIssue`'s availability check rather than degrading to a substitute
+ * face. JetBrains Mono was already there; Inter was added alongside this theme (SIL OFL-1.1, from
+ * the google/fonts corpus — see that directory's `README.md`).
  *
  * A theme moves the **built-in default family** only: every sticker drawing through
  * `RemoteMaterialTheme.typography`, and nothing else. The named-family stickers keep the exact faces
@@ -91,12 +94,17 @@ val REMOTE_THEME_NAMES: List<String> =
 internal val LocalRemoteCatalogTheme = compositionLocalOf<String?> { null }
 
 /**
- * The Google Fonts family a theme draws its theme-styled text in. Only the typeface theme moves it;
- * every palette keeps the catalog's own default face (`role: "default"` in the fonts manifest), so a
- * palette comparison isn't also a type comparison.
+ * The Google Fonts family a theme draws its **body** text in. Coral and Teal keep the catalog's own
+ * default face (`role: "default"` in the fonts manifest), so a palette comparison isn't also a type
+ * comparison; the two type-moving themes name their own.
  */
 fun remoteCatalogFont(name: String): String =
-  if (name == "Google Sans Flex") "Google Sans Flex" else "Roboto Flex"
+  when (name) {
+    "Google Sans Flex" -> "Google Sans Flex"
+    // KotlinConf's body face; its display / title / numeral roles pair against JetBrains Mono.
+    "KotlinConf" -> "Inter"
+    else -> "Roboto Flex"
+  }
 
 /**
  * [base] with the theme's roles replaced — the Remote counterpart of the Wear sibling's
@@ -149,6 +157,38 @@ fun remoteCatalogColorScheme(name: String, base: RemoteColorScheme): RemoteColor
 fun remoteCatalogTypography(family: String): RemoteTypography =
   RemoteTypography(defaultFontFamily = RemoteFontFamily.Named("google:$family"))
 
+/**
+ * The type scale a theme installs — a **pairing** where it declares one, else the single-family
+ * scale from [remoteCatalogTypography].
+ *
+ * KotlinConf pairs its body face with JetBrains Mono on the display / title / numeral roles, the
+ * same split the Wear sibling's `wearTypography(body =, display =)` makes. Every paired role is
+ * re-pointed **explicitly** via `copy`, rather than leaning on `defaultFontFamily` — that parameter
+ * fills the whole scale with one family, which is exactly what a pairing must not do.
+ */
+fun remoteCatalogTypeScale(name: String): RemoteTypography {
+  val body = remoteCatalogTypography(remoteCatalogFont(name))
+  val display = remoteCatalogDisplayFont(name) ?: return body
+  val face = RemoteFontFamily.Named("google:$display")
+  return body.copy(
+    displayLarge = body.displayLarge.copy(fontFamily = face),
+    displayMedium = body.displayMedium.copy(fontFamily = face),
+    displaySmall = body.displaySmall.copy(fontFamily = face),
+    titleLarge = body.titleLarge.copy(fontFamily = face),
+    titleMedium = body.titleMedium.copy(fontFamily = face),
+    titleSmall = body.titleSmall.copy(fontFamily = face),
+    numeralExtraLarge = body.numeralExtraLarge.copy(fontFamily = face),
+    numeralLarge = body.numeralLarge.copy(fontFamily = face),
+    numeralMedium = body.numeralMedium.copy(fontFamily = face),
+    numeralSmall = body.numeralSmall.copy(fontFamily = face),
+    numeralExtraSmall = body.numeralExtraSmall.copy(fontFamily = face),
+  )
+}
+
+/** The display/title/numeral face a theme pairs against its body face, or null when it uses one. */
+private fun remoteCatalogDisplayFont(name: String): String? =
+  if (name == "KotlinConf") "JetBrains Mono" else null
+
 /** Publishes [name] to [RemoteSticker], which installs it once inside the remote document. */
 @Composable
 private fun RemoteThemeOverride(name: String, content: @Composable () -> Unit) {
@@ -190,8 +230,8 @@ class RemoteGoogleSansFlexThemeCatalog : PreviewWrapperProvider {
 }
 
 /**
- * Confetti Wear's dark KotlinConf identity — its JetBrains purple seed palette. The sibling's
- * typeface pairing is not ported; see the vendoring note in this file's header.
+ * Confetti Wear's dark KotlinConf identity: its JetBrains purple seed palette **and** its typeface
+ * pairing — JetBrains Mono on the display / title / numeral roles, Inter on the body.
  */
 @WearThemeCatalog(name = "KotlinConf", group = "Confetti Wear")
 class RemoteKotlinConfThemeCatalog : PreviewWrapperProvider {

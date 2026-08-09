@@ -121,7 +121,7 @@ private fun CenteredWidgetContent(content: @Composable @RemoteComposable () -> U
   } else {
     RemoteMaterialTheme(
       colorScheme = remoteCatalogColorScheme(themeName, RemoteMaterialTheme.colorScheme),
-      typography = remoteCatalogTypography(remoteCatalogFont(themeName)),
+      typography = remoteCatalogTypeScale(themeName),
     ) {
       RemoteBox(
         modifier = RemoteModifier.fillMaxSize(),
