@@ -137,9 +137,11 @@ Result:
   // let a UI label the device ("Pixel 5 — 393×851 dp @ 2.75x") without re-resolving. isRound marks
   // circular Wear-style displays.
   // Empty list = pre-feature daemon; treat absent and `[]` identically.
-  // The `spec:width=…,height=…,dpi=…,isRound=…` grammar is not enumerable — clients pass it as a
-  // free-form `device` override and the daemon parses it at resolve-time. `cutout=…` is tolerated
-  // but ignored until a renderer consumes it.
+  // The `spec:parent=…,width=…,height=…,dpi=…,isRound=…,orientation=…` grammar is not enumerable —
+  // clients pass it as a free-form `device` override and the daemon parses it at resolve-time.
+  // `parent=` names one of these ids and supplies every term the string doesn't restate;
+  // `orientation=` rotates the resolved frame by the same idempotent rule as the `orientation`
+  // override below. `cutout=…` is tolerated but ignored until a renderer consumes it.
   //
   // supportedOverrides — the `PreviewOverrides` field names this daemon's host actually applies
   // (subset of {"widthPx","heightPx","density","localeTag","fontScale","uiMode","orientation",
@@ -332,9 +334,12 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
                                      // the point of asking. Only an explicit widthPx/heightPx on
                                      // the same call outranks it. Android additionally derives the
                                      // `port`/`land` resource qualifier from the rotated frame.
-  device?: string;                   // "id:pixel_5", "id:wearos_small_round", "spec:width=400dp,height=800dp,dpi=320".
+  device?: string;                   // "id:pixel_5", "id:wearos_small_round", "spec:width=400dp,height=800dp,dpi=320",
+                                     // "spec:parent=pixel_tablet,orientation=portrait".
                                      // Resolved by the daemon's catalog into widthPx/heightPx/density;
-                                     // explicit widthPx/heightPx/density above take precedence.
+                                     // explicit widthPx/heightPx/density above take precedence. A
+                                     // `spec:` string's own `orientation=` term rotates the frame it
+                                     // resolves to, the same way the override below does.
   captureAdvanceMs?: number;         // Paused-clock advance (ms) before capture. Android-only;
                                      // default ≈ 32ms. Bump for animation-heavy previews.
   inspectionMode?: boolean;          // Override LocalInspectionMode for this one-shot render.

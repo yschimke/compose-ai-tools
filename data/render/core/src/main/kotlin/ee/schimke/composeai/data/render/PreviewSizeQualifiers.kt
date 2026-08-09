@@ -50,7 +50,10 @@ fun previewSizeQualifiers(widthDp: Int, heightDp: Int): List<String> = buildList
  * which is what Android's own `Configuration` does at equal width and height.
  *
  * Shared with [previewSizeQualifiers] by every qualifier builder so a one-shot render and a
- * held-session render of the same preview cannot disagree about its orientation.
+ * held-session render of the same preview cannot disagree about its orientation. The plugin's
+ * `RobolectricRenderTest` passes `requested = null`: on that lane a `device =
+ * "spec:…,orientation=portrait"` has already been rotated into the dimensions by
+ * `DeviceDimensions.resolve`, so there is no separate request left to consult.
  */
 fun previewOrientationQualifier(widthDp: Int, heightDp: Int, requested: String?): String? {
   if (widthDp <= 0 || heightDp <= 0) return null

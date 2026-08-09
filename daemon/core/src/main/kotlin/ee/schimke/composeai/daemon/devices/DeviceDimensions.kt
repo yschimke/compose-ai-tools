@@ -13,9 +13,10 @@ package ee.schimke.composeai.daemon.devices
  * cycle on every catalog change.
  *
  * **Drift policy.** The KNOWN_DEVICES map is the load-bearing data. When you add a device here, add
- * it to the gradle-plugin copy too (and vice versa). The `spec:width=…,height=…,dpi=…` parser is
- * also duplicated; the rules are intentionally identical so a single payload string drives both
- * code paths.
+ * it to the gradle-plugin copy too (and vice versa). The `spec:parent=…,width=…,height=…,dpi=…`
+ * parser is also duplicated; the rules are intentionally identical so a single payload string
+ * drives both code paths, and `DeviceDimensionsCatalogDriftTest` compares both the catalog and the
+ * set of `spec:` terms each copy reads so a term learned on one side can't go missing on the other.
  *
  * **Daemon-only constants.** Unlike the gradle-plugin counterpart, this object only ships the
  * `resolve(device, widthDp?, heightDp?)` entrypoint — `resolveForRender` (which makes the
@@ -145,9 +146,11 @@ object DeviceDimensions {
    * - Explicit `widthDp`+`heightDp` short-circuit to a [DeviceSpec] at [DEFAULT_DENSITY] (no device
    *   info, so we fall back to the Studio default).
    * - `id:pixel_5`-style ids hit [KNOWN_DEVICES]; unknown ids fall through to the default.
-   * - `spec:width=…,height=…,dpi=…,isRound=…` is parsed inline; the `dp` suffix on values is
-   *   tolerated. `cutout=…` is accepted by Studio's grammar but ignored here until a renderer
-   *   consumes it.
+   * - `spec:parent=…,width=…,height=…,dpi=…,isRound=…,orientation=…` is parsed inline; the `dp`
+   *   suffix on values is tolerated. `parent=` names a catalog device that supplies every term the
+   *   string doesn't restate, and `orientation=` rotates the resolved frame through
+   *   [FrameOrientation.orientedPx] — the same idempotent swap the override lane applies.
+   *   `cutout=…` is accepted by Studio's grammar but ignored until a renderer consumes it.
    * - Any device string containing `wear` (case-insensitive) returns [DEFAULT_WEAR].
    * - Otherwise [DEFAULT] (400×800 dp at xxhdpi).
    */
@@ -172,15 +175,31 @@ object DeviceDimensions {
               else null
             }
             .toMap()
-        val parsedWidth = params["width"]?.toIntOrNull() ?: DEFAULT.widthDp
-        val parsedHeight = params["height"]?.toIntOrNull() ?: DEFAULT.heightDp
-        val landscape = params["orientation"]?.equals("landscape", ignoreCase = true) == true
-        val w = if (landscape) maxOf(parsedWidth, parsedHeight) else parsedWidth
-        val h = if (landscape) minOf(parsedWidth, parsedHeight) else parsedHeight
+        // `parent=<id>` — what Studio's device picker writes as soon as you pick a catalog device
+        // and change anything about it (`spec:parent=pixel_tablet,orientation=portrait`). It
+        // supplies every term the string doesn't restate — geometry, density, shape — so without
+        // the lookup the whole spec collapsed to the 400×800 default and the picked device
+        // vanished. Resolved through [resolve] itself so a parent id follows exactly the same rules
+        // as a bare `device = "id:…"`, wear fallback included.
+        val parent = params["parent"]?.let { resolve(it.asDeviceId()) }
+        val base = parent ?: DEFAULT
+        val parsedWidth = params["width"]?.toIntOrNull() ?: base.widthDp
+        val parsedHeight = params["height"]?.toIntOrNull() ?: base.heightDp
+        // The device string's own `orientation=` term is the same request the override lane sends
+        // (issue #3547), one layer earlier — so it goes through the same idempotent swap. Landscape
+        // alone used to be handled here, so `orientation=portrait` on a landscape spec — what
+        // `@PreviewScreenSizes`' "Tablet" entry asks for — silently stayed landscape.
+        val (w, h) = FrameOrientation.orientedPx(parsedWidth, parsedHeight, params["orientation"])
+        // `isRound=` / `shape=` state the shape outright; only when neither is present does the
+        // parent's shape carry through (a round watch parent stays round).
         val isRound =
-          params["isround"]?.equals("true", ignoreCase = true) == true ||
-            params["shape"]?.equals("round", ignoreCase = true) == true
-        val density = params["dpi"]?.toIntOrNull()?.let { it / 160f } ?: DEFAULT_DENSITY
+          if (params.containsKey("isround") || params.containsKey("shape")) {
+            params["isround"]?.equals("true", ignoreCase = true) == true ||
+              params["shape"]?.equals("round", ignoreCase = true) == true
+          } else {
+            base.isRound
+          }
+        val density = params["dpi"]?.toIntOrNull()?.let { it / 160f } ?: base.density
         return DeviceSpec(w, h, density, isRound = isRound)
       }
 
@@ -189,6 +208,10 @@ object DeviceDimensions {
 
     return DEFAULT
   }
+
+  /** `pixel_tablet` / `id:pixel_tablet` → the catalog key [resolve] looks up. */
+  private fun String.asDeviceId(): String =
+    trim().lowercase().let { if (it.startsWith("id:")) it else "id:$it" }
 
   private fun isRoundDeviceString(device: String): Boolean {
     val lower = device.lowercase()

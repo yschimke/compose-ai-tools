@@ -39,6 +39,30 @@ class DeviceDimensionsCatalogDriftTest {
   }
 
   @Test
+  fun daemonSpecParserReadsTheSameTermsAsGradlePlugin() {
+    // The catalog check above only covers the device *map*. The `spec:` parser is duplicated too,
+    // and it drifted: the daemon learned `parent=` / a symmetric `orientation=` while the plugin
+    // copy kept resolving a rotated tablet as a 400×800 default, or vice versa. Comparing the set
+    // of terms each parser actually reads catches exactly that, without pinning formatting.
+    val repoRoot = findRepoRoot(Path.of("").toAbsolutePath())
+    val plugin =
+      specTerms(
+        repoRoot.resolve(
+          "gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/DeviceDimensions.kt"
+        )
+      )
+    val daemon =
+      specTerms(
+        repoRoot.resolve(
+          "daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/devices/DeviceDimensions.kt"
+        )
+      )
+
+    assertFalse("plugin spec: parser should read some terms", plugin.isEmpty())
+    assertEquals("spec: grammar drifted between plugin and daemon copies", plugin, daemon)
+  }
+
+  @Test
   fun readCatalogIgnoresCommentedEntries() {
     val temp = Files.createTempFile("device-dimensions-catalog", ".kt")
     try {
@@ -67,6 +91,12 @@ class DeviceDimensionsCatalogDriftTest {
     }
   }
 
+  /** Every `params["…"]` term the file's `spec:` parser consults, comments excluded. */
+  private fun specTerms(path: Path): Set<String> {
+    val text = Files.readString(path).lineSequence().filterNot { it.trim().startsWith("//") }
+    return termRegex.findAll(text.joinToString("\n")).map { it.groupValues[1] }.toSet()
+  }
+
   private fun findRepoRoot(start: Path): Path {
     var current: Path? = start
     while (current != null) {
@@ -90,5 +120,7 @@ class DeviceDimensionsCatalogDriftTest {
   companion object {
     private val entryRegex =
       Regex("(?m)^\\s*\"([^\"]+)\"\\s+to\\s+DeviceSpec\\((\\d+),\\s*(\\d+),\\s*([0-9.]+)f\\)")
+
+    private val termRegex = Regex("""params\[\s*"([^"]+)"\s*\]""")
   }
 }

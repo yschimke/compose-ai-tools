@@ -1775,9 +1775,14 @@ abstract class RobolectricRenderTestBase(
       // set (issue #3309).
       addAll(ee.schimke.composeai.data.render.previewSizeQualifiers(widthDp, heightDp))
       if (isRound) add("round")
-      if (widthDp > 0 && heightDp > 0) {
-        add(if (widthDp > heightDp) "land" else "port")
-      }
+      // The frame decides, not the request — shared with the daemon's two qualifier builders
+      // (`RenderEngine.applyPreviewQualifiers`, `RobolectricHost`) so a preview rendered through the
+      // plugin and the same preview rendered through the daemon land on the same `Configuration`.
+      // There is no separate request on this lane: `device = "spec:…,orientation=portrait"` is
+      // already resolved into these dimensions by `DeviceDimensions`.
+      ee.schimke.composeai.data.render
+        .previewOrientationQualifier(widthDp, heightDp, requested = null)
+        ?.let { add(it) }
       if (uiMode != 0) {
         when (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) {
           android.content.res.Configuration.UI_MODE_NIGHT_YES -> add("night")

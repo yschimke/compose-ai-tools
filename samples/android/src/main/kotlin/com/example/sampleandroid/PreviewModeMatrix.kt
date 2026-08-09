@@ -197,6 +197,31 @@ fun MatrixDeviceSpecPreview() {
 }
 
 /**
+ * `orientation=portrait` on a landscape `spec:` — the exact device string AndroidX's own
+ * `@PreviewScreenSizes` uses for its "Tablet" entry. 1280×800dp @1.5x rotated is 800×1280dp
+ * (1200×1920px). Only `landscape` used to be honoured here, so this rendered landscape — pixel for
+ * pixel identical to the un-rotated sibling above (issue #3547).
+ */
+@Preview(name = "Rotated device spec", device = "spec:width=1280dp,height=800dp,dpi=240,orientation=portrait")
+@Composable
+fun MatrixRotatedDeviceSpecPreview() {
+  CanvasProbe("rotated")
+}
+
+/**
+ * `spec:parent=…,orientation=…` — what Studio's device picker writes once you pick a catalog device
+ * and rotate it. The parent supplies the frame (Small Phone, 360×640dp @2.0x) and `orientation`
+ * trades the axes, so this renders 640×360dp landscape (1280×720px) and its Configuration reports
+ * `land`. `parent=` used to be unread entirely, collapsing the picked device to the 400×800dp
+ * default.
+ */
+@Preview(name = "Parent device spec", device = "spec:parent=small_phone,orientation=landscape")
+@Composable
+fun MatrixParentDeviceSpecPreview() {
+  CanvasProbe("parent")
+}
+
+/**
  * `showSystemUi` with no device: Studio still promotes the preview to a full device frame (its
  * default phone), which is what makes the synthetic status/nav bars meaningful.
  */

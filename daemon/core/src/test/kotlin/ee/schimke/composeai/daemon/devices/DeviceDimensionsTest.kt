@@ -54,6 +54,84 @@ class DeviceDimensionsTest {
   }
 
   @Test
+  fun specStringPortraitOrientationRotatesALandscapeSpec() {
+    // #3547, one layer earlier than the override lane: `orientation=portrait` used to be dropped
+    // here (only `landscape` was handled), so `@PreviewScreenSizes`' own "Tablet" entry —
+    // `spec:width=1280dp,height=800dp,dpi=240,orientation=portrait` — rendered landscape, pixel for
+    // pixel identical to its "Tablet - Landscape" sibling.
+    assertEquals(
+      DeviceDimensions.DeviceSpec(800, 1280, 1.5f),
+      DeviceDimensions.resolve("spec:width=1280dp,height=800dp,dpi=240,orientation=portrait"),
+    )
+  }
+
+  @Test
+  fun specStringOrientationIsIdempotent() {
+    // "Make it look like this", not "flip it": a request the spec already satisfies is a no-op, in
+    // both directions, so re-resolving the same string can never oscillate.
+    assertEquals(
+      DeviceDimensions.DeviceSpec(400, 800, DeviceDimensions.DEFAULT_DENSITY),
+      DeviceDimensions.resolve("spec:width=400dp,height=800dp,orientation=portrait"),
+    )
+    assertEquals(
+      DeviceDimensions.DeviceSpec(800, 400, DeviceDimensions.DEFAULT_DENSITY),
+      DeviceDimensions.resolve("spec:width=800dp,height=400dp,orientation=landscape"),
+    )
+  }
+
+  @Test
+  fun specStringSquareFrameAndUnknownOrientationNeverSwap() {
+    assertEquals(
+      DeviceDimensions.DeviceSpec(227, 227, 2.0f, isRound = true),
+      DeviceDimensions.resolve(
+        "spec:width=227dp,height=227dp,dpi=320,isRound=true,orientation=portrait"
+      ),
+    )
+    assertEquals(
+      DeviceDimensions.DeviceSpec(400, 800, DeviceDimensions.DEFAULT_DENSITY),
+      DeviceDimensions.resolve("spec:width=400dp,height=800dp,orientation=sideways"),
+    )
+  }
+
+  @Test
+  fun specStringParentInheritsCatalogGeometry() {
+    // Studio's device picker writes `spec:parent=…` the moment you pick a device and change
+    // anything about it. Unresolved, the picked device vanished into the 400×800 default.
+    assertEquals(
+      DeviceDimensions.resolve("id:pixel_tablet"),
+      DeviceDimensions.resolve("spec:parent=pixel_tablet"),
+    )
+    assertEquals(
+      DeviceDimensions.resolve("id:wearos_small_round"),
+      DeviceDimensions.resolve("spec:parent=id:wearos_small_round"),
+    )
+  }
+
+  @Test
+  fun specStringParentRotatesAndAcceptsOverrides() {
+    // The reported gesture — pick a tablet, then pick Portrait — as Studio spells it in an
+    // annotation. Pixel Tablet is 1280×800dp @2.0×.
+    assertEquals(
+      DeviceDimensions.DeviceSpec(800, 1280, 2.0f),
+      DeviceDimensions.resolve("spec:parent=pixel_tablet,orientation=portrait"),
+    )
+    // Restated terms outrank the parent; unstated ones still come from it.
+    assertEquals(
+      DeviceDimensions.DeviceSpec(1280, 600, 4.0f),
+      DeviceDimensions.resolve("spec:parent=pixel_tablet,height=600dp,dpi=640"),
+    )
+  }
+
+  @Test
+  fun specStringUnknownParentFallsBackLikeADeviceId() {
+    assertEquals(DeviceDimensions.DEFAULT, DeviceDimensions.resolve("spec:parent=typo_phone"))
+    assertEquals(
+      DeviceDimensions.DEFAULT_WEAR,
+      DeviceDimensions.resolve("spec:parent=some_wear_thing"),
+    )
+  }
+
+  @Test
   fun specStringPreservesIsRoundParameter() {
     assertEquals(
       DeviceDimensions.DeviceSpec(227, 227, 2.0f, isRound = true),

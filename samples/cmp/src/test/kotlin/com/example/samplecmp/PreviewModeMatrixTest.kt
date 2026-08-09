@@ -51,6 +51,14 @@ class PreviewModeMatrixTest {
       "MatrixFoldableDevicePreview_Foldable" to (2207 to 1840),
       // spec: grammar with dpi=320 → 360×640dp @2.0×.
       "MatrixDeviceSpecPreview_Device_spec" to (720 to 1280),
+      // orientation=portrait on a landscape spec — AndroidX's own @PreviewScreenSizes "Tablet"
+      // string. 1280×800dp @1.5× rotated is 800×1280dp; we used to render it 1920×1200 landscape
+      // because only `orientation=landscape` was honoured (issue #3547).
+      "MatrixRotatedDeviceSpecPreview_Rotated_device_spec" to (1200 to 1920),
+      // spec:parent= + orientation= — Small Phone (360×640dp @2.0×) rotated to landscape, so the
+      // frame is 640×360dp. `parent=` used to be unread, collapsing this to the 400×800dp default
+      // (2100×1050 once rotated).
+      "MatrixParentDeviceSpecPreview_Parent_device_spec" to (1280 to 720),
     )
 
   @Test

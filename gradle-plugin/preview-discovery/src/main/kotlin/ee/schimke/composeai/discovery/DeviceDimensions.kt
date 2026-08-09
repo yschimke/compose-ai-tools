@@ -175,18 +175,30 @@ object DeviceDimensions {
               else null
             }
             .toMap()
-        val parsedWidth = params["width"]?.toIntOrNull() ?: DEFAULT.widthDp
-        val parsedHeight = params["height"]?.toIntOrNull() ?: DEFAULT.heightDp
-        val landscape = params["orientation"]?.equals("landscape", ignoreCase = true) == true
-        val w = if (landscape) maxOf(parsedWidth, parsedHeight) else parsedWidth
-        val h = if (landscape) minOf(parsedWidth, parsedHeight) else parsedHeight
+        // `parent=<id>` — what Studio's device picker writes as soon as you pick a catalog device
+        // and change anything about it (`spec:parent=pixel_tablet,orientation=portrait`). It
+        // supplies every term the string doesn't restate — geometry, density, shape — so without
+        // the lookup the whole spec collapsed to the 400×800 default and the picked device
+        // vanished. Resolved through [resolve] itself so a parent id follows exactly the same
+        // rules as a bare `device = "id:…"`, wear fallback included.
+        val parent = params["parent"]?.let { resolve(it.asDeviceId()) }
+        val base = parent ?: DEFAULT
+        val parsedWidth = params["width"]?.toIntOrNull() ?: base.widthDp
+        val parsedHeight = params["height"]?.toIntOrNull() ?: base.heightDp
+        val (w, h) = orientedDp(parsedWidth, parsedHeight, params["orientation"])
+        // `isRound=` / `shape=` state the shape outright; only when neither is present does the
+        // parent's shape carry through (a round watch parent stays round).
         val isRound =
-          params["isround"]?.equals("true", ignoreCase = true) == true ||
-            params["shape"]?.equals("round", ignoreCase = true) == true
+          if (params.containsKey("isround") || params.containsKey("shape")) {
+            params["isround"]?.equals("true", ignoreCase = true) == true ||
+              params["shape"]?.equals("round", ignoreCase = true) == true
+          } else {
+            base.isRound
+          }
         // `dpi=` is part of Studio's spec: grammar (e.g. spec:width=411dp,height=914dp,dpi=420)
-        // — honour it if present, otherwise fall back to the AS default. `cutout=` is accepted by
-        // Studio's grammar but intentionally ignored here until a renderer consumes it.
-        val density = params["dpi"]?.toIntOrNull()?.let { it / 160f } ?: DEFAULT_DENSITY
+        // — honour it if present, otherwise inherit the parent's (or the AS default). `cutout=` is
+        // accepted by Studio's grammar but intentionally ignored here until a renderer consumes it.
+        val density = params["dpi"]?.toIntOrNull()?.let { it / 160f } ?: base.density
         return DeviceSpec(w, h, density, isRound = isRound)
       }
 
@@ -195,6 +207,34 @@ object DeviceDimensions {
 
     return DEFAULT
   }
+
+  /** `pixel_tablet` / `id:pixel_tablet` → the catalog key `resolve` looks up. */
+  private fun String.asDeviceId(): String =
+    trim().lowercase().let { if (it.startsWith("id:")) it else "id:$it" }
+
+  /**
+   * [widthDp] / [heightDp] rotated to satisfy an `orientation=` term, or unchanged when they
+   * already satisfy it.
+   *
+   * The swap fires only when the request *contradicts* the current aspect ratio, so it means "make
+   * it look like this", not "always flip": `orientation=landscape` on an already-landscape spec is
+   * a no-op, and applying it twice lands in the same place. A square frame is never swapped, and an
+   * absent or unrecognised token never swaps.
+   *
+   * Landscape alone used to be handled here (via `maxOf`/`minOf`), so `orientation=portrait` on a
+   * landscape spec — which is what `@PreviewScreenSizes`' own "Tablet" entry asks for — silently
+   * rendered landscape. Same defect as issue #3547 on the override lane, one layer earlier.
+   *
+   * KEEP IN SYNC with the daemon's `FrameOrientation.orientedPx`, which the daemon's copy of this
+   * parser calls directly; the two builds are separate, so this is the one rule that has to be
+   * spelled twice.
+   */
+  private fun orientedDp(widthDp: Int, heightDp: Int, orientation: String?): Pair<Int, Int> =
+    when (orientation?.trim()?.lowercase()) {
+      "portrait" -> if (widthDp > heightDp) heightDp to widthDp else widthDp to heightDp
+      "landscape" -> if (heightDp > widthDp) heightDp to widthDp else widthDp to heightDp
+      else -> widthDp to heightDp
+    }
 
   private fun isRoundDeviceString(device: String): Boolean {
     val lower = device.lowercase()

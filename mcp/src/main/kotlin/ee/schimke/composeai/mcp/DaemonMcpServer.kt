@@ -1161,9 +1161,11 @@ class DaemonMcpServer(
           "List the `@Preview(device = ...)` ids the daemon's catalog recognises, paired with " +
             "resolved geometry (widthDp/heightDp/density). Use these as the `device` field of " +
             "`render_preview.overrides` to flip a preview to any catalog device without editing " +
-            "annotations. The free-form `spec:width=…,height=…,dpi=…` grammar is not enumerable " +
-            "and is not returned here — pass it as a `device` override and the daemon parses it " +
-            "at resolve-time. Mirror of every daemon's " +
+            "annotations. The free-form `spec:parent=…,width=…,height=…,dpi=…,orientation=…` " +
+            "grammar is not enumerable and is not returned here — pass it as a `device` override " +
+            "and the daemon parses it at resolve-time (`parent=` names one of these ids and " +
+            "supplies whatever the string omits; `orientation=` rotates the resolved frame). " +
+            "Mirror of every daemon's " +
             "`InitializeResult.capabilities.knownDevices`; read directly from the shared " +
             "`DeviceDimensions` rather than going through a daemon, so it works before any " +
             "daemon has spawned.",
@@ -1208,7 +1210,7 @@ class DaemonMcpServer(
                     "fontScale":{"type":"number","description":"Font scale multiplier (1.0 = system default)."},
                     "uiMode":{"type":"string","enum":["light","dark"],"description":"Light/dark mode override. Android-only today."},
                     "orientation":{"type":"string","enum":["portrait","landscape"],"description":"Portrait/landscape override. Android-only today."},
-                    "device":{"type":"string","description":"@Preview(device=...) string — 'id:pixel_5', 'id:wearos_small_round', 'id:tv_1080p', or full 'spec:width=400dp,height=800dp,dpi=320'. Resolved by the daemon's catalog into widthPx/heightPx/density; explicit width/height/density overrides on this same object take precedence."},
+                    "device":{"type":"string","description":"@Preview(device=...) string — 'id:pixel_5', 'id:wearos_small_round', 'id:tv_1080p', or a 'spec:' string — 'spec:width=400dp,height=800dp,dpi=320', or 'spec:parent=pixel_tablet,orientation=portrait' where parent supplies whatever the string omits and orientation rotates the resolved frame. Resolved by the daemon's catalog into widthPx/heightPx/density; explicit width/height/density overrides on this same object take precedence."},
                     "captureAdvanceMs":{"type":"integer","description":"Paused-clock advance before capture. Android-only today."},
                     "inspectionMode":{"type":"boolean","description":"Override LocalInspectionMode for this one-shot render. Null/default keeps preview semantics."},
                     "material3Theme":{
