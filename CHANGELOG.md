@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.19.53](https://github.com/yschimke/compose-ai-tools/compare/v0.19.52...v0.19.53) (2026-08-09)
+
+
+### Features
+
+* **deploy:** install bubblewrap so the playground jail can actually contain ([#3587](https://github.com/yschimke/compose-ai-tools/issues/3587)) ([dba1384](https://github.com/yschimke/compose-ai-tools/commit/dba1384641e8b836119ef373d76977cfbf192110))
+
+
+### Bug Fixes
+
+* bump the build-cache salt to orphan an empty compileKotlin entry ([#3601](https://github.com/yschimke/compose-ai-tools/issues/3601)) ([804ae9f](https://github.com/yschimke/compose-ai-tools/commit/804ae9fa9d6fe2416507d3740f5ad3ab751cf68e))
+* **figma-svg:** evaluate a layer block against the node's real density ([#3594](https://github.com/yschimke/compose-ai-tools/issues/3594)) ([09c74cb](https://github.com/yschimke/compose-ai-tools/commit/09c74cb12e39c82b43b17717b4df9570103a0e0d))
+* **figma-svg:** fade a Wear scaling card's fill with its container layer ([#3589](https://github.com/yschimke/compose-ai-tools/issues/3589)) ([d9df173](https://github.com/yschimke/compose-ai-tools/commit/d9df173e48a7b29f90f5f8e3e38a2bb774fa8df6))
+* **plugin:** floor the render classpath's compose-ui line so the renderer links ([#3596](https://github.com/yschimke/compose-ai-tools/issues/3596)) ([559e716](https://github.com/yschimke/compose-ai-tools/commit/559e716633dc0a28a044f7bc6624afb60e4bd485))
+* **rc-compare:** stop scoring a blank CMP/Wasm capture as a parity number ([#3597](https://github.com/yschimke/compose-ai-tools/issues/3597)) ([4354d40](https://github.com/yschimke/compose-ai-tools/commit/4354d4017b5089e95820cfb170b62261da7c9cc6))
+* **rc-embedded:** let both embedded lanes parse URL-encoded bitmaps ([#3598](https://github.com/yschimke/compose-ai-tools/issues/3598)) ([e0a9755](https://github.com/yschimke/compose-ai-tools/commit/e0a97558bc3ce923fa235849b180d364ef76651b))
+* **serve:** stop offering declared themes a replayed preview can never apply ([#3583](https://github.com/yschimke/compose-ai-tools/issues/3583)) ([b0fe7ca](https://github.com/yschimke/compose-ai-tools/commit/b0fe7cac3fa598e71b6b2518f65c393ea9dd78ee))
+
 ## [0.19.52](https://github.com/yschimke/compose-ai-tools/compare/v0.19.51...v0.19.52) (2026-08-09)
 
 
