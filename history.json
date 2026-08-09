@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "0adf530deb177e7631d9df3e00ba24902821375c",
+    "generatedFrom": "a59b8f52b3a4fa7c092fc7d1afc81d5e2456bd8b",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
@@ -6544,6 +6544,21 @@
             "unstable": false,
             "flapCount": 0
         },
+        "samples:design-catalog-remote-m3/wearthemecatalog__Coral": {
+            "path": "renders/samples:design-catalog-remote-m3/wearthemecatalog__Coral.png",
+            "versions": [
+                {
+                    "blob": "d6ed59a7f922f27b0c0291753dee426137cce652",
+                    "commit": "a59b8f52b3a4fa7c092fc7d1afc81d5e2456bd8b",
+                    "date": "2026-08-09T19:05:24Z",
+                    "sourceSha": "7a27f29f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
         "samples:design-catalog-remote-m3/wearthemecatalog__Google_Sans_Flex": {
             "path": "renders/samples:design-catalog-remote-m3/wearthemecatalog__Google_Sans_Flex.png",
             "versions": [
@@ -6566,25 +6581,48 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:design-catalog-remote-m3/wearthemecatalog__Roboto_Flex": {
-            "path": "renders/samples:design-catalog-remote-m3/wearthemecatalog__Roboto_Flex.png",
+        "samples:design-catalog-remote-m3/wearthemecatalog__KotlinConf": {
+            "path": "renders/samples:design-catalog-remote-m3/wearthemecatalog__KotlinConf.png",
             "versions": [
                 {
                     "blob": "d6ed59a7f922f27b0c0291753dee426137cce652",
-                    "commit": "1fe41467c98c3a5a7f15d3de96ac0a6673c9d127",
-                    "date": "2026-08-08T19:11:46Z",
-                    "sourceSha": "75c5272d",
-                    "commits": 1
-                },
-                {
-                    "blob": "ce05008bd7d5dbca14aef2d82b744f3671d27ac8",
-                    "commit": "761185a3ed8763c1e6af63353d9479b960a271c0",
-                    "date": "2026-08-08T15:50:07Z",
-                    "sourceSha": "b7535e57",
+                    "commit": "a59b8f52b3a4fa7c092fc7d1afc81d5e2456bd8b",
+                    "date": "2026-08-09T19:05:24Z",
+                    "sourceSha": "7a27f29f",
                     "commits": 1
                 }
             ],
-            "observations": 2,
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/wearthemecatalog__M3": {
+            "path": "renders/samples:design-catalog-remote-m3/wearthemecatalog__M3.png",
+            "versions": [
+                {
+                    "blob": "d6ed59a7f922f27b0c0291753dee426137cce652",
+                    "commit": "a59b8f52b3a4fa7c092fc7d1afc81d5e2456bd8b",
+                    "date": "2026-08-09T19:05:24Z",
+                    "sourceSha": "7a27f29f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:design-catalog-remote-m3/wearthemecatalog__Teal": {
+            "path": "renders/samples:design-catalog-remote-m3/wearthemecatalog__Teal.png",
+            "versions": [
+                {
+                    "blob": "d6ed59a7f922f27b0c0291753dee426137cce652",
+                    "commit": "a59b8f52b3a4fa7c092fc7d1afc81d5e2456bd8b",
+                    "date": "2026-08-09T19:05:24Z",
+                    "sourceSha": "7a27f29f",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
             "unstable": false,
             "flapCount": 0
         },
