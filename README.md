@@ -228,6 +228,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-grouped/dark](renders/serve-landing-grouped.dark.png) |
 | `light` | ![serve-landing-grouped/light](renders/serve-landing-grouped.light.png) |
 
+## serve-landing-ir-replay-themes
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-ir-replay-themes/dark](renders/serve-landing-ir-replay-themes.dark.png) |
+| `light` | ![serve-landing-ir-replay-themes/light](renders/serve-landing-ir-replay-themes.light.png) |
+
 ## serve-landing-live
 
 | Theme | Capture |

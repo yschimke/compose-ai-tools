@@ -373,6 +373,18 @@
       "sha256": "92d39e9dc247345c44199ae5f0bd0f22c15c3b12173b4a43f9ac922676cffbd8",
       "size": 92722
     },
+    "serve-landing-ir-replay-themes.dark.png": {
+      "fixture": "serve-landing-ir-replay-themes",
+      "theme": "dark",
+      "sha256": "23758e59cc67c4cd0c1886284f1ed1844d26291b0be19360c26d37f374ecc2c6",
+      "size": 56854
+    },
+    "serve-landing-ir-replay-themes.light.png": {
+      "fixture": "serve-landing-ir-replay-themes",
+      "theme": "light",
+      "sha256": "9eeef682d0486201e157e3b9098b7181ab8d42c3c03a0c10375ba03c2e07c8e9",
+      "size": 55116
+    },
     "serve-landing-live-live-card.dark.png": {
       "fixture": "serve-landing-live-live-card",
       "theme": "dark",
