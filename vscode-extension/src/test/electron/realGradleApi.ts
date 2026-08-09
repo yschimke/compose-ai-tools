@@ -47,6 +47,28 @@ export class RealGradleApi implements GradleApi {
      */
     private readonly liveChildren = new Map<string, ChildProcess>();
 
+    /**
+     * Task names this API actually terminated, in order. Populated by
+     * {@link cancelRunTask} only when a live child was killed — a cancel
+     * against an already-exited task is a no-op and is not recorded.
+     *
+     * Exposed because a cancellation is invisible to the tests otherwise.
+     * When `gradleService`'s task cap kills a render mid-flight, the
+     * extension does the production thing — `renderWithDiskFallback` paints
+     * whatever manifest the truncated render left behind — so a suite that
+     * asserts only "≥N previews arrived" passes on a render that never
+     * finished. That is exactly how the 2026-08-08 cold-runner slowdown
+     * stayed hidden in the `cmp-smoke` shard after the task cap was raised:
+     * green, but on the fallback path. Suites where no cancellation is
+     * expected can read this and say so.
+     */
+    private readonly cancelledTaskNames: string[] = [];
+
+    /** @see cancelledTaskNames */
+    get cancelledTasks(): ReadonlyArray<string> {
+        return this.cancelledTaskNames;
+    }
+
     runTask(opts: {
         projectFolder: string;
         taskName: string;
@@ -171,16 +193,27 @@ export class RealGradleApi implements GradleApi {
         if (!child || child.pid === undefined || child.exitCode !== null) {
             return;
         }
-        this.onLog(
-            `[realGradleApi] cancel ${opts.taskName} (key=${key}) — terminating gradlew pid ${child.pid}`,
-        );
         // SIGTERM first so the Gradle client disconnects gracefully and its
         // daemon cancels the build (releasing the build lock); escalate to
         // SIGKILL if the process is still alive after the grace period.
+        //
+        // `kill` returns false (or throws) when the signal couldn't be
+        // delivered because the process is already gone — which is a real
+        // race here, since the interesting case is a build finishing right
+        // as the task cap fires. Record and log only when the signal
+        // actually went out, so `cancelledTasks` can't attribute a
+        // truncation to a render that completed on its own.
+        let signalSent = false;
         try {
-            child.kill("SIGTERM");
+            signalSent = child.kill("SIGTERM");
         } catch {
-            /* already gone */
+            signalSent = false; /* already gone */
+        }
+        if (signalSent) {
+            this.cancelledTaskNames.push(opts.taskName);
+            this.onLog(
+                `[realGradleApi] cancel ${opts.taskName} (key=${key}) — terminating gradlew pid ${child.pid}`,
+            );
         }
         const killTimer = setTimeout(() => {
             if (child.exitCode === null && child.signalCode === null) {
