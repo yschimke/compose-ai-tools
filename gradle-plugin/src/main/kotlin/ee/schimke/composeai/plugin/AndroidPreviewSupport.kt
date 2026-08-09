@@ -611,35 +611,94 @@ internal object AndroidPreviewSupport {
    * needs Compose Multiplatform and is aligned by a different mechanism
    * (`alignDesktopToolWithConsumerGraph`).
    */
-  internal fun applyRenderGraphResolutionRules(configuration: Configuration) {
-    configuration.resolutionStrategy.eachDependency {
-      val target = composeLineFloorUpgrade(requested.group, requested.version)
-      if (target != null) {
-        useVersion(target)
-        because(
-          "Rule 3 hands the render classpath to the consumer's Compose, but the renderer's own " +
-            "bytecode still has to link against it. Below " +
-            "$RENDERER_COMPOSE_LINK_FLOOR_VERSION the compose-ui line lacks entry points the " +
-            "renderer calls and every preview dies before user code runs: " +
-            "NoSuchMethodError androidx.compose.ui.node.ComposeUiNode\$Companion" +
-            ".getApplyOnDeactivatedNodeAssertion(). Raise to the floor; consumers already at or " +
-            "above it keep their own version (issue #3590)."
-        )
-      }
+  /**
+   * What the render graph should resolve a requested module to: a [name] to substitute (the
+   * KMP-Android sibling) and/or a [version] to use, plus whether that version came from the
+   * compose-line floor. `null` from [renderGraphTarget] means "leave it alone".
+   */
+  internal class RenderGraphTarget(
+    val name: String?,
+    val version: String?,
+    val flooredComposeLine: Boolean,
+  )
+
+  /**
+   * The single decision behind [applyRenderGraphResolutionRules]' first rule, kept pure so the
+   * interaction between its two halves is unit-testable without resolving a configuration.
+   *
+   * Both halves have to be decided together. Gradle hands every `eachDependency` action the
+   * ORIGINAL `requested` selector, so a `useTarget` carrying `requested.version` through undoes a
+   * `useVersion` an earlier action applied. A below-floor KMP sibling
+   * (`androidx.compose.ui:ui-jvmstubs:1.9.5`) hits exactly that: floored to
+   * [RENDERER_COMPOSE_LINK_FLOOR_VERSION], then re-pinned to `ui-android:1.9.5` — the artifact the
+   * floor exists to keep off the graph. So the substitution carries the floored version.
+   *
+   * [floorComposeLine] is `false` under `composePreview.manageDependencies = false`: the floor is
+   * only safe while the main-variant `ui` / `foundation` pins move with it, and the opt-out branch
+   * deliberately leaves those to the consumer.
+   */
+  internal fun renderGraphTarget(
+    group: String,
+    name: String,
+    version: String?,
+    floorComposeLine: Boolean,
+  ): RenderGraphTarget? {
+    val floored = if (floorComposeLine) composeLineFloorUpgrade(group, version) else null
+    val sibling = kmpAndroidSiblingName(group, name)
+    return when {
+      sibling != null -> RenderGraphTarget(sibling, floored ?: version, floored != null)
+      floored != null -> RenderGraphTarget(null, floored, true)
+      else -> null
     }
+  }
+
+  internal fun applyRenderGraphResolutionRules(
+    configuration: Configuration,
+    floorComposeLine: Boolean = true,
+  ) {
+    // ONE rule for both the sibling substitution and the compose-line floor, because
+    // `eachDependency` actions all see the ORIGINAL `requested` selector: a later `useTarget` that
+    // passes `requested.version` through silently undoes an earlier `useVersion`. Split across two
+    // blocks, a below-floor KMP sibling (`androidx.compose.ui:ui-jvmstubs:1.9.5` — the shape the
+    // sibling tests already cover) would be floored to
+    // `$RENDERER_COMPOSE_LINK_FLOOR_VERSION` and then re-pinned to `ui-android:1.9.5`, landing on
+    // exactly the artifact the floor exists to keep off the graph.
     configuration.resolutionStrategy.eachDependency {
       val req = requested
-      val targetName = kmpAndroidSiblingName(req.group, req.name)
-      if (targetName != null) {
-        useTarget(mapOf("group" to req.group, "name" to targetName, "version" to req.version))
-        because(
-          "Gradle resolved a desktop/JVM-stub KMP sibling on a config without the " +
-            "Kotlin-plugin platform-type compat rule. Force the Android sibling so the " +
-            "renderer's bytecode links against the AGP-flavoured class shapes (e.g. the " +
-            "legacy `ViewModelProvider(ViewModelStoreOwner, Factory)` constructor that " +
-            "lifecycle-viewmodel-savedstate-android still calls but the desktop variant " +
-            "removed in the KMP rewrite)."
-        )
+      val decision = renderGraphTarget(req.group, req.name, req.version, floorComposeLine)
+      when {
+        decision == null -> Unit
+        decision.name != null -> {
+          useTarget(
+            mapOf("group" to req.group, "name" to decision.name, "version" to decision.version)
+          )
+          because(
+            "Gradle resolved a desktop/JVM-stub KMP sibling on a config without the " +
+              "Kotlin-plugin platform-type compat rule. Force the Android sibling so the " +
+              "renderer's bytecode links against the AGP-flavoured class shapes (e.g. the " +
+              "legacy `ViewModelProvider(ViewModelStoreOwner, Factory)` constructor that " +
+              "lifecycle-viewmodel-savedstate-android still calls but the desktop variant " +
+              "removed in the KMP rewrite)." +
+              if (decision.flooredComposeLine) {
+                " Carries the compose-line floor into the substitution, which would otherwise " +
+                  "drop it (issue #3590)."
+              } else {
+                ""
+              }
+          )
+        }
+        decision.version != null -> {
+          useVersion(decision.version)
+          because(
+            "Rule 3 hands the render classpath to the consumer's Compose, but the renderer's own " +
+              "bytecode still has to link against it. Below " +
+              "$RENDERER_COMPOSE_LINK_FLOOR_VERSION the compose-ui line lacks entry points the " +
+              "renderer calls and every preview dies before user code runs: " +
+              "NoSuchMethodError androidx.compose.ui.node.ComposeUiNode\$Companion" +
+              ".getApplyOnDeactivatedNodeAssertion(). Raise to the floor; consumers already at or " +
+              "above it keep their own version (issue #3590)."
+          )
+        }
       }
     }
     configuration.resolutionStrategy.eachDependency {
@@ -1862,7 +1921,13 @@ internal object AndroidPreviewSupport {
         // live in a shared helper because `composePreviewAndroidDaemon$capVariant` extends this
         // configuration and needs the identical graph: `extendsFrom` inherits dependencies but
         // NOT `resolutionStrategy`, so the rules have to be applied to each config by hand.
-        applyRenderGraphResolutionRules(this)
+        // `floorComposeLine` follows `manageDependencies`: the floor only holds if the matching
+        // main-variant `ui`/`foundation` pins move with it, and the opt-out branch deliberately
+        // skips those ("consumer must ensure androidx.compose.ui:ui is on the main variant").
+        // Raising the render graph there would put 1.11.2 classes over the consumer's own
+        // resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's line and
+        // the required-dependency check reports it instead.
+        applyRenderGraphResolutionRules(this, floorComposeLine = manageDependencies)
       }
 
     if (useLocalRenderer) {
@@ -1982,7 +2047,13 @@ internal object AndroidPreviewSupport {
         // daemon resolves `-desktop` KMP siblings and Hamcrest 2.x while the render task resolves
         // the Android siblings and 1.3. Two JVMs rendering the same previews off different graphs
         // is precisely the divergence this change exists to remove.
-        applyRenderGraphResolutionRules(this)
+        // `floorComposeLine` follows `manageDependencies`: the floor only holds if the matching
+        // main-variant `ui`/`foundation` pins move with it, and the opt-out branch deliberately
+        // skips those ("consumer must ensure androidx.compose.ui:ui is on the main variant").
+        // Raising the render graph there would put 1.11.2 classes over the consumer's own
+        // resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's line and
+        // the required-dependency check reports it instead.
+        applyRenderGraphResolutionRules(this, floorComposeLine = manageDependencies)
       }
 
     val daemonRendererProjectDir = project.rootDir.resolve("daemon/android")

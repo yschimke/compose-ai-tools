@@ -66,6 +66,74 @@ class ComposeLineFloorTest {
   }
 
   @Test
+  fun `the KMP sibling substitution carries the floor instead of dropping it`() {
+    // Gradle hands every `eachDependency` action the ORIGINAL requested selector, so a `useTarget`
+    // passing `requested.version` through silently undoes an earlier `useVersion`. Split across two
+    // rules, this exact coordinate would be floored and then re-pinned to `ui-android:1.9.5` — the
+    // artifact the floor exists to keep off the render graph.
+    val target =
+      AndroidPreviewSupport.renderGraphTarget(
+        group = "androidx.compose.ui",
+        name = "ui-jvmstubs",
+        version = "1.9.5",
+        floorComposeLine = true,
+      )
+    assertThat(target).isNotNull()
+    assertThat(target!!.name).isEqualTo("ui-android")
+    assertThat(target.version).isEqualTo(floor)
+    assertThat(target.flooredComposeLine).isTrue()
+  }
+
+  @Test
+  fun `a sibling already above the floor keeps its own version`() {
+    val target =
+      AndroidPreviewSupport.renderGraphTarget(
+        group = "androidx.compose.ui",
+        name = "ui-jvmstubs",
+        version = "1.12.0",
+        floorComposeLine = true,
+      )
+    assertThat(target!!.name).isEqualTo("ui-android")
+    assertThat(target.version).isEqualTo("1.12.0")
+    assertThat(target.flooredComposeLine).isFalse()
+  }
+
+  @Test
+  fun `manageDependencies=false leaves the compose line alone but still substitutes siblings`() {
+    // The floor is only safe while the main-variant ui/foundation pins move with it, and the
+    // opt-out branch deliberately leaves those to the consumer ("consumer must ensure
+    // androidx.compose.ui:ui is on the main variant"). Raising the render graph there would put
+    // floor-version classes over the consumer's older resources — the #3484 R$id NoSuchFieldError.
+    assertThat(
+        AndroidPreviewSupport.renderGraphTarget(
+          group = "androidx.compose.ui",
+          name = "ui",
+          version = "1.7.6",
+          floorComposeLine = false,
+        )
+      )
+      .isNull()
+
+    // The sibling substitution is unrelated to the floor and must survive the opt-out.
+    val sibling =
+      AndroidPreviewSupport.renderGraphTarget(
+        group = "androidx.compose.ui",
+        name = "ui-jvmstubs",
+        version = "1.7.6",
+        floorComposeLine = false,
+      )
+    assertThat(sibling!!.name).isEqualTo("ui-android")
+    assertThat(sibling.version).isEqualTo("1.7.6")
+    assertThat(sibling.flooredComposeLine).isFalse()
+  }
+
+  @Test
+  fun `a non-compose module with no sibling is left alone entirely`() {
+    assertThat(AndroidPreviewSupport.renderGraphTarget("com.example", "thing", "1.0.0", true))
+      .isNull()
+  }
+
+  @Test
   fun `a version we cannot compare is never touched`() {
     // Forcing a version we cannot order risks dragging a consumer backwards, which is strictly
     // worse than leaving a classpath we merely suspect is too old.
