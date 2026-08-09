@@ -464,21 +464,11 @@ public fun RcPlayer(
 ) {
     val coreDoc =
         remember(capturedDocument) {
-            // `Limits.ENABLE_IMAGE_URLS` / `ENABLE_IMAGE_FILES` are mutable globals that ship
-            // `false`, and with them off `BitmapData.read` throws `URL image not supported [<id>]`
-            // as soon as a document carries a `BitmapData` with `ENCODING_URL`. That throw lands
-            // inside `inflateFromBuffer`, so it fails the entire parse and the document renders as
-            // nothing — not "the image is missing", but no player output at all.
-            //
-            // Parsing an encoded reference is not fetching one: resolution needs an `imageLoader`,
-            // and a caller that passes none (every render harness here) simply leaves the slot
-            // empty and draws the rest of the document. That matches what the JS and CMP players do
-            // with the same bytes, so enabling this removes a difference between the players that
-            // was never about the players. Both flags because a document authored against both
-            // assumes both — see the sibling `enableRemoteImageUrls()` in the Home Assistant
-            // catalog, which sets the identical pair at every player entry point it owns.
-            Limits.ENABLE_IMAGE_URLS = true
-            Limits.ENABLE_IMAGE_FILES = true
+            // Ahead of the parse below, which fails the whole document on a URL-encoded bitmap
+            // unless the globals are set. This overload is only one of the byte-level entry
+            // points — `RemoteDocument(bytes)` parses in its own constructor, so callers taking
+            // that route enable it themselves.
+            enableEncodedImageReferences()
             CoreDocument(RemoteClock.SYSTEM).apply {
                 ByteArrayInputStream(capturedDocument.bytes).use {
                     initFromBuffer(RemoteComposeBuffer.fromInputStream(it))
