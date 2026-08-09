@@ -207,6 +207,26 @@ async function waitFor<T>(
     );
 }
 
+/**
+ * Text of the panel's "this file has no previews" empty-state message, if the
+ * refresh posted one. `refresh` reaches this branch when the active file
+ * resolves to zero visible previews: it posts `clearAll` + this `showMessage`,
+ * posts no `setPreviews`, and still returns `'completed'`.
+ */
+function emptyStateText(messages: unknown[]): string | undefined {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i] as PostedMessage;
+        if (
+            m.command === "showMessage" &&
+            typeof m.text === "string" &&
+            m.text.startsWith("No @Preview functions in this file")
+        ) {
+            return m.text;
+        }
+    }
+    return undefined;
+}
+
 function latestSetPreviewsMatching(
     messages: unknown[],
     predicate: (msg: SetPreviewsMessage) => boolean,
@@ -887,6 +907,28 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 500,
                 () => {
                     const msgs = api.getPostedMessages();
+                    // A refresh that finds nothing to show in the active file
+                    // settles into the panel's empty state — `clearAll` plus
+                    // "No @Preview functions in this file" — and returns
+                    // 'completed' having posted no `setPreviews` at all. That
+                    // slips past `assertRefreshRendered`, which only catches
+                    // 'failed'. It is also terminal: nothing re-triggers a
+                    // refresh afterwards, so waiting out the budget just
+                    // delays the failure and throws away the reason.
+                    //
+                    // Observed on this suite's own PR run (job 93235209013):
+                    // the post-rename `composePreviewRenderAll` died with
+                    // `composePreviewRender --preview matched no previews`
+                    // and the refresh reported "0 visible previews in
+                    // Previews.kt, module has 3".
+                    const emptyState = emptyStateText(msgs);
+                    if (emptyState) {
+                        throw new Error(
+                            "after the rename the panel resolved to its empty " +
+                                `state instead of republishing: "${emptyState}"\n  ` +
+                                describeCmpPanelState(),
+                        );
+                    }
                     return latestSetPreviewsMatching(msgs, (m) => {
                         if (m.previews.length === 0) return false;
                         if (!m.moduleDir.includes(cmpNeedle)) return false;
@@ -1004,7 +1046,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         );
         const afterRevert = await waitFor(
             "setPreviews after reverting the rename",
-            this.timeout(),
+            PANEL_UPDATE_BUDGET_MS,
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -1017,6 +1059,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     );
                 });
             },
+            describeCmpPanelState,
         );
         observations.afterRevertIds = afterRevert.previews
             .map((p) => p.id)
