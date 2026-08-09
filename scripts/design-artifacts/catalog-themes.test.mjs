@@ -61,10 +61,68 @@ test("maps each theme onto the export's shape, keyed by provider FQN", () => {
   ]);
 });
 
-test("leaves `dark` unset, because nothing declares it", () => {
-  // design-parity#307 made `dark` a declaration so it wouldn't become a luminance
-  // guess at some arbitrary layer. The annotation carries a name and a group and
-  // no mode, so the honest answer here is silence.
+test("resolves `dark` from the theme's own resolved surface", () => {
+  const themes = catalogThemesFromBundle(bundle, [
+    {
+      theme: "Night",
+      previewId: "wearthemecatalog__Coral",
+      providerFqn: "com.example.Night",
+      // wear-m3's real surface: a near-black watch face.
+      tokens: { colors: { surface: "#202124ff", primary: "#4dd0e1ff" } },
+    },
+    {
+      theme: "Day",
+      previewId: "wearthemecatalog__Coral",
+      providerFqn: "com.example.Day",
+      tokens: { colors: { surface: "#fffbffff" } },
+    },
+  ]);
+  assert.equal(themes[0].dark, true);
+  assert.equal(themes[1].dark, false);
+});
+
+test("uses the server's threshold, which is a luminance and not a lightness", () => {
+  // The rule is `relative luminance < 0.45`, the same one `ServeThemeCss` decides a
+  // catalog's baked mode with. That crosses at about #b3b3b3, NOT at 50% grey — so
+  // a mid-grey surface counts as dark. Pinned because it reads as surprising, and
+  // because the value that matters is agreement with the server rather than the
+  // number itself: if one moves, both move.
+  const at = (surface) =>
+    catalogThemesFromBundle({}, [
+      { theme: "t", previewId: "p", providerFqn: "com.example.T", tokens: { colors: { surface } } },
+    ])[0].dark;
+  assert.equal(at("#808080ff"), true, "mid grey is dark by luminance");
+  assert.equal(at("#b3b3b3ff"), false, "…and #b3b3b3 is where it turns over");
+  assert.equal(at("#b2b2b2ff"), true);
+  // The real published surfaces, either side of the line.
+  assert.equal(at("#202124ff"), true, "wear-m3's watch face");
+  assert.equal(at("#fffbffff"), false, "jetnews");
+});
+
+test("falls back to `background`, and composites a translucent surface over white", () => {
+  const [onBackground, translucent] = catalogThemesFromBundle(bundle, [
+    {
+      theme: "NoSurface",
+      previewId: "x",
+      providerFqn: "com.example.NoSurface",
+      tokens: { colors: { background: "#000000ff", primary: "#ffffffff" } },
+    },
+    {
+      theme: "Translucent",
+      previewId: "y",
+      providerFqn: "com.example.Translucent",
+      // Black at 10% over white is a pale grey — a light theme, not a dark one.
+      tokens: { colors: { surface: "#0000001a" } },
+    },
+  ]);
+  assert.equal(onBackground.dark, true);
+  assert.equal(translucent.dark, false);
+});
+
+test("leaves `dark` unset when a theme published no surface at all", () => {
+  // Neither fixture theme carries a surface — one has only a `primary`, the other
+  // only a typeface. A brand colour says nothing about the mode it is painted on,
+  // so the field stays absent rather than being inferred from the wrong role.
   for (const theme of catalogThemesFromBundle(bundle, tokenSets)) {
     assert.equal("dark" in theme, false);
   }
