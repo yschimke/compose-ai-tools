@@ -71,6 +71,7 @@ describeE2E("Compose Preview e2e (real Gradle)", function () {
     this.timeout(15 * 60_000);
 
     let api: ComposePreviewTestApi;
+    let gradleApi: RealGradleApi;
     let kotlinFile: string;
     let repoRoot: string;
     let renderDir: string;
@@ -124,9 +125,8 @@ describeE2E("Compose Preview e2e (real Gradle)", function () {
             "activate() must return ComposePreviewTestApi under COMPOSE_PREVIEW_TEST_MODE=1",
         );
         api = exported;
-        api.injectGradleApi(
-            new RealGradleApi(repoRoot, (line) => console.log(line)),
-        );
+        gradleApi = new RealGradleApi(repoRoot, (line) => console.log(line));
+        api.injectGradleApi(gradleApi);
 
         // Resolve the webview view. Without this, `panel.view` stays
         // undefined, every `panel.postMessage` is silently dropped, and
@@ -232,5 +232,33 @@ describeE2E("Compose Preview e2e (real Gradle)", function () {
             renderedSignal.count >= previews.length,
             `webview rendered ${renderedSignal.count} cards but ${previews.length} previews were sent`,
         );
+
+        // This shard drives exactly one refresh, so nothing should ever
+        // supersede it — a cancelled task here can only be `gradleService`'s
+        // task cap killing the render mid-flight. When that happens the
+        // extension does the production thing and paints the truncated
+        // manifest from disk, so every assertion above still passes: the
+        // shard reports green on a render that never finished, and this
+        // shard exists precisely to be the *unfiltered, whole-module* render
+        // coverage (the interactive suite narrows its render with
+        // `-PcomposePreview.filter`). Observed on 2026-08-08, when a
+        // repo-wide cold-cache slowdown pushed the render past the cap.
+        //
+        // Deliberately a warning rather than an assertion: the render being
+        // slow is an environment condition, not a defect in the code under
+        // test, and failing here would take the shard red for something a
+        // warm build cache fixes on its own. `::warning::` surfaces it as an
+        // annotation on the run summary so it can't rot unseen. Promote it
+        // to a hard assertion once the render reliably finishes inside the
+        // cap again.
+        if (gradleApi.cancelledTasks.length > 0) {
+            console.log(
+                `::warning title=Truncated preview render::` +
+                    `cmp-smoke asserted against a partial render — the task cap killed ` +
+                    `${gradleApi.cancelledTasks.join(", ")} before it finished, and the ` +
+                    `panel fell back to the on-disk manifest. Whole-module render coverage ` +
+                    `did NOT run this time.`,
+            );
+        }
     });
 });
