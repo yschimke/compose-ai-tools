@@ -166,6 +166,28 @@ function previewParameterProvider(preview) {
 }
 
 /**
+ * The deferred ids as `--exclude-preview-id` patterns rather than as ids: each `=`-anchored, so it
+ * matches that preview and not the fan-out hanging off it.
+ *
+ * The plain form matches by equality OR substring, and ids are hierarchical, so an unanchored
+ * `Switch_Dark` also defers `Switch_Dark_VARIANT_off` — a preview the spec never deferred, whose
+ * absence surfaces later as a completeness-gate failure rather than as anything pointing back here.
+ * Deferral is an exclusion, and on the exclusion axis over-matching silently deletes work (#3559).
+ *
+ * Kept separate from the `ids` [deferredPreviewIds] returns because the sharder consumes those as
+ * ids — it removes them from the partition by set membership, which an anchored string would miss.
+ * Ids stay plain until the moment they become CLI patterns.
+ *
+ * @param {string[]} ids plain preview ids.
+ * @returns {string[]} the same ids, each `=`-anchored.
+ */
+export function anchoredExclusions(ids) {
+  return (ids ?? [])
+    .filter((id) => typeof id === "string" && id.length > 0)
+    .map((id) => (id.startsWith("=") ? id : `=${id}`));
+}
+
+/**
  * Pull the preview list out of whatever JSON the caller captured: `compose-preview list --json`
  * (`{ previews: [...] }` or a bare array) or a module's discovery manifest (`previews.json`, also
  * `{ previews: [...] }`). Anything else yields an empty list, which means "exclude nothing".
@@ -179,25 +201,31 @@ export function previewsFromJson(parsed) {
 
 // --- CLI ----------------------------------------------------------------------
 // `node deferred-preview-ids.mjs --spec catalog.spec.json --previews previews.json
-//    [--out ids.txt] [--rows-out rows.txt]`
+//    [--out ids.txt] [--anchored-out patterns.txt] [--rows-out rows.txt]`
 // Prints (and optionally writes) the comma-separated exclusion list the render consumes as
 // `compose-preview bundle pack --exclude-preview-id` / `-PcomposePreview.idExclude`, and — for a
 // mode axis that lives in a `@PreviewParameter` provider rather than in ids — the row labels for
 // `--exclude-preview-row` / `-PcomposePreview.rowExclude`. Empty output on either is the normal case
 // for a spec that defers no mode, and means "render everything".
+//
+// Two id shapes, for two consumers: `--out` writes PLAIN ids, which is what `shard-preview-ids.mjs`
+// needs (it removes them from the partition by set membership); `--anchored-out` writes the same ids
+// `=`-anchored, which is what goes to the CLI. Handing the CLI the plain list defers each id's whole
+// fan-out along with it (#3559).
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { values } = parseArgs({
     options: {
       spec: { type: "string" },
       previews: { type: "string" },
       out: { type: "string" },
+      "anchored-out": { type: "string" },
       "rows-out": { type: "string" },
     },
   });
   if (!values.spec || !values.previews) {
     console.error(
       "usage: deferred-preview-ids.mjs --spec <catalog.spec.json> --previews <list.json> " +
-        "[--out <file>] [--rows-out <file>]",
+        "[--out <file>] [--anchored-out <file>] [--rows-out <file>]",
     );
     process.exit(2);
   }
@@ -223,6 +251,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   const line = ids.join(",");
   if (values.out) writeFileSync(values.out, line);
+  if (values["anchored-out"]) {
+    writeFileSync(values["anchored-out"], anchoredExclusions(ids).join(","));
+  }
   if (values["rows-out"]) writeFileSync(values["rows-out"], rows.join(","));
   console.log(line);
 }

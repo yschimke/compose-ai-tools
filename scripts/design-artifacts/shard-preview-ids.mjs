@@ -1,10 +1,18 @@
 /**
  * Partition a catalog's discovered preview ids across N parallel render shards.
  *
- * The design-artifacts render is one serial `bundle pack`, and it grows linearly with the preview
- * count: measured on m3-catalog, `render_minutes ≈ 3.7 + 2.15s × previews`. Past ~1500 previews that
- * blows `render-timeout`, and past ~2400 the job timeout — so the marginal 2.15s has to be divided
- * across jobs. This module decides who renders what.
+ * The design-artifacts render is one serial `bundle pack`, and it used to grow linearly with the
+ * preview count: measured on m3-catalog, `render_minutes ≈ 3.7 + 2.15s × previews`. Past ~1500
+ * previews that blew `render-timeout`, and past ~2400 the job timeout — so the marginal 2.15s had to
+ * be divided across jobs. This module decides who renders what.
+ *
+ * **That cost model is superseded and the shard count derived from it is not currently trusted.**
+ * Captures now draw on a warm renderer rather than forking a JVM each time (#3548), which collapsed
+ * the marginal term and left the ~3.7 min fixed configure + compile that every shard pays in full
+ * untouched. Cheaper marginal work with unchanged fixed cost moves the optimum *down*, so the old
+ * "six, not sixteen" conclusion no longer follows from anything measured. #3559 tracks re-measuring
+ * it. Nothing here assumes a particular count — the partition is correct at any N — but do not read
+ * the arithmetic above as current guidance.
  *
  * The mechanism is exclusion, not selection: each shard runs the SAME `bundle pack` with
  * `--exclude-preview-id <everything that isn't mine>`, which is documented to leave the excluded
@@ -13,7 +21,7 @@
  * differing only in which `previews/<id>.*` slots are filled, which is exactly what
  * `compose-preview bundle merge` unions back together.
  *
- * Three decisions worth stating, because each has a wrong-looking-right alternative:
+ * Four decisions worth stating, because each has a wrong-looking-right alternative:
  *
  *  - **Partition by preview id, never by `@Preview` function name.** One function expands to a
  *    30-cell matrix (m3-catalog's icon buttons) while its neighbour expands to two; a name split is
@@ -23,6 +31,16 @@
  *    ids sort together by group, so contiguous blocks cluster the template-heavy groups into one
  *    shard. Round-robin spreads them. It is not bin-packing, and does not try to be: bin-packing
  *    from recorded per-preview times is only worth it once a straggler actually shows up.
+ *  - **Every emitted exclusion is `=`-anchored.** `--exclude-preview-id` matches a plain pattern by
+ *    equality OR substring, and ids are hierarchical (`<base>_<variant>`), so a base id is always a
+ *    substring of its own fan-out: a shard excluding another shard's `SwitchOn_Light` also deleted
+ *    every `SwitchOn_Light_VARIANT_*` it was itself assigned. That cost m3-catalog three quarters of
+ *    its renders — 267 captured of 1095 assigned — silently, on a green run, which is why
+ *    `render-shards` was pinned back to 1. The asymmetry is the point: substring matching
+ *    over-selects harmlessly on the INCLUDE axis and silently deletes work on the EXCLUDE axis, so
+ *    it is unusable with any generated id list, which is exactly what a sharder produces. The `=`
+ *    prefix (#3561) matches the id exactly. It is emitted here, at the boundary where ids become
+ *    CLI patterns, rather than carried through the partition — everything upstream stays plain ids.
  *  - **Deferred ids are removed BEFORE partitioning, then re-excluded in every shard.** A
  *    `modePriority` deferral (issue #2966) and the partition are both expressed as exclusions, so
  *    the naive union would hand deferred ids a share of the partition and leave one shard rendering
@@ -85,6 +103,29 @@ export function previewNameMatches(patterns, functionName, className = "") {
 }
 
 /**
+ * The prefix that makes an `--exclude-preview-id` pattern an exact-id match rather than a substring
+ * one. Mirrors `PreviewNameFilter.ANCHOR` / `PackPreviewIdExclusions.ANCHOR` (#3561); it cannot
+ * collide with a real pattern because no discovered id can begin with it — ids derive from Kotlin
+ * identifiers and are path-sanitised.
+ */
+export const ANCHOR = "=";
+
+/**
+ * Turn plain preview ids into anchored `--exclude-preview-id` patterns.
+ *
+ * Applied at the one boundary where an id becomes a CLI pattern. An id that is already anchored is
+ * left alone, so this is idempotent and a caller that anchored upstream is not double-prefixed.
+ *
+ * @param {string[]} ids plain preview ids.
+ * @returns {string[]} the same ids, each `=`-anchored.
+ */
+export function anchorExclusions(ids) {
+  return (ids ?? [])
+    .filter((id) => typeof id === "string" && id.length > 0)
+    .map((id) => (id.startsWith(ANCHOR) ? id : `${ANCHOR}${id}`));
+}
+
+/**
  * A stable fingerprint of the renderable id set, carried in every shard's plan so the merge can
  * check that the shards discovered the *same* previews rather than merely the same NUMBER of them.
  * Two runners that saw `["a"]` and `["d"]` are disjoint with a union of size two, which a count
@@ -121,6 +162,10 @@ export function partitionPreviewIds(ids, shards) {
  * The full render plan for a sharded run: what each shard renders, and the `--exclude-preview-id`
  * list that makes it render only that.
  *
+ * `previews` are plain ids (they are compared, counted and cross-checked); `exclude` are `=`-anchored
+ * CLI patterns (they are passed to a matcher). Keeping the two shapes distinct is deliberate — see
+ * the anchoring note in the header for what an unanchored exclusion list costs.
+ *
  * Three things are removed from the partition before it is drawn, each for the same reason — a
  * shard must never be handed a share that the render will not actually produce:
  *  - ids of functions the **name filter** drops (an entry-level `priority: "deferred"`);
@@ -149,16 +194,19 @@ export function shardRenderPlan(previews, shards, deferred = [], renderFilter = 
     .filter((id) => typeof id === "string" && id.length > 0);
   const renderable = [...new Set(all)].filter((id) => !deferredSet.has(id)).sort();
   const partitions = partitionPreviewIds(renderable, shards);
-  // Only the ids this shard is NOT rendering, plus the deferred ones. Ids the caller listed as
-  // deferred but discovery never saw are kept in the exclusion list anyway: exclusion polarity means
-  // a pattern matching nothing renders MORE, never less, so a stale entry costs time, not a sticker.
+  // Only the ids this shard is NOT rendering, plus the deferred ones, each `=`-anchored so it
+  // matches that id and not its variants (see the header). Ids the caller listed as deferred but
+  // discovery never saw are kept in the exclusion list anyway: exclusion polarity means a pattern
+  // matching nothing renders MORE, never less, so a stale entry costs time, not a sticker.
   return {
     shards: partitions.map((mine, i) => {
       const own = new Set(mine);
       return {
         index: i + 1,
         previews: mine,
-        exclude: [...renderable.filter((id) => !own.has(id)), ...deferredSet].sort(),
+        exclude: anchorExclusions(
+          [...renderable.filter((id) => !own.has(id)), ...deferredSet].sort(),
+        ),
       };
     }),
     total: partitions.length,
