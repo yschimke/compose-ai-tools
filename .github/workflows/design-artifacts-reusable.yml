@@ -128,17 +128,17 @@ on:
         type: boolean
         default: false
       rc-embedded-lane:
-        description: "Add the embedded-player lane to rc-compare.html, making it a three-way page: baked PNG vs the vendored TypeScript RcdPlayer vs AndroidX's Compose-embedded RcPlayer. Off by default because it is the only part of this workflow that needs a Gradle/Android toolchain — it stages the bundle's ir/*.rc, renders them through :third-party-rc-embedded-player (Robolectric), and diffs the result. Requires an Android SDK on the runner; a runner without one (or a harness failure) degrades to the usual two-lane page rather than failing the render. No-op for a catalog that ships no ir/*.rc."
+        description: "Add the embedded-player lane to rc-compare.html, making it a three-way page: baked PNG vs the vendored TypeScript RcdPlayer vs AndroidX's Compose-embedded RcPlayer. ON by default: scoring the same document through two players is what makes a divergence attributable — a row where only the JS player is off is a JS-player bug, one where only the embedded player is off is an embedded-player bug — and a catalog that ships ir/*.rc should get that for free rather than by remembering an input. It stages the bundle's ir/*.rc, renders them through :third-party-rc-embedded-player (Robolectric), and diffs the result; it needs a Gradle/Android toolchain, and a runner without one (or a harness failure) degrades to the usual two-lane page rather than failing the render. Entirely skipped — no Gradle, no Chromium — for a catalog that ships no ir/*.rc. Set false to keep the page two-lane, e.g. on a runner where the extra Gradle build is not worth its minutes."
         required: false
         type: boolean
-        default: false
+        default: true
       rc-embedded-jvm-lane:
-        description: "Add the cmp-jvm desktop-player lane to rc-compare.html — one extra compact column (render + folded diff) rendering the bundle's ir/*.rc through :third-party-rc-embedded-player-jvm (Compose Desktop / Skiko, offscreen). Independent of rc-embedded-lane: either or both can run, and staging happens once for whichever is on. Needs libGL + xvfb (installed by the desktop-render deps step, which also fires on this input). Same tolerance as the Robolectric lane: a harness failure or empty output degrades to a page without the cmp-jvm column rather than failing the render. No-op for a catalog that ships no ir/*.rc."
+        description: "Add the cmp-jvm desktop-player lane to rc-compare.html — one extra compact column (render + folded diff) rendering the bundle's ir/*.rc through :third-party-rc-embedded-player-jvm (Compose Desktop / Skiko, offscreen). ON by default, for the same attribution reason as rc-embedded-lane, and because it exercises the platform-neutral draw path off Android: a jvm-only divergence points at the desktop seam (text/image/skiko) rather than the shared evaluator. Independent of rc-embedded-lane: either or both can run, and staging happens once for whichever is on. Needs libGL + xvfb, installed just-in-time by the rc-compare step once the bundle is known to carry ir/*.rc. Same tolerance as the Robolectric lane: a harness failure or empty output degrades to a page without the cmp-jvm column rather than failing the render. Entirely skipped for a catalog that ships no ir/*.rc."
         required: false
         type: boolean
-        default: false
+        default: true
       rc-cmp-wasm-lane:
-        description: "Add the required CMP/Wasm player lane to rc-compare.html. When enabled, its distribution must build and every ir/*.rc must render unless named in rc-cmp-wasm-allowlist. Evidence is uploaded before a failed gate stops publication. No-op for a catalog that ships no ir/*.rc."
+        description: "Add the required CMP/Wasm player lane to rc-compare.html. When enabled, its distribution must build and every ir/*.rc must render unless named in rc-cmp-wasm-allowlist. Evidence is uploaded before a failed gate stops publication. No-op for a catalog that ships no ir/*.rc. Stays OFF by default — unlike the two embedded lanes, this one is a gate rather than enrichment: a document the Wasm player cannot draw, or one that misses the first-frame budgets, fails the step and the catalog does not publish. Opt in per catalog once you know what its documents do in that player."
         required: false
         type: boolean
         default: false
@@ -783,10 +783,15 @@ jobs:
           fc-cache -f "$HOME/.local/share/fonts" >/dev/null
 
       # CMP desktop (Skiko) links libGL; install Mesa's software GL + a font stack.
-      # Also needed by the rc-compare cmp-jvm lane, whose player is the same Skiko stack
-      # even when the primary render is Android/Robolectric (remote-m3: desktop-render=false).
+      # The rc-compare cmp-jvm lane needs the same stack — its player IS this Skiko stack
+      # even when the primary render is Android/Robolectric (remote-m3: desktop-render=false)
+      # — but it installs its own copy just-in-time instead of firing this step, because
+      # `rc-embedded-jvm-lane` now defaults to true and this step runs before the render:
+      # gating on the input here would charge an apt round-trip to every caller, including
+      # the catalogs (compose-m3, wear-m3) whose bundles carry no ir/*.rc and skip the lane
+      # entirely. By the time rc-compare runs, the bundle is built and the answer is known.
       - name: Install desktop (Skiko) render deps
-        if: ${{ inputs.desktop-render || inputs.rc-embedded-jvm-lane }}
+        if: ${{ inputs.desktop-render }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends \
@@ -1226,9 +1231,18 @@ jobs:
           fi
 
           # cmp-jvm (Compose Desktop / Skiko) embedded lane. Same three moves, different harness:
-          # the jvm player links libGL and draws offscreen, so its Gradle test runs under xvfb-run
-          # (libGL + xvfb come from the desktop-render deps step, which fires on this input too).
+          # the jvm player links libGL and draws offscreen, so its Gradle test runs under xvfb-run.
+          # The deps are installed here rather than by the desktop-render step above: that step runs
+          # long before the bundle exists, so with this lane defaulting to true it would charge an
+          # apt round-trip to every caller, including the ones whose bundles carry no ir/*.rc and
+          # exit this step at its first check. Guarded on xvfb-run, so a desktop-render caller --
+          # which already installed the same stack -- doesn't pay for it twice.
           if [ "${{ inputs.rc-embedded-jvm-lane }}" = "true" ]; then
+            if ! command -v xvfb-run >/dev/null 2>&1; then
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq --no-install-recommends \
+                xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig
+            fi
             RC_JVM_OUT="$RUNNER_TEMP/rc-embedded-jvm-out"
             rm -rf "$RC_JVM_OUT"
             if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
