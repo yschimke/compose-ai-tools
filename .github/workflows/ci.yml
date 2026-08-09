@@ -127,6 +127,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Resolve affected Gradle tests
         id: test-scope
@@ -149,6 +150,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run unit tests
         run: ./gradlew :gradle-plugin:test
@@ -176,6 +178,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run unit tests
         run: ./gradlew :renderer-android:testDebugUnitTest
@@ -318,6 +321,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run affected module tests (full suite off PRs)
         env:
@@ -365,6 +369,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Compose Multiplatform 1.11's `ui-uikit` links against iOS 26 SDK symbols — `CMPLayoutRegion`
       # references `UIViewLayoutRegion`, which does not exist before iOS 26. The `macos-15` image
@@ -437,6 +442,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Build the Wasm player distribution
         run: ./gradlew :rc-player-wasm:wasmPlayerDist
@@ -500,6 +506,7 @@ jobs:
         with:
           # Read-only: a PR job never writes the shared cache (see functional-tests for the same
           # reasoning). Reading is what turns the Kotlin/Wasm compile from minutes into seconds.
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Build the Wasm player distribution
         run: ./gradlew :rc-player-wasm:wasmPlayerDist
@@ -626,6 +633,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run functional tests
         run: ./gradlew :gradle-plugin:functionalTest
@@ -653,6 +661,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Build CMP sample and discover previews
         run: ./gradlew :samples:cmp:composePreviewDiscover
@@ -714,6 +723,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Daemon-bench smoke (issue #1586). The full latency benches
       # (benchPreviewLatency / benchCompileStages) are deliberately slow and run on the
@@ -778,6 +788,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Release builds no longer package the per-OS bundle-viewer binaries. Compile
       # and test its source here so removing that packaging matrix does not also
@@ -805,6 +816,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Build the compositor (clang + libc++ against the pinned Filament SDK) and its compiled
       # materials into dist/ — the same composite action the build/release workflows use.
@@ -960,6 +972,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # End-to-end: pack a bundle from a synthetic Compose Desktop project, then re-render it
       # outside of any Gradle project by spawning the actual CLI binary against the packed PNG.
@@ -998,6 +1011,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # End-to-end for the Android path of `bundle daemon`: pack real-sample bundles (Wear tile +
       # Remote Compose IR, plus classic Compose previews), then spawn the actual CLI binary against
@@ -1063,6 +1077,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Fetch agent audit script from yschimke/skills
         # The script lives in the sibling skills repo since it's part of the

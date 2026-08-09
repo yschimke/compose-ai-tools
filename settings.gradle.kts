@@ -97,35 +97,44 @@ val cacheToken =
 // input property never enters it). Bumping the salt would leave both keys resolving to the same
 // poisoned objects.
 //
-// So until BuildFetch evicts them, skip the remote entirely. This deliberately also forces
-// `remotePushEnabled` false, which keeps the LOCAL cache on for main (see `local` below) — without
-// that, a main run would execute every cacheable task with no cache at all.
+// So until BuildFetch evicts them, skip the remote entirely. The local cache stays on regardless
+// (see `local` below), so flipping this off degrades to local-only rather than to no cache at all.
 //
 // TO REVERT once the entries are evicted: delete this flag + the `composeai.remoteCache` line in
 // gradle.properties. Nothing else changed.
 val remoteCacheDisabled =
   providers.gradleProperty("composeai.remoteCache").orElse("on").get().trim().lowercase() == "off"
 
-// True only when this run will actually push to the remote: a trusted main-branch run (ON_CI) with a
-// usable token. Anything else (PRs, dev machines, or a main run whose token is unprovisioned/blank)
-// does not push, so it must keep the local cache.
-val remotePushEnabled = onCi && cacheToken != null && !remoteCacheDisabled
-
 buildCache {
-  // On the trusted main-branch runs, CI is the sole writer of the BuildFetch remote cache — and the
-  // only thing that populates it for every other consumer (PRs, developer machines). Gradle never
-  // re-uploads a *local* build-cache hit to the remote; it pushes to the remote only when a task
-  // actually executes. setup-gradle restores a warm local build cache (caches/build-cache-1) from the
-  // GitHub Actions cache, so with it in place every task resolves as FROM-CACHE (local), nothing is
-  // pushed, and the remote stays empty (dev machines then see 0 remote hits). Disabling the local
-  // cache on the pushing runs forces tasks to execute-and-push, or to hit the remote directly, so
-  // BuildFetch actually gets seeded.
+  // The local cache stays ON everywhere, including on the trusted main runs that push. Many
+  // writers, none of them paying a no-cache build.
   //
-  // Gate this on remotePushEnabled, not just ON_CI: if the token is unprovisioned/blank the remote
-  // below disables itself, and disabling the local cache too would make that main run execute every
-  // cacheable task with *no* cache at all. Off-CI, on PRs, and on token-less main runs the local
-  // cache stays on.
-  local { isEnabled = !remotePushEnabled }
+  // This used to be `isEnabled = !remotePushEnabled`, on the reasoning that Gradle only pushes a
+  // task it actually *executes* — so a warm local cache resolves everything FROM-CACHE, nothing is
+  // pushed, and the remote stays empty. That reasoning holds on a developer machine with a
+  // genuinely warm cache. It does not hold on a CI runner, and assuming it did is what starved the
+  // remote:
+  //
+  //   * setup-gradle restores `caches/build-cache-1` from the GitHub Actions cache, but reports
+  //     `Save was skipped` on an exact key match — so the entry never accumulates. It is a frozen
+  //     point-in-time snapshot, not a warm cache.
+  //   * The moment a change rotates cache keys build-wide (a build-logic edit, a dependency bump)
+  //     that snapshot stops matching, and every task executes — and therefore pushes.
+  //
+  // So on CI, "local cache on" does not suppress pushes; it suppresses the *redundant* ones.
+  // Whatever a run genuinely had to execute still lands in the remote. That lets every trusted main
+  // run contribute, instead of concentrating the whole job on one designated seeder that has to
+  // build from scratch to be useful.
+  //
+  // Why that matters here: this repo merges fast. Measured 2026-08-09, five commits landed in the
+  // 26 minutes between a seed (69c0517) and the next e2e run (7677a3f2) — one of them touching
+  // preview discovery, which rotates every render key. A single seeder cannot stay ahead of that,
+  // and the jobs that could have refreshed those keys were forbidden from pushing. Several
+  // opportunistic writers cover it; one exhaustive writer cannot.
+  //
+  // `gradle-cache-seed.yml` still exists as the guaranteed-to-complete baseline writer (it is the
+  // only one that never gets cancelled), but it is no longer the only one.
+  local { isEnabled = true }
   remote<HttpBuildCache> {
     url = uri("https://cache.eu-central-a.buildfetch.com/8ESz2z/gradle/")
 

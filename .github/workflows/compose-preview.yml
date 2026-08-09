@@ -82,7 +82,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       # Read-only BuildFetch remote cache: pull cached task outputs instead of
-      # building cold. No rw-token — gradle-cache-seed.yml is the sole writer.
+      # building cold. No rw-token — the writers (ci.yml, integration.yml,
+      # vscode-extension-e2e.yml, gradle-cache-seed.yml) already cover these tasks.
       - uses: ./.github/actions/buildfetch-cache
         with:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
@@ -123,7 +124,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       # Read-only BuildFetch remote cache: pull cached task outputs instead of
-      # building cold. No rw-token — gradle-cache-seed.yml is the sole writer.
+      # building cold. No rw-token — the writers (ci.yml, integration.yml,
+      # vscode-extension-e2e.yml, gradle-cache-seed.yml) already cover these tasks.
       - uses: ./.github/actions/buildfetch-cache
         with:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}

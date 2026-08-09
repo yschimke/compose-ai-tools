@@ -1,34 +1,34 @@
 name: Gradle Cache Seed
 
-# Sole writer of the BuildFetch remote build cache.
+# Baseline writer of the BuildFetch remote build cache — the one that is
+# guaranteed to finish.
+#
+# Several workflows push now (ci.yml, integration.yml, vscode-extension-e2e.yml
+# on main), each contributing whatever it genuinely had to execute. That is the
+# bulk of the coverage, and it is deliberately opportunistic: those runs are
+# cancellable, so any individual one may push only part of its work.
+#
+# This workflow is the floor under that. It is the only writer that cannot be
+# cancelled mid-flight, so a known task set lands in the remote on every merge
+# batch regardless of how the cancellable runs happen to be scheduled.
 #
 # Why a workflow of its own rather than a job inside ci.yml: workflow-level
 # `concurrency.cancel-in-progress` cancels the whole *run*, so no job inside a
 # cancelling workflow can be made to survive — job-level concurrency cannot
-# rescue a job whose run was killed. Seeding therefore has to live in a
-# separate run with its own concurrency group, which is exactly what this is.
-#
-# The split matters because seeding and verification want opposite policies:
-#
-#   * Verification (ci.yml, the e2e shards) SHOULD be cancelled by a newer
-#     commit — a superseded test result is worthless, and 26 of 30 recent main
-#     runs were being cancelled anyway.
-#   * Seeding MUST run to completion. `buildfetch-cache`'s write token sets
-#     `ON_CI=true`, and settings.gradle.kts then disables the *local* build
-#     cache so tasks execute-and-push rather than resolving FROM-CACHE locally
-#     and pushing nothing. A cancelled seeder is the worst case: a full
-#     no-cache build that is killed before it has pushed much, leaving the
-#     remote stale for every PR.
-#
-# Before this split ci.yml held the write token, so main runs got both
-# policies wrong at once: expensive (no local cache) *and* cancelled. Now
-# ci.yml reads with `ro-token`, keeps its local cache, and stays cheap to
-# cancel; this workflow owns writes and is never cancelled mid-flight.
+# rescue a job whose run was killed. An uncancellable writer needs its own run.
 #
 # `cancel-in-progress: false` is not "run every push". GitHub holds at most one
 # running plus one pending run per concurrency group and drops superseded
 # *pending* runs before they claim a runner, so a burst of merges costs one
 # complete seed rather than N partial ones.
+#
+# Note on scope: one seed per merge batch cannot keep up with this repo's merge
+# rate on its own. Measured 2026-08-09, five commits landed in the 26 minutes
+# between a seed (69c0517) and the next e2e run (7677a3f2) — one of them
+# touching preview discovery, which rotates every render key, so the e2e run
+# could not hit anything this workflow had pushed. That is why the cancellable
+# writers matter more than this one; do not treat a green seed as evidence that
+# downstream jobs are hitting cache.
 
 on:
   push:
@@ -52,9 +52,10 @@ jobs:
   seed:
     name: Seed the BuildFetch remote cache
     runs-on: ubuntu-latest
-    # Generous: this job deliberately runs with the local build cache disabled,
-    # so a cold seed after a build-logic change executes everything below from
-    # source. It is the one job in the repo that is *supposed* to be slow.
+    # Generous on purpose. The steps below are cheap when the caches are warm
+    # (run 1 took 6m31s), but a build-logic change or a dependency bump rotates
+    # keys build-wide and this job then executes the whole set from source —
+    # which is exactly when its output matters most, so it must not be cut off.
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
