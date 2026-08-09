@@ -137,8 +137,16 @@ interface ServeHost : AutoCloseable {
    */
   fun themeReplayColors(providerFqn: String): Map<String, String> = emptyMap()
 
-  /** Whether any declared theme can be applied by replay ([themeReplayColors]). */
-  fun canThemeByReplay(): Boolean = declaredThemes.any {
+  /**
+   * The declared themes a **replayed** preview can actually be rendered under — those this host
+   * publishes a [themeReplayColors] mapping for.
+   *
+   * Per theme, not per host: a catalog may publish mappings for some of its themes and not others,
+   * and a theme that moves only typography legitimately has no colours to seed at all. Offering the
+   * whole declared set because *one* of them is mapped puts the unmapped ones back on the terminal
+   * 409 the gate exists to prevent.
+   */
+  fun replayableThemes(): List<ServeTheme> = declaredThemes.filter {
     themeReplayColors(it.providerFqn).isNotEmpty()
   }
 

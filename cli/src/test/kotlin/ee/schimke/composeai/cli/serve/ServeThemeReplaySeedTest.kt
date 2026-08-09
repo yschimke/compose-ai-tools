@@ -160,4 +160,65 @@ class ServeThemeReplaySeedTest {
   fun `a replayed preview with no published mapping still refuses`() {
     assertEquals(409, render("unmapped", "unmapped-one"), "terminal, as before")
   }
+
+  /**
+   * A blank explicit seed is not the caller overriding a role — `ServeOverrides.parse` skips an
+   * empty `rc.` value outright, so honouring the bare key would drop the theme's colour for that
+   * role and leave the document on its authored one. The response would still report a themed
+   * render: a theme applied in part, claimed in full.
+   */
+  @Test
+  fun `a blank explicit seed does not suppress the theme's colour`() {
+    val url =
+      "http://127.0.0.1:${server.port}/replayed/render/replayed-one.png" +
+        "?themeProvider=${theme.providerFqn}&rc.WearM3.primary="
+    assertEquals(200, client.newCall(Request.Builder().url(url).build()).execute().use { it.code })
+
+    assertEquals(
+      RemoteNamedValue.ColorValue("#FF6F61"),
+      replayed.seen.single().remoteCompose?.namedValues?.get("WearM3.primary"),
+      "the theme fills a role the request left blank",
+    )
+  }
+
+  /**
+   * The declared set is narrowed to what the session can apply. A catalog publishing a mapping for
+   * one theme and not another must not offer the unmapped one — selecting it would reach the
+   * terminal 409 the gate exists to prevent.
+   */
+  @Test
+  fun `only themes with a published mapping are replayable`() {
+    // A real host, not a delegate: `replayableThemes()` is an interface default, so `by` would
+    // forward it to the delegate and run it against the delegate's themes rather than these.
+    val partial =
+      object : ServeHost {
+        override val previews = emptyList<ServePreview>()
+        override val label = "partial"
+        override val declaredThemes = listOf(theme, ServeTheme("Teal", "com.example.TealTheme"))
+
+        override fun themeReplayColors(providerFqn: String): Map<String, String> =
+          if (providerFqn == theme.providerFqn) coral else emptyMap()
+
+        override fun render(previewId: String, overrides: PreviewOverrides) = RenderOutcome.NotFound
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun activeStreamCount(): Int = 0
+
+        override fun close() {}
+      }
+
+    assertEquals(
+      listOf(theme.providerFqn),
+      partial.replayableThemes().map { it.providerFqn },
+      "the unmapped theme is not offered",
+    )
+  }
 }

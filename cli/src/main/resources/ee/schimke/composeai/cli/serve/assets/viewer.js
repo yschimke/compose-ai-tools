@@ -1693,6 +1693,10 @@
   //  * Remote Compose knobs stay live except the string-valued ones, and only in the server lane —
   //    see the `.cp-rc-knob` pass below.
   var irReplay = root.getAttribute("data-ir-replay") === "1";
+  // A replayed preview whose session publishes its declared themes as named colour values. The
+  // server rewrites `?themeProvider=` into those seeds, so the provider options work here even
+  // though nothing else `irReplay` disables does — those still need a composition.
+  var replayThemes = root.getAttribute("data-replay-themes") === "1";
   // Force [el] off for the IR-replay reason, tagging it so the visitor gets the "why" on hover
   // rather than a control that is merely dead. Only ever *adds* the disable — every call site
   // assigns `el.disabled` from its own lane logic immediately before, so the not-dead branch just
@@ -1765,7 +1769,7 @@
       // which needs a composition to wrap. Day/Night is NOT gated the same way — the player can
       // derive its paint theme from the host at draw time, so that axis stays offered.
       var canProviderTheme = !fixedTheme && hasDeclaredThemes && !onWasm && !onRc && !onSpec &&
-        !irReplay && (!staticSnapshot || canRenderOverrides);
+        (!irReplay || replayThemes) && (!staticSnapshot || canRenderOverrides);
       // Wear has no day/night axis, but Night (Default) must remain selectable when provider
       // themes are offered so the visitor can clear a chosen provider and return to the app.
       var canDefaultTheme = !fixedTheme && !onRc && !onSpec &&
