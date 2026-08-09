@@ -114,6 +114,13 @@ const describeE2E = E2E ? describe : describe.skip;
  * preview elsewhere in the repo. A non-empty filter that matches *nothing*
  * fails the render task outright, so every module this suite renders
  * (`:samples:cmp`, `:samples:android`) must keep at least one entry here.
+ *
+ * **Narrowing the render requires `-PcomposePreview.missingRenders=warn`**
+ * alongside it — see where these patterns are handed to `RealGradleApi`.
+ * `composePreviewRenderAll` finishes with a completeness check across the
+ * whole manifest and the policy defaults to `fail`, so a filtered render
+ * fails the task on every preview the filter excluded. Without the pairing
+ * this suite never once reached the happy path.
  */
 const FIXTURE_PREVIEW_FILTER = [
     // `samples/cmp/.../Previews.kt` — the cmp fixture every scenario
@@ -156,11 +163,111 @@ interface SetPreviewsMessage {
     moduleDir: string;
 }
 
+/**
+ * Budget for "the panel should have published this by now" waits.
+ *
+ * Deliberately NOT `this.timeout()`. Passing the Mocha ceiling as a wait
+ * budget means a condition that never becomes true consumes the entire test
+ * and reports a bare `Timeout of 1800000ms exceeded` — no indication of which
+ * invariant failed, and 30 minutes of runner time per occurrence. Scenario E
+ * did exactly that on `main` (run 31306997859): 26 minutes of silence after
+ * `composePreviewDiscover`, then a timeout that named nothing.
+ *
+ * These waits follow an *awaited* `triggerRefresh`, and `refresh` posts
+ * `setPreviews` before it resolves — so in a healthy run the value is already
+ * there on the first poll (measured at 44ms in the cmp-smoke shard). Three
+ * minutes is far past generous; it exists only so a daemon-path repaint that
+ * lands late still counts. The Mocha ceiling stays as the backstop.
+ */
+const PANEL_UPDATE_BUDGET_MS = 3 * 60_000;
+
+/**
+ * Budget for the awaited `triggerRefresh` itself.
+ *
+ * {@link PANEL_UPDATE_BUDGET_MS} only bounds the *poll after* the refresh
+ * resolves — it does nothing for a refresh that never resolves, because the
+ * timer has not started yet. That is not hypothetical: the first recorded
+ * scenario-E failure (run 31306997859) went silent right after
+ * `composePreviewDiscover` and sat there for 26 minutes with no Gradle
+ * output, no task-cap cancellation, and nothing for the poll to observe.
+ *
+ * Sized above `gradleService`'s 10-minute per-task cap so a genuinely slow
+ * cold render is never cut short — this fires only when something is wedged
+ * past the point the cap itself should have handled.
+ */
+const REFRESH_BUDGET_MS = 12 * 60_000;
+
+/** Head room so a diagnostic always reports before Mocha's own ceiling. */
+const DIAGNOSTIC_SLACK_MS = 30_000;
+
+/**
+ * Clamp a diagnostic budget to what is left of the test's Mocha budget.
+ *
+ * A fixed budget is not enough on its own: scenario E runs four bounded
+ * refreshes inside one 30-minute test, and 4 × {@link REFRESH_BUDGET_MS} is
+ * 48 minutes. A wedge in a *late* refresh would blow the Mocha ceiling before
+ * its own timer fired, reinstating exactly the bare, unattributed timeout
+ * these budgets exist to remove. Deriving each deadline from the remaining
+ * time guarantees the diagnostic wins the race.
+ */
+function budgetWithin(deadlineAt: number, max: number): number {
+    return Math.max(
+        1_000,
+        Math.min(max, deadlineAt - Date.now() - DIAGNOSTIC_SLACK_MS),
+    );
+}
+
+/**
+ * Await a refresh under `budgetMs` — normally
+ * `budgetWithin(deadlineAt, REFRESH_BUDGET_MS)` — reporting panel state if it
+ * never resolves.
+ *
+ * The pending refresh is abandoned, not cancelled: there is no test-API hook
+ * to abort one, and the extension host keeps running after a failed test, so
+ * the abandoned refresh's `pendingRefresh` can still be in flight when the
+ * *next* scenario starts. That is why every scenario downstream of a bounded
+ * refresh bounds its own waits too — an inherited wedge then costs one
+ * `PANEL_UPDATE_BUDGET_MS` per wait instead of a full Mocha ceiling per test.
+ */
+async function refreshWithinBudget<T>(
+    label: string,
+    budgetMs: number,
+    refresh: Promise<T>,
+    describeState: () => string,
+): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const budget = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+            () =>
+                reject(
+                    new Error(
+                        `${label}: refresh did not resolve within ${
+                            budgetMs / 1000
+                        }s — it is wedged, not slow.\n  ${describeState()}`,
+                    ),
+                ),
+            budgetMs,
+        );
+    });
+    timer?.unref?.();
+    try {
+        return await Promise.race([refresh, budget]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 async function waitFor<T>(
     description: string,
     timeoutMs: number,
     pollMs: number,
     probe: () => T | undefined,
+    /**
+     * Rendered into the timeout message. A wait that fails should say what it
+     * actually observed — otherwise the next occurrence is as opaque as the
+     * last one.
+     */
+    describeState?: () => string,
 ): Promise<T> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
@@ -170,9 +277,49 @@ async function waitFor<T>(
         }
         await new Promise((r) => setTimeout(r, pollMs));
     }
+    let state = "";
+    if (describeState) {
+        try {
+            state = `\n  ${describeState()}`;
+        } catch (err) {
+            state = `\n  <describeState threw: ${String(err)}>`;
+        }
+    }
     throw new Error(
-        `Timed out after ${timeoutMs}ms waiting for: ${description}`,
+        `Timed out after ${timeoutMs}ms waiting for: ${description}${state}`,
     );
+}
+
+/**
+ * Text of a panel empty-state message, if the refresh posted one. `refresh`
+ * has two such branches, and BOTH are terminal for a test waiting on
+ * `setPreviews`: each posts `clearAll` + a `showMessage`, posts no
+ * `setPreviews`, and still returns `'completed'` — so `assertRefreshRendered`
+ * cannot see them either.
+ *
+ *   * "No @Preview functions in this file (N in other files in this module)."
+ *     — the module has previews, the active file does not.
+ *   * "No @Preview functions found in this module"
+ *     — the whole module came back empty.
+ *
+ * Matching only the first would leave the module-wide case waiting out the
+ * full budget for a `setPreviews` that is never coming.
+ */
+const EMPTY_STATE_PREFIXES = [
+    "No @Preview functions in this file",
+    "No @Preview functions found in this module",
+];
+
+function emptyStateText(messages: unknown[]): string | undefined {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i] as PostedMessage;
+        if (m.command !== "showMessage" || typeof m.text !== "string") continue;
+        const text = m.text;
+        if (EMPTY_STATE_PREFIXES.some((prefix) => text.startsWith(prefix))) {
+            return text;
+        }
+    }
+    return undefined;
 }
 
 function latestSetPreviewsMatching(
@@ -198,6 +345,40 @@ function nonEmptyForModule(
 ): (msg: SetPreviewsMessage) => boolean {
     return (msg) =>
         msg.previews.length > 0 && msg.moduleDir.includes(moduleDirNeedle);
+}
+
+/**
+ * Generic timeout diagnostic: what the panel last published for a module,
+ * plus the Gradle tail the extension log would otherwise swallow.
+ *
+ * Scenario E builds a richer one that also reports its old/new rename ids;
+ * this is the version the scenarios with no id-level expectation share.
+ */
+function describeModulePanelState(
+    api: ComposePreviewTestApi,
+    moduleDirNeedle: string,
+): () => string {
+    return () => {
+        const msgs = api.getPostedMessages();
+        const latest = latestSetPreviewsMatching(msgs, (m) =>
+            m.moduleDir.includes(moduleDirNeedle),
+        );
+        const ids = latest
+            ? latest.previews.map((p) => p.id).sort()
+            : undefined;
+        return [
+            `latest ${moduleDirNeedle} setPreviews: ${
+                ids
+                    ? `${ids.length} preview(s) [${ids.join(", ")}]`
+                    : "<none posted>"
+            }`,
+            `empty state: ${emptyStateText(msgs) ?? "<none>"}`,
+            `lastWarmDaemonError: ${api.getLastWarmDaemonError() ?? "<none>"}`,
+            `Compose Preview output tail:\n    ${api
+                .getOutputChannelTail(40)
+                .join("\n    ")}`,
+        ].join("\n  ");
+    };
 }
 
 function fullRenderPath(
@@ -287,6 +468,24 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         api.injectGradleApi(
             new RealGradleApi(repoRoot, (line) => console.log(line), [
                 `-PcomposePreview.filter=${FIXTURE_PREVIEW_FILTER.join(",")}`,
+                // Mandatory companion to the filter above, and its absence was
+                // a real bug. `composePreviewRenderAll` ends with a
+                // completeness check over the *whole* manifest, and
+                // `composePreview.missingRenders` defaults to `fail` — so
+                // narrowing the render to 6 of the module's 66 previews made
+                // the task fail every single time:
+                //
+                //   composePreviewRenderAll: render produced no output file
+                //   for 59 of 66 preview(s)
+                //
+                // Every refresh in this suite was therefore landing on
+                // `renderWithDiskFallback` instead of the happy path, so the
+                // scenarios were only ever exercising the degraded route — and
+                // scenario E's post-rename refresh then saw a manifest of 3
+                // resource-only previews and resolved to the panel's empty
+                // state. `ci.yml`'s bundle job pairs a narrowed render with
+                // `missingRenders=warn` for exactly this reason.
+                "-PcomposePreview.missingRenders=warn",
             ]),
         );
 
@@ -752,6 +951,12 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
 
     it("E. rename a @Preview function; old id + PNG drop, new id surfaces, index pruned", async function () {
         api.resetMessages();
+        // Every budget below is clamped against this so the scenario's own
+        // waits can never sum past the Mocha ceiling: four full refreshes at
+        // REFRESH_BUDGET_MS each already exceed it, and a bare Mocha timeout
+        // reports nothing. Clamping means the *last* wait to overrun is the
+        // one that fails, and it fails with `describeCmpPanelState` attached.
+        const deadlineAt = Date.now() + this.timeout();
         const observations: Record<string, unknown> = {};
         const cmpNeedle = path.join("samples", "cmp");
         // The id format is `<class>.<functionName>_<previewName>` (e.g.
@@ -763,15 +968,50 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         const OLD = /\.RedBoxPreview_/;
         const NEW = /\.RedBoxPreviewRenamed_/;
 
+        // Every wait in this scenario reports through this on timeout. The
+        // three ways the rename flow can stall are indistinguishable from a
+        // bare Mocha timeout but obvious from here: no `setPreviews` posted at
+        // all (the refresh never republished), the new id absent (discovery
+        // did not see the rename), or the old id still present (the module
+        // index was not pruned). The output-channel tail carries the Gradle
+        // lines — `> <task> completed` / `FAILED` / `cancelled` — that the
+        // in-repo e2e otherwise routes to the extension log and discards.
+        const describeCmpPanelState = (): string => {
+            const latest = latestSetPreviewsMatching(
+                api.getPostedMessages(),
+                (m) => m.moduleDir.includes(cmpNeedle),
+            );
+            const ids = latest
+                ? latest.previews.map((p) => p.id).sort()
+                : undefined;
+            const tail = api.getOutputChannelTail(40).join("\n    ");
+            return [
+                `latest cmp setPreviews: ${
+                    ids
+                        ? `${ids.length} preview(s) [${ids.join(", ")}]`
+                        : "<none posted>"
+                }`,
+                `old id present: ${ids ? ids.some((id) => OLD.test(id)) : "n/a"}`,
+                `new id present: ${ids ? ids.some((id) => NEW.test(id)) : "n/a"}`,
+                `lastWarmDaemonError: ${api.getLastWarmDaemonError() ?? "<none>"}`,
+                `Compose Preview output tail:\n    ${tail}`,
+            ].join("\n  ");
+        };
+
         // --- Baseline: the pre-rename manifest must contain RedBoxPreview ---
         assertRefreshRendered(
             api,
-            await api.triggerRefresh(cmpFile, true, "full"),
+            await refreshWithinBudget(
+                ":samples:cmp render",
+                budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
+                api.triggerRefresh(cmpFile, true, "full"),
+                describeCmpPanelState,
+            ),
             ":samples:cmp render",
         );
         const baseline = await waitFor(
             "cmp baseline setPreviews (with RedBoxPreview)",
-            this.timeout(),
+            budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -780,6 +1020,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     return m.previews.some((p) => OLD.test(p.id));
                 });
             },
+            describeCmpPanelState,
         );
         const baselineIds = baseline.previews.map((p) => p.id).sort();
         observations.baselineIds = baselineIds;
@@ -815,15 +1056,42 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
             api.resetMessages();
             assertRefreshRendered(
                 api,
-                await api.triggerRefresh(cmpFile, true, "full"),
+                await refreshWithinBudget(
+                    ":samples:cmp render",
+                    budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
+                    api.triggerRefresh(cmpFile, true, "full"),
+                    describeCmpPanelState,
+                ),
                 ":samples:cmp render",
             );
             const afterRename = await waitFor(
                 "setPreviews after rename (new id present, old id gone)",
-                this.timeout(),
+                budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
                 500,
                 () => {
                     const msgs = api.getPostedMessages();
+                    // A refresh that finds nothing to show in the active file
+                    // settles into the panel's empty state — `clearAll` plus
+                    // "No @Preview functions in this file" — and returns
+                    // 'completed' having posted no `setPreviews` at all. That
+                    // slips past `assertRefreshRendered`, which only catches
+                    // 'failed'. It is also terminal: nothing re-triggers a
+                    // refresh afterwards, so waiting out the budget just
+                    // delays the failure and throws away the reason.
+                    //
+                    // Observed on this suite's own PR run (job 93235209013):
+                    // the post-rename `composePreviewRenderAll` died with
+                    // `composePreviewRender --preview matched no previews`
+                    // and the refresh reported "0 visible previews in
+                    // Previews.kt, module has 3".
+                    const emptyState = emptyStateText(msgs);
+                    if (emptyState) {
+                        throw new Error(
+                            "after the rename the panel resolved to its empty " +
+                                `state instead of republishing: "${emptyState}"\n  ` +
+                                describeCmpPanelState(),
+                        );
+                    }
                     return latestSetPreviewsMatching(msgs, (m) => {
                         if (m.previews.length === 0) return false;
                         if (!m.moduleDir.includes(cmpNeedle)) return false;
@@ -833,6 +1101,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                         );
                     });
                 },
+                describeCmpPanelState,
             );
             observations.afterRename = {
                 idsSorted: afterRename.previews.map((p) => p.id).sort(),
@@ -873,12 +1142,13 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
             // written" regression still fails, just via waitFor's timeout.
             await waitFor(
                 `renamed preview render PNG(s) on disk: ${newRenderOutputs.join(", ")}`,
-                this.timeout(),
+                budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
                 500,
                 () =>
                     newRenderOutputs.every((p) => fs.existsSync(p))
                         ? true
                         : undefined,
+                describeCmpPanelState,
             );
 
             // Invariant E3: the stale PNG no longer exists on disk. The
@@ -900,12 +1170,17 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
             api.resetMessages();
             assertRefreshRendered(
                 api,
-                await api.triggerRefresh(cmpFile, true, "full"),
+                await refreshWithinBudget(
+                    ":samples:cmp render",
+                    budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
+                    api.triggerRefresh(cmpFile, true, "full"),
+                    describeCmpPanelState,
+                ),
                 ":samples:cmp render",
             );
             const reRefreshed = await waitFor(
                 "second post-rename cmp setPreviews",
-                this.timeout(),
+                budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
                 500,
                 () => {
                     const msgs = api.getPostedMessages();
@@ -914,6 +1189,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                         nonEmptyForModule(cmpNeedle),
                     );
                 },
+                describeCmpPanelState,
             );
             assert.deepStrictEqual(
                 reRefreshed.previews
@@ -933,12 +1209,17 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         api.resetMessages();
         assertRefreshRendered(
             api,
-            await api.triggerRefresh(cmpFile, true, "full"),
+            await refreshWithinBudget(
+                ":samples:cmp render",
+                budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
+                api.triggerRefresh(cmpFile, true, "full"),
+                describeCmpPanelState,
+            ),
             ":samples:cmp render",
         );
         const afterRevert = await waitFor(
             "setPreviews after reverting the rename",
-            this.timeout(),
+            budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -951,6 +1232,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     );
                 });
             },
+            describeCmpPanelState,
         );
         observations.afterRevertIds = afterRevert.previews
             .map((p) => p.id)
@@ -966,8 +1248,17 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
 
     it("F. dropping the editor scope resolves to empty state, not stale cards (#1566)", async function () {
         api.resetMessages();
+        // F and G inherit whatever state a failing E left behind. E abandons
+        // its refresh on timeout rather than cancelling it, so the extension's
+        // `pendingRefresh` can still be in flight when F starts — and F's
+        // waits would then poll a buffer nothing is writing to for the full
+        // Mocha ceiling, turning one wedged render into three 30-minute
+        // timeouts. Bounding these the same way E bounds its own caps the
+        // cascade and makes each failure say what it saw.
+        const deadlineAt = Date.now() + this.timeout();
         const observations: Record<string, unknown> = {};
         const cmpNeedle = path.join("samples", "cmp");
+        const describeState = describeModulePanelState(api, cmpNeedle);
 
         // Unlike the other scenarios, F drives `triggerEditorScopeChange(null)`,
         // which routes through `refresh(false)` with NO caller file — so
@@ -999,12 +1290,17 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         // visible editor, so the warm stays deterministic without reopening one.
         assertRefreshRendered(
             api,
-            await api.triggerRefresh(cmpFile, true, "full"),
+            await refreshWithinBudget(
+                ":samples:cmp render",
+                budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
+                api.triggerRefresh(cmpFile, true, "full"),
+                describeState,
+            ),
             ":samples:cmp render",
         );
         const loaded = await waitFor(
             "cmp setPreviews before dropping scope",
-            this.timeout(),
+            budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -1013,6 +1309,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     nonEmptyForModule(cmpNeedle),
                 );
             },
+            describeState,
         );
         observations.loadedIds = loaded.previews.map((p) => p.id).sort();
         assert.ok(
@@ -1028,7 +1325,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         const EMPTY_TEXT = "Open a Kotlin source file with @Preview functions.";
         await waitFor(
             "empty-state showMessage after dropping scope",
-            this.timeout(),
+            budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
             200,
             () => {
                 const msgs = api.getPostedMessages() as PostedMessage[];
@@ -1036,6 +1333,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     (m) => m.command === "showMessage" && m.text === EMPTY_TEXT,
                 );
             },
+            describeState,
         );
 
         const post = api.getPostedMessages() as PostedMessage[];
@@ -1073,25 +1371,40 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         // the empty state.
         assertRefreshRendered(
             api,
-            await api.triggerRefresh(cmpFile, true, "full"),
+            await refreshWithinBudget(
+                ":samples:cmp render",
+                budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
+                api.triggerRefresh(cmpFile, true, "full"),
+                describeState,
+            ),
             ":samples:cmp render",
         );
     });
 
     it("G. compile error surfaces a banner without wiping cards; fix clears it", async function () {
         api.resetMessages();
+        // Same reasoning as F: bound every wait against this test's own Mocha
+        // budget so an upstream wedge fails here with a diagnostic instead of
+        // a bare 30-minute timeout.
+        const deadlineAt = Date.now() + this.timeout();
         const observations: Record<string, unknown> = {};
         const cmpNeedle = path.join("samples", "cmp");
+        const describeState = describeModulePanelState(api, cmpNeedle);
 
         // --- Baseline: a clean render so there are cards to keep ---
         assertRefreshRendered(
             api,
-            await api.triggerRefresh(cmpFile, true, "full"),
+            await refreshWithinBudget(
+                ":samples:cmp render",
+                budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
+                api.triggerRefresh(cmpFile, true, "full"),
+                describeState,
+            ),
             ":samples:cmp render",
         );
         const baseline = await waitFor(
             "cmp baseline setPreviews before injecting the error",
-            this.timeout(),
+            budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -1100,6 +1413,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     nonEmptyForModule(cmpNeedle),
                 );
             },
+            describeState,
         );
         const baselineIds = baseline.previews.map((p) => p.id).sort();
         observations.baselineIds = baselineIds;
@@ -1119,10 +1433,17 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         let errorPhaseError: Error | null = null;
         try {
             api.resetMessages();
-            await api.triggerRefresh(cmpFile, true, "full");
+            // Not `assertRefreshRendered` — this refresh is *expected* to
+            // report 'failed'; the compile error is the thing under test.
+            await refreshWithinBudget(
+                ":samples:cmp render (with injected syntax error)",
+                budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
+                api.triggerRefresh(cmpFile, true, "full"),
+                describeState,
+            );
             const errBanner = await waitFor(
                 "setCompileErrors after introducing the syntax error",
-                this.timeout(),
+                budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
                 500,
                 () => {
                     const msgs = api.getPostedMessages() as PostedMessage[];
@@ -1132,6 +1453,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                         return Array.isArray(errors) && errors.length > 0;
                     });
                 },
+                describeState,
             );
             const errors = errBanner.errors as Array<Record<string, unknown>>;
             observations.compileErrors = errors.map((e) => ({
@@ -1167,12 +1489,17 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         api.resetMessages();
         assertRefreshRendered(
             api,
-            await api.triggerRefresh(cmpFile, true, "full"),
+            await refreshWithinBudget(
+                ":samples:cmp render",
+                budgetWithin(deadlineAt, REFRESH_BUDGET_MS),
+                api.triggerRefresh(cmpFile, true, "full"),
+                describeState,
+            ),
             ":samples:cmp render",
         );
         const recovered = await waitFor(
             "clean cmp setPreviews after fixing the error",
-            this.timeout(),
+            budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -1181,6 +1508,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     nonEmptyForModule(cmpNeedle),
                 );
             },
+            describeState,
         );
         const recoverPhase = api.getPostedMessages() as PostedMessage[];
         observations.recoverPhaseCommands = recoverPhase.map((m) => m.command);
