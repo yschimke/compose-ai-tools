@@ -1152,6 +1152,12 @@ jobs:
       # are worth a gate rather than a manual check.
       - name: Run deploy .env migration tests
         run: ./deploy/image/test-env-migrations.sh
+      # A SERVE_* knob the entrypoint reads but docker-compose.yml never forwards is silently
+      # inert: the operator sets it in .env exactly as documented and the box comes up ignoring
+      # it, with nothing logged. SERVE_PLAYGROUND sat that way for its whole life, which is what
+      # kept the public host's playground pinned to one catalog with the Android modes off.
+      - name: Run deploy compose env-passthrough tests
+        run: ./deploy/image/test-compose-env-passthrough.sh
       # The seed-config reconcile POSTs to a live server's admin API during publish, so its
       # ordering (trust before catalogs) and payload-shape rules are gated rather than eyeballed —
       # a dropped `listed: false` or `group` silently moves a card on the front page.
