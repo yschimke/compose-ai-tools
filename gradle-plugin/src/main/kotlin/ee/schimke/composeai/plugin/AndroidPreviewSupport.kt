@@ -450,21 +450,32 @@ internal object AndroidPreviewSupport {
 
   /**
    * Version for the main-variant `androidx.compose.ui` / `foundation` pins, which decide the R
-   * class in the merged unit-test resource APK. See the call site for why the two cases differ: a
-   * Compose consumer's own BOM wins over our floor anyway, while a Compose-less consumer runs
-   * against OUR compose-ui and needs its resources on that same line.
+   * class in the merged unit-test resource APK. Always the link floor, because the resource APK has
+   * to sit on whichever Compose actually **runs** — and after [applyRenderGraphResolutionRules]
+   * floors the render graph, that is never below [RENDERER_COMPOSE_LINK_FLOOR_VERSION] in either
+   * case:
+   * * a **Compose-less** consumer renders against OUR compose-ui, which arrives via Compose
+   *   Multiplatform at exactly this version;
+   * * a **Compose** consumer renders against its own, raised to this floor when it resolves below.
    *
-   * Probes the variant's unit-test runtime classpath — where a consumer's Compose sits, and what
-   * the render configuration is built from. Our own injections into `${variantName}Implementation`
-   * reach it too, but [consumerBringsOwnCompose] skips those by identity, so this does not answer
-   * itself.
+   * This used to hand a Compose consumer [RENDERER_COMPOSE_FLOOR_VERSION] (1.9.5) on the reasoning
+   * that its own BOM wins over ours anyway. That holds only while the consumer is *above* our pin.
+   * A consumer below it — `home-assistant-android` on `compose-bom` 2025.01.00 — got the pin
+   * instead, so flooring only the render graph would have left 1.11.2 classes reading a 1.9.5 R
+   * class and traded #3590's `NoSuchMethodError` for the `NoSuchFieldError` of #3484:
+   * ```
+   * NoSuchFieldError: Class androidx.compose.ui.R$id does not have member field
+   *   'int androidx_compose_ui_view_compose_view_context'
+   * ```
+   *
+   * (verified against the published artifacts: `ui-android` 1.9.5's `R.txt` has no such id,
+   * 1.11.2's does). Both sides move on one floor or neither does.
+   *
+   * Consumers already above the floor are unaffected: this is a pin, so Gradle's max-version
+   * conflict resolution leaves their own Compose line in place.
    */
-  internal fun mainVariantComposeVersion(project: Project, variantName: String): String {
-    val unitTestClasspath =
-      project.configurations.findByName("${variantName}UnitTestRuntimeClasspath")
-    return if (consumerBringsOwnCompose(project, unitTestClasspath)) RENDERER_COMPOSE_FLOOR_VERSION
-    else RENDERER_COMPOSE_CMP_RUNTIME_VERSION
-  }
+  internal fun mainVariantComposeVersion(project: Project, variantName: String): String =
+    RENDERER_COMPOSE_LINK_FLOOR_VERSION
 
   /**
    * Compose compiler plugin ids — the Kotlin 2.x plugin every consumer with `@Composable` code
