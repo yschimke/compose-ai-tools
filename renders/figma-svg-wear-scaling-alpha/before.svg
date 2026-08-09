@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="227" height="227" viewBox="0 0 227 227" text-rendering="geometricPrecision" font-family="sans-serif">
+<clipPath id="deviceRound"><circle cx="113" cy="113" r="113"/></clipPath>
+<g transform="translate(0, 0)" clip-path="url(#deviceRound)">
+  <g id="Root">
+    <g id="ReusableComposeNode">
+        <rect x="0" y="0" width="227" height="227" fill="#000000"/>
+      <g id="ReusableComposeNode">
+        <g id="ReusableComposeNode">
+          <g id="ReusableComposeNode">
+            <g id="ReusableComposeNode">
+              <rect x="15" y="24" width="197" height="62" rx="25.13" ry="25.13" fill="#332E3C"/>
+              <g opacity="0.95">
+                <g id="ReusableComposeNode">
+                  <text x="27" y="50.38" font-size="15.46" font-family="sans-serif" font-weight="550" letter-spacing="0.38" fill="#F6EDFF">Card 0</text>
+                </g>
+                <g id="ReusableComposeNode">
+                </g>
+                <g id="ReusableComposeNode">
+                  <text x="27" y="69.7" font-size="14.5" font-family="sans-serif" font-weight="500" letter-spacing="0.38" fill="#FFDCC2">sub 0</text>
+                </g>
+              </g>
+            </g>
+            <g id="ReusableComposeNode">
+              <rect x="12" y="90" width="203" height="64" rx="26" ry="26" fill="#332E3C"/>
+              <g id="ReusableComposeNode">
+                <text x="24" y="116.88" font-size="16" font-family="sans-serif" font-weight="550" letter-spacing="0.4" fill="#F6EDFF">Card 1</text>
+              </g>
+              <g id="ReusableComposeNode">
+              </g>
+              <g id="ReusableComposeNode">
+                <text x="24" y="137.17" font-size="15" font-family="sans-serif" font-weight="500" letter-spacing="0.4" fill="#FFDCC2">sub 1</text>
+              </g>
+            </g>
+            <g id="ReusableComposeNode">
+              <rect x="22" y="158" width="183" height="57" rx="23.33" ry="23.33" fill="#332E3C"/>
+              <g opacity="0.86">
+                <g id="ReusableComposeNode">
+                  <text x="33" y="182.35" font-size="14.36" font-family="sans-serif" font-weight="550" letter-spacing="0.35" fill="#F6EDFF">Card 2</text>
+                </g>
+                <g id="ReusableComposeNode">
+                </g>
+                <g id="ReusableComposeNode">
+                  <text x="33" y="200.72" font-size="13.46" font-family="sans-serif" font-weight="500" letter-spacing="0.35" fill="#FFDCC2">sub 2</text>
+                </g>
+              </g>
+            </g>
+            <g id="ReusableComposeNode">
+              <rect x="49" y="220" width="129" height="40" rx="16.45" ry="16.45" fill="#332E3C"/>
+              <g opacity="0.5">
+                <g id="ReusableComposeNode">
+                  <text x="57" y="237.41" font-size="10.12" font-family="sans-serif" font-weight="550" letter-spacing="0.25" fill="#F6EDFF">Card 3</text>
+                </g>
+                <g id="ReusableComposeNode">
+                </g>
+                <g id="ReusableComposeNode">
+                  <text x="57" y="249.96" font-size="9.49" font-family="sans-serif" font-weight="500" letter-spacing="0.25" fill="#FFDCC2">sub 3</text>
+                </g>
+              </g>
+            </g>
+          </g>
+          <g id="ReusableComposeNode">
+            <image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAsAAAA4CAYAAAArQgIlAAABqElEQVR4XrWUQU4CMRiFJ5FIJBKJRCKRSCSCKBEDB8ADcADc4wE4AB6AA+B+3IN73OOxKo+mMPNeS4ji4pt0Zr60/f++mSiKIgMajYbpdDomn8+v773gZRzHZrn83tDrPasIxuO3lAhms7mKYDp9Fxl0u12VJ5OJiGAweFF5OHwVEYxGI5WxHIsA2xO5XC6L6BAZF5YcmEjkUEc8/Y7WxbAIULzIaBOLAG0VOdQRxEBk5INFh8hgPv8UESCNIoc6Qhn5heyLKuj3+yqHAkW9PqBMUbWD0MFQVP9b3vPINwORdspx/CEixXQrIzSLxddGRLi8QUqCYkkKyzuQB7vY3pzkcuamVjNPq1/vfatlrioVc5TJ+OWHlQAxyWX632EHmIFFcFuvq3y6OkEWDyNjbywCFLm37C3wuloVEVyUSipjbywC1PI3mSWH9wRZciREKyMTLIHHdlvl82JRREAHYuU9e2zlUCewosjYG4sAtaTk42xWJAfNaqJQ2u6aTZVDxSErIrtvjqEAWUKdoExYfNHEhysiQFBQTFI+KxRUtNgBeoqlKWUpfgAUjifqBJgx5AAAAABJRU5ErkJggg==" x="216" y="86" width="11" height="56"/>
+          </g>
+        </g>
+        <g id="ReusableComposeNode">
+          <path id="curve-c0" d="M 93.49 18.2 A 97.37 97.37 0 0 1 133.5 18.2" fill="none"/><text font-size="15" font-weight="599" fill="#C6C6C7" dominant-baseline="alphabetic"><textPath href="#curve-c0" startOffset="50%" text-anchor="middle">10:47</textPath></text>
+          <g id="ReusableComposeNode">
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>
