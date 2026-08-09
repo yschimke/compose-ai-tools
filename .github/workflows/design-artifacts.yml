@@ -628,20 +628,16 @@ jobs:
       publish-live-bundle: true
       split-per-preview: true
       split-mode: full
-      # The only catalog here that ships `ir/<id>.rc`, and it already builds Android — so this is
-      # where the third rc-compare lane costs least and says most. Scoring the same document
-      # through both players is what makes a divergence attributable: a row where only the JS
-      # player is off is a JS-player bug, one where only the embedded player is off is an
-      # embedded-player bug. This catalog currently contains both kinds.
-      rc-embedded-lane: true
-      # And the cmp-jvm (Compose Desktop / Skiko) player, as one extra compact column: the desktop
-      # half of the embedded player rasterizing the same staged documents. Same attribution win as
-      # the Robolectric lane, and it exercises the platform-neutral draw path off Android — a jvm-only
-      # divergence points at the desktop seam (text/image/skiko) rather than the shared evaluator.
-      rc-embedded-jvm-lane: true
+      # The embedded (Robolectric) and cmp-jvm (Compose Desktop / Skiko) rc-compare lanes used to be
+      # spelled out here; they now default to true in the reusable workflow, so every catalog that
+      # ships `ir/<id>.rc` gets them — the rationale (a divergence is only attributable when the same
+      # document is scored through more than one player) never was remote-m3-specific.
+      #
       # The CMP/Wasm implementation under development in #3201, rendered in the same browser
       # environment visitors use. This gives it an immediate per-document parity signal beside
-      # the established JS, Android embedded, and cmp-jvm lanes.
+      # the established JS, Android embedded, and cmp-jvm lanes. Still opt-in, and deliberately so:
+      # it is a gate, not enrichment — a document it cannot draw fails the render rather than
+      # dropping a column — so it stays where someone is watching the result.
       rc-cmp-wasm-lane: true
     secrets:
       buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}

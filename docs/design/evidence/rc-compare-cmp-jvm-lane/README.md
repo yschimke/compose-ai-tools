@@ -1,6 +1,6 @@
 # rc-compare — the cmp-jvm desktop-player lane in CI
 
-Evidence for `rc-embedded-jvm-lane`, the opt-in input that adds a **fourth** lane to the published
+Evidence for `rc-embedded-jvm-lane`, the input that adds a **fourth** lane to the published
 `rc-compare.html`: the same captured `ir/*.rc` document rendered through the Compose Desktop / Skiko
 embedded player (`:third-party-rc-embedded-player-jvm`), beside the baked PNG, the vendored
 TypeScript `RcdPlayer`, and AndroidX's Compose-embedded `RcPlayer`.
@@ -8,8 +8,14 @@ TypeScript `RcdPlayer`, and AndroidX's Compose-embedded `RcPlayer`.
 It rides on the machinery the Robolectric lane already introduced. `--stage-embedded` now runs once
 if *either* lane is on and writes the `<id>.rc` + `manifest.json` both harnesses read; the jvm
 harness fills `rc.jvm.output`, and `rc-compare.mjs --embedded-jvm` reads it back. The jvm player
-links libGL and draws offscreen, so its Gradle test runs under `xvfb-run` with the libGL the
-`desktop-render` deps step installs (that step now also fires on this input).
+links libGL and draws offscreen, so its Gradle test runs under `xvfb-run`.
+
+> Two things changed after this evidence was captured. The input now defaults to **true**, so a
+> catalog shipping `ir/*.rc` gets the cmp-jvm column without opting in. And libGL/xvfb are no longer
+> installed by the `desktop-render` deps step: that step runs long before the bundle exists, so
+> firing it on a default-true input would charge an apt round-trip to every caller, including the
+> catalogs that carry no `ir/*.rc` and skip the lane. The `rc-compare` step installs them itself,
+> just-in-time, guarded on `command -v xvfb-run` so a `desktop-render` caller doesn't pay twice.
 
 ## Produced by running exactly what the workflow runs — against the real remote-m3 bundle
 

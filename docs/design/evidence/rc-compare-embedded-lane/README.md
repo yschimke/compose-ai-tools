@@ -1,8 +1,13 @@
 # rc-compare — the embedded-player lane in CI
 
-Evidence for `rc-embedded-lane`, the opt-in input that turns the published `rc-compare.html` into a
+Evidence for `rc-embedded-lane`, the input that turns the published `rc-compare.html` into a
 three-way page: baked PNG vs the vendored TypeScript `RcdPlayer` vs AndroidX's Compose-embedded
 `RcPlayer`.
+
+> The lane landed opt-in (`default: false`) and was enabled per catalog. It now defaults to **true**,
+> so any catalog whose bundle carries `ir/*.rc` gets the third lane without asking — the attribution
+> argument below is a property of the page, not of `remote-m3`. Catalogs with no `ir/*.rc` still skip
+> the whole step, and a runner without an Android toolchain still degrades to the two-lane page.
 
 The driver has supported `--stage-embedded` / `--embedded` since the lane was vendored, but nothing
 ran them — `design-artifacts-reusable.yml` invoked `rc-compare.mjs` with neither, so every published
