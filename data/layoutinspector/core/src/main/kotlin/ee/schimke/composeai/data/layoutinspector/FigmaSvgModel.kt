@@ -1358,7 +1358,12 @@ data class FigmaSvgModel(
       // ring back out to the padded root (the 85×85-vs-63×63 defect). Suppress the growth for such
       // a
       // node so the ring stays on the inner control it actually rings (issue #2852).
-      val paddedPaint = tokens?.paintInset?.insetsPaint() == true
+      // Asked per axis: a leading padding insets only the axes it actually pads. Wear's
+      // `CompactButton` pads 8dp `top`/`bottom` *before* its fill and 12dp `start`/`end` *after*
+      // it, so the pill it draws is the placed height but the measured width — one flag for both
+      // axes squashed it to the narrow content box (issue #3573).
+      val paddedPaintX = tokens?.paintInset?.insetsPaintHorizontally() == true
+      val paddedPaintY = tokens?.paintInset?.insetsPaintVertically() == true
       val minWidthPx =
         tokens?.minWidth?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density * scaleX }
       val minHeightPx =
@@ -1387,11 +1392,26 @@ data class FigmaSvgModel(
       // (`background(brush, RoundedCornerShape(12.dp)).clickable().padding(16.dp)`) paints its
       // gradient across the whole node and pads only its label, but exported as a 966×56 pill
       // floating inside the 1050×140 button the PNG draws edge to edge (issue #3569).
-      val expand =
-        !paddedPaint &&
-          (fill != null || stroke != null || fillGradient != null || strokeGradient != null) &&
-          ctx.textByNodeId[nodeId] == null &&
-          (drawW > boundsW || drawH > boundsH)
+      val paints = fill != null || stroke != null || fillGradient != null || strokeGradient != null
+      val mayExpand = paints && ctx.textByNodeId[nodeId] == null
+      // The measured paint box supersedes every guess below (issue #3572). It is the rect the
+      // fill/ring modifier's own coordinator reports, so it needs no growth, no `paintInset`
+      // suppression and no parent clamp — a modifier cannot paint outside the coordinator it hangs
+      // off. Still held to the node's own mask: a clipped node's fill stops at the clip, which the
+      // coordinator box doesn't know about.
+      //
+      // Scoped to the same nodes the heuristic governed — a node that paints and carries no text of
+      // its own — so a text-bearing layer keeps the layout box its baseline was placed against.
+      //
+      // Anything that re-places a captured node has to carry `paintBox` with it — it is root-space
+      // px like `bounds`, so a rewrite that moves one must move the other
+      // (`WearScrollSliceStitcher`
+      // is the one place that does).
+      val measuredPaintBox =
+        tokens
+          ?.paintBox
+          ?.takeIf { mayExpand }
+          ?.let { box -> maskBox?.let { intersectBounds(box, it) } ?: box }
       // Center the grown shape on the placed bounds, then pull the whole rectangle back inside the
       // parent's placed bounds. Clamping only the grown *width/height* (above) isn't enough to keep
       // the promise that a child never paints beyond its parent: a fill whose bounds sit off-center
@@ -1408,30 +1428,56 @@ data class FigmaSvgModel(
       // (`[bounds.end - draw, bounds.start]`), and that window wins when the two can't both be
       // satisfied. The node's own placement is ground truth; the parent clamp is a guard against
       // *centering* drift, not a licence to move a node somewhere it never drew (issue #2615).
+      val expandW = mayExpand && measuredPaintBox == null && !paddedPaintX && drawW > boundsW
+      val expandH = mayExpand && measuredPaintBox == null && !paddedPaintY && drawH > boundsH
       val drawLeft =
-        if (!expand) bounds.left
-        else
-          growthOrigin(
-            centered = (bounds.left + bounds.right - drawW) / 2,
-            start = bounds.left,
-            end = bounds.right,
-            extent = drawW,
-            parentStart = parentBounds?.left,
-            parentEnd = parentBounds?.right,
-          )
+        measuredPaintBox?.left
+          ?: if (!expandW) bounds.left
+          else
+            growthOrigin(
+              centered = (bounds.left + bounds.right - drawW) / 2,
+              start = bounds.left,
+              end = bounds.right,
+              extent = drawW,
+              parentStart = parentBounds?.left,
+              parentEnd = parentBounds?.right,
+            )
       val drawTop =
-        if (!expand) bounds.top
-        else
-          growthOrigin(
-            centered = (bounds.top + bounds.bottom - drawH) / 2,
-            start = bounds.top,
-            end = bounds.bottom,
-            extent = drawH,
-            parentStart = parentBounds?.top,
-            parentEnd = parentBounds?.bottom,
-          )
-      val drawRight = if (expand) drawLeft + drawW else bounds.right
-      val drawBottom = if (expand) drawTop + drawH else bounds.bottom
+        measuredPaintBox?.top
+          ?: if (!expandH) bounds.top
+          else
+            growthOrigin(
+              centered = (bounds.top + bounds.bottom - drawH) / 2,
+              start = bounds.top,
+              end = bounds.bottom,
+              extent = drawH,
+              parentStart = parentBounds?.top,
+              parentEnd = parentBounds?.bottom,
+            )
+      val drawRight = measuredPaintBox?.right ?: if (expandW) drawLeft + drawW else bounds.right
+      val drawBottom = measuredPaintBox?.bottom ?: if (expandH) drawTop + drawH else bounds.bottom
+      val builtChildren = children.map {
+        // A `Modifier.clip` here becomes the clip box its subtree inherits; nested clips
+        // intersect. Without one the subtree keeps whatever (if anything) clipped it above —
+        // an ordinary container does NOT clip, and a child overflowing it still draws.
+        val childClip =
+          if (tokens?.clipsContent == true)
+            intersectOrNull(containerBounds, clipBounds) ?: containerBounds
+          else clipBounds
+        it.toLayer(ctx, containerBounds, childClip)
+      }
+      // The ancestor half of the #2853 double-draw rule. That rule drops a node's *own* raster when
+      // the node's text stays live; the mirror case is a node whose text is live while a
+      // **descendant** falls back to a whole-node raster that covers this box — an
+      // `OutlinedTextField`
+      // is the one that proves it, its `drawWithContent` flattening the field (border, label and
+      // the
+      // value's glyphs) into one `<image>` while the value is also emitted as an editable `<text>`
+      // from the node above. Both drew, offset by the baseline, so the value read doubled. The
+      // raster owns those pixels, so the duplicate live text goes (issue #3573).
+      val rasterizedAway = builtChildren.any {
+        it.rasterCovers(drawLeft, drawTop, drawRight, drawBottom)
+      }
       return FigmaSvgLayer(
         name = layerName(),
         left = drawLeft,
@@ -1470,7 +1516,10 @@ data class FigmaSvgModel(
         // The captured typography is in *measured* sp/px, so a scaled node's glyphs are drawn
         // smaller than the capture says — scale the metrics with the box or the text overflows the
         // shrunken card it sits in (issue #2615).
-        text = (ctx.textByNodeId[nodeId] ?: modifierText(ctx))?.scaledBy(scaleX, scaleY),
+        text =
+          (ctx.textByNodeId[nodeId] ?: modifierText(ctx))
+            ?.takeUnless { rasterizedAway }
+            ?.scaledBy(scaleX, scaleY),
         background = background,
         elevationPx = elevationPx,
         opacity = opacity,
@@ -1481,19 +1530,22 @@ data class FigmaSvgModel(
         // narrowed-to-paint case above); every ordinary layer masks with its own box and leaves
         // this null.
         clipBox = (maskBox ?: background?.clipBounds)?.takeIf { it != bounds },
-        children =
-          children.map {
-            // A `Modifier.clip` here becomes the clip box its subtree inherits; nested clips
-            // intersect. Without one the subtree keeps whatever (if anything) clipped it above —
-            // an ordinary container does NOT clip, and a child overflowing it still draws.
-            val childClip =
-              if (tokens?.clipsContent == true)
-                intersectOrNull(containerBounds, clipBounds) ?: containerBounds
-              else clipBounds
-            it.toLayer(ctx, containerBounds, childClip)
-          },
+        children = builtChildren,
       )
     }
+
+    /**
+     * True when a whole-node [FigmaSvgLayer.raster] somewhere in this subtree covers the given box
+     * entirely — so anything that box would have drawn is already in those pixels (issue #3573).
+     * Containment, not overlap: a raster that merely touches the box (a drawn slider groove under a
+     * label, say) redraws none of it, and its neighbour's text must stay live.
+     */
+    private fun FigmaSvgLayer.rasterCovers(left: Int, top: Int, right: Int, bottom: Int): Boolean =
+      (raster != null &&
+        this.left <= left &&
+        this.top <= top &&
+        this.right >= right &&
+        this.bottom >= bottom) || children.any { it.rasterCovers(left, top, right, bottom) }
 
     /**
      * Editable-text fallback for a Compose Text whose semantics were intentionally cleared.

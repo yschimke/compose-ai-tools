@@ -1240,12 +1240,25 @@ internal object ComposeLayoutInspector {
       // canonical home for the modifier-derived token projection.
       tokens =
         ModifierTokenResolver.resolve(
-          modifierInfo = modifiers,
-          measurePolicy = measurePolicy,
-          sizeWidthPx = width,
-          sizeHeightPx = height,
-          density = density,
-        ),
+            modifierInfo = modifiers,
+            measurePolicy = measurePolicy,
+            sizeWidthPx = width,
+            sizeHeightPx = height,
+            density = density,
+          )
+          // The box the fill/ring modifier drew into, measured off its own coordinator in the same
+          // root space as `placedBounds` — the direct answer to the question `paintInset` and the
+          // measured-size growth heuristic can only estimate (issue #3572). Taken from the FIRST
+          // such modifier: the resolver reads its colour/shape the same way, so shape and box come
+          // from one modifier rather than two.
+          ?.let { resolved ->
+            modifiers
+              .firstOrNull { ModifierTokenResolver.paintsContainer(it.modifier) }
+              ?.coordinates
+              ?.boundsIn(rootCoords)
+              ?.takeIf { it.right > it.left && it.bottom > it.top }
+              ?.let { resolved.copy(paintBox = it) } ?: resolved
+          },
       curvedTexts = curvedTexts,
       vectorGraphic = vectorGraphic,
       // The content-loading placeholder this chain declares, plus whether it is currently visible

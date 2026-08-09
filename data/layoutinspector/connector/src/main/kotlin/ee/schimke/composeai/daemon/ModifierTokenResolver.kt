@@ -343,6 +343,29 @@ internal object ModifierTokenResolver {
    * the final height-limited viewport, while the shape clip farther out in the chain can report the
    * taller lookahead content box (issue #3056).
    */
+  /**
+   * Whether [modifier] is the one that *paints a node's container* — a `Modifier.background`, the
+   * `Modifier.paint` Wear's `surface()` fills through, or a `Modifier.border` ring. Its own
+   * coordinator carries the box it drew into, which is what
+   * [ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTokens.paintBox] records
+   * (issue #3572).
+   *
+   * Deliberately NOT a shape-bearing `clip` or `shadow`: those change what a fill looks like but
+   * are not themselves the fill, and their coordinators sit at a different point in the chain.
+   * Matched on both the inspector name and the element class, like every other lookup here — the
+   * desktop/skiko build doesn't always populate inspector info.
+   */
+  fun paintsContainer(modifier: Any): Boolean {
+    val name = (modifier as? InspectableValue)?.nameFallback
+    val simpleName = modifier.javaClass.simpleName
+    return name == "background" ||
+      simpleName == "BackgroundElement" ||
+      name == "paint" ||
+      simpleName == "PainterElement" ||
+      name == "border" ||
+      simpleName.startsWith("BorderModifier")
+  }
+
   internal fun appliedClipsContent(coordinates: Any): Boolean =
     reflectedField(coordinates, "isClipping") as? Boolean ?: false
 
@@ -1026,10 +1049,23 @@ internal object ModifierTokenResolver {
     if (all != null) return ComposeSemanticsInsets(start = all, top = all, end = all, bottom = all)
     val horizontal = el("horizontal")
     val vertical = el("vertical")
-    val start = el("start") ?: horizontal ?: reflectDp(mod, "start")
-    val top = el("top") ?: vertical ?: reflectDp(mod, "top")
-    val end = el("end") ?: horizontal ?: reflectDp(mod, "end")
-    val bottom = el("bottom") ?: vertical ?: reflectDp(mod, "bottom")
+    // `Modifier.padding(PaddingValues)` lowers to a `PaddingValuesElement`, which exposes neither
+    // per-edge `Dp` elements nor per-edge fields — just the whole `PaddingValues`, whose own
+    // `start`/`top`/`end`/`bottom` fields carry the dp. Wear M3 pads this way throughout (its
+    // `CompactButton` touch target is a `padding(PaddingValues)`), so without this every Wear
+    // padding resolved to null: no `padding` token, and no `paintInset` to hold the growth
+    // heuristic off a fill that is already at its painted size (issue #3573).
+    val values = elements["paddingValues"] ?: reflectField(mod, "paddingValues")
+    val start =
+      el("start") ?: horizontal ?: reflectDp(mod, "start") ?: values?.let { reflectDp(it, "start") }
+    val top = el("top") ?: vertical ?: reflectDp(mod, "top") ?: values?.let { reflectDp(it, "top") }
+    val end =
+      el("end") ?: horizontal ?: reflectDp(mod, "end") ?: values?.let { reflectDp(it, "end") }
+    val bottom =
+      el("bottom")
+        ?: vertical
+        ?: reflectDp(mod, "bottom")
+        ?: values?.let { reflectDp(it, "bottom") }
     if (start == null && top == null && end == null && bottom == null) return null
     return ComposeSemanticsInsets(start = start, top = top, end = end, bottom = bottom)
   }

@@ -545,6 +545,24 @@ data class ComposeSemanticsTokens(
    */
   val paintInset: ComposeSemanticsInsets? = null,
   /**
+   * The box the node's fill/ring modifier actually painted into, in the same root-space px as
+   * [LayoutInspectorNode.bounds] — measured from that modifier's own coordinator, not inferred
+   * (issue #3572).
+   *
+   * Everything above ([paintInset], and the measured-size growth heuristic it holds off) exists to
+   * *guess* this rect from the signals a node exposes: its placed `bounds` against its measured
+   * `size`, plus where a `padding` sits in the chain. Those signals cannot separate chains that
+   * paint differently — `background(brush).padding(16.dp)` (paints the outer box) and
+   * `size(120.dp).wrapContentSize().size(40.dp).background(…)` (paints the inner one) present
+   * identically. A modifier's coordinator carries the box it drew into directly, so when this is
+   * present the export uses it and skips the inference entirely.
+   *
+   * Null when the capture couldn't read it (a backend whose `ModifierInfo` carries no usable
+   * coordinates, or a node with no fill/ring at all), which is what keeps the heuristic alive as
+   * the fallback.
+   */
+  val paintBox: LayoutInspectorBounds? = null,
+  /**
    * Resolved shadow elevation in dp from a `Modifier.graphicsLayer { shadowElevation = … }` (what
    * `Surface`/`Card`/`FloatingActionButton` use to cast a Material drop shadow), e.g. `"6.0dp"`.
    * Null when the node casts no shadow. The figma-svg export turns this into an SVG `feDropShadow`
@@ -577,7 +595,21 @@ data class ComposeSemanticsTokens(
  * whose chain merely contains `padding(0.dp)`) (issue #2852).
  */
 fun ComposeSemanticsInsets.insetsPaint(): Boolean =
-  listOf(start, top, end, bottom).any { (it?.removeSuffix("dp")?.toDoubleOrNull() ?: 0.0) > 0.0 }
+  insetsPaintHorizontally() || insetsPaintVertically()
+
+/**
+ * The horizontal half of [insetsPaint]. A leading padding insets only the axes it actually pads, so
+ * the two are asked separately: Wear's `CompactButton` pads `top`/`bottom` by 8dp *before* its fill
+ * and `start`/`end` by 12dp *after* it, so its drawn pill is the placed height but the measured
+ * width. Suppressing both axes together squashed it to the narrow content box (issue #3573).
+ */
+fun ComposeSemanticsInsets.insetsPaintHorizontally(): Boolean = positive(start) || positive(end)
+
+/** The vertical half of [insetsPaint] — see there. */
+fun ComposeSemanticsInsets.insetsPaintVertically(): Boolean = positive(top) || positive(bottom)
+
+private fun positive(edge: String?): Boolean =
+  (edge?.removeSuffix("dp")?.toDoubleOrNull() ?: 0.0) > 0.0
 
 /** Per-edge insets in dp (`"16.0dp"`), as resolved from `Modifier.padding` (issue #1897). */
 @Serializable

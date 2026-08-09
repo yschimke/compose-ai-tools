@@ -232,6 +232,13 @@ object WearScrollSliceStitcher {
           val mb = m.bounds ?: return@map m
           m.copy(bounds = mb.copy(top = mb.top + dy, bottom = mb.bottom + dy))
         },
+      // `paintBox` is root-space px like `bounds`, so it shifts with them (issue #3572). Left
+      // behind, a stitched capsule's items drew at their unscrolled content offsets — the slice
+      // this node came from — instead of the viewport row the stitcher placed them in.
+      tokens =
+        tokens?.paintBox?.let { pb ->
+          tokens.copy(paintBox = pb.copy(top = pb.top + dy, bottom = pb.bottom + dy))
+        } ?: tokens,
       curvedTexts = curvedTexts.map { it.copy(centerYPx = it.centerYPx + dy) },
       children = children.map { it.shiftY(dy) },
     )

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -104,10 +105,13 @@ class FigmaSvgGradientPaintGrowthRenderTest {
   }
 
   @Test
-  fun `a shadow ahead of the padding keeps the layer on its outer box`() {
-    // A positive elevation paints, unlike a clip: Compose draws this shadow at the outer 120×80
-    // box. The exported layer carries one rect for both the fill and its `feDropShadow`, so this
-    // chain cannot satisfy both — the outer box wins, which is what the export did before #3569.
+  fun `a shadow ahead of the padding leaves the brush on its own painted box`() {
+    // Compose draws this shadow at the outer 120×80 box and the fill at the inner 88×48 one, and
+    // the exported layer carries a single rect for both the fill and its `feDropShadow` — so this
+    // chain cannot satisfy both. The measured paint box (issue #3572) decides it on evidence
+    // rather than a tie-break: the rect is the box the `background` modifier's own coordinator
+    // reports, so the fill is exact and the shadow rides in with it. Splitting the two geometries
+    // is the remaining gap.
     val svg =
       exportSvg("shadow-then-padding-then-brush") {
         Box(
@@ -117,7 +121,26 @@ class FigmaSvgGradientPaintGrowthRenderTest {
             .background(brush, RoundedCornerShape(12.dp))
         )
       }
-    assertEquals("gradient rect geometry:\n$svg", Rect(0, 0, 120, 80), gradientRect(svg))
+    assertEquals("gradient rect geometry:\n$svg", Rect(16, 16, 88, 48), gradientRect(svg))
+  }
+
+  @Test
+  fun `a brush painted into an inner layout box stays in it`() {
+    // No padding anywhere — the box is shrunk by a second `size` behind a `wrapContentSize`, so
+    // neither `paintInset` nor the measured-vs-placed comparison can tell this apart from a chain
+    // that paints the outer box. Growing it to the measured 120×120 is what the heuristic did to
+    // every flat fill (and, after #3569, to brushes too); the measured paint box ends the guessing
+    // (issue #3572).
+    val svg =
+      exportSvg("inner-size-brush") {
+        Box(
+          Modifier.size(120.dp)
+            .wrapContentSize()
+            .size(40.dp)
+            .background(brush, RoundedCornerShape(4.dp))
+        )
+      }
+    assertEquals("gradient rect geometry:\n$svg", Rect(40, 40, 40, 40), gradientRect(svg))
   }
 
   private data class Rect(val x: Int, val y: Int, val width: Int, val height: Int)
