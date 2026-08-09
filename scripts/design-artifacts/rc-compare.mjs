@@ -427,44 +427,36 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
     // `cold`/`warm` describes *this browser context*, and contexts are keyed by density (see
     // `cmpWasmPageFor`) — so a catalog whose previews span two densities legitimately reports two
     // cold rows, the second of them partway through the run. Both are recorded with their density
-    // so a slow row can be attributed instead of guessed at. Since the renders after the first are
-    // document swaps into a live player rather than navigations, the two labels now separate two
-    // genuinely different costs: `cold` boots the player, `warm` only decodes and draws.
+    // so a slow row can be attributed instead of guessed at. Every render navigates (see below), so
+    // the labels now separate a first boot from one that finds the assets and the JIT warm: 1.1 s
+    // against 0.55–1.07 s measured over the `remote-m3` corpus.
     const contextRender = pageState.renders++;
     const startup = contextRender === 0 ? "cold" : "warm";
     cmpWasmConsoleErrors.length = 0;
     cmpWasmServer.setDocument(bytes);
     await cmpWasmPage.setViewportSize({ width: viewportWidth, height: viewportHeight });
-    if (startup === "warm") {
-      // A swap draws into the canvas the resize produced, so wait for the resize to actually land
-      // first. Compose sizes the canvas from the window, independently of which document is loaded,
-      // so this settles on the outgoing render and costs nothing once it has.
-      await cmpWasmPage.waitForFunction(
-        ({ w, h }) => window.innerWidth === w && window.innerHeight === h,
-        { w: viewportWidth, h: viewportHeight },
-        { timeout: 30_000 },
-      );
-    }
     const startedAt = performance.now();
-    // The first render in a context navigates; every one after it hands the running player a new
-    // document through `window.rcPlayerLoad` (see the wasm player's `installDocumentSwap`). A
-    // navigation would discard the instantiated Wasm module, the Compose runtime and the host fonts
-    // and rebuild all three to draw a document of a few dozen operations — measured at ~0.5 s per
-    // preview against ~0.15 s for a swap, which is minutes across a large catalog. The player drops
-    // the outgoing document before fetching the next, so nothing carries across but the fonts.
+    // **Every document navigates.** #3445 replaced the navigation with `window.rcPlayerLoad` — an
+    // in-place handoff to the running player, ~0.15 s against ~0.5 s, minutes across a large
+    // catalog — and `rc-cmp-wasm-document-swap.test.mjs` pinned a swapped render as byte-identical
+    // to a navigated one. That equivalence holds for the two documents it checks and does not hold
+    // across a corpus: run the 27 `remote-m3` documents through one player and a *band* of the text
+    // ones come back with no text at all, shapes drawn and every glyph missing. Which band depends
+    // on the order (reverse the corpus and a different set loses its text) and on the machine,
+    // which is exactly the shape #3558 reported from CI — the same commit scoring
+    // `VariableWidthRemote` at 0.19% or 2.45%, both perfectly stable. It is not a race the capture
+    // can wait out: a blank row stays blank for the full 5 s settle timeout, while the same
+    // document renders correctly when it is navigated to. So the lane pays the navigation. The
+    // player keeps `rcPlayerLoad` and its test — this is the driver declining to depend on it until
+    // the swap path can show it has finished, not a revert of the feature.
     //
     // `handoffDelayMs=0` drops the player's cold-start tail — 1.5 s it holds back `ready` so a host
     // that reveals it on that signal cannot show a blank surface. This lane is not such a host: the
     // screenshot below goes through CDP, which drives its own compositor frame, and every pixel of
-    // the result is then checked against the baked reference. The viewer keeps the default. Set on
-    // the navigation, it holds for the swaps too — the player re-reads it from the page's URL.
-    if (startup === "cold") {
-      await cmpWasmPage.goto(
-        `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}&handoffDelayMs=0`,
-      );
-    } else {
-      await cmpWasmPage.evaluate((src) => window.rcPlayerLoad(src), "/document.rc");
-    }
+    // the result is then checked against the baked reference. The viewer keeps the default.
+    await cmpWasmPage.goto(
+      `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}&handoffDelayMs=0`,
+    );
     await cmpWasmPage.waitForFunction(
       () => ["ready", "error"].includes(document.documentElement.dataset.rcPlayerState),
       null,
@@ -481,9 +473,27 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
     // corpus mean mismatch from 0.79% to 0.49% and made every rendered PNG reproducible run to run
     // (see `rc-settle.mjs`); it also replaces the player's flat 1,500 ms tail, which is the other
     // way to get a settled capture and costs three times as much.
-    const settled = await settledScreenshot(cmpWasmPage);
+    //
+    // Convergence alone still let a *blank* frame through, which is how #3558 happened: a document
+    // whose text has not resolved paints its shapes and nothing else, and "blank now, blank in
+    // 500 ms" converges immediately. The expectation is the missing half — the reference tells us
+    // whether this document draws anything at all, so a capture with no ink against a reference
+    // with ink is a render that has not finished rather than a parity number.
+    const settled = await settledScreenshot(cmpWasmPage, {
+      expectation: referenceBlank ? null : (buffer) => !isFullyTransparent(PNG.sync.read(buffer)),
+    });
     const settleMs = settled.settleMs;
     const pngRaw = PNG.sync.read(settled.buffer);
+    // Still nothing when the clock ran out. Failing beats scoring it: a blank capture lands at a
+    // perfectly stable mismatch (2.45% for `VariableWidthRemote`, every time) that reads as a
+    // parity regression and is really a missing render, and the row it displaces would otherwise be
+    // compared against a baseline recorded from a run that *did* draw.
+    if (!referenceBlank && isFullyTransparent(pngRaw)) {
+      throw new Error(
+        `the player drew nothing in ${Math.round(settleMs)} ms while the baked reference has ink — ` +
+          "the render did not finish, so there is no parity number to report",
+      );
+    }
     const wasmCoverage =
       pngRaw.width === width && pngRaw.height === height
         ? splitCoverage(bakedUnflattened, pngRaw.data, width, height)

@@ -7,20 +7,26 @@
  * `RC_CMP_WASM_REQUIRE=1` to turn those skips into failures, as the `CMP/Wasm Frame Pacing` CI job
  * does.
  *
- * The parity driver renders a whole catalog through one page. Navigating per document (#3445) threw
- * away the instantiated Wasm module, the Compose runtime and the host fonts and rebuilt all three
- * to draw a document a few dozen operations long — a per-preview floor that a 122-preview catalog
- * pays 122 times. `rcPlayerLoad` hands the running player a new source instead.
+ * Navigating per document (#3445) threw away the instantiated Wasm module, the Compose runtime and
+ * the host fonts and rebuilt all three to draw a document a few dozen operations long — a
+ * per-preview floor that a 122-preview catalog pays 122 times. `rcPlayerLoad` hands the running
+ * player a new source instead.
  *
  * What that trades away is isolation: a navigated render starts from a clean page by construction,
  * a swapped one does not. So the assertions here are about *equivalence*, not speed alone —
  * captured through [settledScreenshot] so that "equal pixels" is a property of the render and not a
  * race against font resolution —
  * a swapped render must be byte-identical to the navigated render of the same document, and must
- * stay so when the previous document is a different one, in either order. A leak from the outgoing
- * document is precisely what those would catch, and nothing else in the repo would: the driver's
- * own parity numbers compare against baked references with a mismatch tolerance, so a small
- * carried-over artefact could hide inside an already-imperfect row.
+ * stay so when the previous document is a different one, in either order.
+ *
+ * > **That equivalence is real for two documents and does not survive a corpus.** Running the 27
+ * > `remote-m3` documents through one player leaves a *band* of the text-bearing ones with no text
+ * > at all — shapes drawn, every glyph missing, permanently: the frame is still blank after a 5 s
+ * > settle. Which band depends on the order and on the machine, which is how #3558 reached CI as a
+ * > fixture scoring one of two stable values on identical input. `rc-compare.mjs` therefore
+ * > navigates for every document; these tests keep guarding `rcPlayerLoad` for the hosts that still
+ * > use it, and extending them to a corpus-length sequence is the open work that would let the
+ * > driver go back to swapping.
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
