@@ -27,11 +27,26 @@ Two readings, immediately:
 
 ![text-metrics-weight-sweep on java, cmp-android and cmp-jvm](weight-sweep-three-lanes.png)
 
-On `java`: 361.0 at wght 400, then 362.0 at 500, 550, 599 and 700 alike, while 700 is visibly bolder
-than 500. In the Robolectric sandbox there is no `/system/fonts/`, so this is the platform default
-face quantising to regular/bold — 550 and 599 are indistinguishable from 500. The variable-font
-question from #3579 now has a measurement attached rather than an inference from two identical file
-sizes.
+Each row reports **two** numbers: the advance (magenta) and the ink width (green), measured off
+different code paths. On `java`: 361.0 / 358.0 at wght 400, then 362.0 / 359.0 at 500, 550, 599 and
+700 alike — while 700 is plainly heavier than 500 in the same image.
+
+Equal advances alone would prove nothing; families are routinely drawn duplexed, keeping advances
+fixed across weights on purpose. It is the *pair plus the glyphs* that is diagnostic — both numbers
+flat while the glyphs visibly differ is the signature of a **synthesised** weight rather than a
+resolved face, which in the Robolectric sandbox (no `/system/fonts/`) is exactly what you would
+expect. The ink box is integer-quantised, so read it as corroboration rather than as a precise
+instrument.
+
+## Start and end alignment, in both directions
+
+![align start/end, LTR and RTL, on three lanes](alignment-ltr-vs-rtl-three-lanes.png)
+
+`ALIGN_START` and `ALIGN_END` are the only alignments whose meaning depends on paragraph direction,
+and on English text they land exactly where `ALIGN_LEFT` and `ALIGN_RIGHT` do — so an LTR-only matrix
+cannot tell a correct lane from one that hard-coded start→left. Against a Hebrew paragraph, all three
+lanes keep start at the left edge and end at the right. The fixtures state no layout direction, so
+the expected behaviour is the content-derived one both stacks normally implement.
 
 ## The layout-tree modes
 

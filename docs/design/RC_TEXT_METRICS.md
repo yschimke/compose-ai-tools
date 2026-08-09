@@ -85,11 +85,11 @@ the player thinks the line ends, is then a picture rather than an adjective.
 | fixture | what it answers |
 | --- | --- |
 | `text-metrics-card` | Every metric of one 48px canvas specimen, drawn and labelled. |
-| `text-metrics-weight-{400,500,550,599,700}` | Does the requested weight change the **advance**? |
+| `text-metrics-weight-{400,500,550,599,700}` | Advance **and** ink width, per requested weight. |
 | `text-metrics-weight-sweep` | The same five, stacked, for reading rather than diffing. |
 | `text-metrics-layout-single-*` | `maxLines = 1` against clip / visible / all three ellipses. |
 | `text-metrics-layout-wrap-*` | `maxLines = 3` against clip / ellipsis / justify. |
-| `text-metrics-layout-align-*` | All six `CoreText` alignments. |
+| `text-metrics-layout-align-*` | All six `CoreText` alignments, plus start/end again in RTL. |
 | `text-metrics-layout-line-height-*` | Leading, as an add and as a multiplier (properties 13/14). |
 
 The manifest shape is not new: it is exactly what `rc-compare --stage-embedded` produces and what
@@ -154,12 +154,37 @@ a different *face* than a metrics fault — which is exactly the useful outcome:
 [`RC_PLAYER_TYPEFACES.md`](RC_PLAYER_TYPEFACES.md) rather than at layout, and it is a place to look
 rather than a percentage.
 
-**Weight does not move the advance on `java`.** The sweep reports 361.0 at wght 400 and 362.0 at 500,
-550, 599 and 700 alike, while 700 is visibly bolder than 500. So in the Robolectric sandbox — no
-`/system/fonts/`, so the platform default face — weight quantises to regular/bold and 550 and 599 are
-indistinguishable from 500. The variable-font question from #3579 now has a *measurement* attached to
-it instead of an inference from two identical file sizes; answering it properly needs the same sweep
-run with a real variable face pinned.
+**Weight moves neither number on `java`, but does move the glyphs.** The sweep reports advance
+361.0 / ink 358.0 at wght 400, then 362.0 / 359.0 at 500, 550, 599 and 700 alike — while 700 is
+plainly heavier than 500 in the same image.
+
+Read that carefully, because the obvious reading is wrong. Equal advances **do not** prove a reused
+face: families are routinely drawn duplexed, keeping advances fixed across weights on purpose. That
+is why every row reports a second, independent number off a different code path
+(`Paint.getTextBounds` rather than `measureText`). The pair plus the glyphs is a signature:
+
+| advance | ink width | glyphs | reading |
+| --- | --- | --- | --- |
+| moves | moves | differ | the weight reached a metric-distinct instance |
+| flat | flat | identical | the weight changed nothing at all |
+| flat | flat | differ | the weight is **synthesised**, not resolved to a face |
+
+The reference lane lands on the third row, which is a much more specific answer than "550 and 599
+look the same": in the Robolectric sandbox there is no `/system/fonts/`, so the platform default is
+being emboldened rather than swapped. The variable-font question from #3579 now has a measurement
+attached instead of an inference from two identical file sizes; answering it properly needs the same
+sweep with a real variable face pinned. Note the ink box is integer-quantised, so it is corroboration
+rather than a precise instrument.
+
+**`ALIGN_START` and `ALIGN_END` do not follow paragraph direction on any of the three lanes.** They
+are the only two alignments whose meaning is direction-dependent, and on English text they land
+exactly where `ALIGN_LEFT` and `ALIGN_RIGHT` do — so a matrix built only from LTR text cannot tell a
+correct lane from one that hard-coded start→left. Drawing the pair a second time against a Hebrew
+paragraph shows start still at the left edge and end still at the right, identically on `java`,
+`cmp-android` and `cmp-jvm`. The fixtures carry no explicit layout direction, so the expected
+behaviour is the content-derived one both stacks normally implement (Compose's `TextDirection.Content`,
+Android's `ALIGN_NORMAL` against an RTL paragraph) — which makes this worth chasing rather than
+dismissing as unspecified.
 
 **`maxLines = 3` rendered four lines on `java`**, while `maxLines = 1` was honoured exactly. Recorded
 as an observation, not a diagnosis — it wants checking across lanes before anyone calls it a bug,
@@ -178,6 +203,9 @@ which is what the fixture is for.
 - **A machine-readable metric dump.** The numbers are currently rendered into the image. A per-lane
   JSON table would let the comparison be asserted rather than read, which is what turns this from a
   diagnostic into a gate.
+- **An explicit layout direction.** The RTL alignment fixtures rely on the paragraph direction being
+  derived from content. A variant that states the direction outright would separate "the lane ignores
+  content direction" from "the lane ignores direction entirely".
 - **Font-variation axes.** Weight travels as the paint's typeface style, not as a `wght` axis,
   because the axis path is canvas-unimplemented on some lanes and a fixture meant to be comparable
   across all five must not use an operation two of them decline. An axis-carrying variant belongs

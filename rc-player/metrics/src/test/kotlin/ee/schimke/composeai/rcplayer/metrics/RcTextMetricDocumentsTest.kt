@@ -132,6 +132,25 @@ class RcTextMetricDocumentsTest {
   }
 
   @Test
+  fun theSemanticAlignmentsAreExercisedInBothDirections() {
+    // `START` and `END` are the only alignments whose meaning depends on paragraph direction, and
+    // on English text they land exactly where `LEFT` and `RIGHT` do. A matrix built only from LTR
+    // text would therefore pass a lane that had hard-coded start→left and is wrong for every RTL
+    // user, so each of the two is drawn once in each direction.
+    val modes = RcTextMetricDocuments.LAYOUT_MODES
+    listOf(RcTextLayout.ALIGN_START, RcTextLayout.ALIGN_END).forEach { align ->
+      val alignmentFixtures = modes.filter {
+        it.align == align && it.specimen != RcTextMetricDocuments.WRAPPING_SPECIMEN
+      }
+      assertTrue(
+        alignmentFixtures.any { it.specimen == RcTextMetricDocuments.ALIGNMENT_SPECIMEN } &&
+          alignmentFixtures.any { it.specimen == RcTextMetricDocuments.RTL_ALIGNMENT_SPECIMEN },
+        "alignment $align is only exercised in one direction",
+      )
+    }
+  }
+
+  @Test
   fun theLayoutModesCoverEveryOverflowAndAlignment() {
     val modes = RcTextMetricDocuments.LAYOUT_MODES
     assertEquals(
@@ -236,7 +255,19 @@ class RcTextMetricDocumentsTest {
     val sweep = RcTextMetricDocuments.weightSweep()
     val measures = sweep.document.operations.filterIsInstance<RcTextMeasure>()
 
-    assertEquals(RcTextMetricDocuments.SWEEP_WEIGHTS.size, measures.size)
+    // Two measurements per weight, and both matter. The advance alone cannot distinguish "the
+    // requested weight reached no new face" from "this family is drawn duplexed, so its weights
+    // deliberately share an advance" — the ink width, which tracks stem thickness, can.
+    assertEquals(RcTextMetricDocuments.SWEEP_WEIGHTS.size * 2, measures.size)
+    assertEquals(
+      RcTextMetricDocuments.SWEEP_WEIGHTS.size,
+      measures.count { it.type == RcTextGuide.ADVANCE.type },
+    )
+    assertEquals(
+      RcTextMetricDocuments.SWEEP_WEIGHTS.size,
+      measures.count { it.type == RcTextMeasurement.type(RcTextMeasurement.WIDTH) },
+      "without a weight-sensitive number the sweep can only ever report the advance",
+    )
     assertEquals(
       measures.size,
       measures.map { it.outId }.toSet().size,

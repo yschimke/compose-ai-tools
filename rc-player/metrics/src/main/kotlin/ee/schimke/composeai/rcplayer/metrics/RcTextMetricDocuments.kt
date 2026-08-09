@@ -82,6 +82,21 @@ public object RcTextMetricDocuments {
   /** Short enough to leave slack in the box, without which an alignment is invisible. */
   public const val ALIGNMENT_SPECIMEN: String = "Align this"
 
+  /**
+   * The same job in Hebrew, for the two *semantic* alignments.
+   *
+   * `ALIGN_START` and `ALIGN_END` are the only two alignments whose meaning depends on the
+   * paragraph's direction, and on an English string they land exactly where `ALIGN_LEFT` and
+   * `ALIGN_RIGHT` do. A lane that had simply hard-coded start→left would pass a six-alignment
+   * matrix built only from LTR text while being wrong for every RTL user, so the pair is drawn
+   * twice: once in each direction.
+   *
+   * If a lane has no face covering the script the fixture renders tofu — which still shows *where*
+   * the line was placed, and is itself a font-coverage finding rather than a broken fixture.
+   */
+  public const val RTL_ALIGNMENT_SPECIMEN: String =
+    "\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd"
+
   /** The weights the sweep draws, including the two non-100 steps that matter in practice. */
   public val SWEEP_WEIGHTS: List<Int> = listOf(400, 500, 550, 599, 700)
 
@@ -201,20 +216,37 @@ public object RcTextMetricDocuments {
   // The weight sweep
   // ---------------------------------------------------------------------------------------------
 
-  private const val SWEEP_WIDTH = 640
+  private const val SWEEP_WIDTH = 760
   private const val SWEEP_ROW_HEIGHT = 62f
   private const val SWEEP_ORIGIN_X = 108f
   private const val SWEEP_SPECIMEN_SIZE = 32f
 
   /**
-   * The same string at five weights, each with its own advance guide and printed advance.
+   * The same string at five weights, each row reporting **two** numbers: the advance, and the width
+   * of the ink box.
    *
    * This is how the variable-font question gets *measured* rather than inferred. #3579 concluded
    * that Google Fonts' CSS API had flattened `wght@450` and `wght@550` to one instance because the
    * two downloads were byte-identical — a strong hint, but a file-size argument. Here the question
-   * is asked of the renderer directly: if the requested weight reaches a real instance, five
-   * weights give five different advances and the magenta rules step apart. If they don't, the rules
-   * stack and the lane is drawing one face five times, whatever the document asked for.
+   * is asked of the renderer directly.
+   *
+   * Two numbers rather than one, because **equal advances do not prove a reused face**. Families
+   * are routinely drawn duplexed on purpose, keeping identical advances across weights while only
+   * the stems thicken. So the advance answers a narrower question than it looks like it answers:
+   * "would this weight reflow the layout". The ink box — `right - left` of `getTextBounds`, a
+   * different measurement off a different code path — fails independently of it.
+   *
+   * Neither number is a proof on its own. What the pair gives you, read together with the glyphs
+   * beside them, is a signature:
+   * - both move → the weight reached a metric-distinct instance;
+   * - both flat, glyphs identical → the weight changed nothing at all;
+   * - both flat, glyphs visibly bolder → the weight is being **synthesised** rather than resolved
+   *   to a face.
+   *
+   * The reference render lands on the third: 362.0 advance and 359.0 ink for 500, 550, 599 and 700
+   * alike, with 700 plainly heavier than 500. Note also that the ink box is integer-quantised
+   * (`Paint.getTextBounds` returns a `Rect`), so it is a coarse instrument at this size — one more
+   * reason to read it as corroboration rather than as the answer.
    *
    * 550 and 599 are in the sweep on purpose. They are the values that fall between the static
    * instances a weight-enumerated stylesheet ships, so they are where a "nearest static instance"
@@ -224,7 +256,13 @@ public object RcTextMetricDocuments {
     val height = (SWEEP_WEIGHTS.size * SWEEP_ROW_HEIGHT + 70f).toInt()
     val operations = buildList {
       add(RcTextData(TEXT_SPECIMEN, SPECIMEN))
-      add(RcTextData(TEXT_TITLE, "advance per requested weight · ${SWEEP_SPECIMEN_SIZE.toInt()}px"))
+      add(
+        RcTextData(
+          TEXT_TITLE,
+          "per requested weight · ${SWEEP_SPECIMEN_SIZE.toInt()}px · " +
+            "magenta = advance, green = ink width",
+        )
+      )
       SWEEP_WEIGHTS.forEachIndexed { index, weight ->
         add(RcTextData(TEXT_SWEEP_LABEL + index, "wght $weight"))
       }
@@ -235,9 +273,11 @@ public object RcTextMetricDocuments {
       SWEEP_WEIGHTS.forEachIndexed { index, weight ->
         val baseline = 78f + index * SWEEP_ROW_HEIGHT
         val floatId = SWEEP_FLOAT_BASE + index
+        val inkFloatId = SWEEP_INK_FLOAT_BASE + index
 
         addAll(textPaint(SPECIMEN_COLOR, SWEEP_SPECIMEN_SIZE, weight = weight))
         add(RcTextMeasure(outId = floatId, textId = TEXT_SPECIMEN, type = RcTextGuide.ADVANCE.type))
+        add(RcTextMeasure(outId = inkFloatId, textId = TEXT_SPECIMEN, type = INK_WIDTH_TYPE))
 
         add(RcNoArg(RcOpcodes.MATRIX_SAVE))
         add(RcTransform2(RcOpcodes.MATRIX_TRANSLATE, literal(SWEEP_ORIGIN_X), literal(baseline)))
@@ -258,14 +298,25 @@ public object RcTextMetricDocuments {
             flags = NO_LEADING_PAD,
           )
         )
-        add(drawText(TEXT_SWEEP_VALUE + index, (SWEEP_WIDTH - 92).toFloat(), baseline))
+        add(drawText(TEXT_SWEEP_VALUE + index, (SWEEP_WIDTH - 150).toFloat(), baseline))
+        addAll(labelPaint(RcTextGuide.INK_RIGHT.colorArgb, LABEL_SIZE))
+        add(
+          RcTextFromFloat(
+            outId = TEXT_SWEEP_INK_VALUE + index,
+            value = reference(inkFloatId),
+            digitsBefore = 3,
+            digitsAfter = 1,
+            flags = NO_LEADING_PAD,
+          )
+        )
+        add(drawText(TEXT_SWEEP_INK_VALUE + index, (SWEEP_WIDTH - 76).toFloat(), baseline))
       }
     }
     return RcTextMetricFixture(
       id = "text-metrics-weight-sweep",
       width = SWEEP_WIDTH,
       height = height,
-      summary = "One string at five weights; the magenta rules are each weight's measured advance.",
+      summary = "One string at five weights, each reporting its measured advance and ink width.",
       document = RcDocument(header(SWEEP_WIDTH, height), operations),
     )
   }
@@ -282,7 +333,12 @@ public object RcTextMetricDocuments {
     val baseline = 78f
     val operations = buildList {
       add(RcTextData(TEXT_SPECIMEN, SPECIMEN))
-      add(RcTextData(TEXT_TITLE, "wght $weight · ${SWEEP_SPECIMEN_SIZE.toInt()}px · advance"))
+      add(
+        RcTextData(
+          TEXT_TITLE,
+          "wght $weight · ${SWEEP_SPECIMEN_SIZE.toInt()}px · advance, ink width",
+        )
+      )
       addAll(background(SWEEP_WIDTH, height))
       addAll(labelPaint(TITLE_COLOR, LABEL_SIZE + 2f))
       add(drawText(TEXT_TITLE, 24f, 32f))
@@ -294,6 +350,9 @@ public object RcTextMetricDocuments {
           textId = TEXT_SPECIMEN,
           type = RcTextGuide.ADVANCE.type,
         )
+      )
+      add(
+        RcTextMeasure(outId = SWEEP_INK_FLOAT_BASE, textId = TEXT_SPECIMEN, type = INK_WIDTH_TYPE)
       )
       add(RcNoArg(RcOpcodes.MATRIX_SAVE))
       add(RcTransform2(RcOpcodes.MATRIX_TRANSLATE, literal(SWEEP_ORIGIN_X), literal(baseline)))
@@ -314,13 +373,24 @@ public object RcTextMetricDocuments {
           flags = NO_LEADING_PAD,
         )
       )
-      add(drawText(TEXT_SWEEP_VALUE, (SWEEP_WIDTH - 92).toFloat(), baseline))
+      add(drawText(TEXT_SWEEP_VALUE, (SWEEP_WIDTH - 150).toFloat(), baseline))
+      addAll(labelPaint(RcTextGuide.INK_RIGHT.colorArgb, LABEL_SIZE))
+      add(
+        RcTextFromFloat(
+          outId = TEXT_SWEEP_INK_VALUE,
+          value = reference(SWEEP_INK_FLOAT_BASE),
+          digitsBefore = 3,
+          digitsAfter = 1,
+          flags = NO_LEADING_PAD,
+        )
+      )
+      add(drawText(TEXT_SWEEP_INK_VALUE, (SWEEP_WIDTH - 76).toFloat(), baseline))
     }
     return RcTextMetricFixture(
       id = "text-metrics-weight-$weight",
       width = SWEEP_WIDTH,
       height = height,
-      summary = "Measured advance of the specimen at wght $weight.",
+      summary = "Measured advance and ink width of the specimen at wght $weight.",
       document = RcDocument(header(SWEEP_WIDTH, height), operations),
     )
   }
@@ -403,6 +473,25 @@ public object RcTextMetricDocuments {
       alignmentModeSpec("align-right", RcTextLayout.ALIGN_RIGHT, "align right"),
       alignmentModeSpec("align-start", RcTextLayout.ALIGN_START, "align start"),
       alignmentModeSpec("align-end", RcTextLayout.ALIGN_END, "align end"),
+      // The same two semantic alignments against an RTL paragraph. Start must flip to the right
+      // edge and end to the left; a lane where these match their LTR twins has resolved `START` to
+      // `LEFT` rather than to the paragraph direction.
+      LayoutMode(
+        "align-start-rtl",
+        2,
+        RcTextLayout.OVERFLOW_CLIP,
+        RcTextLayout.ALIGN_START,
+        RTL_ALIGNMENT_SPECIMEN,
+        "align start · RTL",
+      ),
+      LayoutMode(
+        "align-end-rtl",
+        2,
+        RcTextLayout.OVERFLOW_CLIP,
+        RcTextLayout.ALIGN_END,
+        RTL_ALIGNMENT_SPECIMEN,
+        "align end · RTL",
+      ),
       // Line height is the metric most likely to explain a "heavier"/"looser" block: it moves every
       // baseline after the first without touching a single glyph, so a pixel diff sees a wall of
       // difference and cannot say which of the two knobs moved. Two fixtures, one knob each.
@@ -668,11 +757,22 @@ public object RcTextMetricDocuments {
   private const val TEXT_GUIDE_VALUE_BASE = 140
   private const val TEXT_SWEEP_LABEL = 180
   private const val TEXT_SWEEP_VALUE = 190
+  private const val TEXT_SWEEP_INK_VALUE = 200
 
   // Float ids the measurements write into.
   private const val GUIDE_FLOAT_BASE = 300
   private const val SWEEP_FLOAT_BASE = 340
+  private const val SWEEP_INK_FLOAT_BASE = 350
   private const val MODE_ADVANCE_FLOAT = 360
+
+  /**
+   * `right - left` of the **ink** box — the second, independent number every sweep row reports.
+   *
+   * It comes off `Paint.getTextBounds` rather than `measureText`, so it can disagree with the
+   * advance; that independence, not any claim that it tracks weight reliably, is why it is here. It
+   * is integer-quantised and therefore coarse.
+   */
+  private val INK_WIDTH_TYPE = RcTextMeasurement.type(RcTextMeasurement.WIDTH)
 
   private fun floatId(guide: RcTextGuide) = GUIDE_FLOAT_BASE + guide.ordinal
 
