@@ -92,7 +92,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `MatrixMetaAnnotationMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixMetaAnnotationMultiPreview_Meta_phone.png" width="150" /> |
 | `MatrixMetaAnnotationMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixMetaAnnotationMultiPreview_Meta_watch.png" width="150" /> |
 | `MatrixNightPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixNightPreview_Night.png" width="150" /> |
+| `MatrixParentDeviceSpecPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixParentDeviceSpecPreview_Parent_device_spec.png" width="150" /> |
 | `MatrixPhoneDevicePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixPhoneDevicePreview_Phone.png" width="150" /> |
+| `MatrixRotatedDeviceSpecPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixRotatedDeviceSpecPreview_Rotated_device_spec.png" width="150" /> |
 | `MatrixScreenSizesMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixScreenSizesMultiPreview_Desktop.png" width="150" /> |
 | `MatrixScreenSizesMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixScreenSizesMultiPreview_Phone.png" width="150" /> |
 | `MatrixScreenSizesMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixScreenSizesMultiPreview_Phone_Landscape.png" width="150" /> |
@@ -266,7 +268,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `MatrixMetaAnnotationMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixMetaAnnotationMultiPreview_Meta_phone.png" width="150" /> |
 | `MatrixMetaAnnotationMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixMetaAnnotationMultiPreview_Meta_watch.png" width="150" /> |
 | `MatrixNightPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixNightPreview_Night.png" width="150" /> |
+| `MatrixParentDeviceSpecPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixParentDeviceSpecPreview_Parent_device_spec.png" width="150" /> |
 | `MatrixPhoneDevicePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixPhoneDevicePreview_Phone.png" width="150" /> |
+| `MatrixRotatedDeviceSpecPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixRotatedDeviceSpecPreview_Rotated_device_spec.png" width="150" /> |
 | `MatrixWearDevicePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixWearDevicePreview_Wear.png" width="150" /> |
 | `SwatchPreview · Amber` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Amber.png" width="150" /> |
 | `SwatchPreview · Crimson` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Crimson.png" width="150" /> |

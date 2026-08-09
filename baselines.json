@@ -879,12 +879,28 @@
     "sha256": "208647e532ddcf7d5b3350ae3015189c11f64b754b97c6f108b3fe3cb7d334b7",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
   },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixParentDeviceSpecPreview_Parent device spec": {
+    "captureLabel": "",
+    "functionName": "MatrixParentDeviceSpecPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixParentDeviceSpecPreview_Parent_device_spec.png",
+    "sha256": "2cadd37764c80b1bbe7f9a074451c2d7f87c7e0440ec009564d73ccb16936d02",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
   "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone": {
     "captureLabel": "",
     "functionName": "MatrixPhoneDevicePreview",
     "module": "samples:android",
     "renderBasename": "MatrixPhoneDevicePreview_Phone.png",
     "sha256": "21872a34b829fd0cea6ba82c908aeca92c6706907b2d39c59886006b9eec30a3",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixRotatedDeviceSpecPreview_Rotated device spec": {
+    "captureLabel": "",
+    "functionName": "MatrixRotatedDeviceSpecPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixRotatedDeviceSpecPreview_Rotated_device_spec.png",
+    "sha256": "27becb9c8e82b691260123f9d980101caffb236ffb54da2849915a675bf125c7",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixScreenSizesMultiPreview_Desktop": {
@@ -916,7 +932,7 @@
     "functionName": "MatrixScreenSizesMultiPreview",
     "module": "samples:android",
     "renderBasename": "MatrixScreenSizesMultiPreview_Tablet.png",
-    "sha256": "3d0077c8f24c3e193e98ed7bf55b695fc9caf3f89b4d1f5dbba074d371bddfcb",
+    "sha256": "85035b40c8caa6116b637ac8dc192221ed411f95411bfee06a61eed70d8e5e67",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixScreenSizesMultiPreview_Tablet - Landscape": {
@@ -1855,12 +1871,28 @@
     "sha256": "499ada85362be72ec6e0cc1100735c29396498e8b095e352aee3456a87f0a02a",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
   },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixParentDeviceSpecPreview_Parent device spec": {
+    "captureLabel": "",
+    "functionName": "MatrixParentDeviceSpecPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixParentDeviceSpecPreview_Parent_device_spec.png",
+    "sha256": "0eb8bd6481e1dc21697ba1a82b27e23d98a6b5865717d4ed833e43fc72159e36",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
   "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone": {
     "captureLabel": "",
     "functionName": "MatrixPhoneDevicePreview",
     "module": "samples:cmp",
     "renderBasename": "MatrixPhoneDevicePreview_Phone.png",
     "sha256": "15acf841776ea73fb3e7847a4bc6581a1e0025a6930d0ec05a4372211751fab5",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixRotatedDeviceSpecPreview_Rotated device spec": {
+    "captureLabel": "",
+    "functionName": "MatrixRotatedDeviceSpecPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixRotatedDeviceSpecPreview_Rotated_device_spec.png",
+    "sha256": "7e6aefa658563c991d9041a74881493688f10872553ac0ea424cedf8930c8ed7",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
   },
   "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixWearDevicePreview_Wear": {
