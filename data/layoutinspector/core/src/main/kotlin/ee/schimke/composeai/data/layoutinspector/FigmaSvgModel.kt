@@ -1436,6 +1436,28 @@ data class FigmaSvgModel(
           )
       val drawRight = if (expandW) drawLeft + drawW else bounds.right
       val drawBottom = if (expandH) drawTop + drawH else bounds.bottom
+      val builtChildren = children.map {
+        // A `Modifier.clip` here becomes the clip box its subtree inherits; nested clips
+        // intersect. Without one the subtree keeps whatever (if anything) clipped it above —
+        // an ordinary container does NOT clip, and a child overflowing it still draws.
+        val childClip =
+          if (tokens?.clipsContent == true)
+            intersectOrNull(containerBounds, clipBounds) ?: containerBounds
+          else clipBounds
+        it.toLayer(ctx, containerBounds, childClip)
+      }
+      // The ancestor half of the #2853 double-draw rule. That rule drops a node's *own* raster when
+      // the node's text stays live; the mirror case is a node whose text is live while a
+      // **descendant** falls back to a whole-node raster that covers this box — an
+      // `OutlinedTextField`
+      // is the one that proves it, its `drawWithContent` flattening the field (border, label and
+      // the
+      // value's glyphs) into one `<image>` while the value is also emitted as an editable `<text>`
+      // from the node above. Both drew, offset by the baseline, so the value read doubled. The
+      // raster owns those pixels, so the duplicate live text goes (issue #3573).
+      val rasterizedAway = builtChildren.any {
+        it.rasterCovers(drawLeft, drawTop, drawRight, drawBottom)
+      }
       return FigmaSvgLayer(
         name = layerName(),
         left = drawLeft,
@@ -1474,7 +1496,10 @@ data class FigmaSvgModel(
         // The captured typography is in *measured* sp/px, so a scaled node's glyphs are drawn
         // smaller than the capture says — scale the metrics with the box or the text overflows the
         // shrunken card it sits in (issue #2615).
-        text = (ctx.textByNodeId[nodeId] ?: modifierText(ctx))?.scaledBy(scaleX, scaleY),
+        text =
+          (ctx.textByNodeId[nodeId] ?: modifierText(ctx))
+            ?.takeUnless { rasterizedAway }
+            ?.scaledBy(scaleX, scaleY),
         background = background,
         elevationPx = elevationPx,
         opacity = opacity,
@@ -1485,19 +1510,22 @@ data class FigmaSvgModel(
         // narrowed-to-paint case above); every ordinary layer masks with its own box and leaves
         // this null.
         clipBox = (maskBox ?: background?.clipBounds)?.takeIf { it != bounds },
-        children =
-          children.map {
-            // A `Modifier.clip` here becomes the clip box its subtree inherits; nested clips
-            // intersect. Without one the subtree keeps whatever (if anything) clipped it above —
-            // an ordinary container does NOT clip, and a child overflowing it still draws.
-            val childClip =
-              if (tokens?.clipsContent == true)
-                intersectOrNull(containerBounds, clipBounds) ?: containerBounds
-              else clipBounds
-            it.toLayer(ctx, containerBounds, childClip)
-          },
+        children = builtChildren,
       )
     }
+
+    /**
+     * True when a whole-node [FigmaSvgLayer.raster] somewhere in this subtree covers the given box
+     * entirely — so anything that box would have drawn is already in those pixels (issue #3573).
+     * Containment, not overlap: a raster that merely touches the box (a drawn slider groove under a
+     * label, say) redraws none of it, and its neighbour's text must stay live.
+     */
+    private fun FigmaSvgLayer.rasterCovers(left: Int, top: Int, right: Int, bottom: Int): Boolean =
+      (raster != null &&
+        this.left <= left &&
+        this.top <= top &&
+        this.right >= right &&
+        this.bottom >= bottom) || children.any { it.rasterCovers(left, top, right, bottom) }
 
     /**
      * Editable-text fallback for a Compose Text whose semantics were intentionally cleared.
