@@ -109,6 +109,24 @@ test("publishes one theme per provider, keeping the first of a repeat", () => {
   assert.deepEqual(skipped, ["Coral (again)"]);
 });
 
+test("treats providers that slug to one file as one theme", () => {
+  // The exporter lowercases an FQN into `themes/<slug>.dtcg.json`, so two ids
+  // differing only in case are distinct strings but the SAME file — the second
+  // would overwrite the first on disk.
+  const skipped = [];
+  const themes = catalogThemesFromBundle(
+    bundle,
+    [
+      { theme: "Coral", previewId: "wearthemecatalog__Coral", providerFqn: "com.example.WearCoral", tokens: { colors: { primary: "#ff6f61ff" } } },
+      { theme: "Coral (cased)", previewId: "wearthemecatalog__Coral", providerFqn: "com.example.wearcoral", tokens: { colors: { primary: "#000000ff" } } },
+    ],
+    (previewId, theme) => skipped.push(theme),
+  );
+  assert.equal(themes.length, 1);
+  assert.equal(themes[0].tokens.colors.primary, "#ff6f61ff");
+  assert.deepEqual(skipped, ["Coral (cased)"]);
+});
+
 test("falls back to the preview entry's name, and copes with no entry at all", () => {
   const themes = catalogThemesFromBundle(bundle, [
     {

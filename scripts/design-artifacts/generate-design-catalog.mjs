@@ -675,7 +675,11 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
     ...(spec.display ? { display: spec.display } : {}),
   };
 
-  const catalog = buildCatalog(meta, sources, opts.themeTokens);
+  // `opts.themes` is forwarded explicitly: this join is a VENDORED copy of the published
+  // `catalogFromCandidates` (see the file header), so an option the package's version understands
+  // is silently dropped here unless it is threaded through by hand. Missing it published a catalog
+  // with no `themes[]` while the run logged that it was publishing them.
+  const catalog = buildCatalog(meta, sources, opts.themeTokens, opts.themes);
   return { catalog, missing, noSticker, withoutSemantics, deferred };
 }
 // --- end vendored join --------------------------------------------------------

@@ -153,6 +153,11 @@ Two details are load-bearing:
   doesn't become a luminance guess made at an arbitrary layer. A consumer needing the mode reads the
   theme's own `surface` out of its tokens.
 
+A folded section does **not** bring its themes with it. `themes/` is catalog-level despite being
+nested, so [`merge-catalog-section.mjs`](../../scripts/design-artifacts/merge-catalog-section.mjs)
+skips it the way it skips the top-level `tokens.dtcg.json`: the host's `catalog.json` describes the
+host's themes, and a borrowed system's theme is one the host cannot render.
+
 Until these existed, the theme sheets' tokens were merged into `tokens.dtcg.json` along with the
 system's own. Because M3 role labels repeat across themes, that made a system's published `primary`
 whichever sheet the bundle happened to yield last; splitting them fixed the system set as well as

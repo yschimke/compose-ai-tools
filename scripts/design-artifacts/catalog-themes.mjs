@@ -15,6 +15,8 @@
  * is showing. The name and group come from the same `previews.json` entry the FQN does.
  */
 
+import { themeTokensPath } from "@design-parity/catalog-export";
+
 /**
  * Build the export's `themes` from a bundle's per-theme token sets.
  *
@@ -48,14 +50,17 @@ export function catalogThemesFromBundle(bundle, themeTokenSets, onSkip) {
       onSkip?.(previewId, theme);
       continue;
     }
-    // One provider is one theme. A repeated FQN would publish two files at the same slug, the
-    // second overwriting the first — so the first wins and the rest are reported like any other
-    // skip rather than silently colliding on disk.
-    if (seen.has(id)) {
+    // One provider is one theme, and "same theme" means "same FILE": the exporter slugs an FQN
+    // into `themes/<slug>.dtcg.json`, lowercasing it, so two providers differing only in case
+    // collide on disk while comparing as distinct ids. Keying on the emitted path — asked of the
+    // exporter rather than re-derived — makes the check agree with what is actually written. The
+    // first wins and the rest are reported like any other skip.
+    const slot = themeTokensPath(id);
+    if (seen.has(slot)) {
       onSkip?.(previewId, theme);
       continue;
     }
-    seen.add(id);
+    seen.add(slot);
     const entry = { id, tokens: set.tokens };
     const params = byId.get(previewId)?.params ?? {};
     const name = theme || str(params.name);
