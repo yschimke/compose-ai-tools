@@ -28,8 +28,13 @@ $ node -e '…histogram of rc-cmp-wasm/…VariableWidthRemote….png…'
 [ [ '128,128,128,255', 307200 ] ]
 ```
 
-Five documents came back like that, and they are exactly the corpus's text-only documents. Every
-other row had ink. So the "regression" the check reported was the CMP/Wasm player drawing **nothing**
+Baked reference | the 2.45% capture | the 0.19% capture, all three the same 640×480 document
+(`VariableWidthRemote`), composited on the harness's own grey:
+
+![baked reference, the blank capture, and the drawn capture](variable-width-baked-blank-drawn.png)
+
+The middle panel is the entire "regression". Five documents came back like that, and they are
+exactly the corpus's text-only documents. Every other row had ink. So the "regression" the check reported was the CMP/Wasm player drawing **nothing**
 and being scored on it: a document that is nothing but white text on transparent, missing all of its
 text, differs from its baked reference by a completely stable 2.45%.
 
