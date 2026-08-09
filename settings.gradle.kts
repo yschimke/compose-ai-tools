@@ -324,6 +324,9 @@ project(":rc-player-compat-tests").projectDir = file("rc-player/compat-tests")
 include(":rc-player-profile")
 project(":rc-player-profile").projectDir = file("rc-player/profile")
 
+include(":rc-player-metrics")
+project(":rc-player-metrics").projectDir = file("rc-player/metrics")
+
 // Non-renderable KMP-Android library (no `jvm("desktop")` target) — regression fixture for
 // #1852 / #1855. See its build.gradle.kts. Must coexist in the build without breaking CLI
 // discovery of the other sample modules.
