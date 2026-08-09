@@ -148,10 +148,15 @@ Two details are load-bearing:
   showing. A theme whose FQN can't be resolved from `previews.json` is **not published**: an entry
   keyed on anything else is data no consumer can attach to a theme, and the driver warns rather than
   shipping it silently.
-- **`dark` is left unset.** Nothing in the pipeline declares whether a theme is dark — the
-  annotation carries a name and a group — and the field exists as a declaration precisely so it
-  doesn't become a luminance guess made at an arbitrary layer. A consumer needing the mode reads the
-  theme's own `surface` out of its tokens.
+- **`dark` comes from the theme's own resolved surface**, the colour the renderer actually composed
+  that specimen on — `surface`, else `background`, composited over white if it carries alpha. It is
+  decided here rather than left to consumers precisely because the field exists to stop each of them
+  re-deriving it and disagreeing. The rule is *relative luminance < 0.45*, the same one the preview
+  server's `ServeThemeCss` uses to decide which mode a catalog baked, so the published flag and the
+  server's own palette projection can never contradict each other; if one moves, both move. Note
+  that this is a luminance, not a lightness — it crosses at about `#b3b3b3`, so a mid-grey surface
+  counts as dark. A theme that published no surface at all leaves the field absent, since nothing
+  can answer for it.
 
 A folded section does **not** bring its themes with it. `themes/` is catalog-level despite being
 nested, so [`merge-catalog-section.mjs`](../../scripts/design-artifacts/merge-catalog-section.mjs)
