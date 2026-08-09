@@ -30,12 +30,17 @@ import ee.schimke.composeai.daemon.RemoteOverridablePreview
  * vanilla `composePreviewRenderAll` and the weekly design-artifacts render) it is the same output
  * as plain `RemotePreview`.
  *
- * Also the one place a selected `@WearThemeCatalog` typeface reaches the document.
- * `RemoteMaterialTheme` is `@RemoteComposable`, so it can only be installed here, inside the remote
- * scope — the theme provider wraps the whole `@Preview`, which is outside it, and hands its choice
- * over as [LocalRemoteCatalogFont]. Absent a provider the local is null and nothing is installed,
- * so every un-themed render is pixel-identical to what it was before the themes existed — all 27
- * PNGs verified byte-for-byte against `origin/main`.
+ * Also the one place a selected `@WearThemeCatalog` theme — its colour scheme *and* its type scale —
+ * reaches the document. `RemoteMaterialTheme` is `@RemoteComposable`, so it can only be installed
+ * here, inside the remote scope: the theme provider wraps the whole `@Preview`, which is outside it,
+ * and hands its choice over as [LocalRemoteCatalogTheme]. Absent a provider the local is null and
+ * nothing is installed, so every un-themed render is pixel-identical to what it was before the
+ * themes existed — all 27 PNGs verified byte-for-byte, by rendering with and without this change in
+ * one tree (the published delivery branch is not a usable control: it lags renderer drift, so every
+ * sticker differs from it for reasons unrelated to any catalog change).
+ *
+ * The scheme's base is read from the *installed* [RemoteMaterialTheme.colorScheme] rather than a
+ * constant, so a role no theme touches keeps whatever the library's dark-first default supplies.
  *
  * **One document does change**, with no pixel change: `CircularProgressRemote`'s `.rc` sidecar
  * differs from `main` in a handful of id bytes (its PNG does not). Adding the branch below is what
@@ -49,16 +54,19 @@ import ee.schimke.composeai.daemon.RemoteOverridablePreview
  */
 @Composable
 fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
-  val themeFont = LocalRemoteCatalogFont.current
+  val themeName = LocalRemoteCatalogTheme.current
   RemoteOverridablePreview(profile = RcPlatformProfiles.ANDROIDX) {
-    if (themeFont == null) {
+    if (themeName == null) {
       RemoteBox(
         modifier = RemoteModifier.fillMaxSize(),
         contentAlignment = RemoteAlignment.Center,
         content = content,
       )
     } else {
-      RemoteMaterialTheme(typography = remoteCatalogTypography(themeFont)) {
+      RemoteMaterialTheme(
+        colorScheme = remoteCatalogColorScheme(themeName, RemoteMaterialTheme.colorScheme),
+        typography = remoteCatalogTypography(remoteCatalogFont(themeName)),
+      ) {
         RemoteBox(
           modifier = RemoteModifier.fillMaxSize(),
           contentAlignment = RemoteAlignment.Center,

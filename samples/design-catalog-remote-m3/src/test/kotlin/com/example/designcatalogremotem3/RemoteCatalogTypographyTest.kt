@@ -20,7 +20,7 @@ class RemoteCatalogTypographyTest {
 
   @Test
   fun `a theme re-points the built-in default family at a google-namespaced family`() {
-    for (family in REMOTE_THEME_FONTS) {
+    for (family in REMOTE_THEME_NAMES.map(::remoteCatalogFont).distinct()) {
       val typography = remoteCatalogTypography(family)
       val expected = RemoteFontFamily.Named("google:$family")
 
@@ -39,8 +39,28 @@ class RemoteCatalogTypographyTest {
     assertThat(stock.bodyLarge.fontFamily).isAnyOf(null, RemoteFontFamily.Default)
   }
 
+  /**
+   * The declared set mirrors `:samples:design-catalog-wear-m3`'s, name for name and in order —
+   * that pairing is what lets the cross-system compare read the two catalogs as one theme set, so a
+   * name added on one side and not the other is a regression rather than a detail.
+   */
   @Test
-  fun `themes are declared for exactly the two catalog faces`() {
-    assertThat(REMOTE_THEME_FONTS).containsExactly("Roboto Flex", "Google Sans Flex").inOrder()
+  fun `the declared themes mirror the wear sibling's set`() {
+    assertThat(REMOTE_THEME_NAMES)
+      .containsExactly("M3", "Coral", "Teal", "Google Sans Flex", "KotlinConf")
+      .inOrder()
+  }
+
+  /**
+   * Only the typeface theme moves the face. A palette that also changed the type would make a
+   * side-by-side against [RemoteM3ThemeCatalog] a type *and* colour comparison, which is exactly
+   * what the Google Sans Flex / M3 pair exists to avoid.
+   */
+  @Test
+  fun `only the typeface theme moves the default family`() {
+    assertThat(remoteCatalogFont("Google Sans Flex")).isEqualTo("Google Sans Flex")
+    for (palette in listOf("M3", "Coral", "Teal", "KotlinConf")) {
+      assertThat(remoteCatalogFont(palette)).isEqualTo("Roboto Flex")
+    }
   }
 }
