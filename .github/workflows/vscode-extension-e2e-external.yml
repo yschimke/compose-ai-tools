@@ -66,6 +66,12 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch access: `setup` wires only the Actions cache of the
+      # Gradle home, not the remote build cache. See vscode-extension-e2e.yml for
+      # why this is read-only rather than read/write.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

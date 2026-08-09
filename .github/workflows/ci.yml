@@ -24,7 +24,25 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded PR runs; let main pushes COALESCE instead of cancelling.
+  #
+  # main pushes are the only thing that writes the BuildFetch remote cache: the
+  # `buildfetch-cache` step below resolves the write token on `push`, which sets
+  # `ON_CI=true`, which makes settings.gradle.kts *disable the local build
+  # cache* so tasks execute-and-push rather than resolving FROM-CACHE locally
+  # and pushing nothing. Cancelling those runs was the worst of both worlds:
+  # 26 of 30 recent main runs were cancelled, so the designated seeder was
+  # doing full no-cache builds and being killed before it had pushed much —
+  # and every other workflow then paid cold-build prices on a stale remote.
+  #
+  # `cancel-in-progress: false` does not mean "run everything". GitHub keeps at
+  # most one running plus one pending run per group, and a newer push cancels
+  # the *pending* one before it ever claims a runner. So a burst of merges
+  # collapses to one in-flight run plus one queued, the rest are dropped for
+  # free, and the run that is in flight actually finishes and seeds the cache.
+  # That is strictly cheaper than today, where each superseded run still paid
+  # checkout + JDK + a 174 MB cache restore before being killed.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Release-please PRs only bump the version manifest / CHANGELOG / version
 # strings in docs — no source or build inputs change, so the full build+test
@@ -119,6 +137,9 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Resolve affected Gradle tests
         id: test-scope
         env:
@@ -363,6 +384,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Compose Multiplatform 1.11's `ui-uikit` links against iOS 26 SDK symbols — `CMPLayoutRegion`
       # references `UIViewLayoutRegion`, which does not exist before iOS 26. The `macos-15` image
       # ships several Xcode 26.x alongside 16.4 but still *defaults* to 16.4 (iOS 18.5 SDK), so
@@ -432,6 +456,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Build the Wasm player distribution
         run: ./gradlew :rc-player-wasm:wasmPlayerDist
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

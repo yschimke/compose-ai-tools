@@ -77,6 +77,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch access: `setup` wires only the Actions cache of the
+      # Gradle home, not the remote build cache. See vscode-extension-e2e.yml for
+      # why this is read-only rather than read/write.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run harness scenarios (desktop, fake)
         run: ./gradlew :daemon:harness:test
       - name: Upload harness test results (desktop, fake)
@@ -102,6 +108,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch access: `setup` wires only the Actions cache of the
+      # Gradle home, not the remote build cache. See vscode-extension-e2e.yml for
+      # why this is read-only rather than read/write.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Skiko ships its native bundle inside the Compose Desktop classpath,
       # so we expect no system packages to be needed on ubuntu-latest. If
       # this job ever fails with `UnsatisfiedLinkError` for libfreetype /
@@ -141,6 +153,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch access: `setup` wires only the Actions cache of the
+      # Gradle home, not the remote build cache. See vscode-extension-e2e.yml for
+      # why this is read-only rather than read/write.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # `:samples:android` already bootstraps Robolectric on ubuntu-latest
       # so we expect no extra system packages. If this job ever fails with
       # missing native libs (libfontconfig, libfreetype), install them
