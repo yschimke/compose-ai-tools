@@ -86,12 +86,14 @@ class RemoteComposeIrReplay {
  * reason alone, which is a property of the two players' APIs rather than a rendering divergence;
  * keep it in mind when reading a `rc-compare` row for a preview that carries knobs.
  *
- * Invalid hex is skipped rather than thrown, matching [applyConnectorOverrides].
+ * Invalid hex is skipped rather than thrown, and a six-digit value is read as opaque — both through
+ * the shared [rcColorToArgb], so the embedded player and the view player cannot disagree about what
+ * the same seed means.
  */
 internal fun Map<String, RemoteNamedValue>.toNamedColorOverrides(): ObjectIntMap<String> {
   val colors = entries.mapNotNull { (name, value) ->
     val color = value as? RemoteNamedValue.ColorValue ?: return@mapNotNull null
-    val argb = color.argb.removePrefix("#").toLongOrNull(16)?.toInt() ?: return@mapNotNull null
+    val argb = rcColorToArgb(color.argb) ?: return@mapNotNull null
     name to argb
   }
   if (colors.isEmpty()) return emptyObjectIntMap()

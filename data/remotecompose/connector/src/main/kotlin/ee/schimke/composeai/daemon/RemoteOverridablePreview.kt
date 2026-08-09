@@ -322,13 +322,29 @@ internal fun applyConnectorOverrides(
       is RemoteNamedValue.IntValue -> updater.setUserLocalInt(name, value.value)
       is RemoteNamedValue.DpValue -> updater.setUserLocalFloat(name, value.value)
       is RemoteNamedValue.BooleanValue -> updater.setUserLocalInt(name, if (value.value) 1 else 0)
-      is RemoteNamedValue.ColorValue -> {
-        // Wire model accepts an arbitrary string for argb (a typo in a panel value
-        // would otherwise crash the render path). Skip invalid hex instead of throwing.
-        val hex = value.argb.removePrefix("#")
-        val argb = hex.toLongOrNull(16)?.toInt()
-        if (argb != null) updater.setUserLocalColor(name, argb)
-      }
+      is RemoteNamedValue.ColorValue ->
+        rcColorToArgb(value.argb)?.let { updater.setUserLocalColor(name, it) }
     }
   }
+}
+
+/**
+ * An rc colour string as an ARGB int: strip a leading `#` (or its URL-encoded `%23`), treat a
+ * six-digit `#RRGGBB` as **opaque**, and accept only a resulting 8 hex digits. Null when it won't
+ * parse.
+ *
+ * The wire model carries `argb` as an arbitrary string — a typo in a panel value would otherwise
+ * crash the render path — so an unparseable colour is skipped by the callers rather than thrown.
+ *
+ * Prepending `FF` is the load-bearing part. Without it `#RRGGBB` becomes `0x00RRGGBB`, fully
+ * transparent, so a six-digit seed *erases* what it was meant to recolour. Six digits is the
+ * ordinary spelling of a colour — it is what a hand-typed `?rc.WearM3.primary=color:%23FF6F61`
+ * carries, and what `ServeHost.themeReplayColors` publishes for a theme — and until now only the
+ * cmp-jvm lane (`RcJvmServerRenderer.rcColorToArgb`, which this mirrors deliberately) read it that
+ * way, leaving the two players disagreeing about the same request.
+ */
+internal fun rcColorToArgb(raw: String): Int? {
+  val hex = raw.removePrefix("%23").removePrefix("#")
+  val opaque = if (hex.length == 6) "FF$hex" else hex
+  return opaque.takeIf { it.length == 8 }?.toLongOrNull(16)?.toInt()
 }
