@@ -1,0 +1,100 @@
+name: Gradle Cache Seed
+
+# Sole writer of the BuildFetch remote build cache.
+#
+# Why a workflow of its own rather than a job inside ci.yml: workflow-level
+# `concurrency.cancel-in-progress` cancels the whole *run*, so no job inside a
+# cancelling workflow can be made to survive — job-level concurrency cannot
+# rescue a job whose run was killed. Seeding therefore has to live in a
+# separate run with its own concurrency group, which is exactly what this is.
+#
+# The split matters because seeding and verification want opposite policies:
+#
+#   * Verification (ci.yml, the e2e shards) SHOULD be cancelled by a newer
+#     commit — a superseded test result is worthless, and 26 of 30 recent main
+#     runs were being cancelled anyway.
+#   * Seeding MUST run to completion. `buildfetch-cache`'s write token sets
+#     `ON_CI=true`, and settings.gradle.kts then disables the *local* build
+#     cache so tasks execute-and-push rather than resolving FROM-CACHE locally
+#     and pushing nothing. A cancelled seeder is the worst case: a full
+#     no-cache build that is killed before it has pushed much, leaving the
+#     remote stale for every PR.
+#
+# Before this split ci.yml held the write token, so main runs got both
+# policies wrong at once: expensive (no local cache) *and* cancelled. Now
+# ci.yml reads with `ro-token`, keeps its local cache, and stays cheap to
+# cancel; this workflow owns writes and is never cancelled mid-flight.
+#
+# `cancel-in-progress: false` is not "run every push". GitHub holds at most one
+# running plus one pending run per concurrency group and drops superseded
+# *pending* runs before they claim a runner, so a burst of merges costs one
+# complete seed rather than N partial ones.
+
+on:
+  push:
+    branches: [main]
+  # Safety net. A push-triggered seed that fails, or a quiet period after a
+  # dependency bump, would otherwise leave the remote stale until the next
+  # merge. Re-seeding on a timer costs one bounded run and means a single bad
+  # seed never degrades every downstream job until someone notices.
+  schedule:
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gradle-cache-seed
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    name: Seed the BuildFetch remote cache
+    runs-on: ubuntu-latest
+    # Generous: this job deliberately runs with the local build cache disabled,
+    # so a cold seed after a build-logic change executes everything below from
+    # source. It is the one job in the repo that is *supposed* to be slow.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          # This workflow has no `pull_request` trigger — push, schedule and
+          # dispatch all run from the default branch, so the write token is
+          # never exposed to PR-head code. The guard is belt-and-braces: if
+          # someone later adds a `pull_request` trigger, the token stops
+          # resolving rather than silently leaking into an untrusted job.
+          rw-token: ${{ github.event_name != 'pull_request' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+
+      # Every task list below is copied from an invocation ci.yml already runs,
+      # so none of it is a speculative task name. Ordered most-shared first: if
+      # a later step fails, the entries that the most jobs depend on are
+      # already pushed.
+      #
+      # This set is a starting point sized to the dominant shared cost
+      # (compiling the plugin, CLI, common, daemon and renderers, then the
+      # sample renders the e2e shards pay for). It is not meant to mirror all
+      # of CI. Tune it from observed hit rates rather than by adding tasks
+      # speculatively — every addition is paid on every seed.
+      - name: Seed plugin + CLI compilation
+        run: ./gradlew :cli:installDist :gradle-plugin:publishToMavenLocal
+
+      - name: Seed plugin and Android renderer test tasks
+        run: ./gradlew :gradle-plugin:test :renderer-android:testDebugUnitTest
+
+      # The render path the vscode-extension-e2e shards spend most of their
+      # wall time on. `missingRenders=warn` mirrors ci.yml's bundle job: one
+      # stubborn preview should not throw away an otherwise complete seed.
+      - name: Seed sample renders
+        run: >-
+          ./gradlew
+          :samples:cmp:composePreviewRenderAll
+          :samples:wear:composePreviewRenderAll
+          -PcomposePreview.missingRenders=warn

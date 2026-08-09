@@ -65,16 +65,8 @@ concurrency:
   # `workflow_dispatch` keeps a per-run slot and stays uncancellable: a manual
   # one-off (reproducing a regression on a branch) is deliberate work that
   # ordinary push/PR traffic on the same ref must not kill.
-  #
-  # main pushes coalesce rather than cancel, matching ci.yml. Cancelling them
-  # looked free but wasn't: each superseded run still paid checkout, JDK, a
-  # 174 MB Gradle cache restore and a 317 MB VS Code cache restore across five
-  # shards before being killed — 22 of the 30 most recent runs ended that way.
-  # With `cancel-in-progress: false` GitHub holds at most one running plus one
-  # pending run per group and drops superseded *pending* runs before they claim
-  # a runner, so a merge burst costs one full run instead of five partial ones.
   group: vscode-extension-e2e-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   e2e:

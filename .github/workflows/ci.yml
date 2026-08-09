@@ -24,25 +24,13 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Cancel superseded PR runs; let main pushes COALESCE instead of cancelling.
-  #
-  # main pushes are the only thing that writes the BuildFetch remote cache: the
-  # `buildfetch-cache` step below resolves the write token on `push`, which sets
-  # `ON_CI=true`, which makes settings.gradle.kts *disable the local build
-  # cache* so tasks execute-and-push rather than resolving FROM-CACHE locally
-  # and pushing nothing. Cancelling those runs was the worst of both worlds:
-  # 26 of 30 recent main runs were cancelled, so the designated seeder was
-  # doing full no-cache builds and being killed before it had pushed much —
-  # and every other workflow then paid cold-build prices on a stale remote.
-  #
-  # `cancel-in-progress: false` does not mean "run everything". GitHub keeps at
-  # most one running plus one pending run per group, and a newer push cancels
-  # the *pending* one before it ever claims a runner. So a burst of merges
-  # collapses to one in-flight run plus one queued, the rest are dropped for
-  # free, and the run that is in flight actually finishes and seeds the cache.
-  # That is strictly cheaper than today, where each superseded run still paid
-  # checkout + JDK + a 174 MB cache restore before being killed.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Superseded verification is worthless, so cancel it — on main as well as on
+  # PRs. This is only safe because CI no longer writes the BuildFetch remote
+  # cache: `buildfetch-cache` below takes `ro-token` only, so these runs keep
+  # their local build cache (`ON_CI` stays false) and are cheap to throw away.
+  # Cache writes live in gradle-cache-seed.yml, which runs uncancelled in its
+  # own concurrency group precisely so this one can stay disposable.
+  cancel-in-progress: true
 
 # Release-please PRs only bump the version manifest / CHANGELOG / version
 # strings in docs — no source or build inputs change, so the full build+test
@@ -161,10 +149,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          # Only resolve the write token on trusted main-branch push builds — on a pull_request
-          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
-          # write token is never placed in a PR job's environment.
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run unit tests
         run: ./gradlew :gradle-plugin:test
@@ -192,10 +176,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          # Only resolve the write token on trusted main-branch push builds — on a pull_request
-          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
-          # write token is never placed in a PR job's environment.
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run unit tests
         run: ./gradlew :renderer-android:testDebugUnitTest
@@ -338,7 +318,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run affected module tests (full suite off PRs)
         env:
@@ -647,10 +626,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          # Only resolve the write token on trusted main-branch push builds — on a pull_request
-          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
-          # write token is never placed in a PR job's environment.
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run functional tests
         run: ./gradlew :gradle-plugin:functionalTest
@@ -678,10 +653,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          # Only resolve the write token on trusted main-branch push builds — on a pull_request
-          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
-          # write token is never placed in a PR job's environment.
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Build CMP sample and discover previews
         run: ./gradlew :samples:cmp:composePreviewDiscover
@@ -743,7 +714,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Daemon-bench smoke (issue #1586). The full latency benches
       # (benchPreviewLatency / benchCompileStages) are deliberately slow and run on the
@@ -808,10 +778,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          # Only resolve the write token on trusted main-branch push builds — on a pull_request
-          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
-          # write token is never placed in a PR job's environment.
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Release builds no longer package the per-OS bundle-viewer binaries. Compile
       # and test its source here so removing that packaging matrix does not also
@@ -839,10 +805,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          # Only resolve the write token on trusted main-branch push builds — on a pull_request
-          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
-          # write token is never placed in a PR job's environment.
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Build the compositor (clang + libc++ against the pinned Filament SDK) and its compiled
       # materials into dist/ — the same composite action the build/release workflows use.
@@ -998,10 +960,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          # Only resolve the write token on trusted main-branch push builds — on a pull_request
-          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
-          # write token is never placed in a PR job's environment.
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # End-to-end: pack a bundle from a synthetic Compose Desktop project, then re-render it
       # outside of any Gradle project by spawning the actual CLI binary against the packed PNG.
@@ -1040,10 +998,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          # Only resolve the write token on trusted main-branch push builds — on a pull_request
-          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
-          # write token is never placed in a PR job's environment.
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # End-to-end for the Android path of `bundle daemon`: pack real-sample bundles (Wear tile +
       # Remote Compose IR, plus classic Compose previews), then spawn the actual CLI binary against
@@ -1109,10 +1063,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          # Only resolve the write token on trusted main-branch push builds — on a pull_request
-          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
-          # write token is never placed in a PR job's environment.
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Fetch agent audit script from yschimke/skills
         # The script lives in the sibling skills repo since it's part of the
