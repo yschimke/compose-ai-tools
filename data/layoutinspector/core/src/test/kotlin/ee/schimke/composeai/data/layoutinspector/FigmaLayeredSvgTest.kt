@@ -1948,6 +1948,52 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun graphicsLayerAfterAPaintFillFadesTheFillWithTheContent() {
+    // The Wear `surface()` counterpart of the test above. A `TransformingLazyColumn` item fills
+    // through `Modifier.paint` and carries the morph's alpha behind it, and
+    // `SurfaceTransformation` paints that surface already faded — measured on the catalog's
+    // scaling-list sticker, where the item at alpha 0.555 draws its #332E3C card at (28,25,33).
+    // So unlike `background`, the fill fades with the content and the alpha belongs on the group
+    // (issue #3579).
+    val svg =
+      render(
+        layoutNode(
+          "FadingCard",
+          0,
+          0,
+          100,
+          40,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4", opacity = 0.5),
+          modifiers =
+            listOf(
+              LayoutInspectorModifier(name = "paint"),
+              LayoutInspectorModifier(name = "graphicsLayer", properties = mapOf("alpha" to "0.5")),
+            ),
+          children =
+            listOf(
+              layoutNode(
+                "Label",
+                10,
+                10,
+                90,
+                30,
+                tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF"),
+              )
+            ),
+        )
+      )
+
+    assertTrue(
+      "the fill and its content fade together on the group:\n$svg",
+      svg.contains("""<g id="FadingCard" opacity="0.5">"""),
+    )
+    assertFalse(
+      "no inner content-only fade is left behind:\n$svg",
+      svg.contains("""<g opacity="0.5">"""),
+    )
+  }
+
+  @Test
   fun finalFrameRasterDoesNotReapplyLocalOrAncestorOpacity() {
     val node =
       layoutNode(

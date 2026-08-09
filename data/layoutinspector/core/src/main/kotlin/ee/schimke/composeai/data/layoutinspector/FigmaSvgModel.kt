@@ -1478,6 +1478,24 @@ data class FigmaSvgModel(
       val rasterizedAway = builtChildren.any {
         it.rasterCovers(drawLeft, drawTop, drawRight, drawBottom)
       }
+      /**
+       * Whether this layer's own pixels came from the composited frame, alphas already baked in.
+       */
+      val framePixels = background?.fromFrame == true
+      // Whether a trailing alpha fades this node's own fill as well as its content.
+      //
+      // For `Modifier.background(color).graphicsLayer { alpha }` it does not: `background` draws
+      // its rect and *then* delegates, so the rect is outside the layer the alpha applies to —
+      // which is what `graphicsLayerAfterBackgroundNestsOnlyTheInnerContent` pins.
+      //
+      // Wear's `surface()` fill is the exception, and it is measured rather than assumed. A
+      // `TransformingLazyColumn` item fills through `Modifier.paint` and carries the morph's alpha
+      // behind it; at the item faded to 0.555 the render draws its #332E3C card at (28,25,33) —
+      // the fill is multiplied by the alpha, because `SurfaceTransformation` paints the surface
+      // already faded. Leaving those backgrounds at full strength while their labels faded was most
+      // of what the scaling-list stickers still differed by (issue #3579).
+      val fillFadesWithContent =
+        !framePixels && modifiers.firstOrNull { it.isDrawingModifier() }?.isPaintFill() == true
       return FigmaSvgLayer(
         name = layerName(),
         left = drawLeft,
@@ -1522,8 +1540,8 @@ data class FigmaSvgModel(
             ?.scaledBy(scaleX, scaleY),
         background = background,
         elevationPx = elevationPx,
-        opacity = opacity,
-        contentOpacity = contentOpacity,
+        opacity = if (fillFadesWithContent) opacity * contentOpacity else opacity,
+        contentOpacity = if (fillFadesWithContent) 1.0 else contentOpacity,
         curvedTexts = curvedTexts.map { it.scaledInto(bounds, scaleX, scaleY, scaleMean) },
         clipChildren = tokens?.clipsContent == true,
         // Carried only when the mask really is a different rect from the layer's own box (the
@@ -1618,6 +1636,12 @@ data class FigmaSvgModel(
       val content =
         alphas.filter { it.first >= firstDraw }.fold(1.0) { acc, (_, alpha) -> acc * alpha }
       return outer to content
+    }
+
+    /** A `Modifier.paint` — Wear's `surface()` container fill, as opposed to a `background`. */
+    private fun LayoutInspectorModifier.isPaintFill(): Boolean {
+      val lower = name.lowercase()
+      return lower == "paint" || lower.contains("painterelement")
     }
 
     private fun LayoutInspectorModifier.isDrawingModifier(): Boolean {
