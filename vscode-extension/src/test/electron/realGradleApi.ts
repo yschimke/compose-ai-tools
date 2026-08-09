@@ -10,6 +10,11 @@ import type { GradleApi } from "../../gradleService";
  */
 const KILL_GRACE_MS = 5_000;
 
+/** One enqueued-but-not-yet-spawned `gradlew` invocation. */
+interface QueuedInvocation {
+    cancelled: boolean;
+}
+
 /**
  * Real {@link GradleApi} that shells out to the repo's `./gradlew` wrapper.
  * Used by the daily/manual e2e suite to drive the *actual* Gradle plugin
@@ -69,7 +74,95 @@ export class RealGradleApi implements GradleApi {
         return this.cancelledTaskNames;
     }
 
+    /**
+     * Tail of the invocation chain. Every {@link runTask} links onto it, so at
+     * most one `gradlew` process is alive at a time.
+     *
+     * Production reaches Gradle through `vscjava.vscode-gradle`, which talks to
+     * one long-lived daemon, and `gradleService.ts` leans on that: several of
+     * its comments say a second invocation simply "queues behind it on the
+     * daemon's serialised queue". Shelling out to `./gradlew` breaks that
+     * assumption — a client that finds the daemon busy starts *another* one, so
+     * the invocations genuinely run in parallel.
+     *
+     * That is not theoretical. On run 31310881459 the suite's forced
+     * `composePreviewRenderAll` and a save-loop `composePreviewCompile` landed
+     * 0.6s apart on `:samples:cmp`, two daemons started, and the compile
+     * rewrote the module's class output while the other build's
+     * `composePreviewDiscover` was scanning it. Discovery scans `classDirs`, so
+     * the manifest collapsed from 66 previews to the 3 asset-only ones that
+     * come from `resourceDirs`, and every `-PcomposePreview.filter` pattern
+     * then matched nothing:
+     *
+     *     composePreviewRender --preview matched no previews … Available previews:
+     *       lottie/spin.json
+     *       svg/badge.svg
+     *       svg/star.svg
+     *
+     * Scenarios B and E both edit a `.kt` fixture on disk and so both hit it.
+     *
+     * Serialising here restores the one-daemon invariant the extension is
+     * written against. It does **not** fix the underlying product race — two
+     * concurrent Gradle clients against one project can corrupt each other's
+     * task outputs whatever drives them — that belongs in `GradleService`.
+     */
+    private queueTail: Promise<void> = Promise.resolve();
+
+    /**
+     * Invocations that have been enqueued but not yet spawned, by
+     * `cancellationKey`. {@link cancelRunTask} can only kill a live child;
+     * without this, a supersession that arrives while a task is still waiting
+     * its turn would be dropped and the stale build would run anyway — exactly
+     * the "leftover previews from the cancelled refresh" that scenario D pins.
+     */
+    private readonly queued = new Map<string, QueuedInvocation[]>();
+
     runTask(opts: {
+        projectFolder: string;
+        taskName: string;
+        args?: ReadonlyArray<string>;
+        showOutputColors: boolean;
+        onOutput?: (output: {
+            getOutputBytes(): Uint8Array;
+            getOutputType(): number;
+        }) => void;
+        cancellationKey?: string;
+    }): Promise<void> {
+        const key = opts.cancellationKey;
+        const entry: QueuedInvocation = { cancelled: false };
+        if (key) {
+            const waiting = this.queued.get(key);
+            if (waiting) waiting.push(entry);
+            else this.queued.set(key, [entry]);
+        }
+        const run = this.queueTail.then(() => {
+            if (key) {
+                const waiting = this.queued.get(key);
+                if (waiting) {
+                    const at = waiting.indexOf(entry);
+                    if (at >= 0) waiting.splice(at, 1);
+                    if (waiting.length === 0) this.queued.delete(key);
+                }
+            }
+            if (entry.cancelled) {
+                // Worded so `gradleService`'s CANCELLED_RE maps it to a
+                // TaskCancelledError, same as a SIGTERM'd child.
+                throw new Error(
+                    `gradlew ${opts.taskName} cancelled before it started`,
+                );
+            }
+            return this.spawnTask(opts);
+        });
+        // Never let a rejection break the chain — the next invocation still has
+        // to run, and `run` already carries the failure to its own caller.
+        this.queueTail = run.then(
+            () => undefined,
+            () => undefined,
+        );
+        return run;
+    }
+
+    private spawnTask(opts: {
         projectFolder: string;
         taskName: string;
         args?: ReadonlyArray<string>;
@@ -189,6 +282,18 @@ export class RealGradleApi implements GradleApi {
         // keyed by `cancellationKey`. Without a key there's nothing
         // specific to cancel (gradleService always supplies one).
         const key = opts.cancellationKey;
+        // Tasks still waiting their turn have no child to signal — mark them so
+        // they abort when they reach the head of the queue instead of running a
+        // build the caller has already superseded. Not recorded in
+        // `cancelledTaskNames`: nothing was truncated, so a suite reading that
+        // list for partial renders would be misled.
+        const waiting = key ? this.queued.get(key) : undefined;
+        if (waiting?.length) {
+            for (const entry of waiting) entry.cancelled = true;
+            this.onLog(
+                `[realGradleApi] cancel ${opts.taskName} (key=${key}) — ${waiting.length} queued invocation(s) dropped before spawn`,
+            );
+        }
         const child = key ? this.liveChildren.get(key) : undefined;
         if (!child || child.pid === undefined || child.exitCode !== null) {
             return;
