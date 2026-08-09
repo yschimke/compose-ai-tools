@@ -30,35 +30,37 @@ import ee.schimke.composeai.daemon.RemoteOverridablePreview
  * vanilla `composePreviewRenderAll` and the weekly design-artifacts render) it is the same output
  * as plain `RemotePreview`.
  *
- * Also the one place a selected `@WearThemeCatalog` typeface reaches the document.
- * `RemoteMaterialTheme` is `@RemoteComposable`, so it can only be installed here, inside the remote
- * scope — the theme provider wraps the whole `@Preview`, which is outside it, and hands its choice
- * over as [LocalRemoteCatalogFont]. Absent a provider the local is null and nothing is installed,
- * so every un-themed render is pixel-identical to what it was before the themes existed — all 27
- * PNGs verified byte-for-byte against `origin/main`.
+ * **The recorded documents are default-themed**, which is what lets a theme be applied to them
+ * afterwards by overriding named values (`USER:WearM3.<role>`) — see `RemoteThemeCatalogs.kt`. That
+ * falls out of how they are recorded rather than needing enforcement here: `composePreviewRenderAll`
+ * renders each `@Preview` with no provider, so [LocalRemoteCatalogTheme] is null and the branch
+ * below takes the un-themed path. A capture with a theme baked in would carry that theme's colours
+ * as constants, so every theme would need its own capture and a published catalog could only show
+ * the one it was packed with.
  *
- * **One document does change**, with no pixel change: `CircularProgressRemote`'s `.rc` sidecar
- * differs from `main` in a handful of id bytes (its PNG does not). Adding the branch below is what
- * moves it — id allocation in the emitted document is sensitive to the composition around it, and
- * that sticker is the one whose named value (`rememberOverridableRemoteFloat("progress")`) lands in
- * the shifted range. Confirmed by rendering `origin/main` in this same tree, which reproduces the
- * baseline bytes exactly, so it is this change and not capture nondeterminism. Two other shapes were
- * tried — hoisting the branch outside `RemoteOverridablePreview`, and a static CompositionLocal —
- * and neither removes it. The document is semantically unchanged (same ops, same named value, same
- * raster), so the delta is accepted rather than worked around.
+ * The themed branch is for the other case: a **recomposing** session asked for `?themeProvider=`, so
+ * the renderer wraps the preview in a provider and this installs the scheme for that render. It
+ * reads the same [remoteCatalogThemeColors] map the replay path seeds, so the two lanes cannot
+ * disagree about what a theme is.
+ *
+ * Only the colour scheme is installed. The typeface is not a document property — the stickers emit
+ * the built-in default family id and the player resolves it at draw time — so it stays data for a
+ * lane to configure its resolver with rather than something captured.
  */
 @Composable
 fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
-  val themeFont = LocalRemoteCatalogFont.current
+  val themeName = LocalRemoteCatalogTheme.current
   RemoteOverridablePreview(profile = RcPlatformProfiles.ANDROIDX) {
-    if (themeFont == null) {
+    if (themeName == null) {
       RemoteBox(
         modifier = RemoteModifier.fillMaxSize(),
         contentAlignment = RemoteAlignment.Center,
         content = content,
       )
     } else {
-      RemoteMaterialTheme(typography = remoteCatalogTypography(themeFont)) {
+      RemoteMaterialTheme(
+        colorScheme = remoteCatalogColorScheme(themeName, RemoteMaterialTheme.colorScheme)
+      ) {
         RemoteBox(
           modifier = RemoteModifier.fillMaxSize(),
           contentAlignment = RemoteAlignment.Center,

@@ -102,24 +102,25 @@ private val largeWidgetParams =
 // `WearWidgetContainer` lays content out top-start; a real widget supplies its own
 // layout, so the stickers do too.
 //
-// Also installs a selected `@WearThemeCatalog` typeface, the same way `RemoteSticker` does for the
-// component stickers. These previews bypass `RemoteSticker` entirely (the Glance Wear preview path
-// owns its own capture), so without this the module-wide Theme select would silently skip the three
-// widget cards — most visibly on [WidgetContainerLargeRemote], which draws through
-// `RemoteMaterialTheme.typography`. Absent a theme provider nothing is installed, and all three
-// widget captures stay byte-for-byte unchanged — both the PNG and the `.rc` sidecar, verified
-// against `origin/main`.
+// Also installs a selected `@WearThemeCatalog` theme's colour scheme, the same way `RemoteSticker`
+// does for the component stickers. These previews bypass `RemoteSticker` entirely (the Glance Wear
+// preview path owns its own capture), so without this a recomposing session's Theme select would
+// silently skip the three widget cards. Absent a provider nothing is installed and the captures are
+// byte-for-byte unchanged — which is every recorded render, so the packed documents stay
+// theme-independent and the replay path can seed them.
 @Composable
 private fun CenteredWidgetContent(content: @Composable @RemoteComposable () -> Unit) {
-  val themeFont = LocalRemoteCatalogFont.current
-  if (themeFont == null) {
+  val themeName = LocalRemoteCatalogTheme.current
+  if (themeName == null) {
     RemoteBox(
       modifier = RemoteModifier.fillMaxSize(),
       contentAlignment = RemoteAlignment.Center,
       content = content,
     )
   } else {
-    RemoteMaterialTheme(typography = remoteCatalogTypography(themeFont)) {
+    RemoteMaterialTheme(
+      colorScheme = remoteCatalogColorScheme(themeName, RemoteMaterialTheme.colorScheme)
+    ) {
       RemoteBox(
         modifier = RemoteModifier.fillMaxSize(),
         contentAlignment = RemoteAlignment.Center,
