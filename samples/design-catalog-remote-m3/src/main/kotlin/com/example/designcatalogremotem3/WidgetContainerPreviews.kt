@@ -111,25 +111,11 @@ private val largeWidgetParams =
 // the PNG and the `.rc` sidecar.
 @Composable
 private fun CenteredWidgetContent(content: @Composable @RemoteComposable () -> Unit) {
-  val themeName = LocalRemoteCatalogTheme.current
-  if (themeName == null) {
-    RemoteBox(
-      modifier = RemoteModifier.fillMaxSize(),
-      contentAlignment = RemoteAlignment.Center,
-      content = content,
-    )
-  } else {
-    RemoteMaterialTheme(
-      colorScheme = remoteCatalogColorScheme(themeName, RemoteMaterialTheme.colorScheme),
-      typography = remoteCatalogTypeScale(themeName),
-    ) {
-      RemoteBox(
-        modifier = RemoteModifier.fillMaxSize(),
-        contentAlignment = RemoteAlignment.Center,
-        content = content,
-      )
-    }
-  }
+  RemoteBox(
+    modifier = RemoteModifier.fillMaxSize(),
+    contentAlignment = RemoteAlignment.Center,
+    content = content,
+  )
 }
 
 /**
