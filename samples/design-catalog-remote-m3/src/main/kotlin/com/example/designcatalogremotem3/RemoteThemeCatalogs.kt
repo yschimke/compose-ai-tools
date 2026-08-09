@@ -47,9 +47,14 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  * with, rather than being installed into the document. Until a lane does, a type-moving theme
  * (Google Sans Flex, KotlinConf) is declared and its colours apply while its face does not.
  *
- * Both faces are vendored into `:samples:cmp-wasm-catalog`'s `fonts.json` regardless — that lane is
- * manifest-only and never fetches, so an unlisted family fails
- * `RcComposeSupport.fontFamilyIssue`'s availability check rather than degrading to a substitute.
+ * Nothing is vendored for them yet, deliberately. A face only has to reach
+ * `:samples:cmp-wasm-catalog`'s `fonts.json` once a *document* names it — that lane is manifest-only
+ * and never fetches, so an unlisted family a document asks for fails
+ * `RcComposeSupport.fontFamilyIssue`'s availability check rather than degrading to a substitute. No
+ * document here names Inter or Google Sans Flex any more (recording is default-themed), so vendoring
+ * Inter now would add ~651 KB to the Wasm player's size ratchet to buy nothing. It lands with the
+ * lane that resolves it. Google Sans Flex stays vendored — it was already there, and the ratchet was
+ * already raised for it.
  *
  * ## What a theme deliberately does not reach
  *

@@ -35,16 +35,6 @@ classic Roboto 2.x and CMP's bundled default both differ measurably (see PR hist
   from `fonts.json` and delete the two files. Dropping it only costs the Wasm lane's rendering of
   that one theme.
 
-- `inter-400.ttf` + `inter-700.ttf` — a downloadable **GoogleFont** (`role: "named"`), the body
-  face `:samples:design-catalog-remote-m3`'s **KotlinConf** theme names as `google:Inter`, paired
-  with the already-vendored JetBrains Mono on its display / title / numeral roles. Vendored for the
-  same manifest-only reason as the faces above: that lane never fetches, so an unlisted family
-  fails `RcComposeSupport.fontFamilyIssue`'s availability check rather than substituting. Fetched
-  from the same CSS2 endpoint (`wght@100..900`, the 400 and 700 instances). SIL OFL-1.1, and unlike
-  Google Sans Flex it *is* in the [google/fonts](https://github.com/google/fonts) corpus, so the
-  terms come straight from there — see [Inter-OFL.txt](Inter-OFL.txt). No special clearance
-  applies or is needed.
-
 The committed [`fonts.json`](fonts.json) is the **dev-time default**; the design-catalog export
 regenerates it from the per-preview `fonts/used` records (`previews/<id>.fonts.json` in the packed
 bundle → `scripts/design-artifacts/render-fonts-manifest.mjs`), so the published manifest tracks
@@ -71,6 +61,6 @@ The manifest is additive: future roles (named families, generic-family mappings 
 can be declared per family without breaking older apps, which only consume `role: "default"`.
 
 License: Apache 2.0 (Roboto / Noto Serif / Droid Sans Mono, Google) — see [LICENSE.txt](LICENSE.txt);
-Orbitron and Inter are SIL OFL-1.1 — see [Orbitron-OFL.txt](Orbitron-OFL.txt) and
-[Inter-OFL.txt](Inter-OFL.txt). Google Sans Flex carries no corpus license file and ships under the
-owner's explicit redistribution clearance — see its bullet above before forking.
+Orbitron is SIL OFL-1.1 — see [Orbitron-OFL.txt](Orbitron-OFL.txt). Google Sans Flex carries no
+corpus license file and ships under the owner's explicit redistribution clearance — see its bullet
+above before forking.
