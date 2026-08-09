@@ -233,16 +233,24 @@ describeE2E("Compose Preview e2e (real Gradle)", function () {
             `webview rendered ${renderedSignal.count} cards but ${previews.length} previews were sent`,
         );
 
-        // This shard drives exactly one refresh, so nothing should ever
-        // supersede it — a cancelled task here can only be `gradleService`'s
-        // task cap killing the render mid-flight. When that happens the
-        // extension does the production thing and paints the truncated
-        // manifest from disk, so every assertion above still passes: the
-        // shard reports green on a render that never finished, and this
-        // shard exists precisely to be the *unfiltered, whole-module* render
-        // coverage (the interactive suite narrows its render with
-        // `-PcomposePreview.filter`). Observed on 2026-08-08, when a
-        // repo-wide cold-cache slowdown pushed the render past the cap.
+        // This shard drives exactly one refresh, so nothing can supersede
+        // the render — a cancelled *render* here can only be
+        // `gradleService`'s task cap killing it mid-flight. When that
+        // happens the extension does the production thing and paints the
+        // truncated manifest from disk, so every assertion above still
+        // passes: the shard reports green on a render that never finished,
+        // and this shard exists precisely to be the *unfiltered,
+        // whole-module* render coverage (the interactive suite narrows its
+        // render with `-PcomposePreview.filter`). Observed on 2026-08-08,
+        // when a repo-wide cold-cache slowdown pushed the render past the
+        // cap.
+        //
+        // Match the render task specifically rather than "anything was
+        // cancelled". `composePreviewApplied` also runs through this
+        // `RealGradleApi` — activation kicks off a fire-and-forget marker
+        // bootstrap — and it can hit the cap on its own without saying
+        // anything about whether the render completed. Warning on that
+        // would claim coverage was lost when it wasn't.
         //
         // Deliberately a warning rather than an assertion: the render being
         // slow is an environment condition, not a defect in the code under
@@ -251,13 +259,26 @@ describeE2E("Compose Preview e2e (real Gradle)", function () {
         // annotation on the run summary so it can't rot unseen. Promote it
         // to a hard assertion once the render reliably finishes inside the
         // cap again.
-        if (gradleApi.cancelledTasks.length > 0) {
+        const cancelledRenders = gradleApi.cancelledTasks.filter((task) =>
+            task.includes("composePreviewRenderAll"),
+        );
+        if (cancelledRenders.length > 0) {
             console.log(
                 `::warning title=Truncated preview render::` +
                     `cmp-smoke asserted against a partial render — the task cap killed ` +
-                    `${gradleApi.cancelledTasks.join(", ")} before it finished, and the ` +
+                    `${cancelledRenders.join(", ")} before it finished, and the ` +
                     `panel fell back to the on-disk manifest. Whole-module render coverage ` +
                     `did NOT run this time.`,
+            );
+        }
+        // Other cancellations don't invalidate the render, but they do mean
+        // something hit the cap — worth a line in the log for triage.
+        const otherCancellations = gradleApi.cancelledTasks.filter(
+            (task) => !task.includes("composePreviewRenderAll"),
+        );
+        if (otherCancellations.length > 0) {
+            console.log(
+                `[e2e] non-render task(s) cancelled at the task cap: ${otherCancellations.join(", ")}`,
             );
         }
     });
