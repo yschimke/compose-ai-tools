@@ -369,6 +369,85 @@ internal object AndroidPreviewSupport {
   internal const val RENDERER_COMPOSE_CMP_RUNTIME_VERSION: String = "1.11.2"
 
   /**
+   * Lowest `androidx.compose` version on the **compose-ui version line** that the renderer's own
+   * bytecode links against. Rule 3 defers the render classpath to the consumer's Compose (see
+   * [applyRenderGraphResolutionRules]); this is the floor under which deferring stops being safe.
+   *
+   * Distinct from [RENDERER_COMPOSE_FLOOR_VERSION], which is only ever stamped on plugin-injected
+   * coordinates that have no version source of their own (`ui-test-manifest`, `ui-test-junit4`,
+   * `runtime-tracing`). Nothing pinned `ui` / `foundation` / `runtime` / `animation`, so a consumer
+   * below this floor handed the renderer a classpath its bytecode cannot link against and every
+   * preview died identically:
+   * ```
+   * NoSuchMethodError: 'kotlin.jvm.functions.Function1
+   *   androidx.compose.ui.node.ComposeUiNode$Companion.getApplyOnDeactivatedNodeAssertion()'
+   * ```
+   * (issue #3590 — `yschimke/home-assistant-android` on `compose-bom` 2025.01.00 lost all 13 phone
+   * and 22 Wear catalog entries, republishing both design-artifacts branches empty.)
+   *
+   * Set to [RENDERER_COMPOSE_CMP_RUNTIME_VERSION] deliberately: that is the version the Rule-3-off
+   * path already renders against, so it is the one Compose line the renderer is known-good on.
+   * Keep the two in lockstep.
+   */
+  internal const val RENDERER_COMPOSE_LINK_FLOOR_VERSION: String =
+    RENDERER_COMPOSE_CMP_RUNTIME_VERSION
+
+  /**
+   * The `androidx.compose.*` groups that share the compose-ui version line (1.7.6 / 1.9.5 / 1.11.2
+   * move together). Deliberately NOT `androidx.compose.material` / `material3`, which version
+   * independently — material3 has no 1.11.2 — nor a bare `androidx.compose.` prefix, which would
+   * sweep them in.
+   */
+  private val COMPOSE_UI_LINE_GROUPS =
+    setOf(
+      "androidx.compose.animation",
+      "androidx.compose.foundation",
+      "androidx.compose.runtime",
+      "androidx.compose.ui",
+    )
+
+  /**
+   * [RENDERER_COMPOSE_LINK_FLOOR_VERSION] if [group] is on the compose-ui line and [version] is
+   * below the floor, else `null` (leave the dependency alone).
+   *
+   * Kept pure and separate from the `eachDependency` wiring so the decision is unit-testable without
+   * resolving a configuration. An unparseable or dynamic version (`+`, `1.9.+`, a range, empty)
+   * returns `null`: we only ever raise a version we can prove is too low, since forcing one we
+   * cannot compare risks dragging a consumer *backwards*.
+   */
+  internal fun composeLineFloorUpgrade(group: String, version: String?): String? {
+    if (group !in COMPOSE_UI_LINE_GROUPS) return null
+    val current = version?.takeIf { it.isNotBlank() } ?: return null
+    return if (isBelowVersion(current, RENDERER_COMPOSE_LINK_FLOOR_VERSION)) {
+      RENDERER_COMPOSE_LINK_FLOOR_VERSION
+    } else {
+      null
+    }
+  }
+
+  /**
+   * Whether [candidate] orders below [floor], comparing dotted numeric components left to right and
+   * treating a pre-release suffix as lower than the same numbers without one (`1.11.2-alpha01` <
+   * `1.11.2`), which matches how AndroidX ships alphas ahead of a stable.
+   *
+   * Returns `false` for anything non-numeric or dynamic — see [composeLineFloorUpgrade] for why
+   * "cannot compare" must mean "do not touch".
+   */
+  private fun isBelowVersion(candidate: String, floor: String): Boolean {
+    val candidateBase = candidate.substringBefore('-')
+    val floorBase = floor.substringBefore('-')
+    val candidateParts = candidateBase.split('.').map { it.toIntOrNull() ?: return false }
+    val floorParts = floorBase.split('.').map { it.toIntOrNull() ?: return false }
+    for (index in 0 until maxOf(candidateParts.size, floorParts.size)) {
+      val left = candidateParts.getOrElse(index) { 0 }
+      val right = floorParts.getOrElse(index) { 0 }
+      if (left != right) return left < right
+    }
+    // Numerically equal: a pre-release of the floor is still below it.
+    return candidate.contains('-') && !floor.contains('-')
+  }
+
+  /**
    * Version for the main-variant `androidx.compose.ui` / `foundation` pins, which decide the R
    * class in the merged unit-test resource APK. See the call site for why the two cases differ: a
    * Compose consumer's own BOM wins over our floor anyway, while a Compose-less consumer runs
@@ -521,6 +600,21 @@ internal object AndroidPreviewSupport {
    * (`alignDesktopToolWithConsumerGraph`).
    */
   internal fun applyRenderGraphResolutionRules(configuration: Configuration) {
+    configuration.resolutionStrategy.eachDependency {
+      val target = composeLineFloorUpgrade(requested.group, requested.version)
+      if (target != null) {
+        useVersion(target)
+        because(
+          "Rule 3 hands the render classpath to the consumer's Compose, but the renderer's own " +
+            "bytecode still has to link against it. Below " +
+            "$RENDERER_COMPOSE_LINK_FLOOR_VERSION the compose-ui line lacks entry points the " +
+            "renderer calls and every preview dies before user code runs: " +
+            "NoSuchMethodError androidx.compose.ui.node.ComposeUiNode\$Companion" +
+            ".getApplyOnDeactivatedNodeAssertion(). Raise to the floor; consumers already at or " +
+            "above it keep their own version (issue #3590)."
+        )
+      }
+    }
     configuration.resolutionStrategy.eachDependency {
       val req = requested
       val targetName = kmpAndroidSiblingName(req.group, req.name)
