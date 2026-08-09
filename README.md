@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 305 preview(s) across 20 module(s) · 46 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 309 preview(s) across 20 module(s) · 46 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -393,9 +393,21 @@ _No findings._
 
 _No findings._
 
+### `MatrixParentDeviceSpecPreview` · `spec:parent=small_phone,orientation=landscape`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixParentDeviceSpecPreview_Parent_device_spec.a11y.png" width="400" />
+
+_No findings._
+
 ### `MatrixPhoneDevicePreview` · `pixel_5`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixPhoneDevicePreview_Phone.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixRotatedDeviceSpecPreview` · `spec:width=1280dp,height=800dp,dpi=240,orientation=portrait`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixRotatedDeviceSpecPreview_Rotated_device_spec.a11y.png" width="400" />
 
 _No findings._
 
@@ -903,9 +915,21 @@ _No findings._
 
 _No findings._
 
+### `MatrixParentDeviceSpecPreview` · `spec:parent=small_phone,orientation=landscape`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixParentDeviceSpecPreview_Parent_device_spec.a11y.png" width="400" />
+
+_No findings._
+
 ### `MatrixPhoneDevicePreview` · `pixel_5`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixPhoneDevicePreview_Phone.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixRotatedDeviceSpecPreview` · `spec:width=1280dp,height=800dp,dpi=240,orientation=portrait`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixRotatedDeviceSpecPreview_Rotated_device_spec.a11y.png" width="400" />
 
 _No findings._
 
