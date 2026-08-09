@@ -1924,9 +1924,18 @@ internal object AndroidPreviewSupport {
         // `floorComposeLine` follows `manageDependencies`: the floor only holds if the matching
         // main-variant `ui`/`foundation` pins move with it, and the opt-out branch deliberately
         // skips those ("consumer must ensure androidx.compose.ui:ui is on the main variant").
-        // Raising the render graph there would put 1.11.2 classes over the consumer's own
-        // resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's line and
-        // the required-dependency check reports it instead.
+        // Raising the render graph there would put floor-version classes over the consumer's
+        // own resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's
+        // line, whatever it is.
+        //
+        // KNOWN GAP: an opt-out consumer whose Compose is BELOW the floor still hits #3590's
+        // NoSuchMethodError, and nothing reports it — `validateExternallyManagedDependencies`
+        // checks that the required coordinates are DECLARED, never what they resolve to. Failing
+        // that validation on a below-floor compose-ui line is the fix, and it wants the resolved
+        // version rather than the declared one (a BOM consumer declares no version at all). Same
+        // root as the `enforcedPlatform` case: whenever the resource graph cannot be moved to the
+        // floor, the honest outcome is a configuration-time failure naming the required version,
+        // not a silently-raised render graph.
         applyRenderGraphResolutionRules(this, floorComposeLine = manageDependencies)
       }
 
@@ -2050,9 +2059,18 @@ internal object AndroidPreviewSupport {
         // `floorComposeLine` follows `manageDependencies`: the floor only holds if the matching
         // main-variant `ui`/`foundation` pins move with it, and the opt-out branch deliberately
         // skips those ("consumer must ensure androidx.compose.ui:ui is on the main variant").
-        // Raising the render graph there would put 1.11.2 classes over the consumer's own
-        // resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's line and
-        // the required-dependency check reports it instead.
+        // Raising the render graph there would put floor-version classes over the consumer's
+        // own resources — the #3484 `R$id` NoSuchFieldError — so opt-out keeps the consumer's
+        // line, whatever it is.
+        //
+        // KNOWN GAP: an opt-out consumer whose Compose is BELOW the floor still hits #3590's
+        // NoSuchMethodError, and nothing reports it — `validateExternallyManagedDependencies`
+        // checks that the required coordinates are DECLARED, never what they resolve to. Failing
+        // that validation on a below-floor compose-ui line is the fix, and it wants the resolved
+        // version rather than the declared one (a BOM consumer declares no version at all). Same
+        // root as the `enforcedPlatform` case: whenever the resource graph cannot be moved to the
+        // floor, the honest outcome is a configuration-time failure naming the required version,
+        // not a silently-raised render graph.
         applyRenderGraphResolutionRules(this, floorComposeLine = manageDependencies)
       }
 
