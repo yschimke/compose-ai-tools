@@ -24,16 +24,24 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 
+# Absolute, always. Every `-P` path below is read by a *test* JVM whose working directory is its own
+# module, not the repo root — so a relative lane directory would have the two harness modules write
+# into two different places, neither of which is where this script then looks. Same trap as
+# `rc.embedded.input` above, one level out. `mkdir -p` first so `cd` can resolve it.
 lanes_dir="${1:-$(mktemp -d -t rc-text-metrics-XXXXXX)}"
+mkdir -p "$lanes_dir"
+lanes_dir="$(cd "$lanes_dir" && pwd)"
 fixtures_dir="$repo_root/rc-player/metrics/build/fixtures"
 
 # Fail before the renders rather than after them. Composition is the last step and takes seconds;
-# discovering a missing Pillow after ~2 minutes of Gradle is a bad trade.
+# discovering a missing dependency after ~2 minutes of Gradle is a bad trade. This runs the
+# compositor's own check rather than restating its requirements, so the two cannot drift apart.
 python3 -c 'import PIL' 2>/dev/null || {
   echo "error: this needs Pillow for the strip composition." >&2
   echo "       pip install --user Pillow   (or apt-get install python3-pil)" >&2
   exit 1
 }
+python3 "$repo_root/scripts/rc-text-metrics/compose_strips.py" --check
 
 echo "==> fixtures"
 rm -rf "$fixtures_dir"

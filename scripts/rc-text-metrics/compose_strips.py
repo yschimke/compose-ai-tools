@@ -91,8 +91,16 @@ def compose(lanes_dir: Path, fixtures: list[str], font: ImageFont.FreeTypeFont) 
 
 
 def main(argv: list[str]) -> int:
+    # `--check` exists so the shell wrapper can validate this script's prerequisites *before* it
+    # spends two minutes rendering. Keeping the check here rather than restating the font path in
+    # the wrapper means the two cannot disagree about what is required.
+    if len(argv) == 2 and argv[1] == "--check":
+        load_font()
+        return 0
+
     if len(argv) != 3:
         print(f"usage: {argv[0]} <lane-output-dir> <strip-output-dir>", file=sys.stderr)
+        print(f"       {argv[0]} --check", file=sys.stderr)
         return 2
 
     lanes_dir, out_dir = Path(argv[1]), Path(argv[2])
