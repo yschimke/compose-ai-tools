@@ -331,7 +331,7 @@ internal object ModifierTokenResolver {
           ?.firstOrNull { it.name == "alpha" }
           ?.value
           ?.let(::floatValue)
-        ?: evaluateLayerBlockAlpha(info.modifier, nodeSize(info))
+        ?: evaluateLayerBlockAlpha(info.modifier, nodeSize(info), nodeDensity(info))
         ?: appliedGraphicsLayerAlpha(info.coordinates)
     return effective?.coerceIn(0f, 1f)?.toDouble()
   }
@@ -480,7 +480,11 @@ internal object ModifierTokenResolver {
    * a series of property assignments, and reading the animation state it closes over gives exactly
    * the alpha the frame was drawn with.
    */
-  internal fun evaluateLayerBlockAlpha(modifier: Any, nodeSize: Long? = null): Float? {
+  internal fun evaluateLayerBlockAlpha(
+    modifier: Any,
+    nodeSize: Long? = null,
+    density: Density? = null,
+  ): Float? {
     val block = layerBlock(modifier) ?: return null
     val recorded = HashMap<String, Any?>()
     // The node's own placed size, so a block that *derives* alpha from geometry evaluates against
@@ -488,8 +492,24 @@ internal object ModifierTokenResolver {
     // `SurfaceTransformation` does exactly that — its alpha is a function of where the item sits in
     // its scaled slot — and answering `size` with the type's zero handed it a 0×0 box, which
     // collapsed to `opacity="0.0"`/`0.04` on groups the PNG paints fully opaque.
-    val geometry: Map<String, Any> =
-      nodeSize?.let { mapOf("size" to it, "center" to centerOf(it)) } ?: emptyMap()
+    //
+    // The node's real `density`/`fontScale` for the same reason: `GraphicsLayerScope` *is* a
+    // `Density`, so a block may convert dp inside itself (`alpha = if (size.height < 40.dp.toPx())
+    // …`) — and since this evaluator is now preferred over the coordinator's applied value, an
+    // assumed `1f` would quietly outrank the alpha the frame really used on any non-mdpi device.
+    //
+    // `size`/`center` are seeded even when the node has none: `GraphicsLayerScope.size` *defaults*
+    // to `Size.Unspecified`, so letting the interface body answer would hand the block a `NaN` box
+    // and a `NaN` alpha behind it. A zero box keeps the documented no-coordinates fallback.
+    val geometry: Map<String, Any> = buildMap {
+      val size = nodeSize ?: 0L
+      put("size", size)
+      put("center", centerOf(size))
+      density?.let {
+        put("density", it.density)
+        put("fontScale", it.fontScale)
+      }
+    }
     // The scope interface by name, not from the lambda's generic signature: a Kotlin lambda erases
     // to a raw `Function1`, so there is no type argument to read back off it.
     val iface =
@@ -504,24 +524,44 @@ internal object ModifierTokenResolver {
         ?.takeIf { it.isInterface } ?: return null
     val scope =
       runCatching {
-          java.lang.reflect.Proxy.newProxyInstance(iface.classLoader, arrayOf(iface)) { _, m, args
-            ->
+          java.lang.reflect.Proxy.newProxyInstance(iface.classLoader, arrayOf(iface)) {
+            proxy,
+            m,
+            args ->
             val name = m.name
-            when {
-              name.startsWith("set") && args != null && args.size == 1 -> {
-                recorded[propertyName(name, "set")] = args[0]
-                null
-              }
-              // Getters (and anything else) answer with a harmless default so a block that reads
-              // back a property it just set, or consults `density`, doesn't blow up mid-evaluation.
-              else -> defaultFor(m.returnType, name, recorded, geometry)
+            if (name.startsWith("set") && args != null && args.size == 1) {
+              recorded[propertyName(name, "set")] = args[0]
+              return@newProxyInstance null
             }
+            // A property the scope already knows: what the block just assigned, this node's real
+            // geometry/density, or Compose's own identity.
+            knownProperty(name, recorded, geometry)?.let {
+              return@newProxyInstance it
+            }
+            // `Density`'s dp/sp conversions are real method bodies on the interface, and a Proxy
+            // intercepts those as well as the abstract accessors. Stubbing them handed a block
+            // that writes `alpha = if (size.height < 40.dp.toPx()) …` a zero threshold, which is
+            // the same class of wrong answer as an assumed density — and now that this evaluator
+            // outranks the coordinator's applied alpha, a wrong answer here is worse than none.
+            // Run the real body: it reads `density` back off this same proxy, so it converts
+            // against the node's value.
+            if (m.isDefault) {
+              val invoked = runCatching {
+                java.lang.reflect.InvocationHandler.invokeDefault(proxy, m, *(args ?: emptyArray()))
+              }
+              if (invoked.isSuccess) return@newProxyInstance invoked.getOrNull()
+            }
+            // Anything else answers with a harmless zero so the block doesn't blow up mid-run.
+            zeroFor(m.returnType)
           }
         }
         .getOrNull() ?: return null
     @Suppress("UNCHECKED_CAST") val invoke = block as? Function1<Any?, Any?> ?: return null
     runCatching { invoke(scope) }.getOrNull() ?: return null
-    return recorded["alpha"] as? Float
+    // A block can still compute its way to a non-finite alpha — dividing by a dimension this scope
+    // could not supply, say. Decline instead of exporting it: `opacity="NaN"` is not a colour any
+    // consumer can read, and returning null lets the coordinator's applied value answer instead.
+    return (recorded["alpha"] as? Float)?.takeIf { it.isFinite() }
   }
 
   /**
@@ -538,6 +578,16 @@ internal object ModifierTokenResolver {
         else packFloats(size.width.toFloat(), size.height.toFloat())
       }
       .getOrNull()
+
+  /**
+   * This modifier's own `Density`, or null when the coordinates can't supply one.
+   *
+   * A `NodeCoordinator` reaches `Density` through `MeasureScope`, so the placed coordinates carry
+   * the device's real `density`/`fontScale` — no reflection needed, and no need to thread the
+   * renderer's density down here. Null leaves [evaluateLayerBlockAlpha] on the identity defaults,
+   * the same degradation as a detached node's missing size.
+   */
+  private fun nodeDensity(info: ModifierInfo): Density? = info.coordinates as? Density
 
   /** The centre of a packed `Size`, as a packed `Offset` — the same packing layout. */
   private fun centerOf(packedSize: Long): Long =
@@ -571,8 +621,7 @@ internal object ModifierTokenResolver {
    * reads a property back, else the type's zero. `density`/`fontScale` answer 1 so a block that
    * converts dp inside itself divides by something sane rather than zero.
    */
-  private fun defaultFor(
-    type: Class<*>,
+  private fun knownProperty(
     name: String,
     recorded: Map<String, Any?>,
     geometry: Map<String, Any> = emptyMap(),
@@ -581,22 +630,23 @@ internal object ModifierTokenResolver {
     recorded[property]?.let {
       return it
     }
-    // Before the static identities: a real `size`/`center` for this node beats `Size.Zero`, which
-    // is what a geometry-derived block would otherwise divide into (issue #2615).
+    // Before the static identities: a real `size`/`center`/`density` for this node beats the
+    // assumed value, which is what a geometry- or density-derived block would otherwise divide
+    // into (issues #2615, #3579).
     geometry[property]?.let {
       return it
     }
-    GRAPHICS_LAYER_DEFAULTS[property]?.let {
-      return it
-    }
-    return when (type) {
+    return GRAPHICS_LAYER_DEFAULTS[property]
+  }
+
+  private fun zeroFor(type: Class<*>): Any? =
+    when (type) {
       java.lang.Float.TYPE -> 0f
       java.lang.Boolean.TYPE -> false
       java.lang.Integer.TYPE -> 0
       java.lang.Long.TYPE -> 0L
       else -> null
     }
-  }
 
   /**
    * The property a proxied accessor belongs to: `getAlpha` → `alpha`.
