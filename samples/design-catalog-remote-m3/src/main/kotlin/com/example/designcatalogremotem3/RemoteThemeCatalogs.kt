@@ -16,11 +16,11 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  * `:samples:design-catalog-wear-m3`'s `WearThemeCatalogs.kt`, so the two catalogs' Theme selects
  * read as one set and the design-artifacts cross-system compare pairs them off.
  *
- * ## A theme is applied at replay, not at capture
+ * ## A theme can be applied after recording, not only during it
  *
- * This is the load-bearing difference from the Wear sibling, and the reason these are only
- * *declarations* here. Every sticker is recorded **once, under the default theme**; a selected theme
- * is applied afterwards, to the already-recorded document, by overriding **named values**.
+ * This is the load-bearing difference from the Wear sibling. Every sticker is recorded **once, under
+ * the default theme**, and a selected theme can then be applied to the already-recorded document by
+ * overriding **named values** — no recomposition, and no per-theme capture.
  *
  * That works because `RemoteMaterialTheme`'s scheme is not constant-folded into the document. Each
  * role it draws through is emitted as named state — `USER:WearM3.primary`,
@@ -38,9 +38,14 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  * capture and a published catalog could only ever show the one it was packed with. One
  * theme-independent document plus a small map of overrides replaces N documents.
  *
- * So each provider below `Wrap`s nothing. It exists to **declare** the theme — the annotation is
- * what populates the preview server's Theme select — while the values it stands for live in
- * [remoteCatalogThemeColors] as plain data, ready to be seeded by whichever lane is drawing.
+ * The recorded documents stay theme-independent because of *how* they are recorded, not because the
+ * providers below do nothing: `composePreviewRenderAll` renders each `@Preview` with no provider, so
+ * [LocalRemoteCatalogTheme] is null and nothing is installed. A provider is only ever applied when
+ * the renderer deliberately wraps a preview in one — a `?themeProvider=` render on a session that
+ * can recompose — and there it installs the scheme through [remoteCatalogColorScheme], reading the
+ * same [remoteCatalogThemeColors] map the replay path seeds. One definition, two lanes: a theme that
+ * recomposed to one palette and replayed to another would be worse than either, and nothing would
+ * catch it, because both renders succeed.
  *
  * ## The typeface half is a host choice, not a named value
  *
@@ -51,14 +56,14 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  * with, rather than being installed into the document. Until a lane does, a type-moving theme
  * (Google Sans Flex, KotlinConf) is declared and its colours apply while its face does not.
  *
- * Nothing is vendored for them yet, deliberately. A face only has to reach
- * `:samples:cmp-wasm-catalog`'s `fonts.json` once a *document* names it — that lane is manifest-only
- * and never fetches, so an unlisted family a document asks for fails
- * `RcComposeSupport.fontFamilyIssue`'s availability check rather than degrading to a substitute. No
- * document here names Inter or Google Sans Flex any more (recording is default-themed), so vendoring
- * Inter now would add ~651 KB to the Wasm player's size ratchet to buy nothing. It lands with the
- * lane that resolves it. Google Sans Flex stays vendored — it was already there, and the ratchet was
- * already raised for it.
+ * Inter is not vendored yet, deliberately. A face only has to reach `:samples:cmp-wasm-catalog`'s
+ * `fonts.json` once a *document* names it — that lane is manifest-only and never fetches, so an
+ * unlisted family a document asks for fails `RcComposeSupport.fontFamilyIssue`'s availability check
+ * rather than degrading to a substitute. No recorded document names it (recording is default-themed
+ * and the wrapper installs colours only), so vendoring it now would add ~651 KB to the Wasm player's
+ * size ratchet to buy nothing — it failed that ratchet once already on this branch. It lands with
+ * the lane that resolves it. Google Sans Flex stays vendored: it was already there and the ratchet
+ * was already raised for it.
  *
  * ## What a theme deliberately does not reach
  *
