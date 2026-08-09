@@ -156,11 +156,35 @@ interface SetPreviewsMessage {
     moduleDir: string;
 }
 
+/**
+ * Budget for "the panel should have published this by now" waits.
+ *
+ * Deliberately NOT `this.timeout()`. Passing the Mocha ceiling as a wait
+ * budget means a condition that never becomes true consumes the entire test
+ * and reports a bare `Timeout of 1800000ms exceeded` — no indication of which
+ * invariant failed, and 30 minutes of runner time per occurrence. Scenario E
+ * did exactly that on `main` (run 31306997859): 26 minutes of silence after
+ * `composePreviewDiscover`, then a timeout that named nothing.
+ *
+ * These waits follow an *awaited* `triggerRefresh`, and `refresh` posts
+ * `setPreviews` before it resolves — so in a healthy run the value is already
+ * there on the first poll (measured at 44ms in the cmp-smoke shard). Three
+ * minutes is far past generous; it exists only so a daemon-path repaint that
+ * lands late still counts. The Mocha ceiling stays as the backstop.
+ */
+const PANEL_UPDATE_BUDGET_MS = 3 * 60_000;
+
 async function waitFor<T>(
     description: string,
     timeoutMs: number,
     pollMs: number,
     probe: () => T | undefined,
+    /**
+     * Rendered into the timeout message. A wait that fails should say what it
+     * actually observed — otherwise the next occurrence is as opaque as the
+     * last one.
+     */
+    describeState?: () => string,
 ): Promise<T> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
@@ -170,8 +194,16 @@ async function waitFor<T>(
         }
         await new Promise((r) => setTimeout(r, pollMs));
     }
+    let state = "";
+    if (describeState) {
+        try {
+            state = `\n  ${describeState()}`;
+        } catch (err) {
+            state = `\n  <describeState threw: ${String(err)}>`;
+        }
+    }
     throw new Error(
-        `Timed out after ${timeoutMs}ms waiting for: ${description}`,
+        `Timed out after ${timeoutMs}ms waiting for: ${description}${state}`,
     );
 }
 
@@ -763,6 +795,36 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         const OLD = /\.RedBoxPreview_/;
         const NEW = /\.RedBoxPreviewRenamed_/;
 
+        // Every wait in this scenario reports through this on timeout. The
+        // three ways the rename flow can stall are indistinguishable from a
+        // bare Mocha timeout but obvious from here: no `setPreviews` posted at
+        // all (the refresh never republished), the new id absent (discovery
+        // did not see the rename), or the old id still present (the module
+        // index was not pruned). The output-channel tail carries the Gradle
+        // lines — `> <task> completed` / `FAILED` / `cancelled` — that the
+        // in-repo e2e otherwise routes to the extension log and discards.
+        const describeCmpPanelState = (): string => {
+            const latest = latestSetPreviewsMatching(
+                api.getPostedMessages(),
+                (m) => m.moduleDir.includes(cmpNeedle),
+            );
+            const ids = latest
+                ? latest.previews.map((p) => p.id).sort()
+                : undefined;
+            const tail = api.getOutputChannelTail(40).join("\n    ");
+            return [
+                `latest cmp setPreviews: ${
+                    ids
+                        ? `${ids.length} preview(s) [${ids.join(", ")}]`
+                        : "<none posted>"
+                }`,
+                `old id present: ${ids ? ids.some((id) => OLD.test(id)) : "n/a"}`,
+                `new id present: ${ids ? ids.some((id) => NEW.test(id)) : "n/a"}`,
+                `lastWarmDaemonError: ${api.getLastWarmDaemonError() ?? "<none>"}`,
+                `Compose Preview output tail:\n    ${tail}`,
+            ].join("\n  ");
+        };
+
         // --- Baseline: the pre-rename manifest must contain RedBoxPreview ---
         assertRefreshRendered(
             api,
@@ -771,7 +833,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         );
         const baseline = await waitFor(
             "cmp baseline setPreviews (with RedBoxPreview)",
-            this.timeout(),
+            PANEL_UPDATE_BUDGET_MS,
             500,
             () => {
                 const msgs = api.getPostedMessages();
@@ -780,6 +842,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     return m.previews.some((p) => OLD.test(p.id));
                 });
             },
+            describeCmpPanelState,
         );
         const baselineIds = baseline.previews.map((p) => p.id).sort();
         observations.baselineIds = baselineIds;
@@ -820,7 +883,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
             );
             const afterRename = await waitFor(
                 "setPreviews after rename (new id present, old id gone)",
-                this.timeout(),
+                PANEL_UPDATE_BUDGET_MS,
                 500,
                 () => {
                     const msgs = api.getPostedMessages();
@@ -833,6 +896,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                         );
                     });
                 },
+                describeCmpPanelState,
             );
             observations.afterRename = {
                 idsSorted: afterRename.previews.map((p) => p.id).sort(),
@@ -873,12 +937,13 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
             // written" regression still fails, just via waitFor's timeout.
             await waitFor(
                 `renamed preview render PNG(s) on disk: ${newRenderOutputs.join(", ")}`,
-                this.timeout(),
+                PANEL_UPDATE_BUDGET_MS,
                 500,
                 () =>
                     newRenderOutputs.every((p) => fs.existsSync(p))
                         ? true
                         : undefined,
+                describeCmpPanelState,
             );
 
             // Invariant E3: the stale PNG no longer exists on disk. The
@@ -905,7 +970,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
             );
             const reRefreshed = await waitFor(
                 "second post-rename cmp setPreviews",
-                this.timeout(),
+                PANEL_UPDATE_BUDGET_MS,
                 500,
                 () => {
                     const msgs = api.getPostedMessages();
@@ -914,6 +979,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                         nonEmptyForModule(cmpNeedle),
                     );
                 },
+                describeCmpPanelState,
             );
             assert.deepStrictEqual(
                 reRefreshed.previews
