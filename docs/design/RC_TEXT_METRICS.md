@@ -76,7 +76,14 @@ measurement, shaping, wrapping and ellipsis and opens no seam to ask.
 
 Both are covered for the same string and style: the mode fixtures lay text out through `CoreText`
 inside a box of known size, and draw over it the advance the *player* measured for the same string on
-the canvas path. Where the host stack actually broke, clipped or ellipsised the line, against where
+the canvas path. One caveat on that "same style": the two paths resolve their family through
+different code. `CoreText` goes through `resolveFontFamily`, which consults the host's font manifest
+for the `default` role; a canvas paint's built-in family id is decoded straight to
+`FontFamily.Default`. On a lane with no manifest — all three rendered here — both land on the same
+face and the comparison is sound. On a lane that installs one (cmp-wasm does) they can differ, and an
+apparent wrapping or advance divergence there might be this fixture rather than the player. Pinning
+the face via embedded `FontData` closes it; until then, read cmp-wasm's mode fixtures with that in
+mind. Where the host stack actually broke, clipped or ellipsised the line, against where
 the player thinks the line ends, is then a picture rather than an adjective.
 
 ## The fixtures
@@ -101,10 +108,12 @@ fixtures reach three lanes with no harness change:
 ```bash
 ./gradlew :rc-player-metrics:rcTextMetricFixtures
 ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --rerun \
+  --tests '*RcViewPlayerRenderHarness*' --tests '*RcEmbeddedRenderHarness*' \
   -Prc.embedded.input=rc-player/metrics/build/fixtures \
   -Prc.view.output=/tmp/rc-metrics/java \
   -Prc.embedded.output=/tmp/rc-metrics/cmp-android
 ./gradlew :third-party-rc-embedded-player-jvm:test --rerun \
+  --tests '*RcJvmRenderHarness*' \
   -Prc.jvm.input=rc-player/metrics/build/fixtures \
   -Prc.jvm.output=/tmp/rc-metrics/cmp-jvm
 ```
@@ -169,24 +178,43 @@ is why every row reports a second, independent number off a different code path
 | --- | --- | --- | --- |
 | moves | moves | differ | the weight reached a metric-distinct instance |
 | flat | flat | identical | the weight changed nothing at all |
-| flat | flat | differ | the weight is **synthesised**, not resolved to a face |
+| flat | flat | differ | the weight is **metrically identical** while the glyphs are not |
 
-The reference lane lands on the third row, which is a much more specific answer than "550 and 599
-look the same": in the Robolectric sandbox there is no `/system/fonts/`, so the platform default is
-being emboldened rather than swapped. The variable-font question from #3579 now has a measurement
-attached instead of an inference from two identical file sizes; answering it properly needs the same
-sweep with a real variable face pinned. Note the ink box is integer-quantised, so it is corroboration
-rather than a precise instrument.
+The reference lane lands on the third row. Note what that row does *not* say. It is tempting to read
+it as "the weight is being synthesised rather than resolved", and the harness cannot support that:
+`getTextBounds` reports the run's outer rectangle, so a genuinely resolved bold that thickens its
+stems inward — preserving both the advance and the extrema — produces exactly the same signature. All
+three rows are statements about **metrics**, which is the thing that decides layout; identifying
+*why* the metrics match needs the resolved face or its outlines, which this harness does not yet
+expose.
 
-**`ALIGN_START` and `ALIGN_END` do not follow paragraph direction on any of the three lanes.** They
-are the only two alignments whose meaning is direction-dependent, and on English text they land
-exactly where `ALIGN_LEFT` and `ALIGN_RIGHT` do — so a matrix built only from LTR text cannot tell a
-correct lane from one that hard-coded start→left. Drawing the pair a second time against a Hebrew
-paragraph shows start still at the left edge and end still at the right, identically on `java`,
-`cmp-android` and `cmp-jvm`. The fixtures carry no explicit layout direction, so the expected
-behaviour is the content-derived one both stacks normally implement (Compose's `TextDirection.Content`,
-Android's `ALIGN_NORMAL` against an RTL paragraph) — which makes this worth chasing rather than
-dismissing as unspecified.
+What the row does buy is still worth having: it says 550 and 599 are metrically indistinguishable
+from 500 on this lane, so nothing downstream of layout can tell them apart. The variable-font
+question from #3579 now has a measurement attached instead of an inference from two identical file
+sizes; answering it properly needs the same sweep with a real variable face pinned, and a way to
+report the face the lane actually chose. The ink box is also integer-quantised, so it is
+corroboration rather than a precise instrument.
+
+**`ALIGN_START` and `ALIGN_END` place identically for LTR and RTL text on all three lanes** — start
+at the left edge, end at the right, Hebrew or English. They are the only two alignments whose meaning
+is direction-dependent, and on English text they land exactly where `ALIGN_LEFT` and `ALIGN_RIGHT`
+do, so a matrix built only from LTR text cannot tell a correct lane from one that hard-coded
+start→left. Drawing the pair a second time against a Hebrew paragraph is what makes the question
+askable at all.
+
+It does not yet make it *answerable*, and the reason is a property of the format rather than of the
+fixtures. **`CoreText` carries no layout direction.** Its serialized state is align, overflow,
+maxLines, colour, size, weight, family, letter spacing and line height; AOSP's `CoreText` derives its
+only flags word from `textAlign >>> 16` and has no direction field at all. So a document cannot state
+that its container is RTL — the direction comes from the host, and all three harnesses run their
+default LTR one.
+
+That leaves two readings of the same picture, which these fixtures cannot separate: the lanes resolve
+`START` against the *container* direction (LTR, so left — correct behaviour), or they resolve it to
+`LEFT` outright (wrong, and invisible until an RTL host renders it). Compose's default
+`TextDirection.Content` and Android's `ALIGN_NORMAL` against an RTL paragraph would both have flipped
+on content, which is why the picture is worth keeping — but separating the two needs a host-side RTL
+container, i.e. a harness change, not a fixture change. Recorded below rather than claimed here.
 
 **`maxLines = 3` rendered four lines on `java`**, while `maxLines = 1` was honoured exactly. Recorded
 as an observation, not a diagnosis — it wants checking across lanes before anyone calls it a bug,
@@ -205,9 +233,14 @@ which is what the fixture is for.
 - **A machine-readable metric dump.** The numbers are currently rendered into the image. A per-lane
   JSON table would let the comparison be asserted rather than read, which is what turns this from a
   diagnostic into a gate.
-- **An explicit layout direction.** The RTL alignment fixtures rely on the paragraph direction being
-  derived from content. A variant that states the direction outright would separate "the lane ignores
-  content direction" from "the lane ignores direction entirely".
+- **An RTL *container*.** `CoreText` has no direction field, so this cannot come from the document —
+  the render harnesses have to run a lane under an RTL layout direction. That is what would separate
+  "resolves `START` against the container" from "resolves `START` to `LEFT`", and it is the missing
+  half of the alignment finding above.
+- **The resolved face, reported.** Several conclusions currently stop at "the metrics are identical"
+  because the harness can measure text but cannot ask which face or variation instance a lane chose.
+  Exposing that would settle the weight question and remove the manifest caveat on the mode fixtures
+  in one move.
 - **Font-variation axes.** Weight travels as the paint's typeface style, not as a `wght` axis,
   because the axis path is canvas-unimplemented on some lanes and a fixture meant to be comparable
   across all five must not use an operation two of them decline. An axis-carrying variant belongs

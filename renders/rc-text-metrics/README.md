@@ -32,21 +32,30 @@ different code paths. On `java`: 361.0 / 358.0 at wght 400, then 362.0 / 359.0 a
 700 alike — while 700 is plainly heavier than 500 in the same image.
 
 Equal advances alone would prove nothing; families are routinely drawn duplexed, keeping advances
-fixed across weights on purpose. It is the *pair plus the glyphs* that is diagnostic — both numbers
-flat while the glyphs visibly differ is the signature of a **synthesised** weight rather than a
-resolved face, which in the Robolectric sandbox (no `/system/fonts/`) is exactly what you would
-expect. The ink box is integer-quantised, so read it as corroboration rather than as a precise
-instrument.
+fixed across weights on purpose, which is why each row carries a second number off a different code
+path. Both flat while the glyphs visibly differ means 550 and 599 are **metrically
+indistinguishable** from 500 here — nothing downstream of layout can tell them apart.
+
+It does *not* establish that the weight was synthesised rather than resolved: `getTextBounds` reports
+the outer rectangle, so a real bold that thickens its stems inward, preserving the advance and the
+extrema, gives the same signature. Telling those apart needs the resolved face, which this harness
+cannot yet report. The ink box is integer-quantised too, so read it as corroboration rather than as a
+precise instrument.
 
 ## Start and end alignment, in both directions
 
 ![align start/end, LTR and RTL, on three lanes](alignment-ltr-vs-rtl-three-lanes.png)
 
-`ALIGN_START` and `ALIGN_END` are the only alignments whose meaning depends on paragraph direction,
-and on English text they land exactly where `ALIGN_LEFT` and `ALIGN_RIGHT` do — so an LTR-only matrix
-cannot tell a correct lane from one that hard-coded start→left. Against a Hebrew paragraph, all three
-lanes keep start at the left edge and end at the right. The fixtures state no layout direction, so
-the expected behaviour is the content-derived one both stacks normally implement.
+`ALIGN_START` and `ALIGN_END` are the only alignments whose meaning depends on direction, and on
+English text they land exactly where `ALIGN_LEFT` and `ALIGN_RIGHT` do — so an LTR-only matrix cannot
+tell a correct lane from one that hard-coded start→left. Against a Hebrew paragraph, all three lanes
+keep start at the left edge and end at the right.
+
+That makes the question askable, not answered. `CoreText` carries **no layout direction** — AOSP
+derives its only flags word from `textAlign >>> 16` — so a document cannot state that its container
+is RTL, and all three harnesses run their default LTR one. Resolving `START` against an LTR container
+and resolving it to `LEFT` outright look identical here. Separating them needs a harness running a
+lane under an RTL layout direction.
 
 ## The layout-tree modes
 
@@ -64,14 +73,23 @@ the one-line advance is 1098px and runs off the frame.
 ```bash
 ./gradlew :rc-player-metrics:rcTextMetricFixtures
 ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --rerun \
+  --tests '*RcViewPlayerRenderHarness*' --tests '*RcEmbeddedRenderHarness*' \
   -Prc.embedded.input=rc-player/metrics/build/fixtures \
   -Prc.view.output=/tmp/rc-metrics/java \
   -Prc.embedded.output=/tmp/rc-metrics/cmp-android
 ./gradlew :third-party-rc-embedded-player-jvm:test --rerun \
+  --tests '*RcJvmRenderHarness*' \
   -Prc.jvm.input=rc-player/metrics/build/fixtures \
   -Prc.jvm.output=/tmp/rc-metrics/cmp-jvm
 ```
 
-`--rerun` matters: the fixture directory is passed as a system property, not declared as a task
-input, so a second run without it is `UP-TO-DATE` and quietly leaves the previous run's PNGs in
-place.
+Two details in those commands are load-bearing.
+
+`--rerun` (a *task* option, so it follows the task name) is needed because the fixture directory
+arrives as a system property, not as a declared task input — without it a second run is `UP-TO-DATE`
+and quietly leaves the previous run's PNGs in place.
+
+`--tests` is needed because `rc.embedded.input` reaches **every** test in the module, not just the
+render harnesses. Unfiltered, `RcSemanticsExtractionTest` and `RcFigmaSvgExportTest` pick the first
+staged document up as if it were a catalog capture and fail against it — after the PNGs have already
+been written, so the regeneration looks broken when it isn't.

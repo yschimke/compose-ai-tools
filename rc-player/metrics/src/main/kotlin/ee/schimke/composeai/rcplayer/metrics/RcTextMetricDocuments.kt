@@ -85,11 +85,18 @@ public object RcTextMetricDocuments {
   /**
    * The same job in Hebrew, for the two *semantic* alignments.
    *
-   * `ALIGN_START` and `ALIGN_END` are the only two alignments whose meaning depends on the
-   * paragraph's direction, and on an English string they land exactly where `ALIGN_LEFT` and
-   * `ALIGN_RIGHT` do. A lane that had simply hard-coded start→left would pass a six-alignment
-   * matrix built only from LTR text while being wrong for every RTL user, so the pair is drawn
-   * twice: once in each direction.
+   * `ALIGN_START` and `ALIGN_END` are the only two alignments whose meaning depends on direction,
+   * and on an English string they land exactly where `ALIGN_LEFT` and `ALIGN_RIGHT` do. A lane that
+   * had simply hard-coded start→left would pass a six-alignment matrix built only from LTR text
+   * while being wrong for every RTL user, so the pair is drawn twice: once in each script.
+   *
+   * **This asks the question; it does not answer it.** `CoreText` carries no layout direction —
+   * AOSP derives its only flags word from `textAlign >>> 16` — so a document cannot state that its
+   * container is RTL, and the render harnesses all run their default LTR one. Resolving `START`
+   * against an LTR container and resolving it to `LEFT` outright therefore look identical here.
+   * Separating them needs a lane rendered under an RTL layout direction, which is a harness change
+   * rather than a fixture one. The pair is still worth drawing: it is the half that can be
+   * expressed, and both host stacks would ordinarily flip on content alone.
    *
    * If a lane has no face covering the script the fixture renders tofu — which still shows *where*
    * the line was placed, and is itself a font-coverage finding rather than a broken fixture.
@@ -240,13 +247,17 @@ public object RcTextMetricDocuments {
    * beside them, is a signature:
    * - both move → the weight reached a metric-distinct instance;
    * - both flat, glyphs identical → the weight changed nothing at all;
-   * - both flat, glyphs visibly bolder → the weight is being **synthesised** rather than resolved
-   *   to a face.
+   * - both flat, glyphs visibly bolder → the weight is **metrically identical** while the glyphs
+   *   are not.
    *
    * The reference render lands on the third: 362.0 advance and 359.0 ink for 500, 550, 599 and 700
-   * alike, with 700 plainly heavier than 500. Note also that the ink box is integer-quantised
-   * (`Paint.getTextBounds` returns a `Rect`), so it is a coarse instrument at this size — one more
-   * reason to read it as corroboration rather than as the answer.
+   * alike, with 700 plainly heavier than 500. Resist reading that as "synthesised rather than
+   * resolved" — `getTextBounds` reports the run's outer rectangle, so a genuinely resolved bold
+   * that thickens its stems *inward*, keeping the advance and the extrema, gives the same numbers.
+   * Every row is a statement about metrics, which is what decides layout; identifying why the
+   * metrics match needs the resolved face, which this harness cannot report. The ink box is also
+   * integer-quantised (`Paint.getTextBounds` returns a `Rect`), so it is a coarse instrument at
+   * this size — one more reason to read it as corroboration rather than as the answer.
    *
    * 550 and 599 are in the sweep on purpose. They are the values that fall between the static
    * instances a weight-enumerated stylesheet ships, so they are where a "nearest static instance"
@@ -530,6 +541,14 @@ public object RcTextMetricDocuments {
    * to isolate. The colour travels as a `ColorConstant` id rather than a literal for the same
    * reason — that is the shape real documents use, and a fixture that exercises a path nothing else
    * takes is a fixture that can pass while the shipping path is broken.
+   *
+   * The family is deliberately left unnamed. `resolveFontFamily` maps both a missing id and the
+   * literal `"default"` to the same branch, so naming it bought nothing while implying the fixture
+   * pins a face. It does not, and cannot yet: that branch consults the host's font manifest for the
+   * `default` role, whereas the overlay's canvas paint decodes built-in family 0 straight to
+   * `FontFamily.Default`. With no manifest — every lane rendered so far — the two agree; on a lane
+   * that installs one they may not, which is a limit on comparing the two paths there until a face
+   * is pinned through embedded `FontData`.
    */
   private fun coreText(componentId: Int, mode: LayoutMode) =
     RcCoreText(
@@ -540,7 +559,6 @@ public object RcTextMetricDocuments {
           RcTextStyleProperty.IntValue(CORE_TEXT_COLOR_ID, COLOR_SPECIMEN),
           RcTextStyleProperty.FloatValue(CORE_TEXT_FONT_SIZE, literal(MODE_TEXT_SIZE)),
           RcTextStyleProperty.FloatValue(CORE_TEXT_FONT_WEIGHT, literal(400f)),
-          RcTextStyleProperty.IntValue(CORE_TEXT_FONT_FAMILY, TEXT_FONT_FAMILY),
           RcTextStyleProperty.IntValue(CORE_TEXT_ALIGN, mode.align),
           RcTextStyleProperty.IntValue(CORE_TEXT_OVERFLOW, mode.overflow),
           RcTextStyleProperty.IntValue(CORE_TEXT_MAX_LINES, mode.maxLines),
@@ -573,7 +591,6 @@ public object RcTextMetricDocuments {
       add(RcTextData(TEXT_SPECIMEN, mode.specimen))
       add(RcTextData(TEXT_TITLE, "CoreText · ${mode.title}"))
       add(RcTextData(TEXT_MODE_BOX_NOTE, "one-line advance · box ${MODE_BOX_WIDTH}px"))
-      add(RcTextData(TEXT_FONT_FAMILY, "default"))
       add(RcColorConstant(COLOR_SPECIMEN, SPECIMEN_COLOR))
 
       // `RootLayoutComponent` is followed *directly* by its component, with no `LayoutContent`
@@ -744,7 +761,6 @@ public object RcTextMetricDocuments {
   private const val TEXT_BASELINE_NOTE = 14
   private const val TEXT_MODE_ADVANCE_VALUE = 15
   private const val TEXT_MODE_BOX_NOTE = 16
-  private const val TEXT_FONT_FAMILY = 17
   private const val COLOR_SPECIMEN = 18
 
   // `CoreText` style property ids, from AndroidX `CoreText`. The player resolves them by number.
@@ -752,7 +768,6 @@ public object RcTextMetricDocuments {
   private const val CORE_TEXT_COLOR_ID = 4
   private const val CORE_TEXT_FONT_SIZE = 5
   private const val CORE_TEXT_FONT_WEIGHT = 7
-  private const val CORE_TEXT_FONT_FAMILY = 8
   private const val CORE_TEXT_ALIGN = 9
   private const val CORE_TEXT_OVERFLOW = 10
   private const val CORE_TEXT_MAX_LINES = 11
