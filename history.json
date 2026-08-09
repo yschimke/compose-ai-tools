@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "acc310649db5ab2a2e64f9a26baff1fb6995c2fc",
+    "generatedFrom": "0adf530deb177e7631d9df3e00ba24902821375c",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
@@ -1932,6 +1932,21 @@
             "unstable": false,
             "flapCount": 0
         },
+        "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixParentDeviceSpecPreview_Parent device spec": {
+            "path": "renders/samples:android/MatrixParentDeviceSpecPreview_Parent_device_spec.png",
+            "versions": [
+                {
+                    "blob": "557a2e36c3be6825c1a1ca7bf0be7d4b183aba9a",
+                    "commit": "0adf530deb177e7631d9df3e00ba24902821375c",
+                    "date": "2026-08-09T09:36:18Z",
+                    "sourceSha": "7677a3f2",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
         "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone": {
             "path": "renders/samples:android/MatrixPhoneDevicePreview_Phone.png",
             "versions": [
@@ -1940,6 +1955,21 @@
                     "commit": "f3c6554263a01574cd216b9a98d6832b9e633408",
                     "date": "2026-07-31T23:41:48Z",
                     "sourceSha": "5009aa1e",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixRotatedDeviceSpecPreview_Rotated device spec": {
+            "path": "renders/samples:android/MatrixRotatedDeviceSpecPreview_Rotated_device_spec.png",
+            "versions": [
+                {
+                    "blob": "e558643e1b0cb2b3261544fdd2f07cb3142bb032",
+                    "commit": "0adf530deb177e7631d9df3e00ba24902821375c",
+                    "date": "2026-08-09T09:36:18Z",
+                    "sourceSha": "7677a3f2",
                     "commits": 1
                 }
             ],
@@ -1996,6 +2026,13 @@
             "path": "renders/samples:android/MatrixScreenSizesMultiPreview_Tablet.png",
             "versions": [
                 {
+                    "blob": "9c88d79af36f32626a2f2ffe793637e382cb5667",
+                    "commit": "0adf530deb177e7631d9df3e00ba24902821375c",
+                    "date": "2026-08-09T09:36:18Z",
+                    "sourceSha": "7677a3f2",
+                    "commits": 1
+                },
+                {
                     "blob": "f67e8870f6fa9c06c7f834ade303aa93cdb33142",
                     "commit": "f3c6554263a01574cd216b9a98d6832b9e633408",
                     "date": "2026-07-31T23:41:48Z",
@@ -2003,7 +2040,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -4108,6 +4145,21 @@
             "unstable": false,
             "flapCount": 0
         },
+        "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixParentDeviceSpecPreview_Parent device spec": {
+            "path": "renders/samples:cmp/MatrixParentDeviceSpecPreview_Parent_device_spec.png",
+            "versions": [
+                {
+                    "blob": "d45a99fa37ce14b10809674fb548ad6feb7c9320",
+                    "commit": "0adf530deb177e7631d9df3e00ba24902821375c",
+                    "date": "2026-08-09T09:36:18Z",
+                    "sourceSha": "7677a3f2",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
         "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone": {
             "path": "renders/samples:cmp/MatrixPhoneDevicePreview_Phone.png",
             "versions": [
@@ -4116,6 +4168,21 @@
                     "commit": "f3c6554263a01574cd216b9a98d6832b9e633408",
                     "date": "2026-07-31T23:41:48Z",
                     "sourceSha": "5009aa1e",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixRotatedDeviceSpecPreview_Rotated device spec": {
+            "path": "renders/samples:cmp/MatrixRotatedDeviceSpecPreview_Rotated_device_spec.png",
+            "versions": [
+                {
+                    "blob": "5a1a6f72a234b214ca71bca4f1e1fb916d785a90",
+                    "commit": "0adf530deb177e7631d9df3e00ba24902821375c",
+                    "date": "2026-08-09T09:36:18Z",
+                    "sourceSha": "7677a3f2",
                     "commits": 1
                 }
             ],
