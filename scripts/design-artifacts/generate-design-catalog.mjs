@@ -40,6 +40,7 @@ import {
   readPreviewBundle,
   bundleToCandidates,
   catalogTokensFromBundle,
+  themeTokenSetsFromBundle,
 } from "@design-parity/candidate";
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
@@ -60,6 +61,7 @@ import {
   inventoryFromPreviews,
   mergeCatalogGroups,
 } from "./catalog-inventory.mjs";
+import { catalogThemesFromBundle } from "./catalog-themes.mjs";
 import { variantStateFromId } from "./variant-state.mjs";
 import {
   applyVariantAxisProps,
@@ -952,6 +954,29 @@ const themeTokens = catalogTokens
     )
   : undefined;
 
+// The module's DECLARED themes (`@ThemeCatalog` / `@WearThemeCatalog`), each with the token set its
+// own specimen render resolved — the axis above is the *system*'s one theme, this is every other
+// one it ships. The renderer already wrote them into the bundle (compose-ai-tools#2179); the reader
+// keys them by theme (design-parity#313); this publishes each as `themes/<slug>.dtcg.json` so a
+// consumer can show what a theme IS — a picker chip painted in its own colours and typeface, a
+// per-theme Figma variable mode — instead of only what it is called.
+const declaredThemes = catalogThemesFromBundle(
+  bundle,
+  themeTokenSetsFromBundle(bundle),
+  (previewId, theme) =>
+    console.warn(
+      `[${spec.system}] declared theme ${theme || "(unnamed)"} (${previewId}) resolved no provider ` +
+        `FQN, so it is NOT published: a themes[] entry keyed on anything else cannot be joined to ` +
+        `the theme a preview server is showing.`,
+    ),
+);
+if (declaredThemes.length > 0) {
+  console.log(
+    `[${spec.system}] publishing ${declaredThemes.length} declared theme token set(s): ` +
+      declaredThemes.map((t) => t.name || t.id).join(", "),
+  );
+}
+
 // Resolve the installed `@design-parity/catalog-export` version so the catalog records the export
 // engine that built it (surfaced on the serve host's provenance strip). Best-effort: a resolution
 // failure just omits the field rather than sinking the render.
@@ -994,6 +1019,7 @@ const { catalog, missing, noSticker, withoutSemantics, deferred } =
     ...(values.renderer ? { renderer: values.renderer } : {}),
     ...(designParityVersion() ? { designParity: designParityVersion() } : {}),
     ...(themeTokens ? { themeTokens } : {}),
+    ...(declaredThemes.length > 0 ? { themes: declaredThemes } : {}),
     // Every daemon preview id per function, from the bundles' FULL preview lists — including the
     // deferred palettes whose render was skipped (#2966), which is how their live-only coverage still
     // gets declared even though no image of them exists to fold.
