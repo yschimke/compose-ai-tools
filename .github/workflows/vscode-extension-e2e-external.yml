@@ -66,6 +66,14 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/setup
+      # Deliberately NO buildfetch-cache here. This job clones an external
+      # consumer (joreilly/Confetti, at `main` or a dispatch-selected ref) and
+      # runs *its* Gradle build. `buildfetch-cache` exports the token through
+      # $GITHUB_ENV, where it stays readable for the rest of the job — so a
+      # compromised or malicious external ref could exfiltrate the repo's cache
+      # credential from its own build script. The cache is not worth handing a
+      # credential to third-party code, and this workflow is infrequent (main
+      # push, weekly cron, dispatch) so it has little to gain.
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

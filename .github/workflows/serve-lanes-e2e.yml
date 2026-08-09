@@ -134,6 +134,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch access: `setup`'s Actions-cached Gradle home is a
+      # snapshot that stops matching after a build-wide key change; BuildFetch is
+      # the durable layer. See vscode-extension-e2e.yml for why read-only.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
 
       # The live render daemon (desktop Compose + Skia) renders headlessly through
       # a virtual X display routed to Mesa's software rasteriser — no GPU.
@@ -221,6 +227,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch access: `setup`'s Actions-cached Gradle home is a
+      # snapshot that stops matching after a build-wide key change; BuildFetch is
+      # the durable layer. See vscode-extension-e2e.yml for why read-only.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
 
       # No xvfb / Mesa here (unlike the desktop lane): Robolectric rasterises offscreen through its
       # own native graphics path. `android.jar` comes from the runner image's Android SDK
@@ -297,6 +309,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch access: `setup`'s Actions-cached Gradle home is a
+      # snapshot that stops matching after a build-wide key change; BuildFetch is
+      # the durable layer. See vscode-extension-e2e.yml for why read-only.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
 
       # Generate a real local portable bundle. This is the producer half of the
       # issue: the uploaded artifact is not a synthetic zip, it is the same
@@ -378,6 +396,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch access: `setup`'s Actions-cached Gradle home is a
+      # snapshot that stops matching after a build-wide key change; BuildFetch is
+      # the durable layer. See vscode-extension-e2e.yml for why read-only.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
 
       # `lib-daemon-android` ships as a standalone archive rather than inside the CLI dist (#1685), so
       # stage it and point the CLI at it via `-Dcomposeai.cli.libDaemonAndroidDir` (the boot script

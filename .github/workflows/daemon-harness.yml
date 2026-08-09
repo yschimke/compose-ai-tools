@@ -77,6 +77,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch access: `setup`'s Actions-cached Gradle home is a
+      # snapshot that stops matching after a build-wide key change; BuildFetch is
+      # the durable layer. See vscode-extension-e2e.yml for why read-only.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run harness scenarios (desktop, fake)
         run: ./gradlew :daemon:harness:test
       - name: Upload harness test results (desktop, fake)
@@ -102,6 +108,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch access: `setup`'s Actions-cached Gradle home is a
+      # snapshot that stops matching after a build-wide key change; BuildFetch is
+      # the durable layer. See vscode-extension-e2e.yml for why read-only.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Skiko ships its native bundle inside the Compose Desktop classpath,
       # so we expect no system packages to be needed on ubuntu-latest. If
       # this job ever fails with `UnsatisfiedLinkError` for libfreetype /
@@ -141,6 +153,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # Read-only BuildFetch access: `setup`'s Actions-cached Gradle home is a
+      # snapshot that stops matching after a build-wide key change; BuildFetch is
+      # the durable layer. See vscode-extension-e2e.yml for why read-only.
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # `:samples:android` already bootstraps Robolectric on ubuntu-latest
       # so we expect no extra system packages. If this job ever fails with
       # missing native libs (libfontconfig, libfreetype), install them
