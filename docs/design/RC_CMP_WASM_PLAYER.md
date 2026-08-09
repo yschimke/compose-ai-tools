@@ -608,22 +608,31 @@ The remote-m3 replacement corpus is guarded in CI, not recorded as a one-off man
   ~1.5 s the player itself waits before reporting readiness. Each row records its
   `cmpWasmDensity`, `cmpWasmViewport`, and `cmpWasmContextRender` in `rc-compare-summary.json`, so
   a slow row can be attributed rather than guessed at.
-- **Only the first render in a context navigates; the rest are handed the document in place.**
+- **The player can be handed a document in place; the parity driver no longer takes that offer.**
   `window.rcPlayerLoad(src)` (installed by the player, see `installDocumentSwap` in
   [`Main.kt`](../../rc-player/wasm/src/wasmJsMain/kotlin/ee/schimke/composeai/rcplayer/wasm/Main.kt))
   points the running player at another document instead of reloading the page, which would discard
   the instantiated Wasm module, the Compose runtime and the host fonts and rebuild all three to draw
   a document of a few dozen operations
   ([#3445](https://github.com/yschimke/compose-ai-tools/issues/3445)). Over the 27-document
-  `remote-m3` corpus the warm navigation-to-`ready` time fell from a mean of **819 ms to 107 ms**
-  (max 1,745 → 293 ms); the cold row, which still navigates, is unchanged at ~1.2 s. The player
-  drops the outgoing document before fetching the next, so nothing carries between them but the host
-  fonts, which are cached deliberately — `?theme` and `?namedValues` are *not* re-read, and a host
-  that needs different ones must navigate.
+  `remote-m3` corpus that took the warm navigation-to-`ready` time from a mean of **819 ms to
+  107 ms**.
   [`rc-cmp-wasm-document-swap.test.mjs`](../../scripts/design-artifacts/rc-cmp-wasm-document-swap.test.mjs)
-  pins the equivalence that buys this: a swapped render is byte-identical to a navigated one, and
-  stays so after a detour through another document, so a leak from the outgoing document fails the
-  guard rather than hiding inside an already-imperfect parity row.
+  pinned the equivalence that was supposed to buy it: a swapped render byte-identical to a navigated
+  one, and still so after a detour through another document.
+
+  **That equivalence holds for two documents and fails across a corpus**
+  ([#3558](https://github.com/yschimke/compose-ai-tools/issues/3558)). Run all 27 through one player
+  and a *band* of the text-bearing ones comes back with no text at all — shapes drawn, every glyph
+  missing, and permanently: the frame is still blank after a 5 s settle, while the same document
+  navigated to renders correctly. Which band depends on the order (reverse the corpus and a
+  different set loses its text) and on the machine. So `rc-compare.mjs` navigates for every
+  document. Measured on the full `remote-m3` comparison that is **74 s → 88 s** end to end, and it
+  buys two consecutive runs that are byte-identical on all 27 rows with every row on its correct
+  value. The player keeps `rcPlayerLoad` and its guard — this is the driver declining to depend on
+  the swap until it can show it has finished, and extending that test to a corpus-length sequence is
+  what would let the driver go back to it. See
+  [`docs/design/evidence/rc-cmp-wasm-swap-blank-text/`](evidence/rc-cmp-wasm-swap-blank-text/README.md).
 - **`ready` is liveness, not settlement — the lane captures on convergence.** Three frames prove the
   composition ran; Compose resolves the host font faces asynchronously, so a text-bearing document
   draws once in a fallback face and again in the real one, and the second draw can land after the
@@ -636,6 +645,16 @@ The remote-m3 replacement corpus is guarded in CI, not recorded as a one-off man
   reproducibility is the point, since a lane whose pixels depend on the run cannot tell a regression
   from noise. It reaches the same pixels the player's 1,500 ms tail does, at a third of the cost.
   Each row records `cmpWasmSettleMs` beside its first-frame time.
+
+  **Convergence is necessary and not sufficient, and that gap is the other half of #3558.** A quiet
+  window says the page stopped changing; it does not say the page ever started. A document whose
+  text never painted is blank now and blank in 500 ms, so it converges immediately and scores a
+  perfectly stable, perfectly wrong number. The loop now takes an `expectation` the converged frame
+  has to satisfy, and the lane's is "there is ink here", asked only of documents whose baked
+  reference has ink — a claim made from data the driver already holds rather than a sleep tuned to
+  whichever machine ran the measurement. A frame that is still blank at the timeout fails the row
+  outright: `the player drew nothing in … ms while the baked reference has ink`. A missing render is
+  reported as a missing render, never as a parity delta.
 - **The readiness signal is deliberately late, and only for hosts that can flash.** After its three
   frames the player holds `ready` back for another 1.5 s, so viewer.js's `revealRcWasm` cannot swap
   the snapshot for a surface the compositor has not presented. `?handoffDelayMs=0` drops that tail
