@@ -226,11 +226,16 @@ on:
           sorted, then round-robined), so there is no serial discover-then-fan-out prefix — and the
           merge cross-checks the shards' plans before trusting them.
 
-          What this buys, and what it does not: only the MARGINAL cost divides. Measured on
-          m3-catalog, `render_minutes ≈ 3.7 + 2.15s × previews`, and every shard pays the ~3.7 min of
-          Gradle configure + compile in full. So 4–6 is the useful range and 16 is buying compile
-          time, not throughput. At 1500 previews it takes the render from ~58 min (which blows a
-          40-minute `render-timeout`) to ~23 min end to end.
+          What this buys, and what it does not: only the MARGINAL cost divides. Re-measured on
+          m3-catalog after #3548 (issue #3559), a single-job render is
+          `render_seconds ≈ 100 + 0.39s × previews`, and a shard's own fixed cost — job prefix, its
+          own discovery, the render step's Gradle prologue — is ~150 s, plus a ~85 s merge tail.
+          The marginal term collapsed 6.5x (2.55s → 0.39s per preview) while the fixed term did not
+          move, so the useful range moved DOWN, not up: at ~1150 previews sharding buys ~3 min of
+          wall clock for three extra runners, and 1 is the right answer. It starts paying again
+          around 3000 previews and is necessary near 6000, where the serial render meets a 2400s
+          `render-timeout`. Measure before raising this; do not budget from the pre-#3548
+          `3.7 + 2.15s × previews` model, which is wrong in both terms.
 
           Reach for `modePriority` first where a catalog can: deferral makes the work smaller, which
           sharding then divides. The two compose.
@@ -287,8 +292,8 @@ jobs:
       # No checkout, no Gradle: this is `[1, 2, …, N]` and nothing else. The real partition is
       # computed inside each shard from its own discovery, which is what keeps the fan-out free of a
       # serial "discover once, then start the shards" prefix — that prefix would cost a full Gradle
-      # configure + compile (~3.7 min) before any shard began, which is the same fixed cost each
-      # shard pays anyway.
+      # configure + compile + discover (~87 s measured) before any shard began, which is the same
+      # fixed cost each shard pays anyway.
       - name: Build the shard matrix
         id: plan
         env:
@@ -297,7 +302,7 @@ jobs:
           set -euo pipefail
           echo "matrix=[$(seq -s, 1 "$SHARDS")]" >> "$GITHUB_OUTPUT"
 
-      # The merge runs LAST, after every shard has spent its ~20 minutes — so a CLI that predates
+      # The merge runs LAST, after every shard has spent its several minutes — so a CLI that predates
       # `bundle merge` would fail with "Unknown bundle subcommand" having burned the whole fan-out.
       # That is not a hypothetical: the documented default is `cli-source: released`, and
       # `cli-version: catalog` pins the CLI to the applied plugin version, which for any catalog that
