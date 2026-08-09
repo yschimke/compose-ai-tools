@@ -128,6 +128,55 @@ test("mergeCatalogSection folds assets in and rewrites catalog.json", async () =
   assert.equal(await readFile(join(into, "images/Device_Card/x.png"), "utf8"), "HOST-IMG");
 });
 
+test("mergeCatalogSection leaves a borrowed catalog's themes/ behind", async () => {
+  // `themes/<provider-fqn>.dtcg.json` is catalog-level despite being nested: it is
+  // the DECLARING system's theme, `mergeManifests` keeps the host's `themes[]`, and
+  // the host cannot render a borrowed system's theme anyway. Copying it would
+  // orphan the file — and abort the whole fold the moment both catalogs declare the
+  // same provider with different tokens, which is the case this pins.
+  const root = await mkdtemp(join(tmpdir(), "merge-catalog-themes-"));
+  const into = join(root, "into");
+  const from = join(root, "from");
+
+  await mkdir(join(into, "themes"), { recursive: true });
+  await mkdir(join(into, "images/Device_Card"), { recursive: true });
+  await writeFile(
+    join(into, "catalog.json"),
+    JSON.stringify({
+      ...manifest([comp("Device/Card", { section: "Components" })]),
+      themes: [{ id: "com.example.Shared", tokensFile: "themes/com.example.shared.dtcg.json" }],
+    }),
+  );
+  await writeFile(join(into, "images/Device_Card/x.png"), "HOST-IMG");
+  await writeFile(join(into, "themes/com.example.shared.dtcg.json"), '{"host":true}');
+
+  await mkdir(join(from, "themes"), { recursive: true });
+  await mkdir(join(from, "images/Buttons_Filled"), { recursive: true });
+  await writeFile(
+    join(from, "catalog.json"),
+    JSON.stringify({
+      ...manifest([comp("Buttons/Filled")]),
+      themes: [{ id: "com.example.Shared", tokensFile: "themes/com.example.shared.dtcg.json" }],
+    }),
+  );
+  await writeFile(join(from, "images/Buttons_Filled/x.png"), "M3-IMG");
+  // Same slug, DIFFERENT bytes — an asset collision if it were folded as an asset.
+  await writeFile(join(from, "themes/com.example.shared.dtcg.json"), '{"borrowed":true}');
+
+  const res = await mergeCatalogSection({ into, from, section: "Material 3" });
+
+  assert.equal(res.filesCopied, 1); // the image only
+  // The host's own theme file is untouched, not overwritten and not aborted on.
+  assert.equal(
+    await readFile(join(into, "themes/com.example.shared.dtcg.json"), "utf8"),
+    '{"host":true}',
+  );
+  const merged = JSON.parse(await readFile(join(into, "catalog.json"), "utf8"));
+  assert.deepEqual(merged.themes, [
+    { id: "com.example.Shared", tokensFile: "themes/com.example.shared.dtcg.json" },
+  ]);
+});
+
 test("mergeCatalogSection does not abort when both catalogs have differing top-level pages", async () => {
   // The real case: host + borrowed are BOTH generated catalogs, so each carries
   // its own index.html / code-connect.json / README.md with different bytes.

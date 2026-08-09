@@ -120,6 +120,49 @@ see [the catalog palette](../public-preview-server.md#the-page-wears-the-catalog
 Publishing a catalog with a new brand colour therefore re-themes its pages too,
 with nothing to change on the server.
 
+### Per-theme token sets
+
+`tokens.dtcg.json` is the **system** token set: the one resolved theme the stickers were rendered
+under. A module that declares `@ThemeCatalog` / `@WearThemeCatalog` providers ships more than one,
+and each is published beside it as `themes/<provider-fqn>.dtcg.json`, listed in `catalog.json`:
+
+```jsonc
+"tokensFile": "tokens.dtcg.json",          // the system's own tokens
+"themes": [
+  { "id": "com.example.WearCoralThemeCatalog", "name": "Coral", "group": "Wear",
+    "tokensFile": "themes/com.example.wearcoralthemecatalog.dtcg.json" }
+]
+```
+
+Nothing new is rendered for these. Each theme's specimen sheet already resolved its own
+`MaterialTheme` — colours **and** typeface, since a theme is free to swap the type scale — and the
+renderer writes them into the bundle as a theme-tagged `previews/<id>.catalog.json` sidecar
+(issue #2179). The export driver reads them back per theme
+([`catalog-themes.mjs`](../../scripts/design-artifacts/catalog-themes.mjs) over design-parity's
+`themeTokenSetsFromBundle`) and publishes one file each.
+
+Two details are load-bearing:
+
+- **A theme's id is its provider FQN**, because that is what a preview server addresses it by
+  (`?theme=theme:<providerFqn>`) — so a published token set can be joined to the theme a page is
+  showing. A theme whose FQN can't be resolved from `previews.json` is **not published**: an entry
+  keyed on anything else is data no consumer can attach to a theme, and the driver warns rather than
+  shipping it silently.
+- **`dark` is left unset.** Nothing in the pipeline declares whether a theme is dark — the
+  annotation carries a name and a group — and the field exists as a declaration precisely so it
+  doesn't become a luminance guess made at an arbitrary layer. A consumer needing the mode reads the
+  theme's own `surface` out of its tokens.
+
+A folded section does **not** bring its themes with it. `themes/` is catalog-level despite being
+nested, so [`merge-catalog-section.mjs`](../../scripts/design-artifacts/merge-catalog-section.mjs)
+skips it the way it skips the top-level `tokens.dtcg.json`: the host's `catalog.json` describes the
+host's themes, and a borrowed system's theme is one the host cannot render.
+
+Until these existed, the theme sheets' tokens were merged into `tokens.dtcg.json` along with the
+system's own. Because M3 role labels repeat across themes, that made a system's published `primary`
+whichever sheet the bundle happened to yield last; splitting them fixed the system set as well as
+adding the themes.
+
 ### Delivery-branch history
 
 Each publish **appends a commit on top of the branch tip** rather than

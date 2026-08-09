@@ -114,6 +114,25 @@ async function sameBytes(a, b) {
  */
 const ANNOTATIONS_REL = join("annotations", "index.json");
 
+/**
+ * The one nested directory that is **catalog-level**, not per-component.
+ *
+ * `themes/<provider-fqn>.dtcg.json` is a declared theme's own token set — a sibling of the
+ * top-level `tokens.dtcg.json` that happens to live in a subdirectory because there is one file per
+ * theme. It belongs to the system that declared it: the host's `catalog.json` `themes[]` describes
+ * the HOST's themes, and `mergeManifests` keeps the host's array, so copying a borrowed catalog's
+ * theme files would leave them orphaned in the host — referenced by nothing, and aborting the whole
+ * fold as an asset collision the moment both catalogs declare the same provider with different
+ * tokens.
+ *
+ * This is the exception the "skip every top-level file" rule above was written to avoid needing:
+ * that rule is phrased structurally (top-level ⇒ catalog-level) precisely so a new artifact stays
+ * correct by default, and `themes/` is the first catalog-level artifact that is *nested*. Folding a
+ * borrowed system's themes into a host would be wrong even if the files didn't collide — the host
+ * cannot render them.
+ */
+const THEMES_DIR = "themes";
+
 async function mergeAnnotationManifests(src, dest) {
   const read = async (p) => {
     try {
@@ -144,6 +163,8 @@ async function copyAssets(fromDir, intoDir) {
     // generated pages), not per-component assets — the host keeps its own. Every
     // foldable asset lives in a subdirectory (images/ / wireframes/ / figma/).
     if (!rel.includes(sep)) continue;
+    // …and so is everything under `themes/`, nested though it is — see THEMES_DIR.
+    if (rel.split(sep)[0] === THEMES_DIR) continue;
     const dest = join(intoDir, rel);
     if (rel === ANNOTATIONS_REL) {
       await mergeAnnotationManifests(src, dest);
