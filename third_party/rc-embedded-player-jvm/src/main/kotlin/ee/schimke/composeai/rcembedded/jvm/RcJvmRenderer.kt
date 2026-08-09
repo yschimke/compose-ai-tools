@@ -22,6 +22,7 @@ package ee.schimke.composeai.rcembedded.jvm
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.remote.core.CoreDocument
+import androidx.compose.remote.core.Limits
 import androidx.compose.remote.core.Operation
 import androidx.compose.remote.core.RemoteClock
 import androidx.compose.remote.core.RemoteComposeBuffer
@@ -147,9 +148,38 @@ internal const val RC_EMBEDDED_TRACE_DOCUMENT: String = "rc-embedded.document"
 
 internal const val RC_EMBEDDED_TRACE_FRAME: String = "rc-embedded.frame"
 
+/**
+ * Let the AndroidX parser accept URL- and file-encoded bitmaps.
+ *
+ * `Limits.ENABLE_IMAGE_URLS` / `ENABLE_IMAGE_FILES` are mutable globals that ship `false`. With
+ * them off, `BitmapData.read` throws `URL image not supported [<id>]` the moment a document carries
+ * a `BitmapData` with `ENCODING_URL` — and because that throw happens during `inflateFromBuffer`,
+ * it takes down the *whole* parse. The document then produces no render at all, so this lane drops
+ * its column for it rather than drawing the 95% of the document that has nothing to do with the
+ * image.
+ *
+ * Enabling the parse is not enabling a fetch. The reference is only resolved if the host supplies a
+ * loader, and this renderer supplies none — the image slot stays empty and the rest of the document
+ * draws. That is exactly what the JS and CMP players already do with the same bytes, which is what
+ * makes the comparison a comparison: before this, a URL-image document was the one case where the
+ * embedded lanes were blank for a reason that had nothing to do with the renderer under test.
+ *
+ * Both flags, not just the URL one, because a document authored against both assumes both: the Home
+ * Assistant catalog that surfaced this calls its own `enableRemoteImageUrls()` — setting the
+ * identical pair — from every player entry point it owns. This lane is an entry point it doesn't.
+ *
+ * Set on every parse rather than once in an initializer: the flags are process-global and public,
+ * so anything else on the classpath can flip them back, and re-asserting costs two field writes.
+ */
+private fun enableEncodedImageReferences() {
+  Limits.ENABLE_IMAGE_URLS = true
+  Limits.ENABLE_IMAGE_FILES = true
+}
+
 /** Parse `.rc` bytes into a [CoreDocument]. Mirrors `RcPlayer(capturedDocument)`'s buffer load. */
 internal fun parseDocument(bytes: ByteArray): CoreDocument =
   Tracer.global.trace(category = RC_EMBEDDED_TRACE_DOCUMENT, name = "rcEmbedded:parseDocument") {
+    enableEncodedImageReferences()
     CoreDocument(RemoteClock.SYSTEM).apply {
       ByteArrayInputStream(bytes).use { stream ->
         initFromBuffer(RemoteComposeBuffer.fromInputStream(stream))

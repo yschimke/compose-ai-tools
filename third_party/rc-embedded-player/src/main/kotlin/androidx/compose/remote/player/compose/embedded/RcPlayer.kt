@@ -464,6 +464,11 @@ public fun RcPlayer(
 ) {
     val coreDoc =
         remember(capturedDocument) {
+            // Ahead of the parse below, which fails the whole document on a URL-encoded bitmap
+            // unless the globals are set. This overload is only one of the byte-level entry
+            // points — `RemoteDocument(bytes)` parses in its own constructor, so callers taking
+            // that route enable it themselves.
+            enableEncodedImageReferences()
             CoreDocument(RemoteClock.SYSTEM).apply {
                 ByteArrayInputStream(capturedDocument.bytes).use {
                     initFromBuffer(RemoteComposeBuffer.fromInputStream(it))
