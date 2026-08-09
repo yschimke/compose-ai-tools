@@ -2,9 +2,13 @@
 
 package com.example.designcatalogremotem3
 
+import androidx.compose.remote.creation.compose.state.RemoteColor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.PreviewWrapperProvider
+import androidx.wear.compose.remote.material3.RemoteColorScheme
 import ee.schimke.composeai.preview.WearThemeCatalog
 
 /**
@@ -142,7 +146,51 @@ fun remoteCatalogFont(name: String): String =
 fun remoteCatalogDisplayFont(name: String): String? =
   if (name == "KotlinConf") "JetBrains Mono" else null
 
-// Each provider declares its own `Wrap`, identical and empty, rather than inheriting one from a
+/**
+ * The theme a **recomposing** session selected, or null — the state every capture is taken in.
+ *
+ * `composePreviewRenderAll` renders each `@Preview` with no provider, so the recorded documents are
+ * default-themed regardless of what is declared here: this local is only ever non-null when the
+ * renderer deliberately wraps a preview in a provider, which it does for a `?themeProvider=` render
+ * on a session that can recompose.
+ */
+internal val LocalRemoteCatalogTheme = compositionLocalOf<String?> { null }
+
+/**
+ * [base] with [name]'s roles replaced — the **same** [remoteCatalogThemeColors] map the replay path
+ * seeds, read through `RemoteMaterialTheme` instead of the player's named-value channel.
+ *
+ * Deliberately one definition feeding both lanes. A theme that recomposed to one palette and
+ * replayed to another would be worse than either, and nothing would catch it: both renders succeed.
+ *
+ * A role the map doesn't mention keeps whatever the library's dark-first default supplies, exactly
+ * as an unseeded named value does on the replay side.
+ */
+fun remoteCatalogColorScheme(name: String, base: RemoteColorScheme): RemoteColorScheme {
+  val colors = remoteCatalogThemeColors(name)
+  if (colors.isEmpty()) return base
+  fun role(role: String) = colors["WearM3.$role"]?.let(::RemoteColor)
+  return base.copy(
+    primary = role("primary") ?: base.primary,
+    primaryDim = role("primaryDim") ?: base.primaryDim,
+    primaryContainer = role("primaryContainer") ?: base.primaryContainer,
+    onPrimary = role("onPrimary") ?: base.onPrimary,
+    onPrimaryContainer = role("onPrimaryContainer") ?: base.onPrimaryContainer,
+    secondary = role("secondary") ?: base.secondary,
+    secondaryDim = role("secondaryDim") ?: base.secondaryDim,
+    secondaryContainer = role("secondaryContainer") ?: base.secondaryContainer,
+    onSecondary = role("onSecondary") ?: base.onSecondary,
+    onSecondaryContainer = role("onSecondaryContainer") ?: base.onSecondaryContainer,
+  )
+}
+
+/** Publishes [name] to [RemoteSticker], which installs it once inside the remote document. */
+@Composable
+private fun RemoteThemeOverride(name: String, content: @Composable () -> Unit) {
+  CompositionLocalProvider(LocalRemoteCatalogTheme provides name, content = content)
+}
+
+// Each provider declares its own `Wrap` rather than inheriting one from a
 // shared base: the renderer resolves the method reflectively **on the concrete class**, so an
 // inherited implementation is a `NoSuchMethodException` and every specimen sheet fails to render.
 //
@@ -153,19 +201,22 @@ fun remoteCatalogDisplayFont(name: String): String? =
 /** The stock scheme and default face — the baseline the other four are read against. */
 @WearThemeCatalog(name = "M3", group = "Wear")
 class RemoteM3ThemeCatalog : PreviewWrapperProvider {
-  @Composable override fun Wrap(content: @Composable () -> Unit) = content()
+  @Composable
+  override fun Wrap(content: @Composable () -> Unit) = RemoteThemeOverride("M3", content)
 }
 
 /** Warm coral primary over the stock dark scheme. */
 @WearThemeCatalog(name = "Coral", group = "Wear")
 class RemoteCoralThemeCatalog : PreviewWrapperProvider {
-  @Composable override fun Wrap(content: @Composable () -> Unit) = content()
+  @Composable
+  override fun Wrap(content: @Composable () -> Unit) = RemoteThemeOverride("Coral", content)
 }
 
 /** Cool teal primary over the stock dark scheme. */
 @WearThemeCatalog(name = "Teal", group = "Wear")
 class RemoteTealThemeCatalog : PreviewWrapperProvider {
-  @Composable override fun Wrap(content: @Composable () -> Unit) = content()
+  @Composable
+  override fun Wrap(content: @Composable () -> Unit) = RemoteThemeOverride("Teal", content)
 }
 
 /**
@@ -174,7 +225,8 @@ class RemoteTealThemeCatalog : PreviewWrapperProvider {
  */
 @WearThemeCatalog(name = "Google Sans Flex", group = "Wear")
 class RemoteGoogleSansFlexThemeCatalog : PreviewWrapperProvider {
-  @Composable override fun Wrap(content: @Composable () -> Unit) = content()
+  @Composable
+  override fun Wrap(content: @Composable () -> Unit) = RemoteThemeOverride("Google Sans Flex", content)
 }
 
 /**
@@ -183,5 +235,6 @@ class RemoteGoogleSansFlexThemeCatalog : PreviewWrapperProvider {
  */
 @WearThemeCatalog(name = "KotlinConf", group = "Confetti Wear")
 class RemoteKotlinConfThemeCatalog : PreviewWrapperProvider {
-  @Composable override fun Wrap(content: @Composable () -> Unit) = content()
+  @Composable
+  override fun Wrap(content: @Composable () -> Unit) = RemoteThemeOverride("KotlinConf", content)
 }

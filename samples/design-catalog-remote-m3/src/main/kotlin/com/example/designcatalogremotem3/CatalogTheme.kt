@@ -30,24 +30,44 @@ import ee.schimke.composeai.daemon.RemoteOverridablePreview
  * vanilla `composePreviewRenderAll` and the weekly design-artifacts render) it is the same output
  * as plain `RemotePreview`.
  *
- * **No theme is installed here**, deliberately. Every sticker is recorded under the default theme,
- * and a selected `@WearThemeCatalog` theme is applied afterwards to the recorded document by
- * overriding named values (`USER:WearM3.<role>`) — see `RemoteThemeCatalogs.kt`. Capturing a theme
- * in would bake its colours into the document as constants, which would mean one capture per theme
- * and a published catalog able to show only the theme it was packed with.
+ * **The recorded documents are default-themed**, which is what lets a theme be applied to them
+ * afterwards by overriding named values (`USER:WearM3.<role>`) — see `RemoteThemeCatalogs.kt`. That
+ * falls out of how they are recorded rather than needing enforcement here: `composePreviewRenderAll`
+ * renders each `@Preview` with no provider, so [LocalRemoteCatalogTheme] is null and the branch
+ * below takes the un-themed path. A capture with a theme baked in would carry that theme's colours
+ * as constants, so every theme would need its own capture and a published catalog could only show
+ * the one it was packed with.
  *
- * That also means this frame is back to its pre-theme shape, and with it the `.rc` id-allocation
- * artefact the theme branch used to cause: `CircularProgressRemote`'s sidecar shifts back (its PNG
- * is unaffected, then and now). One document, one shape, N themes applied on top.
+ * The themed branch is for the other case: a **recomposing** session asked for `?themeProvider=`, so
+ * the renderer wraps the preview in a provider and this installs the scheme for that render. It
+ * reads the same [remoteCatalogThemeColors] map the replay path seeds, so the two lanes cannot
+ * disagree about what a theme is.
+ *
+ * Only the colour scheme is installed. The typeface is not a document property — the stickers emit
+ * the built-in default family id and the player resolves it at draw time — so it stays data for a
+ * lane to configure its resolver with rather than something captured.
  */
 @Composable
 fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
+  val themeName = LocalRemoteCatalogTheme.current
   RemoteOverridablePreview(profile = RcPlatformProfiles.ANDROIDX) {
-    RemoteBox(
-      modifier = RemoteModifier.fillMaxSize(),
-      contentAlignment = RemoteAlignment.Center,
-      content = content,
-    )
+    if (themeName == null) {
+      RemoteBox(
+        modifier = RemoteModifier.fillMaxSize(),
+        contentAlignment = RemoteAlignment.Center,
+        content = content,
+      )
+    } else {
+      RemoteMaterialTheme(
+        colorScheme = remoteCatalogColorScheme(themeName, RemoteMaterialTheme.colorScheme)
+      ) {
+        RemoteBox(
+          modifier = RemoteModifier.fillMaxSize(),
+          contentAlignment = RemoteAlignment.Center,
+          content = content,
+        )
+      }
+    }
   }
 }
 
