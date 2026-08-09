@@ -295,12 +295,22 @@ internal object ModifierTokenResolver {
    * Resolution order, from most direct to most compatible:
    * 1. The **named-parameter** overload (`graphicsLayer(alpha = 0f)`) keeps `alpha` as a real field
    *    on the element, and the inspector also exposes it as a property.
-   * 2. Compose's coordinator keeps `lastLayerAlpha`, the value its real layer block applied for the
+   * 2. The **lambda** overload (`graphicsLayer { alpha = … }`) keeps only the opaque block, so we
+   *    evaluate it ourselves against a recording scope ([evaluateLayerBlockAlpha]).
+   * 3. Compose's coordinator keeps `lastLayerAlpha`, the value its real layer block applied for the
    *    captured frame. Unlike the scratch scope, this value belongs to this modifier's coordinator.
-   * 3. On Compose versions where that per-coordinator value isn't available, the **lambda**
-   *    overload (`graphicsLayer { alpha = … }`) keeps only the opaque block, so we evaluate it
-   *    ourselves against a recording scope ([evaluateLayerBlockAlpha]).
    * 4. If none answers, there is no alpha to export.
+   *
+   * The block is tried **before** the coordinator, because `lastLayerAlpha` is only truthful for a
+   * layer whose block ran while Compose was setting the layer's parameters. A block that needs
+   * draw-time state runs later, leaving `lastLayerAlpha` at the identity it was created with — and
+   * since the coordinator *has* a layer, its guard can't tell that apart from a real 1.0. Wear's
+   * `SurfaceTransformation` is exactly that shape (issue #3579): a scaling list item's container
+   * layer assigns `alpha` from the item's scroll progress, so its block evaluates to (say) 0.51
+   * while `lastLayerAlpha` still reads 1.0. Reading the coordinator first published every card's
+   * fill at full strength while the render faded it. The block is also the more *current* value in
+   * general — see [evaluateLayerBlockAlpha] — so the coordinator now serves as the fallback for the
+   * forms that have no block to run.
    *
    * The applied value also preserves issue #2853's animated-lambda fix: Jetchat's `RecordButton`
    * (`graphicsLayer { alpha = containerAlpha.value }`, zero when idle) resolves to the zero its own
@@ -321,8 +331,8 @@ internal object ModifierTokenResolver {
           ?.firstOrNull { it.name == "alpha" }
           ?.value
           ?.let(::floatValue)
-        ?: appliedGraphicsLayerAlpha(info.coordinates)
         ?: evaluateLayerBlockAlpha(info.modifier, nodeSize(info))
+        ?: appliedGraphicsLayerAlpha(info.coordinates)
     return effective?.coerceIn(0f, 1f)?.toDouble()
   }
 
