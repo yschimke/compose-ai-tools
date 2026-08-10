@@ -539,7 +539,7 @@ public class RcPlayerState(
   }
 
   /**
-   * Applies the data/text operations a layout container carries alongside its child components.
+   * Applies the state operations a layout container carries alongside its child components.
    *
    * AndroidX executes a document's operations in order as it walks the layout, so a `CoreText`
    * reading id 70 sees the `TEXT_LOOKUP_INT` that published it two operations earlier. The layout
@@ -558,6 +558,7 @@ public class RcPlayerState(
         // formats as garbage. Wire order is the document's order, so one pass suffices.
         is RcFloatExpression -> applyFloatExpression(operation)
         is RcIntegerExpression -> applyIntegerExpression(operation)
+        is RcColorExpression -> applyColorExpression(operation)
         is RcIdLookup,
         is RcDataMapLookup -> applyDataOperation(operation)
         is RcTextMerge,
