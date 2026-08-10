@@ -58,6 +58,7 @@ import { fitRgba, isRoundingDelta, resampleRgba } from "./png-resample.mjs";
 import { layoutFromNode } from "@design-parity/adapter-figma";
 import { scaleTree } from "./reference-layout.mjs";
 import { withReferenceAnnotations } from "@design-parity/catalog-export";
+import { FigmaRestRasterizer, parseFigmaRef } from "./figma-rest-raster.mjs";
 
 function arg(name, def = undefined) {
   const i = process.argv.indexOf(`--${name}`);
@@ -191,59 +192,7 @@ async function rasterizeHtml(file, target) {
   }
 }
 
-/** `figma:<fileKey>/<nodeId>` → `{ fileKey, nodeId }`, or null when the ref isn't a Figma handle. */
-function parseFigmaRef(ref) {
-  const m = /^figma:([^/]+)\/(.+)$/.exec(String(ref ?? ""));
-  return m ? { fileKey: m[1], nodeId: m[2] } : null;
-}
-
-/**
- * Render a Figma node to PNG over the REST images endpoint. Asked for at the density that lands on
- * the target sticker's width, so the resample stays a rounding correction — a blind `scale=2` is
- * what made this comparison meaningless before (a frame seeded from a device-pixel export came
- * back at twice the candidate's size).
- */
-async function rasterizeFigma(ref, target) {
-  const parsed = parseFigmaRef(ref);
-  if (!parsed) throw new Error(`not a figma ref: ${ref}`);
-  const headers = { "X-Figma-Token": FIGMA_TOKEN };
-  const nodesUrl =
-    `https://api.figma.com/v1/files/${encodeURIComponent(parsed.fileKey)}/nodes` +
-    `?ids=${encodeURIComponent(parsed.nodeId)}`;
-  const nodes = await fetch(nodesUrl, { headers });
-  if (!nodes.ok) throw new Error(`figma nodes ${nodes.status}`);
-  const nodeJson = await nodes.json();
-  const box =
-    nodeJson?.nodes?.[parsed.nodeId]?.document?.absoluteBoundingBox ??
-    nodeJson?.nodes?.[parsed.nodeId.replace("-", ":")]?.document?.absoluteBoundingBox;
-  // Figma caps `scale` at 4; clamp so an oversized ask doesn't 400 the whole run.
-  const scale = box?.width ? Math.min(4, Math.max(0.01, target.width / box.width)) : 2;
-
-  const imagesUrl =
-    `https://api.figma.com/v1/images/${encodeURIComponent(parsed.fileKey)}` +
-    `?ids=${encodeURIComponent(parsed.nodeId)}&format=png&scale=${scale}`;
-  const images = await fetch(imagesUrl, { headers });
-  if (!images.ok) throw new Error(`figma images ${images.status}`);
-  const url = (await images.json())?.images?.[parsed.nodeId];
-  if (!url) throw new Error("figma images returned no url for the node");
-  const png = await fetch(url);
-  if (!png.ok) throw new Error(`figma image download ${png.status}`);
-  const decoded = PNG.sync.read(Buffer.from(await png.arrayBuffer()));
-  // The node document rides along so the caller can capture layout geometry from the same fetch
-  // that sized the raster — one round trip, and the geometry provably describes these pixels. The
-  // file-level `styles` map rides along with it: a text node references a published style by id,
-  // and only this map turns that id into the name the design itself uses (`Body/Large`), so the
-  // reference column can say `body/large` rather than the anonymous `text`.
-  const entry =
-    nodeJson?.nodes?.[parsed.nodeId] ?? nodeJson?.nodes?.[parsed.nodeId.replace("-", ":")];
-  return {
-    width: decoded.width,
-    height: decoded.height,
-    data: decoded.data,
-    document: entry?.document,
-    styles: entry?.styles,
-  };
-}
+const figmaRasterizer = new FigmaRestRasterizer({ token: FIGMA_TOKEN });
 
 /** A pre-rendered PNG for this ref under `--reference-images`, or null. */
 function suppliedRaster(ref) {
@@ -285,7 +234,7 @@ async function sourceRaster(record) {
       warn(`${record.id}: skipping figma reference ${ref} — no FIGMA_TOKEN in this run`);
       return null;
     }
-    return rasterizeFigma(ref, target);
+    return figmaRasterizer.rasterize(ref, target);
   }
 
   warn(`${record.id}: don't know how to rasterise a '${source}' reference from '${ref}'`);
@@ -322,6 +271,16 @@ fs.mkdirSync(referencesDir, { recursive: true });
 let written = 0;
 /** Reference id -> a `{ layout }` shim; `referenceAnnotations` reads only that field. */
 const annotatedReferences = {};
+if (FIGMA_TOKEN) {
+  await figmaRasterizer.prepare(
+    records
+      .filter((record) => parseFigmaRef(record.origin.ref) && !suppliedRaster(record.origin.ref))
+      .map((record) => ({
+        ref: record.origin.ref,
+        target: { width: record.raster.width, height: record.raster.height },
+      })),
+  );
+}
 for (const record of records) {
   const target = { width: record.raster.width, height: record.raster.height };
   let raster;
