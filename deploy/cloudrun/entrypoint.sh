@@ -19,6 +19,9 @@ args=(
   --port "${PORT}"
 )
 
+[[ -n "${SERVE_CATALOG_MAX_IMAGES:-}" ]] &&
+  args+=(--catalog-max-images "${SERVE_CATALOG_MAX_IMAGES}")
+
 if [[ -f /app/cli/build/install/compose-preview/rc-player-wasm/index.html ]]; then
   args+=(--rc-player-wasm-dir /app/cli/build/install/compose-preview/rc-player-wasm)
 fi

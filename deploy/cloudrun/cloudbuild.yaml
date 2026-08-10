@@ -57,7 +57,7 @@ steps:
       - --concurrency=4
       - --timeout=3600
       - --port=8080
-      - --set-env-vars=SERVE_MODULE=:samples:cmp,SERVE_IDLE_EXIT=900
+      - --set-env-vars=SERVE_MODULE=:samples:cmp,SERVE_IDLE_EXIT=900,SERVE_CATALOG_MAX_IMAGES=2000
       - --set-secrets=SERVE_TOKEN=compose-preview-token:latest
       # Drop --no-allow-unauthenticated if you front it with IAM instead of the
       # app token. As written the app token is the only gate (public ingress).

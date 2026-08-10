@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.cli.serve.ServeCatalogStore
 import ee.schimke.composeai.cli.serve.ServeUrls
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,6 +24,8 @@ class ServeCommandTest {
           "--accept-bundles-from",
           "artifacts.example, cdn.example",
           "--exit-when-idle=45",
+          "--catalog-max-images",
+          "2500",
         )
       )
 
@@ -37,6 +40,7 @@ class ServeCommandTest {
     )
     assertTrue(command.field("exitWhenIdle"))
     assertEquals(45L, command.field<Long>("idleExitSeconds"))
+    assertEquals(2500, command.field<Int>("catalogMaxImages"))
   }
 
   @Test
@@ -48,6 +52,7 @@ class ServeCommandTest {
     assertFalse(command.field("public"))
     assertFalse(command.field("discover"))
     assertFalse(command.field("allowRenderTrusted"))
+    assertEquals(ServeCatalogStore.DEFAULT_MAX_IMAGES, command.field<Int>("catalogMaxImages"))
   }
 
   @Suppress("UNCHECKED_CAST")

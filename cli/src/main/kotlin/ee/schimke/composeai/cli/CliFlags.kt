@@ -98,6 +98,7 @@ internal object CliFlags {
       "--catalog-repo",
       "--catalog-branch-prefix",
       "--catalog-refresh-interval",
+      "--catalog-max-images",
       "--catalog-source-root",
       "--wasm-dir",
       "--rc-player-wasm-dir",

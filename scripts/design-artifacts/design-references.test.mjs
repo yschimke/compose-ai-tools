@@ -259,6 +259,93 @@ test("planDesignReferences maps design-map entries onto serve preview ids", () =
   assert.equal(records[1].origin.ref, "design/ContactChat.dark.html");
 });
 
+test("planDesignReferences publishes the untagged binding from variant arrays", () => {
+  const designMap = {
+    components: [
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatPreview",
+        source: "figma",
+        ref: [
+          { ref: "figma:abc/73:5" },
+          { ref: "figma:abc/73:6", state: "disabled" },
+        ],
+        previewId: [
+          { previewId: "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview" },
+          {
+            previewId: "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview_Disabled",
+            state: "disabled",
+          },
+        ],
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({ designMap, spec: SPEC, catalog: CATALOG });
+
+  assert.deepEqual(warnings, []);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].origin.ref, "figma:abc/73:5");
+  assert.equal(
+    records[0].origin.previewId,
+    "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview",
+  );
+  assert.equal(records[0].source.uri, "figma:abc/73:5");
+});
+
+test("planDesignReferences accepts string defaults in variant arrays", () => {
+  const designMap = {
+    components: [
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatPreview",
+        source: "figma",
+        ref: ["figma:abc/73:5", { ref: "figma:abc/73:6", state: "disabled" }],
+        previewId: [
+          "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview",
+          {
+            previewId: "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview_Disabled",
+            state: "disabled",
+          },
+        ],
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({ designMap, spec: SPEC, catalog: CATALOG });
+
+  assert.deepEqual(warnings, []);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].origin.ref, "figma:abc/73:5");
+  assert.equal(
+    records[0].origin.previewId,
+    "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview",
+  );
+});
+
+test("planDesignReferences refuses an array with no untagged catalog binding", () => {
+  const designMap = {
+    components: [
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatPreview",
+        source: "figma",
+        ref: [{ ref: "figma:abc/73:6", state: "disabled" }],
+        previewId: [
+          {
+            previewId: "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview_Disabled",
+            state: "disabled",
+          },
+        ],
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({ designMap, spec: SPEC, catalog: CATALOG });
+
+  assert.deepEqual(records, []);
+  assert.equal(warnings.length, 2);
+  assert.match(warnings[0], /0 untagged ref bindings/);
+  assert.match(warnings[1], /0 untagged previewId bindings/);
+});
+
 test("planDesignReferences carries a declared board density to the driver", () => {
   // Only the design-map author knows a board's scale, and it is what lets the reference column be
   // quoted in dp/sp instead of the board's own pixels (design-parity#279). It is driver input, not
@@ -601,6 +688,19 @@ const SANITISED_CATALOG = {
   ],
 };
 
+const SANITISED_SPEC = {
+  groups: [
+    {
+      components: [
+        {
+          componentId: "Home/SmallRound",
+          preview: "HomeListViewPreview",
+        },
+      ],
+    },
+  ],
+};
+
 test("sanitizeBundleEntryId mirrors the Kotlin transform and is idempotent", () => {
   assert.equal(sanitizeBundleEntryId("Foo_A B"), "Foo_A_B");
   assert.equal(sanitizeBundleEntryId("com.example.FooKt.Bar_Font scale 1.5x"),
@@ -631,6 +731,31 @@ test("planDesignReferences joins a raw previewId to its sanitised catalog twin",
   assert.deepEqual(warnings, []);
   assert.equal(records.length, 1);
   assert.match(records[0].label, /^Home\/SmallRound — figma$/);
+});
+
+test("planDesignReferences narrows spec matches using a sanitised array primary id", () => {
+  const designMap = {
+    components: [
+      {
+        code: "app/src/main/kotlin/ui/Home.kt#HomeListViewPreview",
+        source: "figma",
+        ref: [{ ref: "figma:abc/73:6" }],
+        previewId: [
+          { previewId: "ee.app.ui.HomeKt.HomeListViewPreview_Devices - Small Round" },
+        ],
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({
+    designMap,
+    spec: SANITISED_SPEC,
+    catalog: SANITISED_CATALOG,
+  });
+
+  assert.deepEqual(warnings, []);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].origin.ref, "figma:abc/73:6");
 });
 
 test("planDesignReferences refuses to guess when a sanitised id matches several stickers", () => {

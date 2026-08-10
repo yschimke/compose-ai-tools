@@ -261,7 +261,18 @@ function narrowToMappedPreviewId(matches, mappedPreviewId, fn, warnings) {
   const labelled = matches.filter(({ image }) => typeof image?.previewId === "string");
   if (labelled.length === 0) return matches;
 
-  const narrowed = labelled.filter(({ image }) => image.previewId === mappedPreviewId);
+  const exact = labelled.filter(({ image }) => image.previewId === mappedPreviewId);
+  const sanitised =
+    exact.length > 0
+      ? []
+      : labelled.filter(
+          ({ image }) =>
+            sanitizeBundleEntryId(image.previewId) === sanitizeBundleEntryId(mappedPreviewId),
+        );
+  // A sanitised collision is ambiguous: the bundle suffixes one of the colliding ids, and the raw
+  // discovery id no longer identifies which sticker owns the reference. Keep exact matches as-is;
+  // accept the sanitised fallback only when it names one sticker.
+  const narrowed = exact.length > 0 ? exact : sanitised.length === 1 ? sanitised : [];
   if (narrowed.length === 0) {
     warnings.push(
       `design-map '${fn}' names previewId '${mappedPreviewId}', which matches none of its ` +
@@ -273,6 +284,44 @@ function narrowToMappedPreviewId(matches, mappedPreviewId, fn, warnings) {
   // lose a reference the old behaviour published.
   const unlabelled = matches.filter(({ image }) => typeof image?.previewId !== "string");
   return [...narrowed, ...unlabelled];
+}
+
+/**
+ * Reduce a variant-aware design-map entry to the untagged binding the catalog overview publishes.
+ *
+ * design-parity accepts `ref` / `previewId` arrays so one code component can bind every authored
+ * state, size and theme. The catalog reference lane currently publishes one inert raster per
+ * component, however, and historically understood only scalar bindings. Treating an array as a
+ * raster handle made the whole entry fail-soft out of the bundle, which made adding exact parity
+ * coverage remove the component's previously published reference.
+ *
+ * The untagged item is the array form's default binding. Publish that one here; the parity workflow
+ * continues to consume the complete arrays directly. Refuse ambiguous or all-tagged arrays instead
+ * of guessing which state represents the component.
+ */
+function primaryDesignBinding(entry, warnings) {
+  const primary = (value, field) => {
+    if (!Array.isArray(value)) return value;
+    const untagged = value.filter(
+      (item) => item && !item.state && !item.theme && !item.size,
+    );
+    if (untagged.length !== 1) {
+      warnings.push(
+        `design-map '${functionNameOf(entry?.code) ?? entry?.code ?? "?"}' has ${untagged.length} ` +
+          `untagged ${field} bindings; exactly one is required for catalog publication`,
+      );
+      return undefined;
+    }
+    return typeof untagged[0] === "string" ? untagged[0] : untagged[0]?.[field];
+  };
+
+  const ref = primary(entry?.ref, "ref");
+  const previewId = primary(entry?.previewId, "previewId");
+  if (typeof ref !== "string" || ref === "") return undefined;
+  if (Array.isArray(entry?.previewId) && (typeof previewId !== "string" || previewId === "")) {
+    return undefined;
+  }
+  return { ...entry, ref, previewId };
 }
 
 /**
@@ -298,7 +347,9 @@ export function planDesignReferences({ designMap, spec, catalog }) {
   const byPreviewId = imagesByPreviewId(catalog);
   const ordinals = new Map();
 
-  for (const entry of designMap?.components ?? []) {
+  for (const rawEntry of designMap?.components ?? []) {
+    const entry = primaryDesignBinding(rawEntry, warnings);
+    if (!entry) continue;
     const fn = functionNameOf(entry?.code);
     if (!fn) {
       warnings.push(`design-map entry has no 'path#Member' code handle: ${entry?.code ?? "?"}`);
