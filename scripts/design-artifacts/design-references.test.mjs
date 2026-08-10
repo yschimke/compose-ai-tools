@@ -292,6 +292,35 @@ test("planDesignReferences publishes the untagged binding from variant arrays", 
   assert.equal(records[0].source.uri, "figma:abc/73:5");
 });
 
+test("planDesignReferences accepts string defaults in variant arrays", () => {
+  const designMap = {
+    components: [
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatPreview",
+        source: "figma",
+        ref: ["figma:abc/73:5", { ref: "figma:abc/73:6", state: "disabled" }],
+        previewId: [
+          "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview",
+          {
+            previewId: "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview_Disabled",
+            state: "disabled",
+          },
+        ],
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({ designMap, spec: SPEC, catalog: CATALOG });
+
+  assert.deepEqual(warnings, []);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].origin.ref, "figma:abc/73:5");
+  assert.equal(
+    records[0].origin.previewId,
+    "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview",
+  );
+});
+
 test("planDesignReferences refuses an array with no untagged catalog binding", () => {
   const designMap = {
     components: [
@@ -659,6 +688,19 @@ const SANITISED_CATALOG = {
   ],
 };
 
+const SANITISED_SPEC = {
+  groups: [
+    {
+      components: [
+        {
+          componentId: "Home/SmallRound",
+          preview: "HomeListViewPreview",
+        },
+      ],
+    },
+  ],
+};
+
 test("sanitizeBundleEntryId mirrors the Kotlin transform and is idempotent", () => {
   assert.equal(sanitizeBundleEntryId("Foo_A B"), "Foo_A_B");
   assert.equal(sanitizeBundleEntryId("com.example.FooKt.Bar_Font scale 1.5x"),
@@ -689,6 +731,31 @@ test("planDesignReferences joins a raw previewId to its sanitised catalog twin",
   assert.deepEqual(warnings, []);
   assert.equal(records.length, 1);
   assert.match(records[0].label, /^Home\/SmallRound — figma$/);
+});
+
+test("planDesignReferences narrows spec matches using a sanitised array primary id", () => {
+  const designMap = {
+    components: [
+      {
+        code: "app/src/main/kotlin/ui/Home.kt#HomeListViewPreview",
+        source: "figma",
+        ref: [{ ref: "figma:abc/73:6" }],
+        previewId: [
+          { previewId: "ee.app.ui.HomeKt.HomeListViewPreview_Devices - Small Round" },
+        ],
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({
+    designMap,
+    spec: SANITISED_SPEC,
+    catalog: SANITISED_CATALOG,
+  });
+
+  assert.deepEqual(warnings, []);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].origin.ref, "figma:abc/73:6");
 });
 
 test("planDesignReferences refuses to guess when a sanitised id matches several stickers", () => {

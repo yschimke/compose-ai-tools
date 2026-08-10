@@ -261,7 +261,18 @@ function narrowToMappedPreviewId(matches, mappedPreviewId, fn, warnings) {
   const labelled = matches.filter(({ image }) => typeof image?.previewId === "string");
   if (labelled.length === 0) return matches;
 
-  const narrowed = labelled.filter(({ image }) => image.previewId === mappedPreviewId);
+  const exact = labelled.filter(({ image }) => image.previewId === mappedPreviewId);
+  const sanitised =
+    exact.length > 0
+      ? []
+      : labelled.filter(
+          ({ image }) =>
+            sanitizeBundleEntryId(image.previewId) === sanitizeBundleEntryId(mappedPreviewId),
+        );
+  // A sanitised collision is ambiguous: the bundle suffixes one of the colliding ids, and the raw
+  // discovery id no longer identifies which sticker owns the reference. Keep exact matches as-is;
+  // accept the sanitised fallback only when it names one sticker.
+  const narrowed = exact.length > 0 ? exact : sanitised.length === 1 ? sanitised : [];
   if (narrowed.length === 0) {
     warnings.push(
       `design-map '${fn}' names previewId '${mappedPreviewId}', which matches none of its ` +
@@ -301,7 +312,7 @@ function primaryDesignBinding(entry, warnings) {
       );
       return undefined;
     }
-    return untagged[0]?.[field];
+    return typeof untagged[0] === "string" ? untagged[0] : untagged[0]?.[field];
   };
 
   const ref = primary(entry?.ref, "ref");
