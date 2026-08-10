@@ -4070,7 +4070,7 @@ object ServeWeb {
               }
               append("</span><strong>×${occurrences.size}</strong></li>")
             }
-            append("</ul></aside>")
+            append("</ul></aside>\n")
           }
         } ?: ""
     // Size/breakpoint variants intentionally remain separate cards, but catalog-authored labels
@@ -4405,8 +4405,7 @@ object ServeWeb {
         <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
         $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} ·
           <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink$parityLink$playgroundLink$liveNote</p>
-        $renderFailureSummary
-        <div class="cp-catalog-tools">
+        $renderFailureSummary<div class="cp-catalog-tools">
         $themeToggle$searchBox</div>
         $tabBar$gridBlock$emptyState$filterScript$liveScript$about
         """
