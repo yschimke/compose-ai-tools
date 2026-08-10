@@ -259,6 +259,64 @@ test("planDesignReferences maps design-map entries onto serve preview ids", () =
   assert.equal(records[1].origin.ref, "design/ContactChat.dark.html");
 });
 
+test("planDesignReferences publishes the untagged binding from variant arrays", () => {
+  const designMap = {
+    components: [
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatPreview",
+        source: "figma",
+        ref: [
+          { ref: "figma:abc/73:5" },
+          { ref: "figma:abc/73:6", state: "disabled" },
+        ],
+        previewId: [
+          { previewId: "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview" },
+          {
+            previewId: "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview_Disabled",
+            state: "disabled",
+          },
+        ],
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({ designMap, spec: SPEC, catalog: CATALOG });
+
+  assert.deepEqual(warnings, []);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].origin.ref, "figma:abc/73:5");
+  assert.equal(
+    records[0].origin.previewId,
+    "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview",
+  );
+  assert.equal(records[0].source.uri, "figma:abc/73:5");
+});
+
+test("planDesignReferences refuses an array with no untagged catalog binding", () => {
+  const designMap = {
+    components: [
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatPreview",
+        source: "figma",
+        ref: [{ ref: "figma:abc/73:6", state: "disabled" }],
+        previewId: [
+          {
+            previewId: "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview_Disabled",
+            state: "disabled",
+          },
+        ],
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({ designMap, spec: SPEC, catalog: CATALOG });
+
+  assert.deepEqual(records, []);
+  assert.equal(warnings.length, 2);
+  assert.match(warnings[0], /0 untagged ref bindings/);
+  assert.match(warnings[1], /0 untagged previewId bindings/);
+});
+
 test("planDesignReferences carries a declared board density to the driver", () => {
   // Only the design-map author knows a board's scale, and it is what lets the reference column be
   // quoted in dp/sp instead of the board's own pixels (design-parity#279). It is driver input, not

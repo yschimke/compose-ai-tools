@@ -276,6 +276,44 @@ function narrowToMappedPreviewId(matches, mappedPreviewId, fn, warnings) {
 }
 
 /**
+ * Reduce a variant-aware design-map entry to the untagged binding the catalog overview publishes.
+ *
+ * design-parity accepts `ref` / `previewId` arrays so one code component can bind every authored
+ * state, size and theme. The catalog reference lane currently publishes one inert raster per
+ * component, however, and historically understood only scalar bindings. Treating an array as a
+ * raster handle made the whole entry fail-soft out of the bundle, which made adding exact parity
+ * coverage remove the component's previously published reference.
+ *
+ * The untagged item is the array form's default binding. Publish that one here; the parity workflow
+ * continues to consume the complete arrays directly. Refuse ambiguous or all-tagged arrays instead
+ * of guessing which state represents the component.
+ */
+function primaryDesignBinding(entry, warnings) {
+  const primary = (value, field) => {
+    if (!Array.isArray(value)) return value;
+    const untagged = value.filter(
+      (item) => item && !item.state && !item.theme && !item.size,
+    );
+    if (untagged.length !== 1) {
+      warnings.push(
+        `design-map '${functionNameOf(entry?.code) ?? entry?.code ?? "?"}' has ${untagged.length} ` +
+          `untagged ${field} bindings; exactly one is required for catalog publication`,
+      );
+      return undefined;
+    }
+    return untagged[0]?.[field];
+  };
+
+  const ref = primary(entry?.ref, "ref");
+  const previewId = primary(entry?.previewId, "previewId");
+  if (typeof ref !== "string" || ref === "") return undefined;
+  if (Array.isArray(entry?.previewId) && (typeof previewId !== "string" || previewId === "")) {
+    return undefined;
+  }
+  return { ...entry, ref, previewId };
+}
+
+/**
  * Plan the reference records for a repo: which design-map entries map onto which published
  * stickers, and what each one's raster has to look like.
  *
@@ -298,7 +336,9 @@ export function planDesignReferences({ designMap, spec, catalog }) {
   const byPreviewId = imagesByPreviewId(catalog);
   const ordinals = new Map();
 
-  for (const entry of designMap?.components ?? []) {
+  for (const rawEntry of designMap?.components ?? []) {
+    const entry = primaryDesignBinding(rawEntry, warnings);
+    if (!entry) continue;
     const fn = functionNameOf(entry?.code);
     if (!fn) {
       warnings.push(`design-map entry has no 'path#Member' code handle: ${entry?.code ?? "?"}`);
