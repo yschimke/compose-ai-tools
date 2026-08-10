@@ -107,6 +107,8 @@ public fun main() {
                 .composeSupportReport(
                   RcOperationProfiles.CMP_WASM_ALPHA16,
                   availableFontFamilies = fontFamilies.keys,
+                  allowExternalImagePlaceholders =
+                    queryParameter("allowExternalImagePlaceholders") == "1",
                 )
                 .requireFullyRenderable()
               LoadState.Ready(document, fontFamilies, namedValuesFromLocation())

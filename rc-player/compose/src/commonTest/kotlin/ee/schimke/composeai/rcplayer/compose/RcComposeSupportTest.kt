@@ -914,13 +914,12 @@ class RcComposeSupportTest {
 
   @Test
   fun rejectsBitmapSourcesThatNeedAnUnconfiguredHost() {
-    val issue =
+    val document =
       RcDocument(header, listOf(RcBitmapData(1, 1, 1, RcBitmapData.TYPE_PNG, 1, byteArrayOf(1))))
-        .composeSupportReport()
-        .issues
-        .single()
+    val issue = document.composeSupportReport().issues.single()
 
     assertEquals("encoding 1 requires an image host", issue.detail)
+    assertTrue(document.composeSupportReport(allowExternalImagePlaceholders = true).fullyRenderable)
   }
 
   @Test
