@@ -782,7 +782,7 @@ jobs:
           # androidx-main); everyone else gets the 17 default.
           java-version: ${{ matrix.java_version || '17' }}
 
-      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         if: ${{ github.event_name != 'pull_request' || matrix.pr_blocking }}
         with:
           cache-provider: basic
@@ -1520,7 +1520,7 @@ jobs:
           # renderer-android's `minCompileSdk` requires.
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           cache-provider: basic
 
