@@ -475,3 +475,5 @@ should never show two different typefaces.
 - Live bundles resolve coordinate dependencies from the baked Maven tree first,
   then the configured remote repositories. `SERVE_TIMEOUT` (default 1800s)
   guards slow first renders.
+- `SERVE_CATALOG_MAX_IMAGES` forwards to `serve --catalog-max-images`; leave it empty for the CLI
+  default, or raise it when the configured catalogs legitimately contain more images.

@@ -52,6 +52,8 @@ fi
 PORT="${PORT:-8080}"
 
 args=(serve --host 0.0.0.0 --port "${PORT}")
+[[ -n "${SERVE_CATALOG_MAX_IMAGES:-}" ]] &&
+  args+=(--catalog-max-images "${SERVE_CATALOG_MAX_IMAGES}")
 
 # The release tarball carries the matching CMP/Wasm Remote Compose player as a static sidecar.
 # Older releases simply omit it and retain the existing player set.

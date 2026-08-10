@@ -46,6 +46,7 @@ class CliFlagsRegistryTest {
   fun `findCommandIndex skips value flags and their values`() {
     assertEquals(0, CliFlags.findCommandIndex(arrayOf("show")))
     assertEquals(2, CliFlags.findCommandIndex(arrayOf("--module", ":app", "show")))
+    assertEquals(2, CliFlags.findCommandIndex(arrayOf("--catalog-max-images", "2500", "serve")))
     // Regression: a global-position value flag that used to be unclassified mis-detected its value
     // as the command.
     assertEquals(2, CliFlags.findCommandIndex(arrayOf("--since", "2024", "history", "list")))

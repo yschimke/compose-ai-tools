@@ -84,6 +84,8 @@ scaled to zero.
 
 - **`SERVE_IDLE_EXIT`** (default `900`) — the server exits after this many idle
   seconds, letting the instance be reclaimed. Set `0` to disable.
+- **`SERVE_CATALOG_MAX_IMAGES`** (default `2000`) — maximum catalog images registered by the
+  server. Images are fetched lazily, so increasing this does not eagerly load their bitmap bytes.
 - **`timeoutSeconds: 3600`** — hard ceiling on any one request / WebSocket session
   (Cloud Run's max). Lower it to cap session length more aggressively.
 - **`containerConcurrency: 4`** — simultaneous renders per instance.

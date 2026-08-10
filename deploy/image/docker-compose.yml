@@ -68,6 +68,9 @@ services:
       # <system>@<owner>/<repo>, comma-separated. Empty (the default) = the file decides.
       SERVE_CATALOGS: "${SERVE_CATALOGS:-}"
       SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-}"
+      # Maximum catalog images registered by the server. Images remain lazily fetched; raise this
+      # when a catalog set legitimately exceeds the CLI default.
+      SERVE_CATALOG_MAX_IMAGES: "${SERVE_CATALOG_MAX_IMAGES:-}"
       # The producer-trust store is config, like catalogs.json: it lives on the
       # `preview_config` volume at /config/producers.json, seeded on first boot from the
       # store baked at /trust/producers.json and never overwritten again — so the published

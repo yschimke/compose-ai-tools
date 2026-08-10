@@ -46,6 +46,8 @@ spec:
               value: ":samples:cmp"
             - name: SERVE_IDLE_EXIT
               value: "900"
+            - name: SERVE_CATALOG_MAX_IMAGES
+              value: "2000"
             # The shared auth token, sourced from Secret Manager (see deploy.sh,
             # which creates the `compose-preview-token` secret).
             - name: SERVE_TOKEN
