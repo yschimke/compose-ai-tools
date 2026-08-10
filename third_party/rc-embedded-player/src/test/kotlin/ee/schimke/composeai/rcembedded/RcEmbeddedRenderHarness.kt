@@ -27,10 +27,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayer
 import androidx.compose.remote.player.compose.embedded.enableEncodedImageReferences
 import androidx.compose.remote.player.core.RemoteDocument
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.unit.Density
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -72,9 +74,10 @@ import org.robolectric.annotation.GraphicsMode
  * When that probe starts failing, Robolectric has grown the draw pass and this can become a
  * `captureToImage()`.
  *
- * Density is pinned: the catalogs capture at dpi 320, so documents carry dp->px factors for density
- * 2.0 (a 200dp preview bakes to 400px). `xhdpi` is that density — rendering at another one
- * re-lays-out the document and every row would diff on geometry instead of renderer behaviour.
+ * Density comes from each document's `DOC_DENSITY_AT_GENERATION` header property, staged in the
+ * manifest by `rc-compare.mjs`. The Robolectric device remains xhdpi for platform resources, while
+ * `LocalDensity` matches the document so dp-denominated modifiers rasterize at the same geometry as
+ * the baked reference. Legacy manifests retain the historical 2.0 fallback.
  */
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -85,7 +88,7 @@ class RcEmbeddedRenderHarness(private val entry: Entry) {
 
   /** One document to rasterize: `<id>.rc` in the input dir, rendered at the baked PNG's size. */
   @Serializable
-  data class Entry(val id: String, val width: Int, val height: Int) {
+  data class Entry(val id: String, val width: Int, val height: Int, val density: Float = 2f) {
     /** Drives the JUnit case name. */
     override fun toString(): String = id
   }
@@ -124,26 +127,29 @@ class RcEmbeddedRenderHarness(private val entry: Entry) {
 
   private fun renderToBitmap(bytes: ByteArray): Bitmap {
     composeRule.setContent {
-      val density = LocalDensity.current
-      Box(
-        // Sized in px routed through the density rather than in dp, so the capture is exactly the
-        // baked PNG's pixel size — pixelmatch needs both sides equal, and dp rounding drifts.
-        Modifier.size(
-          with(density) { entry.width.toDp() },
-          with(density) { entry.height.toDp() },
-        )
-      ) {
-        // Before the constructor, not after: `RemoteDocument(bytes)` parses inside it, so a
-        // document carrying a URL-encoded bitmap fails here — and takes the whole document with
-        // it — unless the globals are already set. This lane never enters the
-        // `RcPlayer(CapturedDocument)` overload, so it has to opt in for itself.
-        enableEncodedImageReferences()
-        val document = remember { RemoteDocument(bytes) }
-        ExperimentalRemoteDocumentPlayer(
-          document = document,
-          // A still comparison against a still baked PNG.
-          modifier = Modifier.fillMaxSize(),
-        )
+      val hostDensity = LocalDensity.current
+      val documentDensity = Density(entry.density, hostDensity.fontScale)
+      CompositionLocalProvider(LocalDensity provides documentDensity) {
+        Box(
+          // Sized in px routed through the document density, so the capture is exactly the baked
+          // PNG's pixel size — pixelmatch needs both sides equal, and dp rounding drifts.
+          Modifier.size(
+            with(documentDensity) { entry.width.toDp() },
+            with(documentDensity) { entry.height.toDp() },
+          )
+        ) {
+          // Before the constructor, not after: `RemoteDocument(bytes)` parses inside it, so a
+          // document carrying a URL-encoded bitmap fails here — and takes the whole document with
+          // it — unless the globals are already set. This lane never enters the
+          // `RcPlayer(CapturedDocument)` overload, so it has to opt in for itself.
+          enableEncodedImageReferences()
+          val document = remember { RemoteDocument(bytes) }
+          ExperimentalRemoteDocumentPlayer(
+            document = document,
+            // A still comparison against a still baked PNG.
+            modifier = Modifier.fillMaxSize(),
+          )
+        }
       }
     }
 

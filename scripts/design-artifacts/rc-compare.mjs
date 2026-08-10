@@ -54,6 +54,7 @@ import {
 } from "./rc-compare-gate.mjs";
 import { BG, flattenOnto, isFullyTransparent, splitCoverage } from "./rc-compare-pixels.mjs";
 import { laneSplit as laneSplitFor } from "./rc-compare-means.mjs";
+import { generationDensity } from "./rc-document-header.mjs";
 import { DEFAULT_FONTS_DIR, fontFaceCss, loadAndVerifyFonts } from "./rc-fonts.mjs";
 
 function arg(name, def = undefined) {
@@ -214,8 +215,9 @@ if (STAGE_EMBEDDED) {
     const pngName = `previews/${id}.png`;
     if (!entries.has(pngName)) continue;
     const { width, height } = pngSize(entries.get(pngName)());
-    fs.writeFileSync(path.join(STAGE_EMBEDDED, `${id}.rc`), entries.get(`ir/${id}.rc`)());
-    staged.push({ id, width, height });
+    const document = entries.get(`ir/${id}.rc`)();
+    fs.writeFileSync(path.join(STAGE_EMBEDDED, `${id}.rc`), document);
+    staged.push({ id, width, height, density: generationDensity(document) });
   }
   fs.writeFileSync(
     path.join(STAGE_EMBEDDED, "manifest.json"),
