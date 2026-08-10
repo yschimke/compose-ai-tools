@@ -921,6 +921,28 @@ class RcPlayerStateTest {
   }
 
   @Test
+  fun replaysColorAttributesAfterTheColorExpressionsTheyRead() {
+    val state =
+      RcPlayerState(
+        RcDocument(
+          RcHeader(RcVersion(0, 1, 0)),
+          listOf(RcColorConstant(7, 0xff000000.toInt()), RcColorConstant(8, 0xffffffff.toInt())),
+        )
+      )
+    val operations =
+      listOf<RcLinkedNode>(
+        RcLinkedNode.Operation(
+          RcColorExpression(30, RcColorExpression.ID_ID_INTERPOLATE, 7, 8, .5f.toRawBits())
+        ),
+        RcLinkedNode.Operation(RcColorAttribute(31, 30, RcColorAttribute.COLOR_BRIGHTNESS)),
+      )
+
+    state.applyContentStateOperations(operations)
+
+    assertEquals(0.7294118f, state.resolve(RcFloatWord(0x7fc00000 or 31)))
+  }
+
+  @Test
   fun evaluatesAndroidXCollectionLookupsIntoTypedStores() {
     val state =
       RcPlayerState(

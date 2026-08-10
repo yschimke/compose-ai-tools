@@ -559,6 +559,7 @@ public class RcPlayerState(
         is RcFloatExpression -> applyFloatExpression(operation)
         is RcIntegerExpression -> applyIntegerExpression(operation)
         is RcColorExpression -> applyColorExpression(operation)
+        is RcColorAttribute -> applyColorAttribute(operation)
         is RcIdLookup,
         is RcDataMapLookup -> applyDataOperation(operation)
         is RcTextMerge,
