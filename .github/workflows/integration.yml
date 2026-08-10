@@ -1657,7 +1657,7 @@ jobs:
           # (including the BOM grep against `build.gradle.kts`) and then
           # falls through to the Gradle `composePreviewDoctor` task. The
           # `env.compose-bom-version` check fires when any declared
-          # `compose-bom` is below the renderer floor (2025.01.00) — that's
+          # `compose-bom` is below the renderer floor (2025.12.00) — that's
           # the user-facing diagnostic we want this job to guarantee.
           compose-preview doctor --json --project "$RUNNER_TEMP/fixture" \
             > "$RUNNER_TEMP/doctor.json" || true

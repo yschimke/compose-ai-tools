@@ -6,6 +6,14 @@ import kotlin.test.assertTrue
 
 class DoctorReportSerializationTest {
   @Test
+  fun `compose bom preflight matches the compose 1_10 render floor`() {
+    assertEquals(true, DoctorCommand.isComposeBomBelowRenderFloor("2025.11.01"))
+    assertEquals(false, DoctorCommand.isComposeBomBelowRenderFloor("2025.12.00"))
+    assertEquals(false, DoctorCommand.isComposeBomBelowRenderFloor("2026.01.00"))
+    assertEquals(null, DoctorCommand.isComposeBomBelowRenderFloor("catalog.version"))
+  }
+
+  @Test
   fun `round-trips a report with all fields populated`() {
     val report =
       DoctorReport(
