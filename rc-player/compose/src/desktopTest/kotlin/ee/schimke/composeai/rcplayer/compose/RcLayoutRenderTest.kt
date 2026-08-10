@@ -434,6 +434,41 @@ class RcLayoutRenderTest {
   }
 
   @Test
+  fun legacyFlowSpacingRemainsInPhysicalPixelsAtHighDensity() {
+    val green = 0xff00ff00.toInt()
+    val red = 0xffff0000.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 1, 0), legacyWidth = 100, legacyHeight = 40, modern = false),
+        listOf<RcOperation>(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcFlowLayout(3, 30, 1, 4, RcFloatWord.literal(20f), Int.MAX_VALUE, Int.MAX_VALUE),
+          width(100f),
+          height(40f),
+          RcLayoutContent(4),
+        ) +
+          canvas(5, 40f, green) +
+          canvas(6, 40f, red) +
+          List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+    val scene =
+      ImageComposeScene(width = 100, height = 40, density = Density(2f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val bitmap = Bitmap().apply { allocN32Pixels(100, 40) }
+      check(scene.render().readPixels(bitmap))
+
+      assertEquals(green, bitmap.getColor(20, 20))
+      assertEquals(0, bitmap.getColor(50, 20), "20px wire spacing must not become 20dp")
+      assertEquals(red, bitmap.getColor(80, 20), "both children must remain on the first row")
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
   fun coreTextRendersInheritedSparseStyle() {
     val document =
       RcDocument(
