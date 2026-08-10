@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.19.56](https://github.com/yschimke/compose-ai-tools/compare/v0.19.55...v0.19.56) (2026-08-10)
+
+
+### Features
+
+* **serve:** surface failed renders in the UI ([#3613](https://github.com/yschimke/compose-ai-tools/issues/3613)) ([a95b683](https://github.com/yschimke/compose-ai-tools/commit/a95b683f37977bcfc7eea058f84fcf186ab18aa8))
+
+
+### Bug Fixes
+
+* **bundle:** canonicalize inspection sidecars ([#3622](https://github.com/yschimke/compose-ai-tools/issues/3622)) ([ad11140](https://github.com/yschimke/compose-ai-tools/commit/ad11140c101f6acea8f707ba53102845ab27e051))
+* **rc-compare:** honor document generation density ([#3621](https://github.com/yschimke/compose-ai-tools/issues/3621)) ([16607c8](https://github.com/yschimke/compose-ai-tools/commit/16607c8a65d57b1621b5b1d946be708d97feaf17))
+* **rc-compare:** render external image placeholders ([#3625](https://github.com/yschimke/compose-ai-tools/issues/3625)) ([a95abd9](https://github.com/yschimke/compose-ai-tools/commit/a95abd993a77f86c9e06e04a272c5ace4c8559c2))
+* **rc-player:** evaluate layout modifier colors ([#3623](https://github.com/yschimke/compose-ai-tools/issues/3623)) ([6dc74a2](https://github.com/yschimke/compose-ai-tools/commit/6dc74a2cca030106a956fddcf7677276e088a896))
+
 ## [0.19.55](https://github.com/yschimke/compose-ai-tools/compare/v0.19.54...v0.19.55) (2026-08-10)
 
 
