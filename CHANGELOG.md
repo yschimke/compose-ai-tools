@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.19.55](https://github.com/yschimke/compose-ai-tools/compare/v0.19.54...v0.19.55) (2026-08-10)
+
+
+### Bug Fixes
+
+* avoid truncating large catalogs ([#3612](https://github.com/yschimke/compose-ai-tools/issues/3612)) ([8e046e8](https://github.com/yschimke/compose-ai-tools/commit/8e046e8f57b424d983a14cba577cb1cf75f58c9c))
+* **design-artifacts:** --allow-incomplete rejects empty catalogs ([#3614](https://github.com/yschimke/compose-ai-tools/issues/3614)) ([8f93e99](https://github.com/yschimke/compose-ai-tools/commit/8f93e9925b281344b374d4918c9e70e9db9fdc67))
+* lower Compose preview floor to 1.10 ([#3620](https://github.com/yschimke/compose-ai-tools/issues/3620)) ([3193147](https://github.com/yschimke/compose-ai-tools/commit/31931479e0af53a9bb9aeb2b0d8ab9be0cc2127f))
+* **serve:** resolve Robolectric dependencies in sandbox ([#3617](https://github.com/yschimke/compose-ai-tools/issues/3617)) ([97a82f7](https://github.com/yschimke/compose-ai-tools/commit/97a82f7f9912e8df894d193809097450b3a511e3))
+* validate published design references ([#3619](https://github.com/yschimke/compose-ai-tools/issues/3619)) ([6973203](https://github.com/yschimke/compose-ai-tools/commit/6973203494ba359f085774f07d672a81d672a1a8))
+
 ## [0.19.54](https://github.com/yschimke/compose-ai-tools/compare/v0.19.53...v0.19.54) (2026-08-09)
 
 
