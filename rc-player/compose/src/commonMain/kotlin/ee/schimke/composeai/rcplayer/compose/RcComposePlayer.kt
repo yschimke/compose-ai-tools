@@ -183,6 +183,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
 import ee.schimke.composeai.rcplayer.protocol.RcHapticType
+import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
 import ee.schimke.composeai.rcplayer.protocol.RcIdOperation
@@ -611,7 +612,7 @@ private fun RenderLayoutNode(
       }
     is RcLayoutNode.Row -> {
       val density = androidx.compose.ui.platform.LocalDensity.current
-      val spacingDp = state.resolve(node.operation.spacedBy).dp
+      val spacingDp = state.dpTypedDp(state.resolve(node.operation.spacedBy), density)
       val spacing = with(density) { spacingDp.roundToPx() }
       val rowModifier =
         effectiveModifier.applyComponentModifiers(
@@ -657,7 +658,8 @@ private fun RenderLayoutNode(
       }
     }
     is RcLayoutNode.Column -> {
-      val spacing = state.resolve(node.operation.spacedBy).dp
+      val density = androidx.compose.ui.platform.LocalDensity.current
+      val spacing = state.dpTypedDp(state.resolve(node.operation.spacedBy), density)
       Column(
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
@@ -685,7 +687,8 @@ private fun RenderLayoutNode(
       }
     }
     is RcLayoutNode.Flow -> {
-      val spacing = state.resolve(node.operation.spacedBy).dp
+      val density = androidx.compose.ui.platform.LocalDensity.current
+      val spacing = state.dpTypedDp(state.resolve(node.operation.spacedBy), density)
       @OptIn(ExperimentalLayoutApi::class)
       FlowRow(
         effectiveModifier.applyComponentModifiers(
@@ -721,7 +724,7 @@ private fun RenderLayoutNode(
         orientation = RcCollapseOrientation.Horizontal,
         mainPositioning = node.operation.horizontalPositioning,
         crossPositioning = node.operation.verticalPositioning,
-        spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() },
+        spacing = state.dpTypedPixels(state.resolve(node.operation.spacedBy), density).roundToInt(),
         modifier =
           effectiveModifier.applyComponentModifiers(
             node.modifiers,
@@ -746,7 +749,7 @@ private fun RenderLayoutNode(
         orientation = RcCollapseOrientation.Vertical,
         mainPositioning = node.operation.verticalPositioning,
         crossPositioning = node.operation.horizontalPositioning,
-        spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() },
+        spacing = state.dpTypedPixels(state.resolve(node.operation.spacedBy), density).roundToInt(),
         modifier =
           effectiveModifier.applyComponentModifiers(
             node.modifiers,
@@ -1437,6 +1440,20 @@ private class RcVerticalArrangement(private val positioning: Int, override val s
   }
 }
 
+/** AndroidX fields that are pixels in LEGACY/PIXELS documents and dp in DP documents. */
+internal fun rcDpTypedPixels(value: Float, density: Float, densityBehavior: Int): Float =
+  if (densityBehavior == RcHeader.DENSITY_BEHAVIOR_DP) value * density else value
+
+private fun RcPlayerState.dpTypedPixels(value: Float, density: Density): Float =
+  rcDpTypedPixels(value, density.density, document.header.densityBehavior)
+
+private fun RcPlayerState.dpTypedDp(value: Float, density: Density): Dp =
+  with(density) { dpTypedPixels(value, density).toDp() }
+
+/** DimensionIn is the exception: AndroidX treats LEGACY and DP as dp, PIXELS as pixels. */
+internal fun rcDimensionConstraintDp(value: Float, density: Float, densityBehavior: Int): Float =
+  if (densityBehavior == RcHeader.DENSITY_BEHAVIOR_PIXELS) value / density else value
+
 /** AndroidX RowLayout/ColumnLayout positioning, including its additive spacedBy behaviour. */
 internal fun arrangeLinear(
   totalSize: Int,
@@ -1505,7 +1522,7 @@ private fun Modifier.applyComponentModifiers(
       computeBase.applyLayoutComputes(modifiers, state)
     }
   modifiers.dimensionConstraints.forEach { constraint ->
-    result = result.applyDimensionConstraint(constraint, state)
+    result = result.applyDimensionConstraint(constraint, state, density)
   }
   result = result.applyWidth(modifiers, state, density, fillMissingDimensions)
   result = result.applyHeight(modifiers, state, density, fillMissingDimensions)
@@ -1518,8 +1535,8 @@ private fun Modifier.applyComponentModifiers(
         is RcOffsetModifier ->
           result.offset {
             IntOffset(
-              state.resolve(placement.x).roundToInt(),
-              state.resolve(placement.y).roundToInt(),
+              state.dpTypedPixels(state.resolve(placement.x), density).roundToInt(),
+              state.dpTypedPixels(state.resolve(placement.y), density).roundToInt(),
             )
           }
         is RcZIndexModifier -> result.zIndex(state.resolve(placement.value))
@@ -1550,10 +1567,10 @@ private fun Modifier.applyComponentModifiers(
   modifiers.padding.forEach { padding ->
     result =
       result.padding(
-        start = state.resolve(padding.left).dp,
-        top = state.resolve(padding.top).dp,
-        end = state.resolve(padding.right).dp,
-        bottom = state.resolve(padding.bottom).dp,
+        start = state.dpTypedDp(state.resolve(padding.left), density),
+        top = state.dpTypedDp(state.resolve(padding.top), density),
+        end = state.dpTypedDp(state.resolve(padding.right), density),
+        bottom = state.dpTypedDp(state.resolve(padding.bottom), density),
       )
   }
   if (modifiers.clicks.any { it.type != RcClickActionType.CLICK }) {
@@ -2004,7 +2021,8 @@ private fun Modifier.applyAndroidXMarquee(
   operation: RcMarqueeModifier,
   state: RcPlayerState,
 ): Modifier {
-  val density = androidx.compose.ui.platform.LocalDensity.current.density
+  val localDensity = androidx.compose.ui.platform.LocalDensity.current
+  val density = localDensity.density
   val timeSeconds = state.animationTimeSeconds
   return clipToBounds().layout { measurable, constraints ->
     val placeable =
@@ -2016,7 +2034,7 @@ private fun Modifier.applyAndroidXMarquee(
       else constraints.maxWidth
     val width = constraints.constrainWidth(viewportWidth)
     val height = constraints.constrainHeight(placeable.height)
-    val contentWidth = placeable.width + operation.spacing.value
+    val contentWidth = placeable.width + state.dpTypedPixels(operation.spacing.value, localDensity)
     val distance = (contentWidth - width).coerceAtLeast(0f)
     val offset =
       androidXMarqueeOffset(
@@ -2245,34 +2263,51 @@ private fun Modifier.applyGraphicsLayer(
 private fun Modifier.applyDimensionConstraint(
   operation: ee.schimke.composeai.rcplayer.protocol.RcOperation,
   state: RcPlayerState,
+  density: Density,
 ): Modifier =
   when (operation) {
     is RcWidthInModifier ->
-      applyWidthRange(state.resolve(operation.minimum), state.resolve(operation.maximum))
+      applyWidthRange(
+        state.dimensionConstraintDp(state.resolve(operation.minimum), density),
+        state.dimensionConstraintDp(state.resolve(operation.maximum), density),
+      )
     is RcHeightInModifier ->
-      applyHeightRange(state.resolve(operation.minimum), state.resolve(operation.maximum))
+      applyHeightRange(
+        state.dimensionConstraintDp(state.resolve(operation.minimum), density),
+        state.dimensionConstraintDp(state.resolve(operation.maximum), density),
+      )
     is RcDimensionConstraintsModifier ->
       when (operation.type) {
         RcDimensionConstraintsModifier.HORIZONTAL ->
-          applyWidthRange(state.resolve(operation.minimum), state.resolve(operation.maximum))
+          applyWidthRange(
+            state.dimensionConstraintDp(state.resolve(operation.minimum), density),
+            state.dimensionConstraintDp(state.resolve(operation.maximum), density),
+          )
         RcDimensionConstraintsModifier.VERTICAL ->
-          applyHeightRange(state.resolve(operation.minimum), state.resolve(operation.maximum))
+          applyHeightRange(
+            state.dimensionConstraintDp(state.resolve(operation.minimum), density),
+            state.dimensionConstraintDp(state.resolve(operation.maximum), density),
+          )
         RcDimensionConstraintsModifier.REQUIRED_HORIZONTAL ->
           applyWidthRange(
-            state.resolve(operation.minimum),
-            state.resolve(operation.maximum),
+            state.dimensionConstraintDp(state.resolve(operation.minimum), density),
+            state.dimensionConstraintDp(state.resolve(operation.maximum), density),
             required = true,
           )
         RcDimensionConstraintsModifier.REQUIRED_VERTICAL ->
           applyHeightRange(
-            state.resolve(operation.minimum),
-            state.resolve(operation.maximum),
+            state.dimensionConstraintDp(state.resolve(operation.minimum), density),
+            state.dimensionConstraintDp(state.resolve(operation.maximum), density),
             required = true,
           )
         else -> this
       }
     else -> this
   }
+
+private fun RcPlayerState.dimensionConstraintDp(value: Float, density: Density): Float =
+  if (value == -1f) value
+  else rcDimensionConstraintDp(value, density.density, document.header.densityBehavior)
 
 private fun Modifier.applyWidthRange(
   minimum: Float,
@@ -2315,7 +2350,7 @@ private fun Modifier.applyPaintDecorator(
   operation: ee.schimke.composeai.rcplayer.protocol.RcOperation,
   state: RcPlayerState,
 ): Modifier {
-  val density = androidx.compose.ui.platform.LocalDensity.current.density
+  val localDensity = androidx.compose.ui.platform.LocalDensity.current
   return when (operation) {
     is RcBackgroundModifier ->
       drawBehind {
@@ -2349,8 +2384,12 @@ private fun Modifier.applyPaintDecorator(
               alpha = state.resolve(operation.alpha),
             )
           }
-        val borderWidth = state.resolve(operation.borderWidth).coerceAtLeast(0f)
-        val corner = state.resolve(operation.roundedCorner).coerceAtLeast(0f)
+        val borderWidth =
+          state.borderWidthPixels(operation.borderWidth, localDensity).coerceAtLeast(0f)
+        val corner =
+          state
+            .dpTypedPixels(state.resolve(operation.roundedCorner), localDensity)
+            .coerceAtLeast(0f)
         val halfSize = minOf(size.width, size.height) / 2f
         if (operation.wireVersion != 0 && borderWidth >= halfSize) {
           when (operation.shapeType) {
@@ -2390,13 +2429,10 @@ private fun Modifier.applyPaintDecorator(
       }
     is RcRoundedClipRectModifier ->
       drawWithContent {
-        val topStart =
-          rcRoundedClipRadius(operation.topStart, state.resolve(operation.topStart), density)
-        val topEnd = rcRoundedClipRadius(operation.topEnd, state.resolve(operation.topEnd), density)
-        val bottomStart =
-          rcRoundedClipRadius(operation.bottomStart, state.resolve(operation.bottomStart), density)
-        val bottomEnd =
-          rcRoundedClipRadius(operation.bottomEnd, state.resolve(operation.bottomEnd), density)
+        val topStart = state.dpTypedPixels(state.resolve(operation.topStart), localDensity)
+        val topEnd = state.dpTypedPixels(state.resolve(operation.topEnd), localDensity)
+        val bottomStart = state.dpTypedPixels(state.resolve(operation.bottomStart), localDensity)
+        val bottomEnd = state.dpTypedPixels(state.resolve(operation.bottomEnd), localDensity)
         val path =
           Path().apply {
             addRoundRect(
@@ -2419,9 +2455,15 @@ private fun Modifier.applyPaintDecorator(
   }
 }
 
-/** Fixed radii are authored in dp; size-derived references already resolve to physical pixels. */
-internal fun rcRoundedClipRadius(word: RcFloatWord, resolved: Float, density: Float): Float =
-  (resolved * if (word.referencedId == null) density else 1f).coerceAtLeast(0f)
+private fun RcPlayerState.borderWidthPixels(word: RcFloatWord, density: Density): Float {
+  val version = document.header.version
+  val atLeastV7 = version.major > 1 || (version.major == 1 && version.minor >= 1)
+  return if (document.header.densityBehavior == RcHeader.DENSITY_BEHAVIOR_LEGACY && !atLeastV7) {
+    word.value * density.density
+  } else {
+    dpTypedPixels(resolve(word), density)
+  }
+}
 
 @Composable
 private fun Modifier.applyAndroidXRipple(): Modifier {

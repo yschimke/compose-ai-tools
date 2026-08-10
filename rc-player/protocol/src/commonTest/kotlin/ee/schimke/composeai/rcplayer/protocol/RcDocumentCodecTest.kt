@@ -9,6 +9,28 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun headerExposesDensityBehaviorWithAndroidXLegacyDefault() {
+    assertEquals(
+      RcHeader.DENSITY_BEHAVIOR_LEGACY,
+      RcHeader(RcVersion(1, 1, 0), modern = false).densityBehavior,
+    )
+    assertEquals(
+      RcHeader.DENSITY_BEHAVIOR_PIXELS,
+      RcHeader(
+          RcVersion(1, 1, 0),
+          properties =
+            listOf(
+              RcHeaderProperty(
+                RcHeader.DOC_DENSITY_BEHAVIOR,
+                RcHeaderValue.IntValue(RcHeader.DENSITY_BEHAVIOR_PIXELS),
+              )
+            ),
+        )
+        .densityBehavior,
+    )
+  }
+
+  @Test
   fun embeddedFontRoundTripsAlpha16PayloadExactly() {
     val font = RcFontData(fontId = 42, type = 7, data = byteArrayOf(0, 1, -1, 127))
     val document = RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), listOf(font))
