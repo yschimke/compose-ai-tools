@@ -90,10 +90,17 @@ public data class RcComposeSupportReport(val issues: List<RcComposeSupportIssue>
   }
 }
 
-/** Backend-specific coverage, including nested PaintBundle commands hidden behind one RC opcode. */
+/**
+ * Backend-specific coverage, including nested PaintBundle commands hidden behind one RC opcode.
+ *
+ * [allowExternalImagePlaceholders] treats host-backed bitmap encodings as intentionally blank. It
+ * is useful for offline renderers that need to exercise the rest of a document without claiming
+ * that an unreachable URL image was decoded.
+ */
 public fun RcDocument.composeSupportReport(
   profile: RcOperationProfile? = null,
   availableFontFamilies: Set<String> = emptySet(),
+  allowExternalImagePlaceholders: Boolean = false,
 ): RcComposeSupportReport {
   val issues = mutableListOf<RcComposeSupportIssue>()
   val bitmapIds = operations.filterIsInstance<RcBitmapData>().mapTo(mutableSetOf()) { it.imageId }
@@ -221,7 +228,7 @@ public fun RcDocument.composeSupportReport(
     }
     if (operation is RcBitmapData) {
       when {
-        operation.encoding != RcBitmapData.ENCODING_INLINE ->
+        operation.encoding != RcBitmapData.ENCODING_INLINE && !allowExternalImagePlaceholders ->
           issues +=
             RcComposeSupportIssue(
               index,

@@ -456,8 +456,11 @@ async function cmpWasmFor(id, bytes, baked, bakedUnflattened, width, height, ref
     // that reveals it on that signal cannot show a blank surface. This lane is not such a host: the
     // screenshot below goes through CDP, which drives its own compositor frame, and every pixel of
     // the result is then checked against the baked reference. The viewer keeps the default.
+    // External URL images are deliberately transparent in this offline lane. Rendering the rest of
+    // the document is more useful than allowlisting the whole row, and the missing pixels remain in
+    // the parity score rather than being mistaken for a successful image fetch.
     await cmpWasmPage.goto(
-      `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}&handoffDelayMs=0`,
+      `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}&handoffDelayMs=0&allowExternalImagePlaceholders=1`,
     );
     await cmpWasmPage.waitForFunction(
       () => ["ready", "error"].includes(document.documentElement.dataset.rcPlayerState),
