@@ -43,6 +43,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperation
+import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
@@ -66,6 +67,48 @@ import kotlin.test.assertTrue
 import org.jetbrains.skia.Bitmap
 
 class RcLayoutRenderTest {
+  @Test
+  fun paddingBeforeExactSizePositionsSubsequentPaint() {
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 40, legacyHeight = 24, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcBoxLayout(3, 30, 1, 4),
+          width(40f),
+          height(24f),
+          RcLayoutContent(4),
+          RcBoxLayout(5, 50, 1, 4),
+          RcPaddingModifier(
+            RcFloatWord.literal(18f),
+            RcFloatWord.literal(2f),
+            RcFloatWord.literal(0f),
+            RcFloatWord.literal(0f),
+          ),
+          width(16f),
+          height(16f),
+          solidBackground(red = 1f, green = 1f, blue = 1f),
+          RcLayoutContent(6),
+        ) + List(6) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+    val scene =
+      ImageComposeScene(width = 40, height = 24, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val bitmap = Bitmap().apply { allocN32Pixels(40, 24) }
+      check(scene.render(0L).readPixels(bitmap))
+
+      assertEquals(0, bitmap.getColor(17, 10))
+      assertEquals(0xffffffff.toInt(), bitmap.getColor(18, 2))
+      assertEquals(0xffffffff.toInt(), bitmap.getColor(33, 17))
+      assertEquals(0, bitmap.getColor(34, 10))
+    } finally {
+      scene.close()
+    }
+  }
+
   @Test
   fun marqueeClipsOverflowingLayoutContent() {
     val red = 0xffff0000.toInt()
