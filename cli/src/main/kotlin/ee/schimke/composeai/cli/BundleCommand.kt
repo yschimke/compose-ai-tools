@@ -667,12 +667,17 @@ private class PackSubcommand(private val args: List<String>) {
           )
           return null
         }
-        val written = injectSemanticsIntoBundle(bundleFile, outcome.semanticsById.keyedByBundleId())
+        val canonical =
+          InspectionSidecarCanonicalizer.canonicalize(
+            semanticsById = outcome.semanticsById.keyedByBundleId(),
+            layoutById = outcome.layoutById.keyedByBundleId(),
+          )
+        val written = injectSemanticsIntoBundle(bundleFile, canonical.semanticsById)
         val missing = captureCount - written
         // The layout-inspector tree rides alongside the semantics blob (best-effort): a preview
         // that produced a tree gets `previews/<id>.layout.json` so a consumer can build slot-level
         // redlines/wireframes. Injected after semantics so its byte count is reflected too.
-        val layoutWritten = injectLayoutIntoBundle(bundleFile, outcome.layoutById.keyedByBundleId())
+        val layoutWritten = injectLayoutIntoBundle(bundleFile, canonical.layoutById)
         // The fonts/used record rides the same render (best-effort, Android daemon only): carried
         // so the design-catalog export can generate the Wasm tier's fonts.json from actual usage.
         val fontsWritten = injectFontsIntoBundle(bundleFile, outcome.fontsById.keyedByBundleId())
@@ -1576,7 +1581,9 @@ internal const val BUNDLE_PREVIEWS_DIR: String = "previews"
  * payload is the `compose/semantics`
  * [ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload] tree — per-node bounds,
  * label/text, and resolved foreground/background colours — the shape the design-parity static
- * bundle reader consumes as a sibling of the rendered PNG.
+ * bundle reader consumes as a sibling of the rendered PNG. The bundle copy replaces Compose's
+ * per-process node ids with the payload's stable refs; the daemon's live data product keeps its
+ * native ids for same-session joins.
  */
 internal const val BUNDLE_SEMANTICS_SUFFIX: String = ".semantics.json"
 
@@ -1584,7 +1591,9 @@ internal const val BUNDLE_SEMANTICS_SUFFIX: String = ".semantics.json"
  * Suffix for the per-preview layout-inspector blob carried beside `previews/<id>.png`. The payload
  * is the `layout/inspector` [ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload] tree
  * — the full LayoutNode walk with per-node bounds and resolved design tokens — so a consumer can
- * build slot-level redlines/wireframes the (a11y-shaped) semantics tree can't express.
+ * build slot-level redlines/wireframes the (a11y-shaped) semantics tree can't express. The bundle
+ * copy uses stable structural ids for layout-only nodes and the matching stable semantics ref for
+ * nodes shared with the semantics tree.
  */
 internal const val BUNDLE_LAYOUT_SUFFIX: String = ".layout.json"
 

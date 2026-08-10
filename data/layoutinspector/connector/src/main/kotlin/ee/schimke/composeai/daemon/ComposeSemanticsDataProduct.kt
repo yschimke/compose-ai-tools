@@ -1513,8 +1513,22 @@ internal object ComposeLayoutInspector {
       is String -> this
       is Number,
       is Boolean -> toString()
-      else -> toString()
+      // Compose's inspector frequently exposes lambdas and runtime objects. Their default
+      // `toString()` includes a JVM identity hash (and generated lambdas also carry a VM address),
+      // making an otherwise identical layout-inspector capture differ on every renderer process.
+      else -> toString().canonicalizeJvmRuntimeIdentity()
     }
+
+  private fun String.canonicalizeJvmRuntimeIdentity(): String =
+    replace(
+        Regex("""(\${'$'}\${'$'}Lambda)/0x[0-9a-fA-F]+@[0-9a-fA-F]{6,16}\b"""),
+        "${'$'}1/<address>@<identity>",
+      )
+      .replace(Regex("""(\${'$'}\${'$'}Lambda)/0x[0-9a-fA-F]+"""), "${'$'}1/<address>")
+      .replace(
+        Regex("""([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)+)@[0-9a-fA-F]{6,16}\b"""),
+        "${'$'}1@<identity>",
+      )
 
   /**
    * Extracts Wear curved text (a `CurvedLayout`/`TimeText` clock) from a layout node. Curved text
