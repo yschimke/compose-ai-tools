@@ -186,6 +186,29 @@ data class PlaygroundSandbox(
   }
 
   /**
+   * Add the host Maven repository to a jailed Robolectric launch explicitly. Bwrap replaces `HOME`
+   * with [Paths.workDir], so Robolectric's default `user.home/.m2/repository` lookup points at an
+   * empty ephemeral directory even when the operator exposed the real cache with
+   * `--playground-sandbox-ro`. `maven.repo.local` is Robolectric's supported override and remains
+   * readable through that read-only bind.
+   *
+   * Inactive sandboxes return [base] unchanged, preserving the pre-sandbox launch byte-for-byte.
+   * Relative `maven.repo.local` overrides are made absolute before the jail changes directory.
+   */
+  fun robolectricSystemProperties(
+    base: Map<String, String>,
+    mavenRepoLocal: String? = System.getProperty("maven.repo.local"),
+    userHome: String? = System.getProperty("user.home"),
+  ): Map<String, String> {
+    if (!isActive) return base
+    val repository =
+      mavenRepoLocal?.takeIf { it.isNotBlank() }?.let(::File)
+        ?: userHome?.takeIf { it.isNotBlank() }?.let { File(it, ".m2/repository") }
+        ?: return base
+    return base + ("maven.repo.local" to repository.absolutePath)
+  }
+
+  /**
    * Heap ceiling: three quarters of the memory budget, leaving room for the JVM's own non-heap
    * footprint (metaspace, code cache, Skiko/Robolectric native allocations) under a cgroup that
    * would otherwise OOM-kill the process before the heap limit ever bit.
