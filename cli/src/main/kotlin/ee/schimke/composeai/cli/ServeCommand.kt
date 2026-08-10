@@ -687,6 +687,9 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val catalogBranchPrefix: String =
     args.flagValue("--catalog-branch-prefix")?.takeIf { it.isNotBlank() }
       ?: ServeCatalogStore.DEFAULT_BRANCH_PREFIX
+  private val catalogMaxImages: Int =
+    args.flagValue("--catalog-max-images")?.toIntOrNull()?.takeIf { it > 0 }
+      ?: ServeCatalogStore.DEFAULT_MAX_IMAGES
 
   /**
    * A parsed `--catalogs` / `--catalogs-unlisted` entry: the [system] id, the [repo] its
@@ -2459,6 +2462,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         trust = { trustStore.get() },
         repo = catalogRepo,
         branchPrefix = catalogBranchPrefix,
+        maxImages = catalogMaxImages,
         serverSideRenderEnabled = allowRenderTrusted,
         registerWasm = { system, wasmDir ->
           // A local `--wasm-dir` is the operator's explicit override, so a published app never
@@ -3183,6 +3187,10 @@ class ServeCommand(args: List<String>) : Command(args) {
                           yschimke/compose-ai-tools); per-entry @<owner>/<repo> overrides it.
         --catalog-branch-prefix <prefix>
                           Branch prefix for --catalogs (default design-artifacts/).
+        --catalog-max-images <count>
+                          Maximum baked previews loaded from one published catalog (default
+                          ${ServeCatalogStore.DEFAULT_MAX_IMAGES}). Images are fetched lazily; this
+                          bounds registered preview metadata and routes, not eager image downloads.
         --catalog-refresh-interval <seconds>
                           Keep a running server fresh: re-check each --catalogs branch's head every
                           <seconds> and re-fetch (catalog.json + renders + web/wasm/ + liveBundle) in

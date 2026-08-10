@@ -1763,7 +1763,14 @@ class ServeCatalogStore(
     fun previewIdFor(imagePath: String): String =
       imagePath.removePrefix("$IMAGES_DIR/").removeSuffix(".png").replace("/", "__")
 
-    private const val DEFAULT_MAX_IMAGES = 1000
+    /**
+     * Maximum baked previews loaded from one published catalog unless the server overrides it.
+     * Images are fetched lazily, so this bounds registered metadata/routes rather than eager
+     * network or bitmap memory. Keep it above the largest first-party catalog (m3-catalog is
+     * currently ~1,150 previews) so the ceiling remains a guard instead of silently truncating a
+     * healthy catalog.
+     */
+    const val DEFAULT_MAX_IMAGES = 2000
     private const val MAX_FETCH_BYTES = 25L * 1024 * 1024 // 25 MB per catalog asset
 
     /**

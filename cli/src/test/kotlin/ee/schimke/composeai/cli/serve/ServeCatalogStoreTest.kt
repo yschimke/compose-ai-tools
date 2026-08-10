@@ -79,8 +79,8 @@ class ServeCatalogStoreTest {
     // ones: whether an image can be had isn't known at load time any more, and finding out would
     // mean fetching everything — the thing lazy loading exists to avoid. So a cap of two publishes
     // the first two declarations, and a card whose image turns out to be missing reports NotFound
-    // on request instead of being silently replaced by a later one. The cap defaults to 1000 while
-    // the largest published catalog declares ~200, so it does not bind in practice.
+    // on request instead of being silently replaced by a later one. The default stays above the
+    // largest published catalog so it remains a guard rather than truncating valid previews.
     val trust =
       TrustStore(
         branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
