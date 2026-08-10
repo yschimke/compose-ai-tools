@@ -132,6 +132,7 @@ import { applyCatalogPreviewAxes } from "./catalog-preview-axes.mjs";
 import { previewIdAliases } from "./preview-id-alias.mjs";
 import { selectComponentImages, selectOf } from "./catalog-select.mjs";
 import { applyCatalogPreviewDeclarations } from "./catalog-preview-declarations.mjs";
+import { completenessFailure } from "./completeness-gate.mjs";
 
 /**
  * Best-effort fetch + parse of a JSON URL, with a short timeout. Returns null on
@@ -746,9 +747,9 @@ const { values } = parseArgs({
     "source-repo": { type: "string" },
     "source-ref": { type: "string" },
     "source-module": { type: "string" },
-    // Publish even when the render is incomplete (missing previews or absent
-    // semantics). Off by default so a degraded render fails the job rather than
-    // force-pushing a tokens/greenline-less bundle over a good delivery branch.
+    // Publish a partially complete render (missing previews or absent semantics).
+    // A total render miss still fails so it cannot replace a good delivery branch
+    // with an empty catalog.
     "allow-incomplete": { type: "boolean", default: false },
   },
 });
@@ -1034,7 +1035,8 @@ const { catalog, missing, noSticker, withoutSemantics, deferred } =
 // even when the daemon never started or captured zero semantics. For a scheduled
 // job that force-pushes a delivery branch, refuse to publish an incomplete render
 // (missing previews, or pixels with no semantics → no tokens/contrast/greenlines)
-// so a transient failure can't clobber a good branch. `--allow-incomplete` opts out.
+// so a transient failure can't clobber a good branch. `--allow-incomplete` permits
+// partial output, but a total render miss always fails.
 if (missing.length > 0) {
   console.warn(`[${spec.system}] missing renders for: ${missing.join(", ")}`);
   console.warn(
@@ -1070,10 +1072,20 @@ if (deferred.length > 0) {
   );
 }
 
-if (
-  !values["allow-incomplete"] &&
-  (missing.length > 0 || withoutSemantics.length > 0)
-) {
+const completenessFailureReason = completenessFailure({
+  allowIncomplete: values["allow-incomplete"],
+  resolvedCount: catalog.components.length,
+  missingCount: missing.length,
+  withoutSemanticsCount: withoutSemantics.length,
+});
+if (completenessFailureReason === "empty") {
+  console.error(
+    `[${spec.system}] zero catalog components resolved a render — refusing to publish. ` +
+      `--allow-incomplete permits a partial catalog, not an empty one.`,
+  );
+  process.exit(1);
+}
+if (completenessFailureReason === "incomplete") {
   console.error(
     `[${spec.system}] incomplete render — refusing to publish. ` +
       `Re-run the render, or pass --allow-incomplete to override.`,
