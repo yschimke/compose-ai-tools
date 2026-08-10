@@ -124,6 +124,38 @@ class PlaygroundSandboxTest {
   }
 
   @Test
+  fun `jailed robolectric launch resolves dependencies from the host maven repository`() {
+    val sandbox = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.BWRAP)
+    val base = linkedMapOf("robolectric.graphicsMode" to "NATIVE")
+
+    val fromHome =
+      sandbox.robolectricSystemProperties(base = base, mavenRepoLocal = null, userHome = "/root")
+    assertEquals("NATIVE", fromHome["robolectric.graphicsMode"])
+    assertEquals("/root/.m2/repository", fromHome["maven.repo.local"])
+
+    val overridden =
+      sandbox.robolectricSystemProperties(
+        base = base,
+        mavenRepoLocal = "/cache/maven",
+        userHome = "/ignored",
+      )
+    assertEquals("/cache/maven", overridden["maven.repo.local"])
+  }
+
+  @Test
+  fun `unsandboxed robolectric launch stays unchanged`() {
+    val base = linkedMapOf("robolectric.graphicsMode" to "NATIVE")
+
+    assertTrue(
+      PlaygroundSandbox.NONE.robolectricSystemProperties(
+        base = base,
+        mavenRepoLocal = "/cache/maven",
+        userHome = "/root",
+      ) === base
+    )
+  }
+
+  @Test
   fun `custom carries the operator argv verbatim and claims nothing`() {
     val sandbox = PlaygroundSandbox.parseProfile("custom:firejail --net=none").getOrThrow()
 

@@ -411,7 +411,10 @@ internal object ServeBundleDaemon {
             put("composeai.daemon.previewsJsonPath", previewsJson.absolutePath)
             put("composeai.render.outputDir", File(workDir, "renders").absolutePath)
             put("composeai.render.placeholderMissingResources", "true")
-            putAll(backendLaunch.extraSystemProperties)
+            putAll(
+              if (android) sandbox.robolectricSystemProperties(backendLaunch.extraSystemProperties)
+              else backendLaunch.extraSystemProperties
+            )
           },
         workingDirectory = workDir.absolutePath,
         manifestPath = previewsJson.absolutePath,

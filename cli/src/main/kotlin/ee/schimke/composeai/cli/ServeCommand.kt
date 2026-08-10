@@ -1752,7 +1752,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     val launch = AndroidBundleLaunch()
     val daemonClasspath = (daemonJars + listOf(androidJar)).map { it.absolutePath }
     val jvmArgs = launch.jvmArgs()
-    val sysprops = launch.robolectricSystemProperties()
+    val sysprops = sandbox.robolectricSystemProperties(launch.robolectricSystemProperties())
     return { classesDir, previewsJson, workspaceRoot, userClasspath ->
       openPlaygroundFirstFrameDaemon(
         daemonClasspath,
