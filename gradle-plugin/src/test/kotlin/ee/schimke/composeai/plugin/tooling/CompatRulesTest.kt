@@ -126,6 +126,27 @@ class CompatRulesTest {
   }
 
   @Test
+  fun `compose below the render floor fires old-dep warning`() {
+    val main = mainWithBom() + ("androidx.compose.ui:ui" to "1.9.5")
+    val test = main + ("androidx.compose.ui:ui-test-manifest" to "1.9.5")
+    val finding =
+      CompatRules.evaluate(main, test).single { it.id == "old-dep-androidx.compose.ui:ui" }
+
+    assertEquals("warning", finding.severity)
+    assertTrue("recommended >= 1.10.0" in finding.message)
+  }
+
+  @Test
+  fun `compose at the render floor is quiet`() {
+    val main = mainWithBom() + ("androidx.compose.ui:ui" to "1.10.0")
+    val test = main + ("androidx.compose.ui:ui-test-manifest" to "1.10.0")
+
+    assertNull(
+      CompatRules.evaluate(main, test).firstOrNull { it.id == "old-dep-androidx.compose.ui:ui" }
+    )
+  }
+
+  @Test
   fun `current activity is quiet`() {
     val main = mainWithBom() + ("androidx.activity:activity" to "1.13.0")
     val test = main + ("androidx.compose.ui:ui-test-manifest" to "1.10.6")

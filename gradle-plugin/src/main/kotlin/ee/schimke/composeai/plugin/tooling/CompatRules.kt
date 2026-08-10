@@ -54,7 +54,7 @@ internal object CompatRules {
    */
   private val OLD_DEP_MINIMUMS: List<Pair<String, Semver>> =
     listOf(
-      "androidx.compose.ui:ui" to Semver(1, 9, 0),
+      "androidx.compose.ui:ui" to Semver(1, 10, 0),
       "androidx.activity:activity" to Semver(1, 10, 0),
       "androidx.core:core" to Semver(1, 15, 0),
       "androidx.lifecycle:lifecycle-runtime" to Semver(2, 8, 0),

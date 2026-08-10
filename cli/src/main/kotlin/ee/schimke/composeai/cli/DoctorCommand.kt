@@ -891,16 +891,18 @@ class DoctorCommand(
    * Grep-based "is your compose-bom recent enough" pre-flight. Runs BEFORE any Gradle call, so it
    * works even outside a Gradle project or before the plugin is applied — complements the
    * plugin-side `CompatRules` findings, which only fire once Gradle has resolved the test
-   * classpath. Renderer-android is compiled with compose- compiler 2.2.21, which emits calls to
-   * `ComposeUiNode.setCompositeKeyHash` — first shipped in compose-ui 1.9 (compose-bom 2025.01.00).
-   * Older consumers hit `NoSuchMethodError` the moment `composePreviewRender` starts.
+   * classpath. The renderer's own `MeasuredWrapBox` links against
+   * `ComposeUiNode.Companion.getApplyOnDeactivatedNodeAssertion`, first shipped in compose-ui
+   * 1.10.0 (compose-bom 2025.12.00). This wrapper is used by the standalone `composePreviewRender`
+   * task as well as daemon-backed rendering, so even a simple preview cannot stay on a 1.9.x render
+   * classpath.
    */
   private fun checkComposeBomVersion() {
     val workspace = File(projectDirArg ?: ".").canonicalFile
     val versions = findComposeBomDeclarations(workspace)
     if (versions.isEmpty()) return // No declarations → nothing to assert on.
 
-    val tooOld = versions.filter { (_, v) -> v.isOlderThan(MIN_BOM_YEAR, MIN_BOM_MONTH) }
+    val tooOld = versions.filter { (_, v) -> isComposeBomBelowRenderFloor(v.raw) == true }
     if (tooOld.isEmpty()) {
       val summary = versions.joinToString(", ") { (_, v) -> v.raw }
       addCheck(
@@ -923,7 +925,7 @@ class DoctorCommand(
           message =
             "compose-bom ${v.raw} declared in ${source.relativeTo(workspace).path} — renderer needs ≥$floor",
           detail =
-            "Older BOMs lack `ComposeUiNode.setCompositeKeyHash`; `composePreviewRender` will fail with NoSuchMethodError.",
+            "Compose UI before 1.10.0 lacks `ComposeUiNode.Companion.getApplyOnDeactivatedNodeAssertion`. The standalone `composePreviewRender` path also uses the renderer-owned `MeasuredWrapBox`, so simple previews are not exempt. With dependency management enabled the plugin raises the render graph and matching resource pins together; with `composePreview.manageDependencies = false`, resolution fails with an actionable error instead.",
           remediation =
             DoctorRemediation(
               summary = "Bump the BOM.",
@@ -1363,12 +1365,15 @@ class DoctorCommand(
 
   companion object {
     /**
-     * Minimum supported Compose BOM — 2025.01.00 → compose-ui 1.9.0. That's the first BOM where
-     * `ComposeUiNode.setCompositeKeyHash` (emitted by compose-compiler 2.2.21) exists on the
-     * runtime side.
+     * Minimum supported Compose BOM — 2025.12.00 → compose-ui 1.10.0. That's the first BOM whose
+     * runtime exposes `ComposeUiNode.Companion.getApplyOnDeactivatedNodeAssertion`, linked by the
+     * renderer's `MeasuredWrapBox` on both standalone and daemon-backed Android renders.
      */
     private const val MIN_BOM_YEAR = 2025
-    private const val MIN_BOM_MONTH = 1
+    private const val MIN_BOM_MONTH = 12
+
+    internal fun isComposeBomBelowRenderFloor(raw: String): Boolean? =
+      ComposeVersion.parse(raw)?.isOlderThan(MIN_BOM_YEAR, MIN_BOM_MONTH)
 
     /** User-Agent for doctor's HEAD probes — matches the string `scripts/install.sh` sends. */
     private const val USER_AGENT = "compose-preview-doctor"
@@ -1479,10 +1484,20 @@ class DoctorCommand(
             ),
         ),
         ErrorSignature(
+          pattern = "getApplyOnDeactivatedNodeAssertion",
+          hint =
+            "compose-ui below 1.10.0 — even standalone simple previews pass through the renderer's MeasuredWrapBox",
+          remediation =
+            DoctorRemediation(
+              summary =
+                "Bump compose-bom to at least 2025.12.00, or enable composePreview.manageDependencies so the plugin raises the render graph and resource pins together."
+            ),
+        ),
+        ErrorSignature(
           pattern = "NoSuchMethodError: androidx.compose.runtime.ComposeUiNode",
           hint =
             "compose-bom too old — renderer-compiled calls postdate the runtime on the consumer's classpath",
-          remediation = DoctorRemediation(summary = "Bump compose-bom to at least 2025.01.00."),
+          remediation = DoctorRemediation(summary = "Bump compose-bom to at least 2025.12.00."),
         ),
       )
   }

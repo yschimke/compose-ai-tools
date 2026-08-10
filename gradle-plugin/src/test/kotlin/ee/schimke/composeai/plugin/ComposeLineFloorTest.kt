@@ -61,7 +61,7 @@ class ComposeLineFloorTest {
   @Test
   fun `an alpha of the floor is still below it`() {
     // Derived from the constant rather than hard-coded, so moving the floor cannot leave this
-    // asserting the opposite of its name (issue #3603 moved it from 1.11.2 to 1.11.0).
+    // asserting the opposite of its name when the floor moves.
     assertThat(upgrade("androidx.compose.ui", "$floor-alpha01")).isEqualTo(floor)
     // …but an alpha of a HIGHER version is not.
     assertThat(upgrade("androidx.compose.ui", "1.12.0-alpha01")).isNull()
@@ -72,10 +72,10 @@ class ComposeLineFloorTest {
     // Probing androidx.compose.ui:ui-android for the accessor that actually fails:
     //   1.9.5  — ComposeUiNode$Companion.getApplyOnDeactivatedNodeAssertion ABSENT
     //   1.10.0 — PRESENT
-    // and yschimke/horologist renders its full 80-component catalog on 1.11.0. So the floor must
-    // raise 1.9.5 (provably unlinkable) and must NOT raise 1.11.0 (proven to work end to end) —
-    // the second half is what #3603 was: a 1.11.2 floor raised a consumer that was already fine.
+    // Android fixtures also rendered end to end on 1.10.x before the stable BOM moved to 1.11.x.
+    // Therefore 1.9.5 remains below the floor, while 1.10.0 is the first accepted release.
     assertThat(upgrade("androidx.compose.ui", "1.9.5")).isEqualTo(floor)
+    assertThat(upgrade("androidx.compose.ui", "1.10.0")).isNull()
     assertThat(upgrade("androidx.compose.ui", "1.11.0")).isNull()
   }
 
