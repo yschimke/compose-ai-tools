@@ -203,15 +203,38 @@ export function sanitizeBundleEntryId(id) {
 }
 
 /**
+ * The base id of a bundle collision family containing [previewId], or null.
+ *
+ * `assignBundleEntryIds` lets the first sanitised claimant keep `Foo_A_B` and names later
+ * claimants `Foo_A_B_1`, `Foo_A_B_2`, ... . A published catalog retains those bundle ids but not
+ * the manifest's parallel raw-id aliases, so seeing the base plus a numeric suffix is the only
+ * evidence available here that reversing the sanitisation would be unsafe.
+ */
+function collisionFamilyBase(publishedPreviewIds, previewId) {
+  const ids = new Set(publishedPreviewIds);
+  const bases = new Set();
+  for (const id of ids) {
+    const suffix = String(id).match(/^(.*)_([1-9][0-9]*)$/);
+    if (suffix && ids.has(suffix[1])) bases.add(suffix[1]);
+  }
+
+  const mapped = sanitizeBundleEntryId(previewId);
+  if (bases.has(mapped)) return mapped;
+  const mappedSuffix = mapped.match(/^(.*)_([1-9][0-9]*)$/);
+  return mappedSuffix && bases.has(mappedSuffix[1]) ? mappedSuffix[1] : null;
+}
+
+/**
  * Resolve a design-map entry's `previewId` against the catalog, across both id namespaces.
  *
- * Returns `[]` when nothing matches, and also when the sanitised form matches SEVERAL images. That
- * second case is `uniqueBundleEntryId`'s collision suffix: two distinct raw ids that sanitise the
- * same are disambiguated in-bundle (`Foo_A_B`, `Foo_A_B-2`), and the raw id alone can no longer say
- * which one it meant. Publishing a reference against a coin-flip is worse than publishing none, so
- * the caller warns instead.
+ * Returns `[]` when nothing matches, and also when the published ids form a bundle collision family
+ * (`Foo_A_B`, `Foo_A_B_1`, ...). The raw aliases that distinguish those entries are no longer
+ * present in catalog.json, so even an apparent exact hit can belong to the colliding sibling.
+ * Publishing a reference against a coin-flip is worse than publishing none, so the caller warns
+ * instead.
  */
 function matchesForPreviewId({ exact, sanitised }, previewId) {
+  if (collisionFamilyBase(exact.keys(), previewId)) return [];
   const direct = exact.get(previewId);
   if (direct && direct.length > 0) return direct;
   const viaSanitised = sanitised.get(sanitizeBundleEntryId(previewId)) ?? [];
@@ -261,6 +284,18 @@ function narrowToMappedPreviewId(matches, mappedPreviewId, fn, warnings) {
   const labelled = matches.filter(({ image }) => typeof image?.previewId === "string");
   if (labelled.length === 0) return matches;
 
+  const collisionBase = collisionFamilyBase(
+    labelled.map(({ image }) => image.previewId),
+    mappedPreviewId,
+  );
+  if (collisionBase) {
+    warnings.push(
+      `design-map '${fn}' names previewId '${mappedPreviewId}', but published bundle ids in ` +
+        `the '${collisionBase}' collision family cannot be reversed without raw-id aliases`,
+    );
+    return [];
+  }
+
   const exact = labelled.filter(({ image }) => image.previewId === mappedPreviewId);
   const sanitised =
     exact.length > 0
@@ -269,9 +304,9 @@ function narrowToMappedPreviewId(matches, mappedPreviewId, fn, warnings) {
           ({ image }) =>
             sanitizeBundleEntryId(image.previewId) === sanitizeBundleEntryId(mappedPreviewId),
         );
-  // A sanitised collision is ambiguous: the bundle suffixes one of the colliding ids, and the raw
-  // discovery id no longer identifies which sticker owns the reference. Keep exact matches as-is;
-  // accept the sanitised fallback only when it names one sticker.
+  // A sanitised collision without a published suffix is still ambiguous when this match set carries
+  // several unsanitised ids. Keep exact matches as-is; accept the sanitised fallback only when it
+  // names one sticker. Real bundle collision suffixes were rejected above.
   const narrowed = exact.length > 0 ? exact : sanitised.length === 1 ? sanitised : [];
   if (narrowed.length === 0) {
     warnings.push(
@@ -315,9 +350,19 @@ function primaryDesignBinding(entry, warnings) {
     return typeof untagged[0] === "string" ? untagged[0] : untagged[0]?.[field];
   };
 
+  const warningCount = warnings.length;
   const ref = primary(entry?.ref, "ref");
+  const refWarningAdded = warnings.length > warningCount;
   const previewId = primary(entry?.previewId, "previewId");
-  if (typeof ref !== "string" || ref === "") return undefined;
+  if (typeof ref !== "string" || ref === "") {
+    if (!refWarningAdded) {
+      warnings.push(
+        `design-map '${functionNameOf(entry?.code) ?? entry?.code ?? "?"}' has an invalid ref ` +
+          `binding; expected a non-empty string`,
+      );
+    }
+    return undefined;
+  }
   if (Array.isArray(entry?.previewId) && (typeof previewId !== "string" || previewId === "")) {
     return undefined;
   }

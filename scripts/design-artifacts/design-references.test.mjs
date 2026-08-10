@@ -321,6 +321,30 @@ test("planDesignReferences accepts string defaults in variant arrays", () => {
   );
 });
 
+test("planDesignReferences warns before dropping invalid scalar and array refs", () => {
+  const designMap = {
+    components: [
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatPreview",
+        source: "figma",
+        ref: "",
+      },
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatDarkPreview",
+        source: "figma",
+        ref: [{}],
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({ designMap, spec: SPEC, catalog: CATALOG });
+
+  assert.deepEqual(records, []);
+  assert.equal(warnings.length, 2);
+  assert.match(warnings[0], /ContactChatPreview.*invalid ref binding/);
+  assert.match(warnings[1], /ContactChatDarkPreview.*invalid ref binding/);
+});
+
 test("planDesignReferences refuses an array with no untagged catalog binding", () => {
   const designMap = {
     components: [
@@ -758,46 +782,52 @@ test("planDesignReferences narrows spec matches using a sanitised array primary 
   assert.equal(records[0].origin.ref, "figma:abc/73:6");
 });
 
-test("planDesignReferences refuses to guess when a sanitised id matches several stickers", () => {
-  // `uniqueBundleEntryId`'s collision case: two distinct raw ids that sanitise to the same string.
-  // The design-map id below matches NEITHER exactly, and sanitises to a form both share — so the
-  // raw id can no longer say which was meant. A coin-flip reference is worse than none.
+test("planDesignReferences refuses collision-suffixed bundle ids without raw aliases", () => {
+  // What a real bundle-derived catalog carries after raw `P_A B` and `P_A/B` collide: the first
+  // sanitised claimant keeps the base and the second gets `_1`. The raw aliases that identify
+  // which is which are not retained in catalog.json, so neither raw id can be reversed safely.
   const collidingCatalog = {
     components: [
       {
         componentId: "Home/Round",
         images: [
-          { path: "a.png", width: 1, height: 1, previewId: "ee.HomeKt.P_A B" },
-          { path: "b.png", width: 1, height: 1, previewId: "ee.HomeKt.P_A/B" },
+          { path: "a.png", width: 1, height: 1, previewId: "ee.HomeKt.P_A_B" },
+          { path: "b.png", width: 1, height: 1, previewId: "ee.HomeKt.P_A_B_1" },
         ],
       },
     ],
   };
 
-  const ambiguous = planDesignReferences({
-    designMap: {
-      components: [
-        { code: "a.kt#P", source: "figma", ref: "figma:abc/1:1", previewId: "ee.HomeKt.P_A+B" },
-      ],
-    },
-    spec: ANNOTATION_SPEC,
-    catalog: collidingCatalog,
-  });
-  assert.deepEqual(ambiguous.records, []);
-  assert.equal(ambiguous.warnings.length, 1);
-  assert.match(ambiguous.warnings[0], /matches no published sticker/);
+  for (const previewId of ["ee.HomeKt.P_A B", "ee.HomeKt.P_A/B", "ee.HomeKt.P_A_B_1"]) {
+    const result = planDesignReferences({
+      designMap: {
+        components: [{ code: "a.kt#P", source: "figma", ref: "figma:abc/1:1", previewId }],
+      },
+      spec: ANNOTATION_SPEC,
+      catalog: collidingCatalog,
+    });
+    assert.deepEqual(result.records, []);
+    assert.equal(result.warnings.length, 1);
+    assert.match(result.warnings[0], /matches no published sticker/);
+  }
 
-  // An id that DOES hit one of them exactly still resolves, so the refusal is scoped to genuine
-  // ambiguity rather than to any catalog that happens to contain a collision.
-  const exact = planDesignReferences({
+  const specLed = planDesignReferences({
     designMap: {
       components: [
-        { code: "a.kt#P", source: "figma", ref: "figma:abc/1:1", previewId: "ee.HomeKt.P_A B" },
+        {
+          code: "a.kt#P",
+          source: "figma",
+          ref: "figma:abc/1:1",
+          previewId: "ee.HomeKt.P_A/B",
+        },
       ],
     },
-    spec: ANNOTATION_SPEC,
+    spec: {
+      groups: [{ components: [{ componentId: "Home/Round", preview: "P" }] }],
+    },
     catalog: collidingCatalog,
   });
-  assert.deepEqual(exact.warnings, []);
-  assert.equal(exact.records.length, 1);
+  assert.deepEqual(specLed.records, []);
+  assert.equal(specLed.warnings.length, 1);
+  assert.match(specLed.warnings[0], /collision family cannot be reversed/);
 });
