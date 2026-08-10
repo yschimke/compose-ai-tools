@@ -18,6 +18,7 @@ package ee.schimke.composeai.rcembedded.jvm
 
 import java.io.File
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.float
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -36,10 +37,9 @@ import org.junit.Test
  * both this and the Android harness read; this fills `rc.jvm.output`, and `rc-compare.mjs
  * --embedded-jvm` reads it back. With nothing staged it skips, so `check` stays green.
  *
- * Density is pinned to 2.0 (the catalogs capture at dpi 320, so documents carry dp→px factors for
- * density 2.0 — a 200dp preview bakes to 400px), matching [renderRemoteDocumentToPng]'s default and
- * the Android harness's `xhdpi`. Rendering at another density would re-lay-out the document and
- * every row would diff on geometry instead of renderer behaviour.
+ * Density comes from each document's `DOC_DENSITY_AT_GENERATION` header property, staged in the
+ * manifest by `rc-compare.mjs`. That keeps dp-denominated modifiers at the same geometry as the
+ * baked reference; legacy manifests retain the historical 2.0 fallback.
  *
  * Like the other skiko tests here it **needs the natives** (`skiko-awt-runtime-*` + a loadable GL
  * lib) and skips loudly where they are absent — a CI check, not a bare-working-tree one.
@@ -87,13 +87,15 @@ class RcJvmRenderHarness {
       png.delete()
       err.delete()
 
-      runCatching { renderRemoteDocumentToPng(rc.readBytes(), entry.width, entry.height) }
+      runCatching {
+          renderRemoteDocumentToPng(rc.readBytes(), entry.width, entry.height, entry.density)
+        }
         .onSuccess { bytes -> png.writeBytes(bytes) }
         .onFailure { t -> err.writeText("${t::class.java.simpleName}: ${t.message?.take(500)}") }
     }
   }
 
-  private data class Entry(val id: String, val width: Int, val height: Int)
+  private data class Entry(val id: String, val width: Int, val height: Int, val density: Float)
 
   private fun parseManifest(manifest: File): List<Entry> =
     Json.parseToJsonElement(manifest.readText()).jsonArray.map { element ->
@@ -102,6 +104,7 @@ class RcJvmRenderHarness {
         id = obj.getValue("id").jsonPrimitive.content,
         width = obj.getValue("width").jsonPrimitive.int,
         height = obj.getValue("height").jsonPrimitive.int,
+        density = obj["density"]?.jsonPrimitive?.float ?: 2f,
       )
     }
 
