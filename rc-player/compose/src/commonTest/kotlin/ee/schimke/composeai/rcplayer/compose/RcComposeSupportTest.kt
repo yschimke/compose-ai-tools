@@ -80,9 +80,17 @@ class RcComposeSupportTest {
   }
 
   @Test
-  fun fixedRoundedClipRadiiScaleButSizeDerivedRadiiDoNot() {
-    assertEquals(104f, rcRoundedClipRadius(RcFloatWord.literal(52f), resolved = 52f, density = 2f))
-    assertEquals(110f, rcRoundedClipRadius(RcFloatWord(0x7fc0002a), resolved = 110f, density = 2f))
+  fun dpTypedOperationValuesFollowDocumentDensityBehavior() {
+    assertEquals(52f, rcDpTypedPixels(52f, 2f, RcHeader.DENSITY_BEHAVIOR_LEGACY))
+    assertEquals(52f, rcDpTypedPixels(52f, 2f, RcHeader.DENSITY_BEHAVIOR_PIXELS))
+    assertEquals(104f, rcDpTypedPixels(52f, 2f, RcHeader.DENSITY_BEHAVIOR_DP))
+  }
+
+  @Test
+  fun dimensionConstraintsRetainTheirAndroidXLegacyException() {
+    assertEquals(52f, rcDimensionConstraintDp(52f, 2f, RcHeader.DENSITY_BEHAVIOR_LEGACY))
+    assertEquals(26f, rcDimensionConstraintDp(52f, 2f, RcHeader.DENSITY_BEHAVIOR_PIXELS))
+    assertEquals(52f, rcDimensionConstraintDp(52f, 2f, RcHeader.DENSITY_BEHAVIOR_DP))
   }
 
   @Test

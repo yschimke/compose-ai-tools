@@ -56,6 +56,10 @@ public data class RcHeader(
   public val density: Float
     get() = floatProperty(DOC_DENSITY_AT_GENERATION) ?: 1f
 
+  /** How density-sensitive operation fields are interpreted at playback. */
+  public val densityBehavior: Int
+    get() = intProperty(DOC_DENSITY_BEHAVIOR) ?: DENSITY_BEHAVIOR_LEGACY
+
   public val capabilities: Long
     get() = (property(DOC_CAPABILITIES) as? RcHeaderValue.LongValue)?.value ?: legacyCapabilities
 
@@ -70,6 +74,11 @@ public data class RcHeader(
     public const val DOC_WIDTH: Int = 5
     public const val DOC_HEIGHT: Int = 6
     public const val DOC_DENSITY_AT_GENERATION: Int = 7
+    public const val DOC_DENSITY_BEHAVIOR: Int = 27
+
+    public const val DENSITY_BEHAVIOR_LEGACY: Int = 0
+    public const val DENSITY_BEHAVIOR_PIXELS: Int = 1
+    public const val DENSITY_BEHAVIOR_DP: Int = 2
     // Capabilities are part of the legacy header, not currently a documented map property.
     private const val DOC_CAPABILITIES: Int = -1
   }
