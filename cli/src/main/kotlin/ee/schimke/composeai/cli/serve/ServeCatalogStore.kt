@@ -211,7 +211,12 @@ class ServeCatalogStore(
   }
 
   sealed interface Result {
-    data class Ok(val system: String, val previewCount: Int, val trust: String) : Result
+    data class Ok(
+      val system: String,
+      val previewCount: Int,
+      val trust: String,
+      val failedRenderCount: Int = 0,
+    ) : Result
 
     data class Failed(val system: String, val reason: String) : Result
   }
@@ -414,6 +419,30 @@ class ServeCatalogStore(
         )
     }
 
+    // Failed renders are catalog coverage too: list a card with structured diagnostics even though
+    // there are no pixels to fetch. They are deliberately not aliases/live-only ids — the failure
+    // describes the published render, and a static catalog must never turn it into a silent 404.
+    val failedIds = LinkedHashSet<String>()
+    for ((index, failure) in catalog.failures.withIndex()) {
+      if (count + deferredIds.size + failedIds.size >= maxImages) break
+      val id =
+        failure.id.takeIf { it.isNotBlank() }
+          ?: "render-failed--${failure.componentId.orEmpty().lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')}--$index"
+      if (id in bakedPathById || id in deferredIds || !failedIds.add(id)) continue
+      variants[id] =
+        VariantMeta(
+          state = failure.state,
+          theme = failure.mode,
+          props = failure.props,
+          componentId = failure.componentId,
+          section = failure.section,
+          group = failure.group,
+          order = count + deferredIds.size + failedIds.size - 1,
+          sourceFile = failure.sourceFile,
+          renderFailure = failure,
+        )
+    }
+
     // Nothing to serve? Distinguish the two ways that happens, because only one is a failure:
     //
     //   - the catalog DECLARED baked images and none of them fetched — a transient outage (or a
@@ -426,7 +455,7 @@ class ServeCatalogStore(
     //     through: the live builders below register the deferred ids, and a session with no live
     //     lane still lands on the terminal baked host — which then serves an empty (but explained,
     //     via `deferred-not-served`) sheet rather than a 404.
-    if (count == 0 && (declaredImages > 0 || deferredIds.isEmpty())) {
+    if (count == 0 && failedIds.isEmpty() && (declaredImages > 0 || deferredIds.isEmpty())) {
       staging.deleteRecursively()
       return Result.Failed(system, "catalog had no usable images")
     }
@@ -582,7 +611,7 @@ class ServeCatalogStore(
           degradations = degradations,
           liveOnly = liveOnly,
           // Every id the catalog bakes, so the grid is complete the moment `catalog.json` lands…
-          declaredBaked = bakedPathById.keys.toList(),
+          declaredBaked = bakedPathById.keys.toList() + failedIds,
           // …and the pixels follow on first use. The store keeps ownership of the network here: the
           // host never builds a URL or applies a fetch policy, it just asks for an id it declared.
           fetchBakedPng = { id ->
@@ -674,8 +703,9 @@ class ServeCatalogStore(
             ) {
               return Result.Ok(
                 safe,
-                count + deferredIds.size,
+                count + deferredIds.size + failedIds.size,
                 "${BundleVerifier.summary(verdict)} (live bundle)",
+                failedIds.size,
               )
             }
             // Declared + fetched + rehydrated, but the builder didn't stand a daemon up — most
@@ -715,7 +745,12 @@ class ServeCatalogStore(
           { bakedFallback(emptyList(), deferredIds.toList()) },
         )
     ) {
-      return Result.Ok(safe, count + deferredIds.size, "${BundleVerifier.summary(verdict)} (live)")
+      return Result.Ok(
+        safe,
+        count + deferredIds.size + failedIds.size,
+        "${BundleVerifier.summary(verdict)} (live)",
+        failedIds.size,
+      )
     }
 
     // Terminal: no server-side live lane stood up, so register the baked host AND record why it's
@@ -752,7 +787,7 @@ class ServeCatalogStore(
     // Same reasoning as the degradation: a session with no live lane lists no live-only previews.
     val host = bakedFallback(degradations, emptyList())
     register(safe, host)
-    return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))
+    return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict), failedIds.size)
   }
 
   /**
@@ -1489,6 +1524,8 @@ class ServeCatalogStore(
      * handed an image with no pixels. See [Deferred] for how the server serves them.
      */
     val deferred: List<Deferred> = emptyList(),
+    /** Structured render failures retained even when their components have no images. */
+    val failures: List<CatalogRenderFailure> = emptyList(),
   )
 
   /**
@@ -1678,6 +1715,8 @@ class ServeCatalogStore(
      * seeds one declaration instead of the whole file. Null for a catalog that recorded none.
      */
     val bodyLine: Int? = null,
+    /** Failure shown by the landing card instead of requesting a missing PNG. */
+    val renderFailure: CatalogRenderFailure? = null,
   )
 
   /**

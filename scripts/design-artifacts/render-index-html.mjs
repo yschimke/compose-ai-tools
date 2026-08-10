@@ -124,6 +124,26 @@ function greenlineChips(component) {
   return `<div class="greenlines" title="accessibility greenlines">${chips}</div>`;
 }
 
+function failureSummary(failure) {
+  const name = String(failure?.errorClass ?? "RenderError").split(".").pop();
+  return failure?.message ? `${name}: ${failure.message}` : name;
+}
+
+function failureDetails(failures) {
+  if (!failures?.length) return "";
+  return failures
+    .map((failure) => {
+      const frame = failure.topAppFrame
+        ? `<div class="failure-frame">at ${esc(failure.topAppFrame.file)}:${esc(failure.topAppFrame.line)} · ${esc(failure.topAppFrame.function)}</div>`
+        : "";
+      const stack = failure.stackTrace
+        ? `<details><summary>Stack trace</summary><pre>${esc(failure.stackTrace)}</pre></details>`
+        : "";
+      return `<div class="failure-detail"><strong>${esc(failureSummary(failure))}</strong><div class="failure-meta">${esc(failure.phase ?? "render")} · ${esc(failure.preview ?? "")}</div>${frame}${stack}</div>`;
+    })
+    .join("");
+}
+
 function componentCard(component, wireframeSlugs, figmaSvgSlugs) {
   const img = heroImage(component);
   const id = component.componentId ?? "(unnamed)";
@@ -137,14 +157,20 @@ function componentCard(component, wireframeSlugs, figmaSvgSlugs) {
   const stateChip = extras.length
     ? `<a class="statechip" href="#d-${slug(id)}">+${extras.length} ${noun}${extras.length > 1 ? "s" : ""}</a>`
     : "";
+  const failures = component.failures ?? [];
+  const errorLabel = failures.length
+    ? `${failures.length} failed render${failures.length === 1 ? "" : "s"}`
+    : "";
   const figure = img
     ? `<a class="shot"${bgThemeAttr(img)} href="#d-${slug(id)}" aria-label="Zoom ${esc(id)}"><img loading="lazy" src="${esc(img.path)}" alt="${esc(id)}" /></a>`
-    : `<div class="shot shot--missing">no render</div>`;
-  return `<article class="card" id="c-${slug(id)}">
+    : failures.length
+      ? `<a class="shot shot--failed" href="#d-${slug(id)}" aria-label="Show render failure for ${esc(id)}"><span class="failure-mark">!</span><strong>${esc(errorLabel)}</strong><span>${esc(failureSummary(failures[0]))}</span></a>`
+      : `<div class="shot shot--missing">no render</div>`;
+  return `<article class="card${failures.length ? " card--failed" : ""}" id="c-${slug(id)}">
   ${figure}
   <div class="meta">
     <h3><a class="ctitle" href="#d-${slug(id)}">${esc(id)}</a></h3>
-    <div class="sub">${esc(dims)}${stateChip}${wireframeLink(component, wireframeSlugs)}${figmaSvgLink(component, figmaSvgSlugs)}</div>
+    <div class="sub">${esc(dims)}${failures.length ? `<span class="failure-chip">${esc(errorLabel)}</span>` : ""}${stateChip}${wireframeLink(component, wireframeSlugs)}${figmaSvgLink(component, figmaSvgSlugs)}</div>
     ${greenlineChips(component)}
   </div>
 </article>`;
@@ -179,7 +205,7 @@ function componentDetail(component) {
     <a class="detail-x" href="${close}" aria-label="Close">×</a>
     <h3>${esc(id)}</h3>
     ${caption}
-    <div class="detail-states">${stateBlocks}</div>
+    <div class="detail-states">${stateBlocks}${failureDetails(component.failures)}</div>
   </div>
 </div>`;
 }
@@ -193,7 +219,28 @@ function componentDetail(component) {
  * @returns {string} a self-contained index.html
  */
 export function renderIndexHtml(catalog, opts = {}) {
-  const components = catalog.components ?? [];
+  const failuresByComponent = new Map();
+  for (const failure of catalog.failures ?? []) {
+    const id = failure.componentId ?? failure.preview ?? "Failed render";
+    const list = failuresByComponent.get(id) ?? [];
+    list.push(failure);
+    failuresByComponent.set(id, list);
+  }
+  const renderedIds = new Set((catalog.components ?? []).map((c) => c.componentId));
+  const components = (catalog.components ?? []).map((c) => ({
+    ...c,
+    failures: failuresByComponent.get(c.componentId) ?? [],
+  }));
+  for (const [componentId, failures] of failuresByComponent) {
+    if (renderedIds.has(componentId)) continue;
+    components.push({
+      componentId,
+      images: [],
+      failures,
+      group: failures[0]?.group,
+      section: failures[0]?.section,
+    });
+  }
   const wireframeSlugs = opts.wireframeSlugs;
   const figmaSvgSlugs = opts.figmaSvgSlugs;
   const crossSystem = opts.crossSystem;
@@ -254,7 +301,20 @@ export function renderIndexHtml(catalog, opts = {}) {
     meta.renderer && `rendered by ${esc(meta.renderer)}`,
     meta.generatedAt && `${esc(meta.generatedAt)}`,
     `${components.length} components`,
+    (catalog.failures ?? []).length > 0 && `${catalog.failures.length} failed renders`,
   ].filter(Boolean);
+  const failureGroups = new Map();
+  for (const failure of catalog.failures ?? []) {
+    const signature = `${failure.errorClass ?? "RenderError"}\u0000${failure.message ?? ""}`;
+    const group = failureGroups.get(signature) ?? { failure, count: 0 };
+    group.count += 1;
+    failureGroups.set(signature, group);
+  }
+  const failureBanner = failureGroups.size
+    ? `<aside class="failure-summary"><strong>${catalog.failures.length} failed render${catalog.failures.length === 1 ? "" : "s"}</strong><ul>${[...failureGroups.values()]
+        .map(({ failure, count }) => `<li><span>${esc(failureSummary(failure))}</span><strong>×${count}</strong></li>`)
+        .join("")}</ul></aside>`
+    : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -311,6 +371,20 @@ export function renderIndexHtml(catalog, opts = {}) {
     margin:16px auto; border-radius:8px; max-width:100%; }
   .shot--framed img { position:absolute; max-width:none; max-height:none; }
   .shot--missing { color:var(--muted); font-style:italic; }
+  .card--failed { border-color:#7d4148; }
+  .shot--failed { color:#f1b5b9; background:#26191b; text-align:center; display:flex; flex-direction:column; gap:6px; }
+  .shot--failed .failure-mark { display:grid; place-items:center; width:30px; height:30px; border:1px solid #d66c75; border-radius:50%; font-size:18px; }
+  .shot--failed span:last-child { color:#c9a3a6; font-size:11px; max-width:32ch; }
+  .failure-chip { color:#ef9299; border:1px solid #7d4148; border-radius:999px; padding:1px 7px; white-space:nowrap; }
+  .failure-detail { min-width:min(680px,80vw); color:var(--fg); }
+  .failure-detail + .failure-detail { border-top:1px solid var(--line); margin-top:14px; padding-top:14px; }
+  .failure-meta,.failure-frame { color:var(--muted); font-size:12px; margin-top:4px; }
+  .failure-detail details { margin-top:10px; }
+  .failure-detail pre { white-space:pre-wrap; overflow-wrap:anywhere; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; font-size:11px; }
+  .failure-summary { margin:18px clamp(16px,4vw,40px) 0; padding:12px 14px; border:1px solid #7d4148; border-radius:10px; background:#26191b; color:#c9a3a6; }
+  .failure-summary > strong { color:#ef9299; }
+  .failure-summary ul { display:grid; gap:4px; margin:8px 0 0; padding:0; list-style:none; }
+  .failure-summary li { display:flex; justify-content:space-between; gap:16px; font-size:12px; }
   .meta { padding:10px 12px 12px; border-top:1px solid var(--line); }
   .meta h3 { margin:0; font-size:13px; font-weight:600; word-break:break-word; }
   .meta h3 a.ctitle { color:inherit; text-decoration:none; }
@@ -355,6 +429,7 @@ export function renderIndexHtml(catalog, opts = {}) {
       : ""
   }</div>
 </header>
+${failureBanner}
 <div class="layout">
   <nav class="index">${nav}</nav>
   <main>${main}</main>

@@ -45,6 +45,32 @@ class ServeCatalogStoreTest {
     """
       .trimIndent()
 
+  @Test
+  fun `failure-only catalog registers visible diagnostic cards`() {
+    val broken =
+      """
+      {"schema":"design-parity-catalog/v1","system":"broken","components":[],"failures":[
+        {"id":"render-failed--button-filled","componentId":"Button/Filled",
+         "preview":"FilledButtonPreview","phase":"render",
+         "errorClass":"java.lang.NoSuchMethodError","message":"boom","group":"Buttons"}]}
+      """
+        .trimIndent()
+    val result =
+      store(
+          TrustStore.EMPTY,
+          fetch = { url ->
+            if (url.endsWith("/${ServeCatalogStore.CATALOG_FILE}")) broken.toByteArray() else null
+          },
+        )
+        .load("broken")
+
+    assertEquals(ServeCatalogStore.Result.Ok("broken", 1, "unverified", 1), result)
+    val preview = registered.getValue("broken").previews.single()
+    assertEquals("Button/Filled", preview.componentId)
+    assertEquals("java.lang.NoSuchMethodError", preview.renderFailure?.errorClass)
+    assertEquals("boom", preview.renderFailure?.message)
+  }
+
   /** Serves catalog.json + a PNG for any image URL; nothing else. */
   private fun fetcher(): (String) -> ByteArray? = { url ->
     when {

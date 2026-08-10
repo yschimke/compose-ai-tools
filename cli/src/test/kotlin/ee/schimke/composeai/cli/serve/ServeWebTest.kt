@@ -881,4 +881,33 @@ class ServeWebTest {
 
     assertFalse(html.contains("cp-history-data"))
   }
+
+  @Test
+  fun `failed renders are diagnostic cards grouped by their error`() {
+    val failure =
+      CatalogRenderFailure(
+        id = "render-failed--button",
+        componentId = "Button/Filled",
+        preview = "com.example.ButtonPreview",
+        phase = "render",
+        errorClass = "java.lang.NoSuchMethodError",
+        message = "MaterialTheme.colors()",
+        stackTrace =
+          "java.lang.NoSuchMethodError: MaterialTheme.colors()\n  at com.example.ButtonKt",
+      )
+    val previews =
+      listOf(
+        ServePreview("render-failed--button", "Button", renderFailure = failure),
+        ServePreview("render-failed--button-dark", "Button dark", renderFailure = failure),
+      )
+
+    val html = ServeWeb.landingPage("broken", previews, token = "t", basePath = "/broken")
+
+    assertTrue(html.contains("cp-card--render-failed"))
+    assertTrue(html.contains("2 failed renders"))
+    assertTrue(html.contains("NoSuchMethodError: MaterialTheme.colors()"))
+    assertTrue(html.contains("×2"), "identical failures are aggregated")
+    assertTrue(html.contains("Stack trace"))
+    assertFalse(html.contains("/render/render-failed--button.png"))
+  }
 }

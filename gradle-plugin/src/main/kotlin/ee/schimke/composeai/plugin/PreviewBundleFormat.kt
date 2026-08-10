@@ -31,6 +31,10 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *                            The cover's leading-bytes PNG is mirrored here under its own id so
  *                            iterating the well-known directory yields every preview uniformly.
  *                            A preview with no render on disk is simply absent from this directory.
+ * previews/<id>.error.json — structured render failure for a preview whose PNG is absent. Copied
+ *                            verbatim from the renderer's `<png>.error.json` sidecar so detached
+ *                            consumers can distinguish a broken render from an intentionally
+ *                            unrendered preview.
  * previews/<id>.overrides.json — (v8) the author-declared editable knobs the preview exposed via the
  *                            `previewOverride*` lookups (a verbatim `compose/overrides` payload —
  *                            `PreviewOverridesPayload` from `:data-preview-overrides-core`, copied byte
@@ -655,6 +659,12 @@ const val BUNDLE_OVERRIDES_SIDECAR_EXT: String = "overrides.json"
  * writer (`RobolectricRenderTest.writeRemoteComposeSidecar`).
  */
 const val BUNDLE_REMOTECOMPOSE_SIDECAR_EXT: String = "remotecompose.json"
+
+/**
+ * File extension of the structured per-preview render failure. The renderer writes
+ * `<png>.error.json`; bundles carry it as `previews/<id>.error.json` beside the absent PNG.
+ */
+const val BUNDLE_RENDER_ERROR_SIDECAR_EXT: String = "error.json"
 
 /**
  * File extension of the per-sheet catalog-token sidecar the render step writes under

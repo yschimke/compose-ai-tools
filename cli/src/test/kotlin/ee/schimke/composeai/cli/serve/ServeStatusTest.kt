@@ -33,12 +33,28 @@ class ServeStatusTest {
     previewIds: List<String>,
     title: String? = null,
     provenance: ServeWeb.CatalogProvenance? = null,
+    failedPreviewIds: List<String> = emptyList(),
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("status-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
     File(dir, "previews").apply { mkdirs() }
     previewIds.forEach { File(dir, "previews/$it.png").writeBytes(png()) }
-    return ServeBundleHost(dir, label = label, title = title, provenance = provenance)
+    if (failedPreviewIds.isNotEmpty()) {
+      val entries =
+        failedPreviewIds.joinToString(",") { id ->
+          "\"$id\":{\"componentId\":\"Broken\",\"renderFailure\":{" +
+            "\"id\":\"$id\",\"componentId\":\"Broken\",\"errorClass\":" +
+            "\"java.lang.NoSuchMethodError\",\"message\":\"boom\"}}"
+        }
+      File(dir, "previews/${ServeCatalogStore.VARIANTS_FILE}").writeText("{$entries}")
+    }
+    return ServeBundleHost(
+      dir,
+      label = label,
+      title = title,
+      provenance = provenance,
+      declaredBaked = previewIds + failedPreviewIds,
+    )
   }
 
   private val registry = ServeSessionRegistry(open = { null })
@@ -48,6 +64,7 @@ class ServeStatusTest {
     public: Boolean,
     token: String,
     catalogLoads: CatalogLoadTracker? = null,
+    failedCatalogPreviews: List<String> = emptyList(),
   ): ServeHttpServer {
     registry.register(
       "default-mod",
@@ -69,6 +86,7 @@ class ServeStatusTest {
               toolVersion = "0.16.54",
               designParityVersion = "0.1.25",
             ),
+          failedPreviewIds = failedCatalogPreviews,
         ),
       pinned = true,
     )
@@ -272,6 +290,23 @@ class ServeStatusTest {
     // The recent failure surfaces the degraded badge + row.
     assertTrue(body.contains("degraded"), body)
     assertTrue(body.contains("daemon launch timed out"), body)
+  }
+
+  @Test
+  fun `status distinguishes published render failures from an empty catalog`() {
+    server =
+      newServer(
+        public = true,
+        token = "unused",
+        failedCatalogPreviews = listOf("render-failed--button-filled"),
+      )
+    val (_, json) = get("/status.json")
+    assertTrue(json.contains("\"failedRenders\":1"), json)
+    assertTrue(json.contains("\"status\":\"degraded\""), json)
+
+    val (_, html) = get("/status")
+    assertTrue(html.contains("2 rendered · 1 failed"), html)
+    assertTrue(html.contains("Catalog renders"), html)
   }
 
   @Test

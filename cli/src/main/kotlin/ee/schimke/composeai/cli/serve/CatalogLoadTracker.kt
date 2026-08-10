@@ -44,6 +44,8 @@ class CatalogLoadTracker(
     val available: Boolean = false,
     val error: String? = null,
     val lastAttemptEpochMillis: Long? = null,
+    /** Render failures declared by the latest successfully loaded catalog. */
+    val failedRenders: Int = 0,
   ) {
     val loadState: String
       get() =
@@ -124,15 +126,20 @@ class CatalogLoadTracker(
 
   fun record(result: ServeCatalogStore.Result) {
     when (result) {
-      is ServeCatalogStore.Result.Ok -> recordSuccess(result.system)
+      is ServeCatalogStore.Result.Ok -> recordSuccess(result.system, result.failedRenderCount)
       is ServeCatalogStore.Result.Failed -> recordFailure(result.system, result.reason)
     }
   }
 
-  fun recordSuccess(system: String) {
+  fun recordSuccess(system: String, failedRenders: Int = 0) {
     val at = clock()
     states.computeIfPresent(system) { _, previous ->
-      previous.copy(available = true, error = null, lastAttemptEpochMillis = at)
+      previous.copy(
+        available = true,
+        error = null,
+        lastAttemptEpochMillis = at,
+        failedRenders = failedRenders,
+      )
     }
   }
 

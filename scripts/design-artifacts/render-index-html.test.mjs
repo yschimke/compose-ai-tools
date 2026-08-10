@@ -52,3 +52,45 @@ test("a component with no figma-svg gets no crop wiring (link absent)", () => {
   const html = renderIndexHtml(catalog, { figmaSvgSlugs: new Set() });
   assert.doesNotMatch(html, /href="figma\/filled-button\.svg"/);
 });
+
+test("failed renders become visible cards with expandable diagnostics", () => {
+  const html = renderIndexHtml({
+    system: "broken",
+    title: "Broken catalog",
+    components: [],
+    failures: [
+      {
+        componentId: "Button/Filled",
+        preview: "FilledButtonPreview",
+        group: "Buttons",
+        phase: "render",
+        errorClass: "java.lang.NoSuchMethodError",
+        message: "androidx.compose.runtime.snapshots.SnapshotStateList",
+        stackTrace: "java.lang.NoSuchMethodError: boom\n  at Buttons.kt:42",
+      },
+    ],
+  });
+  assert.match(html, /card--failed/);
+  assert.match(html, /1 failed render/);
+  assert.match(html, /NoSuchMethodError/);
+  assert.match(html, /Stack trace/);
+  assert.doesNotMatch(html, />no render</);
+});
+
+test("a partially rendered component keeps both pixels and failure diagnostics", () => {
+  const html = renderIndexHtml({
+    ...catalog,
+    failures: [
+      {
+        componentId: "filled-button",
+        preview: "FilledButtonPreview_Dark",
+        errorClass: "java.lang.LinkageError",
+        message: "dark variant failed",
+      },
+    ],
+  });
+
+  assert.match(html, /ideal__default__light\.png/);
+  assert.match(html, /LinkageError: dark variant failed/);
+  assert.match(html, /1 failed render/);
+});

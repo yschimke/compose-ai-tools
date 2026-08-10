@@ -275,6 +275,7 @@ class ServeBundleHost(
           id = id,
           label = id,
           componentId = meta?.componentId,
+          renderFailure = meta?.renderFailure,
           // A packed sidecar remains authoritative for ordinary uploaded bundles. Published
           // catalogs additionally carry these declarations inline so a supplement-only preview's
           // controls are visible before its per-preview daemon is opened lazily.

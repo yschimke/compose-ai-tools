@@ -761,6 +761,25 @@ html.cp-js .cp-section-head { display: none; }
   .cp-card:hover, .cp-card:focus-visible { transform: none; }
   .cp-card:hover .cp-imgwrap img, .cp-card:focus-visible .cp-imgwrap img { transform: none; }
 }
+.cp-card--render-failed { border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 55%, transparent); }
+.cp-card--render-failed > summary { list-style: none; cursor: pointer; }
+.cp-card--render-failed > summary::-webkit-details-marker { display: none; }
+.cp-render-failure { flex-direction: column; gap: 7px; padding: 18px; text-align: center;
+  color: var(--md-sys-color-error); background: color-mix(in srgb, var(--md-sys-color-error-container) 55%, var(--md-sys-color-surface)); }
+.cp-render-failure > span:last-child { color: var(--md-sys-color-on-error-container); font-size: 12px; max-width: 34ch; }
+.cp-render-failure-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  border: 1px solid currentColor; font-size: 19px; font-weight: 700; }
+.cp-render-failure-detail { position: relative; z-index: 4; padding: 12px 14px 16px; border-top: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface); overflow-wrap: anywhere; }
+.cp-render-failure-detail p, .cp-render-failure-frame { color: var(--md-sys-color-on-surface-variant); font-size: 12px; }
+.cp-render-stack pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto;
+  padding: 10px; border-radius: 8px; background: var(--md-sys-color-surface-container-lowest); font-size: 11px; }
+.cp-render-failure-summary { margin: 12px 0 18px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 45%, transparent);
+  border-radius: 12px; color: var(--md-sys-color-on-error-container); background: color-mix(in srgb, var(--md-sys-color-error-container) 45%, var(--md-sys-color-surface)); }
+.cp-render-failure-summary > strong { color: var(--md-sys-color-error); }
+.cp-render-failure-summary ul { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; }
+.cp-render-failure-summary li { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; }
+.cp-render-failure-summary li span { overflow-wrap: anywhere; }
 .cp-imgwrap { position: relative; display: flex; align-items: center; justify-content: center; min-height: 88px;
   background: var(--cp-surface); padding: 12px; }
 /* `width`/`height` stay auto so the max-* pair alone decides the used size and the image can

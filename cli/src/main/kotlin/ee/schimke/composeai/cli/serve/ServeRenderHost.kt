@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -179,7 +180,31 @@ data class ServePreview(
    * route-safe slug. Null for ordinary uploaded bundles and live discovery previews.
    */
   val componentId: String? = null,
+  /** Published render failure for a catalog card that has no PNG. */
+  val renderFailure: CatalogRenderFailure? = null,
 )
+
+/** Structured, catalog-published render failure. Additive to `design-parity-catalog/v1`. */
+@Serializable
+data class CatalogRenderFailure(
+  val id: String = "",
+  val componentId: String? = null,
+  val preview: String? = null,
+  val phase: String = "render",
+  val errorClass: String = "RenderError",
+  val message: String = "",
+  val stackTrace: String? = null,
+  val topAppFrame: RenderFailureFrame? = null,
+  val mode: String? = null,
+  val state: String? = null,
+  val props: JsonObject? = null,
+  val section: String? = null,
+  val group: String? = null,
+  val sourceFile: String? = null,
+)
+
+@Serializable
+data class RenderFailureFrame(val file: String = "", val line: Int = 0, val function: String = "")
 
 /**
  * Detected per-preview feature support, folded across a discovery
