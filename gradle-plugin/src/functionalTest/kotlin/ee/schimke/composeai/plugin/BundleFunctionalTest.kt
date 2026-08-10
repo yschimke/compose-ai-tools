@@ -336,6 +336,39 @@ class BundleFunctionalTest {
   }
 
   @Test
+  fun `composePreviewBundle carries a failed preview error sidecar`() {
+    val projectDir = createTestProject()
+    val redId = "test.RedKt.RedBoxPreview"
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+
+    val previewsJson = File(projectDir, "build/compose-previews/previews.json")
+    val manifest = json.decodeFromString(PreviewManifest.serializer(), previewsJson.readText())
+    val red = manifest.previews.single { it.id == redId }
+    val output = File(projectDir, "build/compose-previews/${red.captures.first().renderOutput}")
+    output.parentFile.mkdirs()
+    val errorJson =
+      """{"schema":"compose-preview-error/v1","exception":"java.lang.NoSuchMethodError","message":"boom","stackTrace":"trace"}"""
+    File(output.parentFile, "${output.name}.error.json").writeText(errorJson)
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewBundle", "-PbundlePreviewIds=$redId", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewBundle")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    assertThat(String(readZipEntry(bundle, "previews/$redId.error.json")!!, Charsets.UTF_8))
+      .isEqualTo(errorJson)
+    assertThat(listEntries(bundle)).doesNotContain("previews/$redId.png")
+  }
+
+  @Test
   fun `composePreviewBundle packs a discovered SVG as raw svg IR`() {
     val projectDir = createTestProject()
     // Drop an SVG under the module resources — discovery turns it into a `kind=SVG` preview, and

@@ -43,6 +43,28 @@ class ServeBundleStoreTest {
   }
 
   @Test
+  fun `error-only bundle registers a diagnostic preview`() {
+    val error =
+      """{"schema":"compose-preview-error/v1","exception":"java.lang.IllegalStateException","message":"boom","stackTrace":"trace"}"""
+    val result =
+      store()
+        .add(
+          "broken",
+          zipOf("previews/com.example.Broken.error.json" to error.toByteArray()),
+          isSecurityChecked = true,
+        )
+
+    assertEquals(ServeBundleStore.Result.Ok("broken", 1), result)
+    val preview = registered.getValue("broken").previews.single()
+    assertEquals("com.example.Broken", preview.id)
+    assertEquals("java.lang.IllegalStateException", preview.renderFailure?.errorClass)
+    assertEquals("boom", preview.renderFailure?.message)
+    assertTrue(
+      registered.getValue("broken").render(preview.id, PreviewOverrides()) is RenderOutcome.NotFound
+    )
+  }
+
+  @Test
   fun `zip-slip entries are ignored, only previews are extracted`() {
     val zip =
       zipOf(

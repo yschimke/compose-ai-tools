@@ -97,7 +97,7 @@ class ServeBundleStore(
       }
     if (count == 0) {
       dir.deleteRecursively()
-      return Result.Failed("bundle had no previews/*.png entries")
+      return Result.Failed("bundle had no previews/*.png or previews/*.error.json entries")
     }
     // Attribute the upload to a trusted producer if it carries a verifiable signature (origin trust
     // is for server-fetched catalogs, not client uploads, so no Origin here). The verdict travels
@@ -155,8 +155,8 @@ class ServeBundleStore(
   /**
    * Extract the servable `previews/` entries (baked `<id>.png`, the `<id>.overrides.json` /
    * `<id>.remotecompose.json` knob sidecars), the sibling `ir/<id>.rc` Remote Compose documents,
-   * plus the root `previews.json` into [dir] (zip-slip safe, size-capped). Returns the PNG count —
-   * only a baked image makes a servable preview.
+   * plus renderer `<id>.error.json` sidecars and the root `previews.json` into [dir] (zip-slip
+   * safe, size-capped). Returns the number of servable preview records (PNG or render failure).
    */
   private fun extractPreviews(zipBytes: ByteArray, dir: File): Int {
     val rootPath = dir.canonicalFile.toPath()
@@ -174,6 +174,7 @@ class ServeBundleStore(
         // upload path (POST / URL) while the live-bundle / directory paths kept them.
         val underPreviews = name.startsWith("$PREVIEWS_SUBDIR/") && ".." !in segments
         val isPng = underPreviews && name.endsWith(PNG_SUFFIX)
+        val isRenderError = underPreviews && name.endsWith(RENDER_ERROR_SUFFIX)
         val isOverrides = underPreviews && name.endsWith(OVERRIDES_SUFFIX)
         val isRemoteCompose = underPreviews && name.endsWith(REMOTECOMPOSE_SUFFIX)
         // Also keep the captured Remote Compose documents from the sibling `ir/<id>.rc` tree —
@@ -189,7 +190,8 @@ class ServeBundleStore(
         // `previews/` prefix check but still zip-slip guarded below.
         val isPreviewsJson = name == PREVIEWS_JSON
         if (
-          !entry.isDirectory && (isPng || isOverrides || isRemoteCompose || isRc || isPreviewsJson)
+          !entry.isDirectory &&
+            (isPng || isRenderError || isOverrides || isRemoteCompose || isRc || isPreviewsJson)
         ) {
           val target = File(dir, name)
           // Zip-slip guard: the resolved path must stay under the bundle dir.
@@ -198,9 +200,9 @@ class ServeBundleStore(
             // Copy in bounded chunks so a huge / zip-bomb entry can't be fully allocated before the
             // cap rejects it — abort the moment the running total crosses maxBytes.
             total += copyCapped(zin, target, remaining = maxBytes - total)
-            // Only PNGs count toward "does this bundle have any servable previews?" — an override
-            // sidecar without a PNG isn't a renderable preview.
-            if (isPng) count++
+            // A structured render failure is intentionally servable without pixels: its card
+            // explains why the corresponding PNG is absent.
+            if (isPng || isRenderError) count++
           }
         }
         zin.closeEntry()
@@ -229,6 +231,7 @@ class ServeBundleStore(
   companion object {
     private const val PREVIEWS_SUBDIR = "previews"
     private const val PNG_SUFFIX = ".png"
+    private const val RENDER_ERROR_SUFFIX = ".error.json"
     private const val OVERRIDES_SUFFIX = ".overrides.json"
     private const val REMOTECOMPOSE_SUFFIX = ".remotecompose.json"
     private const val IR_SUBDIR = "ir"

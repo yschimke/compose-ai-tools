@@ -539,6 +539,9 @@ abstract class BundlePreviewTask : DefaultTask() {
     val overrideFiles = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
       val bundleId = bundleIds.getValue(preview.id)
+      resolvePreviewRenderError(preview)?.let {
+        overrideFiles["$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_RENDER_ERROR_SIDECAR_EXT"] = it
+      }
       resolvePreviewOverrides(preview)?.let {
         overrideFiles["$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_OVERRIDES_SIDECAR_EXT"] = it
       }
@@ -711,6 +714,34 @@ abstract class BundlePreviewTask : DefaultTask() {
         f.isFile &&
           f.length() > 0 &&
           f.name.endsWith(".png") &&
+          (f.name.startsWith("${base}_") || f.name.startsWith("$base--"))
+      }
+      ?.minByOrNull { it.name }
+      ?.readBytes()
+  }
+
+  /**
+   * The renderer's structured failure for [preview], if its primary capture failed. Parameterised
+   * previews may write one sidecar per fanned-out value; keep the first deterministically, matching
+   * [resolvePreviewPng]'s representative-image rule. The bytes stay verbatim and schema-versioned.
+   */
+  private fun resolvePreviewRenderError(preview: PreviewInfo): ByteArray? {
+    val rendersRoot = rendersDir.orNull?.asFile ?: return null
+    val previewsRoot = rendersRoot.parentFile ?: rendersRoot
+    val rel =
+      preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
+    val primary = File(previewsRoot, "$rel.error.json")
+    if (primary.isFile && primary.length() > 0) return primary.readBytes()
+
+    val output = File(previewsRoot, rel)
+    val dir = output.parentFile ?: rendersRoot
+    val base = output.name.substringBeforeLast('.')
+    if (!dir.isDirectory) return null
+    return dir
+      .listFiles { f ->
+        f.isFile &&
+          f.length() > 0 &&
+          f.name.endsWith(".error.json") &&
           (f.name.startsWith("${base}_") || f.name.startsWith("$base--"))
       }
       ?.minByOrNull { it.name }

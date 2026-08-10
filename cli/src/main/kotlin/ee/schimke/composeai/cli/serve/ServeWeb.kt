@@ -3376,6 +3376,10 @@ object ServeWeb {
     /** [BundleVerifier.summary] verdict string, or null for a non-catalog session. */
     val trust: String?,
     val previews: Int,
+    /** Published render failures included in [previews]. */
+    val failedRenders: Int = 0,
+    /** Preview ids included in [previews] that have no published pixels yet. */
+    val deferredPreviews: Int = 0,
     /** The catalog has a live daemon lane (server-side re-render), even if idle right now. */
     val live: Boolean,
     /** A live daemon for this catalog is up **right now**. */
@@ -3554,11 +3558,17 @@ object ServeWeb {
           val title =
             if (c.loadState == "failed" || c.loadState == "pending") esc(c.title)
             else "<a href=\"/$idSeg/$suffix\">${esc(c.title)}</a>"
+          val previewCell =
+            if (c.failedRenders > 0 || c.deferredPreviews > 0)
+              "${c.previews} total<div class=\"cp-muted\">" +
+                "${(c.previews - c.failedRenders - c.deferredPreviews).coerceAtLeast(0)} rendered · " +
+                "${c.failedRenders} failed · ${c.deferredPreviews} deferred</div>"
+            else "${c.previews}"
           "<tr>" +
             "<td>$title$listed" +
             "<div class=\"cp-muted\">${esc(c.id)}</div>$prov</td>" +
             "<td>$trustCell</td>" +
-            "<td>${c.previews}</td>" +
+            "<td>$previewCell</td>" +
             "<td>$stateCell$themeOptimization$renderCache$loadError$degrade</td>" +
             "</tr>"
         }
@@ -3779,7 +3789,8 @@ object ServeWeb {
    * goldens). Null when there are no previews.
    */
   fun representativePreviewId(previews: List<ServePreview>): String? {
-    if (previews.isEmpty()) return null
+    val usable = previews.filter { it.renderFailure == null }
+    if (usable.isEmpty()) return null
     val demote =
       listOf(
         "disabled",
@@ -3795,7 +3806,7 @@ object ServeWeb {
       )
     // A preview is a "screen" when its catalog section says so (the reliable signal), else when its
     // id/label reads like one — so a screen wins the hero even before section metadata exists.
-    val anyScreen = previews.any { isScreenPreview(it) }
+    val anyScreen = usable.any { isScreenPreview(it) }
     // A screen id that reads like the app's primary/landing view (its conference/home/schedule/…),
     // preferred among screens so an app fronts its main screen rather than an alphabetically-first
     // secondary one (e.g. Confetti leads with the conference screen, not bookmarks).
@@ -3817,7 +3828,7 @@ object ServeWeb {
       if ("filled" in lower) s -= 2
       return s
     }
-    return previews.sortedWith(compareBy({ score(it) }, { it.id })).first().id
+    return usable.sortedWith(compareBy({ score(it) }, { it.id })).first().id
   }
 
   /**
@@ -4041,7 +4052,34 @@ object ServeWeb {
     // reachable through the viewer's state + variant switchers. Plain bundle screens (no state, no
     // props) pass straight through.
     val groups =
-      groupPreviews(previews.filterNot { isNonDefaultState(it) || hasNonDefaultProps(it) })
+      groupPreviews(
+        previews.filterNot {
+          it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
+        }
+      )
+    val renderFailureSummary =
+      previews
+        .mapNotNull { it.renderFailure }
+        .groupBy { it.errorClass to it.message }
+        .takeIf { it.isNotEmpty() }
+        ?.let { failures ->
+          buildString {
+            val total = failures.values.sumOf { it.size }
+            append("<aside class=\"cp-render-failure-summary\"><strong>$total failed render")
+            if (total != 1) append("s")
+            append("</strong><ul>")
+            failures.forEach { (signature, occurrences) ->
+              append("<li><span>")
+              append(WebEscaping.htmlEscape(signature.first.substringAfterLast('.')))
+              if (signature.second.isNotBlank()) {
+                append(": ")
+                append(WebEscaping.htmlEscape(signature.second))
+              }
+              append("</span><strong>×${occurrences.size}</strong></li>")
+            }
+            append("</ul></aside>\n")
+          }
+        } ?: ""
     // Size/breakpoint variants intentionally remain separate cards, but catalog-authored labels
     // often omit that axis (for example three "Edgebutton" cards at Small/Large/XL Round). Add a
     // qualifier only when the base label actually collides, keeping ordinary one-card labels terse.
@@ -4130,6 +4168,45 @@ object ServeWeb {
       val label = WebEscaping.htmlEscape(gridDisplayName(p))
       val src = renderSrc(p)
       val idText = WebEscaping.htmlEscape(p.id)
+      p.renderFailure?.let { failure ->
+        val errorName = failure.errorClass.substringAfterLast('.').ifBlank { "RenderError" }
+        val message = failure.message.takeIf { it.isNotBlank() } ?: "The preview did not render."
+        val frame =
+          failure.topAppFrame?.let {
+            "<div class=\"cp-render-failure-frame\">at ${WebEscaping.htmlEscape(it.file)}:" +
+              "${it.line} · ${WebEscaping.htmlEscape(it.function)}</div>"
+          } ?: ""
+        val stack =
+          failure.stackTrace
+            ?.takeIf { it.isNotBlank() }
+            ?.let {
+              "<details class=\"cp-render-stack\"><summary>Stack trace</summary><pre>" +
+                WebEscaping.htmlEscape(it) +
+                "</pre></details>"
+            } ?: ""
+        return """
+          <details class="cp-card cp-card--render-failed">
+            <summary>
+              <div class="cp-imgwrap cp-render-failure">
+                <span class="cp-render-failure-mark">!</span>
+                <strong>${WebEscaping.htmlEscape(errorName)}</strong>
+                <span>${WebEscaping.htmlEscape(message)}</span>
+              </div>
+              <div class="cp-meta">
+                <div class="cp-label" title="$idText">$label</div>
+                <div class="cp-id">render failed · ${WebEscaping.htmlEscape(failure.phase)}</div>
+              </div>
+            </summary>
+            <div class="cp-render-failure-detail">
+              <strong>${WebEscaping.htmlEscape(failure.errorClass)}</strong>
+              <p>${WebEscaping.htmlEscape(message)}</p>
+              $frame
+              $stack
+            </div>
+          </details>
+          """
+          .trimIndent()
+      }
       // data-bg-theme is the thumbnail's background (explicit token, else the dark-first default).
       val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
       return """
@@ -4335,7 +4412,7 @@ object ServeWeb {
         <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
         $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} ·
           <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink$parityLink$playgroundLink$liveNote</p>
-        <div class="cp-catalog-tools">
+        $renderFailureSummary<div class="cp-catalog-tools">
         $themeToggle$searchBox</div>
         $tabBar$gridBlock$emptyState$filterScript$liveScript$about
         """
@@ -6490,13 +6567,18 @@ $rows
     // the component being viewed, even when the current preview is a folded (non-default) variant
     // that has no card of its own.
     val representatives =
-      groupPreviews(siblings.filterNot { isNonDefaultState(it) || hasNonDefaultProps(it) }).map {
-        when (theme) {
-          "dark" -> it.dark ?: it.default
-          "light" -> it.light ?: it.default
-          else -> it.default
+      groupPreviews(
+          siblings.filterNot {
+            it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
+          }
+        )
+        .map {
+          when (theme) {
+            "dark" -> it.dark ?: it.default
+            "light" -> it.light ?: it.default
+            else -> it.default
+          }
         }
-      }
     // Nothing to navigate to when the collapsed list is empty or holds only the current component.
     val currentKey = componentKey(preview)
     if (representatives.none { componentKey(it) != currentKey }) return ""

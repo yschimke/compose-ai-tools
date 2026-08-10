@@ -68,6 +68,7 @@ import {
   overridesByPreviewId,
 } from "./variant-axis-props.mjs";
 import { renderIndexHtml } from "./render-index-html.mjs";
+import { renderFailuresFromBundles } from "./render-failures.mjs";
 import { renderCompareHtml } from "./render-compare-html.mjs";
 import { renderCrossSystemHtml } from "./render-cross-system-html.mjs";
 import { renderReadmeMd } from "./render-readme-md.mjs";
@@ -916,6 +917,15 @@ if (!Array.isArray(spec.groups) || spec.groups.length === 0) {
 // when `groupOrder` is absent, so catalogs that don't set it are unchanged.
 spec.groups = applyGroupOrder(spec.groups, spec.groupOrder);
 
+const renderFailures = renderFailuresFromBundles([bundle, extraBundle], spec);
+if (renderFailures.length > 0) {
+  const signatures = new Set(renderFailures.map((f) => `${f.errorClass}\u0000${f.message}`));
+  console.warn(
+    `[${spec.system}] ${renderFailures.length} failed render(s), ${signatures.size} distinct ` +
+      `error signature(s) — recorded in catalog.json`,
+  );
+}
+
 // Resolve `display.hero` against the REAL inventory, now that annotation and spec are merged.
 // The build-free pre-flight can only check the ids a source scan can see, and a `perBreakpoint`
 // component's ids come from its renders — so this is the one place every id is known. A hero that
@@ -1274,6 +1284,7 @@ if (values["publish-live-bundle"]) {
 {
   const catalogJsonPath = join(outPath, "catalog.json");
   const manifest = JSON.parse(await readFile(catalogJsonPath, "utf8"));
+  if (renderFailures.length > 0) manifest.failures = renderFailures;
   // Re-stamp each spec group's top-level `section` (the preview-server tab) onto
   // the manifest: the pinned buildCatalog drops `source.section`, so without this
   // a sectioned spec (meshcore's Themes / Components / Screens) collapses to one
