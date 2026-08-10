@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.54](https://github.com/yschimke/compose-ai-tools/compare/v0.19.53...v0.19.54) (2026-08-09)
+
+
+### Features
+
+* **remote-m3:** port the Wear M3 palettes and apply themes at replay, not capture ([#3604](https://github.com/yschimke/compose-ai-tools/issues/3604)) ([7a27f29](https://github.com/yschimke/compose-ai-tools/commit/7a27f29ffbde414c4bbd8428d8af11dc43c4d199))
+* **serve:** apply a declared theme to a replayed preview as named colour seeds ([#3608](https://github.com/yschimke/compose-ai-tools/issues/3608)) ([6c9b3f4](https://github.com/yschimke/compose-ai-tools/commit/6c9b3f4ebc076587f8536a9f8770f56fad6f66fd))
+
+
+### Bug Fixes
+
+* **plugin:** calibrate the compose link floor, and fail loudly where it cannot be applied ([#3607](https://github.com/yschimke/compose-ai-tools/issues/3607)) ([650235f](https://github.com/yschimke/compose-ai-tools/commit/650235fc336ca475071b35fbfceb5bb05531f2fe))
+* **serve:** apply a replayed theme on every lane, and read a six-digit seed as opaque ([#3609](https://github.com/yschimke/compose-ai-tools/issues/3609)) ([9c08e8c](https://github.com/yschimke/compose-ai-tools/commit/9c08e8cef7c28493ac5efd968a7df896a33db874))
+
 ## [0.19.53](https://github.com/yschimke/compose-ai-tools/compare/v0.19.52...v0.19.53) (2026-08-09)
 
 
