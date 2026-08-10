@@ -425,10 +425,19 @@ class ServeCatalogStore(
     val failedIds = LinkedHashSet<String>()
     for ((index, failure) in catalog.failures.withIndex()) {
       if (count + deferredIds.size + failedIds.size >= maxImages) break
-      val id =
-        failure.id.takeIf { it.isNotBlank() }
-          ?: "render-failed--${failure.componentId.orEmpty().lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')}--$index"
-      if (id in bakedPathById || id in deferredIds || !failedIds.add(id)) continue
+      // Catalog JSON is fetched input. Never reuse its id as a filesystem path: generate a
+      // single-segment route id from descriptive fields, then suffix collisions deterministically.
+      fun failureSlug(value: String): String =
+        value.lowercase().replace(Regex("[^a-z0-9._-]+"), "-").trim('-', '.').ifBlank { "unknown" }
+      val base =
+        "render-failed--${failureSlug(failure.componentId.orEmpty())}--" +
+          failureSlug(failure.preview ?: failure.id.ifBlank { index.toString() })
+      var id = base
+      var suffix = 2
+      while (id in bakedPathById || id in deferredIds || id in failedIds) {
+        id = "$base--${suffix++}"
+      }
+      failedIds.add(id)
       variants[id] =
         VariantMeta(
           state = failure.state,

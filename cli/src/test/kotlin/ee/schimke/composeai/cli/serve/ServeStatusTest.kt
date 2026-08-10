@@ -34,6 +34,7 @@ class ServeStatusTest {
     title: String? = null,
     provenance: ServeWeb.CatalogProvenance? = null,
     failedPreviewIds: List<String> = emptyList(),
+    deferredPreviewIds: List<String> = emptyList(),
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("status-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
@@ -54,6 +55,7 @@ class ServeStatusTest {
       title = title,
       provenance = provenance,
       declaredBaked = previewIds + failedPreviewIds,
+      liveOnly = deferredPreviewIds,
     )
   }
 
@@ -65,6 +67,7 @@ class ServeStatusTest {
     token: String,
     catalogLoads: CatalogLoadTracker? = null,
     failedCatalogPreviews: List<String> = emptyList(),
+    deferredCatalogPreviews: List<String> = emptyList(),
   ): ServeHttpServer {
     registry.register(
       "default-mod",
@@ -87,6 +90,7 @@ class ServeStatusTest {
               designParityVersion = "0.1.25",
             ),
           failedPreviewIds = failedCatalogPreviews,
+          deferredPreviewIds = deferredCatalogPreviews,
         ),
       pinned = true,
     )
@@ -299,13 +303,15 @@ class ServeStatusTest {
         public = true,
         token = "unused",
         failedCatalogPreviews = listOf("render-failed--button-filled"),
+        deferredCatalogPreviews = listOf("live-only-one", "live-only-two"),
       )
     val (_, json) = get("/status.json")
     assertTrue(json.contains("\"failedRenders\":1"), json)
+    assertTrue(json.contains("\"deferredPreviews\":2"), json)
     assertTrue(json.contains("\"status\":\"degraded\""), json)
 
     val (_, html) = get("/status")
-    assertTrue(html.contains("2 rendered · 1 failed"), html)
+    assertTrue(html.contains("2 rendered · 1 failed · 2 deferred"), html)
     assertTrue(html.contains("Catalog renders"), html)
   }
 

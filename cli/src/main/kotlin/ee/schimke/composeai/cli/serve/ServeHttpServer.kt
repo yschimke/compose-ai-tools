@@ -2362,6 +2362,7 @@ class ServeHttpServer(
     val trust: String?,
     val previews: Int?,
     val failedRenders: Int,
+    val deferredPreviews: Int,
     /** Has a live (daemon-backed) render lane — a running daemon, or a suspended live catalog. */
     val live: Boolean,
     /** A live daemon for this catalog is up right now. */
@@ -2415,6 +2416,7 @@ class ServeHttpServer(
     val trust: String?,
     val previews: Int?,
     val failedRenders: Int,
+    val deferredPreviews: Int,
     val heroPreviewId: String?,
     val heroCrop: ContentCrop?,
     /**
@@ -2454,6 +2456,7 @@ class ServeHttpServer(
         trust = BundleVerifier.summary(bundle.trust),
         previews = host.previews.size,
         failedRenders = host.previews.count { it.renderFailure != null },
+        deferredPreviews = host.liveOnlyPreviewIds.size,
         heroPreviewId = heroId,
         heroCrop = heroCrop,
         // Memoised per (host instance, preview): the decode + scale runs once per catalog, and a
@@ -2542,6 +2545,7 @@ class ServeHttpServer(
               trust = c.trust,
               previews = c.previews,
               failedRenders = c.failedRenders,
+              deferredPreviews = c.deferredPreviews,
               live = c.live,
               running = c.running,
               degradation = c.degradation,
@@ -2641,10 +2645,12 @@ class ServeHttpServer(
         add(ServeWeb.Stat("Catalogs", "${catalogs.count { it.available }}/${catalogs.size} loaded"))
         val published = catalogs.sumOf { it.previews ?: 0 }
         val publishedFailures = catalogs.sumOf { it.failedRenders }
+        val publishedDeferred = catalogs.sumOf { it.deferredPreviews }
         add(
           ServeWeb.Stat(
             "Catalog renders",
-            "${(published - publishedFailures).coerceAtLeast(0)} rendered · $publishedFailures failed",
+            "${(published - publishedFailures - publishedDeferred).coerceAtLeast(0)} rendered · " +
+              "$publishedFailures failed · $publishedDeferred deferred",
           )
         )
         add(ServeWeb.Stat("Live daemons running", liveDaemons.size.toString()))
@@ -2705,6 +2711,7 @@ class ServeHttpServer(
               trust = c.trust,
               previews = c.previews ?: 0,
               failedRenders = c.failedRenders,
+              deferredPreviews = c.deferredPreviews,
               live = c.live,
               running = c.running,
               degradation = c.degradation,
@@ -2798,6 +2805,7 @@ class ServeHttpServer(
             ?: seen?.failedRenders
             ?: load?.failedRenders
             ?: 0,
+        deferredPreviews = host?.liveOnlyPreviewIds?.size ?: seen?.deferredPreviews ?: 0,
         live = live,
         running = running,
         degradation = host?.degradations?.firstOrNull()?.detail ?: seen?.degradation,
@@ -4776,6 +4784,8 @@ private data class CatalogDto(
   val previews: Int? = null,
   /** Number of catalogued previews whose published render failed. */
   val failedRenders: Int = 0,
+  /** Number of catalogued previews deliberately deferred to the live render lane. */
+  val deferredPreviews: Int = 0,
   /** Has a live daemon-backed render lane (running now, or a suspended live catalog). */
   val live: Boolean,
   /** A live daemon for this catalog is up right now. */

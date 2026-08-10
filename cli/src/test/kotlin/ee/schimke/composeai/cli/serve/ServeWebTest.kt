@@ -897,8 +897,18 @@ class ServeWebTest {
       )
     val previews =
       listOf(
-        ServePreview("render-failed--button", "Button", renderFailure = failure),
-        ServePreview("render-failed--button-dark", "Button dark", renderFailure = failure),
+        ServePreview(
+          "render-failed--button",
+          "Button",
+          state = "disabled",
+          renderFailure = failure,
+        ),
+        ServePreview(
+          "render-failed--button-dark",
+          "Button dark",
+          props = jsonProps("locale" to "ar-XB"),
+          renderFailure = failure,
+        ),
       )
 
     val html = ServeWeb.landingPage("broken", previews, token = "t", basePath = "/broken")
@@ -909,5 +919,25 @@ class ServeWebTest {
     assertTrue(html.contains("×2"), "identical failures are aggregated")
     assertTrue(html.contains("Stack trace"))
     assertFalse(html.contains("/render/render-failed--button.png"))
+  }
+
+  @Test
+  fun `representative preview ignores render failures`() {
+    val failure = CatalogRenderFailure(id = "failed", message = "boom")
+    assertEquals(
+      "working",
+      ServeWeb.representativePreviewId(
+        listOf(
+          ServePreview("failed", "Failed", section = "Screens", renderFailure = failure),
+          ServePreview("working", "Working"),
+        )
+      ),
+    )
+    assertEquals(
+      null,
+      ServeWeb.representativePreviewId(
+        listOf(ServePreview("failed", "Failed", renderFailure = failure))
+      ),
+    )
   }
 }

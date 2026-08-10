@@ -3378,6 +3378,8 @@ object ServeWeb {
     val previews: Int,
     /** Published render failures included in [previews]. */
     val failedRenders: Int = 0,
+    /** Preview ids included in [previews] that have no published pixels yet. */
+    val deferredPreviews: Int = 0,
     /** The catalog has a live daemon lane (server-side re-render), even if idle right now. */
     val live: Boolean,
     /** A live daemon for this catalog is up **right now**. */
@@ -3557,10 +3559,10 @@ object ServeWeb {
             if (c.loadState == "failed" || c.loadState == "pending") esc(c.title)
             else "<a href=\"/$idSeg/$suffix\">${esc(c.title)}</a>"
           val previewCell =
-            if (c.failedRenders > 0)
+            if (c.failedRenders > 0 || c.deferredPreviews > 0)
               "${c.previews} total<div class=\"cp-muted\">" +
-                "${(c.previews - c.failedRenders).coerceAtLeast(0)} rendered · " +
-                "${c.failedRenders} failed</div>"
+                "${(c.previews - c.failedRenders - c.deferredPreviews).coerceAtLeast(0)} rendered · " +
+                "${c.failedRenders} failed · ${c.deferredPreviews} deferred</div>"
             else "${c.previews}"
           "<tr>" +
             "<td>$title$listed" +
@@ -3787,7 +3789,8 @@ object ServeWeb {
    * goldens). Null when there are no previews.
    */
   fun representativePreviewId(previews: List<ServePreview>): String? {
-    if (previews.isEmpty()) return null
+    val usable = previews.filter { it.renderFailure == null }
+    if (usable.isEmpty()) return null
     val demote =
       listOf(
         "disabled",
@@ -3803,7 +3806,7 @@ object ServeWeb {
       )
     // A preview is a "screen" when its catalog section says so (the reliable signal), else when its
     // id/label reads like one — so a screen wins the hero even before section metadata exists.
-    val anyScreen = previews.any { isScreenPreview(it) }
+    val anyScreen = usable.any { isScreenPreview(it) }
     // A screen id that reads like the app's primary/landing view (its conference/home/schedule/…),
     // preferred among screens so an app fronts its main screen rather than an alphabetically-first
     // secondary one (e.g. Confetti leads with the conference screen, not bookmarks).
@@ -3825,7 +3828,7 @@ object ServeWeb {
       if ("filled" in lower) s -= 2
       return s
     }
-    return previews.sortedWith(compareBy({ score(it) }, { it.id })).first().id
+    return usable.sortedWith(compareBy({ score(it) }, { it.id })).first().id
   }
 
   /**
@@ -4049,7 +4052,11 @@ object ServeWeb {
     // reachable through the viewer's state + variant switchers. Plain bundle screens (no state, no
     // props) pass straight through.
     val groups =
-      groupPreviews(previews.filterNot { isNonDefaultState(it) || hasNonDefaultProps(it) })
+      groupPreviews(
+        previews.filterNot {
+          it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
+        }
+      )
     val renderFailureSummary =
       previews
         .mapNotNull { it.renderFailure }
@@ -6560,13 +6567,18 @@ $rows
     // the component being viewed, even when the current preview is a folded (non-default) variant
     // that has no card of its own.
     val representatives =
-      groupPreviews(siblings.filterNot { isNonDefaultState(it) || hasNonDefaultProps(it) }).map {
-        when (theme) {
-          "dark" -> it.dark ?: it.default
-          "light" -> it.light ?: it.default
-          else -> it.default
+      groupPreviews(
+          siblings.filterNot {
+            it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
+          }
+        )
+        .map {
+          when (theme) {
+            "dark" -> it.dark ?: it.default
+            "light" -> it.light ?: it.default
+            else -> it.default
+          }
         }
-      }
     // Nothing to navigate to when the collapsed list is empty or holds only the current component.
     val currentKey = componentKey(preview)
     if (representatives.none { componentKey(it) != currentKey }) return ""

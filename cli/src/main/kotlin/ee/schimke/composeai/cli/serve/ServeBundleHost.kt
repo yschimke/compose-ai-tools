@@ -6,6 +6,7 @@ import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.data.overrides.PreviewOverridesPayload
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -129,6 +130,7 @@ class ServeBundleHost(
   override val hasSvgExport: Boolean = figmaDir != null
 
   private val previewsDir = File(bundleDir, PREVIEWS_SUBDIR)
+  private val previewsRoot = previewsDir.canonicalFile.toPath()
   private val designReferences = ServeDesignReferenceStore.load(bundleDir, fileSystem)
 
   override fun designReferencesFor(previewId: String): List<DesignReference> =
@@ -248,11 +250,12 @@ class ServeBundleHost(
    * is the whole point of declaring it — so it takes precedence over [liveOnly] below.
    */
   private val declaredBakedIds: Set<String> =
-    declaredBaked.filterTo(LinkedHashSet()) { it.isNotBlank() }
+    declaredBaked.filterTo(LinkedHashSet()) { previewFile(it, PNG_SUFFIX) != null }
 
   override val liveOnlyPreviewIds: Set<String> =
     liveOnly.filterTo(LinkedHashSet()) {
-      it.isNotBlank() && it !in declaredBakedIds && !File(previewsDir, "$it$PNG_SUFFIX").isFile
+      val png = previewFile(it, PNG_SUFFIX)
+      png != null && it !in declaredBakedIds && !png.isFile
     }
 
   override val previews: List<ServePreview> =
@@ -266,7 +269,16 @@ class ServeBundleHost(
         .walkTopDown()
         .filter { it.isFile && it.name.endsWith(PNG_SUFFIX) }
         .map { it.relativeTo(previewsDir).invariantSeparatorsPath.removeSuffix(PNG_SUFFIX) }
-        .toList() + declaredBakedIds + liveOnlyPreviewIds)
+        .toList() +
+        previewsDir
+          .walkTopDown()
+          .filter { it.isFile && it.name.endsWith(RENDER_ERROR_SUFFIX) }
+          .map {
+            it.relativeTo(previewsDir).invariantSeparatorsPath.removeSuffix(RENDER_ERROR_SUFFIX)
+          }
+          .toList() +
+        declaredBakedIds +
+        liveOnlyPreviewIds)
       .distinct()
       .sorted()
       .map { id ->
@@ -275,7 +287,7 @@ class ServeBundleHost(
           id = id,
           label = id,
           componentId = meta?.componentId,
-          renderFailure = meta?.renderFailure,
+          renderFailure = meta?.renderFailure ?: readRenderFailure(id),
           // A packed sidecar remains authoritative for ordinary uploaded bundles. Published
           // catalogs additionally carry these declarations inline so a supplement-only preview's
           // controls are visible before its per-preview daemon is opened lazily.
@@ -320,10 +332,49 @@ class ServeBundleHost(
    */
   val declaredHeroPreviewId: String? by lazy {
     val hero = declaredHero?.takeIf { it.isNotBlank() } ?: return@lazy null
-    val exact = previews.firstOrNull { it.id == hero }
+    val usable = previews.filter { it.renderFailure == null }
+    val exact = usable.firstOrNull { it.id == hero }
     if (exact != null) return@lazy exact.id
     val wanted = heroSlug(hero)
-    previews.firstOrNull { heroSlug(it.id.substringBefore(SLUG_SEPARATOR)) == wanted }?.id
+    usable.firstOrNull { heroSlug(it.id.substringBefore(SLUG_SEPARATOR)) == wanted }?.id
+  }
+
+  /** Resolve one per-preview file without allowing an untrusted catalog id to escape previews/. */
+  private fun previewFile(id: String, suffix: String): File? {
+    if (
+      id.isBlank() ||
+        id.startsWith('/') ||
+        '\\' in id ||
+        id.split('/').any { it == "." || it == ".." }
+    ) {
+      return null
+    }
+    val file = File(previewsDir, id + suffix)
+    return file.takeIf { it.canonicalFile.toPath().startsWith(previewsRoot) }
+  }
+
+  /** Renderer error sidecar for an error-only uploaded/URL bundle preview. */
+  private fun readRenderFailure(id: String): CatalogRenderFailure? {
+    val sidecar = previewFile(id, RENDER_ERROR_SUFFIX)?.toOkioPath() ?: return null
+    if (!fileSystem.exists(sidecar)) return null
+    return try {
+      val error =
+        OVERRIDES_JSON.decodeFromString(
+          BundleRenderError.serializer(),
+          fileSystem.read(sidecar) { readUtf8() },
+        )
+      if (error.schema != RENDER_ERROR_SCHEMA) return null
+      CatalogRenderFailure(
+        id = id,
+        preview = id,
+        errorClass = error.exception,
+        message = error.message,
+        stackTrace = error.stackTrace,
+        topAppFrame = error.topAppFrame,
+      )
+    } catch (_: Exception) {
+      null
+    }
   }
 
   /**
@@ -462,7 +513,7 @@ class ServeBundleHost(
    * reads the file the first just wrote.
    */
   private fun bakedPngFile(previewId: String): okio.Path? {
-    val path = File(previewsDir, "$previewId$PNG_SUFFIX").toOkioPath()
+    val path = previewFile(previewId, PNG_SUFFIX)?.toOkioPath() ?: return null
     if (fileSystem.exists(path)) return path
     val fetch = fetchBakedPng ?: return null
     if (previewId !in declaredBakedIds) return null
@@ -489,7 +540,7 @@ class ServeBundleHost(
 
   /** [previewId]'s baked PNG only if it is already local — never fetches. */
   private fun localBakedPng(previewId: String): okio.Path? =
-    File(previewsDir, previewId + PNG_SUFFIX).toOkioPath().takeIf(fileSystem::exists)
+    previewFile(previewId, PNG_SUFFIX)?.toOkioPath()?.takeIf(fileSystem::exists)
 
   private val fillLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
 
@@ -716,6 +767,8 @@ class ServeBundleHost(
   companion object {
     private const val PREVIEWS_SUBDIR = "previews"
     private const val PNG_SUFFIX = ".png"
+    private const val RENDER_ERROR_SUFFIX = ".error.json"
+    private const val RENDER_ERROR_SCHEMA = "compose-preview-error/v1"
     /** Suffix of the sibling a lazy fill writes before moving it into place atomically. */
     private const val PARTIAL_SUFFIX = ".partial"
 
@@ -746,11 +799,22 @@ class ServeBundleHost(
     private const val PREVIEWS_JSON = "previews.json"
     private val OVERRIDES_JSON = Json { ignoreUnknownKeys = true }
 
-    /** True when [dir] looks like a servable bundle (a `previews/` tree with at least one PNG). */
+    /** True when [dir] contains at least one baked preview or structured render failure. */
     fun looksLikeBundle(dir: File): Boolean {
       val previews = File(dir, PREVIEWS_SUBDIR)
       return previews.isDirectory &&
-        previews.walkTopDown().any { it.isFile && it.name.endsWith(PNG_SUFFIX) }
+        previews.walkTopDown().any {
+          it.isFile && (it.name.endsWith(PNG_SUFFIX) || it.name.endsWith(RENDER_ERROR_SUFFIX))
+        }
     }
   }
 }
+
+@Serializable
+private data class BundleRenderError(
+  val schema: String = "",
+  val exception: String = "RenderError",
+  val message: String = "",
+  val topAppFrame: RenderFailureFrame? = null,
+  val stackTrace: String? = null,
+)
