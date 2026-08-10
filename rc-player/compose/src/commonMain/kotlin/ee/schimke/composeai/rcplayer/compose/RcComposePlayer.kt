@@ -4004,12 +4004,14 @@ private fun blendMode(value: Int): BlendMode =
   }
 
 /**
- * Collects, in document order, the data operations layout containers carry beside their components.
+ * Collects, in document order, the state operations layout containers carry beside their
+ * components.
  *
- * The layout tree keeps only components, so these — the `TEXT_LOOKUP_INT` publishing a card title,
- * the integer expressions feeding its index — have no other execution site in the layout path.
- * Operations nested in a container that owns its own execution (CanvasOperations, LayoutCompute)
- * are left to that owner; only the direct children of a LayoutComponentContent are replayed here.
+ * The layout tree keeps only components, so these — a `TEXT_LOOKUP_INT` publishing a card title or
+ * a `COLOR_EXPRESSIONS` feeding a background modifier — have no other execution site in the layout
+ * path. Operations nested in a container that owns its own execution (CanvasOperations,
+ * LayoutCompute) are left to that owner; only the direct children of a LayoutComponentContent are
+ * replayed here.
  */
 private fun List<RcLinkedNode>.collectContentStateOperations(): List<RcLinkedNode> = buildList {
   this@collectContentStateOperations.filterIsInstance<RcLinkedNode.Container>().forEach { container
