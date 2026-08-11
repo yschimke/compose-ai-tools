@@ -436,6 +436,10 @@ export function planDesignReferences({ designMap, spec, catalog }) {
           path: `${REFERENCES_DIR}/${id}.png`,
           width: image.width,
           height: image.height,
+          // Newer exporters may retain the @Preview renderer density on the image. It is
+          // driver-only here and lets a Figma component be requested at the exact non-default
+          // density that produced its Compose sticker.
+          ...(typeof image.density === "number" ? { density: image.density } : {}),
         },
         source: {
           provider: providerFor(entry.source),

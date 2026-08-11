@@ -396,6 +396,24 @@ test("planDesignReferences carries a declared board density to the driver", () =
   assert.equal(records[1].origin.density, undefined);
 });
 
+test("planDesignReferences carries an image renderer density to the raster target", () => {
+  const catalog = structuredClone(CATALOG);
+  catalog.components[0].images[0].density = 3;
+  const designMap = {
+    components: [
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatPreview",
+        source: "figma",
+        ref: "figma:abc/73:5",
+      },
+    ],
+  };
+
+  const { records } = planDesignReferences({ designMap, spec: SPEC, catalog });
+
+  assert.equal(records[0].raster.density, 3);
+});
+
 test("planDesignReferences warns rather than throwing when a handle maps to nothing", () => {
   const designMap = {
     components: [{ code: "ui/Other.kt#NotInTheSpec", source: "claude-design", ref: "x.html" }],
