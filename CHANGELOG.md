@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.19.61](https://github.com/yschimke/compose-ai-tools/compare/v0.19.60...v0.19.61) (2026-08-11)
+
+
+### Bug Fixes
+
+* address missed Codex review findings ([#3683](https://github.com/yschimke/compose-ai-tools/issues/3683)) ([e3f46de](https://github.com/yschimke/compose-ai-tools/commit/e3f46de11888a297b7ae29617e3ef9d78077b45e))
+* **figma-svg:** exclude accessibility-only text ([#3685](https://github.com/yschimke/compose-ai-tools/issues/3685)) ([0d110d8](https://github.com/yschimke/compose-ai-tools/commit/0d110d87825de9d3c3d0a713008a46ce1513e31c))
+* **figma-svg:** preserve delegated draws and axis mirrors ([#3686](https://github.com/yschimke/compose-ai-tools/issues/3686)) ([61c92a0](https://github.com/yschimke/compose-ai-tools/commit/61c92a0752bdb724c15e5caec9a14c51b78e2710))
+* stage font installer for preview host image ([#3682](https://github.com/yschimke/compose-ai-tools/issues/3682)) ([4e5c9ae](https://github.com/yschimke/compose-ai-tools/commit/4e5c9ae7bf5430bebbb40231c7dc58fa92aa80db))
+
 ## [0.19.60](https://github.com/yschimke/compose-ai-tools/compare/v0.19.59...v0.19.60) (2026-08-11)
 
 
