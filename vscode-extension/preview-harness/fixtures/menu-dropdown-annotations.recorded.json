@@ -1,0 +1,1775 @@
+{
+    "source": "https://preview.coo.ee/m3-catalog/compare/menu-dropdown__ideal__default__light?reference=menu-dropdown__ideal__default__light",
+    "recorded": "2026-08-11",
+    "reference": [
+        {
+            "bounds": {
+                "height": 847,
+                "width": 603,
+                "x": 0,
+                "y": 0
+            },
+            "detail": {
+                "cornerRadius": "16",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "r 16px"
+        },
+        {
+            "bounds": {
+                "height": 847,
+                "width": 603,
+                "x": 0,
+                "y": 0
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad t 2px b 2px",
+            "role": "List 1 content"
+        },
+        {
+            "bounds": {
+                "height": 93,
+                "width": 603,
+                "x": 0,
+                "y": 6
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "2",
+                "padding.end": "4",
+                "padding.start": "4",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad e 4px s 4px · gap 2px · r 4px",
+            "role": "Label 01 - First"
+        },
+        {
+            "bounds": {
+                "height": 93,
+                "width": 580,
+                "x": 12,
+                "y": 6
+            },
+            "detail": {
+                "gap": "8",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "6",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad t 6px e 12px s 12px · gap 8px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 32
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 12,
+                "width": 325,
+                "x": 12,
+                "y": 104
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "8",
+                "padding.start": "8",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/8px",
+            "role": "Divider"
+        },
+        {
+            "bounds": {
+                "height": 139,
+                "width": 603,
+                "x": 0,
+                "y": 6
+            },
+            "detail": {
+                "gap": "4",
+                "padding.bottom": "2",
+                "padding.end": "4",
+                "padding.start": "4",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/4px · gap 4px",
+            "role": "Menu-item 01 - First"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 580,
+                "x": 12,
+                "y": 12
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "10",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 10px · r 4px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 580,
+                "x": 12,
+                "y": 12
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "8",
+                "padding.bottom": "12",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "12",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 12px · gap 8px · r 4px",
+            "role": "State Layer"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 46
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Leading element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 46
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 499,
+                "y": 46
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Trailing element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 499,
+                "y": 46
+            },
+            "detail": {
+                "padding.bottom": "6",
+                "padding.end": "7",
+                "padding.start": "8",
+                "padding.top": "6",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 6px e 7px b 6px s 8px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 12,
+                "width": 638,
+                "x": 12,
+                "y": 151
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "8",
+                "padding.start": "8",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/8px",
+            "role": "Divider"
+        },
+        {
+            "bounds": {
+                "height": 139,
+                "width": 603,
+                "x": 0,
+                "y": 145
+            },
+            "detail": {
+                "gap": "4",
+                "padding.bottom": "2",
+                "padding.end": "4",
+                "padding.start": "4",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/4px · gap 4px",
+            "role": "Menu-item 02"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 580,
+                "x": 12,
+                "y": 151
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "10",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 10px · r 4px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 580,
+                "x": 12,
+                "y": 151
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "8",
+                "padding.bottom": "12",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "12",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 12px · gap 8px · r 4px",
+            "role": "State Layer"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 186
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Leading element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 186
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 499,
+                "y": 186
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Trailing element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 499,
+                "y": 186
+            },
+            "detail": {
+                "padding.bottom": "6",
+                "padding.end": "7",
+                "padding.start": "8",
+                "padding.top": "6",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 6px e 7px b 6px s 8px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 12,
+                "width": 638,
+                "x": 12,
+                "y": 290
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "8",
+                "padding.start": "8",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/8px",
+            "role": "Divider"
+        },
+        {
+            "bounds": {
+                "height": 139,
+                "width": 603,
+                "x": 0,
+                "y": 284
+            },
+            "detail": {
+                "gap": "4",
+                "padding.bottom": "2",
+                "padding.end": "4",
+                "padding.start": "4",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/4px · gap 4px",
+            "role": "Menu-item 03"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 580,
+                "x": 12,
+                "y": 290
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "10",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 10px · r 4px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 580,
+                "x": 12,
+                "y": 290
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "8",
+                "padding.bottom": "12",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "12",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 12px · gap 8px · r 4px",
+            "role": "State Layer"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 325
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Leading element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 325
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 499,
+                "y": 325
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Trailing element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 499,
+                "y": 325
+            },
+            "detail": {
+                "padding.bottom": "6",
+                "padding.end": "7",
+                "padding.start": "8",
+                "padding.top": "6",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 6px e 7px b 6px s 8px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 12,
+                "width": 638,
+                "x": 12,
+                "y": 429
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "8",
+                "padding.start": "8",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/8px",
+            "role": "Divider"
+        },
+        {
+            "bounds": {
+                "height": 139,
+                "width": 603,
+                "x": 0,
+                "y": 423
+            },
+            "detail": {
+                "gap": "4",
+                "padding.bottom": "2",
+                "padding.end": "4",
+                "padding.start": "4",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/4px · gap 4px",
+            "role": "Menu-item 04"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 580,
+                "x": 12,
+                "y": 429
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "10",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 10px · r 4px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 580,
+                "x": 12,
+                "y": 429
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "8",
+                "padding.bottom": "12",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "12",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 12px · gap 8px · r 4px",
+            "role": "State Layer"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 464
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Leading element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 464
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 499,
+                "y": 464
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Trailing element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 499,
+                "y": 464
+            },
+            "detail": {
+                "padding.bottom": "6",
+                "padding.end": "7",
+                "padding.start": "8",
+                "padding.top": "6",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 6px e 7px b 6px s 8px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 12,
+                "width": 638,
+                "x": 12,
+                "y": 568
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "8",
+                "padding.start": "8",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/8px",
+            "role": "Divider"
+        },
+        {
+            "bounds": {
+                "height": 139,
+                "width": 603,
+                "x": 0,
+                "y": 562
+            },
+            "detail": {
+                "gap": "4",
+                "padding.bottom": "2",
+                "padding.end": "4",
+                "padding.start": "4",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/4px · gap 4px",
+            "role": "Menu-item 05"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 580,
+                "x": 12,
+                "y": 568
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "10",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 10px · r 4px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 580,
+                "x": 12,
+                "y": 568
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "8",
+                "padding.bottom": "12",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "12",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 12px · gap 8px · r 4px",
+            "role": "State Layer"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 603
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Leading element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 603
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 499,
+                "y": 603
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Trailing element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 499,
+                "y": 603
+            },
+            "detail": {
+                "padding.bottom": "6",
+                "padding.end": "7",
+                "padding.start": "8",
+                "padding.top": "6",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 6px e 7px b 6px s 8px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 12,
+                "width": 638,
+                "x": 12,
+                "y": 707
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "8",
+                "padding.start": "8",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/8px",
+            "role": "Divider"
+        },
+        {
+            "bounds": {
+                "height": 139,
+                "width": 557,
+                "x": 0,
+                "y": 725
+            },
+            "detail": {
+                "gap": "4",
+                "padding.bottom": "2",
+                "padding.end": "4",
+                "padding.start": "4",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/4px · gap 4px",
+            "role": "Menu-item 06"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 533,
+                "x": 12,
+                "y": 731
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "10",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 10px · r 4px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 533,
+                "x": 12,
+                "y": 731
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "8",
+                "padding.bottom": "12",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "12",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 12px · gap 8px · r 4px",
+            "role": "State Layer"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 765
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Leading element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 765
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 406,
+                "x": 128,
+                "y": 765
+            },
+            "detail": {
+                "padding.bottom": "0",
+                "padding.end": "36",
+                "padding.start": "0",
+                "padding.top": "0",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 0px e 36px b 0px s 0px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 452,
+                "y": 765
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Trailing element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 452,
+                "y": 765
+            },
+            "detail": {
+                "padding.bottom": "6",
+                "padding.end": "8",
+                "padding.start": "8",
+                "padding.top": "6",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 6px/8px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 12,
+                "width": 638,
+                "x": 12,
+                "y": 870
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "8",
+                "padding.start": "8",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/8px",
+            "role": "Divider"
+        },
+        {
+            "bounds": {
+                "height": 93,
+                "width": 603,
+                "x": 0,
+                "y": 702
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "2",
+                "padding.end": "4",
+                "padding.start": "4",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad e 4px s 4px · gap 2px · r 4px",
+            "role": "Label 02"
+        },
+        {
+            "bounds": {
+                "height": 93,
+                "width": 580,
+                "x": 12,
+                "y": 702
+            },
+            "detail": {
+                "gap": "8",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "6",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad t 6px e 12px s 12px · gap 8px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 728
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 12,
+                "width": 325,
+                "x": 12,
+                "y": 800
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "8",
+                "padding.start": "8",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/8px",
+            "role": "Divider"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 23,
+                "y": 818
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Leading element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 23,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 406,
+                "x": 104,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "0",
+                "padding.end": "20",
+                "padding.start": "0",
+                "padding.top": "0",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 0px e 20px b 0px s 0px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 475,
+                "y": 818
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Trailing element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 475,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "6",
+                "padding.end": "7",
+                "padding.start": "8",
+                "padding.top": "6",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 6px e 7px b 6px s 8px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 23,
+                "y": 818
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Leading element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 23,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 406,
+                "x": 104,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "0",
+                "padding.end": "20",
+                "padding.start": "0",
+                "padding.top": "0",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 0px e 20px b 0px s 0px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 475,
+                "y": 818
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Trailing element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 475,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "6",
+                "padding.end": "7",
+                "padding.start": "8",
+                "padding.top": "6",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 6px e 7px b 6px s 8px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 23,
+                "y": 818
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Leading element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 23,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 406,
+                "x": 104,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "0",
+                "padding.end": "20",
+                "padding.start": "0",
+                "padding.top": "0",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 0px e 20px b 0px s 0px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 475,
+                "y": 818
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Trailing element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 475,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "6",
+                "padding.end": "7",
+                "padding.start": "8",
+                "padding.top": "6",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 6px e 7px b 6px s 8px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 23,
+                "y": 818
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Leading element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 23,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 406,
+                "x": 104,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "0",
+                "padding.end": "20",
+                "padding.start": "0",
+                "padding.top": "0",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 0px e 20px b 0px s 0px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 475,
+                "y": 818
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Trailing element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 475,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "6",
+                "padding.end": "7",
+                "padding.start": "8",
+                "padding.top": "6",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 6px e 7px b 6px s 8px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 23,
+                "y": 818
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Leading element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 23,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 406,
+                "x": 104,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "0",
+                "padding.end": "20",
+                "padding.start": "0",
+                "padding.top": "0",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 0px e 20px b 0px s 0px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 475,
+                "y": 818
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Trailing element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 475,
+                "y": 818
+            },
+            "detail": {
+                "padding.bottom": "6",
+                "padding.end": "7",
+                "padding.start": "8",
+                "padding.top": "6",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 6px e 7px b 6px s 8px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 139,
+                "width": 603,
+                "x": 0,
+                "y": 702
+            },
+            "detail": {
+                "gap": "4",
+                "padding.bottom": "2",
+                "padding.end": "4",
+                "padding.start": "4",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/4px · gap 4px",
+            "role": "Menu-item 12 - Last"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 580,
+                "x": 12,
+                "y": 707
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "10",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 10px · r 4px",
+            "role": "Content"
+        },
+        {
+            "bounds": {
+                "height": 128,
+                "width": 580,
+                "x": 12,
+                "y": 707
+            },
+            "detail": {
+                "cornerRadius": "4",
+                "gap": "8",
+                "padding.bottom": "12",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "12",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 12px · gap 8px · r 4px",
+            "role": "State Layer"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 742
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Leading element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 46,
+                "y": 742
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "2",
+                "padding.start": "2",
+                "padding.top": "2",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad 2px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 499,
+                "y": 742
+            },
+            "detail": {
+                "gap": "8",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "gap 8px",
+            "role": "Trailing element"
+        },
+        {
+            "bounds": {
+                "height": 58,
+                "width": 58,
+                "x": 499,
+                "y": 742
+            },
+            "detail": {
+                "padding.bottom": "6",
+                "padding.end": "7",
+                "padding.start": "8",
+                "padding.top": "6",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 6px e 7px b 6px s 8px",
+            "role": "Icon"
+        },
+        {
+            "bounds": {
+                "height": 12,
+                "width": 638,
+                "x": 12,
+                "y": 847
+            },
+            "detail": {
+                "padding.bottom": "2",
+                "padding.end": "8",
+                "padding.start": "8",
+                "padding.top": "2",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "pad 2px/8px",
+            "role": "Divider"
+        },
+        {
+            "bounds": {
+                "height": 847,
+                "width": 35,
+                "x": 557,
+                "y": 0
+            },
+            "detail": {
+                "padding.bottom": "110",
+                "padding.end": "0",
+                "padding.start": "8",
+                "padding.top": "12",
+                "spacingSource": "derived",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "≈pad t 12px e 0px b 110px s 8px",
+            "role": "Scrollbar"
+        },
+        {
+            "bounds": {
+                "height": 493,
+                "width": 12,
+                "x": 580,
+                "y": 35
+            },
+            "detail": {
+                "cornerRadius": "100",
+                "unit": "px"
+            },
+            "kind": "layout",
+            "label": "r 100px",
+            "role": "Scrollbar"
+        }
+    ],
+    "actual": [
+        {
+            "bounds": {
+                "height": 767,
+                "width": 546,
+                "x": 29,
+                "y": 18
+            },
+            "detail": {
+                "cornerRadius": "16",
+                "unit": "dp"
+            },
+            "kind": "layout",
+            "label": "r 16dp"
+        },
+        {
+            "bounds": {
+                "height": 126,
+                "width": 546,
+                "x": 29,
+                "y": 23
+            },
+            "detail": {
+                "padding.bottom": "0",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "0",
+                "unit": "dp"
+            },
+            "kind": "layout",
+            "label": "pad 0dp/12dp"
+        },
+        {
+            "bounds": {
+                "height": 126,
+                "width": 546,
+                "x": 29,
+                "y": 149
+            },
+            "detail": {
+                "padding.bottom": "0",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "0",
+                "unit": "dp"
+            },
+            "kind": "layout",
+            "label": "pad 0dp/12dp"
+        },
+        {
+            "bounds": {
+                "height": 126,
+                "width": 546,
+                "x": 29,
+                "y": 275
+            },
+            "detail": {
+                "padding.bottom": "0",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "0",
+                "unit": "dp"
+            },
+            "kind": "layout",
+            "label": "pad 0dp/12dp"
+        },
+        {
+            "bounds": {
+                "height": 126,
+                "width": 546,
+                "x": 29,
+                "y": 401
+            },
+            "detail": {
+                "padding.bottom": "0",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "0",
+                "unit": "dp"
+            },
+            "kind": "layout",
+            "label": "pad 0dp/12dp"
+        },
+        {
+            "bounds": {
+                "height": 126,
+                "width": 546,
+                "x": 29,
+                "y": 527
+            },
+            "detail": {
+                "padding.bottom": "0",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "0",
+                "unit": "dp"
+            },
+            "kind": "layout",
+            "label": "pad 0dp/12dp"
+        },
+        {
+            "bounds": {
+                "height": 126,
+                "width": 546,
+                "x": 29,
+                "y": 653
+            },
+            "detail": {
+                "padding.bottom": "0",
+                "padding.end": "12",
+                "padding.start": "12",
+                "padding.top": "0",
+                "unit": "dp"
+            },
+            "kind": "layout",
+            "label": "pad 0dp/12dp"
+        }
+    ]
+}

@@ -18,6 +18,7 @@ on:
       - 'vscode-extension/tsconfig.webview.json'
       - 'vscode-extension/package.json'
       - 'vscode-extension/package-lock.json'
+      - 'cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js'
       - '.github/actions/vscode-preview-baselines/**'
       - '.github/actions/vscode-preview-comment/**'
       - '.github/actions/lib/vscode-preview-diff.py'

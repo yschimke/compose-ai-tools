@@ -68,6 +68,11 @@ runs:
       working-directory: vscode-extension
       run: npm run harness:contract
 
+    - name: Test comparison scoring and annotation matching
+      shell: bash
+      working-directory: vscode-extension
+      run: npm run harness:compare
+
     - name: Fetch baselines
       shell: bash
       env:
