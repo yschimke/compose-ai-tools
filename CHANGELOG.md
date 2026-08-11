@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.19.59](https://github.com/yschimke/compose-ai-tools/compare/v0.19.58...v0.19.59) (2026-08-11)
+
+
+### Bug Fixes
+
+* address recent Codex review findings ([#3649](https://github.com/yschimke/compose-ai-tools/issues/3649)) ([53afe23](https://github.com/yschimke/compose-ai-tools/commit/53afe233fb310a903dedc9d841ab6532a8382835))
+* **figma-svg:** preserve variant state exports ([#3652](https://github.com/yschimke/compose-ai-tools/issues/3652)) ([8b0691e](https://github.com/yschimke/compose-ai-tools/commit/8b0691e18bb63d1e3824c168f6540268b6d73d33))
+* **rc-player:** align text measurement across players ([#3653](https://github.com/yschimke/compose-ai-tools/issues/3653)) ([5fc1ab5](https://github.com/yschimke/compose-ai-tools/commit/5fc1ab501b32f9dcf599a48511125efab3dff555))
+* **rc-player:** keep canvas decorations outside padding ([#3648](https://github.com/yschimke/compose-ai-tools/issues/3648)) ([b225a45](https://github.com/yschimke/compose-ai-tools/commit/b225a45bfcd37299b5026e33f55ad696444a4b1c))
+* **rc-player:** preserve lexical theme and canvas scope ([#3655](https://github.com/yschimke/compose-ai-tools/issues/3655)) ([b9070cb](https://github.com/yschimke/compose-ai-tools/commit/b9070cb098e5daf1d0eaaf3caa3ff91b3460822e))
+
 ## [0.19.58](https://github.com/yschimke/compose-ai-tools/compare/v0.19.57...v0.19.58) (2026-08-11)
 
 
