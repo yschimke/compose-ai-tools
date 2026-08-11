@@ -83,6 +83,10 @@ public object RcTextMetricDocuments {
     "Remote Compose keeps laying this paragraph out line after line until the box has no room left " +
       "for another one, and then it has to decide what to do"
 
+  /** Uneven word lengths make balanced breaking and inter-word justification visible. */
+  public const val EXTENDED_PARAGRAPH_SPECIMEN: String =
+    "Short words and substantially longer phrases expose how each paragraph chooses its breaks."
+
   /** Short enough to leave slack in the box, without which an alignment is invisible. */
   public const val ALIGNMENT_SPECIMEN: String = "Align this"
 
@@ -432,6 +436,14 @@ public object RcTextMetricDocuments {
     val lineHeightAdd: Float = 0f,
     /** `CoreText` property 14 — the line box as a multiple of the font's own height. */
     val lineHeightMultiplier: Float = 1f,
+    val lineBreakStrategy: Int = 0,
+    val hyphenationFrequency: Int = 0,
+    val justificationMode: Int = 0,
+    val underline: Boolean = false,
+    val strikethrough: Boolean = false,
+    val autosize: Boolean = false,
+    val minFontSize: Float = -1f,
+    val maxFontSize: Float = -1f,
   )
 
   /**
@@ -529,6 +541,71 @@ public object RcTextMetricDocuments {
         "3 lines · lineHeight ×1.5",
         lineHeightMultiplier = 1.5f,
       ),
+      LayoutMode(
+        "style-underline",
+        1,
+        RcTextLayout.OVERFLOW_CLIP,
+        RcTextLayout.ALIGN_START,
+        "Underline decoration",
+        "underline",
+        underline = true,
+      ),
+      LayoutMode(
+        "style-strikethrough",
+        1,
+        RcTextLayout.OVERFLOW_CLIP,
+        RcTextLayout.ALIGN_START,
+        "Strikethrough decoration",
+        "strikethrough",
+        strikethrough = true,
+      ),
+      LayoutMode(
+        "paragraph-break-high-quality",
+        4,
+        RcTextLayout.OVERFLOW_CLIP,
+        RcTextLayout.ALIGN_START,
+        EXTENDED_PARAGRAPH_SPECIMEN,
+        "break strategy · high quality",
+        lineBreakStrategy = 1,
+      ),
+      LayoutMode(
+        "paragraph-break-balanced",
+        4,
+        RcTextLayout.OVERFLOW_CLIP,
+        RcTextLayout.ALIGN_START,
+        EXTENDED_PARAGRAPH_SPECIMEN,
+        "break strategy · balanced",
+        lineBreakStrategy = 2,
+      ),
+      LayoutMode(
+        "paragraph-hyphenation-normal",
+        4,
+        RcTextLayout.OVERFLOW_CLIP,
+        RcTextLayout.ALIGN_START,
+        "Pneumonoultramicroscopicsilicovolcanoconiosis demonstrates discretionary hyphenation.",
+        "hyphenation · normal",
+        hyphenationFrequency = 1,
+      ),
+      LayoutMode(
+        "paragraph-justification-inter-word",
+        4,
+        RcTextLayout.OVERFLOW_CLIP,
+        RcTextLayout.ALIGN_START,
+        EXTENDED_PARAGRAPH_SPECIMEN,
+        "justification · inter-word",
+        justificationMode = 1,
+      ),
+      LayoutMode(
+        "style-autosize-bounded",
+        1,
+        RcTextLayout.OVERFLOW_CLIP,
+        RcTextLayout.ALIGN_START,
+        "Autosize within a fixed single-line box",
+        "autosize · 8–40px",
+        autosize = true,
+        minFontSize = 8f,
+        maxFontSize = 40f,
+      ),
     )
 
   private fun layoutModeSpec(id: String, maxLines: Int, overflow: Int, title: String) =
@@ -572,6 +649,14 @@ public object RcTextMetricDocuments {
             CORE_TEXT_LINE_HEIGHT_MULTIPLIER,
             literal(mode.lineHeightMultiplier),
           ),
+          RcTextStyleProperty.IntValue(CORE_TEXT_LINE_BREAK_STRATEGY, mode.lineBreakStrategy),
+          RcTextStyleProperty.IntValue(CORE_TEXT_HYPHENATION_FREQUENCY, mode.hyphenationFrequency),
+          RcTextStyleProperty.IntValue(CORE_TEXT_JUSTIFICATION_MODE, mode.justificationMode),
+          RcTextStyleProperty.BooleanValue(CORE_TEXT_UNDERLINE, mode.underline),
+          RcTextStyleProperty.BooleanValue(CORE_TEXT_STRIKETHROUGH, mode.strikethrough),
+          RcTextStyleProperty.BooleanValue(CORE_TEXT_AUTOSIZE, mode.autosize),
+          RcTextStyleProperty.FloatValue(CORE_TEXT_MIN_FONT_SIZE, literal(mode.minFontSize)),
+          RcTextStyleProperty.FloatValue(CORE_TEXT_MAX_FONT_SIZE, literal(mode.maxFontSize)),
         ),
     )
 
@@ -778,6 +863,14 @@ public object RcTextMetricDocuments {
   private const val CORE_TEXT_MAX_LINES = 11
   private const val CORE_TEXT_LINE_HEIGHT_ADD = 13
   private const val CORE_TEXT_LINE_HEIGHT_MULTIPLIER = 14
+  private const val CORE_TEXT_LINE_BREAK_STRATEGY = 15
+  private const val CORE_TEXT_HYPHENATION_FREQUENCY = 16
+  private const val CORE_TEXT_JUSTIFICATION_MODE = 17
+  private const val CORE_TEXT_UNDERLINE = 18
+  private const val CORE_TEXT_STRIKETHROUGH = 19
+  private const val CORE_TEXT_AUTOSIZE = 22
+  private const val CORE_TEXT_MIN_FONT_SIZE = 25
+  private const val CORE_TEXT_MAX_FONT_SIZE = 26
   private const val TEXT_GUIDE_LABEL_BASE = 100
   private const val TEXT_GUIDE_VALUE_BASE = 140
   private const val TEXT_SWEEP_LABEL = 180

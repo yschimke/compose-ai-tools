@@ -109,6 +109,8 @@ the line, against where the player thinks the line ends, is a picture rather tha
 | `text-metrics-layout-wrap-*` | `maxLines = 3` against clip / ellipsis / justify. |
 | `text-metrics-layout-align-*` | All six `CoreText` alignments, plus start/end again in RTL. |
 | `text-metrics-layout-line-height-*` | Leading, as an add and as a multiplier (properties 13/14). |
+| `text-metrics-layout-paragraph-*` | Break strategy, hyphenation and property-17 justification. |
+| `text-metrics-layout-style-*` | Underline, strikethrough and bounded autosize. |
 
 The manifest shape is not new: it is exactly what `rc-compare --stage-embedded` produces and what
 `RcViewPlayerRenderHarness`, `RcEmbeddedRenderHarness` and `RcJvmRenderHarness` already read, so the
@@ -232,8 +234,12 @@ That leaves two readings of the same picture, which these fixtures cannot separa
 on content, which is why the picture is worth keeping — but separating the two needs a host-side RTL
 container, i.e. a harness change, not a fixture change. Recorded below rather than claimed here.
 
-**The Java player's line cap depends on overflow.** A one-line clip/visible request takes
-`CoreText`'s unwrapped fast path. For a paragraph, clip/visible continues laying out past
+**The Java player's line cap depends on overflow.** A one-line clip/visible request normally takes
+`CoreText`'s unwrapped fast path. Java autosize is the exception: it measures the wrapped block's
+height in 0.5px steps and can therefore paint multiple lines despite `maxLines = 1`. Compose's
+platform `TextAutoSize` instead respects the line cap and fits the single line; the non-Java lanes
+use that platform behavior rather than carrying a second paragraph layout algorithm. For a
+paragraph, clip/visible continues laying out past
 `maxLines = 3` and is bounded by the component (the fixture therefore paints four lines), while end
 ellipsis stops at three. Start and middle ellipsis are also real one-line modes. The Compose and JS
 players now copy that observed split rather than applying Compose's stricter `maxLines` uniformly.
@@ -261,9 +267,15 @@ visible; a synchronous backend/fallback fix is tracked in
   source. Their opcode 155 implementations now follow the same selector, flag-order and unknown-mode
   contract; the JS canvas backend uses `actualBoundingBoxLeft` / `actualBoundingBoxRight` where the
   browser supplies them and falls back to the advance box otherwise.
-- **Extended paragraph properties.** Line-break strategy, hyphenation, justification mode,
-  autosize and some decorations still differ across non-Java lanes. They need their own focused
-  fixtures before the support gates can be removed; tracked in
+- **Backend-specific paragraph limits.** Shared and embedded Compose now delegate Java's simple,
+  high-quality and balanced strategies, dictionary hyphenation, inter-word justification, both
+  decorations and autosize to Compose text APIs. Canvas has no paragraph API for justification,
+  decorations, Android break strategies or platform hyphenation dictionaries, so those properties
+  remain decoded but unsupported there rather than being synthesized with manual word and line
+  rendering. Autosize is the narrow exception: a 0.5px search repeatedly asks the existing backend
+  layout for its height, but never parses or paints the text itself. Compose cannot represent
+  inter-character justification (mode 2).
+  Those remaining gaps stay tracked in
   [#3660](https://github.com/yschimke/compose-ai-tools/issues/3660).
 - **A pinned face.** The fixtures use the lane's default family, which leaves every reading entangled
   with typeface resolution. Embedding the face as `FontData` now pins `java`, `cmp-wasm` and `js`;

@@ -1450,8 +1450,14 @@ internal fun androidx.compose.remote.core.operations.layout.managers.CoreText.re
         letterSpacing = coreTextLetterSpacingField.getFloat(this),
         lineHeightMultiplier = coreTextLineHeightMultiplierField.getFloat(this),
         lineHeightAdd = coreTextLineHeightAddField.getFloat(this),
+        lineBreakStrategy = coreTextLineBreakStrategyField.getInt(this),
+        hyphenationFrequency = coreTextHyphenationFrequencyField.getInt(this),
+        justificationMode = coreTextJustificationModeField.getInt(this),
         underline = coreTextUnderlineField.getBoolean(this),
         strikethrough = coreTextStrikethroughField.getBoolean(this),
+        autosize = coreTextAutosizeField.getBoolean(this),
+        minFontSize = coreTextMinFontSizeField.getFloat(this),
+        maxFontSize = coreTextMaxFontSizeField.getFloat(this),
         fontAxis = coreTextFontAxisField.get(this) as? IntArray,
         fontAxisValues = coreTextFontAxisValuesField.get(this) as? FloatArray,
     )
@@ -1512,6 +1518,21 @@ private val coreTextLineHeightAddField =
         .java
         .getDeclaredField("mLineHeightAdd")
         .apply { isAccessible = true }
+private val coreTextLineBreakStrategyField =
+    androidx.compose.remote.core.operations.layout.managers.CoreText::class
+        .java
+        .getDeclaredField("mLineBreakStrategy")
+        .apply { isAccessible = true }
+private val coreTextHyphenationFrequencyField =
+    androidx.compose.remote.core.operations.layout.managers.CoreText::class
+        .java
+        .getDeclaredField("mHyphenationFrequency")
+        .apply { isAccessible = true }
+private val coreTextJustificationModeField =
+    androidx.compose.remote.core.operations.layout.managers.CoreText::class
+        .java
+        .getDeclaredField("mJustificationMode")
+        .apply { isAccessible = true }
 private val coreTextUnderlineField =
     androidx.compose.remote.core.operations.layout.managers.CoreText::class
         .java
@@ -1521,6 +1542,21 @@ private val coreTextStrikethroughField =
     androidx.compose.remote.core.operations.layout.managers.CoreText::class
         .java
         .getDeclaredField("mStrikethrough")
+        .apply { isAccessible = true }
+private val coreTextAutosizeField =
+    androidx.compose.remote.core.operations.layout.managers.CoreText::class
+        .java
+        .getDeclaredField("mAutosize")
+        .apply { isAccessible = true }
+private val coreTextMinFontSizeField =
+    androidx.compose.remote.core.operations.layout.managers.CoreText::class
+        .java
+        .getDeclaredField("mMinFontSize")
+        .apply { isAccessible = true }
+private val coreTextMaxFontSizeField =
+    androidx.compose.remote.core.operations.layout.managers.CoreText::class
+        .java
+        .getDeclaredField("mMaxFontSize")
         .apply { isAccessible = true }
 private val coreTextFontAxisField =
     androidx.compose.remote.core.operations.layout.managers.CoreText::class

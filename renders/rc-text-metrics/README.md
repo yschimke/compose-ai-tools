@@ -12,7 +12,7 @@ the image carries the numbers without a sidecar.
 
 ![text-metrics-card on java, cmp-android and cmp-jvm](card-three-lanes.png)
 
-The refreshed strip above comes from a 2026-08-11 run that generated 24/24 images on every
+The refreshed strip above comes from a 2026-08-11 run that generated 31/31 images on every
 server-side lane with no `.error` files. Its card values are:
 
 | metric | `java` | `cmp-android` | `cmp-jvm` |
@@ -86,13 +86,31 @@ The pictures also pin two non-obvious Java behaviors: multi-line clip continues 
 alignment unless separate justification property 17 is enabled. Matching those observations—not
 Compose's similarly named defaults—is what produced the lower residual.
 
+## Extended CoreText properties
+
+![underline and strikethrough on three lanes](core-text-decorations-three-lanes.png)
+
+![paragraph properties on three lanes](core-text-paragraph-properties-three-lanes.png)
+
+![bounded autosize on three lanes](core-text-autosize-three-lanes.png)
+
+These focused rows make properties 15–19, 22, 25 and 26 independently visible. High-quality and
+balanced breaking differ in the Java reference and `cmp-android` follows those breaks; property 17
+stretches inter-word spaces without reinterpreting alignment value `JUSTIFY`. Underline and
+strikethrough match on all three server-side lanes.
+
+Autosize exposes another Java exception: a one-line clip request is measured as a wrapped block and
+the largest 0.5px step whose height fits is selected. It may therefore paint multiple lines despite
+`maxLines = 1`. Compose's platform autosizer respects the line cap and fits a single line instead;
+the strip records that backend difference rather than hiding it behind a manual layout algorithm.
+
 ## Regenerating
 
 ```bash
 scripts/rc-text-metrics/render-strips.sh
 ```
 
-That builds the fixtures, renders all three lanes, and rewrites the seven `*-three-lanes.png` files
+That builds the fixtures, renders all three lanes, and rewrites the ten `*-three-lanes.png` files
 in this directory — the images above, not just the per-fixture PNGs. It is one script rather than a
 block of commands to copy because the underlying invocation has **three** ways to look like it
 worked while producing nothing or something stale, and the strips are what the design doc argues
@@ -116,7 +134,8 @@ one built from a previous run's leftovers, that still looks like a picture of th
 the lane directories first for the same reason.
 
 It needs **Pillow** and the **DejaVu Sans** font (`pip install Pillow`, `apt-get install
-fonts-dejavu-core`). Both are checked before the renders start rather than after them, and the font
+fonts-dejavu-core`). `RC_TEXT_METRICS_LABEL_FONT` can point at the same DejaVu Sans file in a
+non-system location. Both are checked before the renders start rather than after them, and the font
 is pinned with no fallback on purpose: labelling the strips with whatever face a host happens to
 have would rewrite all seven committed PNGs and read as a rendering change when only the caption
 moved.
@@ -124,5 +143,5 @@ moved.
 Pass a directory to keep the per-lane PNGs somewhere predictable
 (`scripts/rc-text-metrics/render-strips.sh /tmp/rc-metrics`); otherwise they go to a temporary
 directory whose path is printed at the end. Which fixtures become strips is
-[`compose_strips.py`](../../scripts/rc-text-metrics/compose_strips.py)'s `STRIPS` table — all 24
-fixtures render, and only the seven cited here are composed.
+[`compose_strips.py`](../../scripts/rc-text-metrics/compose_strips.py)'s `STRIPS` table — all 31
+fixtures render, and only the ten cited here are composed.

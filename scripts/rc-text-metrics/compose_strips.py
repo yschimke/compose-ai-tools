@@ -14,6 +14,7 @@ the shell wrapper exists to prevent.
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
@@ -26,7 +27,7 @@ LABEL_HEIGHT = 18
 BACKGROUND = (24, 26, 30)
 LABEL_COLOR = (208, 212, 220)
 
-# The strips worth committing, and the fixtures each one stacks. Everything else in the 24-fixture
+# The strips worth committing, and the fixtures each one stacks. Everything else in the fixture
 # set is rendered but not composed: these seven are the ones the README and the PR body argue from,
 # and a strip nobody cites is a file that only ever goes stale.
 STRIPS: dict[str, list[str]] = {
@@ -52,10 +53,23 @@ STRIPS: dict[str, list[str]] = {
         "text-metrics-layout-align-start-rtl",
         "text-metrics-layout-align-end-rtl",
     ],
+    "core-text-decorations-three-lanes": [
+        "text-metrics-layout-style-underline",
+        "text-metrics-layout-style-strikethrough",
+    ],
+    "core-text-paragraph-properties-three-lanes": [
+        "text-metrics-layout-paragraph-break-high-quality",
+        "text-metrics-layout-paragraph-break-balanced",
+        "text-metrics-layout-paragraph-hyphenation-normal",
+        "text-metrics-layout-paragraph-justification-inter-word",
+    ],
+    "core-text-autosize-three-lanes": ["text-metrics-layout-style-autosize-bounded"],
 }
 
 
-LABEL_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+LABEL_FONT = os.environ.get(
+    "RC_TEXT_METRICS_LABEL_FONT", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+)
 LABEL_FONT_SIZE = 13
 
 # `RcTextMetricDocuments` pins every layout probe's text component to 300x120 at the origin. Inset

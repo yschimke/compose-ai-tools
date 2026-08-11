@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -130,7 +131,10 @@ import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.Hyphens
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -932,6 +936,9 @@ private fun RenderLayoutNode(
         state.resolve(properties.floatProperty(7, 400f)).roundToInt().coerceIn(1, 1000)
       val boldWeight = if (fontStyle and 1 != 0) 700 else fontWeight
       val colorId = properties.intProperty(4, -1)
+      val autosize = properties.booleanProperty(22, false)
+      val minFontSize = properties.floatProperty(25, -1f).let(state::resolve)
+      val maxFontSize = properties.floatProperty(26, -1f).let(state::resolve)
       // Font-variation axes (properties 20/21) — a variable font's `wght` / `wdth` / … instance.
       // The tags arrive as text ids and the values may be document floats, so both are resolved
       // through the player state before they are paired up.
@@ -976,7 +983,26 @@ private fun RenderLayoutNode(
                 namedFontFamilies,
                 withWeightAxis(variationSettings, boldWeight),
               ),
-            textAlign = androidXTextAlign(properties.intProperty(9, RcTextLayout.ALIGN_LEFT)),
+            textAlign =
+              if (properties.intProperty(17, 0) > 0) TextAlign.Justify
+              else androidXTextAlign(properties.intProperty(9, RcTextLayout.ALIGN_LEFT)),
+            lineBreak =
+              when (properties.intProperty(15, 0)) {
+                1 -> LineBreak.Paragraph
+                2 -> LineBreak.Heading
+                else -> LineBreak.Simple
+              },
+            hyphens = if (properties.intProperty(16, 0) > 0) Hyphens.Auto else Hyphens.None,
+            textDecoration =
+              when {
+                properties.booleanProperty(18, false) && properties.booleanProperty(19, false) ->
+                  TextDecoration.combine(
+                    listOf(TextDecoration.Underline, TextDecoration.LineThrough)
+                  )
+                properties.booleanProperty(18, false) -> TextDecoration.Underline
+                properties.booleanProperty(19, false) -> TextDecoration.LineThrough
+                else -> TextDecoration.None
+              },
           ),
         overflow = androidXTextOverflow(properties.intProperty(10, RcTextLayout.OVERFLOW_CLIP)),
         maxLines =
@@ -984,6 +1010,14 @@ private fun RenderLayoutNode(
             properties.intProperty(10, RcTextLayout.OVERFLOW_CLIP),
             properties.intProperty(11, Int.MAX_VALUE),
           ),
+        autoSize =
+          if (autosize)
+            TextAutoSize.StepBased(
+              minFontSize = ((if (minFontSize > 0f) minFontSize else 4f) / density.density).sp,
+              maxFontSize = ((if (maxFontSize > 0f) maxFontSize else 400f) / density.density).sp,
+              stepSize = (0.5f / density.density).sp,
+            )
+          else null,
       )
     }
     is RcLayoutNode.FitBox -> {
@@ -1443,6 +1477,9 @@ private fun List<RcTextStyleProperty>.intProperty(id: Int, default: Int): Int =
 private fun List<RcTextStyleProperty>.floatProperty(id: Int, default: Float): RcFloatWord =
   filterIsInstance<RcTextStyleProperty.FloatValue>().lastOrNull { it.id == id }?.value
     ?: RcFloatWord.literal(default)
+
+private fun List<RcTextStyleProperty>.booleanProperty(id: Int, default: Boolean): Boolean =
+  filterIsInstance<RcTextStyleProperty.BooleanValue>().lastOrNull { it.id == id }?.value ?: default
 
 private fun List<RcTextStyleProperty>.intArrayProperty(id: Int): List<Int> =
   filterIsInstance<RcTextStyleProperty.IntArrayValue>().lastOrNull { it.id == id }?.values.orEmpty()

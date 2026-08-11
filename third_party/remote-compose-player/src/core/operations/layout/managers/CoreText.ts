@@ -322,6 +322,28 @@ export class CoreText extends LayoutManager implements VariableSupport {
             return;
         }
 
+        if (this.mAutosize) {
+            const step = 0.5;
+            const minSize = this.mMinFontSize > 0 ? this.mMinFontSize : 4;
+            const maxSize = this.mMaxFontSize > 0 ? this.mMaxFontSize : 400;
+            let low = minSize;
+            let high = maxSize;
+            let candidate = (low + high) / 2;
+            while (high - low >= step) {
+                this.mPaint.setTextSize(candidate);
+                context.replacePaint(this.mPaint);
+                this.textLayout(context, maxWidth, maxHeight, bounds);
+                if (bounds[3] - bounds[1] < maxHeight) low = candidate;
+                else high = candidate;
+                candidate = (low + high) / 2;
+            }
+            candidate = Math.floor((low - minSize) / step) * step + minSize;
+            this.mMeasureFontSize = candidate;
+            this.mFontSizeValue = candidate;
+            this.mPaint.setTextSize(candidate);
+            context.replacePaint(this.mPaint);
+        }
+
         this.textLayout(context, maxWidth, maxHeight, bounds);
 
         context.restorePaint();
@@ -386,7 +408,9 @@ export class CoreText extends LayoutManager implements VariableSupport {
         if (forceComplex || (bounds[2] - bounds[0] > maxWidth && this.mMaxLines > 1 && maxWidth > 0)) {
             this.mComputedTextLayout = context.layoutComplexText(
                 this.mTextId, 0, this.mCachedString!.length,
-                this.mTextAlign, this.mOverflow, this.mMaxLines,
+                this.mTextAlign, this.mOverflow,
+                this.mAutosize && (this.mOverflow === 1 || this.mOverflow === 2)
+                    ? 0x7FFFFFFF : this.mMaxLines,
                 maxWidth, maxHeight,
                 this.mLetterSpacing, this.mLineHeightAdd, this.mLineHeightMultiplier,
                 this.mLineBreakStrategy, this.mHyphenationFrequency, this.mJustificationMode,
@@ -396,7 +420,8 @@ export class CoreText extends LayoutManager implements VariableSupport {
                 bounds[0] = 0;
                 bounds[1] = 0;
                 bounds[2] = this.mComputedTextLayout.width;
-                bounds[3] = this.mComputedTextLayout.height;
+                bounds[3] = this.mComputedTextLayout.naturalHeight
+                    ?? this.mComputedTextLayout.height;
             }
         } else {
             this.mComputedTextLayout = null;

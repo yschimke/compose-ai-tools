@@ -669,13 +669,38 @@ class RcComposeSupportTest {
   }
 
   @Test
-  fun rejectsExtendedCoreTextFieldsUntilTheyAreBrowserVerified() {
+  fun acceptsImplementedExtendedCoreTextFields() {
     val document =
       RcDocument(
         header,
         listOf(
           RcTextStyle(
-            listOf(RcTextStyleProperty.IntValue(1, 100), RcTextStyleProperty.BooleanValue(18, true))
+            listOf(
+              RcTextStyleProperty.IntValue(1, 100),
+              RcTextStyleProperty.IntValue(15, 2),
+              RcTextStyleProperty.IntValue(16, 1),
+              RcTextStyleProperty.IntValue(17, 1),
+              RcTextStyleProperty.BooleanValue(18, true),
+              RcTextStyleProperty.BooleanValue(19, true),
+              RcTextStyleProperty.BooleanValue(22, true),
+              RcTextStyleProperty.FloatValue(25, RcFloatWord.literal(8f)),
+              RcTextStyleProperty.FloatValue(26, RcFloatWord.literal(32f)),
+            )
+          )
+        ),
+      )
+
+    assertTrue(document.composeSupportReport().fullyRenderable)
+  }
+
+  @Test
+  fun rejectsInterCharacterJustificationThatComposeCannotRepresent() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcTextStyle(
+            listOf(RcTextStyleProperty.IntValue(1, 100), RcTextStyleProperty.IntValue(17, 2))
           )
         ),
       )
@@ -683,7 +708,7 @@ class RcComposeSupportTest {
     val issue = document.composeSupportReport().issues.single()
 
     assertEquals("TextStyle", issue.operation)
-    assertEquals("underline is not implemented", issue.detail)
+    assertEquals("justification mode 2 is not implemented", issue.detail)
   }
 
   @Test

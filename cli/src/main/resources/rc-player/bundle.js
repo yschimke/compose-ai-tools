@@ -14170,6 +14170,27 @@ ${inner}`;
         context.restorePaint();
         return;
       }
+      if (this.mAutosize) {
+        const step = 0.5;
+        const minSize = this.mMinFontSize > 0 ? this.mMinFontSize : 4;
+        const maxSize = this.mMaxFontSize > 0 ? this.mMaxFontSize : 400;
+        let low = minSize;
+        let high = maxSize;
+        let candidate = (low + high) / 2;
+        while (high - low >= step) {
+          this.mPaint.setTextSize(candidate);
+          context.replacePaint(this.mPaint);
+          this.textLayout(context, maxWidth, maxHeight, bounds);
+          if (bounds[3] - bounds[1] < maxHeight) low = candidate;
+          else high = candidate;
+          candidate = (low + high) / 2;
+        }
+        candidate = Math.floor((low - minSize) / step) * step + minSize;
+        this.mMeasureFontSize = candidate;
+        this.mFontSizeValue = candidate;
+        this.mPaint.setTextSize(candidate);
+        context.replacePaint(this.mPaint);
+      }
       this.textLayout(context, maxWidth, maxHeight, bounds);
       context.restorePaint();
       const w = bounds[2] - bounds[0];
@@ -14233,7 +14254,7 @@ ${inner}`;
           this.mCachedString.length,
           this.mTextAlign,
           this.mOverflow,
-          this.mMaxLines,
+          this.mAutosize && (this.mOverflow === 1 || this.mOverflow === 2) ? 2147483647 : this.mMaxLines,
           maxWidth,
           maxHeight,
           this.mLetterSpacing,
@@ -14250,7 +14271,7 @@ ${inner}`;
           bounds[0] = 0;
           bounds[1] = 0;
           bounds[2] = this.mComputedTextLayout.width;
-          bounds[3] = this.mComputedTextLayout.height;
+          bounds[3] = this.mComputedTextLayout.naturalHeight ?? this.mComputedTextLayout.height;
         }
       } else {
         this.mComputedTextLayout = null;
@@ -19146,6 +19167,7 @@ void main() {
           lineHeight,
           width: Math.min(this.ctx.measureText(text).width, maxWidth),
           height: Math.min(lineHeight, maxHeight),
+          naturalHeight: lineHeight,
           visibleLines: 1
         };
       }
@@ -19210,6 +19232,7 @@ void main() {
         lineHeight,
         width: Math.min(totalWidth, maxWidth),
         height: Math.min(totalHeight, maxHeight),
+        naturalHeight: totalHeight,
         visibleLines: lines.length
       };
     }
