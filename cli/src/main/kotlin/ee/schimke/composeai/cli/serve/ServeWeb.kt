@@ -1259,7 +1259,10 @@ object ServeWeb {
             ?.takeIf { !qualified }
             ?.let { " title=\"${WebEscaping.htmlEscape(it)} · $label\"" } ?: ""
         append("\n$indent<button type=\"button\" class=\"cp-theme-btn\"")
-        append(" data-theme-choice=\"theme:${WebEscaping.htmlEscape(t.providerFqn)}\"$title>")
+        val modeAttr = t.mode?.let { " data-theme-mode=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
+        append(
+          " data-theme-choice=\"theme:${WebEscaping.htmlEscape(t.providerFqn)}\"$modeAttr$title>"
+        )
         append("$label</button>")
       }
     }
@@ -1624,6 +1627,7 @@ object ServeWeb {
             var img = c.querySelector("img");
             var base = themeBase[i];
             if (!img || !base) return;
+            if (selectedThemeMode) c.setAttribute("data-bg-theme", selectedThemeMode);
             var themedSrc = base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider);
             var job = {
               card: c,
@@ -1695,6 +1699,12 @@ object ServeWeb {
         themeBtns.forEach(function (b) {
           b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
         });
+        var selectedThemeButton = null;
+        themeBtns.forEach(function (b) {
+          if (b.getAttribute("data-theme-choice") === theme) selectedThemeButton = b;
+        });
+        var selectedThemeMode = selectedThemeButton
+          ? selectedThemeButton.getAttribute("data-theme-mode") || "" : "";
         // Point a swap card at one of its baked variants ("l"/"d"): pixels (unless the caller is
         // supplying themed ones), alt text, label, id, viewer link and stage backing.
         // Point a card's <img> at a plain URL, releasing whatever blob it was holding first.
@@ -2060,8 +2070,10 @@ object ServeWeb {
         // (daemon or Wasm). On a static bundle the select is disabled but the seeding above may still
         // have copied a remembered localStorage value into el.value — honoring it would tint the
         // stage while ServeBundleHost keeps returning the UNCHANGED baked PNG. Keep bgDefault there.
-        var chosen =
-          !el.disabled && (el.value === "light" || el.value === "dark") ? el.value : "";
+        var selectedOption = el.options[el.selectedIndex];
+        var chosen = !el.disabled && selectedOption
+          ? selectedOption.getAttribute("data-theme-mode") ||
+            (el.value === "light" || el.value === "dark" ? el.value : "") : "";
         var m = chosen || bgDefault;
         if (m) root.setAttribute("data-bg-theme", m);
         else root.removeAttribute("data-bg-theme");
@@ -4407,6 +4419,7 @@ object ServeWeb {
       version = version,
       themeCss = themeCss,
       themeStorageKey = themeStorageKey(sessionId, basePath),
+      declaredThemes = declaredThemeChips,
       body =
         """
         <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
@@ -6047,7 +6060,8 @@ $rows
       val grouped = declaredThemes.groupBy { it.group }
       val optionsOf: (List<ServeTheme>) -> String = { list ->
         list.joinToString("\n") { t ->
-          "<option value=\"theme:${WebEscaping.htmlEscape(t.providerFqn)}\"$providerDis>" +
+          val modeAttr = t.mode?.let { " data-theme-mode=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
+          "<option value=\"theme:${WebEscaping.htmlEscape(t.providerFqn)}\"$modeAttr$providerDis>" +
             "${WebEscaping.htmlEscape(t.name)}</option>"
         }
       }
@@ -6529,6 +6543,7 @@ $rows
         ),
       themeCss = themeCss,
       themeStorageKey = themeStorageKey(sessionId, basePath),
+      declaredThemes = viewerDeclaredThemes,
       // Only the `js` chip paints in this document's canvas, and it only exists when the preview
       // carries a captured document.
       rcFonts = hasRemoteComposeDoc,
@@ -6648,6 +6663,10 @@ $rows
      */
     themeStorageKey: String = "",
     /**
+     * Declared themes whose resolved mode lets the head script paint correctly before first draw.
+     */
+    declaredThemes: List<ServeTheme> = emptyList(),
+    /**
      * Register the vendored Remote Compose typefaces ([ServeRcFonts]) on this page. True for the
      * pages that play a `.rc` document **client-side** — without the faces the player's `Roboto,
      * sans-serif` request falls through to whatever the *viewer's* machine calls `sans-serif`, so
@@ -6720,7 +6739,7 @@ $rows
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        ${pageThemeScript(themeStorageKey)}
+        ${pageThemeScript(themeStorageKey, declaredThemes)}
       </head>
       <body>
         ${siteHeader(navSuffix, headerAction, headerBreadcrumb)}
@@ -6745,18 +6764,26 @@ $rows
    *
    * The order is the same one the grid and the viewer use for the theme itself: the URL wins
    * (`?theme=` on a catalog landing, `?uiMode=` in the viewer — someone picked that chip or was
-   * handed the link), then the choice this catalog remembers. Only an explicit `light` / `dark`
-   * moves the chrome; `default` and an app-declared `theme:<providerFqn>` carry no light/dark axis,
-   * so they leave the page on the visitor's OS preference rather than guessing a mode for it.
+   * handed the link), then the choice this catalog remembers. A declared theme moves the chrome
+   * when [ServeTheme.mode] is unambiguous; unqualified themes still follow the visitor's OS.
    */
-  private fun pageThemeScript(themeStorageKey: String): String {
+  private fun pageThemeScript(themeStorageKey: String, declaredThemes: List<ServeTheme>): String {
     val storedTheme =
       themeStorageKey
         .takeIf { it.isNotBlank() }
         ?.let { "||localStorage.getItem(${WebEscaping.jsString(it)})" } ?: ""
-    return "<script>try{var p=new URLSearchParams(location.search)," +
+    val modeEntries = declaredThemes.mapNotNull { theme ->
+      theme.mode?.let { mode ->
+        WebEscaping.jsString("theme:${theme.providerFqn}") + ":" + WebEscaping.jsString(mode)
+      }
+    }
+    val modeInit =
+      modeEntries.takeIf { it.isNotEmpty() }?.let { "m={${it.joinToString(",")}}," } ?: ""
+    val modeResolve = if (modeEntries.isEmpty()) "" else "t=m[t]||t;"
+    return "<script>try{var p=new URLSearchParams(location.search),$modeInit" +
       "t=localStorage.getItem(\"cp-page-theme\")===\"system\"?\"\"" +
       ":(p.get(\"theme\")||p.get(\"uiMode\")$storedTheme);" +
+      modeResolve +
       "if(t===\"light\"||t===\"dark\")document.documentElement.classList.add(\"cp-scheme-\"+t);" +
       "}catch(e){}</script>"
   }

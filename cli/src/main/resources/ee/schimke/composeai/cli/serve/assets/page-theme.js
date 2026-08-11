@@ -21,9 +21,8 @@
 // a page served under `?theme=dark` never flashes light; this file keeps it in step afterwards and
 // owns the Settings menu.
 //
-// Only an EXPLICIT light/dark choice moves the chrome. `default` and an app-declared
-// `theme:<providerFqn>` say nothing about the page's mode — a declared theme is a palette, not a
-// light/dark axis — so those leave it to the OS rather than guessing.
+// An explicit light/dark choice moves the chrome. A declared theme does too when its catalog
+// metadata resolves an unambiguous mode; an unqualified declared theme still follows the OS.
 (function () {
     "use strict";
 
@@ -49,7 +48,12 @@
 
     /** The page mode a theme choice implies, or "" when it implies nothing. */
     function modeOf(choice) {
-        return choice === "light" || choice === "dark" ? choice : "";
+        if (choice === "light" || choice === "dark") return choice;
+        var button = null;
+        document.querySelectorAll(".cp-theme-btn").forEach(function (candidate) {
+            if (candidate.getAttribute("data-theme-choice") === choice) button = candidate;
+        });
+        return button ? button.getAttribute("data-theme-mode") || "" : "";
     }
 
     /**

@@ -8,7 +8,7 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),m={"theme:com.example.BrandLightThemeCatalog":"light","theme:com.example.BrandDarkThemeCatalog":"dark"},t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));t=m[t]||t;if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
@@ -57,8 +57,8 @@
   <span class="cp-theme" role="group" aria-label="Preview theme">
     <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
     <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
-    <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandLightThemeCatalog" title="Brand · Brand Light">Brand Light</button>
-    <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandDarkThemeCatalog" title="Brand · Brand Dark">Brand Dark</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandLightThemeCatalog" data-theme-mode="light" title="Brand · Brand Light">Brand Light</button>
+    <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandDarkThemeCatalog" data-theme-mode="dark" title="Brand · Brand Dark">Brand Dark</button>
     <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.HighContrastThemeCatalog">High Contrast</button>
   </span>
 </div>
@@ -348,6 +348,12 @@ window.addEventListener("pagehide", function () { releaseThemeLease(themeLease, 
         themeBtns.forEach(function (b) {
   b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
 });
+var selectedThemeButton = null;
+themeBtns.forEach(function (b) {
+  if (b.getAttribute("data-theme-choice") === theme) selectedThemeButton = b;
+});
+var selectedThemeMode = selectedThemeButton
+  ? selectedThemeButton.getAttribute("data-theme-mode") || "" : "";
 // Point a swap card at one of its baked variants ("l"/"d"): pixels (unless the caller is
 // supplying themed ones), alt text, label, id, viewer link and stage backing.
 // Point a card's <img> at a plain URL, releasing whatever blob it was holding first.
@@ -403,6 +409,7 @@ function applyThemeChoice() {
       var img = c.querySelector("img");
       var base = themeBase[i];
       if (!img || !base) return;
+      if (selectedThemeMode) c.setAttribute("data-bg-theme", selectedThemeMode);
       var themedSrc = base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider);
       var job = {
         card: c,

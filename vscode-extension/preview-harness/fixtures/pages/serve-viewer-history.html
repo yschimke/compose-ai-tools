@@ -246,8 +246,10 @@
     // (daemon or Wasm). On a static bundle the select is disabled but the seeding above may still
     // have copied a remembered localStorage value into el.value — honoring it would tint the
     // stage while ServeBundleHost keeps returning the UNCHANGED baked PNG. Keep bgDefault there.
-    var chosen =
-      !el.disabled && (el.value === "light" || el.value === "dark") ? el.value : "";
+    var selectedOption = el.options[el.selectedIndex];
+    var chosen = !el.disabled && selectedOption
+      ? selectedOption.getAttribute("data-theme-mode") ||
+        (el.value === "light" || el.value === "dark" ? el.value : "") : "";
     var m = chosen || bgDefault;
     if (m) root.setAttribute("data-bg-theme", m);
     else root.removeAttribute("data-bg-theme");
