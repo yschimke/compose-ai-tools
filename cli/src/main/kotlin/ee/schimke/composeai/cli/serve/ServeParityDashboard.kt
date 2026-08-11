@@ -116,12 +116,23 @@ object ServeParityDashboard {
   /** One component with no design reference, and a preview to open it by. */
   data class UnmappedComponent(val name: String, val previewId: String)
 
+  /** One row in the exhaustive code ↔ design inventory shown behind the comparison disclosure. */
+  data class Comparison(
+    val name: String,
+    /** Representative preview for opening the render or its reference comparison. */
+    val previewId: String,
+    val hasReference: Boolean,
+    /** Exact reference asset to score in the browser; null when only mapping presence is known. */
+    val referenceId: String? = null,
+  )
+
   /** Everything [ServeWeb.parityPage] renders. */
   data class Dashboard(
     val coverage: Coverage,
     val feed: List<FeedEntry>,
     val components: List<ComponentActivity>,
     val gaps: List<MappingGap>,
+    val comparisons: List<Comparison> = emptyList(),
     val generatedAt: String? = null,
     val windowDays: Int? = null,
     /** Figma file this catalog is specified by, when the feed named one. */
@@ -156,6 +167,7 @@ object ServeParityDashboard {
     previews: List<ServePreview>,
     hasReference: (String) -> Boolean,
     activity: ParityActivity?,
+    referenceIdFor: (String) -> String? = { null },
   ): Dashboard {
     val components = componentsOf(previews)
     val coverage = coverageOf(components, hasReference)
@@ -226,6 +238,19 @@ object ServeParityDashboard {
       feed = feed,
       components = correlate(feed, components, hasReference),
       gaps = activity?.gaps.orEmpty(),
+      comparisons =
+        components.map { component ->
+          // Score a concrete mapped variant when one exists. A component's default/light card is
+          // usually mapped, but catalogs may intentionally attach the reference to another state.
+          val mappedPreviewId = component.previewIds.firstOrNull(hasReference)
+          val comparisonPreviewId = mappedPreviewId ?: component.representative
+          Comparison(
+            name = component.name,
+            previewId = comparisonPreviewId,
+            hasReference = mappedPreviewId != null,
+            referenceId = mappedPreviewId?.let(referenceIdFor),
+          )
+        },
       generatedAt = activity?.generatedAt,
       windowDays = activity?.windowDays,
       figmaFileName = figmaLane?.fileName,

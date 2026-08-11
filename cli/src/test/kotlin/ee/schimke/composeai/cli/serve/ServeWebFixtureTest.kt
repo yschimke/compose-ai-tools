@@ -1106,6 +1106,9 @@ class ServeWebFixtureTest {
         previews = themedPreviews,
         // Button is mapped; Switch and Badge are not — a realistic, partly-covered catalog.
         hasReference = { it.startsWith("button-filled") },
+        referenceIdFor = {
+          if (it == "button-filled__ideal__default__light") "design-button-filled-light" else null
+        },
         activity =
           ParityActivity(
             generatedAt = "2026-07-17T09:30:00.000Z",
@@ -1783,14 +1786,23 @@ class ServeWebFixtureTest {
     // it must reach the "needs a look" band; Button moved on both sides and must NOT, because that
     // band exists to be short.
     assertTrue(
-      parity.contains("Needs a look") &&
+      parity.contains("Out-of-sync activity") &&
         parity.contains("Switch on") &&
         parity.contains("design only"),
       "one-sided design movement reaches the drift band",
     )
     assertFalse(
-      parity.substringAfter("Needs a look").substringBefore("Recent activity").contains("Button"),
+      parity
+        .substringAfter("Out-of-sync activity")
+        .substringBefore("Visual differences")
+        .contains("Button"),
       "a component that moved on both sides is not drift",
+    )
+    assertTrue(
+      parity.contains("All comparisons (3)") &&
+        parity.contains("data-parity-comparison") &&
+        parity.contains("Visual differences"),
+      "the secondary inventory includes measured visual parity: $parity",
     )
     // Coverage is derived live from the previews + references, never from the published feed: 3
     // components (light/dark folded), one of them mapped.

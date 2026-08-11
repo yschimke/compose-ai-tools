@@ -1768,6 +1768,7 @@ class ServeHttpServer(
           previews = renderHost.previews,
           hasReference = hasReference,
           activity = activity,
+          referenceIdFor = { id -> renderHost.designReferencesFor(id).firstOrNull()?.id },
         )
       if (json) {
         markGeneration("parity", pageCacheControl())
