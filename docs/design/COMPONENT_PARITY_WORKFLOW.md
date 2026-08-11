@@ -192,6 +192,21 @@ Both are changes to `push-branch.sh`, which is shared with other publishers, so 
 that exercise **both orderings** — index-wins-then-render-retries and render-wins-then-index-retries.
 A test for only the first ordering would pass against the broken design.
 
+**And index-vs-index is a third ordering, which delta-on-tip makes *worse*.** Two issue-triggered
+jobs can overlap: an older job queries the issue list, a close or relabel lands, a newer job queries
+and pushes first, and the older job then loses its race — at which point delta-on-tip does exactly
+the wrong thing, faithfully reapplying its own **stale** blob onto the new tip. The older snapshot
+wins and the badges stay wrong until the next issue event or the daily reconciliation. Delta-on-tip
+is the right rule against the render publisher (whose tree never contains a competing index) and the
+wrong one against another index publisher (whose tree contains a *fresher* one).
+
+Fix it at the job level rather than in the helper: give the index workflow a **`concurrency` group
+per system with `cancel-in-progress: true`**, so a superseded query never reaches the push at all.
+That is the natural shape for an event-triggered regeneration — the newest event's snapshot is the
+only one anyone wants — and it needs no cross-repo coordination. If a job must be allowed to finish,
+the alternative is to **re-query on each retry** rather than reusing the blob it computed before the
+race. Either way, add **index-vs-index** to the race tests alongside the two above.
+
 Two alternatives, if that turns out to be more surgery on a shared helper than is wanted:
 
 - **Serialize the two publishers** with a shared `concurrency` group per system, so an index commit
@@ -337,24 +352,33 @@ referenceId, variant)`:
    disagrees with the acceptance's recorded one — a candidate that has crossed `MIN_BOX_COVERAGE`
    since the acceptance was authored — it is `invalidated: plane-changed`. Comparing across two
    different coordinate planes is meaningless, so this has to precede any pixel work.
-3. **Score everything outside the union of masks normally** — where "outside" means excluded in
-   **both** roles, see below. This is the ordinary path; a regression anywhere else scores exactly
-   as it does today.
-4. **Inside each mask, compare the current candidate against `accepted-candidate.png`** — not
-   against the reference. Match within tolerance ⇒ that mask's pixels are suppressed from the
-   *effective* diff. Mismatch ⇒ `invalidated: candidate-changed`, nothing is suppressed, and the
-   region is reported as a new difference.
-5. **Element check.** When the acceptance names an `element`, resolve it against the current
+3. **Candidate gate.** Inside each mask, compare the current candidate against
+   `accepted-candidate.png` — not against the reference. Match within tolerance ⇒ the acceptance
+   stays valid. Mismatch ⇒ `invalidated: candidate-changed`, and the region is reported as a new
+   difference.
+4. **Element gate.** When the acceptance names an `element`, resolve it against the current
    annotation layer. Missing, or moved beyond a bounds tolerance ⇒ `invalidated: element-moved`.
    This is what catches "the glyph disappeared" as distinct from "the glyph is still the wrong
    colour", which a rectangular ignore region fundamentally cannot.
+5. **Only now, score** — everything outside the union of the **still-valid** masks, where "outside"
+   means excluded in **both** roles (see below). An invalidated acceptance suppresses nothing.
 6. **Report raw, accepted and unaccepted separately.** The raw finding is never destroyed. The
    comparison shows all three numbers and the delta map gains an "accepted" tint distinct from the
    magenta of unaccepted difference, so an acceptance is *visible* rather than a hole in the data.
 
+**All four gates run before any scoring, and that ordering is load-bearing.** The tempting order —
+score first, then check the acceptances and report the failures — does not work, because scoring
+with a mask excluded is not something you can undo afterwards. The exclusion removes those
+coordinates from the *neighbourhood search* in both directed passes, so the contribution of every
+pixel near the mask is computed differently; adding the region back into the report afterwards
+cannot reconstruct what the score would have been had the mask never been applied. An acceptance
+that turns out to be `candidate-changed` or `element-moved` would therefore keep inflating the
+effective score it was no longer entitled to suppress. Validate first, then score once against the
+surviving set.
+
 #### Masked pixels must be excluded in both roles, in both directions
 
-Step 3 says "outside the union of masks", and the obvious reading — skip masked pixels when
+Step 5 says "outside the union of masks", and the obvious reading — skip masked pixels when
 iterating — is **not sufficient**, because of how `scorePlanes` actually works. Each directed pass
 takes a source pixel and searches a ±`EDGE_SEARCH_RADIUS` (5 px) neighbourhood of the *target* plane
 for its best match. So an unmasked pixel just outside a mask can find its best match at a target
@@ -371,10 +395,36 @@ on at the boundary, so the conformance fixtures in the next section must include
 placed within `EDGE_SEARCH_RADIUS` of a mask edge** as a named case. Without it, both engines can
 pass the suite and still let an accepted region hide its neighbour.
 
+#### A score-plane pixel can straddle the mask edge
+
+The exclusion rule above is stated in score-plane coordinates, but the mask is authored in the
+canonical plane, and the two are not the same resolution. `scoreImages` downsamples each whole
+content box with a smoothed `drawImage` **before** `scorePlanes` runs, capped at `MAX_SIDE = 192`.
+So a single score-plane pixel can have a source footprint that straddles the mask edge, and by the
+time the mask is mapped down it is a binary answer about a pixel that is genuinely part accepted and
+part not. Either choice is wrong in one direction: drop it and an adjacent regression can hide
+inside the boundary ring; keep it and accepted pixels bleed into the score they were supposed to
+leave alone.
+
+**Resolve it conservatively: a score-plane pixel is masked only if its *entire* source footprint is
+masked.** A partially-covered pixel is scored normally. That biases the boundary ring toward
+over-reporting — an accepted difference may leak a thin halo into the score — which is the correct
+direction to be wrong given the non-goals: an acceptance that reports slightly too much is a
+cosmetic annoyance, one that reports too little is the failure mode the whole model exists to
+prevent. The halo is also bounded and explainable, so the page can say so rather than looking like
+an unexplained residue.
+
+The alternative — evaluating mask boundaries at canonical resolution and only then downsampling — is
+more faithful but means restructuring the scoring path around the mask. Worth revisiting if the halo
+turns out to be visible in practice; not worth it up front.
+
+Either way, **the fixtures must include a mask edge deliberately not aligned to the score-plane
+grid**, since an axis-aligned fixture at a convenient scale would never exercise this at all.
+
 This is deliberately more expensive than a threshold or an ignore rectangle, and that expense is the
-point: the epic's non-goals rule out anything that can hide an unrelated regression, and steps 4 and
-5 — plus the neighbourhood exclusion above — are what make an accepted colour delta unable to mask a
-missing glyph or the regression sitting next to it.
+point: the epic's non-goals rule out anything that can hide an unrelated regression, and gates 3 and
+4 — plus the neighbourhood exclusion and the footprint rule above — are what make an accepted colour
+delta unable to mask a missing glyph or the regression sitting next to it.
 
 ### Two engines, one semantics
 
@@ -427,13 +477,38 @@ check would either resolve the wrong one of several repeated roles or fail to re
 outcomes are worse than no element check: one silently moves an acceptance onto a different element,
 the other permanently reports `element-moved`.
 
-The fix is a **distinct, additive selector field on the annotation contract** — carry `testTag` (and
-the semantics `ref` that `SemanticsRefs` already assigns as a stable, content-independent node
-handle) as their own fields rather than folding them into the display `role`. `role` stays what it
-is: a human-facing label for the legend. Selection prefers `ref`, then `testTag`, then falls back to
-the drag rectangle — never to `role`, which is a label and not an identity. This is a
+The fix is a **distinct, additive selector field on the annotation contract** — carry `testTag` and
+the semantics `ref` as their own fields rather than folding them into the display `role`. `role`
+stays what it is: a human-facing label for the legend, never an identity. This is a
 `compose-preview-annotations/v1` addition and should be sequenced with the semantics-layer wiring
 above, in Phase 2 step 5.
+
+**But not every `ref` is durable, and preferring `ref` blindly is worse than having no selector.**
+`SemanticsRefs` anchors on the test tag when there is one (`r/tag:submit`), falls back to the role
+(`r/role:Button`), and — the problem — **indexes siblings that share an anchor**
+(`r/role:Button[0]`, `r/role:Button[1]`; see `SemanticsRefsTest`). That index is a structural
+occurrence number, so inserting or reordering repeated-role siblings makes the *same* ref string
+resolve to a *different node*. It resolves successfully, so nothing falls through to a second
+choice; and if the new occupant sits in roughly the old bounds, the element gate passes too. The
+acceptance silently transfers to another element — the exact failure the gate exists to prevent,
+arrived at through the mechanism meant to prevent it.
+
+So durability is a property to **test for, not assume**:
+
+| Ref shape | Durable? | Use as acceptance identity |
+| --- | --- | --- |
+| `r/tag:<tag>` | yes — a tag change moves the ref, which is detectable | **yes** |
+| `r/role:<role>[n]` | no — the index is positional and silently retargets | **no** |
+| `r/role:<role>` (lone anchor) | no — gaining a sibling turns it into `[0]`/`[1]` | no, but fails *loudly* |
+| `r/node` | no — purely structural | no |
+
+**Persist an element selector only when it is a `tag:`-anchored ref or another producer-defined
+stable identity. Otherwise keep the drag rectangle** and accept the region geometrically, with no
+element gate. A geometric acceptance is weaker — it cannot tell "the glyph disappeared" from "the
+glyph is still wrong" — but it is honest about what it knows, whereas an indexed ref claims an
+identity it cannot keep. The non-indexed `r/role:` case is worth distinguishing in the
+implementation because its failure is the safe one: it stops resolving and reports `element-moved`
+rather than pointing somewhere new.
 
 Reporting an issue from a selection must **not** accept the difference. Filing and accepting are
 separate, deliberate acts by separate artifacts — one is a GitHub issue the visitor's own browser
@@ -458,11 +533,31 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
    a locator built entirely server-side would record the *default* variant while the embedded
    screenshot shows whatever the reporter had dialled in — the index would key the issue to one
    identity and the pixels would show another, and the acceptance lookup in Phase 3 would then miss.
-   The override-dependent fields (variant, active overrides, comparison URL, raw score — the score
-   is only ever known client-side anyway) need their own placeholders that `refreshReportLink()`
-   substitutes from live viewer state, on the same "write an input value, never an href" rule the
-   existing substitution already follows. The JS-off path keeps the server-rendered defaults, which
-   are correct for a page nobody has touched.
+   The override-dependent fields (variant, active overrides, comparison URL) need their own
+   placeholders that `refreshReportLink()` substitutes from live viewer state, on the same "write an
+   input value, never an href" rule the existing substitution already follows. The JS-off path keeps
+   the server-rendered defaults, which are correct for a page nobody has touched.
+
+   **The raw score is a separate problem: the surface with the report form is not the surface that
+   knows the score.** The form (`cp-report-body`) and `refreshReportLink()` live only on the viewer,
+   and the viewer's always-available live number is `scoreSvgUrls` — PNG against the *generated
+   SVG*, a render-fidelity measurement that has nothing to do with the design reference. Emitting
+   that as the locator's parity score would be silently wrong in the most expensive way: a plausible
+   number, mislabelled, feeding an index. The reference-vs-render score exists in two places —
+   `spec-compare.js` on the viewer, but **only while the Spec lane is open**, and the focused
+   comparison page, which computes it on every load and has **no report form at all** (its body is
+   the triptych, the overlay, `url-state.js` and `format-compare.js`).
+
+   So Phase 1 step 1 has to pick a surface rather than assume one:
+
+   - **Add the report form to the focused comparison.** Preferred. It is the page that always has a
+     concrete `(previewId, referenceId)` pair *and* the score, it is where element selection lands
+     in Phase 2 (so the two arrive together), and it is where a reporter is standing when they see
+     the difference — §1's finding 1 already argued that.
+   - **On the viewer, emit the score only when the Spec lane has computed one**, and omit the field
+     otherwise. A missing field is honest; a wrong one is not. With multiple references the viewer
+     also has no client-side notion of which one is selected, so the `referenceId` half of the
+     locator is only reliable once the lane is up.
 2. **`compose-preview-issues/v1` + reader + staging.** `ServeParityIssues.kt`, `ServeCatalogStore`
    staging, fixture-backed tests. Serves nothing yet.
 3. **Producer + regeneration workflow.** `parity-issues.mjs` / `emit-parity-issues.mjs` here; the
@@ -488,8 +583,9 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
 ### Phase 4 — Resolution
 
 11. **Detect resolved** (raw difference gone, acceptance still present), **invalidated** (any of the
-    any of the four invalidation causes in §4 — reference-changed, plane-changed, candidate-changed, element-moved), and **stale** (issue closed, acceptance remains) — surfaced on the dashboard
-    and as a gate in the offline run.
+    four causes in §4 — `reference-changed`, `plane-changed`, `candidate-changed`, `element-moved`),
+    and **stale** (issue closed, acceptance remains) — surfaced on the dashboard and as a gate in
+    the offline run.
 12. **Document** the reporting → triage → acceptance → verification → closure loop in
     `docs/public-preview-server.md`, beside the existing parity view section.
 
