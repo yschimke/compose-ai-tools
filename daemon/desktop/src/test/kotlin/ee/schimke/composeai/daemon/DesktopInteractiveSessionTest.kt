@@ -115,6 +115,67 @@ class DesktopInteractiveSessionTest {
     )
   }
 
+  /** Issue #3646 — hosted live input is expressed in the rendered frame's natural pixels. */
+  @Test
+  fun high_density_click_uses_natural_pixels_without_rescaling() {
+    val outputDir = tempFolder.newFolder("interactive-high-density-renders")
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = outputDir),
+        previewSpecResolver = { previewId ->
+          if (previewId == HIGH_DENSITY_TARGET_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "HighDensityClickTargetSquare",
+              widthPx = 168,
+              heightPx = 168,
+              density = 2.625f,
+              outputBaseName = "high-density-click-target-square",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = HIGH_DENSITY_TARGET_PREVIEW_ID,
+          classLoader = DesktopInteractiveSessionTest::class.java.classLoader!!,
+        )
+      try {
+        val first = session.render(requestId = RenderHost.nextRequestId())
+        assertTrue(
+          "fixture must start red",
+          pixelMatchPct(readPng(File(first.pngPath!!)), 0xEF5350, 8) >= 0.95,
+        )
+
+        // The target occupies x=115.5..168 and y=0..52.5 natural pixels. Its centre is well
+        // outside the target if incorrectly divided by density (142 / 2.625 ≈ 54).
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "test-high-density-target",
+            kind = InteractiveInputKind.CLICK,
+            pixelX = 142,
+            pixelY = 26,
+          )
+        )
+
+        val second = session.render(requestId = RenderHost.nextRequestId())
+        val greenMatch =
+          pixelMatchPct(readPng(File(second.pngPath!!)), 0x66BB6A, perChannelTolerance = 8)
+        assertTrue(
+          "expected the natural-pixel click to hit at density 2.625; got " +
+            "${"%.2f".format(greenMatch * 100)}% green",
+          greenMatch >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   @Test
   fun live_render_advances_frame_clock_with_monotonic_wall_time() {
     val outputDir = tempFolder.newFolder("interactive-frame-clock-renders")
@@ -513,6 +574,7 @@ class DesktopInteractiveSessionTest {
   companion object {
     private const val FIXTURE_PREVIEW_ID = "click-toggle-square"
     private const val FRAME_CLOCK_PREVIEW_ID = "frame-clock-square"
+    private const val HIGH_DENSITY_TARGET_PREVIEW_ID = "high-density-click-target-square"
     private const val KEY_PRESS_PREVIEW_ID = "key-press-color-square"
     private const val TAGGED_TARGET_PREVIEW_ID = "tagged-click-target-square"
   }

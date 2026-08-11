@@ -484,6 +484,28 @@ fun TaggedClickTargetSquare() {
 }
 
 /**
+ * High-density coordinate-contract fixture for the hosted live/recording lanes. The only clickable
+ * node is pinned to the top-right: at 2.625x its centre is around (142, 26) in a 168px frame.
+ * Dividing that natural-pixel x coordinate by density moves the event to ~54px and misses it.
+ */
+@Composable
+fun HighDensityClickTargetSquare() {
+  var clicked by remember { mutableStateOf(false) }
+  val color = if (clicked) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(modifier = Modifier.fillMaxSize().background(color)) {
+    Box(
+      modifier =
+        Modifier.align(Alignment.TopEnd).size(20.dp).pointerInput(Unit) {
+          awaitPointerEventScope {
+            awaitFirstDown()
+            clicked = true
+          }
+        }
+    )
+  }
+}
+
+/**
  * Live interactive fixture that exposes Compose's frame clock as pixels. It starts red and turns
  * green after at least 250 ms of frame-clock time has elapsed. If [ImageComposeScene.render] is
  * called without an explicit timestamp, every frame is rendered at `nanoTime = 0` and this preview
