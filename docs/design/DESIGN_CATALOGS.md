@@ -359,22 +359,37 @@ rather than branching:
   sheet already does (`Progress/Circular` + `Progress/Circular/Indeterminate`),
   which is an inventory change rather than a lane check.
 
-**Pressed and focused stickers use real input, not forged interactions.** The
-Android sheets (`design-catalog-wear-m3`, `design-catalog-m3-android`) drive
-them with `@FocusedPreview(indices = [0])` / `@FocusedPreview(indices = [0],
-pressed = true)`, which performs a real `FocusManager.moveFocus` walk — flipping
-`LocalInputModeManager` to Keyboard mode, since Robolectric's host environment
-is permanently Touch — and dispatches a real indirect-pointer Press onto
-whatever the walk lands on. That proves the component can actually *receive* the
-state, which emitting a bare `PressInteraction.Press` into a hand-made
-`MutableInteractionSource` never did (issue #3672). Note `pressed = true`
-necessarily focuses *and* presses, so such a capture may carry a focus
-indicator alongside the pressed state layer.
+**Focused stickers use real input, not forged interactions.** The Android sheets
+(`design-catalog-wear-m3`, `design-catalog-m3-android`) drive them with
+`@FocusedPreview(indices = [0])`, which performs a real `FocusManager.moveFocus`
+walk — flipping `LocalInputModeManager` to Keyboard mode, since Robolectric's
+host environment is permanently Touch. That proves the component can actually
+*receive* the state, which emitting a bare `FocusInteraction.Focus` into a
+hand-made `MutableInteractionSource` never did (issue #3672). The M3 inset focus
+ring is the visible proof: forged, it rendered as a hairline; driven, it draws
+the full ring.
 
-The CMP/desktop sheet still seeds those two stickers through held
-`MutableInteractionSource` helpers, because the desktop `ImageComposeScene`
-renderer has no focus traversal or press dispatch yet. Those helpers are marked
-in-source as a stopgap and should be deleted the moment it does.
+**Pressed stickers are the unfinished half.** `@FocusedPreview(pressed = true)`
+additionally dispatches an indirect-pointer Press onto whatever the focus walk
+landed on, and it works on `design-catalog-m3-android`. It does **not** work on
+Wear: measured on `ButtonPressed`, the capture came out pixel-identical to the
+focus-only one across the whole button container, differing only in the label
+glyphs — the Press never reaches Wear M3's `Button` interaction source, so the
+capture documents *focus*, not press.
+
+So two sheets keep a held `MutableInteractionSource` on purpose, both marked
+in-source as stopgaps:
+
+- **Wear's `ButtonPressed`** — until indirect-pointer press dispatch is shown to
+  land on Wear M3 components. Publishing a focus-looking capture under
+  `state = "pressed"` would be the same mislabelled-artifact defect issue #3676
+  exists to remove.
+- **The whole CMP/desktop sheet** — the desktop `ImageComposeScene` renderer has
+  no focus traversal or press dispatch at all.
+
+Delete each the moment its blocker lifts. And note `pressed = true` necessarily
+focuses *and* presses, so a working pressed capture may carry a focus indicator
+alongside the pressed state layer.
 
 **No sticker may ship a dead handler.** Components that carry state — switch,
 checkbox, radio, filter chip, slider, segmented button, text fields, Wear's

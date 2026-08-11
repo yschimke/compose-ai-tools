@@ -2749,6 +2749,11 @@ object PreviewDiscovery {
           listOf(
             Capture(
               animation = effectiveAnimation,
+              // The renderer resolves the permissions extension by scanning the preview's captures
+              // for the first non-null `permissions`. An `@AnimatedPreview` that is the *only*
+              // capture on the function would otherwise leave nothing to find, so a
+              // `@PermissionPreview` on the same function would silently render the denied branch.
+              permissions = effectivePermissions,
               renderOutput = "renders/${previewId}${suffix}.gif",
               cost = ANIMATION_COST,
             )
@@ -2792,6 +2797,10 @@ object PreviewDiscovery {
         listOf(
           Capture(
             animation = effectiveAnimation,
+            // Same reason as the resize branch above: when `@AnimatedPreview` owns the function
+            // outright there is no static sibling carrying `permissions`, and the renderer's
+            // first-non-null scan would come up empty.
+            permissions = effectivePermissions,
             renderOutput = "renders/${previewId}${suffix}.gif",
             cost = ANIMATION_COST,
           )
