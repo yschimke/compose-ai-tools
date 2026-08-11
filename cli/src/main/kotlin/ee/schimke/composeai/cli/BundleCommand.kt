@@ -106,7 +106,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       Usage:
         compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render] [--with-semantics]
         compose-preview bundle pack --per-preview [--module <name>] [--id <preview>...] [-o <dir>]
-        compose-preview bundle split   <sheet.png | URL> -o <dir> [--view-only]
+        compose-preview bundle split   <sheet.png | URL> -o <dir> [--view-only | --shared-classpath-out <pool>]
         compose-preview bundle inspect <bundle.png | URL>
         compose-preview bundle extract <bundle.png | URL> [-o <dir>]
         compose-preview bundle embed   <bundle.png | URL> [-o <dir|file.png>] [--title T] [--external-images] [--in-bundle]
@@ -191,6 +191,12 @@ class BundleCommand(args: List<String>) : Command(args) {
                             (larger — the shared jars repeat per preview). A sheet packed
                             --with-semantics yields per-preview bundles that carry their semantics,
                             with no daemon or re-render.
+        --shared-classpath-out <pool-dir>
+                            Opt-in live mode: publish classes/app.jar once as <pool>/<sha256> and
+                            record that content-addressed entry in every split bundle. The preview
+                            server hydrates it for daemon execution and executable downloads. The
+                            existing full mode remains self-contained. Cannot combine with
+                            --view-only.
 
       Inspect / extract / render flags:
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
@@ -1772,6 +1778,25 @@ internal fun injectRawZipEntries(
   return entries.size
 }
 
+/** Replace and remove raw zip entries while preserving the bundle's leading PNG cover. */
+internal fun rewriteRawZipEntries(
+  bundleFile: File,
+  entries: Map<String, ByteArray>,
+  removals: Set<String>,
+  fileSystem: FileSystem = SystemFileSystem,
+) {
+  val full = fileSystem.read(bundleFile.path.toPath()) { readByteArray() }
+  val zip = BundleReader.extractZipBytes(bundleFile, fileSystem)
+  val prefix = full.copyOfRange(0, full.size - zip.size)
+  val newZip = addOrReplaceZipEntries(zip, entries, removals)
+  val tmp = File(bundleFile.parentFile, "${bundleFile.name}.rewrite-tmp")
+  fileSystem.write(tmp.path.toPath()) {
+    write(prefix)
+    write(newZip)
+  }
+  fileSystem.atomicMove(tmp.path.toPath(), bundleFile.path.toPath())
+}
+
 /**
  * Return a copy of [existingZip] with [newEntries] (path → bytes) added, replacing any existing
  * entry with the same name (so the operation is idempotent). Every other original entry is
@@ -1781,13 +1806,14 @@ internal fun injectRawZipEntries(
 internal fun addOrReplaceZipEntries(
   existingZip: ByteArray,
   newEntries: Map<String, ByteArray>,
+  removedEntries: Set<String> = emptySet(),
 ): ByteArray {
   val baos = ByteArrayOutputStream()
   ZipOutputStream(baos).use { zout ->
     ZipInputStream(ByteArrayInputStream(existingZip)).use { zin ->
       while (true) {
         val entry = zin.nextEntry ?: break
-        if (!entry.isDirectory && entry.name !in newEntries) {
+        if (!entry.isDirectory && entry.name !in newEntries && entry.name !in removedEntries) {
           zout.putNextEntry(ZipEntry(entry.name).apply { time = ZIP_DOS_EPOCH_MS })
           zin.copyTo(zout)
           zout.closeEntry()
@@ -1943,10 +1969,14 @@ internal object BundleReader {
      * in `PreviewBundleFormat.kt`.
      */
     val externalResources: List<ExternalResource> = emptyList(),
+    /** Whole classpath entries supplied by the sibling content-addressed pool. */
+    val externalClasspath: List<ExternalClasspath> = emptyList(),
   )
 
   /** v8 mirror of `BundleExternalResource` in `PreviewBundleFormat.kt`. */
   @Serializable data class ExternalResource(val path: String, val sha256: String, val size: Long)
+
+  @Serializable data class ExternalClasspath(val path: String, val sha256: String, val size: Long)
 
   /** v7+ mirror of `BundleDataExtension` in `PreviewBundleFormat.kt`. */
   @Serializable data class DataExtension(val extensionId: String, val path: String)

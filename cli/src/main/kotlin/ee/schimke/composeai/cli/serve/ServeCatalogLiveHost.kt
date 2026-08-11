@@ -67,6 +67,8 @@ class ServeCatalogLiveHost(
    * per-preview lane, leaving the plain monolithic-only host.
    */
   private val perPreviewResolve: ((daemonId: String) -> ServeHost?)? = null,
+  /** Hydrated per-preview bundle bytes for the viewer's executable download lane. */
+  private val executableBundleProvider: ((daemonId: String) -> ByteArray?)? = null,
   /** Live upstream stream count across the pooled per-preview daemons (supplied by the pool). */
   private val perPreviewStreamCount: () -> Int = { 0 },
   /**
@@ -142,6 +144,11 @@ class ServeCatalogLiveHost(
     System.getProperty("composeai.serve.eagerWarmOnOpen")?.toBooleanStrictOrNull() ?: false,
   private val clock: () -> Long = System::currentTimeMillis,
 ) : ServeHost {
+  override fun canDownloadExecutableBundle(previewId: String): Boolean =
+    executableBundleProvider != null && alias[previewId] != null
+
+  override fun executableBundle(previewId: String): ByteArray? =
+    alias[previewId]?.let { executableBundleProvider?.invoke(it) }
 
   /**
    * Browse + snapshot surface is the baked catalog — its ids are the published catalog ids. The

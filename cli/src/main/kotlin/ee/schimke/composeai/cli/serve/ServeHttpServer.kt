@@ -824,6 +824,8 @@ class ServeHttpServer(
 
         get("/bundle.zip") { handleBundleZip(sessionInPath = false) }
         get("/{system}/bundle.zip") { handleBundleZip(sessionInPath = true) }
+        get("/bundle/{name}") { handleExecutableBundle(sessionInPath = false) }
+        get("/{system}/bundle/{name}") { handleExecutableBundle(sessionInPath = true) }
 
         get("/p/{name}") { handleViewer(sessionInPath = false) }
         get("/{system}/p/{name}") { handleViewer(sessionInPath = true) }
@@ -3151,6 +3153,31 @@ class ServeHttpServer(
     }
   }
 
+  /** Return one server-hydrated, self-contained executable PNG+ZIP preview bundle. */
+  private suspend fun RoutingContext.handleExecutableBundle(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
+      val previewId = call.parameters["name"]
+      if (previewId == null || !renderHost.canDownloadExecutableBundle(previewId)) {
+        call.respondText("executable bundle unavailable", status = HttpStatusCode.NotFound)
+        return@withLeasedSession
+      }
+      val bytes = withContext(Dispatchers.IO) { renderHost.executableBundle(previewId) }
+      if (bytes == null) {
+        call.respondText("executable bundle unavailable", status = HttpStatusCode.NotFound)
+        return@withLeasedSession
+      }
+      val filename =
+        previewId.map { if (it.isLetterOrDigit() || it in "._-") it else '_' }.joinToString("") +
+          ".png"
+      call.response.headers.append(
+        HttpHeaders.ContentDisposition,
+        "attachment; filename=\"$filename\"",
+      )
+      call.respondBytes(bytes, ContentType.Image.PNG)
+    }
+  }
+
   /** `GET /p/{name}` (query) and `GET /{system}/p/{name}` (path): one preview's viewer page. */
   private suspend fun RoutingContext.handleViewer(sessionInPath: Boolean) {
     if (rejectBadToken()) return
@@ -3261,6 +3288,10 @@ class ServeHttpServer(
           // flag.
           hasSvgExport = renderHost.hasSvgExportFor(preview.id),
           hasScrollExport = renderHost.hasScrollExportFor(preview.id),
+          executableBundleHref =
+            if (renderHost.canDownloadExecutableBundle(preview.id))
+              "$basePath/bundle/${WebEscaping.urlEncodeSegment(preview.id)}${requestQuerySuffix()}"
+            else null,
           // The inspection layers: the accessibility focus map needs an a11y-capable daemon, the
           // typography / theme layers a semantics-capturing one. Both are session-wide facts (any
           // preview this daemon renders can be inspected), unlike the export gates above.

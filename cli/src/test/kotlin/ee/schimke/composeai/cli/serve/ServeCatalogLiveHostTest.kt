@@ -148,6 +148,28 @@ class ServeCatalogLiveHostTest {
   private fun knobOverride() =
     PreviewOverrides(namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("Tap me")))
 
+  @Test
+  fun `executable bundle download maps catalog id to daemon id`() {
+    val (_, live, baked) = host()
+    var requested: String? = null
+    val bytes = byteArrayOf(1, 2, 3)
+    val composite =
+      ServeCatalogLiveHost(
+        mapOf(catalogId to daemonId),
+        live,
+        baked,
+        executableBundleProvider = {
+          requested = it
+          bytes
+        },
+      )
+
+    assertTrue(composite.canDownloadExecutableBundle(catalogId))
+    assertFalse(composite.canDownloadExecutableBundle(androidOnlyId))
+    assertEquals(bytes.toList(), composite.executableBundle(catalogId)?.toList())
+    assertEquals(daemonId, requested)
+  }
+
   private fun themeOverride(provider: String = "com.example.BrandDark") =
     PreviewOverrides(themeProvider = provider)
 

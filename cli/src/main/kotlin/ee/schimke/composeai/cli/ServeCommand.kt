@@ -1108,6 +1108,7 @@ class ServeCommand(args: List<String>) : Command(args) {
               live = daemon,
               baked = fallback(),
               perPreviewResolve = state.perPreviewResolve,
+              executableBundleProvider = state.executableBundleProvider,
               perPreviewStreamCount = state.perPreviewStreamCount,
               perPreviewRenderStats = state.perPreviewRenderStats,
               perPreviewPoolStats = state.perPreviewPoolStats,
@@ -2698,6 +2699,9 @@ class ServeCommand(args: List<String>) : Command(args) {
           previewAliases = alias,
           bakedFallback = bakedFallback,
           perPreviewResolve = perPreviewPool::get,
+          executableBundleProvider = { daemonId ->
+            fetchPerPreviewBundle(daemonId)?.takeIf(File::isFile)?.readBytes()
+          },
           perPreviewStreamCount = perPreviewPool::activeStreamCount,
           perPreviewRenderStats = perPreviewPool::renderPerfStats,
           perPreviewPoolStats = { listOf(perPreviewPool.snapshot()) },

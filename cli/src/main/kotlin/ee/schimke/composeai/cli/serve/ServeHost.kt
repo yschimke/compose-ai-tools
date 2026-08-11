@@ -17,6 +17,12 @@ interface ServeHost : AutoCloseable {
   /** The whole servable preview set for this session. */
   val previews: List<ServePreview>
 
+  /** Whether the server can return a self-contained executable bundle for this preview. */
+  fun canDownloadExecutableBundle(previewId: String): Boolean = false
+
+  /** A hydrated, self-contained PNG+ZIP preview bundle, or null when this host has no such lane. */
+  fun executableBundle(previewId: String): ByteArray? = null
+
   /** Independently-authored design references mapped to [previewId], if this host carries any. */
   fun designReferencesFor(previewId: String): List<DesignReference> = emptyList()
 

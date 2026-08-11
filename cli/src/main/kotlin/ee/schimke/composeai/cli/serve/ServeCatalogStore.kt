@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.BundleClasspathHydration
 import ee.schimke.composeai.cli.BundleReader
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
@@ -1024,8 +1025,55 @@ class ServeCatalogStore(
       return null
     }
     target.parentFile?.mkdirs()
-    target.writeBytes(bytes)
-    return target
+    val thin = File(previewsDir, "$stem.shared.png")
+    thin.writeBytes(bytes)
+    val hydrated =
+      runCatching {
+          BundleClasspathHydration.hydrate(thin, target) { entry ->
+            fetchExternalClasspathBlob(entry, base, prefix, system)
+          }
+        }
+        .onFailure {
+          System.err.println(
+            "serve: $system per-preview '$stem' classpath hydration failed (${it.message})"
+          )
+        }
+        .getOrNull()
+    thin.delete()
+    return hydrated
+  }
+
+  /** Fetch and verify one whole classpath entry into the shared content-addressed cache. */
+  private fun fetchExternalClasspathBlob(
+    entry: BundleReader.ExternalClasspath,
+    base: String,
+    bundlePathPrefix: String,
+    system: String,
+  ): ByteArray? {
+    val sha = entry.sha256
+    if (
+      entry.path != "classes/app.jar" ||
+        entry.size <= 0 ||
+        entry.size > MAX_LIVE_BUNDLE_FETCH_BYTES ||
+        sha.length != 64 ||
+        sha.any { it !in '0'..'9' && it !in 'a'..'f' }
+    ) {
+      System.err.println("serve: $system external classpath declaration is invalid — skipping")
+      return null
+    }
+    val cached = File(File(root, RES_CACHE_DIR).apply { mkdirs() }, sha)
+    val cachedBytes = cached.takeIf { it.isFile && it.length() == entry.size }?.readBytes()
+    if (cachedBytes != null && sha256Hex(cachedBytes) == sha) return cachedBytes
+
+    val prefix = bundlePathPrefix.trim('/')
+    val url = if (prefix.isEmpty()) "$base$RES_POOL_DIR/$sha" else "$base$prefix/$RES_POOL_DIR/$sha"
+    val bytes = runCatching { fetchExecutableBundle(url) }.getOrNull() ?: return null
+    if (bytes.size.toLong() != entry.size || sha256Hex(bytes) != sha) {
+      System.err.println("serve: $system external classpath verification failed ($url)")
+      return null
+    }
+    cached.writeBytes(bytes)
+    return bytes
   }
 
   /** Filesystem/route-safe stem for a per-preview id (mirrors `bundle split`'s sanitiser). */
