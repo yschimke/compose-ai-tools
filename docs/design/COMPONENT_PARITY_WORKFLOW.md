@@ -288,6 +288,60 @@ other wire contracts (`compose-preview-references/v1`, `compose-preview-annotati
 the second consumer and the publisher respectively; that is cross-repo coordination and should be
 sequenced as such (§6).
 
+### The normative contract
+
+> **This subsection is the single source of truth for how an acceptance is evaluated.** Everything
+> after it in §4, all of §5, and Phase 4 in §6 are *rationale and consequences* — where they appear
+> to say something different, this wins. It is separated out deliberately: earlier revisions of this
+> document restated the pipeline, the selector rules and the invalidation list in several places,
+> and every one of those restatements eventually drifted out of step with the others.
+
+**Pipeline, in order.** Each step consumes the previous step's output; the order is load-bearing.
+
+1. **Decode** all four rasters — reference, current candidate, `mask.png`, `accepted-candidate.png`
+   — under the declared pixel/colour semantics.
+2. **Separate** the candidate into masked and unmasked regions, **in candidate pixel space, before
+   any resample.** Separation must precede the candidate→canonical resample, not follow it: once a
+   kernel has averaged across a mask edge, the accepted and unaccepted contributions are mixed
+   irreversibly, and no later split can unmix them. This is why the mask is mapped into candidate
+   space first and each region resampled independently.
+3. **Resample** each region into the canonical plane (the reference's content box, at the reference
+   raster's own resolution) using the named portable kernel.
+4. **Gate** — run every gate below. No scoring happens before this completes.
+5. **Score** the surviving picture, excluding still-valid masked coordinates in **both** roles
+   (scored source and neighbourhood candidate) in **both** directed passes.
+6. **Report** raw, accepted and unaccepted separately.
+
+**Selector contract.** An acceptance's `element` carries an explicit `kind`:
+
+| `kind` | Resolves by | Ambiguous when | Notes |
+| --- | --- | --- | --- |
+| `tag` | the `testTag`, matched anywhere in the tree | the tag is carried by more than one node | the ancestor path is irrelevant — the resolver never walks it |
+| `producer` | a producer-supplied stable id, matched by that id | the producer id is carried by more than one node | for producers with their own identity scheme; the tag rules do not apply |
+| *(absent)* | — | — | geometric acceptance: the mask alone, no element gate |
+
+**Uniqueness is evaluated against the full `ComposeSemanticsPayload`, never the annotation layer.**
+`ServeDesignAnnotations.annotations` emits nothing for a node that resolves neither typography nor
+container tokens, so a duplicate-tagged node with neither is *invisible* there — the uniqueness
+re-check would pass on a tree that is genuinely ambiguous. Either count tags on the payload, or
+carry a tree-wide uniqueness verdict into the projected annotations; do not count what the overlay
+happens to show.
+
+**Gates.** All five run before scoring. Any one of them invalidates the acceptance, which then
+suppresses nothing and is surfaced as needing review:
+
+| Cause | Condition |
+| --- | --- |
+| `reference-changed` | served reference `sha256` ≠ recorded `referenceSha256` |
+| `plane-changed` | recomputed plane discriminant or resolved box ≠ recorded |
+| `candidate-changed` | canonical candidate inside the mask ≠ `accepted-candidate.png` within tolerance |
+| `element-ambiguous` | selector resolves to more than one node (per the kind's rule above) |
+| `element-moved` | selector resolves to nothing, or to bounds beyond tolerance |
+
+A mask whose bytes do not match `maskSha256` is not an invalidation at all — it is a **hard
+validation failure**: the acceptance is refused and reported, because a mask we cannot trust is a
+broken artifact rather than a stale one.
+
 ### Coordinate space — the real problem
 
 The mask has to be authored somewhere stable, and the accepted pixels have to be *stored* somewhere
@@ -306,9 +360,10 @@ So acceptance gets **its own canonical plane, defined by the reference**:
 - **`mask.png` is authored in it directly** — but *nothing else is already in it*, and that is the
   easy mistake. See the translation rules below.
 - **`accepted-candidate.png` is stored in it**, cropped to the mask's bounding box. Evaluating an
-  acceptance therefore means resampling the *current* candidate's content box into the canonical
-  plane — one resample of the live frame, against a stored crop that never moves — rather than
-  storing a crop in a plane that moves under it.
+  acceptance therefore means resampling the live candidate into the canonical plane — against a
+  stored crop that never moves — rather than storing a crop in a plane that moves under it. Note
+  this is a resample of the **separated regions**, not of the whole frame: see step 2 of the
+  normative pipeline, which is what keeps a kernel from averaging across the mask edge.
 - **Suppression is then mapped into whichever plane is being reported.** The canonical plane, the
   score plane and the diff plane are all content-box crops related by an affine scale, so the mask's
   coverage maps into each with the same arithmetic `boxCanvas` already does. Do the *comparison* at
@@ -316,7 +371,7 @@ So acceptance gets **its own canonical plane, defined by the reference**:
   the 192 px score plane, where a glyph is a handful of pixels and a 5 px edge search covers most of
   it.
 
-This costs one extra resample per acceptance per comparison, on a page that is already decoding two
+This costs a resample per separated region per acceptance, on a page that is already decoding two
 PNGs and walking them pixel by pixel. That is the right trade for making "did this exact accepted
 region change?" a question with a stable answer.
 
@@ -369,16 +424,13 @@ referenceId, variant)`:
    `accepted-candidate.png` — not against the reference. Match within tolerance ⇒ the acceptance
    stays valid. Mismatch ⇒ `invalidated: candidate-changed`, and the region is reported as a new
    difference.
-4. **Element gate.** When the acceptance names an `element`, resolve it against the current
-   annotation layer, by tag identity. Three outcomes invalidate:
-   - **not unique** — the tag now appears on more than one node ⇒ `invalidated: element-ambiguous`.
-     Re-checking uniqueness *here*, at evaluation time, is load-bearing: it was unique when the
-     acceptance was authored, and only this check notices when it stops being. Resolving to an
-     arbitrary one of the duplicates and suppressing its pixels is the failure mode.
-   - **missing** — no node carries the tag ⇒ `invalidated: element-moved`.
-   - **moved** — resolved, but beyond the bounds tolerance ⇒ `invalidated: element-moved`.
+4. **Element gate.** Resolve the acceptance's `element` per its `kind`, against the **full semantics
+   payload**, and invalidate as `element-ambiguous` or `element-moved` per the contract's gate
+   table. Re-checking uniqueness *here*, at evaluation time, is the load-bearing part: it was unique
+   when the acceptance was authored, and only this check notices when it stops being — resolving to
+   an arbitrary one of several duplicates and suppressing its pixels is the failure mode.
 
-   This is what catches "the glyph disappeared" as distinct from "the glyph is still the wrong
+   This gate is what catches "the glyph disappeared" as distinct from "the glyph is still the wrong
    colour", which a rectangular ignore region fundamentally cannot.
 5. **Only now, score** — everything outside the union of the **still-valid** masks, where "outside"
    means excluded in **both** roles (see below). An invalidated acceptance suppresses nothing.
@@ -386,7 +438,7 @@ referenceId, variant)`:
    comparison shows all three numbers and the delta map gains an "accepted" tint distinct from the
    magenta of unaccepted difference, so an acceptance is *visible* rather than a hole in the data.
 
-**All four gates run before any scoring, and that ordering is load-bearing.** The tempting order —
+**Every gate runs before any scoring, and that ordering is load-bearing.** The tempting order —
 score first, then check the acceptances and report the failures — does not work, because scoring
 with a mask excluded is not something you can undo afterwards. The exclusion removes those
 coordinates from the *neighbourhood search* in both directed passes, so the contribution of every
@@ -501,10 +553,13 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | Stage | Pinned artifact |
 | --- | --- |
 | decode | **all four** raster inputs decoded — reference, current candidate, `mask.png`, `accepted-candidate.png` — in the declared pixel/colour semantics. The candidate gate reads the accepted-candidate decode and mask coverage reads the mask decode, so an alpha or colour divergence in either would otherwise first surface as a wrong verdict rather than as a decoder bug |
-| canonical | the reference-defined canonical plane, after the named resampler |
-| separation | the masked and unmasked regions, kept apart (never a pre-averaged composite) |
+| separation | the masked and unmasked candidate regions **in candidate space**, before any resample (never a pre-averaged composite) |
+| canonical | each separated region after the named resampler, in the reference-defined canonical plane |
 | score plane | the downsampled plane `scorePlanes` actually consumes |
 | result | `{raw, accepted, unaccepted, invalidations}` |
+
+The stage order mirrors the normative pipeline exactly, and deliberately so: a fixture suite that
+resampled before separating would enshrine the bug the pipeline order exists to prevent.
 
 A divergence then fails at the stage that caused it, which is the whole point of paying for the
 fixtures at all.
@@ -587,18 +642,18 @@ ancestors, which is most real Compose UI, and would push those elements onto the
 fallback for no safety gain.
 
 So the rule is: **the `testTag` must be unique across the semantics tree**, wherever it sits, and
-resolution matches on the tag rather than the path. If the tag later becomes non-unique — a second
-node adopts it — the selector is ambiguous and the acceptance is `invalidated: element-ambiguous`
-rather than resolved to an arbitrary one of them. Uniqueness is therefore checked at authoring time
-*and* re-checked at evaluation time; only the first is under the acceptance author's control.
+resolution matches on the tag rather than the path. Uniqueness is checked at authoring time *and*
+re-checked at evaluation time — only the first is under the acceptance author's control. The
+selector kinds, what each resolves by, and what makes each ambiguous are defined once in §4's
+[normative contract](#the-normative-contract); this section is the reasoning behind it, not a second
+statement of it.
 
-**Persist an element selector only when that holds** (or when the producer supplies its own stable
-identity). **Otherwise keep the drag rectangle** and accept the region geometrically, with no
-element gate. A geometric acceptance is weaker — it cannot tell "the glyph disappeared" from "the
-glyph is still wrong" — but it is honest about what it knows, whereas a positional ref claims an
-identity it cannot keep. The non-indexed `r/role:` case is worth distinguishing in the
-implementation because its failure is the safe one: it stops resolving and reports `element-moved`
-rather than pointing somewhere new.
+**Persist an element selector only when the contract's durability test passes. Otherwise keep the
+drag rectangle** and accept the region geometrically, with no element gate. A geometric acceptance
+is weaker — it cannot tell "the glyph disappeared" from "the glyph is still wrong" — but it is
+honest about what it knows, whereas a positional ref claims an identity it cannot keep. The
+non-indexed `r/role:` case is worth distinguishing in the implementation because its failure is the
+safe one: it stops resolving and reports `element-moved` rather than pointing somewhere new.
 
 Reporting an issue from a selection must **not** accept the difference. Filing and accepting are
 separate, deliberate acts by separate artifacts — one is a GitHub issue the visitor's own browser
@@ -705,10 +760,9 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
 ### Phase 4 — Resolution
 
 11. **Detect resolved** (raw difference gone, acceptance still present), **invalidated** (any of the
-    five causes in §4 — `reference-changed`, `plane-changed`, `candidate-changed`, `element-moved`,
-    `element-ambiguous`),
-    and **stale** (issue closed, acceptance remains) — surfaced on the dashboard and as a gate in
-    the offline run.
+    causes in §4's [normative contract](#the-normative-contract) — deliberately not re-listed here,
+    since every previous restatement of that list drifted), and **stale** (issue closed, acceptance
+    remains) — surfaced on the dashboard and as a gate in the offline run.
 12. **Document** the reporting → triage → acceptance → verification → closure loop in
     `docs/public-preview-server.md`, beside the existing parity view section.
 
