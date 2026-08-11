@@ -214,6 +214,54 @@ class RcLayoutRenderTest {
   }
 
   @Test
+  fun canvasDecorationPaintsAtFullBoundsBeforeContentPadding() {
+    val purple = 0xff3b3444.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 100, legacyHeight = 60, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCanvasLayout(3, 30),
+          width(100f),
+          height(60f),
+          RcPaddingModifier(
+            RcFloatWord.literal(20f),
+            RcFloatWord.literal(10f),
+            RcFloatWord.literal(20f),
+            RcFloatWord.literal(10f),
+          ),
+          RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+          RcPaintData(listOf(4, purple)),
+          RcDraw4(
+            RcOpcodes.DRAW_RECT,
+            RcFloatWord.literal(0f),
+            RcFloatWord.literal(0f),
+            RcFloatWord.literal(100f),
+            RcFloatWord.literal(60f),
+          ),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+    val scene =
+      ImageComposeScene(width = 100, height = 60, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val bitmap = Bitmap().apply { allocN32Pixels(100, 60) }
+      check(scene.render().readPixels(bitmap))
+
+      assertEquals(purple, bitmap.getColor(5, 5), "decoration must not start at the padding inset")
+      assertEquals(purple, bitmap.getColor(95, 55), "decoration must cover the full component")
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
   fun marqueeClipsOverflowingLayoutContent() {
     val red = 0xffff0000.toInt()
     val blue = 0xff0000ff.toInt()

@@ -1566,7 +1566,34 @@ private fun Modifier.applyComponentModifiers(
   if (fillMissingDimensions && modifiers.height == null) result = result.fillMaxHeight()
   var appliedWidth = false
   var appliedHeight = false
+  var appliedCanvasOperations = false
+  fun applyCanvasOperations(modifier: Modifier): Modifier {
+    val operations = canvasOperations ?: return modifier
+    appliedCanvasOperations = true
+    return modifier.drawWithContent {
+      rcTrace(RcTraceCategory.FRAME, "rc:drawCanvas") {
+        drawOperations(
+          operations,
+          state,
+          RcPaintState(),
+          mutableMapOf(),
+          textMeasurer,
+          images,
+          RcFloatFunctionRuntime(),
+          theme,
+          filterTheme = true,
+          drawContent = { drawContent() },
+        )
+      }
+    }
+  }
   modifiers.ordered.forEach { operation ->
+    // AndroidX paints CanvasOperations at the component's full bounds, temporarily undoing the
+    // content-padding inset. Put the Compose draw wrapper outside the first padding modifier to
+    // preserve that behaviour while retaining wire order for the ordinary modifiers.
+    if (operation is RcPaddingModifier && !appliedCanvasOperations) {
+      result = applyCanvasOperations(result)
+    }
     result =
       when (operation) {
         is RcWidthModifier ->
@@ -1609,23 +1636,8 @@ private fun Modifier.applyComponentModifiers(
   }
   modifiers.marquee?.let { result = result.applyAndroidXMarquee(it, state) }
   modifiers.scroll?.let { result = result.applyAndroidXScroll(it, state, geometryComponentIds) }
-  if (canvasOperations != null) {
-    result = result.drawWithContent {
-      rcTrace(RcTraceCategory.FRAME, "rc:drawCanvas") {
-        drawOperations(
-          canvasOperations,
-          state,
-          RcPaintState(),
-          mutableMapOf(),
-          textMeasurer,
-          images,
-          RcFloatFunctionRuntime(),
-          theme,
-          filterTheme = true,
-          drawContent = { drawContent() },
-        )
-      }
-    }
+  if (!appliedCanvasOperations) {
+    result = applyCanvasOperations(result)
   }
   if (modifiers.clicks.any { it.type != RcClickActionType.CLICK }) {
     result = result.applyAndroidXMultiClick(modifiers.clicks, state)
