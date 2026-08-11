@@ -107,6 +107,8 @@ jobs:
           touch deploy/image/m2/.keep
           mkdir -p deploy/image/release-assets
           touch deploy/image/release-assets/.keep
+          mkdir -p deploy/image/scripts
+          cp scripts/install-linux-font-fallbacks.sh deploy/image/scripts/
 
       - uses: ./.github/actions/setup
         if: ${{ inputs.build_from_source }}
