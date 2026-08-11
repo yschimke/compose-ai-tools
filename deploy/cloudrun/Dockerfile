@@ -30,11 +30,9 @@
 # (no GPU on the host). This mirrors what the repo's own CI installs for headless
 # desktop renders (.github/workflows/ci.yml).
 FROM eclipse-temurin:17.0.19_10-jdk AS base
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \
-      libgl1 libglx-mesa0 libgl1-mesa-dri \
- && rm -rf /var/lib/apt/lists/*
+COPY scripts/install-linux-font-fallbacks.sh /usr/local/bin/install-linux-font-fallbacks
+RUN COMPOSEAI_CLEAN_APT=1 /usr/local/bin/install-linux-font-fallbacks \
+      libfreetype6 libfontconfig1 libgl1 libglx-mesa0 libgl1-mesa-dri
 ENV LIBGL_ALWAYS_SOFTWARE=1 \
     GRADLE_USER_HOME=/root/.gradle \
     SERVE_MODULE=:samples:cmp
