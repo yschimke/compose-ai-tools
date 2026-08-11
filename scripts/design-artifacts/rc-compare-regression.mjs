@@ -40,8 +40,8 @@ export const DEFAULT_MAX_INCREASE_PP = 0.25;
 /**
  * Compare two `rc-compare-summary.json` row sets on the CMP/Wasm lane.
  *
- * Rows the baseline never measured (a preview added since it was published) and rows the current
- * run no longer has (one removed) are reported, never failed: neither is evidence about this diff.
+ * Rows the base player never measured (a preview added by the proposal) and rows the current run no
+ * longer has (one removed) are reported, never failed: neither is pixel evidence about this diff.
  */
 export function compareCmpWasmParity(
   baselineRows,
