@@ -28,6 +28,12 @@ const SCORER = readFileSync(
     ),
     "utf8",
 );
+const RECORDED_MENU = JSON.parse(
+    readFileSync(
+        resolve(here, "fixtures/menu-dropdown-annotations.recorded.json"),
+        "utf8",
+    ),
+);
 
 /** Load the real asset into a page with an origin, then score the four synthetic pairs. */
 async function scorePairs(page) {
@@ -147,5 +153,131 @@ test.describe("format-compare · design reference scorer", () => {
     test("unrelated content still reads as a mismatch", async ({ page }) => {
         const { unrelated } = await scorePairs(page);
         expect(unrelated.percent).toBeLessThan(75);
+    });
+});
+
+test.describe("format-compare · annotation correspondence", () => {
+    test("reduces the recorded menu-dropdown report from 94 vs 7 to seven shared elements", async ({
+        page,
+    }) => {
+        await page.goto("/preview-harness/index.html");
+        await page.addScriptTag({ content: SCORER });
+        const result = await page.evaluate((payload) => {
+            const matched = window.ComposePreviewCompare.matchAnnotationItems(
+                payload.reference,
+                payload.actual,
+            );
+            return {
+                referenceBefore: payload.reference.length,
+                actualBefore: payload.actual.length,
+                reference: matched.reference,
+                actual: matched.actual,
+            };
+        }, RECORDED_MENU);
+
+        expect(RECORDED_MENU.source).toContain("menu-dropdown__ideal__default__light");
+        expect(result.referenceBefore).toBe(94);
+        expect(result.actualBefore).toBe(7);
+        expect(result.reference).toHaveLength(7);
+        expect(result.actual).toHaveLength(7);
+        expect(result.reference.map((item) => item.comparisonOrdinal)).toEqual([
+            1, 2, 3, 4, 5, 6, 7,
+        ]);
+        expect(result.actual.map((item) => item.comparisonOrdinal)).toEqual([
+            1, 2, 3, 4, 5, 6, 7,
+        ]);
+        expect(result.reference.slice(1).map((item) => item.role)).toEqual([
+            "Menu-item 01 - First",
+            "Menu-item 02",
+            "Menu-item 03",
+            "Menu-item 04",
+            "Menu-item 05",
+            // The render's last visible row aligns with Figma's last item. Figma's item 06 is
+            // lower/off-viewport in this recorded layout despite appearing earlier in traversal.
+            "Menu-item 12 - Last",
+        ]);
+    });
+
+    test("pairs the shallow render tree with the same positioned Figma elements", async ({
+        page,
+    }) => {
+        await page.goto("/preview-harness/index.html");
+        await page.addScriptTag({ content: SCORER });
+        const matched = await page.evaluate(() => {
+            const b = (x, y, width, height) => ({ x, y, width, height });
+            const layout = (role, bounds, label = "spacing") => ({
+                kind: "layout",
+                bounds,
+                label,
+                ...(role ? { role } : {}),
+            });
+            const reference = [layout(undefined, b(0, 0, 603, 847), "r 16px")];
+            // A Figma menu item has several nested layout nodes. Only the outer item corresponds
+            // to the single shallow row exposed by Compose semantics.
+            for (let i = 0; i < 6; i++) {
+                const y = 6 + i * 139;
+                reference.push(layout(`Menu-item ${i + 1}`, b(0, y, 603, 139)));
+                reference.push(layout("Content", b(12, y + 6, 580, 128)));
+                reference.push(layout("State Layer", b(12, y + 6, 580, 128)));
+                reference.push(
+                    layout("Leading element", b(46, y + 40, 58, 58)),
+                );
+                reference.push(layout("Icon", b(46, y + 40, 58, 58)));
+            }
+            const actual = [layout(undefined, b(29, 18, 546, 767), "r 16dp")];
+            for (let i = 0; i < 6; i++) {
+                actual.push(
+                    layout(
+                        undefined,
+                        b(29, 23 + i * 126, 546, 126),
+                        "pad 0dp/12dp",
+                    ),
+                );
+            }
+            return window.ComposePreviewCompare.matchAnnotationItems(
+                reference,
+                actual,
+            );
+        });
+
+        expect(matched.reference).toHaveLength(7);
+        expect(matched.actual).toHaveLength(7);
+        expect(matched.reference.slice(1).map((item) => item.role)).toEqual([
+            "Menu-item 1",
+            "Menu-item 2",
+            "Menu-item 3",
+            "Menu-item 4",
+            "Menu-item 5",
+            "Menu-item 6",
+        ]);
+        expect(matched.reference.map((item) => item.comparisonOrdinal)).toEqual(
+            [1, 2, 3, 4, 5, 6, 7],
+        );
+        expect(matched.actual.map((item) => item.comparisonOrdinal)).toEqual([
+            1, 2, 3, 4, 5, 6, 7,
+        ]);
+    });
+
+    test("drops render-only elements after the Figma inventory is exhausted", async ({
+        page,
+    }) => {
+        await page.goto("/preview-harness/index.html");
+        await page.addScriptTag({ content: SCORER });
+        const counts = await page.evaluate(() => {
+            const item = (y) => ({
+                kind: "layout",
+                bounds: { x: 0, y, width: 100, height: 20 },
+                label: "row",
+            });
+            const matched = window.ComposePreviewCompare.matchAnnotationItems(
+                [item(0), item(20)],
+                [item(0), item(20), item(40), item(60)],
+            );
+            return {
+                reference: matched.reference.length,
+                actual: matched.actual.length,
+            };
+        });
+        expect(counts).toEqual({ reference: 2, actual: 2 });
     });
 });

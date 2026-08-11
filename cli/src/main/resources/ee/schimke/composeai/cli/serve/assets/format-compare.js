@@ -565,7 +565,8 @@
     scoreImages: scoreImages,
     normaliseImageUrls: normaliseImageUrls,
     diffCanvases: diffCanvases,
-    compareImageUrls: compareImageUrls
+    compareImageUrls: compareImageUrls,
+    matchAnnotationItems: matchAnnotationItems
   };
 
   var referenceRoot = document.getElementById("cp-reference-compare");
@@ -599,6 +600,164 @@
   }
 
   /**
+   * Pair the annotations that describe the same element on each side.
+   *
+   * Figma commonly exposes a much deeper tree than Compose semantics (state layers, icon
+   * containers, dividers, and so on). Drawing both flattened trees independently therefore gives
+   * unrelated ordinal numbers and, in a menu, can put ninety Figma boxes beside six Compose
+   * boxes. Use the design side as the inventory and consume each reference item at most once.
+   * Candidate bounds are first mapped into the reference frame by the same width-derived uniform
+   * scale used by design-parity's structural layout diff; aligning the two largest layout boxes
+   * also removes a preview scaffold/crop offset. Role/label similarity breaks geometric ties.
+   *
+   * The result contains min(reference, actual) items for every kind present on both sides. An
+   * annotation kind captured on only one side is retained as a useful inspection-only layer.
+   */
+  function matchAnnotationItems(reference, actual) {
+    reference = Array.isArray(reference) ? reference.filter(annotationHasBounds) : [];
+    actual = Array.isArray(actual) ? actual.filter(annotationHasBounds) : [];
+    if (!reference.length || !actual.length) return { reference: reference, actual: actual };
+
+    var referenceFrame = largestAnnotationFrame(reference);
+    var actualFrame = largestAnnotationFrame(actual);
+    var scale = referenceFrame && actualFrame && actualFrame.width > 0
+      ? referenceFrame.width / actualFrame.width
+      : 1;
+    var kinds = [];
+    reference.concat(actual).forEach(function (item) {
+      if (kinds.indexOf(item.kind) < 0) kinds.push(item.kind);
+    });
+
+    var pairs = [];
+    var referenceOnly = [];
+    var actualOnly = [];
+    kinds.forEach(function (kind) {
+      var refs = [];
+      var cands = [];
+      reference.forEach(function (item, index) {
+        if (item.kind === kind) refs.push({ item: item, index: index });
+      });
+      actual.forEach(function (item, index) {
+        if (item.kind === kind) cands.push({ item: item, index: index });
+      });
+      if (!refs.length) {
+        actualOnly = actualOnly.concat(cands);
+        return;
+      }
+      if (!cands.length) {
+        referenceOnly = referenceOnly.concat(refs);
+        return;
+      }
+
+      var used = {};
+      cands.forEach(function (cand) {
+        var mapped = mapAnnotationBounds(cand.item.bounds, referenceFrame, actualFrame, scale);
+        var best = -1;
+        var bestCost = Infinity;
+        refs.forEach(function (ref, refIndex) {
+          if (used[refIndex]) return;
+          var cost = annotationMatchCost(ref.item, cand.item, ref.item.bounds, mapped, referenceFrame);
+          if (cost < bestCost) {
+            bestCost = cost;
+            best = refIndex;
+          }
+        });
+        // Once the design inventory is exhausted, extra render nodes have no design element to
+        // compare with. Deliberately omit them rather than restarting/reusing ordinal numbers.
+        if (best < 0) return;
+        used[best] = true;
+        pairs.push({ reference: refs[best], actual: cand });
+      });
+    });
+
+    // Both legends follow design order, so a shared ordinal identifies the same element on the two
+    // panels even when the Compose tree arrived in a different traversal order.
+    pairs.sort(function (a, b) { return a.reference.index - b.reference.index; });
+    var referenceOut = [];
+    var actualOut = [];
+    pairs.forEach(function (pair, index) {
+      var ordinal = index + 1;
+      referenceOut.push(withAnnotationOrdinal(pair.reference.item, ordinal));
+      actualOut.push(withAnnotationOrdinal(pair.actual.item, ordinal));
+    });
+    referenceOnly.forEach(function (entry) {
+      referenceOut.push(withAnnotationOrdinal(entry.item, referenceOut.length + 1));
+    });
+    actualOnly.forEach(function (entry) {
+      actualOut.push(withAnnotationOrdinal(entry.item, actualOut.length + 1));
+    });
+    return { reference: referenceOut, actual: actualOut };
+  }
+
+  function annotationHasBounds(item) {
+    var b = item && item.bounds;
+    return !!b && isFinite(b.x) && isFinite(b.y) && isFinite(b.width) && isFinite(b.height) &&
+      b.width > 0 && b.height > 0;
+  }
+
+  function largestAnnotationFrame(items) {
+    var layouts = items.filter(function (item) { return item.kind === "layout"; });
+    var pool = layouts.length ? layouts : items;
+    var largest = null;
+    pool.forEach(function (item) {
+      if (!largest || item.bounds.width * item.bounds.height > largest.width * largest.height) {
+        largest = item.bounds;
+      }
+    });
+    return largest;
+  }
+
+  function mapAnnotationBounds(bounds, referenceFrame, actualFrame, scale) {
+    if (!referenceFrame || !actualFrame) return bounds;
+    return {
+      x: referenceFrame.x + (bounds.x - actualFrame.x) * scale,
+      y: referenceFrame.y + (bounds.y - actualFrame.y) * scale,
+      width: bounds.width * scale,
+      height: bounds.height * scale
+    };
+  }
+
+  function annotationText(value) {
+    return String(value || "").trim().toLowerCase().replace(/\b(?:px|dp|sp)\b/g, "u");
+  }
+
+  function annotationRoleFamily(value) {
+    return annotationText(value)
+      .replace(/\b(?:first|last)\b/g, "")
+      .replace(/\b\d+\b/g, "")
+      .replace(/[^a-z]+/g, " ")
+      .trim();
+  }
+
+  function annotationMatchCost(ref, cand, rb, cb, frame) {
+    var fw = frame && frame.width > 0 ? frame.width : Math.max(rb.width, cb.width, 1);
+    var fh = frame && frame.height > 0 ? frame.height : Math.max(rb.height, cb.height, 1);
+    var rcx = rb.x + rb.width / 2;
+    var rcy = rb.y + rb.height / 2;
+    var ccx = cb.x + cb.width / 2;
+    var ccy = cb.y + cb.height / 2;
+    var position = Math.hypot((rcx - ccx) / fw, (rcy - ccy) / fh);
+    var size = Math.abs(rb.width - cb.width) / fw + Math.abs(rb.height - cb.height) / fh;
+    var cost = position + size * 0.5;
+    var rr = annotationText(ref.role);
+    var cr = annotationText(cand.role);
+    if (rr && cr) {
+      if (rr === cr) cost -= 0.06;
+      else if (annotationRoleFamily(rr) === annotationRoleFamily(cr)) cost -= 0.03;
+      else cost += 0.02;
+    }
+    if (annotationText(ref.label) === annotationText(cand.label)) cost -= 0.04;
+    return cost;
+  }
+
+  function withAnnotationOrdinal(item, ordinal) {
+    var copy = {};
+    Object.keys(item).forEach(function (key) { copy[key] = item[key]; });
+    copy.comparisonOrdinal = ordinal;
+    return copy;
+  }
+
+  /**
    * Draw the typography / layout annotation layers over the reference and actual panels.
    *
    * Annotation bounds are in each image's own pixel space, and the two frames are routinely
@@ -615,6 +774,7 @@
     } catch (error) {
       return;
     }
+    payload = matchAnnotationItems(payload.reference, payload.actual);
     var toggles = root.querySelectorAll("[data-cp-annotation-kind]");
     if (!toggles.length) return;
 
@@ -640,7 +800,7 @@
       var legend = document.createElement("ol");
       legend.className = "cp-annotation-legend";
       panel.items.forEach(function (item, index) {
-        var ordinal = String(index + 1);
+        var ordinal = String(item.comparisonOrdinal || index + 1);
         var box = document.createElement("div");
         box.className = "cp-annotation cp-annotation--" + item.kind;
         box.setAttribute("data-cp-kind", item.kind);

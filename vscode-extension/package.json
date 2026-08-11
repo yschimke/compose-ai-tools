@@ -284,6 +284,7 @@
         "package": "npm run compile && vsce package --no-dependencies",
         "harness:snapshot": "node esbuild.webview.mjs && playwright test -c preview-harness/playwright.config.mjs snapshot",
         "harness:contract": "node esbuild.webview.mjs && playwright test -c preview-harness/playwright.config.mjs contract",
+        "harness:compare": "playwright test -c preview-harness/playwright.config.mjs format-compare-scorer.spec.mjs",
         "harness:serve-lanes": "playwright test -c preview-harness/serve-lanes.config.mjs",
         "harness:playground": "playwright test -c preview-harness/playground.config.mjs",
         "harness:bundle-upload": "playwright test -c preview-harness/bundle-upload.config.mjs"
