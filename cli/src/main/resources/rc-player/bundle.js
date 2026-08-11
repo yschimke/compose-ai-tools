@@ -19139,10 +19139,19 @@ void main() {
       this.setFont();
       const size = this.textSize > 0 ? this.textSize : DEFAULT_TEXT_SIZE;
       const lineHeight = size * (lineHeightMultiplier || 1.2);
+      if (maxLines === 1 && (overflow === 1 || overflow === 2)) {
+        return {
+          lines: [text.replace(/\n/g, "")],
+          alignment,
+          lineHeight,
+          width: Math.min(this.ctx.measureText(text).width, maxWidth),
+          height: Math.min(lineHeight, maxHeight),
+          visibleLines: 1
+        };
+      }
       const lines = [];
       const paragraphs = text.split("\n");
       for (let pi = 0; pi < paragraphs.length; pi++) {
-        if (maxLines > 0 && lines.length >= maxLines) break;
         const para = paragraphs[pi];
         const words = para.split(/(\s+)/);
         let currentLine = "";
@@ -19152,24 +19161,41 @@ void main() {
           if (metrics.width > maxWidth && currentLine.length > 0) {
             lines.push(currentLine);
             currentLine = word.trimStart();
-            if (maxLines > 0 && lines.length >= maxLines) break;
           } else {
             currentLine = testLine;
           }
         }
-        if (currentLine.length > 0 && (maxLines <= 0 || lines.length < maxLines)) {
+        if (currentLine.length > 0) {
           lines.push(currentLine);
-        } else if (para.length === 0 && (maxLines <= 0 || lines.length < maxLines)) {
+        } else if (para.length === 0) {
           lines.push("");
         }
       }
-      if (overflow === 1 && maxLines > 0 && lines.length >= maxLines) {
-        const lastIdx = maxLines - 1;
-        let lastLine = lines[lastIdx];
-        while (this.ctx.measureText(lastLine + "...").width > maxWidth && lastLine.length > 0) {
-          lastLine = lastLine.substring(0, lastLine.length - 1);
+      const ellipsizeEnd = (value) => {
+        while (this.ctx.measureText(value + "\u2026").width > maxWidth && value.length > 0) {
+          value = value.substring(0, value.length - 1);
         }
-        lines[lastIdx] = lastLine + "...";
+        return value + "\u2026";
+      };
+      const ellipsizeStart = (value) => {
+        while (this.ctx.measureText("\u2026" + value).width > maxWidth && value.length > 0) {
+          value = value.substring(1);
+        }
+        return "\u2026" + value;
+      };
+      const ellipsizeMiddle = (value) => {
+        let left = Math.ceil(value.length / 2);
+        let right = left;
+        while (this.ctx.measureText(value.substring(0, left) + "\u2026" + value.substring(right)).width > maxWidth && left > 0) {
+          if (value.length - right < left) left--;
+          else right++;
+        }
+        return value.substring(0, left) + "\u2026" + value.substring(right);
+      };
+      if (overflow >= 3 && overflow <= 5 && maxLines > 0 && lines.length > maxLines) {
+        const lastIdx = maxLines - 1;
+        const value = maxLines === 1 ? text.replace(/\n/g, "") : lines[lastIdx];
+        lines[lastIdx] = overflow === 4 ? ellipsizeStart(value) : overflow === 5 ? ellipsizeMiddle(value) : ellipsizeEnd(value);
         lines.length = maxLines;
       }
       let totalWidth = 0;
@@ -19194,9 +19220,9 @@ void main() {
       this.ctx.textBaseline = "top";
       for (let i = 0; i < lines.length; i++) {
         let x = 0;
-        if (alignment === 2 || alignment === 4) {
+        if (alignment === 2 || alignment === 6) {
           x = width - this.ctx.measureText(lines[i]).width;
-        } else if (alignment === 1) {
+        } else if (alignment === 3) {
           x = (width - this.ctx.measureText(lines[i]).width) / 2;
         }
         this.fillOrStroke(

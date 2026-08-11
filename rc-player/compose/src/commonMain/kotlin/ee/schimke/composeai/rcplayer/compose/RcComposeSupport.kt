@@ -331,7 +331,7 @@ public fun RcDocument.composeSupportReport(
               "TextLayout",
               "dynamic color id ${operation.color} is not declared",
             )
-        operation.overflow !in RcTextLayout.OVERFLOW_CLIP..RcTextLayout.OVERFLOW_ELLIPSIS ->
+        operation.overflow !in RcTextLayout.OVERFLOW_CLIP..RcTextLayout.OVERFLOW_MIDDLE_ELLIPSIS ->
           issues +=
             RcComposeSupportIssue(
               index,
@@ -1038,7 +1038,7 @@ private fun textStyleIssue(
     return "text alignment $alignment is not implemented"
   }
   val overflow = int(10, RcTextLayout.OVERFLOW_CLIP)
-  if (overflow !in RcTextLayout.OVERFLOW_CLIP..RcTextLayout.OVERFLOW_ELLIPSIS) {
+  if (overflow !in RcTextLayout.OVERFLOW_CLIP..RcTextLayout.OVERFLOW_MIDDLE_ELLIPSIS) {
     return "overflow $overflow is not implemented"
   }
   val maxLines = int(11, Int.MAX_VALUE)

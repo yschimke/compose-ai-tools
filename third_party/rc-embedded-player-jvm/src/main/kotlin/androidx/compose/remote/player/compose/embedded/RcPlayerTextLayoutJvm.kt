@@ -42,8 +42,9 @@ import androidx.compose.ui.unit.em
 /*
  * The jvm counterpart of `RcPlayerTextLayout.kt`'s two `RcPlayerText` composables. The size, weight,
  * slant, colour, alignment, overflow, decoration, letter-spacing and line-height handling are all
- * verbatim — they use only multiplatform Compose text APIs and desktop `material3.Text`, so text
- * layout matches Android. What differs is **font family resolution**: Android resolves `google:`
+ * verbatim — they use only multiplatform Compose text APIs and desktop `material3.Text`. The known
+ * backend exception is start/middle ellipsis: current Skiko paints both as end ellipsis (tracked in
+ * compose-ai-tools#3662). Font family resolution also differs: Android resolves `google:`
  * families through GMS downloadable fonts and `device:` / variation-axis families through the
  * platform device-font loader (`DeviceFontFamilyName`), neither of which exists off Android.
  *
@@ -110,19 +111,15 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
                 CoreText.TEXT_ALIGN_LEFT -> TextAlign.Left
                 CoreText.TEXT_ALIGN_RIGHT -> TextAlign.Right
                 CoreText.TEXT_ALIGN_CENTER -> TextAlign.Center
-                CoreText.TEXT_ALIGN_JUSTIFY -> TextAlign.Justify
+                // AndroidX Java maps this field to ALIGN_NORMAL. Actual justification is the
+                // separate CoreText property 17 (justificationMode).
+                CoreText.TEXT_ALIGN_JUSTIFY -> TextAlign.Start
                 CoreText.TEXT_ALIGN_START -> TextAlign.Start
                 CoreText.TEXT_ALIGN_END -> TextAlign.End
                 else -> TextAlign.Start
             },
-        overflow =
-            when (data.overflow) {
-                CoreText.OVERFLOW_CLIP -> TextOverflow.Clip
-                CoreText.OVERFLOW_ELLIPSIS -> TextOverflow.Ellipsis
-                CoreText.OVERFLOW_VISIBLE -> TextOverflow.Visible
-                else -> TextOverflow.Clip
-            },
-        maxLines = data.maxLines,
+        overflow = composeOverflow(data.overflow),
+        maxLines = javaPlayerMaxLines(data.overflow, data.maxLines),
         letterSpacing = data.letterSpacing.em,
         lineHeight =
             if (data.lineHeightMultiplier != 1f || data.lineHeightAdd != 0f) {
@@ -179,21 +176,35 @@ internal fun RcPlayerText(layout: TextLayout, modifier: Modifier) {
                 TextLayout.TEXT_ALIGN_LEFT -> TextAlign.Left
                 TextLayout.TEXT_ALIGN_RIGHT -> TextAlign.Right
                 TextLayout.TEXT_ALIGN_CENTER -> TextAlign.Center
-                TextLayout.TEXT_ALIGN_JUSTIFY -> TextAlign.Justify
+                TextLayout.TEXT_ALIGN_JUSTIFY -> TextAlign.Start
                 TextLayout.TEXT_ALIGN_START -> TextAlign.Start
                 TextLayout.TEXT_ALIGN_END -> TextAlign.End
                 else -> TextAlign.Start
             },
-        overflow =
-            when (data.overflow) {
-                TextLayout.OVERFLOW_CLIP -> TextOverflow.Clip
-                TextLayout.OVERFLOW_ELLIPSIS -> TextOverflow.Ellipsis
-                TextLayout.OVERFLOW_VISIBLE -> TextOverflow.Visible
-                else -> TextOverflow.Clip
-            },
-        maxLines = data.maxLines,
+        overflow = composeOverflow(data.overflow),
+        maxLines = javaPlayerMaxLines(data.overflow, data.maxLines),
     )
 }
+
+private fun composeOverflow(overflow: Int): TextOverflow =
+    when (overflow) {
+        CoreText.OVERFLOW_CLIP -> TextOverflow.Clip
+        CoreText.OVERFLOW_ELLIPSIS -> TextOverflow.Ellipsis
+        CoreText.OVERFLOW_VISIBLE -> TextOverflow.Visible
+        CoreText.OVERFLOW_START_ELLIPSIS -> TextOverflow.StartEllipsis
+        CoreText.OVERFLOW_MIDDLE_ELLIPSIS -> TextOverflow.MiddleEllipsis
+        else -> TextOverflow.Clip
+    }
+
+private fun javaPlayerMaxLines(overflow: Int, maxLines: Int): Int =
+    if (
+        maxLines > 1 &&
+            (overflow == CoreText.OVERFLOW_CLIP || overflow == CoreText.OVERFLOW_VISIBLE)
+    ) {
+        Int.MAX_VALUE
+    } else {
+        maxLines
+    }
 
 /**
  * Map the document's font-family type / name onto a multiplatform [FontFamily] at

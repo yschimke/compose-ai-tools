@@ -232,9 +232,27 @@ That leaves two readings of the same picture, which these fixtures cannot separa
 on content, which is why the picture is worth keeping — but separating the two needs a host-side RTL
 container, i.e. a harness change, not a fixture change. Recorded below rather than claimed here.
 
-**`maxLines = 3` rendered four lines on `java`**, while `maxLines = 1` was honoured exactly. Recorded
-as an observation, not a diagnosis — it wants checking across lanes before anyone calls it a bug,
-which is what the fixture is for.
+**The Java player's line cap depends on overflow.** A one-line clip/visible request takes
+`CoreText`'s unwrapped fast path. For a paragraph, clip/visible continues laying out past
+`maxLines = 3` and is bounded by the component (the fixture therefore paints four lines), while end
+ellipsis stops at three. Start and middle ellipsis are also real one-line modes. The Compose and JS
+players now copy that observed split rather than applying Compose's stricter `maxLines` uniformly.
+
+`TEXT_ALIGN_JUSTIFY` is similarly easy to over-interpret: Java maps the alignment field to
+`ALIGN_NORMAL`, so it does **not** justify this fixture. Actual Android justification is the
+independent `CoreText` property 17. The other players now preserve that distinction.
+
+The regeneration script scores the 298x118 interior of every single-line and paragraph text box
+against `java`, excluding the one-pixel frame and all labels. On the 2026-08-11 candidate chosen
+from these variants, `cmp-android` moved from **2.280% to 0.154%** changed pixels for the five
+single-line fixtures and from **8.730% to 0.000%** for the three paragraph fixtures. The remaining
+single-line pixels are the clipped/visible partial glyph at the right edge; all ellipsis fixtures
+and every paragraph fixture match exactly on Android.
+
+`cmp-jvm` follows the same overflow mapping, but the current Compose Desktop/Skiko backend paints
+`StartEllipsis` and `MiddleEllipsis` as end ellipsis. The comprehensive strip makes that limit
+visible; a synchronous backend/fallback fix is tracked in
+[#3662](https://github.com/yschimke/compose-ai-tools/issues/3662).
 
 ## Not done yet
 
@@ -243,6 +261,10 @@ which is what the fixture is for.
   source. Their opcode 155 implementations now follow the same selector, flag-order and unknown-mode
   contract; the JS canvas backend uses `actualBoundingBoxLeft` / `actualBoundingBoxRight` where the
   browser supplies them and falls back to the advance box otherwise.
+- **Extended paragraph properties.** Line-break strategy, hyphenation, justification mode,
+  autosize and some decorations still differ across non-Java lanes. They need their own focused
+  fixtures before the support gates can be removed; tracked in
+  [#3660](https://github.com/yschimke/compose-ai-tools/issues/3660).
 - **A pinned face.** The fixtures use the lane's default family, which leaves every reading entangled
   with typeface resolution. Embedding the face as `FontData` now pins `java`, `cmp-wasm` and `js`;
   both vendored embedded-player lanes still ignore the bytes. Add support there before reading a
