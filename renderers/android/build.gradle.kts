@@ -96,6 +96,7 @@ dependencies {
   // architectural rule as ambient / focus: **no hardcoded gesture / `GestureHint` logic in this
   // module — extend the connector instead.**
   implementation(project(":data-gestures-connector"))
+  runtimeOnly(project(":data-gestures-robolectric-stubs"))
   // Launcher-widget container-size connector. Owns `LauncherWidgetExtension` (the
   // `AroundComposable` that wraps the preview in `Box(Modifier.size(...))` at the resolved cell
   // footprint) and the `LauncherWidgetPreviewOverrideExtension` planner. The renderer reads

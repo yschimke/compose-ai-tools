@@ -1930,7 +1930,7 @@ sealed class RemoteComposeChange {
 data class InteractiveInputParams(
   val frameStreamId: String,
   val kind: InteractiveInputKind,
-  /** Image-natural pixel coordinates. Daemon translates to dp using the last render's density. */
+  /** Image-natural physical pixels, dispatched without density conversion. */
   val pixelX: Int? = null,
   val pixelY: Int? = null,
   /**
@@ -2199,7 +2199,7 @@ data class RecordingStartParams(
 data class RecordingInputParams(
   val recordingId: String,
   val kind: InteractiveInputKind,
-  /** Image-natural pixel coordinates. Daemon translates to dp using the held scene's density. */
+  /** Image-natural physical pixels, dispatched without density conversion. */
   val pixelX: Int? = null,
   val pixelY: Int? = null,
   /**

@@ -45,6 +45,12 @@ android {
 }
 
 dependencies {
+  // Proprietary Wear SDK signature placeholders are a separate Robolectric-only artifact. Keep
+  // them off this connector's published AAR so a production app cannot resolve the placeholder in
+  // preference to the device SDK class.
+  compileOnly(project(":data-gestures-robolectric-stubs"))
+  testImplementation(project(":data-gestures-robolectric-stubs"))
+
   // Wire-shape + product-kind constants. Re-exported via `api` so consumers (`:daemon:android`)
   // can refer to `GesturePayload` / `Material3GestureProduct.KIND` without a second `project` dep.
   api(project(":data-gestures-core"))

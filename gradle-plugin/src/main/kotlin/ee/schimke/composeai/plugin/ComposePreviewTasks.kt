@@ -316,6 +316,30 @@ internal object ComposePreviewTasks {
         }
       )
 
+    val activeSourceFiles =
+      project
+        .files(
+          project.provider {
+            val activeCompileTask = DESKTOP_COMPILE_TASK_CANDIDATES.firstOrNull {
+              it in project.tasks.names
+            }
+            val sourceSets =
+              when (activeCompileTask) {
+                "compileKotlinJvm" -> listOf("main", "commonMain", "jvmMain")
+                "compileKotlinDesktop" -> listOf("main", "commonMain", "desktopMain")
+                "compileAndroidMain" -> listOf("main", "commonMain", "androidMain")
+                "compileKotlin" -> listOf("main")
+                else -> emptyList()
+              }
+            sourceSets.map { project.layout.projectDirectory.dir("src/$it").asFile }
+          }
+        )
+        .asFileTree
+        .matching {
+          include("**/*.kt")
+          include("**/*.java")
+        }
+
     // Processed-resources output dirs, in the same priority order as [sourceClassDirs]. Linked onto
     // the render classpath so a `@Preview` can load a classpath resource (e.g. a Lottie `.json`
     // asset) at render time. Non-existent dirs resolve to nothing — harmless on resource-free
@@ -357,6 +381,7 @@ internal object ComposePreviewTasks {
         previewOutputDir,
         extension,
         activeSourceClassDirs = activeSourceClassDirs,
+        activeCompilationSourceFiles = activeSourceFiles,
         // Desktop fallback can resolve a KMP-Android module's androidRuntimeClasspath, whose
         // single AGP variant trips AmbiguousArtifactsFailure under a forced artifactType view —
         // allow discovery to go lenient *for that config only* so `compose-preview list` never
@@ -1507,6 +1532,7 @@ internal object ComposePreviewTasks {
     previewOutputDir: Provider<Directory>,
     extension: PreviewExtension,
     activeSourceClassDirs: FileCollection = sourceClassDirs,
+    activeCompilationSourceFiles: FileCollection? = null,
     // Desktop callers pass `true`: the desktop runtime-config fallback can land on a
     // KMP-Android module's `androidRuntimeClasspath` (a `:shared` module with no
     // `jvm("desktop")` target), whose single AGP `android` variant trips an
@@ -1536,6 +1562,7 @@ internal object ComposePreviewTasks {
           include("**/*.java")
         }
       )
+      activeSourceFiles.from(activeCompilationSourceFiles ?: sourceFiles)
       val configName = dependencyConfigName()
       project.configurations.findByName(configName)?.let { config ->
         // Lenient only for the androidRuntimeClasspath KMP-Android fallback; strict everywhere

@@ -55,8 +55,8 @@ interface InteractiveSession : AutoCloseable {
    * Feed one wire-level [InteractiveInputParams] (click, pointer down/up, key down/up) into the
    * held composition. Implementations translate the protocol-level kind into the host's pointer-
    * input dispatch (e.g. `ImageComposeScene.sendPointerEvent` on desktop), splitting `CLICK` into
-   * Press+Release at the same position. Image-natural pixel coords on the wire are scaled by scene
-   * density before dispatch.
+   * Press+Release at the same position. Image-natural physical pixels are dispatched verbatim;
+   * scene density has already shaped layout and must not be applied to input a second time.
    *
    * Does NOT render — call [render] afterwards to encode the next frame. The split lets the
    * coalescing path in [JsonRpcServer.handleInteractiveInput] queue several inputs and dispatch

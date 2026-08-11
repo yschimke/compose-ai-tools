@@ -151,8 +151,8 @@ const stylesheets = new Map<string, Promise<void>>();
  */
 const variants = new Map<string, Promise<void>>();
 
-/** FontFace objects created from inline FontData, retained for reset and document-font matching. */
-const embeddedFaces = new Map<string, FontFace>();
+/** Shared embedded faces with per-player ownership. */
+const embeddedFaces = new Map<string, { face?: FontFace; references: number }>();
 
 /** Variants that have finished, so a settled one is never re-announced. See [notify]. */
 const done = new Set<string>();
@@ -404,6 +404,70 @@ function embeddedFamily(fontId: number, data: Uint8Array): string {
     return `__rc_font_${fontId}_${data.length}_${(hash >>> 0).toString(16)}`;
 }
 
+function uint16(data: Uint8Array, offset: number): number {
+    return (data[offset] << 8) | data[offset + 1];
+}
+
+function uint32(data: Uint8Array, offset: number): number {
+    return ((data[offset] << 24) | (data[offset + 1] << 16) |
+        (data[offset + 2] << 8) | data[offset + 3]) >>> 0;
+}
+
+function fixed1616(data: Uint8Array, offset: number): number {
+    return (uint32(data, offset) | 0) / 65536;
+}
+
+function asciiTag(data: Uint8Array, offset: number): string {
+    return String.fromCharCode(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
+}
+
+/**
+ * FontFace descriptors advertised by an embedded OpenType variable font.
+ *
+ * Browsers only apply `wght`/`wdth` requests when the registered face declares the corresponding
+ * range. FontData does not carry separate metadata, so read the standard `fvar` table directly.
+ * Invalid, WOFF-only, or non-variable data simply returns an empty descriptor bag.
+ */
+export function embeddedFontDescriptors(data: Uint8Array): FontFaceDescriptors {
+    try {
+        let sfnt = 0;
+        if (data.length >= 16 && asciiTag(data, 0) === 'ttcf') {
+            if (uint32(data, 8) < 1) return {};
+            sfnt = uint32(data, 12);
+        }
+        if (sfnt + 12 > data.length) return {};
+        const tables = uint16(data, sfnt + 4);
+        let fvar = -1;
+        for (let i = 0; i < tables; i++) {
+            const record = sfnt + 12 + i * 16;
+            if (record + 16 > data.length) return {};
+            if (asciiTag(data, record) === 'fvar') {
+                fvar = uint32(data, record + 8);
+                break;
+            }
+        }
+        if (fvar < 0 || fvar + 16 > data.length) return {};
+        const axesOffset = uint16(data, fvar + 4);
+        const axisCount = uint16(data, fvar + 8);
+        const axisSize = uint16(data, fvar + 10);
+        if (axisSize < 20) return {};
+        const descriptors: FontFaceDescriptors = {};
+        for (let i = 0; i < axisCount; i++) {
+            const axis = fvar + axesOffset + i * axisSize;
+            if (axis + 20 > data.length) return {};
+            const tag = asciiTag(data, axis);
+            const min = fixed1616(data, axis + 4);
+            const max = fixed1616(data, axis + 12);
+            if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) continue;
+            if (tag === 'wght') descriptors.weight = `${trimNumber(min)} ${trimNumber(max)}`;
+            if (tag === 'wdth') descriptors.stretch = `${trimNumber(min)}% ${trimNumber(max)}%`;
+        }
+        return descriptors;
+    } catch (_) {
+        return {};
+    }
+}
+
 /**
  * Register FontData bytes with the browser and return the family name canvas can use immediately.
  *
@@ -422,25 +486,53 @@ export function registerEmbeddedFont(
         set.add(onLoaded);
         waiting.set(key, set);
     }
-    if (variants.has(key)) return family;
+    const retained = embeddedFaces.get(key);
+    if (retained) {
+        retained.references += 1;
+        return family;
+    }
 
     let load: Promise<void>;
     if (typeof document === 'undefined' || !document.fonts || typeof FontFace === 'undefined') {
         // node-canvas has no FontFaceSet. Keep the alias/fallback behaviour deterministic there.
+        embeddedFaces.set(key, { references: 1 });
         load = Promise.resolve();
     } else {
         // Copy the exact view: a WireBuffer may be backed by a larger allocation than this font.
         const bytes = data.slice().buffer;
-        const face = new FontFace(family, bytes);
-        embeddedFaces.set(key, face);
+        const face = new FontFace(family, bytes, embeddedFontDescriptors(data));
+        embeddedFaces.set(key, { face, references: 1 });
         document.fonts.add(face);
         load = face.load().then(() => undefined).catch((e) => {
             console.warn(`WebFonts: embedded font ${fontId} could not be loaded`, e);
         });
     }
-    const promise = load.then(() => notify(key));
+    const promise = load.then(() => { if (embeddedFaces.has(key)) notify(key); });
     variants.set(key, promise);
     return family;
+}
+
+/** Release one player's ownership of an embedded face. */
+export function releaseEmbeddedFont(
+    fontId: number,
+    data: Uint8Array,
+    onLoaded?: () => void,
+): void {
+    const key = `embedded|${embeddedFamily(fontId, data)}`;
+    const listeners = waiting.get(key);
+    if (onLoaded) listeners?.delete(onLoaded);
+    if (listeners?.size === 0) waiting.delete(key);
+    const retained = embeddedFaces.get(key);
+    if (!retained) return;
+    retained.references -= 1;
+    if (retained.references > 0) return;
+    if (retained.face && typeof document !== 'undefined' && document.fonts) {
+        document.fonts.delete(retained.face);
+    }
+    embeddedFaces.delete(key);
+    variants.delete(key);
+    done.delete(key);
+    waiting.delete(key);
 }
 
 /**
@@ -464,7 +556,7 @@ export async function webFontsReady(): Promise<void> {
 /** Drop all registration state. Tests only. */
 export function resetWebFonts(): void {
     if (typeof document !== 'undefined' && document.fonts) {
-        embeddedFaces.forEach((face) => document.fonts.delete(face));
+        embeddedFaces.forEach(({ face }) => { if (face) document.fonts.delete(face); });
     }
     embeddedFaces.clear();
     stylesheets.clear();

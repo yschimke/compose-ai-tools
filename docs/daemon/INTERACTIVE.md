@@ -187,8 +187,8 @@ no-op.
 {
   frameStreamId: string;
   kind: 'click' | 'pointerDown' | 'pointerUp' | 'keyDown' | 'keyUp';
-  // Image-natural pixel coordinates. Daemon translates to dp using the
-  // last render's density. Null for keyboard events.
+  // Image-natural physical pixels, dispatched without density conversion.
+  // Null for keyboard events.
   pixelX?: number;
   pixelY?: number;
   // For 'keyDown'/'keyUp' only.

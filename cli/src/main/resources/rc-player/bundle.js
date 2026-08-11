@@ -18,7 +18,7 @@ var RC = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // src/web/main.ts
+  // third_party/remote-compose-player/src/web/main.ts
   var main_exports = {};
   __export(main_exports, {
     GOOGLE_PREFIX: () => GOOGLE_PREFIX,
@@ -29,17 +29,19 @@ var RC = (() => {
     createPlayer: () => createPlayer,
     cssFontStackFor: () => cssFontStackFor,
     cssQuoted: () => cssQuoted,
+    embeddedFontDescriptors: () => embeddedFontDescriptors,
     ensureWebFont: () => ensureWebFont,
     googleFontsAxisUrl: () => googleFontsAxisUrl,
     googleFontsUrl: () => googleFontsUrl,
     namedFontStack: () => namedFontStack,
     parseFamily: () => parseFamily,
     registerEmbeddedFont: () => registerEmbeddedFont,
+    releaseEmbeddedFont: () => releaseEmbeddedFont,
     resetWebFonts: () => resetWebFonts,
     webFontsReady: () => webFontsReady
   });
 
-  // src/core/operations/Utils.ts
+  // third_party/remote-compose-player/src/core/operations/Utils.ts
   var _dv = new DataView(new ArrayBuffer(4));
   function intBitsToFloat(bits) {
     _dv.setInt32(0, bits, false);
@@ -146,7 +148,7 @@ var RC = (() => {
     return a << 24 | r << 16 | g << 8 | b | 0;
   }
 
-  // src/core/operations/utilities/IntMap.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/IntMap.ts
   var NOT_PRESENT = -2147483648;
   var DEFAULT_CAPACITY = 16;
   var LOAD_FACTOR = 0.75;
@@ -253,7 +255,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/utilities/IntFloatMap.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/IntFloatMap.ts
   var NOT_PRESENT2 = -2147483648;
   var DEFAULT_CAPACITY2 = 16;
   var LOAD_FACTOR2 = 0.75;
@@ -332,7 +334,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/utilities/IntIntMap.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/IntIntMap.ts
   var NOT_PRESENT3 = -2147483648;
   var DEFAULT_CAPACITY3 = 16;
   var LOAD_FACTOR3 = 0.75;
@@ -404,7 +406,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/RemoteComposeState.ts
+  // third_party/remote-compose-player/src/core/RemoteComposeState.ts
   var _RemoteComposeState = class _RemoteComposeState {
     constructor() {
       this.mIntDataMap = new IntMap();
@@ -716,7 +718,7 @@ var RC = (() => {
   _RemoteComposeState.MAX_DATA = 1e4;
   var RemoteComposeState = _RemoteComposeState;
 
-  // src/core/RemoteClock.ts
+  // third_party/remote-compose-player/src/core/RemoteClock.ts
   function createSnapshot(millis) {
     const d = new Date(millis);
     const year = d.getFullYear();
@@ -759,7 +761,7 @@ var RC = (() => {
   };
   var SYSTEM_CLOCK = SystemClock;
 
-  // src/core/RemoteContext.ts
+  // third_party/remote-compose-player/src/core/RemoteContext.ts
   var DENSITY_BEHAVIOR_LEGACY = 0;
   var DENSITY_BEHAVIOR_DP = 2;
   var _RemoteContext = class _RemoteContext {
@@ -1002,7 +1004,7 @@ var RC = (() => {
   _RemoteContext.LAST_BASELINE = asNan(37);
   var RemoteContext = _RemoteContext;
 
-  // src/core/Operation.ts
+  // third_party/remote-compose-player/src/core/Operation.ts
   var _Operation = class _Operation {
     constructor() {
       this.mDirty = true;
@@ -1040,7 +1042,7 @@ var RC = (() => {
   _Operation.ENABLE_DIRTY_FLAG_OPTIMIZATION = true;
   var Operation = _Operation;
 
-  // src/core/operations/Header.ts
+  // third_party/remote-compose-player/src/core/operations/Header.ts
   var _Header = class _Header extends Operation {
     constructor(majorVersion, minorVersion, patchVersion, properties = null, width = 256, height = 256, capabilities = 0) {
       super();
@@ -1205,7 +1207,7 @@ var RC = (() => {
   _Header.DATA_TYPE_STRING = 3;
   var Header = _Header;
 
-  // src/core/operations/layout/ContainerEnd.ts
+  // third_party/remote-compose-player/src/core/operations/layout/ContainerEnd.ts
   var _ContainerEnd = class _ContainerEnd extends Operation {
     write(buffer) {
       buffer.start(_ContainerEnd.OP_CODE);
@@ -1222,7 +1224,7 @@ var RC = (() => {
   _ContainerEnd.OP_CODE = 214;
   var ContainerEnd = _ContainerEnd;
 
-  // src/core/PaintOperation.ts
+  // third_party/remote-compose-player/src/core/PaintOperation.ts
   var PTR_DEREFERENCE = 1 << 30;
   var VALUE_MASK = 65535;
   function isContainer(op) {
@@ -1266,7 +1268,7 @@ var RC = (() => {
   PaintOperation.PTR_DEREFERENCE = PTR_DEREFERENCE;
   PaintOperation.VALUE_MASK = VALUE_MASK;
 
-  // src/core/operations/utilities/easing/Easing.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/easing/Easing.ts
   var Easing = class {
     constructor() {
       this.mType = 0;
@@ -1286,7 +1288,7 @@ var RC = (() => {
   Easing.EASE_OUT_BOUNCE = 13;
   Easing.EASE_OUT_ELASTIC = 14;
 
-  // src/core/operations/utilities/easing/CubicEasing.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/easing/CubicEasing.ts
   var STANDARD = [0.4, 0, 0.2, 1];
   var ACCELERATE = [0.4, 0.05, 0.8, 0.7];
   var DECELERATE = [0, 0, 0.2, 0.95];
@@ -1379,7 +1381,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/utilities/easing/BounceCurve.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/easing/BounceCurve.ts
   var N1 = 7.5625;
   var D1 = 2.75;
   var BounceCurve = class extends Easing {
@@ -1419,7 +1421,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/utilities/easing/ElasticOutCurve.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/easing/ElasticOutCurve.ts
   var C4 = 2 * Math.PI / 3;
   var TWENTY_PI = 20 * Math.PI;
   var LOG_8 = Math.log(8);
@@ -1435,7 +1437,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/utilities/easing/MonotonicCurveFit.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/easing/MonotonicCurveFit.ts
   var MonotonicCurveFit = class _MonotonicCurveFit {
     constructor(time, y) {
       // same shape as mY
@@ -1549,7 +1551,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/utilities/easing/StepCurve.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/easing/StepCurve.ts
   var StepCurve = class _StepCurve extends Easing {
     constructor(params, offset, len) {
       super();
@@ -1586,7 +1588,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/utilities/easing/FloatAnimation.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/easing/FloatAnimation.ts
   var _dv2 = new DataView(new ArrayBuffer(4));
   function floatToRawIntBits2(v) {
     _dv2.setFloat32(0, v, false);
@@ -1745,7 +1747,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/utilities/easing/SpringStopEngine.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/easing/SpringStopEngine.ts
   var SpringStopEngine = class {
     constructor(parameters) {
       this.mDamping = 0.5;
@@ -1836,7 +1838,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/FloatExpression.ts
+  // third_party/remote-compose-player/src/core/operations/FloatExpression.ts
   var ARR_SENTINEL = 2 ** 42;
   function arrIdFromStack(x) {
     return x >= ARR_SENTINEL ? x - ARR_SENTINEL | 0 : idFromNan(x);
@@ -2482,7 +2484,7 @@ var RC = (() => {
   _FloatExpression.ID_REGION_ARRAY = 2097152;
   var FloatExpression = _FloatExpression;
 
-  // src/core/operations/utilities/AnimatedFloatExpression.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/AnimatedFloatExpression.ts
   var ARR_SENTINEL2 = 2 ** 42;
   function arrIdFromStack2(x) {
     return x >= ARR_SENTINEL2 ? x - ARR_SENTINEL2 | 0 : idFromNan(x);
@@ -2918,7 +2920,7 @@ var RC = (() => {
   _AnimatedFloatExpression.ID_REGION_ARRAY = 2097152;
   var AnimatedFloatExpression = _AnimatedFloatExpression;
 
-  // src/core/operations/utilities/touch/VelocityEasing.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/touch/VelocityEasing.ts
   var Stage = class {
     constructor(n) {
       this.mStartV = 0;
@@ -3142,7 +3144,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/TouchExpression.ts
+  // third_party/remote-compose-player/src/core/operations/TouchExpression.ts
   var _TouchExpression = class _TouchExpression extends Operation {
     constructor(id, exp, defValueBits, minBits, maxBits, touchEffects, velocityId, stopMode, stopSpec, easingSpec) {
       super();
@@ -3586,7 +3588,7 @@ var RC = (() => {
   _TouchExpression.STOP_NOTCHES_SINGLE_EVEN = 7;
   var TouchExpression = _TouchExpression;
 
-  // src/core/operations/layout/Component.ts
+  // third_party/remote-compose-player/src/core/operations/layout/Component.ts
   var _Visibility = class _Visibility {
     static isGone(v) {
       if (v >> 4 > 0) return (v & _Visibility.OVERRIDE_GONE) === _Visibility.OVERRIDE_GONE;
@@ -3951,7 +3953,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/layout/measure/ComponentMeasure.ts
+  // third_party/remote-compose-player/src/core/operations/layout/measure/ComponentMeasure.ts
   var _ComponentMeasure = class _ComponentMeasure {
     constructor(id, x, y, w, h, visibility = _ComponentMeasure.VISIBLE) {
       this.mAllowsAnimation = true;
@@ -4044,7 +4046,7 @@ var RC = (() => {
   _ComponentMeasure.INVISIBLE = 2;
   var ComponentMeasure = _ComponentMeasure;
 
-  // src/core/operations/layout/measure/MeasurePass.ts
+  // third_party/remote-compose-player/src/core/operations/layout/measure/MeasurePass.ts
   var MeasurePass = class {
     constructor() {
       this.mList = /* @__PURE__ */ new Map();
@@ -4086,7 +4088,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/layout/RootLayoutComponent.ts
+  // third_party/remote-compose-player/src/core/operations/layout/RootLayoutComponent.ts
   var _RootLayoutComponent = class _RootLayoutComponent extends Component {
     constructor(componentId = -1) {
       super(componentId);
@@ -4226,7 +4228,7 @@ var RC = (() => {
   _RootLayoutComponent.OP_CODE = 200;
   var RootLayoutComponent = _RootLayoutComponent;
 
-  // src/core/TimeVariables.ts
+  // third_party/remote-compose-player/src/core/TimeVariables.ts
   var TimeVariables = class {
     constructor(clock) {
       this.mLastAnimationTime = -1;
@@ -4263,7 +4265,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/paint/PaintBundle.ts
+  // third_party/remote-compose-player/src/core/operations/paint/PaintBundle.ts
   var _f32dv = new DataView(new ArrayBuffer(4));
   function intBitsToFloat2(bits) {
     _f32dv.setInt32(0, bits);
@@ -4634,7 +4636,7 @@ var RC = (() => {
   _PaintBundle.FILL_AND_STROKE = 2;
   var PaintBundle = _PaintBundle;
 
-  // src/core/operations/layout/modifiers/ModifierOperations.ts
+  // third_party/remote-compose-player/src/core/operations/layout/modifiers/ModifierOperations.ts
   var _WidthModifier = class _WidthModifier extends Operation {
     constructor(type, valueBits) {
       super();
@@ -5796,7 +5798,7 @@ var RC = (() => {
   _AccessibilitySemantics.OP_CODE = 250;
   var AccessibilitySemantics = _AccessibilitySemantics;
 
-  // src/core/operations/DataOperations.ts
+  // third_party/remote-compose-player/src/core/operations/DataOperations.ts
   var NANMAP_PATH_BASE = 3145728;
   function isPathMarkerBits(b) {
     if (!isNaNBits(b)) return false;
@@ -6188,7 +6190,7 @@ var RC = (() => {
   _RootContentBehavior.LAYOUT_WRAP_CONTENT = 1;
   var RootContentBehavior = _RootContentBehavior;
 
-  // src/core/operations/StubOperations.ts
+  // third_party/remote-compose-player/src/core/operations/StubOperations.ts
   var _ImpulseOperation = class _ImpulseOperation extends PaintOperation {
     constructor(duration, startAt) {
       super();
@@ -6546,7 +6548,7 @@ var RC = (() => {
   _TimeAttribute.TIME_DAY_OF_YEAR = 15;
   var TimeAttribute = _TimeAttribute;
 
-  // src/core/operations/loom/PatternOperations.ts
+  // third_party/remote-compose-player/src/core/operations/loom/PatternOperations.ts
   var _ReferencedOperations = class _ReferencedOperations extends Operation {
     constructor(id) {
       super();
@@ -6894,7 +6896,7 @@ var RC = (() => {
     return new Ctor(loomManager, parent.getDocument(), ctx, blocks, parent.isSafeMode(), depth);
   }
 
-  // src/core/WireBuffer.ts
+  // third_party/remote-compose-player/src/core/WireBuffer.ts
   var _WireBuffer = class _WireBuffer {
     constructor(size = _WireBuffer.BUFFER_SIZE) {
       this.mIndex = 0;
@@ -7158,7 +7160,7 @@ var RC = (() => {
   _WireBuffer.BUFFER_SIZE = 1024 * 1024;
   var WireBuffer = _WireBuffer;
 
-  // src/core/operations/DrawBase4.ts
+  // third_party/remote-compose-player/src/core/operations/DrawBase4.ts
   var DrawBase4 = class extends PaintOperation {
     // Constructed from the raw int32 bits of each coordinate (see read()).
     constructor(x1Bits, y1Bits, x2Bits, y2Bits) {
@@ -7191,7 +7193,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/DrawRect.ts
+  // third_party/remote-compose-player/src/core/operations/DrawRect.ts
   var _DrawRect = class _DrawRect extends DrawBase4 {
     paintBase4(context, x1, y1, x2, y2) {
       context.drawRect(x1, y1, x2, y2);
@@ -7211,7 +7213,7 @@ var RC = (() => {
   _DrawRect.OP_CODE = 42;
   var DrawRect = _DrawRect;
 
-  // src/core/operations/DrawBase3.ts
+  // third_party/remote-compose-player/src/core/operations/DrawBase3.ts
   var DrawBase3 = class extends PaintOperation {
     constructor(v1Bits, v2Bits, v3Bits) {
       super();
@@ -7239,7 +7241,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/DrawCircle.ts
+  // third_party/remote-compose-player/src/core/operations/DrawCircle.ts
   var _DrawCircle = class _DrawCircle extends DrawBase3 {
     paintBase3(context, v1, v2, v3) {
       context.drawCircle(v1, v2, v3);
@@ -7254,7 +7256,7 @@ var RC = (() => {
   _DrawCircle.OP_CODE = 46;
   var DrawCircle = _DrawCircle;
 
-  // src/core/operations/DrawOval.ts
+  // third_party/remote-compose-player/src/core/operations/DrawOval.ts
   var _DrawOval = class _DrawOval extends DrawBase4 {
     paintBase4(context, x1, y1, x2, y2) {
       context.drawOval(x1, y1, x2, y2);
@@ -7274,7 +7276,7 @@ var RC = (() => {
   _DrawOval.OP_CODE = 56;
   var DrawOval = _DrawOval;
 
-  // src/core/operations/DrawBase6.ts
+  // third_party/remote-compose-player/src/core/operations/DrawBase6.ts
   var DrawBase6 = class extends PaintOperation {
     constructor(v1Bits, v2Bits, v3Bits, v4Bits, v5Bits, v6Bits) {
       super();
@@ -7314,7 +7316,7 @@ var RC = (() => {
     }
   };
 
-  // src/core/operations/DrawRoundRect.ts
+  // third_party/remote-compose-player/src/core/operations/DrawRoundRect.ts
   var _DrawRoundRect = class _DrawRoundRect extends DrawBase6 {
     paintBase6(context, v1, v2, v3, v4, v5, v6) {
       context.drawRoundRect(v1, v2, v3, v4, v5, v6);
@@ -7336,7 +7338,7 @@ var RC = (() => {
   _DrawRoundRect.OP_CODE = 51;
   var DrawRoundRect = _DrawRoundRect;
 
-  // src/core/operations/DrawArc.ts
+  // third_party/remote-compose-player/src/core/operations/DrawArc.ts
   var _DrawArc = class _DrawArc extends DrawBase6 {
     paintBase6(context, v1, v2, v3, v4, v5, v6) {
       context.drawArc(v1, v2, v3, v4, v5, v6);
@@ -7358,7 +7360,7 @@ var RC = (() => {
   _DrawArc.OP_CODE = 152;
   var DrawArc = _DrawArc;
 
-  // src/core/operations/DrawSector.ts
+  // third_party/remote-compose-player/src/core/operations/DrawSector.ts
   var _DrawSector = class _DrawSector extends DrawBase6 {
     paintBase6(context, v1, v2, v3, v4, v5, v6) {
       context.drawSector(v1, v2, v3, v4, v5, v6);
@@ -7380,7 +7382,7 @@ var RC = (() => {
   _DrawSector.OP_CODE = 52;
   var DrawSector = _DrawSector;
 
-  // src/core/operations/DrawPath.ts
+  // third_party/remote-compose-player/src/core/operations/DrawPath.ts
   var _DrawPath = class _DrawPath extends PaintOperation {
     constructor(pathId, start, end) {
       super();
@@ -7404,7 +7406,7 @@ var RC = (() => {
   _DrawPath.OP_CODE = 124;
   var DrawPath = _DrawPath;
 
-  // src/core/operations/DrawTweenPath.ts
+  // third_party/remote-compose-player/src/core/operations/DrawTweenPath.ts
   var _DrawTweenPath = class _DrawTweenPath extends PaintOperation {
     constructor(path1Id, path2Id, tweenBits, startBits, endBits) {
       super();
@@ -7448,7 +7450,7 @@ var RC = (() => {
   _DrawTweenPath.OP_CODE = 125;
   var DrawTweenPath = _DrawTweenPath;
 
-  // src/core/operations/DrawContent.ts
+  // third_party/remote-compose-player/src/core/operations/DrawContent.ts
   var _DrawContent = class _DrawContent extends PaintOperation {
     constructor() {
       super(...arguments);
@@ -7479,7 +7481,7 @@ var RC = (() => {
   _DrawContent.OP_CODE = 139;
   var DrawContent = _DrawContent;
 
-  // src/core/operations/DrawBitmap.ts
+  // third_party/remote-compose-player/src/core/operations/DrawBitmap.ts
   var _DrawBitmap = class _DrawBitmap extends PaintOperation {
     constructor(imageId, leftBits, topBits, rightBits, bottomBits, cdId) {
       super();
@@ -7533,7 +7535,7 @@ var RC = (() => {
   _DrawBitmap.OP_CODE = 44;
   var DrawBitmap = _DrawBitmap;
 
-  // src/core/operations/DrawBitmapInt.ts
+  // third_party/remote-compose-player/src/core/operations/DrawBitmapInt.ts
   var _DrawBitmapInt = class _DrawBitmapInt extends PaintOperation {
     constructor(imageId, srcL, srcT, srcR, srcB, dstL, dstT, dstR, dstB, cdId) {
       super();
@@ -7585,7 +7587,7 @@ var RC = (() => {
   _DrawBitmapInt.OP_CODE = 66;
   var DrawBitmapInt = _DrawBitmapInt;
 
-  // src/core/operations/utilities/ImageScaling.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/ImageScaling.ts
   var _ImageScaling = class _ImageScaling {
     constructor() {
       this.mFinalDstLeft = 0;
@@ -7697,7 +7699,7 @@ var RC = (() => {
   _ImageScaling.SCALE_FIXED_SCALE = 7;
   var ImageScaling = _ImageScaling;
 
-  // src/core/operations/DrawBitmapScaled.ts
+  // third_party/remote-compose-player/src/core/operations/DrawBitmapScaled.ts
   var _DrawBitmapScaled = class _DrawBitmapScaled extends PaintOperation {
     // Args are raw int32 bits for the float fields (see read()).
     constructor(imageId, srcL, srcT, srcR, srcB, dstL, dstT, dstR, dstB, scaleType, scaleFactor, cdId) {
@@ -7808,7 +7810,7 @@ var RC = (() => {
   _DrawBitmapScaled.OP_CODE = 149;
   var DrawBitmapScaled = _DrawBitmapScaled;
 
-  // src/core/operations/DrawText.ts
+  // third_party/remote-compose-player/src/core/operations/DrawText.ts
   var _DrawText = class _DrawText extends PaintOperation {
     constructor(textId, start, end, contextStart, contextEnd, xBits, yBits, rtl) {
       super();
@@ -7865,7 +7867,7 @@ var RC = (() => {
   _DrawText.OP_CODE = 43;
   var DrawText = _DrawText;
 
-  // src/core/operations/DrawTextOnPath.ts
+  // third_party/remote-compose-player/src/core/operations/DrawTextOnPath.ts
   var _DrawTextOnPath = class _DrawTextOnPath extends PaintOperation {
     constructor(textId, pathId, hOffsetBits, vOffsetBits) {
       super();
@@ -7904,7 +7906,7 @@ var RC = (() => {
   _DrawTextOnPath.OP_CODE = 53;
   var DrawTextOnPath = _DrawTextOnPath;
 
-  // src/core/operations/DrawToBitmap.ts
+  // third_party/remote-compose-player/src/core/operations/DrawToBitmap.ts
   var _DrawToBitmap = class _DrawToBitmap extends PaintOperation {
     constructor(bitmapId, mode, color) {
       super();
@@ -7927,7 +7929,7 @@ var RC = (() => {
   _DrawToBitmap.OP_CODE = 190;
   var DrawToBitmap = _DrawToBitmap;
 
-  // src/core/operations/DrawLine.ts
+  // third_party/remote-compose-player/src/core/operations/DrawLine.ts
   var _DrawLine = class _DrawLine extends DrawBase4 {
     paintBase4(context, x1, y1, x2, y2) {
       context.drawLine(x1, y1, x2, y2);
@@ -7947,7 +7949,7 @@ var RC = (() => {
   _DrawLine.OP_CODE = 47;
   var DrawLine = _DrawLine;
 
-  // src/core/PaintContext.ts
+  // third_party/remote-compose-player/src/core/PaintContext.ts
   var PaintContext = class {
     constructor(context) {
       this.mNeedsRepaint = false;
@@ -8012,7 +8014,7 @@ var RC = (() => {
   PaintContext.TEXT_COMPLEX = 8;
   PaintContext.TEXT_MEASURE_AUTOSIZE = 16;
 
-  // src/core/operations/DrawTextAnchored.ts
+  // third_party/remote-compose-player/src/core/operations/DrawTextAnchored.ts
   var _DrawTextAnchored = class _DrawTextAnchored extends PaintOperation {
     constructor(textId, xBits, yBits, panXBits, panYBits, flags) {
       super();
@@ -8107,7 +8109,7 @@ var RC = (() => {
   _DrawTextAnchored.BASELINE_RELATIVE = 8;
   var DrawTextAnchored = _DrawTextAnchored;
 
-  // src/core/operations/MatrixOperations.ts
+  // third_party/remote-compose-player/src/core/operations/MatrixOperations.ts
   function listenFloat(bits, context, op) {
     if (isNaNBits(bits)) context.listensTo(idFromBits(bits), op);
   }
@@ -8366,7 +8368,7 @@ var RC = (() => {
   _ClipPath.OP_CODE = 38;
   var ClipPath = _ClipPath;
 
-  // src/core/operations/ColorExpression.ts
+  // third_party/remote-compose-player/src/core/operations/ColorExpression.ts
   var _ColorExpression = class _ColorExpression extends Operation {
     constructor(id, param1, param2, param3, param4) {
       super();
@@ -8527,7 +8529,7 @@ var RC = (() => {
   _ColorExpression.IDARGB_MODE = 6;
   var ColorExpression = _ColorExpression;
 
-  // src/core/operations/IntegerExpression.ts
+  // third_party/remote-compose-player/src/core/operations/IntegerExpression.ts
   var _IntegerExpression = class _IntegerExpression extends Operation {
     constructor(id, mask, values) {
       super();
@@ -8741,7 +8743,7 @@ var RC = (() => {
   _IntegerExpression.OFFSET = 65536;
   var IntegerExpression = _IntegerExpression;
 
-  // src/core/operations/IntegerConstant.ts
+  // third_party/remote-compose-player/src/core/operations/IntegerConstant.ts
   var _IntegerConstant = class _IntegerConstant extends Operation {
     constructor(id, value) {
       super();
@@ -8766,7 +8768,7 @@ var RC = (() => {
   _IntegerConstant.OP_CODE = 140;
   var IntegerConstant = _IntegerConstant;
 
-  // src/core/operations/BooleanConstant.ts
+  // third_party/remote-compose-player/src/core/operations/BooleanConstant.ts
   var _BooleanConstant = class _BooleanConstant extends Operation {
     constructor(id, value) {
       super();
@@ -8787,7 +8789,7 @@ var RC = (() => {
   _BooleanConstant.OP_CODE = 143;
   var BooleanConstant = _BooleanConstant;
 
-  // src/core/operations/LongConstant.ts
+  // third_party/remote-compose-player/src/core/operations/LongConstant.ts
   var _LongConstant = class _LongConstant extends Operation {
     constructor(id, value) {
       super();
@@ -8815,7 +8817,7 @@ var RC = (() => {
   _LongConstant.OP_CODE = 148;
   var LongConstant = _LongConstant;
 
-  // src/core/operations/ShaderData.ts
+  // third_party/remote-compose-player/src/core/operations/ShaderData.ts
   var _ShaderData = class _ShaderData extends Operation {
     constructor(shaderId, shaderTextId, floatMap, intMap, bitmapMap) {
       super();
@@ -8951,7 +8953,7 @@ var RC = (() => {
   _ShaderData.OP_CODE = 45;
   var ShaderData = _ShaderData;
 
-  // src/core/operations/utilities/StringUtils.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/StringUtils.ts
   var GROUPING_NONE = 0;
   var GROUPING_BY3 = 1;
   var GROUPING_BY4 = 2;
@@ -9165,7 +9167,7 @@ var RC = (() => {
     return "-" + integerPartString + decSep + fact;
   }
 
-  // src/core/operations/TextFromFloat.ts
+  // third_party/remote-compose-player/src/core/operations/TextFromFloat.ts
   var PAD_AFTER_NONE = 1;
   var PAD_AFTER_ZERO = 3;
   var PAD_PRE_NONE = 4;
@@ -9287,7 +9289,7 @@ var RC = (() => {
   _TextFromFloat.OP_CODE = 135;
   var TextFromFloat = _TextFromFloat;
 
-  // src/core/operations/TextMerge.ts
+  // third_party/remote-compose-player/src/core/operations/TextMerge.ts
   var _TextMerge = class _TextMerge extends Operation {
     constructor(textId, srcId1, srcId2) {
       super();
@@ -9319,7 +9321,7 @@ var RC = (() => {
   _TextMerge.OP_CODE = 136;
   var TextMerge = _TextMerge;
 
-  // src/core/operations/ComponentValue.ts
+  // third_party/remote-compose-player/src/core/operations/ComponentValue.ts
   var _ComponentValue = class _ComponentValue extends Operation {
     constructor(type, componentId, valueId) {
       super();
@@ -9406,7 +9408,7 @@ var RC = (() => {
   _ComponentValue.CONTENT_HEIGHT = 7;
   var ComponentValue = _ComponentValue;
 
-  // src/core/operations/DataMapIds.ts
+  // third_party/remote-compose-player/src/core/operations/DataMapIds.ts
   var DataMap = class {
     constructor(names, types, ids) {
       this.mNames = names;
@@ -9448,7 +9450,7 @@ var RC = (() => {
   _DataMapIds.OP_CODE = 145;
   var DataMapIds = _DataMapIds;
 
-  // src/core/operations/DataListIds.ts
+  // third_party/remote-compose-player/src/core/operations/DataListIds.ts
   var _DataListIds = class _DataListIds extends Operation {
     constructor(id, ids) {
       super();
@@ -9485,7 +9487,7 @@ var RC = (() => {
   _DataListIds.OP_CODE = 146;
   var DataListIds = _DataListIds;
 
-  // src/core/operations/DataListFloat.ts
+  // third_party/remote-compose-player/src/core/operations/DataListFloat.ts
   var _DataListFloat = class _DataListFloat extends Operation {
     constructor(id, bits) {
       super();
@@ -9539,7 +9541,7 @@ var RC = (() => {
   _DataListFloat.OP_CODE = 147;
   var DataListFloat = _DataListFloat;
 
-  // src/core/operations/layout/LayoutComponentContent.ts
+  // third_party/remote-compose-player/src/core/operations/layout/LayoutComponentContent.ts
   var _LayoutComponentContent = class _LayoutComponentContent extends Component {
     constructor(componentId) {
       super(componentId);
@@ -9576,7 +9578,7 @@ var RC = (() => {
   _LayoutComponentContent.OP_CODE = 201;
   var LayoutComponentContent = _LayoutComponentContent;
 
-  // src/core/operations/layout/CanvasContent.ts
+  // third_party/remote-compose-player/src/core/operations/layout/CanvasContent.ts
   var _CanvasContent = class _CanvasContent extends Component {
     constructor(componentId) {
       super(componentId);
@@ -9598,7 +9600,7 @@ var RC = (() => {
   _CanvasContent.OP_CODE = 207;
   var CanvasContent = _CanvasContent;
 
-  // src/core/operations/DataDynamicListFloat.ts
+  // third_party/remote-compose-player/src/core/operations/DataDynamicListFloat.ts
   var _DataDynamicListFloat = class _DataDynamicListFloat extends Operation {
     constructor(id, nbValuesBits) {
       super();
@@ -9666,7 +9668,7 @@ var RC = (() => {
   _DataDynamicListFloat.MAX_FLOAT_ARRAY = 2e3;
   var DataDynamicListFloat = _DataDynamicListFloat;
 
-  // src/core/operations/layout/modifiers/LayoutComputeOperation.ts
+  // third_party/remote-compose-player/src/core/operations/layout/modifiers/LayoutComputeOperation.ts
   var _LayoutComputeOperation = class _LayoutComputeOperation extends Operation {
     constructor(type, boundsId, animateChanges) {
       super();
@@ -9776,7 +9778,7 @@ var RC = (() => {
   _LayoutComputeOperation.TYPE_POSITION = 1;
   var LayoutComputeOperation = _LayoutComputeOperation;
 
-  // src/core/operations/layout/CanvasOperations.ts
+  // third_party/remote-compose-player/src/core/operations/layout/CanvasOperations.ts
   var _CanvasOperations = class _CanvasOperations extends PaintOperation {
     constructor() {
       super();
@@ -9814,7 +9816,7 @@ ${inner}`;
   _CanvasOperations.OP_CODE = 173;
   var CanvasOperations = _CanvasOperations;
 
-  // src/core/operations/layout/LayoutComponent.ts
+  // third_party/remote-compose-player/src/core/operations/layout/LayoutComponent.ts
   var LayoutComponent = class _LayoutComponent extends Component {
     constructor() {
       super(...arguments);
@@ -10430,7 +10432,7 @@ ${inner}`;
     }
   };
 
-  // src/core/operations/layout/measure/Size.ts
+  // third_party/remote-compose-player/src/core/operations/layout/measure/Size.ts
   var Size = class {
     constructor(width = 0, height = 0) {
       this.mWidth = width;
@@ -10454,7 +10456,7 @@ ${inner}`;
     }
   };
 
-  // src/core/operations/layout/managers/LayoutManager.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/LayoutManager.ts
   function contentExtent(size, padding) {
     return Math.max(0, size - padding);
   }
@@ -10625,7 +10627,7 @@ ${inner}`;
     }
   };
 
-  // src/core/operations/layout/managers/BoxLayout.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/BoxLayout.ts
   var _BoxLayout = class _BoxLayout extends LayoutManager {
     constructor(componentId, animationId, horizontalPositioning, verticalPositioning) {
       super(componentId, animationId);
@@ -10733,7 +10735,7 @@ ${inner}`;
   _BoxLayout.BOTTOM = 5;
   var BoxLayout = _BoxLayout;
 
-  // src/core/operations/layout/managers/RowLayout.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/RowLayout.ts
   var _RowLayout = class _RowLayout extends LayoutManager {
     constructor(componentId, animationId, horizontalPositioning, verticalPositioning, spacedBy) {
       super(componentId, animationId);
@@ -11025,7 +11027,7 @@ ${inner}`;
   _RowLayout.SPACE_AROUND = 8;
   var RowLayout = _RowLayout;
 
-  // src/core/operations/layout/managers/ColumnLayout.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/ColumnLayout.ts
   var _ColumnLayout = class _ColumnLayout extends LayoutManager {
     constructor(componentId, animationId, horizontalPositioning, verticalPositioning, spacedBy) {
       super(componentId, animationId);
@@ -11287,7 +11289,7 @@ ${inner}`;
   _ColumnLayout.SPACE_AROUND = 8;
   var ColumnLayout = _ColumnLayout;
 
-  // src/core/operations/layout/managers/CanvasLayout.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/CanvasLayout.ts
   var _CanvasLayout = class _CanvasLayout extends BoxLayout {
     constructor(componentId, animationId) {
       super(componentId, animationId, 0, 0);
@@ -11328,7 +11330,7 @@ ${inner}`;
   _CanvasLayout.OP_CODE = 205;
   var CanvasLayout = _CanvasLayout;
 
-  // src/core/operations/Skip.ts
+  // third_party/remote-compose-player/src/core/operations/Skip.ts
   var sLibraryApiLevel = 7;
   var sProfile = 0;
   var _Skip = class _Skip extends Operation {
@@ -11378,7 +11380,7 @@ ${inner}`;
   _Skip.SKIP_IF_PROFILE_EXCLUDES = 6;
   var Skip = _Skip;
 
-  // src/core/operations/layout/managers/TextStyle.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/TextStyle.ts
   var P_ID = 1;
   var P_ANIMATION_ID = 2;
   var P_COLOR = 3;
@@ -11546,7 +11548,7 @@ ${inner}`;
   _TextStyle.OP_CODE = 242;
   var TextStyle = _TextStyle;
 
-  // src/core/operations/ConditionalOperations.ts
+  // third_party/remote-compose-player/src/core/operations/ConditionalOperations.ts
   var _ConditionalOperations = class _ConditionalOperations extends PaintOperation {
     constructor(type, aBits, bBits) {
       super();
@@ -11635,7 +11637,7 @@ ${inner}`;
   _ConditionalOperations.TYPE_GTE = 5;
   var ConditionalOperations = _ConditionalOperations;
 
-  // src/core/operations/PathCreate.ts
+  // third_party/remote-compose-player/src/core/operations/PathCreate.ts
   function isPathMarkerBits2(b) {
     if (!isNaNBits(b)) return false;
     const id = idFromBits(b);
@@ -11687,7 +11689,7 @@ ${inner}`;
   _PathCreate.MOVE_NAN_BITS = 10 | -8388608 | 0;
   var PathCreate = _PathCreate;
 
-  // src/core/operations/PathAppend.ts
+  // third_party/remote-compose-player/src/core/operations/PathAppend.ts
   function isPathMarkerBits3(b) {
     if (!isNaNBits(b)) return false;
     const id = idFromBits(b);
@@ -11756,7 +11758,7 @@ ${inner}`;
   _PathAppend.OP_CODE = 160;
   var PathAppend = _PathAppend;
 
-  // src/core/operations/PathExpression.ts
+  // third_party/remote-compose-player/src/core/operations/PathExpression.ts
   var ARR_SENTINEL3 = 2 ** 42;
   var _PathExpression = class _PathExpression extends Operation {
     constructor(id, flags, minBits, maxBits, countBits, exprX, exprY) {
@@ -12181,7 +12183,7 @@ ${inner}`;
   _PathExpression.ID_REGION_ARRAY = 2097152;
   var PathExpression = _PathExpression;
 
-  // src/core/operations/utilities/Matrix.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/Matrix.ts
   var _Matrix = class _Matrix {
     constructor(dim0 = 4, dim1 = 4) {
       this.mDim0 = 4;
@@ -12462,7 +12464,7 @@ ${inner}`;
   _Matrix.sTempInVec = null;
   var Matrix = _Matrix;
 
-  // src/core/operations/utilities/MatrixOperations.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/MatrixOperations.ts
   var OFFSET = 3276800;
   function asNan2(v) {
     return intBitsToFloat(v | -8388608);
@@ -12648,7 +12650,7 @@ ${inner}`;
   _MatrixOperations.OP_PROJECTION = OFFSET + 18;
   var MatrixOperations = _MatrixOperations;
 
-  // src/core/operations/MatrixExpression.ts
+  // third_party/remote-compose-player/src/core/operations/MatrixExpression.ts
   var _MatrixExpression = class _MatrixExpression extends Operation {
     constructor(matrixId, type, bits) {
       super();
@@ -12706,7 +12708,7 @@ ${inner}`;
   _MatrixExpression.OP_CODE = 187;
   var MatrixExpression = _MatrixExpression;
 
-  // src/core/operations/MatrixConstant.ts
+  // third_party/remote-compose-player/src/core/operations/MatrixConstant.ts
   var _MatrixConstant = class _MatrixConstant extends Operation {
     constructor(matrixId, type, values) {
       super();
@@ -12738,7 +12740,7 @@ ${inner}`;
   _MatrixConstant.OP_CODE = 186;
   var MatrixConstant = _MatrixConstant;
 
-  // src/core/operations/MatrixVectorMath.ts
+  // third_party/remote-compose-player/src/core/operations/MatrixVectorMath.ts
   var _MatrixVectorMath = class _MatrixVectorMath extends Operation {
     constructor(type, outputs, matrixId, inputBits) {
       super();
@@ -12799,7 +12801,7 @@ ${inner}`;
   _MatrixVectorMath.OP_CODE = 188;
   var MatrixVectorMath = _MatrixVectorMath;
 
-  // src/core/operations/TextTransform.ts
+  // third_party/remote-compose-player/src/core/operations/TextTransform.ts
   var _TextTransform = class _TextTransform extends Operation {
     constructor(textId, srcId, startBits, lenBits, operation) {
       super();
@@ -12857,7 +12859,7 @@ ${inner}`;
   _TextTransform.TEXT_UPPERCASE_FIRST_CHAR = 5;
   var TextTransform = _TextTransform;
 
-  // src/core/operations/TextLookup.ts
+  // third_party/remote-compose-player/src/core/operations/TextLookup.ts
   var _TextLookup = class _TextLookup extends Operation {
     constructor(textId, dataSetId, indexBits) {
       super();
@@ -12901,7 +12903,7 @@ ${inner}`;
   _TextLookup.OP_CODE = 151;
   var TextLookup = _TextLookup;
 
-  // src/core/operations/TextLookupInt.ts
+  // third_party/remote-compose-player/src/core/operations/TextLookupInt.ts
   var _TextLookupInt = class _TextLookupInt extends Operation {
     constructor(textId, dataSetId, indexId) {
       super();
@@ -12941,7 +12943,7 @@ ${inner}`;
   _TextLookupInt.OP_CODE = 153;
   var TextLookupInt = _TextLookupInt;
 
-  // src/core/operations/ColorTheme.ts
+  // third_party/remote-compose-player/src/core/operations/ColorTheme.ts
   var _ColorTheme = class _ColorTheme extends Operation {
     constructor(id, colorGroupId, lightModeIndex, darkModeIndex, lightModeFallback, darkModeFallback) {
       super();
@@ -12993,7 +12995,7 @@ ${inner}`;
   _ColorTheme.THEME_DARK = -2;
   var ColorTheme = _ColorTheme;
 
-  // src/core/operations/ColorAttribute.ts
+  // third_party/remote-compose-player/src/core/operations/ColorAttribute.ts
   var _ColorAttribute = class _ColorAttribute extends Operation {
     constructor(outputId, colorId, type) {
       super();
@@ -13074,7 +13076,7 @@ ${inner}`;
   _ColorAttribute.COLOR_ALPHA = 6;
   var ColorAttribute = _ColorAttribute;
 
-  // src/core/operations/DataMapLookup.ts
+  // third_party/remote-compose-player/src/core/operations/DataMapLookup.ts
   var TYPE_STRING = 0;
   var TYPE_INT = 1;
   var TYPE_FLOAT = 2;
@@ -13131,7 +13133,7 @@ ${inner}`;
   _DataMapLookup.OP_CODE = 154;
   var DataMapLookup = _DataMapLookup;
 
-  // src/core/operations/TextMeasure.ts
+  // third_party/remote-compose-player/src/core/operations/TextMeasure.ts
   var MEASURE_WIDTH = 0;
   var MEASURE_HEIGHT = 1;
   var MEASURE_LEFT = 2;
@@ -13185,7 +13187,7 @@ ${inner}`;
   _TextMeasure.OP_CODE = 155;
   var TextMeasure = _TextMeasure;
 
-  // src/core/operations/TextAttribute.ts
+  // third_party/remote-compose-player/src/core/operations/TextAttribute.ts
   var MEASURE_WIDTH2 = 0;
   var MEASURE_HEIGHT2 = 1;
   var MEASURE_LEFT2 = 2;
@@ -13248,7 +13250,7 @@ ${inner}`;
   _TextAttribute.OP_CODE = 170;
   var TextAttribute = _TextAttribute;
 
-  // src/core/operations/TextLength.ts
+  // third_party/remote-compose-player/src/core/operations/TextLength.ts
   var _TextLength = class _TextLength extends Operation {
     constructor(lengthId, textId) {
       super();
@@ -13278,7 +13280,7 @@ ${inner}`;
   _TextLength.OP_CODE = 156;
   var TextLength = _TextLength;
 
-  // src/core/operations/TextSubtext.ts
+  // third_party/remote-compose-player/src/core/operations/TextSubtext.ts
   var _TextSubtext = class _TextSubtext extends Operation {
     constructor(textId, srcId, startBits, lenBits) {
       super();
@@ -13338,7 +13340,7 @@ ${inner}`;
   _TextSubtext.OP_CODE = 182;
   var TextSubtext = _TextSubtext;
 
-  // src/core/operations/ParticleOperations.ts
+  // third_party/remote-compose-player/src/core/operations/ParticleOperations.ts
   var OFFSET2 = 3211264;
   var ID_REGION_MASK = 7340032;
   var ID_REGION_ARRAY2 = 2097152;
@@ -13722,7 +13724,7 @@ ${inner}`;
   _ParticlesCompareOp.OP_CODE = 194;
   var ParticlesCompareOp = _ParticlesCompareOp;
 
-  // src/core/operations/layout/managers/FlowLayout.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/FlowLayout.ts
   var _FlowLayout = class _FlowLayout extends RowLayout {
     constructor(componentId, animationId, horizontalPositioning, verticalPositioning, spacedBy) {
       super(componentId, animationId, horizontalPositioning, verticalPositioning, spacedBy);
@@ -13881,7 +13883,7 @@ ${inner}`;
   _FlowLayout.OP_CODE = 240;
   var FlowLayout = _FlowLayout;
 
-  // src/core/operations/layout/LoopOperation.ts
+  // third_party/remote-compose-player/src/core/operations/layout/LoopOperation.ts
   var _LoopOperation = class _LoopOperation extends Operation {
     constructor(indexId, fromBits, stepBits, untilBits) {
       super();
@@ -13944,7 +13946,7 @@ ${inner}`;
   _LoopOperation.OP_CODE = 215;
   var LoopOperation = _LoopOperation;
 
-  // src/core/operations/layout/managers/CoreText.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/CoreText.ts
   var P_INT = 1;
   var P_FLOAT = 2;
   var P_SHORT = 3;
@@ -14247,7 +14249,8 @@ ${inner}`;
         context.getTextBounds(this.mTextId, 0, this.mCachedString.length, flags, bounds);
         this.mBaseline = -bounds[1];
       }
-      if (forceComplex || bounds[2] - bounds[0] > maxWidth && this.mMaxLines > 1 && maxWidth > 0) {
+      const autosizeNeedsComplex = this.mAutosize && (this.mOverflow === 1 || this.mOverflow === 2) && maxWidth > 0;
+      if (forceComplex || autosizeNeedsComplex || bounds[2] - bounds[0] > maxWidth && this.mMaxLines > 1 && maxWidth > 0) {
         this.mComputedTextLayout = context.layoutComplexText(
           this.mTextId,
           0,
@@ -14503,7 +14506,7 @@ ${inner}`;
   _CoreText.OP_CODE = 239;
   var CoreText = _CoreText;
 
-  // src/core/operations/layout/managers/TextLayout.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/TextLayout.ts
   var FLAG_IS_DYNAMIC_COLOR = 1;
   var _TextLayout = class _TextLayout extends CoreText {
     deepToString(indent) {
@@ -14569,7 +14572,7 @@ ${inner}`;
   _TextLayout.OP_CODE = 208;
   var TextLayout = _TextLayout;
 
-  // src/core/operations/layout/managers/FitBoxLayout.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/FitBoxLayout.ts
   var _FitBoxLayout = class _FitBoxLayout extends LayoutManager {
     constructor(componentId, animationId, horizontalPositioning, verticalPositioning) {
       super(componentId, animationId);
@@ -14695,7 +14698,7 @@ ${inner}`;
   _FitBoxLayout.BOTTOM = 5;
   var FitBoxLayout = _FitBoxLayout;
 
-  // src/core/operations/layout/managers/CollapsiblePriority.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/CollapsiblePriority.ts
   var _CollapsiblePriority = class _CollapsiblePriority {
     static getPriority(c, orientation) {
       if (c instanceof LayoutComponent) {
@@ -14720,7 +14723,7 @@ ${inner}`;
   _CollapsiblePriority.VERTICAL = 1;
   var CollapsiblePriority = _CollapsiblePriority;
 
-  // src/core/operations/layout/managers/CollapsibleRowLayout.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/CollapsibleRowLayout.ts
   var _CollapsibleRowLayout = class _CollapsibleRowLayout extends RowLayout {
     constructor(componentId, animationId, horizontalPositioning, verticalPositioning, spacedBy) {
       super(componentId, animationId, horizontalPositioning, verticalPositioning, spacedBy);
@@ -14829,7 +14832,7 @@ ${inner}`;
   _CollapsibleRowLayout.OP_CODE = 230;
   var CollapsibleRowLayout = _CollapsibleRowLayout;
 
-  // src/core/operations/layout/managers/CollapsibleColumnLayout.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/CollapsibleColumnLayout.ts
   var _CollapsibleColumnLayout = class _CollapsibleColumnLayout extends ColumnLayout {
     constructor(componentId, animationId, horizontalPositioning, verticalPositioning, spacedBy) {
       super(componentId, animationId, horizontalPositioning, verticalPositioning, spacedBy);
@@ -14938,7 +14941,7 @@ ${inner}`;
   _CollapsibleColumnLayout.OP_CODE = 233;
   var CollapsibleColumnLayout = _CollapsibleColumnLayout;
 
-  // src/core/operations/IdLookup.ts
+  // third_party/remote-compose-player/src/core/operations/IdLookup.ts
   var _IdLookup = class _IdLookup extends Operation {
     constructor(textId, dataSetId, indexBits) {
       super();
@@ -14980,7 +14983,7 @@ ${inner}`;
   _IdLookup.OP_CODE = 192;
   var IdLookup = _IdLookup;
 
-  // src/core/operations/UpdateDynamicFloatList.ts
+  // third_party/remote-compose-player/src/core/operations/UpdateDynamicFloatList.ts
   var _UpdateDynamicFloatList = class _UpdateDynamicFloatList extends Operation {
     constructor(arrayId, indexBits, valueBits) {
       super();
@@ -15032,7 +15035,7 @@ ${inner}`;
   _UpdateDynamicFloatList.OP_CODE = 198;
   var UpdateDynamicFloatList = _UpdateDynamicFloatList;
 
-  // src/core/operations/layout/managers/ImageLayout.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/ImageLayout.ts
   var _ImageLayout = class _ImageLayout extends LayoutManager {
     constructor(componentId, animationId, bitmapId, scaleType, alphaBits) {
       super(componentId, animationId);
@@ -15141,7 +15144,7 @@ ${inner}`;
   _ImageLayout.OP_CODE = 234;
   var ImageLayout = _ImageLayout;
 
-  // src/core/operations/layout/managers/StateLayout.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/StateLayout.ts
   var _StateLayout = class _StateLayout extends LayoutManager {
     constructor(componentId, animationId, indexId) {
       super(componentId, animationId);
@@ -15311,7 +15314,7 @@ ${inner}`;
   _StateLayout.OP_CODE = 217;
   var StateLayout = _StateLayout;
 
-  // src/core/operations/layout/modifiers/ActionOperations.ts
+  // third_party/remote-compose-player/src/core/operations/layout/modifiers/ActionOperations.ts
   var _HostActionOperation = class _HostActionOperation extends Operation {
     constructor(actionId) {
       super();
@@ -15463,7 +15466,7 @@ ${inner}`;
   _ValueFloatChangeAction.OP_CODE = 222;
   var ValueFloatChangeAction = _ValueFloatChangeAction;
 
-  // src/core/operations/utilities/ToneSynthesizer.ts
+  // third_party/remote-compose-player/src/core/operations/utilities/ToneSynthesizer.ts
   var _ToneSynthesizer = class _ToneSynthesizer {
     /**
      * Synthesize raw 16-bit little-endian mono PCM bytes.
@@ -15552,7 +15555,7 @@ ${inner}`;
   _ToneSynthesizer.SAMPLE_RATE = 22050;
   var ToneSynthesizer = _ToneSynthesizer;
 
-  // src/core/operations/SoundOperations.ts
+  // third_party/remote-compose-player/src/core/operations/SoundOperations.ts
   var _SoundData = class _SoundData extends Operation {
     constructor(soundId, data) {
       super();
@@ -15641,7 +15644,7 @@ ${inner}`;
   _PlaySound.OP_CODE = 141;
   var PlaySound = _PlaySound;
 
-  // src/core/operations/layout/managers/Custom.ts
+  // third_party/remote-compose-player/src/core/operations/layout/managers/Custom.ts
   var _Custom = class _Custom extends LayoutManager {
     constructor(componentId, animationId, configId, properties) {
       super(componentId, animationId);
@@ -15688,7 +15691,7 @@ ${inner}`;
   _Custom.OP_CODE = 93;
   var Custom = _Custom;
 
-  // src/core/operations/FontData.ts
+  // third_party/remote-compose-player/src/core/operations/FontData.ts
   var _FontData = class _FontData extends Operation {
     constructor(mFontId, mType, mFontData) {
       super();
@@ -15714,7 +15717,7 @@ ${inner}`;
   _FontData.OP_CODE = 189;
   var FontData = _FontData;
 
-  // src/core/Operations.ts
+  // third_party/remote-compose-player/src/core/Operations.ts
   var _Operations = class _Operations {
     static init() {
       if (_Operations.initialized) return;
@@ -15888,7 +15891,7 @@ ${inner}`;
   _Operations.initialized = false;
   var Operations = _Operations;
 
-  // src/core/operations/loom/LoomWireBuffer.ts
+  // third_party/remote-compose-player/src/core/operations/loom/LoomWireBuffer.ts
   var LoomWireBuffer = class extends WireBuffer {
     constructor(wrapped, context) {
       super(1);
@@ -16035,7 +16038,7 @@ ${inner}`;
     }
   };
 
-  // src/core/RemoteComposeBuffer.ts
+  // third_party/remote-compose-player/src/core/RemoteComposeBuffer.ts
   var RemoteComposeBuffer = class _RemoteComposeBuffer {
     constructor(buffer) {
       this.mBuffer = buffer;
@@ -16077,7 +16080,7 @@ ${inner}`;
     }
   };
 
-  // src/core/operations/loom/nestContainers.ts
+  // third_party/remote-compose-player/src/core/operations/loom/nestContainers.ts
   function isContainer2(op) {
     return typeof op.getList === "function" && !(op instanceof ContainerEnd);
   }
@@ -16134,7 +16137,7 @@ ${inner}`;
     return finalOps;
   }
 
-  // src/core/operations/loom/ExpansionContext.ts
+  // third_party/remote-compose-player/src/core/operations/loom/ExpansionContext.ts
   var MAX_EXPANSION_DEPTH = 64;
   var ExpansionContext = class _ExpansionContext {
     constructor(loomManager, document2, remapContext, blocks, safeMode = false, depth = 0) {
@@ -16234,7 +16237,7 @@ ${inner}`;
     }
   };
 
-  // src/core/operations/loom/RemapContext.ts
+  // third_party/remote-compose-player/src/core/operations/loom/RemapContext.ts
   var RemapContext = class _RemapContext {
     constructor(a, document2, isInsideMacro) {
       if (a instanceof Map) {
@@ -16356,7 +16359,7 @@ ${inner}`;
     }
   };
 
-  // src/core/operations/loom/LoomManager.ts
+  // third_party/remote-compose-player/src/core/operations/loom/LoomManager.ts
   var LoomManager = class {
     constructor() {
       this.mMacros = /* @__PURE__ */ new Map();
@@ -16410,7 +16413,7 @@ ${inner}`;
     }
   };
 
-  // src/core/CoreDocument.ts
+  // third_party/remote-compose-player/src/core/CoreDocument.ts
   var Version = class {
     constructor(major, minor, patch) {
       this.mMajorVersion = major;
@@ -17226,7 +17229,7 @@ ${inner}`;
   _CoreDocument.DOCUMENT_API_LEVEL = 8;
   var CoreDocument = _CoreDocument;
 
-  // src/core/shader/AgslTokenizer.ts
+  // third_party/remote-compose-player/src/core/shader/AgslTokenizer.ts
   var IDENT_START = /[a-zA-Z_]/;
   var IDENT_CONT = /[a-zA-Z0-9_]/;
   var DIGIT = /[0-9]/;
@@ -17332,7 +17335,7 @@ ${inner}`;
     return tokens;
   }
 
-  // src/core/shader/AgslTranspiler.ts
+  // third_party/remote-compose-player/src/core/shader/AgslTranspiler.ts
   var TYPE_MAP = {
     "half4": "vec4",
     "half3": "vec3",
@@ -17566,7 +17569,7 @@ ${inner}`;
     return tok.value;
   }
 
-  // src/web/shader/WebGLShaderRenderer.ts
+  // third_party/remote-compose-player/src/web/shader/WebGLShaderRenderer.ts
   var VERTEX_SHADER = `#version 300 es
 in vec2 a_position;
 void main() {
@@ -17785,7 +17788,7 @@ void main() {
     }
   };
 
-  // src/web/WebFonts.ts
+  // third_party/remote-compose-player/src/web/WebFonts.ts
   var DEFAULT_BASE_URL = "https://fonts.googleapis.com/css2";
   var config = { enabled: true, baseUrl: DEFAULT_BASE_URL };
   function configureWebFonts(patch) {
@@ -17935,6 +17938,57 @@ void main() {
     }
     return `__rc_font_${fontId}_${data.length}_${(hash >>> 0).toString(16)}`;
   }
+  function uint16(data, offset) {
+    return data[offset] << 8 | data[offset + 1];
+  }
+  function uint32(data, offset) {
+    return (data[offset] << 24 | data[offset + 1] << 16 | data[offset + 2] << 8 | data[offset + 3]) >>> 0;
+  }
+  function fixed1616(data, offset) {
+    return (uint32(data, offset) | 0) / 65536;
+  }
+  function asciiTag(data, offset) {
+    return String.fromCharCode(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
+  }
+  function embeddedFontDescriptors(data) {
+    try {
+      let sfnt = 0;
+      if (data.length >= 16 && asciiTag(data, 0) === "ttcf") {
+        if (uint32(data, 8) < 1) return {};
+        sfnt = uint32(data, 12);
+      }
+      if (sfnt + 12 > data.length) return {};
+      const tables = uint16(data, sfnt + 4);
+      let fvar = -1;
+      for (let i = 0; i < tables; i++) {
+        const record = sfnt + 12 + i * 16;
+        if (record + 16 > data.length) return {};
+        if (asciiTag(data, record) === "fvar") {
+          fvar = uint32(data, record + 8);
+          break;
+        }
+      }
+      if (fvar < 0 || fvar + 16 > data.length) return {};
+      const axesOffset = uint16(data, fvar + 4);
+      const axisCount = uint16(data, fvar + 8);
+      const axisSize = uint16(data, fvar + 10);
+      if (axisSize < 20) return {};
+      const descriptors = {};
+      for (let i = 0; i < axisCount; i++) {
+        const axis = fvar + axesOffset + i * axisSize;
+        if (axis + 20 > data.length) return {};
+        const tag = asciiTag(data, axis);
+        const min = fixed1616(data, axis + 4);
+        const max = fixed1616(data, axis + 12);
+        if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) continue;
+        if (tag === "wght") descriptors.weight = `${trimNumber(min)} ${trimNumber(max)}`;
+        if (tag === "wdth") descriptors.stretch = `${trimNumber(min)}% ${trimNumber(max)}%`;
+      }
+      return descriptors;
+    } catch (_) {
+      return {};
+    }
+  }
   function registerEmbeddedFont(fontId, data, onLoaded) {
     const family = embeddedFamily(fontId, data);
     const key = `embedded|${family}`;
@@ -17943,22 +17997,46 @@ void main() {
       set.add(onLoaded);
       waiting.set(key, set);
     }
-    if (variants.has(key)) return family;
+    const retained = embeddedFaces.get(key);
+    if (retained) {
+      retained.references += 1;
+      return family;
+    }
     let load;
     if (typeof document === "undefined" || !document.fonts || typeof FontFace === "undefined") {
+      embeddedFaces.set(key, { references: 1 });
       load = Promise.resolve();
     } else {
       const bytes = data.slice().buffer;
-      const face = new FontFace(family, bytes);
-      embeddedFaces.set(key, face);
+      const face = new FontFace(family, bytes, embeddedFontDescriptors(data));
+      embeddedFaces.set(key, { face, references: 1 });
       document.fonts.add(face);
       load = face.load().then(() => void 0).catch((e) => {
         console.warn(`WebFonts: embedded font ${fontId} could not be loaded`, e);
       });
     }
-    const promise = load.then(() => notify(key));
+    const promise = load.then(() => {
+      if (embeddedFaces.has(key)) notify(key);
+    });
     variants.set(key, promise);
     return family;
+  }
+  function releaseEmbeddedFont(fontId, data, onLoaded) {
+    const key = `embedded|${embeddedFamily(fontId, data)}`;
+    const listeners = waiting.get(key);
+    if (onLoaded) listeners?.delete(onLoaded);
+    if (listeners?.size === 0) waiting.delete(key);
+    const retained = embeddedFaces.get(key);
+    if (!retained) return;
+    retained.references -= 1;
+    if (retained.references > 0) return;
+    if (retained.face && typeof document !== "undefined" && document.fonts) {
+      document.fonts.delete(retained.face);
+    }
+    embeddedFaces.delete(key);
+    variants.delete(key);
+    done.delete(key);
+    waiting.delete(key);
   }
   async function webFontsReady() {
     let pending = [...variants.values()];
@@ -17971,7 +18049,9 @@ void main() {
   }
   function resetWebFonts() {
     if (typeof document !== "undefined" && document.fonts) {
-      embeddedFaces.forEach((face) => document.fonts.delete(face));
+      embeddedFaces.forEach(({ face }) => {
+        if (face) document.fonts.delete(face);
+      });
     }
     embeddedFaces.clear();
     stylesheets.clear();
@@ -17983,7 +18063,7 @@ void main() {
     config = { enabled: true, baseUrl: DEFAULT_BASE_URL };
   }
 
-  // src/web/CanvasPaintContext.ts
+  // third_party/remote-compose-player/src/web/CanvasPaintContext.ts
   var FONT_STRETCH_STEPS = [
     [50, "ultra-condensed"],
     [62.5, "extra-condensed"],
@@ -18121,6 +18201,10 @@ void main() {
         this.shaderRenderer.destroy();
         this.shaderRenderer = null;
       }
+      this.embeddedFontFamilies.forEach(({ data }, fontId) => {
+        releaseEmbeddedFont(fontId, data, this.onFontLoaded ?? void 0);
+      });
+      this.embeddedFontFamilies.clear();
     }
     getCanvas() {
       return this.ctx;
@@ -18135,6 +18219,7 @@ void main() {
     loadFont(fontId, data) {
       const current = this.embeddedFontFamilies.get(fontId);
       if (current?.data === data) return;
+      if (current) releaseEmbeddedFont(fontId, current.data, this.onFontLoaded ?? void 0);
       this.embeddedFontFamilies.set(fontId, {
         data,
         family: registerEmbeddedFont(fontId, data, this.onFontLoaded ?? void 0)
@@ -19161,11 +19246,12 @@ void main() {
       const size = this.textSize > 0 ? this.textSize : DEFAULT_TEXT_SIZE;
       const lineHeight = size * (lineHeightMultiplier || 1.2);
       if (maxLines === 1 && (overflow === 1 || overflow === 2)) {
+        const firstLine = text.split("\n", 1)[0];
         return {
-          lines: [text.replace(/\n/g, "")],
+          lines: [firstLine],
           alignment,
           lineHeight,
-          width: Math.min(this.ctx.measureText(text).width, maxWidth),
+          width: Math.min(this.ctx.measureText(firstLine).width, maxWidth),
           height: Math.min(lineHeight, maxHeight),
           naturalHeight: lineHeight,
           visibleLines: 1
@@ -19193,32 +19279,47 @@ void main() {
           lines.push("");
         }
       }
-      const ellipsizeEnd = (value) => {
-        while (this.ctx.measureText(value + "\u2026").width > maxWidth && value.length > 0) {
-          value = value.substring(0, value.length - 1);
+      const graphemes = (value) => {
+        const Segmenter = Intl.Segmenter;
+        if (Segmenter) {
+          return Array.from(
+            new Segmenter(void 0, { granularity: "grapheme" }).segment(value),
+            (part) => part.segment
+          );
         }
-        return value + "\u2026";
+        return Array.from(value);
+      };
+      const ellipsizeEnd = (value) => {
+        const parts = graphemes(value);
+        while (this.ctx.measureText(parts.join("") + "\u2026").width > maxWidth && parts.length > 0) {
+          parts.pop();
+        }
+        return parts.join("") + "\u2026";
       };
       const ellipsizeStart = (value) => {
-        while (this.ctx.measureText("\u2026" + value).width > maxWidth && value.length > 0) {
-          value = value.substring(1);
+        const parts = graphemes(value);
+        while (this.ctx.measureText("\u2026" + parts.join("")).width > maxWidth && parts.length > 0) {
+          parts.shift();
         }
-        return "\u2026" + value;
+        return "\u2026" + parts.join("");
       };
       const ellipsizeMiddle = (value) => {
-        let left = Math.ceil(value.length / 2);
+        const parts = graphemes(value);
+        let left = Math.ceil(parts.length / 2);
         let right = left;
-        while (this.ctx.measureText(value.substring(0, left) + "\u2026" + value.substring(right)).width > maxWidth && left > 0) {
-          if (value.length - right < left) left--;
+        while (this.ctx.measureText(parts.slice(0, left).join("") + "\u2026" + parts.slice(right).join("")).width > maxWidth && (left > 0 || right < parts.length)) {
+          if (parts.length - right < left) left--;
           else right++;
         }
-        return value.substring(0, left) + "\u2026" + value.substring(right);
+        return parts.slice(0, left).join("") + "\u2026" + parts.slice(right).join("");
       };
-      if (overflow >= 3 && overflow <= 5 && maxLines > 0 && lines.length > maxLines) {
-        const lastIdx = maxLines - 1;
-        const value = maxLines === 1 ? text.replace(/\n/g, "") : lines[lastIdx];
+      const retainedLast = maxLines > 0 ? lines[Math.min(lines.length, maxLines) - 1] : void 0;
+      const horizontalOverflow = retainedLast !== void 0 && this.ctx.measureText(retainedLast).width > maxWidth;
+      if (overflow >= 3 && overflow <= 5 && maxLines > 0 && (lines.length > maxLines || horizontalOverflow)) {
+        const lastIdx = Math.min(maxLines, lines.length) - 1;
+        const value = lines[lastIdx] || "";
         lines[lastIdx] = overflow === 4 ? ellipsizeStart(value) : overflow === 5 ? ellipsizeMiddle(value) : ellipsizeEnd(value);
-        lines.length = maxLines;
+        if (lines.length > maxLines) lines.length = maxLines;
       }
       let totalWidth = 0;
       for (const line of lines) {
@@ -19664,7 +19765,7 @@ void main() {
   _CanvasPaintContext.GL_SHAPE_RADIUS = 21;
   var CanvasPaintContext = _CanvasPaintContext;
 
-  // src/core/DefaultSystemColors.ts
+  // third_party/remote-compose-player/src/core/DefaultSystemColors.ts
   function C(c) {
     return c | 0;
   }
@@ -19879,7 +19980,7 @@ void main() {
     return DEFAULT_SYSTEM_COLORS[name];
   }
 
-  // src/web/WebRemoteContext.ts
+  // third_party/remote-compose-player/src/web/WebRemoteContext.ts
   var WebRemoteContext = class extends RemoteContext {
     constructor(paintContext, clock = SYSTEM_CLOCK) {
       super(clock);
@@ -20143,7 +20244,7 @@ void main() {
     }
   };
 
-  // src/web/RcPlayerElement.ts
+  // third_party/remote-compose-player/src/web/RcPlayerElement.ts
   function base64ToArrayBuffer(base64) {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
@@ -20273,7 +20374,7 @@ void main() {
   };
   RcPlayerElement.observedAttributes = ["src", "data", "width", "height", "theme", "background"];
 
-  // src/web/main.ts
+  // third_party/remote-compose-player/src/web/main.ts
   var RcdPlayer = class {
     constructor(canvas) {
       this.document = null;
@@ -20414,6 +20515,7 @@ void main() {
     }
     async loadFromArrayBuffer(data) {
       this.stop();
+      if (this.paintContext) this.paintContext.destroy();
       const buffer = RemoteComposeBuffer.fromArrayBuffer(data);
       const doc = new CoreDocument();
       doc.initFromBuffer(buffer);
@@ -20424,7 +20526,10 @@ void main() {
       doc.setWidth(docWidth);
       doc.setHeight(docHeight);
       this.paintContext = new CanvasPaintContext(null, this.ctx);
-      this.paintContext.onFontLoaded = () => this.scheduleRepaint();
+      this.paintContext.onFontLoaded = () => {
+        this.document?.invalidateMeasure();
+        this.scheduleRepaint();
+      };
       this.remoteContext = new WebRemoteContext(this.paintContext);
       doc.initializeContext(this.remoteContext);
       this.remoteContext.setPaintContext(this.paintContext);

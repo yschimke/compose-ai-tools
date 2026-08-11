@@ -405,7 +405,10 @@ export class CoreText extends LayoutManager implements VariableSupport {
             this.mBaseline = -bounds[1];
         }
 
-        if (forceComplex || (bounds[2] - bounds[0] > maxWidth && this.mMaxLines > 1 && maxWidth > 0)) {
+        const autosizeNeedsComplex = this.mAutosize &&
+            (this.mOverflow === 1 || this.mOverflow === 2) && maxWidth > 0;
+        if (forceComplex || autosizeNeedsComplex ||
+            (bounds[2] - bounds[0] > maxWidth && this.mMaxLines > 1 && maxWidth > 0)) {
             this.mComputedTextLayout = context.layoutComplexText(
                 this.mTextId, 0, this.mCachedString!.length,
                 this.mTextAlign, this.mOverflow,
