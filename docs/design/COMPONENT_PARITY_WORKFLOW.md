@@ -235,9 +235,14 @@ up. A reconciliation pass is cheap here precisely because regenerating the index
 `GITHUB_TOKEN` is scoped to that repo and cannot create a `repository_dispatch` event in the catalog
 repo, so the low-latency half fails closed unless something is provisioned: a GitHub App
 installation token (preferred — scoped, rotatable, no human owner) or a PAT with `repo` on the
-catalog repo, distributed to each source repo as a secret. That provisioning is per-source-repo
-setup work and is the reason the cron backstop is not optional — it is what a source repo falls back
-to when nobody has wired its credential yet, which will be the normal state for a while.
+catalog repo, distributed to each source repo as a secret. **Name the App's target and permission
+explicitly in the setup doc**: the App must be installed *on the catalog repo* and its installation
+token needs **Contents: write** there, because that is what `POST /repos/{owner}/{repo}/dispatches`
+requires. An App carrying the more natural-sounding read-only Contents permission returns 403 and
+the trigger is silently dead — which looks exactly like "no issues changed". That provisioning is
+per-source-repo setup work and is the reason the cron backstop is not optional: it is what a source
+repo falls back to when nobody has wired its credential yet, which will be the normal state for a
+while.
 
 Both the serve host and the design-parity CI run read the same file. Neither ever calls the GitHub
 API at page-render time — same rule that keeps the host away from Figma.
@@ -365,7 +370,14 @@ referenceId, variant)`:
    stays valid. Mismatch ⇒ `invalidated: candidate-changed`, and the region is reported as a new
    difference.
 4. **Element gate.** When the acceptance names an `element`, resolve it against the current
-   annotation layer. Missing, or moved beyond a bounds tolerance ⇒ `invalidated: element-moved`.
+   annotation layer, by tag identity. Three outcomes invalidate:
+   - **not unique** — the tag now appears on more than one node ⇒ `invalidated: element-ambiguous`.
+     Re-checking uniqueness *here*, at evaluation time, is load-bearing: it was unique when the
+     acceptance was authored, and only this check notices when it stops being. Resolving to an
+     arbitrary one of the duplicates and suppressing its pixels is the failure mode.
+   - **missing** — no node carries the tag ⇒ `invalidated: element-moved`.
+   - **moved** — resolved, but beyond the bounds tolerance ⇒ `invalidated: element-moved`.
+
    This is what catches "the glyph disappeared" as distinct from "the glyph is still the wrong
    colour", which a rectangular ignore region fundamentally cannot.
 5. **Only now, score** — everything outside the union of the **still-valid** masks, where "outside"
@@ -488,7 +500,7 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 
 | Stage | Pinned artifact |
 | --- | --- |
-| decode | the two decoded planes, in the declared pixel/colour semantics |
+| decode | **all four** raster inputs decoded — reference, current candidate, `mask.png`, `accepted-candidate.png` — in the declared pixel/colour semantics. The candidate gate reads the accepted-candidate decode and mask coverage reads the mask decode, so an alpha or colour divergence in either would otherwise first surface as a wrong verdict rather than as a decoder bug |
 | canonical | the reference-defined canonical plane, after the named resampler |
 | separation | the masked and unmasked regions, kept apart (never a pre-averaged composite) |
 | score plane | the downsampled plane `scorePlanes` actually consumes |
@@ -549,13 +561,20 @@ arrived at through the mechanism meant to prevent it.
 
 So durability is a property to **test for, not assume**:
 
-| Ref shape | Durable? | Use as acceptance identity |
+The criterion is **the tag's uniqueness, not the ref's path shape** — see the rule below for why the
+ancestor segments drop out. Judged that way:
+
+| Selector | Durable? | Use as acceptance identity |
 | --- | --- | --- |
-| `r/tag:<tag>`, whole path tag-anchored | yes — a tag change moves the ref, which is detectable | **yes** |
-| `r/role:Row[0]/tag:<tag>` | **no** — a positional *ancestor* segment retargets the whole path | **no** |
-| `r/role:<role>[n]` | no — the index is positional and silently retargets | **no** |
-| `r/role:<role>` (lone anchor) | no — gaining a sibling turns it into `[0]`/`[1]` | no, but fails *loudly* |
+| a `testTag` unique in the tree — **at any depth**, under any ancestors | yes — resolution matches the tag, not the path | **yes** |
+| a `testTag` that is (or becomes) shared by two nodes | no — nothing distinguishes them | no — `element-ambiguous` |
+| `r/role:<role>[n]` (no tag) | no — the index is positional and silently retargets | **no** |
+| `r/role:<role>` (lone anchor, no tag) | no — gaining a sibling turns it into `[0]`/`[1]` | no, but fails *loudly* |
 | `r/node` | no — purely structural | no |
+
+Note what is deliberately **absent** from that table: the ref's ancestor path. `r/role:Row[0]/tag:item`
+is a perfectly good selector *provided `item` is unique*, because the resolver never walks
+`role:Row[0]` at all.
 
 **The durable property is the tag's uniqueness, not the path's shape.** It is tempting to require
 the whole ref path to be tag-anchored, since `SemanticsRefs` indexes every level whose siblings
@@ -630,6 +649,17 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
    comparison instead**, which has a defined pair and a defined frame. Recommend the latter until a
    lane demonstrably needs its own reporting.
 
+   **That redirect only works if it carries the overrides.** Today it would not:
+   `handleReferenceComparison` reads `name` and `reference` and nothing else, and
+   `referenceComparisonPage` builds its Actual `/render` URL from `linkQuery`'s auth/session
+   parameters alone — no theme, locale, font scale, device or Remote Compose state. So a reporter
+   sent there from an overridden interactive lane lands on the *default* snapshot and files against
+   pixels they never saw, which is the same identity/pixel mismatch one indirection further out. The
+   comparison route therefore has to accept and apply the supported override params before it can be
+   the reporting destination for those lanes — a prerequisite of this remedy, not a follow-up to it.
+   Until that lands, the honest fallback is to disable reporting in interactive lanes **without**
+   redirecting anywhere.
+
    **The raw score is a separate problem: the surface with the report form is not the surface that
    knows the score.** The form (`cp-report-body`) and `refreshReportLink()` live only on the viewer,
    and the viewer's always-available live number is `scoreSvgUrls` — PNG against the *generated
@@ -675,7 +705,8 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
 ### Phase 4 — Resolution
 
 11. **Detect resolved** (raw difference gone, acceptance still present), **invalidated** (any of the
-    four causes in §4 — `reference-changed`, `plane-changed`, `candidate-changed`, `element-moved`),
+    five causes in §4 — `reference-changed`, `plane-changed`, `candidate-changed`, `element-moved`,
+    `element-ambiguous`),
     and **stale** (issue closed, acceptance remains) — surfaced on the dashboard and as a gate in
     the offline run.
 12. **Document** the reporting → triage → acceptance → verification → closure loop in
