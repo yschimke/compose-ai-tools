@@ -280,4 +280,33 @@ test.describe("format-compare · annotation correspondence", () => {
         });
         expect(counts).toEqual({ reference: 2, actual: 2 });
     });
+
+    test("retains extra typography usages so local token overrides remain visible", async ({
+        page,
+    }) => {
+        await page.goto("/preview-harness/index.html");
+        await page.addScriptTag({ content: SCORER });
+        const counts = await page.evaluate(() => {
+            const item = (y, weight) => ({
+                kind: "typography",
+                bounds: { x: 0, y, width: 100, height: 20 },
+                label: `bodyLarge wght ${weight}`,
+                detail: { token: "bodyLarge", fontWeight: weight },
+            });
+            const matched = window.ComposePreviewCompare.matchAnnotationItems(
+                [item(0, 400), item(20, 400)],
+                [item(0, 400), item(20, 400), item(40, 700)],
+            );
+            return {
+                reference: matched.reference.length,
+                actual: matched.actual.length,
+                weights: matched.actual.map((entry) => entry.detail.fontWeight),
+            };
+        });
+        expect(counts).toEqual({
+            reference: 2,
+            actual: 3,
+            weights: [400, 400, 700],
+        });
+    });
 });

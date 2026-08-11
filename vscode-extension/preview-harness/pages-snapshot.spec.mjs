@@ -759,6 +759,33 @@ const FIXTURE_STATES = [
                 const box = document.querySelector(".cp-annotation");
                 return box && box.getBoundingClientRect().width > 0;
             });
+            // Two adjacent text nodes per panel share one style. The annotation layer must cluster
+            // them into one outline on each side and the summary must describe the style once,
+            // instead of regressing to four numbered rows.
+            await expect(page.locator(".cp-typography-group")).toHaveCount(2);
+            await expect(
+                page.locator(".cp-annotation--typography-cluster"),
+            ).toHaveCount(3);
+            await expect(
+                page.locator(".cp-annotation--typography-hit"),
+            ).toHaveCount(5);
+            await expect(page.locator(".cp-typography-count")).toHaveText([
+                "2 usages",
+                "2 usages",
+                "1 usage",
+            ]);
+            const override = page.locator(".cp-typography-override");
+            await expect(override).toHaveText("wght 700");
+            await expect(override).toHaveAttribute(
+                "title",
+                "Changed from bodyMedium default",
+            );
+            await page.locator(".cp-typography-group").first().hover();
+            await expect(
+                page.locator(
+                    ".cp-annotation--typography-hit.cp-annotation-active",
+                ),
+            ).toHaveCount(4);
         },
     },
     {

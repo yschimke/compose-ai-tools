@@ -1396,8 +1396,35 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-annotation--layout .cp-annotation-label { background: rgba(214, 51, 108, 0.92); }
 .cp-annotation--typography { border: 1px dashed rgba(37, 99, 235, 0.9); }
 .cp-annotation--typography .cp-annotation-label { background: rgba(37, 99, 235, 0.92); }
+.cp-annotation--typography-hit { border: 0; background: transparent; }
+.cp-annotation--typography-cluster.cp-annotation-active { border-width: 2px;
+  background: rgba(37, 99, 235, 0.08); }
+.cp-annotation--typography-hit.cp-annotation-active { background: rgba(37, 99, 235, 0.28);
+  outline: 1px solid rgba(37, 99, 235, 0.95); }
 #cp-reference-compare[data-annotate-layout="on"] .cp-annotation--layout,
 #cp-reference-compare[data-annotate-typography="on"] .cp-annotation--typography { display: block; }
+.cp-typography-summary { display: none; margin: 14px 0 0; }
+#cp-reference-compare[data-annotate-typography="on"] .cp-typography-summary { display: block; }
+.cp-typography-summary h2 { margin: 0 0 8px; font-size: 0.8rem; color: var(--cp-fg-muted);
+  text-transform: uppercase; letter-spacing: 0.06em; }
+.cp-typography-groups { display: grid; gap: 6px; overflow-x: auto; }
+.cp-typography-group { display: flex; align-items: center; gap: 9px; min-width: max-content;
+  padding: 7px 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low); }
+.cp-typography-group:hover, .cp-typography-group:focus-visible {
+  border-color: rgba(37, 99, 235, 0.75); background: rgba(37, 99, 235, 0.06); outline: none; }
+.cp-typography-marker { flex: none; background: rgba(37, 99, 235, 0.95); }
+.cp-typography-inline { color: var(--cp-fg); font-size: 0.74rem;
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cp-typography-side { color: var(--cp-fg-muted); font-size: 0.68rem; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase; }
+.cp-typography-changed { color: var(--md-sys-color-error); font-weight: 650; }
+.cp-typography-override { text-decoration: underline 2px rgba(214, 51, 108, 0.55);
+  text-underline-offset: 2px; }
+.cp-typography-count { color: var(--cp-fg-faint); }
+.cp-typography-arrow { flex: none; color: var(--cp-fg-muted); }
 .cp-annotation-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 14px;
   margin: 14px 0 0; color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-annotation-toggle { display: inline-flex; align-items: center; gap: 6px; }
@@ -1459,7 +1486,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   min-height: 180px; overflow: hidden; border-radius: 8px;
   background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 14px 14px; }
 .cp-reference-overlay img { grid-area: 1 / 1; max-width: 100%; max-height: 520px; object-fit: contain; }
-@media (max-width: 760px) { .cp-reference-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .cp-reference-grid { grid-template-columns: 1fr; }
+}
 /* The mode radios are kept in the DOM (the transport JS drives them) but visually removed —
    the single toggle above is the only visible mode control. */
 .cp-modes-inputs { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
