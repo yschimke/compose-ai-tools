@@ -67,14 +67,26 @@ dockerfile_installs() {
       # Inside a RUN, a `#` after whitespace is a *shell* comment: the rest of the line is not an
       # argument, whatever it names.
       sub(/[[:space:]]+#.*$/, "", line)
-      if (line ~ /(apt-get[[:space:]]+install|apt[[:space:]]+install|apk[[:space:]]+add|dnf[[:space:]]+install|yum[[:space:]]+install|install-linux-font-fallbacks)/) {
-        in_install = 1
+      continued = (line ~ /\\[[:space:]]*$/)
+      sub(/\\[[:space:]]*$/, "", line)
+
+      # An installer owns its argv up to the next shell command, not up to the end of the RUN. In
+      # `apt-get install -y curl && \` / `echo bubblewrap`, the package belongs to the `echo`.
+      parts = split(line, segment, "&&|;|\\|")
+      for (i = 1; i <= parts; i++) {
+        if (i > 1) {
+          in_install = 0
+        }
+        if (segment[i] ~ /(apt-get[[:space:]]+install|apt[[:space:]]+install|apk[[:space:]]+add|dnf[[:space:]]+install|yum[[:space:]]+install|install-linux-font-fallbacks)/) {
+          in_install = 1
+        }
+        if (in_install && segment[i] ~ ("(^|[[:space:]])" pkg "([[:space:]]|$)")) {
+          found = 1
+        }
       }
-      if (in_install && line ~ ("(^|[[:space:]])" pkg "([[:space:]]|\\\\|$)")) {
-        found = 1
-      }
-      # The invocation ends at the first line that is not continued onto the next.
-      if (line !~ /\\[[:space:]]*$/) {
+
+      # …and it ends for good at the first line that is not continued onto the next.
+      if (!continued) {
         in_install = 0
       }
     }
@@ -202,7 +214,14 @@ printf 'FROM x\nRUN echo bubblewrap\nRUN apt-get install -y curl\n' >"${tmp}/ech
 expect_fail "bubblewrap named outside any installer invocation" \
   "${tmp}/echo-bwrap.Dockerfile" "${tmp}/bwrap.md"
 
-# 9. The pipefail trap: a package installed early in a long file must still be found. The old
+# 9. A second command chained onto the installer's RUN. The package is the `echo`'s argument, not
+# the installer's, and the Docker line continuation does not make it one.
+printf 'FROM x\nRUN apt-get install -y curl \\\n      && echo bubblewrap\n' \
+  >"${tmp}/chained-bwrap.Dockerfile"
+expect_fail "bubblewrap argument of a command chained after the installer" \
+  "${tmp}/chained-bwrap.Dockerfile" "${tmp}/bwrap.md"
+
+# 10. The pipefail trap: a package installed early in a long file must still be found. The old
 # `grep | grep -q` pipeline reported this one missing, because the upstream filter took a SIGPIPE
 # once the downstream matched and `pipefail` surfaced its 141 as the answer.
 {
