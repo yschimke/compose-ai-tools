@@ -115,10 +115,13 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     // `ShadowWearTimeSource` replaces the `currentTimeMillis()` both Wear Material and Wear
     // Material3 `TimeText` read, so a preview showing the time renders a fixed `10:10` instead of
     // the host wall clock and stops diffing on every run (issue #3239).
+    // `ShadowSdkGestureInputManager` replaces Wear Material3's device-only gesture bridge so raw
+    // public `Modifier.oneHandedGesture` components remain registrable and testable off-watch.
     val shadowsLine =
       "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat," +
         "ee.schimke.composeai.renderer.ShadowAsyncImagePainter," +
-        "ee.schimke.composeai.renderer.ShadowWearTimeSource"
+        "ee.schimke.composeai.renderer.ShadowWearTimeSource," +
+        "ee.schimke.composeai.daemon.ShadowSdkGestureInputManager"
     // `androidx.wear.compose.materialcore.ResourcesKt` is a CLASS name, not a package: Robolectric
     // matches `instrumentedPackages` entries as plain class-name prefixes, so naming the class
     // instruments exactly the one `ShadowWearTimeSource` targets — and nothing else in Wear's
@@ -126,7 +129,8 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     // didn't rewrite, so dropping this leaves the shadow inert and Wear clocks drifting. Inert when
     // the consumer has no wear-compose.
     val instrumentedPackagesLine =
-      "instrumentedPackages=coil.compose,androidx.wear.compose.materialcore.ResourcesKt"
+      "instrumentedPackages=coil.compose,androidx.wear.compose.materialcore.ResourcesKt," +
+        "androidx.wear.compose.material3.onehandedgesture.SdkGestureInputManagerImpl"
     // `sdk=` and `graphicsMode=` live here (not on `@Config`/`@GraphicsMode`
     // on `RobolectricRenderTestBase`) to avoid JUnit's `AnnotationParser`
     // resolving `@Config.application()`'s `android.app.Application` default

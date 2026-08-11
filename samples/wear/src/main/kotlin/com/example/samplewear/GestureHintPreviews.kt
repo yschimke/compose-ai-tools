@@ -19,36 +19,36 @@ import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.onehandedgesture.GestureAction
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicator
+import androidx.wear.compose.material3.onehandedgesture.oneHandedGesture
 import androidx.wear.tooling.preview.devices.WearDevices
-import ee.schimke.composeai.daemon.GestureHint
-import ee.schimke.composeai.daemon.GestureType
-import ee.schimke.composeai.daemon.reportedOneHandedGesture
-import ee.schimke.composeai.preview.GestureHintPreview
+import com.github.takahirom.roborazzi.annotations.ManualClockOptions
+import com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions
+import kotlinx.coroutines.launch
 
 /**
  * A normal Wear media screen with **two** one-handed gestures: a primary double-pinch that toggles
  * play/pause, and a dismiss wrist-turn mapped to back. Each button wraps its **content** (the label)
- * in `GestureHint`, so the real one-handed gesture indicator swaps the label for that gesture's
- * animation on-device while the button pill stays put — the design guide's on-button hint.
+ * in [OneHandedGestureClickIndicator], so the public Wear API swaps the label for that gesture's
+ * animation on-device while the button pill stays put.
  *
- * Crucially this is **ordinary app code**: there is no preview-only flag, no capture mode, nothing
- * that "sets up" a hint. Each `GestureHint` reads the connector's force-show state, so whether the
- * hints appear is decided entirely from *outside* the screen — by the daemon's
- * `renderNow.overrides.gestures.showHints`, or, for a static `@Preview`, by the `@GestureHintPreview`
- * annotation below. Because the override flips one shared state, **both** hints show together, which
- * is what a full-screen preview wants: every gesture the screen offers, illustrated at once.
+ * [showIndicators] is state injection rather than a second rendering implementation: previews can
+ * capture a stable animation frame while production leaves it false and lets
+ * `onGestureAvailable` drive the exact same public indicator state.
  */
 @Composable
-fun MediaGestureScreen(onDismiss: () -> Unit = {}) {
+fun MediaGestureScreen(showIndicators: Boolean = false, onDismiss: () -> Unit = {}) {
   var playing by remember { mutableStateOf(false) }
   val playSource = remember { MutableInteractionSource() }
   val backSource = remember { MutableInteractionSource() }
   val playConfiguration =
-    rememberGestureConfiguration(GestureType.PRIMARY, key = "samplewear:media-play")
-  val playIndicatorState = rememberGestureIndicatorState()
+    rememberGestureConfiguration(GestureAction.Primary, key = "samplewear:media-play")
+  val playIndicatorState = rememberGestureIndicatorState(forceShow = showIndicators)
   val backConfiguration =
-    rememberGestureConfiguration(GestureType.DISMISS, key = "samplewear:media-back")
-  val backIndicatorState = rememberGestureIndicatorState()
+    rememberGestureConfiguration(GestureAction.Dismiss, key = "samplewear:media-back")
+  val backIndicatorState = rememberGestureIndicatorState(forceShow = showIndicators)
+  val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
   ScreenScaffold {
     Column(
       modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
@@ -60,20 +60,18 @@ fun MediaGestureScreen(onDismiss: () -> Unit = {}) {
         onClick = { playing = !playing },
         interactionSource = playSource,
         modifier =
-          Modifier.reportedOneHandedGesture(
-            type = GestureType.PRIMARY,
-            label = if (playing) "Pause" else "Play",
+          Modifier.oneHandedGesture(
             gestureConfiguration = playConfiguration,
-            showIndicator = playIndicatorState::showIndicator,
             interactionSource = playSource,
+            onGestureLabel = if (playing) "Pause" else "Play",
+            onGestureAvailable = {
+              coroutineScope.launch { playIndicatorState.showIndicator() }
+            },
           ) {
             playing = !playing
           },
       ) {
-        GestureHint(
-          gestureConfiguration = playConfiguration,
-          indicatorState = playIndicatorState,
-        ) {
+        OneHandedGestureClickIndicator(playConfiguration, playIndicatorState) {
           Text(if (playing) "Pause" else "Play")
         }
       }
@@ -82,20 +80,18 @@ fun MediaGestureScreen(onDismiss: () -> Unit = {}) {
         onClick = onDismiss,
         interactionSource = backSource,
         modifier =
-          Modifier.reportedOneHandedGesture(
-            type = GestureType.DISMISS,
-            label = "Back",
+          Modifier.oneHandedGesture(
             gestureConfiguration = backConfiguration,
-            showIndicator = backIndicatorState::showIndicator,
             interactionSource = backSource,
+            onGestureLabel = "Back",
+            onGestureAvailable = {
+              coroutineScope.launch { backIndicatorState.showIndicator() }
+            },
           ) {
             onDismiss()
           },
       ) {
-        GestureHint(
-          gestureConfiguration = backConfiguration,
-          indicatorState = backIndicatorState,
-        ) {
+        OneHandedGestureClickIndicator(backConfiguration, backIndicatorState) {
           Text("Back")
         }
       }
@@ -104,11 +100,7 @@ fun MediaGestureScreen(onDismiss: () -> Unit = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// The same full-screen screen, captured hint-off and hint-on. The screen
-// definition is identical for both — only the `@GestureHintPreview` annotation
-// differs, which force-shows the indicators through `GestureOverrideExtension` at
-// render time. (Daemon-driven `renderNow.overrides.gestures.showHints = true`
-// reaches the same seam live, with no annotation at all.)
+// The same full-screen component, captured with its public indicator states at rest and forced on.
 // ---------------------------------------------------------------------------
 
 /** The resting screen — no override, so both gesture hints stay hidden (as they would off-watch). */
@@ -118,10 +110,12 @@ fun MediaGestureScreenPreview() {
   MaterialTheme { MediaGestureScreen() }
 }
 
-/** The same screen with `@GestureHintPreview` force-showing both hints — no change to the screen. */
+/** The same component with its state override showing both inline indicators. */
 @Preview(name = "Media — hints on", device = WearDevices.LARGE_ROUND, showBackground = true)
-@GestureHintPreview
+@RoboComposePreviewOptions(
+  manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)]
+)
 @Composable
 fun MediaGestureScreenHintPreview() {
-  MaterialTheme { MediaGestureScreen() }
+  MaterialTheme { MediaGestureScreen(showIndicators = true) }
 }
