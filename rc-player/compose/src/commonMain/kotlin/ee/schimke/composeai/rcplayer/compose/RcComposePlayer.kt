@@ -639,10 +639,19 @@ private fun RenderLayoutNode(
           theme = theme,
         )
       } else {
+        val hasWeightedChildren =
+          node.content.children.any { it.modifiers.width?.type == RcDimensionType.WEIGHT }
         Row(
           rowModifier,
           horizontalArrangement =
-            RcHorizontalArrangement(node.operation.horizontalPositioning, spacingDp),
+            RcHorizontalArrangement(
+              node.operation.horizontalPositioning,
+              visualSpacing = spacingDp,
+              // AndroidX measures weighted children from all remaining row space, then adds the
+              // configured gaps while positioning. Compose normally reserves those gaps before
+              // distributing weight, which makes every weighted child too narrow.
+              spacing = if (hasWeightedChildren) 0.dp else spacingDp,
+            ),
           verticalAlignment = rowAlignment(node.operation.verticalPositioning),
         ) {
           node.content.children.forEach { child ->
@@ -1433,8 +1442,11 @@ internal fun columnAlignment(horizontal: Int): Alignment.Horizontal =
     else -> error("Unknown AndroidX column horizontal position $horizontal")
   }
 
-private class RcHorizontalArrangement(private val positioning: Int, override val spacing: Dp) :
-  Arrangement.Horizontal {
+private class RcHorizontalArrangement(
+  private val positioning: Int,
+  private val visualSpacing: Dp,
+  override val spacing: Dp = visualSpacing,
+) : Arrangement.Horizontal {
   override fun Density.arrange(
     totalSize: Int,
     sizes: IntArray,
@@ -1445,7 +1457,7 @@ private class RcHorizontalArrangement(private val positioning: Int, override val
       totalSize,
       sizes,
       positioning,
-      spacing.roundToPx(),
+      visualSpacing.roundToPx(),
       reverse = layoutDirection == LayoutDirection.Rtl,
       outPositions = outPositions,
     )

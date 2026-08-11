@@ -129,6 +129,49 @@ class RcLayoutRenderTest {
   }
 
   @Test
+  fun weightedRowAddsSpacingAfterDistributingTheFullRemainingWidth() {
+    val red = 0xffff0000.toInt()
+    val child = { componentId: Int ->
+      listOf<RcOperation>(
+        RcBoxLayout(componentId, componentId * 10, 1, 4),
+        RcWidthModifier(RcDimensionType.WEIGHT, RcFloatWord.literal(1f)),
+        height(20f),
+        solidBackground(red = 1f, green = 0f, blue = 0f),
+        RcLayoutContent(componentId * 10 + 1),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+      )
+    }
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 100, legacyHeight = 20, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcRowLayout(3, 30, 1, 4, RcFloatWord.literal(8f)),
+          width(100f),
+          height(20f),
+          RcLayoutContent(4),
+        ) + child(5) + child(6) + child(7) + child(8) + List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+    val scene =
+      ImageComposeScene(width = 100, height = 20, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val bitmap = Bitmap().apply { allocN32Pixels(100, 20) }
+      check(scene.render(0L).readPixels(bitmap))
+
+      assertEquals(red, bitmap.getColor(24, 10), "each weight receives 25px")
+      assertEquals(0, bitmap.getColor(25, 10), "the 8px visual gap follows the first weight")
+      assertEquals(0, bitmap.getColor(95, 10), "the fourth child begins only after the third gap")
+      assertEquals(red, bitmap.getColor(99, 10), "the overflowing fourth child remains clipped")
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
   fun paddingBeforeExactSizePositionsSubsequentPaint() {
     val document =
       RcDocument(
