@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeightIn
 import androidx.compose.foundation.layout.requiredWidthIn
 import androidx.compose.foundation.layout.width
@@ -141,6 +140,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
@@ -182,7 +182,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
 import ee.schimke.composeai.rcplayer.protocol.RcHapticType
+import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
+import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
 import ee.schimke.composeai.rcplayer.protocol.RcIdOperation
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
@@ -200,6 +202,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcMatrixVectorMath
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
+import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcPathAppend
 import ee.schimke.composeai.rcplayer.protocol.RcPathCombine
@@ -230,6 +233,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcTransform2
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcWakeIn
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
+import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 import ee.schimke.composeai.rcplayer.runtime.RcAnimationTimeline
 import ee.schimke.composeai.rcplayer.runtime.RcClickActionBlock
@@ -609,7 +613,7 @@ private fun RenderLayoutNode(
       }
     is RcLayoutNode.Row -> {
       val density = androidx.compose.ui.platform.LocalDensity.current
-      val spacingDp = state.resolve(node.operation.spacedBy).dp
+      val spacingDp = state.dpTypedDp(state.resolve(node.operation.spacedBy), density)
       val spacing = with(density) { spacingDp.roundToPx() }
       val rowModifier =
         effectiveModifier.applyComponentModifiers(
@@ -635,10 +639,19 @@ private fun RenderLayoutNode(
           theme = theme,
         )
       } else {
+        val hasWeightedChildren =
+          node.content.children.any { it.modifiers.width?.type == RcDimensionType.WEIGHT }
         Row(
           rowModifier,
           horizontalArrangement =
-            RcHorizontalArrangement(node.operation.horizontalPositioning, spacingDp),
+            RcHorizontalArrangement(
+              node.operation.horizontalPositioning,
+              visualSpacing = spacingDp,
+              // AndroidX measures weighted children from all remaining row space, then adds the
+              // configured gaps while positioning. Compose normally reserves those gaps before
+              // distributing weight, which makes every weighted child too narrow.
+              spacing = if (hasWeightedChildren) 0.dp else spacingDp,
+            ),
           verticalAlignment = rowAlignment(node.operation.verticalPositioning),
         ) {
           node.content.children.forEach { child ->
@@ -655,7 +668,8 @@ private fun RenderLayoutNode(
       }
     }
     is RcLayoutNode.Column -> {
-      val spacing = state.resolve(node.operation.spacedBy).dp
+      val density = androidx.compose.ui.platform.LocalDensity.current
+      val spacing = state.dpTypedDp(state.resolve(node.operation.spacedBy), density)
       Column(
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
@@ -683,7 +697,8 @@ private fun RenderLayoutNode(
       }
     }
     is RcLayoutNode.Flow -> {
-      val spacing = state.resolve(node.operation.spacedBy).dp
+      val density = androidx.compose.ui.platform.LocalDensity.current
+      val spacing = state.dpTypedDp(state.resolve(node.operation.spacedBy), density)
       @OptIn(ExperimentalLayoutApi::class)
       FlowRow(
         effectiveModifier.applyComponentModifiers(
@@ -744,7 +759,7 @@ private fun RenderLayoutNode(
         orientation = RcCollapseOrientation.Horizontal,
         mainPositioning = node.operation.horizontalPositioning,
         crossPositioning = node.operation.verticalPositioning,
-        spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() },
+        spacing = state.dpTypedPixels(state.resolve(node.operation.spacedBy), density).roundToInt(),
         modifier =
           effectiveModifier.applyComponentModifiers(
             node.modifiers,
@@ -769,7 +784,7 @@ private fun RenderLayoutNode(
         orientation = RcCollapseOrientation.Vertical,
         mainPositioning = node.operation.verticalPositioning,
         crossPositioning = node.operation.horizontalPositioning,
-        spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() },
+        spacing = state.dpTypedPixels(state.resolve(node.operation.spacedBy), density).roundToInt(),
         modifier =
           effectiveModifier.applyComponentModifiers(
             node.modifiers,
@@ -1427,8 +1442,11 @@ internal fun columnAlignment(horizontal: Int): Alignment.Horizontal =
     else -> error("Unknown AndroidX column horizontal position $horizontal")
   }
 
-private class RcHorizontalArrangement(private val positioning: Int, override val spacing: Dp) :
-  Arrangement.Horizontal {
+private class RcHorizontalArrangement(
+  private val positioning: Int,
+  private val visualSpacing: Dp,
+  override val spacing: Dp = visualSpacing,
+) : Arrangement.Horizontal {
   override fun Density.arrange(
     totalSize: Int,
     sizes: IntArray,
@@ -1439,7 +1457,7 @@ private class RcHorizontalArrangement(private val positioning: Int, override val
       totalSize,
       sizes,
       positioning,
-      spacing.roundToPx(),
+      visualSpacing.roundToPx(),
       reverse = layoutDirection == LayoutDirection.Rtl,
       outPositions = outPositions,
     )
@@ -1459,6 +1477,20 @@ private class RcVerticalArrangement(private val positioning: Int, override val s
     )
   }
 }
+
+/** AndroidX fields that are pixels in LEGACY/PIXELS documents and dp in DP documents. */
+internal fun rcDpTypedPixels(value: Float, density: Float, densityBehavior: Int): Float =
+  if (densityBehavior == RcHeader.DENSITY_BEHAVIOR_DP) value * density else value
+
+private fun RcPlayerState.dpTypedPixels(value: Float, density: Density): Float =
+  rcDpTypedPixels(value, density.density, document.header.densityBehavior)
+
+private fun RcPlayerState.dpTypedDp(value: Float, density: Density): Dp =
+  with(density) { dpTypedPixels(value, density).toDp() }
+
+/** DimensionIn is the exception: AndroidX treats LEGACY and DP as dp, PIXELS as pixels. */
+internal fun rcDimensionConstraintDp(value: Float, density: Float, densityBehavior: Int): Float =
+  if (densityBehavior == RcHeader.DENSITY_BEHAVIOR_PIXELS) value / density else value
 
 /** AndroidX RowLayout/ColumnLayout positioning, including its additive spacedBy behaviour. */
 internal fun arrangeLinear(
@@ -1528,30 +1560,55 @@ private fun Modifier.applyComponentModifiers(
       computeBase.applyLayoutComputes(modifiers, state)
     }
   modifiers.dimensionConstraints.forEach { constraint ->
-    result = result.applyDimensionConstraint(constraint, state)
+    result = result.applyDimensionConstraint(constraint, state, density)
   }
-  result = result.applyWidth(modifiers, state, density, fillMissingDimensions)
-  result = result.applyHeight(modifiers, state, density, fillMissingDimensions)
-  modifiers.marquee?.let { result = result.applyAndroidXMarquee(it, state) }
-  modifiers.scroll?.let { result = result.applyAndroidXScroll(it, state, geometryComponentIds) }
-  modifiers.graphicsLayer?.let { result = result.applyGraphicsLayer(it, state) }
-  modifiers.placementModifiers.forEach { placement ->
+  if (fillMissingDimensions && modifiers.width == null) result = result.fillMaxWidth()
+  if (fillMissingDimensions && modifiers.height == null) result = result.fillMaxHeight()
+  var appliedWidth = false
+  var appliedHeight = false
+  modifiers.ordered.forEach { operation ->
     result =
-      when (placement) {
+      when (operation) {
+        is RcWidthModifier ->
+          if (appliedWidth) result
+          else {
+            appliedWidth = true
+            result.applyWidth(operation, state, density)
+          }
+        is RcHeightModifier ->
+          if (appliedHeight) result
+          else {
+            appliedHeight = true
+            result.applyHeight(operation, state, density)
+          }
+        is RcPaddingModifier ->
+          result.rcPaddingPixels(
+            left = state.dpTypedPixels(state.resolve(operation.left), density),
+            top = state.dpTypedPixels(state.resolve(operation.top), density),
+            right = state.dpTypedPixels(state.resolve(operation.right), density),
+            bottom = state.dpTypedPixels(state.resolve(operation.bottom), density),
+          )
         is RcOffsetModifier ->
           result.offset {
             IntOffset(
-              state.resolve(placement.x).roundToInt(),
-              state.resolve(placement.y).roundToInt(),
+              state.dpTypedPixels(state.resolve(operation.x), density).roundToInt(),
+              state.dpTypedPixels(state.resolve(operation.y), density).roundToInt(),
             )
           }
-        is RcZIndexModifier -> result.zIndex(state.resolve(placement.value))
+        is RcZIndexModifier -> result.zIndex(state.resolve(operation.value))
+        is RcBackgroundModifier,
+        is RcBorderModifier,
+        is RcClipRectModifier,
+        is RcRoundedClipRectModifier,
+        is RcRippleModifier -> result.applyPaintDecorator(operation, state)
+        is RcGraphicsLayerModifier ->
+          if (operation == modifiers.graphicsLayer) result.applyGraphicsLayer(operation, state)
+          else result
         else -> result
       }
   }
-  modifiers.paintDecorators.forEach { decorator ->
-    result = result.applyPaintDecorator(decorator, state)
-  }
+  modifiers.marquee?.let { result = result.applyAndroidXMarquee(it, state) }
+  modifiers.scroll?.let { result = result.applyAndroidXScroll(it, state, geometryComponentIds) }
   if (canvasOperations != null) {
     result = result.drawWithContent {
       rcTrace(RcTraceCategory.FRAME, "rc:drawCanvas") {
@@ -1569,15 +1626,6 @@ private fun Modifier.applyComponentModifiers(
         )
       }
     }
-  }
-  modifiers.padding.forEach { padding ->
-    result =
-      result.padding(
-        start = state.resolve(padding.left).dp,
-        top = state.resolve(padding.top).dp,
-        end = state.resolve(padding.right).dp,
-        bottom = state.resolve(padding.bottom).dp,
-      )
   }
   if (modifiers.clicks.any { it.type != RcClickActionType.CLICK }) {
     result = result.applyAndroidXMultiClick(modifiers.clicks, state)
@@ -1597,6 +1645,31 @@ private fun Modifier.applyComponentModifiers(
   }
   return result
 }
+
+/**
+ * AndroidX keeps padding in physical pixels until measure, then rounds the combined inset on each
+ * axis. Compose's Dp padding rounds each edge independently, which adds a pixel whenever both wire
+ * edges end in .5 (for example 31.5px + 31.5px must occupy 63px, not 64px).
+ */
+private fun Modifier.rcPaddingPixels(
+  left: Float,
+  top: Float,
+  right: Float,
+  bottom: Float,
+): Modifier = layout { measurable, constraints ->
+  val safeLeft = left.coerceAtLeast(0f)
+  val safeTop = top.coerceAtLeast(0f)
+  val horizontal = rcCombinedPaddingPixels(left, right)
+  val vertical = rcCombinedPaddingPixels(top, bottom)
+  val placeable =
+    measurable.measure(constraints.offset(horizontal = -horizontal, vertical = -vertical))
+  val width = constraints.constrainWidth(placeable.width + horizontal)
+  val height = constraints.constrainHeight(placeable.height + vertical)
+  layout(width, height) { placeable.placeRelative(safeLeft.roundToInt(), safeTop.roundToInt()) }
+}
+
+internal fun rcCombinedPaddingPixels(first: Float, second: Float): Int =
+  (first.coerceAtLeast(0f) + second.coerceAtLeast(0f)).roundToInt()
 
 private fun Modifier.applyAndroidXClickAreas(
   areas: List<RcClickArea>,
@@ -2027,7 +2100,8 @@ private fun Modifier.applyAndroidXMarquee(
   operation: RcMarqueeModifier,
   state: RcPlayerState,
 ): Modifier {
-  val density = androidx.compose.ui.platform.LocalDensity.current.density
+  val localDensity = androidx.compose.ui.platform.LocalDensity.current
+  val density = localDensity.density
   val timeSeconds = state.animationTimeSeconds
   return clipToBounds().layout { measurable, constraints ->
     val placeable =
@@ -2039,7 +2113,7 @@ private fun Modifier.applyAndroidXMarquee(
       else constraints.maxWidth
     val width = constraints.constrainWidth(viewportWidth)
     val height = constraints.constrainHeight(placeable.height)
-    val contentWidth = placeable.width + operation.spacing.value
+    val contentWidth = placeable.width + state.dpTypedPixels(operation.spacing.value, localDensity)
     val distance = (contentWidth - width).coerceAtLeast(0f)
     val offset =
       androidXMarqueeOffset(
@@ -2269,34 +2343,51 @@ private fun Modifier.applyGraphicsLayer(
 private fun Modifier.applyDimensionConstraint(
   operation: ee.schimke.composeai.rcplayer.protocol.RcOperation,
   state: RcPlayerState,
+  density: Density,
 ): Modifier =
   when (operation) {
     is RcWidthInModifier ->
-      applyWidthRange(state.resolve(operation.minimum), state.resolve(operation.maximum))
+      applyWidthRange(
+        state.dimensionConstraintDp(state.resolve(operation.minimum), density),
+        state.dimensionConstraintDp(state.resolve(operation.maximum), density),
+      )
     is RcHeightInModifier ->
-      applyHeightRange(state.resolve(operation.minimum), state.resolve(operation.maximum))
+      applyHeightRange(
+        state.dimensionConstraintDp(state.resolve(operation.minimum), density),
+        state.dimensionConstraintDp(state.resolve(operation.maximum), density),
+      )
     is RcDimensionConstraintsModifier ->
       when (operation.type) {
         RcDimensionConstraintsModifier.HORIZONTAL ->
-          applyWidthRange(state.resolve(operation.minimum), state.resolve(operation.maximum))
+          applyWidthRange(
+            state.dimensionConstraintDp(state.resolve(operation.minimum), density),
+            state.dimensionConstraintDp(state.resolve(operation.maximum), density),
+          )
         RcDimensionConstraintsModifier.VERTICAL ->
-          applyHeightRange(state.resolve(operation.minimum), state.resolve(operation.maximum))
+          applyHeightRange(
+            state.dimensionConstraintDp(state.resolve(operation.minimum), density),
+            state.dimensionConstraintDp(state.resolve(operation.maximum), density),
+          )
         RcDimensionConstraintsModifier.REQUIRED_HORIZONTAL ->
           applyWidthRange(
-            state.resolve(operation.minimum),
-            state.resolve(operation.maximum),
+            state.dimensionConstraintDp(state.resolve(operation.minimum), density),
+            state.dimensionConstraintDp(state.resolve(operation.maximum), density),
             required = true,
           )
         RcDimensionConstraintsModifier.REQUIRED_VERTICAL ->
           applyHeightRange(
-            state.resolve(operation.minimum),
-            state.resolve(operation.maximum),
+            state.dimensionConstraintDp(state.resolve(operation.minimum), density),
+            state.dimensionConstraintDp(state.resolve(operation.maximum), density),
             required = true,
           )
         else -> this
       }
     else -> this
   }
+
+private fun RcPlayerState.dimensionConstraintDp(value: Float, density: Density): Float =
+  if (value == -1f) value
+  else rcDimensionConstraintDp(value, density.density, document.header.densityBehavior)
 
 private fun Modifier.applyWidthRange(
   minimum: Float,
@@ -2339,7 +2430,7 @@ private fun Modifier.applyPaintDecorator(
   operation: ee.schimke.composeai.rcplayer.protocol.RcOperation,
   state: RcPlayerState,
 ): Modifier {
-  val density = androidx.compose.ui.platform.LocalDensity.current.density
+  val localDensity = androidx.compose.ui.platform.LocalDensity.current
   return when (operation) {
     is RcBackgroundModifier ->
       drawBehind {
@@ -2373,8 +2464,12 @@ private fun Modifier.applyPaintDecorator(
               alpha = state.resolve(operation.alpha),
             )
           }
-        val borderWidth = state.resolve(operation.borderWidth).coerceAtLeast(0f)
-        val corner = state.resolve(operation.roundedCorner).coerceAtLeast(0f)
+        val borderWidth =
+          state.borderWidthPixels(operation.borderWidth, localDensity).coerceAtLeast(0f)
+        val corner =
+          state
+            .dpTypedPixels(state.resolve(operation.roundedCorner), localDensity)
+            .coerceAtLeast(0f)
         val halfSize = minOf(size.width, size.height) / 2f
         if (operation.wireVersion != 0 && borderWidth >= halfSize) {
           when (operation.shapeType) {
@@ -2414,13 +2509,10 @@ private fun Modifier.applyPaintDecorator(
       }
     is RcRoundedClipRectModifier ->
       drawWithContent {
-        val topStart =
-          rcRoundedClipRadius(operation.topStart, state.resolve(operation.topStart), density)
-        val topEnd = rcRoundedClipRadius(operation.topEnd, state.resolve(operation.topEnd), density)
-        val bottomStart =
-          rcRoundedClipRadius(operation.bottomStart, state.resolve(operation.bottomStart), density)
-        val bottomEnd =
-          rcRoundedClipRadius(operation.bottomEnd, state.resolve(operation.bottomEnd), density)
+        val topStart = state.dpTypedPixels(state.resolve(operation.topStart), localDensity)
+        val topEnd = state.dpTypedPixels(state.resolve(operation.topEnd), localDensity)
+        val bottomStart = state.dpTypedPixels(state.resolve(operation.bottomStart), localDensity)
+        val bottomEnd = state.dpTypedPixels(state.resolve(operation.bottomEnd), localDensity)
         val path =
           Path().apply {
             addRoundRect(
@@ -2443,9 +2535,15 @@ private fun Modifier.applyPaintDecorator(
   }
 }
 
-/** Fixed radii are authored in dp; size-derived references already resolve to physical pixels. */
-internal fun rcRoundedClipRadius(word: RcFloatWord, resolved: Float, density: Float): Float =
-  (resolved * if (word.referencedId == null) density else 1f).coerceAtLeast(0f)
+private fun RcPlayerState.borderWidthPixels(word: RcFloatWord, density: Density): Float {
+  val version = document.header.version
+  val atLeastV7 = version.major > 1 || (version.major == 1 && version.minor >= 1)
+  return if (document.header.densityBehavior == RcHeader.DENSITY_BEHAVIOR_LEGACY && !atLeastV7) {
+    word.value * density.density
+  } else {
+    dpTypedPixels(resolve(word), density)
+  }
+}
 
 @Composable
 private fun Modifier.applyAndroidXRipple(): Modifier {
@@ -2480,21 +2578,16 @@ private fun Modifier.applyAndroidXRipple(): Modifier {
 }
 
 private fun Modifier.applyWidth(
-  modifiers: RcLayoutModifiers,
+  width: RcWidthModifier,
   state: RcPlayerState,
   density: Density,
-  fillMissing: Boolean,
 ): Modifier =
-  when (val width = modifiers.width) {
-    null -> if (fillMissing) fillMaxWidth() else this
-    else ->
-      when (width.type) {
-        RcDimensionType.EXACT -> width(with(density) { state.resolve(width.value).toDp() })
-        RcDimensionType.EXACT_DP -> width(state.resolve(width.value).dp)
-        RcDimensionType.FILL,
-        RcDimensionType.FILL_PARENT_MAX_WIDTH -> fillMaxWidth()
-        else -> this
-      }
+  when (width.type) {
+    RcDimensionType.EXACT -> width(with(density) { state.resolve(width.value).toDp() })
+    RcDimensionType.EXACT_DP -> width(state.resolve(width.value).dp)
+    RcDimensionType.FILL,
+    RcDimensionType.FILL_PARENT_MAX_WIDTH -> fillMaxWidth()
+    else -> this
   }
 
 private fun RowScope.rowWeightModifier(node: RcLayoutNode, state: RcPlayerState): Modifier {
@@ -2516,21 +2609,16 @@ private fun ColumnScope.columnWeightModifier(node: RcLayoutNode, state: RcPlayer
 }
 
 private fun Modifier.applyHeight(
-  modifiers: RcLayoutModifiers,
+  height: RcHeightModifier,
   state: RcPlayerState,
   density: Density,
-  fillMissing: Boolean,
 ): Modifier =
-  when (val height = modifiers.height) {
-    null -> if (fillMissing) fillMaxHeight() else this
-    else ->
-      when (height.type) {
-        RcDimensionType.EXACT -> height(with(density) { state.resolve(height.value).toDp() })
-        RcDimensionType.EXACT_DP -> height(state.resolve(height.value).dp)
-        RcDimensionType.FILL,
-        RcDimensionType.FILL_PARENT_MAX_HEIGHT -> fillMaxHeight()
-        else -> this
-      }
+  when (height.type) {
+    RcDimensionType.EXACT -> height(with(density) { state.resolve(height.value).toDp() })
+    RcDimensionType.EXACT_DP -> height(state.resolve(height.value).dp)
+    RcDimensionType.FILL,
+    RcDimensionType.FILL_PARENT_MAX_HEIGHT -> fillMaxHeight()
+    else -> this
   }
 
 internal data class RcRootTransform(

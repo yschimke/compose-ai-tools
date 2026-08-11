@@ -45,6 +45,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperation
+import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
@@ -122,6 +123,91 @@ class RcLayoutRenderTest {
       check(scene.render(0L).readPixels(bitmap))
 
       assertEquals(grey, bitmap.getColor(20, 12))
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
+  fun weightedRowAddsSpacingAfterDistributingTheFullRemainingWidth() {
+    val red = 0xffff0000.toInt()
+    val child = { componentId: Int ->
+      listOf<RcOperation>(
+        RcBoxLayout(componentId, componentId * 10, 1, 4),
+        RcWidthModifier(RcDimensionType.WEIGHT, RcFloatWord.literal(1f)),
+        height(20f),
+        solidBackground(red = 1f, green = 0f, blue = 0f),
+        RcLayoutContent(componentId * 10 + 1),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+      )
+    }
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 100, legacyHeight = 20, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcRowLayout(3, 30, 1, 4, RcFloatWord.literal(8f)),
+          width(100f),
+          height(20f),
+          RcLayoutContent(4),
+        ) + child(5) + child(6) + child(7) + child(8) + List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+    val scene =
+      ImageComposeScene(width = 100, height = 20, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val bitmap = Bitmap().apply { allocN32Pixels(100, 20) }
+      check(scene.render(0L).readPixels(bitmap))
+
+      assertEquals(red, bitmap.getColor(24, 10), "each weight receives 25px")
+      assertEquals(0, bitmap.getColor(25, 10), "the 8px visual gap follows the first weight")
+      assertEquals(0, bitmap.getColor(95, 10), "the fourth child begins only after the third gap")
+      assertEquals(red, bitmap.getColor(99, 10), "the overflowing fourth child remains clipped")
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
+  fun paddingBeforeExactSizePositionsSubsequentPaint() {
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 40, legacyHeight = 24, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcBoxLayout(3, 30, 1, 4),
+          width(40f),
+          height(24f),
+          RcLayoutContent(4),
+          RcBoxLayout(5, 50, 1, 4),
+          RcPaddingModifier(
+            RcFloatWord.literal(18f),
+            RcFloatWord.literal(2f),
+            RcFloatWord.literal(0f),
+            RcFloatWord.literal(0f),
+          ),
+          width(16f),
+          height(16f),
+          solidBackground(red = 1f, green = 1f, blue = 1f),
+          RcLayoutContent(6),
+        ) + List(6) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+    val scene =
+      ImageComposeScene(width = 40, height = 24, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val bitmap = Bitmap().apply { allocN32Pixels(40, 24) }
+      check(scene.render(0L).readPixels(bitmap))
+
+      assertEquals(0, bitmap.getColor(17, 10))
+      assertEquals(0xffffffff.toInt(), bitmap.getColor(18, 2))
+      assertEquals(0xffffffff.toInt(), bitmap.getColor(33, 17))
+      assertEquals(0, bitmap.getColor(34, 10))
     } finally {
       scene.close()
     }
@@ -428,6 +514,79 @@ class RcLayoutRenderTest {
       assertEquals(green, bitmap.getColor(5, 5))
       assertEquals(red, bitmap.getColor(45, 5))
       assertEquals(0, bitmap.getColor(5, 35))
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
+  fun legacyFlowSpacingRemainsInPhysicalPixelsAtHighDensity() {
+    val green = 0xff00ff00.toInt()
+    val red = 0xffff0000.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 1, 0), legacyWidth = 100, legacyHeight = 40, modern = false),
+        listOf<RcOperation>(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcFlowLayout(3, 30, 1, 4, RcFloatWord.literal(20f), Int.MAX_VALUE, Int.MAX_VALUE),
+          width(100f),
+          height(40f),
+          RcLayoutContent(4),
+        ) +
+          canvas(5, 40f, green) +
+          canvas(6, 40f, red) +
+          List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+    val scene =
+      ImageComposeScene(width = 100, height = 40, density = Density(2f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val bitmap = Bitmap().apply { allocN32Pixels(100, 40) }
+      check(scene.render().readPixels(bitmap))
+
+      assertEquals(green, bitmap.getColor(20, 20))
+      assertEquals(0, bitmap.getColor(50, 20), "20px wire spacing must not become 20dp")
+      assertEquals(red, bitmap.getColor(80, 20), "both children must remain on the first row")
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
+  fun fractionalPixelPaddingDoesNotAccumulateIndependentEdgeRounding() {
+    val red = 0xffff0000.toInt()
+    val green = 0xff00ff00.toInt()
+    val blue = 0xff0000ff.toInt()
+    val yellow = 0xffffff00.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 1, 0), legacyWidth = 819, legacyHeight = 247, modern = false),
+        listOf<RcOperation>(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcFlowLayout(3, 30, 1, 4, RcFloatWord.literal(21f), Int.MAX_VALUE, Int.MAX_VALUE),
+          width(819f),
+          height(247f),
+          RcLayoutContent(4),
+        ) +
+          paddedCanvas(5, red) +
+          paddedCanvas(6, green) +
+          paddedCanvas(7, blue) +
+          paddedCanvas(8, yellow) +
+          List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+    val scene =
+      ImageComposeScene(width = 819, height = 247, density = Density(2.625f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val bitmap = Bitmap().apply { allocN32Pixels(819, 247) }
+      check(scene.render().readPixels(bitmap))
+
+      assertEquals(63, rcCombinedPaddingPixels(31.5f, 31.5f))
+      assertEquals(yellow, bitmap.getColor(670, 50), "the fourth 189px card must not wrap")
     } finally {
       scene.close()
     }
@@ -1161,6 +1320,30 @@ class RcLayoutRenderTest {
         RcFloatWord.literal(0f),
         RcFloatWord.literal(size),
         RcFloatWord.literal(size),
+      ),
+      RcNoArg(RcOpcodes.CONTAINER_END),
+      RcNoArg(RcOpcodes.CONTAINER_END),
+    )
+
+  private fun paddedCanvas(componentId: Int, color: Int): List<RcOperation> =
+    listOf(
+      RcCanvasLayout(componentId, componentId * 10),
+      RcPaddingModifier(
+        RcFloatWord.literal(31.5f),
+        RcFloatWord.literal(31.5f),
+        RcFloatWord.literal(31.5f),
+        RcFloatWord.literal(31.5f),
+      ),
+      width(126f),
+      height(126f),
+      RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+      RcPaintData(listOf(4, color)),
+      RcDraw4(
+        RcOpcodes.DRAW_RECT,
+        RcFloatWord.literal(0f),
+        RcFloatWord.literal(0f),
+        RcFloatWord.literal(126f),
+        RcFloatWord.literal(126f),
       ),
       RcNoArg(RcOpcodes.CONTAINER_END),
       RcNoArg(RcOpcodes.CONTAINER_END),
