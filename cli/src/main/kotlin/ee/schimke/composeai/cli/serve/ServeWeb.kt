@@ -6504,8 +6504,9 @@ $rows
         )
         .filter { it.isNotBlank() }
         .joinToString("\n")
-    // `format-compare.js` holds the comparison primitives — content-box normalisation, the SSIM
-    // score, the magenta delta map — that BOTH the SVG/PNG fidelity toggle and the spec lane's
+    // `format-compare.js` holds the comparison primitives — content-box normalisation, the
+    // edge-tolerant score, the magenta delta map — that BOTH the SVG/PNG fidelity toggle and the
+    // spec lane's
     // Diff / Triptych / Slider views draw from, so it loads for either. `spec-compare.js` sits on
     // top of it and must be defined before `viewer.js`, which calls into `window.cpSpecCompare` on
     // the way into (and out of) the lane.

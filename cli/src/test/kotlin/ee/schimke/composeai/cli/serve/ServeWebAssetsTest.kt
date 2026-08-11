@@ -97,7 +97,7 @@ class ServeWebAssetsTest {
         firstPaint < fonts &&
         fonts < finalPaint &&
         finalPaint < score,
-      "the RC player must apply artifact theme, discover and await fonts, then repaint before SSIM",
+      "the RC player must apply artifact theme, discover and await fonts, then repaint before scoring",
     )
   }
 }
