@@ -27,6 +27,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
+import ee.schimke.composeai.rcplayer.protocol.RcStateLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcTouchCancelModifier
@@ -365,6 +366,26 @@ class RcLayoutTreeTest {
     assertEquals(4, flow.operation.maxItemsInEachRow)
     assertEquals(3, flow.operation.maxLines)
     assertIs<RcLayoutNode.Canvas>(flow.content.children.single())
+  }
+
+  @Test
+  fun linksStateLayoutAndItsChildStates() {
+    val root =
+      requireNotNull(
+        treeOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcStateLayout(3, 30, 1, 4, 51),
+          RcLayoutContent(4),
+          RcCanvasLayout(5, 50),
+          ends = 5,
+        )
+      )
+
+    val outerContent = assertIs<RcLayoutNode.Content>(root.children.single())
+    val state = assertIs<RcLayoutNode.State>(outerContent.children.single())
+    assertEquals(51, state.operation.indexId)
+    assertIs<RcLayoutNode.Canvas>(state.content.children.single())
   }
 
   @Test

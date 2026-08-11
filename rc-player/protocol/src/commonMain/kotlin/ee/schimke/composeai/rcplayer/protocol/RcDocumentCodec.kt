@@ -125,6 +125,7 @@ public object RcDocumentCodec {
         BoxLayoutCodec,
         RowLayoutCodec,
         ColumnLayoutCodec,
+        StateLayoutCodec,
         FlowLayoutCodec,
         CollapsibleRowLayoutCodec,
         CollapsibleColumnLayoutCodec,
@@ -396,6 +397,27 @@ private object FlowLayoutCodec : RcOperationCodec<RcFlowLayout> {
     output.writeFloatWord(value.spacedBy)
     output.writeInt(value.maxItemsInEachRow)
     output.writeInt(value.maxLines)
+  }
+}
+
+private object StateLayoutCodec : RcOperationCodec<RcStateLayout> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_STATE, "StateLayout")
+
+  override fun decode(input: RcWireReader) =
+    RcStateLayout(
+      input.readInt("componentId"),
+      input.readInt("animationId"),
+      input.readInt("horizontalPositioning"),
+      input.readInt("verticalPositioning"),
+      input.readInt("indexId"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcStateLayout) {
+    output.writeInt(value.componentId)
+    output.writeInt(value.animationId)
+    output.writeInt(value.horizontalPositioning)
+    output.writeInt(value.verticalPositioning)
+    output.writeInt(value.indexId)
   }
 }
 

@@ -9,6 +9,21 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun stateLayoutRoundTripsAlpha16Fields() {
+    val operation = RcStateLayout(7, 8, 1, 4, 51)
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), modern = false),
+        listOf(operation, RcNoArg(RcOpcodes.CONTAINER_END)),
+      )
+
+    val bytes = RcDocumentCodec.encode(document)
+
+    assertEquals(document, RcDocumentCodec.decode(bytes))
+    assertContentEquals(bytes, RcDocumentCodec.encode(RcDocumentCodec.decode(bytes)))
+  }
+
+  @Test
   fun embeddedFontRoundTripsAlpha16PayloadExactly() {
     val font = RcFontData(fontId = 42, type = 7, data = byteArrayOf(0, 1, -1, 127))
     val document = RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), listOf(font))

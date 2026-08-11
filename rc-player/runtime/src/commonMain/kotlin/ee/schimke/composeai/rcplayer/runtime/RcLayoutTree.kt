@@ -37,6 +37,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
+import ee.schimke.composeai.rcplayer.protocol.RcStateLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
@@ -177,6 +178,15 @@ public sealed interface RcLayoutNode {
     override val modifiers: RcLayoutModifiers,
     val content: Content,
     val canvasOperations: List<RcLinkedNode>?,
+  ) : RcLayoutNode {
+    override val componentId: Int = operation.componentId
+    override val animationId: Int = operation.animationId
+  }
+
+  public data class State(
+    val operation: RcStateLayout,
+    override val modifiers: RcLayoutModifiers,
+    val content: Content,
   ) : RcLayoutNode {
     override val componentId: Int = operation.componentId
     override val animationId: Int = operation.animationId
@@ -365,6 +375,8 @@ public object RcLayoutTree {
             requiredContent(container, seenIds, styles),
             canvasOperations(container),
           )
+        is RcStateLayout ->
+          RcLayoutNode.State(operation, modifiers, requiredContent(container, seenIds, styles))
         is RcCollapsibleRowLayout ->
           RcLayoutNode.CollapsibleRow(
             operation,
@@ -603,6 +615,7 @@ public object RcLayoutTree {
       this is RcRowLayout ||
       this is RcColumnLayout ||
       this is RcFlowLayout ||
+      this is RcStateLayout ||
       this is RcCollapsibleRowLayout ||
       this is RcCollapsibleColumnLayout ||
       this is RcFitBoxLayout ||
