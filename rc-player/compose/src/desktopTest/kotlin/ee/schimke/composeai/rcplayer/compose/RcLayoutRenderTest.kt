@@ -1285,14 +1285,14 @@ class RcLayoutRenderTest {
   private fun paddedCanvas(componentId: Int, color: Int): List<RcOperation> =
     listOf(
       RcCanvasLayout(componentId, componentId * 10),
-      width(126f),
-      height(126f),
       RcPaddingModifier(
         RcFloatWord.literal(31.5f),
         RcFloatWord.literal(31.5f),
         RcFloatWord.literal(31.5f),
         RcFloatWord.literal(31.5f),
       ),
+      width(126f),
+      height(126f),
       RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
       RcPaintData(listOf(4, color)),
       RcDraw4(
