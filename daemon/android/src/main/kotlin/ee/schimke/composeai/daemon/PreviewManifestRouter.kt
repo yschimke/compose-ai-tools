@@ -2,6 +2,8 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.overrides.OverrideVariantSpec
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
@@ -185,7 +187,9 @@ class PreviewManifestRouter(
       inbound["inspectionMode"]?.let { append("inspectionMode=").append(it).append(';') }
       inbound["clearBackground"]?.let { append("clearBackground=").append(it).append(';') }
       inbound["svgBackground"]?.let { append("svgBackground=").append(it).append(';') }
-      inbound["overrides"]?.let { append("overrides=").append(it).append(';') }
+      overridesTokenFor(inbound["overrides"], resolved.overrides)?.let {
+        append("overrides=").append(it).append(';')
+      }
       inbound["mode"]?.let { append("mode=").append(it).append(';') }
       // Manifest-resolved kind forwards through verbatim; an inbound `kind=` override (rare —
       // currently only test fixtures emit one) wins for parity with the other override fields.
@@ -235,6 +239,32 @@ class PreviewManifestRouter(
     return map
   }
 
+  /** Layers a live request override over the synthetic preview's baked `@OverrideVariant` seed. */
+  private fun overridesTokenFor(
+    inboundToken: String?,
+    baseOverrides: PreviewOverrides?,
+  ): String? {
+    if (baseOverrides == null) return inboundToken
+    val inbound =
+      inboundToken?.let {
+        runCatching {
+            json.decodeFromString(
+              PreviewOverrides.serializer(),
+              String(java.util.Base64.getUrlDecoder().decode(it), Charsets.UTF_8),
+            )
+          }
+          .getOrNull()
+      }
+    val merged = inbound.layeredOver(baseOverrides) ?: return inboundToken
+    return java.util.Base64.getUrlEncoder()
+      .withoutPadding()
+      .encodeToString(
+        json
+          .encodeToString(PreviewOverrides.serializer(), merged)
+          .toByteArray(Charsets.UTF_8)
+      )
+  }
+
   companion object {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -262,6 +292,7 @@ private fun PreviewManifestEntry.renderSpec(): RenderSpec {
     backgroundColor = resolved.backgroundColor,
     device = resolved.device,
     outputBaseName = resolved.outputBaseName,
+    overrides = resolved.overrides,
     kind = resolved.kind,
     previewName = resolved.name,
     wrapperClassName = resolved.wrapperClassName,
@@ -307,6 +338,8 @@ data class PreviewManifestEntry(
    * the flat fields below.
    */
   val params: PreviewParamsEntry? = null,
+  /** Baked state seed for a synthetic `_VARIANT_` preview emitted by discovery. */
+  val overrides: OverrideVariantSpec? = null,
   val widthPx: Int? = null,
   val heightPx: Int? = null,
   val density: Float? = null,
@@ -411,6 +444,11 @@ data class PreviewManifestEntry(
     val showBackground = showBackground ?: p?.showBackground ?: true
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val wrapperClassName = p?.wrapperClassName
+    val bakedOverrides =
+      overrides
+        ?.toNamedOverrides()
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { PreviewOverrides(namedOverrides = it) }
     return ResolvedRenderParams(
       widthPx = resolvedWidthPx,
       heightPx = resolvedHeightPx,
@@ -422,6 +460,7 @@ data class PreviewManifestEntry(
       kind = kind,
       name = name,
       wrapperClassName = wrapperClassName,
+      overrides = bakedOverrides,
       wrapWidth = wrapWidth,
       wrapHeight = wrapHeight,
       uiMode = uiMode,
@@ -549,6 +588,8 @@ data class ResolvedRenderParams(
   val kind: String? = null,
   val name: String? = null,
   val wrapperClassName: String? = null,
+  /** Baked state seed for a synthetic `_VARIANT_` preview. */
+  val overrides: PreviewOverrides? = null,
   /**
    * AS-parity wrap-content flags (see [RenderSpec.wrapWidth]). Set when the preview declares no
    * explicit size / device / non-Compose surface, so [widthPx]/[heightPx] are a sandbox bound and
