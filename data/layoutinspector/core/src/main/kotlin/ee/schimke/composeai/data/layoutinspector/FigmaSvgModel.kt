@@ -1242,10 +1242,24 @@ data class FigmaSvgModel(
       // isolated render, which the frame crop can't provide, so a drawn container stays fully
       // vector
       // (its children/text are preserved as editable layers) rather than double-render.
+      // Nothing for the vector model to emit: no captured vector, no fill, no border, and no text
+      // of its own. Only then is a bare `drawsContent` evidence that the pixels would otherwise be
+      // lost — see [hasDelegatedDrawOnly]. The text check has to include the *modifier* projection,
+      // not just [BuildContext.textByNodeId]: a Wear picker separator is a `Text` under
+      // `clearAndSetSemantics`, so it has no semantics text to match and its glyph arrives from the
+      // layout capture alone — rastering it emits the separator twice, once as pixels and once as
+      // the live `<text>`.
+      val nothingElseToDraw =
+        vectorGraphic == null &&
+          tokens?.backgroundColor == null &&
+          tokens?.backgroundGradient == null &&
+          tokens?.borderColor == null &&
+          tokens?.borderGradient == null &&
+          modifierText(ctx) == null
       val background =
         if (
           ctx.captureCanvasDraws &&
-            hasCustomDraw() &&
+            (hasCustomDraw() || hasDelegatedDrawOnly(nothingElseToDraw)) &&
             children.isEmpty() &&
             ctx.textByNodeId[nodeId] == null
         ) {
@@ -2103,8 +2117,27 @@ data class FigmaSvgModel(
      * `Modifier.drawBehind {…}.placeholder(state)` chain still paints its own imperative art into
      * the frame, and that art is not something the vector export can otherwise represent.
      */
-    private fun LayoutInspectorNode.hasCustomDraw(): Boolean =
-      drawsContent || modifiers.any { it.isCustomDraw() }
+    private fun LayoutInspectorNode.hasCustomDraw(): Boolean = modifiers.any { it.isCustomDraw() }
+
+    /**
+     * The v16 capability bit: the live modifier-node chain contains a `DrawModifierNode`.
+     *
+     * This is how a *delegated* draw shows up at all — Material 3's wavy indicators hide theirs
+     * behind a `CacheDrawModifierNode` whose element exposes no inspectable `onDraw`, so
+     * [hasCustomDraw] cannot see it and the node would export as an empty layer.
+     *
+     * It is deliberately **not** folded into [hasCustomDraw]. The bit is true of most drawn nodes —
+     * every `Icon`, every token-backed background — so on its own it says nothing about whether the
+     * export can represent the node. Treating it as a custom draw sent every vector-backed icon and
+     * every drawn leaf down the raster fallback, which is what turned editable `<path>`s and labels
+     * into `<image>` crops (#3686).
+     *
+     * So it earns a raster only where the vector model would otherwise emit *nothing at all*: the
+     * caller has already established a leaf with no text, and [otherwiseEmpty] adds that there is
+     * no captured vector and no fill or border token to draw either.
+     */
+    private fun LayoutInspectorNode.hasDelegatedDrawOnly(otherwiseEmpty: Boolean): Boolean =
+      drawsContent && otherwiseEmpty
 
     private fun LayoutInspectorModifier.isCustomDraw(): Boolean =
       name in DRAW_MODIFIERS && !placeholder
@@ -2337,6 +2370,13 @@ data class FigmaSvgModel(
     ): Map<String, FigmaSvgText> {
       val candidates = mutableListOf<Triple<String, IntArray, Int>>()
       val nodesWithModifierText = mutableSetOf<String>()
+      // …and the same, counting the whole subtree. An accessibility-only wrapper (Material 3's date
+      // cells) sets `SemanticsProperties.Text` to a sentence for the screen reader while a `Text`
+      // *child* draws the glyph; matching the wrapper and painting its label would double the text.
+      // The distinguishing question is whether anything below the matched node already draws real
+      // text, not whether the capture recorded typography — a Wear picker separator clears its
+      // semantics too, and there its string is the only copy of the visible content.
+      val nodesWithModifierTextBelow = mutableSetOf<String>()
       // Every layout node the (already retired-pruned) tree still carries, for the identity match
       // a coordinate-less semantics node falls back to — see [isNoGeometry].
       val layoutNodeIds = mutableSetOf<String>()
@@ -2351,9 +2391,9 @@ data class FigmaSvgModel(
       // tolerance for anything else.
       fun collect(n: LayoutInspectorNode, depth: Int, clip: LayoutInspectorBounds?) {
         layoutNodeIds += n.nodeId
-        if (
+        val ownsModifierText =
           n.modifiers.any { modifier -> modifier.properties["layoutText"]?.isNotBlank() == true }
-        ) {
+        if (ownsModifierText) {
           nodesWithModifierText += n.nodeId
         }
         val candidateBounds =
@@ -2390,6 +2430,10 @@ data class FigmaSvgModel(
             clip?.let { intersectBounds(own, it) } ?: own
           } else clip
         n.children.forEach { collect(it, depth + 1, childClip) }
+        // Post-order: a node counts as covered once anything in its subtree draws real text.
+        if (ownsModifierText || n.children.any { it.nodeId in nodesWithModifierTextBelow }) {
+          nodesWithModifierTextBelow += n.nodeId
+        }
       }
       // The rendered window clips everything, whether or not any composable asked it to.
       collect(layoutRoot, 0, layoutRoot.bounds)
@@ -2398,16 +2442,7 @@ data class FigmaSvgModel(
       val bestDistForNode = HashMap<String, Int>()
       fun walk(node: ComposeSemanticsNode) {
         val measuredContent = node.layoutText?.takeIf { it.isNotBlank() }
-        // Before layoutText was carried separately, a visual TextLayoutResult still supplied at
-        // least one of typography / colour / overflow. Accessibility-only wrappers (Material 3's
-        // date cells are the canonical example) deliberately set SemanticsProperties.Text without
-        // drawing that sentence. Treating every plain semantics string as legacy visual text
-        // paints those screen-reader labels over the real child glyphs in the SVG.
-        val legacySemanticsContent =
-          node.text?.takeIf {
-            it.isNotBlank() &&
-              (node.typography != null || node.textColor != null || node.textOverflow != null)
-          }
+        val legacySemanticsContent = node.text?.takeIf { it.isNotBlank() }
         val raw = parseBoundsList(node.boundsInRoot)
         // `(0,0,0,0)` is the "no coordinates" signature, not a box at the origin — see
         // [isNoGeometry], which is also where the identity fallback below is motivated.
@@ -2449,11 +2484,11 @@ data class FigmaSvgModel(
           val chosen = bestId
           // TextLayoutResult is visual ground truth despite being exposed through a semantics
           // action. Plain SemanticsProperties.Text is accessibility data and may be overridden or
-          // merged, so it is only a compatibility fallback when the old capture also carries
-          // visual text details and the matched node has no modifier text projection.
+          // merged, so it is only a compatibility fallback for old layout captures where nothing in
+          // the matched subtree already projects the text itself.
           val content =
             measuredContent
-              ?: legacySemanticsContent?.takeUnless { chosen in nodesWithModifierText }
+              ?: legacySemanticsContent?.takeUnless { chosen in nodesWithModifierTextBelow }
           if (
             chosen != null &&
               content != null &&
