@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
+import kotlin.math.roundToInt
 
 /*
  * Every place the canvas text path reaches for `android.graphics`, gathered behind four functions so
@@ -105,6 +106,27 @@ internal fun measureTextInkBounds(
 /** Advance width of [text] with the platform's text engine. */
 internal fun measureTextWidth(text: String, spec: TextPaintSpec, context: RemoteContext): Float =
     spec.toNativeTextPaint(context).measureText(text)
+
+/** Measures the complete AndroidX `getTextBounds` input tuple with one framework [Paint]. */
+internal fun measureTextBounds(
+    text: String,
+    spec: TextPaintSpec,
+    context: RemoteContext,
+): TextMeasureBounds {
+    val paint = spec.toNativeTextPaint(context)
+    val ink = android.graphics.Rect()
+    paint.getTextBounds(text, 0, text.length, ink)
+    val font = paint.fontMetrics
+    return TextMeasureBounds(
+        left = ink.left.toFloat(),
+        top = ink.top.toFloat(),
+        right = ink.right.toFloat(),
+        bottom = ink.bottom.toFloat(),
+        fontTop = font.ascent.roundToInt().toFloat(),
+        fontBottom = font.descent.roundToInt().toFloat(),
+        advance = paint.measureText(text),
+    )
+}
 
 /**
  * Draws [text] with its origin at ([x], [y]) — pen start and baseline, the same convention

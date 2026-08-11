@@ -2,7 +2,7 @@ package ee.schimke.composeai.rcplayer.compose
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 
 class RcTextMeasurementTest {
   @Test
@@ -15,7 +15,12 @@ class RcTextMeasurementTest {
   }
 
   @Test
-  fun rejectsUnknownMeasurementMode() {
-    assertFailsWith<IllegalStateException> { selectTextMeasurement(7, 0f, 0f, 0f, 0f, 0) }
+  fun textMeasureDoesNotImplementTextLength() {
+    assertNull(selectTextMeasurement(6, 0f, 0f, 0f, 0f, 7, supportsLength = false))
+  }
+
+  @Test
+  fun unknownMeasurementModeLeavesDestinationUntouched() {
+    assertNull(selectTextMeasurement(7, 0f, 0f, 0f, 0f, 0, supportsLength = true))
   }
 }

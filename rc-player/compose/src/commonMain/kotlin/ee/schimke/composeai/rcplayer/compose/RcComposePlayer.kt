@@ -3507,6 +3507,7 @@ private fun DrawScope.measureTextOperation(
     state,
     paint,
     textMeasurer,
+    supportsLength = false,
   )
 
 private fun DrawScope.measureTextOperation(
@@ -3516,6 +3517,7 @@ private fun DrawScope.measureTextOperation(
   state: RcPlayerState,
   paint: RcPaintState,
   textMeasurer: TextMeasurer,
+  supportsLength: Boolean = true,
 ) {
   val text = state.text(textId).orEmpty()
   val layout =
@@ -3544,10 +3546,18 @@ private fun DrawScope.measureTextOperation(
     top = -layout.firstBaseline
     bottom = layout.size.height - layout.firstBaseline
   }
-  val value = selectTextMeasurement(type, left, top, right, bottom, text.length)
-  state.setFloat(outId, value)
+  selectTextMeasurement(type, left, top, right, bottom, text.length, supportsLength)?.let { value ->
+    state.setFloat(outId, value)
+  }
 }
 
+/**
+ * Selects the value written by AndroidX's text measurement operations.
+ *
+ * `TextMeasure` (155) only defines selectors 0..5; `TextAttribute` additionally defines selector 6
+ * for string length. AndroidX leaves the destination untouched for an unknown selector, hence the
+ * nullable result.
+ */
 internal fun selectTextMeasurement(
   type: Int,
   left: Float,
@@ -3555,7 +3565,8 @@ internal fun selectTextMeasurement(
   right: Float,
   bottom: Float,
   textLength: Int,
-): Float =
+  supportsLength: Boolean = true,
+): Float? =
   when (type and 0xff) {
     0 -> right - left
     1 -> bottom - top
@@ -3563,8 +3574,8 @@ internal fun selectTextMeasurement(
     3 -> right
     4 -> top
     5 -> bottom
-    6 -> textLength.toFloat()
-    else -> error("Unknown AndroidX text measurement ${type and 0xff}")
+    6 -> if (supportsLength) textLength.toFloat() else null
+    else -> null
   }
 
 private fun DrawScope.applyMatrixFromPath(

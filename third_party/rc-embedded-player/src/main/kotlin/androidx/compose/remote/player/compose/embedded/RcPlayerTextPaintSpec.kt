@@ -72,3 +72,21 @@ internal class TextInkBounds(
     val height: Float
         get() = bottom - top
 }
+
+/**
+ * All values AndroidX's `PaintContext.getTextBounds` can select for `TextMeasure`.
+ *
+ * [left], [top], [right], and [bottom] are the tight ink rectangle. [fontTop] and [fontBottom]
+ * replace its vertical edges for `MEASURE_MAX_HEIGHT_FLAG`; [advance] replaces its horizontal
+ * extent for the two advance-based flags. Keeping the raw measurements together lets the shared
+ * operation interpreter apply AndroidX's flag order exactly on every platform.
+ */
+internal class TextMeasureBounds(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+    val fontTop: Float,
+    val fontBottom: Float,
+    val advance: Float,
+)

@@ -34,7 +34,7 @@ export class TextMeasure extends PaintOperation {
         const flags = this.mType >> 8;
         context.getTextBounds(this.mTextId, 0, -1, flags, this.mBounds);
 
-        let result = 0;
+        let result: number | undefined;
         switch (val) {
             case MEASURE_WIDTH:
                 result = this.mBounds[2] - this.mBounds[0];
@@ -55,7 +55,8 @@ export class TextMeasure extends PaintOperation {
                 result = this.mBounds[3];
                 break;
         }
-        context.getContext().loadFloat(this.mId, result);
+        // AndroidX has no default branch: an unknown selector leaves the destination untouched.
+        if (result !== undefined) context.getContext().loadFloat(this.mId, result);
     }
 
     static read(buffer: WireBuffer, operations: Operation[]): void {

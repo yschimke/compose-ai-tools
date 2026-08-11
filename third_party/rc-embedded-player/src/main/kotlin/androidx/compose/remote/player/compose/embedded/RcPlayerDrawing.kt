@@ -60,6 +60,7 @@ import androidx.compose.remote.core.operations.PaintData
 import androidx.compose.remote.core.operations.ParticlesCompare
 import androidx.compose.remote.core.operations.ParticlesLoop
 import androidx.compose.remote.core.operations.PathData
+import androidx.compose.remote.core.operations.TextMeasure
 import androidx.compose.remote.core.operations.Utils
 import androidx.compose.remote.core.operations.layout.Container
 import androidx.compose.remote.core.operations.layout.ImpulseOperation
@@ -721,6 +722,13 @@ internal fun DrawScope.executeOperations(
                     drawTextAtOriginPlatform(full, x, y, spec, read)
                 }
             }
+            is TextMeasure -> {
+                val text = read.getText(op.mTextId).orEmpty()
+                val bounds = measureTextBounds(text, paintState.toTextPaintSpec(), read)
+                selectTextMeasureResult(op.mType, bounds)?.let { result ->
+                    remoteContext.loadFloat(op.mId, result)
+                }
+            }
             is DrawBitmapScaled -> {
                 val data = op.readDataReflection()
                 val imageId =
@@ -1248,4 +1256,36 @@ internal fun DrawScope.executeOperations(
     // If a DRAW_TO_BITMAP redirect was left active (document didn't reset with bitmapId 0), restore
     // the on-screen canvas so it isn't leaked to subsequent drawing on this DrawScope.
     mainCanvas?.let { drawContext.canvas = it }
+}
+
+/**
+ * Applies AndroidX `AndroidPaintContext.getTextBounds`' flag order and `TextMeasure.paint`'s
+ * selector. Unknown selectors deliberately return null: the Java player leaves the destination id
+ * untouched rather than writing zero or failing the frame.
+ */
+internal fun selectTextMeasureResult(type: Int, measured: TextMeasureBounds): Float? {
+    val flags = type shr 8
+    var left = measured.left
+    var right = measured.right
+    var top = measured.top
+    var bottom = measured.bottom
+    if (flags and 0x04 != 0) {
+        left = 0f
+        right = measured.advance
+    } else if (flags and 0x01 != 0) {
+        right = measured.advance - left
+    }
+    if (flags and 0x02 != 0) {
+        top = measured.fontTop
+        bottom = measured.fontBottom
+    }
+    return when (type and 0xff) {
+        0 -> right - left
+        1 -> bottom - top
+        2 -> left
+        3 -> right
+        4 -> top
+        5 -> bottom
+        else -> null
+    }
 }

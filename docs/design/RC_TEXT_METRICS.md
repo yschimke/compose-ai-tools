@@ -58,6 +58,12 @@ three flags are named upstream (`MEASURE_MONOSPACE_FLAG` = 0x100, `MEASURE_MAX_H
 the advance flag (0x400) is not, though both the AOSP context above and this repo's CMP player read
 it.
 
+The low-byte selector is a second, independent contract: 0 is width (`right - left`), 1 height
+(`bottom - top`), and 2 through 5 are left, right, top and bottom. There is deliberately no default
+write. An unknown selector — including 6 — leaves the destination float untouched. Selector 6 is
+string length only on the newer `TextAttribute` operation; accepting it on opcode 155 is not a
+harmless extension because it changes observable state relative to the Java player.
+
 `RcTextGuide` turns that into nine guides. Blue is the font box, green is the ink box, magenta is the
 advance — and the colours are a contract, not decoration, because the images are read side by side.
 
@@ -150,25 +156,30 @@ would read as a text bug if you met them from the other end. They are pinned by 
   as its text, and an alignment inside a component that tight is a no-op: all six alignment fixtures
   render identically and look like six lanes agreeing.
 
-## First readings
+## Reference behaviour and parity reading
 
 From the three server-side lanes, at `xhdpi`, with no embedded font (so each lane resolves its own
 default face). These are observations from this harness in this environment, not verdicts about the
 players.
 
-**`TextMeasure` writes nothing on the two embedded lanes.** Every guide on `cmp-android` and
-`cmp-jvm` reads `0.0` and every rule collapses onto the origin, while `java` reports a full set. The
-vendored embedded player's canvas-operation walker has explicit branches for `DrawTextAnchored` and
-friends and none for `TextMeasure`, which matches. This is the first thing to fix — until it is, the
-guide lines only exist on the reference lane, and `rc:measureText` is unavailable to anything else
-that might want it.
+The first run from #3599 found that `cmp-android` and `cmp-jvm` decoded opcode 155 but never executed
+it: every destination stayed at `0.0`. After implementing the Java contract in the other players, a
+fresh 2026-08-11 run produced all 24 fixtures on each server-side lane, with no `.error` files.
 
-**The same string is 12.8% wider on `cmp-jvm`.** Measured ink extents of the 48px specimen:
-`java` 92..623 (532px), `cmp-android` 92..623 (532px), `cmp-jvm` 93..692 (600px). The Android-backed
-lanes agree to the pixel; the Skiko lane does not. With no font pinned this is far more likely to be
-a different *face* than a metrics fault — which is exactly the useful outcome: it points at
-[`RC_PLAYER_TYPEFACES.md`](RC_PLAYER_TYPEFACES.md) rather than at layout, and it is a place to look
-rather than a percentage.
+The 48px metric card is the compact conformance result:
+
+| metric | `java` | `cmp-android` | `cmp-jvm` |
+| --- | ---: | ---: | ---: |
+| font top / bottom | -45.0 / 12.0 | -45.0 / 12.0 | -37.0 / 11.0 |
+| ink top / bottom | -37.0 / 11.0 | -37.0 / 11.0 | -36.0 / 12.0 |
+| ink left / right | 3.0 / 537.0 | 3.0 / 537.0 | 2.0 / 535.6 |
+| advance | 539.0 | 539.0 | 540.0 |
+| cap top / x top | -35.0 / -26.0 | -35.0 / -26.0 | -36.0 / -27.0 |
+
+`cmp-android` now matches the AndroidX Java reference exactly because both use the same Android
+`Paint` behavior. `cmp-jvm` is nonzero and follows the same selector and flag rules, while its
+lane-native Skiko font metrics remain different. That is the intended boundary: replicate the
+operation's behavior, not pretend different host font stacks produce identical glyph geometry.
 
 **Weight moves neither number on `java`, but does move the glyphs.** The sweep reports advance
 361.0 / ink 358.0 at wght 400, then 362.0 / 359.0 at 500, 550, 599 and 700 alike — while 700 is
@@ -229,12 +240,14 @@ which is what the fixture is for.
 
 - **The browser lanes.** `js` and `cmp-wasm` render from a catalog bundle through `rc-compare`, not
   from a staged fixture directory, so wiring these in means teaching that driver about a fixture
-  source. Until then the JS lane's own `getTextBounds` is worth knowing about: it always reports
-  `left = 0` and `right = advance`, so `ink L` / `ink R` there are not the ink box at all.
+  source. Their opcode 155 implementations now follow the same selector, flag-order and unknown-mode
+  contract; the JS canvas backend uses `actualBoundingBoxLeft` / `actualBoundingBoxRight` where the
+  browser supplies them and falls back to the advance box otherwise.
 - **A pinned face.** The fixtures use the lane's default family, which leaves every reading entangled
   with typeface resolution. Embedding the face as `FontData` fixes that for `java` and `cmp-wasm`;
   the JS lane doesn't have opcode 189 in its registry and truncates the document rather than
-  substituting, so it needs either that decoder or a lane-specific variant.
+  substituting. That missing operation is tracked by
+  [#3647](https://github.com/yschimke/compose-ai-tools/issues/3647).
 - **A machine-readable metric dump.** The numbers are currently rendered into the image. A per-lane
   JSON table would let the comparison be asserted rather than read, which is what turns this from a
   diagnostic into a gate.
