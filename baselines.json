@@ -532,14 +532,14 @@
     "serve-parity.dark.png": {
       "fixture": "serve-parity",
       "theme": "dark",
-      "sha256": "2a73cd2fa217996d25b0f8d7a471aa3264f6e378dedface64c21c75e6afc69be",
-      "size": 225424
+      "sha256": "585d164422d4901a4e0df25df78023317ee7fe0ad9a658de6d92569cbb533b2a",
+      "size": 225630
     },
     "serve-parity.light.png": {
       "fixture": "serve-parity",
       "theme": "light",
-      "sha256": "817a9bc9bceeb7ce88b35a181f47dafc95bb589885c8d0ee4fb6c8647c9ae278",
-      "size": 220238
+      "sha256": "372e41e7db1dfc23150abe86134a27b81d301849011365f2ec5842ea68cb9f96",
+      "size": 220422
     },
     "serve-playground-android-catalog.dark.png": {
       "fixture": "serve-playground-android-catalog",
