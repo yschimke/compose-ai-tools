@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.19.58](https://github.com/yschimke/compose-ai-tools/compare/v0.19.57...v0.19.58) (2026-08-11)
+
+
+### Features
+
+* **bundle:** add opt-in shared classpath hydration ([#3641](https://github.com/yschimke/compose-ai-tools/issues/3641)) ([a021662](https://github.com/yschimke/compose-ai-tools/commit/a0216620b3abd5f0405f9fafb75efef791706b42))
+* **serve:** surface actionable design parity issues ([#3642](https://github.com/yschimke/compose-ai-tools/issues/3642)) ([16a739c](https://github.com/yschimke/compose-ai-tools/commit/16a739ca7e094091b0c40d08bcac8e591514c7be))
+
+
+### Bug Fixes
+
+* **bundle:** publish complete executable downloads ([#3645](https://github.com/yschimke/compose-ai-tools/issues/3645)) ([1bb5eea](https://github.com/yschimke/compose-ai-tools/commit/1bb5eeac9d6bb1e720a72a42006042934b4037fe))
+* **ci:** compare CMP Wasm against PR base ([#3638](https://github.com/yschimke/compose-ai-tools/issues/3638)) ([78ac354](https://github.com/yschimke/compose-ai-tools/commit/78ac354a9bf49caff27d4cee56856427e3ef3cbb))
+* **design-artifacts:** preserve Figma reference scale ([#3644](https://github.com/yschimke/compose-ai-tools/issues/3644)) ([3cf99ca](https://github.com/yschimke/compose-ai-tools/commit/3cf99caac2f2af20660b0ad4e9ff5337d78a65f8))
+* **layout:** canonicalize semantics property values ([#3640](https://github.com/yschimke/compose-ai-tools/issues/3640)) ([1156263](https://github.com/yschimke/compose-ai-tools/commit/11562631867f1bbea3741a132d93571e146b637b))
+
 ## [0.19.57](https://github.com/yschimke/compose-ai-tools/compare/v0.19.56...v0.19.57) (2026-08-11)
 
 
