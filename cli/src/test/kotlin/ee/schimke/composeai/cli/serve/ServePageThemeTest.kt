@@ -143,22 +143,17 @@ class ServePageThemeTest {
   }
 
   @Test
-  fun `the baked Light and Dark chips are painted in their own theme`() {
+  fun `theme chips with a resolved mode are painted in their own theme`() {
     // The chips are a taster, not two labels: each pins its own `color-scheme`, which re-resolves
     // every `light-dark()` pair — including a served catalog's palette — in THAT chip's mode. The
     // same property the page-theme setting uses, applied one level down.
     val sheet = ServeWebAssets.load("serve.css")!!.bytes.decodeToString()
     assertTrue(
-      sheet.contains(
-        """[data-theme-choice="light"], [data-compare-theme="light"]) """ +
-          "{ color-scheme: light; }"
-      ),
+      sheet.contains("""[data-compare-theme="light"]) { color-scheme: light; }"""),
       "the Light chip must resolve the token layer in light",
     )
     assertTrue(
-      sheet.contains(
-        """[data-theme-choice="dark"], [data-compare-theme="dark"]) """ + "{ color-scheme: dark; }"
-      ),
+      sheet.contains("""[data-compare-theme="dark"]) { color-scheme: dark; }"""),
       "the Dark chip must resolve it in dark",
     )
     // Selection is a ring rather than a fill swap: the fill IS the swatch, so replacing it would
@@ -171,6 +166,34 @@ class ServePageThemeTest {
         .substringBefore("}")
     assertTrue(pressed.contains("box-shadow: inset 0 0 0 2px"), pressed)
     assertTrue(pressed.contains("--md-sys-color-surface-container-low"), pressed)
+  }
+
+  @Test
+  fun `a named declared theme paints the page and card stage in its mode`() {
+    val darkTheme = ServeTheme("Dark Medium Contrast", "com.example.DarkMediumContrastTheme")
+    val html =
+      ServeWeb.landingPage(
+        "compose-m3",
+        previews,
+        token = "t",
+        declaredThemes = listOf(darkTheme),
+        canRenderThemeFor = { true },
+      )
+
+    assertTrue(
+      html.contains(
+        "data-theme-choice=\"theme:${darkTheme.providerFqn}\" data-theme-mode=\"dark\""
+      ),
+      "the declared-theme chip must carry its resolved mode",
+    )
+    assertTrue(
+      html.contains("\"theme:${darkTheme.providerFqn}\":\"dark\""),
+      "the pre-paint script must resolve a shared declared-theme URL before first paint",
+    )
+    assertTrue(
+      html.contains("if (selectedThemeMode) c.setAttribute(\"data-bg-theme\", selectedThemeMode)"),
+      "a themed render's card stage must follow that theme's mode",
+    )
   }
 
   @Test

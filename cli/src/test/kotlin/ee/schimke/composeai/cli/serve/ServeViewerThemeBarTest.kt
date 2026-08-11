@@ -68,7 +68,7 @@ class ServeViewerThemeBarTest {
         "no chip for ${theme.name}: $html",
       )
       assertTrue(
-        html.contains("<option value=\"theme:${theme.providerFqn}\">"),
+        html.contains("<option value=\"theme:${theme.providerFqn}\""),
         "the chip's value must be an option the select actually offers: $html",
       )
     }

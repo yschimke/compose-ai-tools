@@ -8,7 +8,7 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),m={"theme:com.example.BaselineDarkThemeCatalog":"dark","theme:com.example.BaselineLightThemeCatalog":"light","theme:com.example.DarkHighContrastThemeCatalog":"dark","theme:com.example.DarkMediumContrastThemeCatalog":"dark","theme:com.example.LightHighContrastThemeCatalog":"light","theme:com.example.LightMediumContrastThemeCatalog":"light"},t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));t=m[t]||t;if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
@@ -72,12 +72,12 @@
         <span class="cp-theme cp-theme-bar" role="group" aria-label="Preview theme">
           <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
           <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BaselineDarkThemeCatalog">Baseline Dark</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BaselineLightThemeCatalog">Baseline Light</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.DarkHighContrastThemeCatalog">Dark High Contrast</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.DarkMediumContrastThemeCatalog">Dark Medium Contrast</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.LightHighContrastThemeCatalog">Light High Contrast</button>
-          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.LightMediumContrastThemeCatalog">Light Medium Contrast</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BaselineDarkThemeCatalog" data-theme-mode="dark">Baseline Dark</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BaselineLightThemeCatalog" data-theme-mode="light">Baseline Light</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.DarkHighContrastThemeCatalog" data-theme-mode="dark">Dark High Contrast</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.DarkMediumContrastThemeCatalog" data-theme-mode="dark">Dark Medium Contrast</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.LightHighContrastThemeCatalog" data-theme-mode="light">Light High Contrast</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.LightMediumContrastThemeCatalog" data-theme-mode="light">Light Medium Contrast</button>
         </span>
         <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind the preview">Transparent</button>
         <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
@@ -121,12 +121,12 @@
           <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="true" data-fixed-theme="false" tabindex="-1">
             <option value="light">Day (Default)</option>
             <option value="dark" selected>Night (Default)</option>
-            <option value="theme:com.example.BaselineDarkThemeCatalog">Baseline Dark</option>
-<option value="theme:com.example.BaselineLightThemeCatalog">Baseline Light</option>
-<option value="theme:com.example.DarkHighContrastThemeCatalog">Dark High Contrast</option>
-<option value="theme:com.example.DarkMediumContrastThemeCatalog">Dark Medium Contrast</option>
-<option value="theme:com.example.LightHighContrastThemeCatalog">Light High Contrast</option>
-<option value="theme:com.example.LightMediumContrastThemeCatalog">Light Medium Contrast</option>
+            <option value="theme:com.example.BaselineDarkThemeCatalog" data-theme-mode="dark">Baseline Dark</option>
+<option value="theme:com.example.BaselineLightThemeCatalog" data-theme-mode="light">Baseline Light</option>
+<option value="theme:com.example.DarkHighContrastThemeCatalog" data-theme-mode="dark">Dark High Contrast</option>
+<option value="theme:com.example.DarkMediumContrastThemeCatalog" data-theme-mode="dark">Dark Medium Contrast</option>
+<option value="theme:com.example.LightHighContrastThemeCatalog" data-theme-mode="light">Light High Contrast</option>
+<option value="theme:com.example.LightMediumContrastThemeCatalog" data-theme-mode="light">Light Medium Contrast</option>
           </select>
         </span>
           <details class="cp-group" data-cp-group="size">
@@ -273,8 +273,10 @@
     // (daemon or Wasm). On a static bundle the select is disabled but the seeding above may still
     // have copied a remembered localStorage value into el.value — honoring it would tint the
     // stage while ServeBundleHost keeps returning the UNCHANGED baked PNG. Keep bgDefault there.
-    var chosen =
-      !el.disabled && (el.value === "light" || el.value === "dark") ? el.value : "";
+    var selectedOption = el.options[el.selectedIndex];
+    var chosen = !el.disabled && selectedOption
+      ? selectedOption.getAttribute("data-theme-mode") ||
+        (el.value === "light" || el.value === "dark" ? el.value : "") : "";
     var m = chosen || bgDefault;
     if (m) root.setAttribute("data-bg-theme", m);
     else root.removeAttribute("data-bg-theme");

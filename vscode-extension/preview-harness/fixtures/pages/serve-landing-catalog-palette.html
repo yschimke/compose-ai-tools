@@ -217,6 +217,12 @@ var appliedTheme = null;
         themeBtns.forEach(function (b) {
   b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
 });
+var selectedThemeButton = null;
+themeBtns.forEach(function (b) {
+  if (b.getAttribute("data-theme-choice") === theme) selectedThemeButton = b;
+});
+var selectedThemeMode = selectedThemeButton
+  ? selectedThemeButton.getAttribute("data-theme-mode") || "" : "";
 // Point a swap card at one of its baked variants ("l"/"d"): pixels (unless the caller is
 // supplying themed ones), alt text, label, id, viewer link and stage backing.
 // Point a card's <img> at a plain URL, releasing whatever blob it was holding first.

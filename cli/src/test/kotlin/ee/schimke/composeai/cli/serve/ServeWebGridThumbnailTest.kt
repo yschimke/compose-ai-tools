@@ -130,10 +130,14 @@ class ServeWebGridThumbnailTest {
     assertTrue(html.contains("data-theme-choice=\"light\">Light</button>"))
     assertTrue(html.contains("data-theme-choice=\"dark\">Dark</button>"))
     assertTrue(
-      html.contains("data-theme-choice=\"theme:com.example.LightTheme\">Example · Light</button>")
+      html.contains(
+        "data-theme-choice=\"theme:com.example.LightTheme\" data-theme-mode=\"light\">Example · Light</button>"
+      )
     )
     assertTrue(
-      html.contains("data-theme-choice=\"theme:com.example.DarkTheme\">Example · Dark</button>")
+      html.contains(
+        "data-theme-choice=\"theme:com.example.DarkTheme\" data-theme-mode=\"dark\">Example · Dark</button>"
+      )
     )
   }
 

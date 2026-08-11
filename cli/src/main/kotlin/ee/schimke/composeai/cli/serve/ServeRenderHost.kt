@@ -226,7 +226,29 @@ fun detectedFeaturesOf(preview: ee.schimke.composeai.cli.PreviewInfo): Pair<Bool
  * [ServePreview]. [providerFqn] is the `PreviewWrapperProvider` FQN sent verbatim as the
  * `themeProvider` override; [name] is the human label; [group] buckets related themes (a brand).
  */
-data class ServeTheme(val name: String, val providerFqn: String, val group: String? = null)
+data class ServeTheme(
+  val name: String,
+  val providerFqn: String,
+  val group: String? = null,
+  /** Light/dark mode implied by this theme, when its name or provider is unambiguous. */
+  val mode: String? = inferredThemeMode(name, providerFqn),
+)
+
+internal fun inferredThemeMode(name: String, providerFqn: String): String? {
+  val words =
+    "$name $providerFqn"
+      .replace(Regex("([a-z])([A-Z])"), "$1 $2")
+      .split(Regex("[^A-Za-z]+"))
+      .map { it.lowercase() }
+      .toSet()
+  val light = "light" in words
+  val dark = "dark" in words
+  return when {
+    light && !dark -> "light"
+    dark && !light -> "dark"
+    else -> null
+  }
+}
 
 /**
  * Extract the module's declared `@ThemeCatalog` / `@WearThemeCatalog` themes from a discovery

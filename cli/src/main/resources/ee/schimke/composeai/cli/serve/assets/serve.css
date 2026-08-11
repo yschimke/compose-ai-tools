@@ -551,18 +551,19 @@ html.cp-js .cp-section-head { display: none; }
    is painted in wear-m3's own near-black-and-cyan and the Light chip in its light projection,
    whichever way round the page itself is; the pair reads as two swatches of one system rather than
    two labels. Costs nothing: no extra data, no render, one property per chip.
-   Only the baked light/dark axis is tasted. `Default` and an app-declared `theme:<providerFqn>`
-   chip keep the plain outlined pill, because the page has no token set for either — a declared
-   theme's palette isn't published yet (design-parity#307 adds the export side), and inventing a
-   swatch for it would be a guess at the one thing the chip claims to show. */
-.cp-theme-btn:is([data-theme-choice="light"], [data-compare-theme="light"]) { color-scheme: light; }
-.cp-theme-btn:is([data-theme-choice="dark"], [data-compare-theme="dark"]) { color-scheme: dark; }
-.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"],
+   The baked axis and any declared theme with an unambiguous light/dark mode are tasted. `Default`
+   and an unqualified `theme:<providerFqn>` keep the plain outlined pill: the page cannot resolve a
+   mode for those without guessing. */
+.cp-theme-btn:is([data-theme-choice="light"], [data-theme-mode="light"],
+    [data-compare-theme="light"]) { color-scheme: light; }
+.cp-theme-btn:is([data-theme-choice="dark"], [data-theme-mode="dark"],
+    [data-compare-theme="dark"]) { color-scheme: dark; }
+.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"], [data-theme-mode],
     [data-compare-theme="light"], [data-compare-theme="dark"]) {
   background: var(--md-sys-color-surface-container-low);
   color: var(--md-sys-color-on-surface);
   border-color: var(--md-sys-color-outline-variant); }
-.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"],
+.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"], [data-theme-mode],
     [data-compare-theme="light"], [data-compare-theme="dark"]):hover:not(:disabled) {
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%,
     var(--md-sys-color-surface-container-low)); }
@@ -575,7 +576,7 @@ html.cp-js .cp-section-head { display: none; }
    against the surface it is actually painted on. Everything here therefore stays inside one
    `color-scheme`, which is also why the pin above is unconditional: a rule that dropped the pin on
    a state change would leave the chip's colours resolved in one mode and its label in another. */
-.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"],
+.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"], [data-theme-mode],
     [data-compare-theme="light"], [data-compare-theme="dark"]):disabled {
   background: var(--md-sys-color-surface-container-low);
   color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
@@ -590,13 +591,13 @@ html.cp-js .cp-section-head { display: none; }
    only, so an outward ring is clipped flat along the top — and along the outer edge of the first
    and last chip — leaving a "selected" marker with two sides missing. An inset ring is clip-proof
    in any container, and on a filled swatch it reads as the chip's own keyline anyway. */
-.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"],
+.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"], [data-theme-mode],
     [data-compare-theme="light"], [data-compare-theme="dark"])[aria-pressed="true"] {
   background: var(--md-sys-color-surface-container-low);
   color: var(--md-sys-color-on-surface);
   border-color: transparent; font-weight: 600;
   box-shadow: inset 0 0 0 2px var(--md-sys-color-primary); }
-.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"],
+.cp-theme-btn:is([data-theme-choice="light"], [data-theme-choice="dark"], [data-theme-mode],
     [data-compare-theme="light"], [data-compare-theme="dark"])[aria-pressed="true"]:disabled {
   color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 38%, transparent); }

@@ -4312,7 +4312,7 @@ class ServeWebFixtureTest {
     )
     assertTrue(
       view.contains(
-        "<option value=\"theme:com.example.BrandLightThemeCatalog\">Brand Light</option>"
+        "<option value=\"theme:com.example.BrandLightThemeCatalog\" data-theme-mode=\"light\">Brand Light</option>"
       ),
       "each declared theme is an option keyed by its provider FQN",
     )
@@ -4360,7 +4360,9 @@ class ServeWebFixtureTest {
     assertTrue(
       Regex("<select id=\"cp-theme\"[^>]*data-has-declared-themes=\"true\"[^>]* disabled>")
         .containsMatchIn(staticThemed) &&
-        staticThemed.contains("value=\"theme:com.example.BrandLightThemeCatalog\" disabled"),
+        staticThemed.contains(
+          "value=\"theme:com.example.BrandLightThemeCatalog\" data-theme-mode=\"light\" disabled"
+        ),
       "the theme selector is disabled on a static bundle (no daemon to apply it)",
     )
   }
