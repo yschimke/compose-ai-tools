@@ -640,14 +640,14 @@
     "serve-reference-compare-annotated.dark.png": {
       "fixture": "serve-reference-compare-annotated",
       "theme": "dark",
-      "sha256": "134a3f66168cf3b714b94e08ef4ce725021d7a20f6d839017b98d9c109dfbf31",
-      "size": 86617
+      "sha256": "6b0ae08ddb54d38d2717e4911c01553839c0e8166c3c2eb8e22936014eef4661",
+      "size": 107150
     },
     "serve-reference-compare-annotated.light.png": {
       "fixture": "serve-reference-compare-annotated",
       "theme": "light",
-      "sha256": "133d22f1fa60143560bc1a431a76c6c8d6e3d91557a7032522d3ab3965b5434b",
-      "size": 85550
+      "sha256": "470335668bb3b8aea6d33663edf765cc79ab5be84c34c0e894df9eabe3a59ac1",
+      "size": 105225
     },
     "serve-reference-compare.dark.png": {
       "fixture": "serve-reference-compare",
