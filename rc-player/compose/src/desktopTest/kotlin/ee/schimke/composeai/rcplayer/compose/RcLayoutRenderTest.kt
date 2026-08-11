@@ -20,6 +20,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleRowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcColorConstant
+import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcComponentValue
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
@@ -66,6 +68,65 @@ import kotlin.test.assertTrue
 import org.jetbrains.skia.Bitmap
 
 class RcLayoutRenderTest {
+  @Test
+  fun rootStateOperationsFeedComponentModifiers() {
+    val grey = 0xffb0b0b0.toInt()
+    val blue = 0xff2196f3.toInt()
+    val progressId = 46
+    val colorId = 47
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 40, legacyHeight = 24, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcColorConstant(44, grey),
+          RcColorConstant(45, blue),
+          ee.schimke.composeai.rcplayer.protocol.RcFloatExpression(
+            progressId,
+            listOf(RcFloatWord.literal(0f)),
+            animation = listOf(RcFloatWord.literal(0.2f)),
+          ),
+          RcColorExpression(
+            colorId,
+            RcColorExpression.ID_ID_INTERPOLATE,
+            44,
+            45,
+            RcFloatWord(0x7fc00000 or progressId).bits,
+          ),
+          RcBoxLayout(3, 30, 1, 4),
+          width(40f),
+          height(24f),
+          RcBackgroundModifier(
+            flags = RcBackgroundModifier.COLOR_REFERENCE_FLAG,
+            colorId = colorId,
+            reserved1 = 0,
+            reserved2 = 0,
+            red = RcFloatWord.literal(0f),
+            green = RcFloatWord.literal(0f),
+            blue = RcFloatWord.literal(0f),
+            alpha = RcFloatWord.literal(0f),
+            shapeType = RcBackgroundModifier.SHAPE_RECTANGLE,
+          ),
+          RcLayoutContent(4),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+    val scene =
+      ImageComposeScene(width = 40, height = 24, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val bitmap = Bitmap().apply { allocN32Pixels(40, 24) }
+      check(scene.render(0L).readPixels(bitmap))
+
+      assertEquals(grey, bitmap.getColor(20, 12))
+    } finally {
+      scene.close()
+    }
+  }
+
   @Test
   fun marqueeClipsOverflowingLayoutContent() {
     val red = 0xffff0000.toInt()

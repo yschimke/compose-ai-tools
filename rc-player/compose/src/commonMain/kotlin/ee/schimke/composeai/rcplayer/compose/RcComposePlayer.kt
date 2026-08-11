@@ -211,6 +211,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPathExpression
 import ee.schimke.composeai.rcplayer.protocol.RcPathTween
 import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
+import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
@@ -4011,12 +4012,12 @@ private fun blendMode(value: Int): BlendMode =
  * a `COLOR_EXPRESSIONS` feeding a background modifier — have no other execution site in the layout
  * path. Operations nested in a container that owns its own execution (CanvasOperations,
  * LayoutCompute) are left to that owner; only the direct children of a LayoutComponentContent are
- * replayed here.
+ * replayed here. RootLayout also executes direct ComponentData before it paints its children.
  */
 private fun List<RcLinkedNode>.collectContentStateOperations(): List<RcLinkedNode> = buildList {
   this@collectContentStateOperations.filterIsInstance<RcLinkedNode.Container>().forEach { container
     ->
-    if (container.operation is RcLayoutContent) {
+    if (container.operation is RcRootLayout || container.operation is RcLayoutContent) {
       addAll(container.children.filterIsInstance<RcLinkedNode.Operation>())
     }
     addAll(container.children.collectContentStateOperations())
