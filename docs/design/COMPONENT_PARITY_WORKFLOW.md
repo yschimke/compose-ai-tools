@@ -238,9 +238,12 @@ Each acceptance record carries: a stable `id`; a **mandatory** `issue` URL; the 
 (`system` / `component` / `previewId` / `referenceId` / `variant`); an optional `element` selector
 (see the annotation-contract prerequisite in §5, when the region came from an annotated element
 rather than a drag); `mask` and `acceptedCandidate` paths; **three** hashes — `referenceSha256`,
-`acceptedCandidateSha256` **and `maskSha256`**; an optional structured `finding` matcher (e.g.
-`{ kind: "color", token: "onSecondaryContainer", expected: …, actual: … }`) for the checks
-design-parity runs that are not pixel comparisons; and free-text `note` + `acceptedAt`.
+`acceptedCandidateSha256` **and `maskSha256`**; the **canonical plane the mask was authored
+against** — a `plane: "content-box" | "full-canvas"` discriminant plus the resolved
+`{x, y, width, height}` box, without which the plane gate (step 2 below) cannot be evaluated at
+all; an optional structured `finding` matcher (e.g. `{ kind: "color", token: …, expected: …,
+actual: … }`) for the checks design-parity runs that are not pixel comparisons; and free-text
+`note` + `acceptedAt`.
 
 **The mask must be hashed, not just referenced by path.** The mask is the thing that decides *what
 gets suppressed*, so an edited or swapped `mask.png` with an unchanged JSON record silently widens
@@ -300,8 +303,15 @@ plane:
 | Source | Native space | Transform into the canonical plane |
 | --- | --- | --- |
 | Reference annotation `bounds` | the **full reference raster** (`DesignAnnotation` KDoc: "the annotated image's own pixel space") | subtract `(referenceBox.x, referenceBox.y)`; scale 1; clip |
-| Drag rectangle on the reference panel | CSS/display pixels of the `<img>` | scale by `rasterWidth / displayWidth`, then subtract the box origin; clip |
-| Render-side annotation `bounds` | **render** pixel space | map through the candidate content box → the shared box, i.e. subtract `(candidateBox.x, candidateBox.y)` then scale by `referenceBox.width / candidateBox.width`; clip |
+| Drag rectangle on the reference panel | CSS/display pixels of the `<img>` | scale by `rasterWidth / displayWidth` and `rasterHeight / displayHeight`, then subtract the box origin; clip |
+| Render-side annotation `bounds` | **render** pixel space | subtract `(candidateBox.x, candidateBox.y)`, then scale **x and y independently** — `referenceBox.width / candidateBox.width` for x, `referenceBox.height / candidateBox.height` for y; clip |
+
+**The two axes scale independently, and that is not a rounding detail.** `boxCanvas` stretches each
+source box onto the target width and height separately, and the comparison explicitly *supports*
+the two content boxes having different aspect ratios — `aspectDelta` reports the proportion
+difference as a finding rather than normalising it away. So a reference and a render that disagree
+about proportion (exactly the case an acceptance is most likely to be sitting on) would put a
+single-ratio mask at the right x and the wrong y.
 
 A selection that clips to empty is refused at authoring time rather than stored as a zero-area mask.
 
@@ -323,23 +333,48 @@ referenceId, variant)`:
    the acceptance is `invalidated: reference-changed`. It contributes no suppression, and the page
    says so. An acceptance targeting a reference that publishes no `sha256` is refused at validation
    time.
-2. **Score everything outside the union of masks normally.** This is the ordinary path and is
-   untouched by acceptance; a regression anywhere else scores exactly as it does today.
-3. **Inside each mask, compare the current candidate against `accepted-candidate.png`** — not
+2. **Plane gate.** Recompute the plane for this pair. If its `plane` discriminant or resolved box
+   disagrees with the acceptance's recorded one — a candidate that has crossed `MIN_BOX_COVERAGE`
+   since the acceptance was authored — it is `invalidated: plane-changed`. Comparing across two
+   different coordinate planes is meaningless, so this has to precede any pixel work.
+3. **Score everything outside the union of masks normally** — where "outside" means excluded in
+   **both** roles, see below. This is the ordinary path; a regression anywhere else scores exactly
+   as it does today.
+4. **Inside each mask, compare the current candidate against `accepted-candidate.png`** — not
    against the reference. Match within tolerance ⇒ that mask's pixels are suppressed from the
    *effective* diff. Mismatch ⇒ `invalidated: candidate-changed`, nothing is suppressed, and the
    region is reported as a new difference.
-4. **Element check.** When the acceptance names an `element`, resolve it against the current
+5. **Element check.** When the acceptance names an `element`, resolve it against the current
    annotation layer. Missing, or moved beyond a bounds tolerance ⇒ `invalidated: element-moved`.
    This is what catches "the glyph disappeared" as distinct from "the glyph is still the wrong
    colour", which a rectangular ignore region fundamentally cannot.
-5. **Report raw, accepted and unaccepted separately.** The raw finding is never destroyed. The
+6. **Report raw, accepted and unaccepted separately.** The raw finding is never destroyed. The
    comparison shows all three numbers and the delta map gains an "accepted" tint distinct from the
    magenta of unaccepted difference, so an acceptance is *visible* rather than a hole in the data.
 
+#### Masked pixels must be excluded in both roles, in both directions
+
+Step 3 says "outside the union of masks", and the obvious reading — skip masked pixels when
+iterating — is **not sufficient**, because of how `scorePlanes` actually works. Each directed pass
+takes a source pixel and searches a ±`EDGE_SEARCH_RADIUS` (5 px) neighbourhood of the *target* plane
+for its best match. So an unmasked pixel just outside a mask can find its best match at a target
+pixel *inside* the mask — and since the inside pixels are accepted-but-different by construction,
+that match can erase a real mismatch. A regression within 5 score-plane pixels of an accepted region
+would score as clean.
+
+The rule therefore has to be: **a masked coordinate is excluded both as a scored source and as a
+candidate neighbour, in both directed passes.** A source pixel whose entire neighbourhood is masked
+contributes nothing rather than falling back to a best-of-nothing default.
+
+This is precisely the kind of thing two implementations can agree on for ordinary inputs and diverge
+on at the boundary, so the conformance fixtures in the next section must include **a regression
+placed within `EDGE_SEARCH_RADIUS` of a mask edge** as a named case. Without it, both engines can
+pass the suite and still let an accepted region hide its neighbour.
+
 This is deliberately more expensive than a threshold or an ignore rectangle, and that expense is the
-point: the epic's non-goals rule out anything that can hide an unrelated regression, and steps 3 and
-4 are what make an accepted colour delta unable to mask a missing glyph.
+point: the epic's non-goals rule out anything that can hide an unrelated regression, and steps 4 and
+5 — plus the neighbourhood exclusion above — are what make an accepted colour delta unable to mask a
+missing glyph or the regression sitting next to it.
 
 ### Two engines, one semantics
 
@@ -387,7 +422,7 @@ type at all, and the projection throws the tag away: `themeAnnotation` collapses
 `node.role ?: node.testTag ?: node.textSnippet()` into a single `role` string, and
 `typographyAnnotation` sets `role` from `textSnippet()` alone, dropping the tag entirely. So an
 `element` selector keyed on "role / testTag" is not a selector — a node carrying a common role
-(`Button`) and a unique `testTag` loses the only part that identified it, and the gate-4 element
+(`Button`) and a unique `testTag` loses the only part that identified it, and the element
 check would either resolve the wrong one of several repeated roles or fail to resolve at all. Both
 outcomes are worse than no element check: one silently moves an acceptance onto a different element,
 the other permanently reports `element-moved`.
@@ -453,7 +488,7 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
 ### Phase 4 — Resolution
 
 11. **Detect resolved** (raw difference gone, acceptance still present), **invalidated** (any of the
-    four gates in §4), and **stale** (issue closed, acceptance remains) — surfaced on the dashboard
+    any of the four invalidation causes in §4 — reference-changed, plane-changed, candidate-changed, element-moved), and **stale** (issue closed, acceptance remains) — surfaced on the dashboard
     and as a gate in the offline run.
 12. **Document** the reporting → triage → acceptance → verification → closure loop in
     `docs/public-preview-server.md`, beside the existing parity view section.
