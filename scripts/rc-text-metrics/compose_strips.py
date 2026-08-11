@@ -16,7 +16,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 LANES = ("java", "cmp-android", "cmp-jvm")
 
@@ -27,13 +27,25 @@ BACKGROUND = (24, 26, 30)
 LABEL_COLOR = (208, 212, 220)
 
 # The strips worth committing, and the fixtures each one stacks. Everything else in the 24-fixture
-# set is rendered but not composed: these five are the ones the README and the PR body argue from,
+# set is rendered but not composed: these seven are the ones the README and the PR body argue from,
 # and a strip nobody cites is a file that only ever goes stale.
 STRIPS: dict[str, list[str]] = {
     "card-three-lanes": ["text-metrics-card"],
     "weight-sweep-three-lanes": ["text-metrics-weight-sweep"],
     "layout-single-ellipsis-three-lanes": ["text-metrics-layout-single-ellipsis"],
     "layout-wrap-ellipsis-three-lanes": ["text-metrics-layout-wrap-ellipsis"],
+    "layout-single-modes-three-lanes": [
+        "text-metrics-layout-single-clip",
+        "text-metrics-layout-single-visible",
+        "text-metrics-layout-single-ellipsis",
+        "text-metrics-layout-single-start-ellipsis",
+        "text-metrics-layout-single-middle-ellipsis",
+    ],
+    "layout-paragraph-modes-three-lanes": [
+        "text-metrics-layout-wrap-clip",
+        "text-metrics-layout-wrap-ellipsis",
+        "text-metrics-layout-wrap-justify",
+    ],
     "alignment-ltr-vs-rtl-three-lanes": [
         "text-metrics-layout-align-start",
         "text-metrics-layout-align-end",
@@ -45,6 +57,32 @@ STRIPS: dict[str, list[str]] = {
 
 LABEL_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 LABEL_FONT_SIZE = 13
+
+# `RcTextMetricDocuments` pins every layout probe's text component to 300x120 at the origin. Inset
+# one pixel to exclude the box border: Java View and Compose rasterise that stroke differently, and
+# it is not text. The rightmost interior pixel remains, so a clipped partial glyph still counts.
+LAYOUT_BOX = (1, 1, 299, 119)
+
+
+def layout_parity(lanes_dir: Path) -> None:
+    """Print exact single-line/paragraph pixel residuals against AndroidX Java."""
+    reference = lanes_dir / "java"
+    for lane in LANES[1:]:
+        for group in ("single", "wrap"):
+            fixtures = sorted(reference.glob(f"text-metrics-layout-{group}-*.png"))
+            changed = 0
+            pixels = 0
+            for fixture in fixtures:
+                expected = Image.open(fixture).convert("RGB").crop(LAYOUT_BOX)
+                actual = Image.open(lanes_dir / lane / fixture.name).convert("RGB").crop(LAYOUT_BOX)
+                difference = ImageChops.difference(expected, actual)
+                changed += sum(pixel != (0, 0, 0) for pixel in difference.getdata())
+                pixels += expected.width * expected.height
+            percent = changed * 100 / pixels if pixels else 0
+            print(
+                f"    layout parity {lane:11} {group:6}: "
+                f"{changed}/{pixels} changed pixels ({percent:.3f}%)"
+            )
 
 
 def load_font() -> ImageFont.FreeTypeFont:
@@ -106,6 +144,8 @@ def main(argv: list[str]) -> int:
     lanes_dir, out_dir = Path(argv[1]), Path(argv[2])
     out_dir.mkdir(parents=True, exist_ok=True)
     font = load_font()
+
+    layout_parity(lanes_dir)
 
     for name, fixtures in STRIPS.items():
         strip = compose(lanes_dir, fixtures, font)

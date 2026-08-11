@@ -53,6 +53,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
+import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextLookup
 import ee.schimke.composeai.rcplayer.protocol.RcTextLookupInt
 import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
@@ -683,6 +684,40 @@ class RcComposeSupportTest {
 
     assertEquals("TextStyle", issue.operation)
     assertEquals("underline is not implemented", issue.detail)
+  }
+
+  @Test
+  fun acceptsAllAndroidXEllipsisPlacements() {
+    listOf(
+        RcTextLayout.OVERFLOW_ELLIPSIS,
+        RcTextLayout.OVERFLOW_START_ELLIPSIS,
+        RcTextLayout.OVERFLOW_MIDDLE_ELLIPSIS,
+      )
+      .forEach { overflow ->
+        val document =
+          RcDocument(
+            header,
+            listOf(
+              RcTextData(42, "A line long enough to truncate"),
+              RcRootLayout(1),
+              RcLayoutContent(2),
+              RcCoreText(
+                42,
+                listOf(
+                  RcTextStyleProperty.IntValue(1, 10),
+                  RcTextStyleProperty.IntValue(10, overflow),
+                  RcTextStyleProperty.IntValue(11, 1),
+                ),
+              ),
+              RcNoArg(RcOpcodes.CONTAINER_END),
+              RcNoArg(RcOpcodes.CONTAINER_END),
+              RcNoArg(RcOpcodes.CONTAINER_END),
+            ),
+          )
+
+        val report = document.composeSupportReport()
+        assertTrue(report.fullyRenderable, "overflow $overflow: ${report.issues}")
+      }
   }
 
   @Test

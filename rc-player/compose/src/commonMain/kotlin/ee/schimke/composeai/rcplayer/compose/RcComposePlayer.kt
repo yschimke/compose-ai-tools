@@ -918,7 +918,7 @@ private fun RenderLayoutNode(
             textAlign = operation.composeTextAlign(),
           ),
         overflow = operation.composeTextOverflow(),
-        maxLines = operation.maxLines,
+        maxLines = androidXMaxLines(operation.overflow, operation.maxLines),
       )
     }
     is RcLayoutNode.CoreText -> {
@@ -979,7 +979,11 @@ private fun RenderLayoutNode(
             textAlign = androidXTextAlign(properties.intProperty(9, RcTextLayout.ALIGN_LEFT)),
           ),
         overflow = androidXTextOverflow(properties.intProperty(10, RcTextLayout.OVERFLOW_CLIP)),
-        maxLines = properties.intProperty(11, Int.MAX_VALUE),
+        maxLines =
+          androidXMaxLines(
+            properties.intProperty(10, RcTextLayout.OVERFLOW_CLIP),
+            properties.intProperty(11, Int.MAX_VALUE),
+          ),
       )
     }
     is RcLayoutNode.FitBox -> {
@@ -1403,7 +1407,9 @@ private fun androidXTextAlign(value: Int): TextAlign =
     RcTextLayout.ALIGN_LEFT -> TextAlign.Left
     RcTextLayout.ALIGN_RIGHT -> TextAlign.Right
     RcTextLayout.ALIGN_CENTER -> TextAlign.Center
-    RcTextLayout.ALIGN_JUSTIFY -> TextAlign.Justify
+    // AndroidPaintContext maps this alignment field to ALIGN_NORMAL. CoreText's property 17 is
+    // the independent switch that enables inter-word/inter-character justification.
+    RcTextLayout.ALIGN_JUSTIFY -> TextAlign.Start
     RcTextLayout.ALIGN_START -> TextAlign.Start
     RcTextLayout.ALIGN_END -> TextAlign.End
     else -> error("Unknown AndroidX text alignment $value")
@@ -1416,7 +1422,19 @@ private fun androidXTextOverflow(value: Int): TextOverflow =
     RcTextLayout.OVERFLOW_CLIP -> TextOverflow.Clip
     RcTextLayout.OVERFLOW_VISIBLE -> TextOverflow.Visible
     RcTextLayout.OVERFLOW_ELLIPSIS -> TextOverflow.Ellipsis
+    RcTextLayout.OVERFLOW_START_ELLIPSIS -> TextOverflow.StartEllipsis
+    RcTextLayout.OVERFLOW_MIDDLE_ELLIPSIS -> TextOverflow.MiddleEllipsis
     else -> error("Unsupported AndroidX text overflow $value")
+  }
+
+private fun androidXMaxLines(overflow: Int, maxLines: Int): Int =
+  if (
+    maxLines > 1 &&
+      (overflow == RcTextLayout.OVERFLOW_CLIP || overflow == RcTextLayout.OVERFLOW_VISIBLE)
+  ) {
+    Int.MAX_VALUE
+  } else {
+    maxLines
   }
 
 private fun List<RcTextStyleProperty>.intProperty(id: Int, default: Int): Int =

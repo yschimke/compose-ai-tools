@@ -124,7 +124,9 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
                 CoreText.TEXT_ALIGN_LEFT -> TextAlign.Left
                 CoreText.TEXT_ALIGN_RIGHT -> TextAlign.Right
                 CoreText.TEXT_ALIGN_CENTER -> TextAlign.Center
-                CoreText.TEXT_ALIGN_JUSTIFY -> TextAlign.Justify
+                // AndroidX Java maps this field to ALIGN_NORMAL. Actual justification is the
+                // separate CoreText property 17 (justificationMode).
+                CoreText.TEXT_ALIGN_JUSTIFY -> TextAlign.Start
                 CoreText.TEXT_ALIGN_START -> TextAlign.Start
                 CoreText.TEXT_ALIGN_END -> TextAlign.End
                 else -> TextAlign.Start
@@ -134,9 +136,11 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
                 CoreText.OVERFLOW_CLIP -> TextOverflow.Clip
                 CoreText.OVERFLOW_ELLIPSIS -> TextOverflow.Ellipsis
                 CoreText.OVERFLOW_VISIBLE -> TextOverflow.Visible
+                CoreText.OVERFLOW_START_ELLIPSIS -> TextOverflow.StartEllipsis
+                CoreText.OVERFLOW_MIDDLE_ELLIPSIS -> TextOverflow.MiddleEllipsis
                 else -> TextOverflow.Clip
             },
-        maxLines = data.maxLines,
+        maxLines = javaPlayerMaxLines(data.overflow, data.maxLines),
         letterSpacing = data.letterSpacing.em,
         lineHeight =
             if (data.lineHeightMultiplier != 1f || data.lineHeightAdd != 0f) {
@@ -194,7 +198,7 @@ internal fun RcPlayerText(layout: TextLayout, modifier: Modifier) {
                 TextLayout.TEXT_ALIGN_LEFT -> TextAlign.Left
                 TextLayout.TEXT_ALIGN_RIGHT -> TextAlign.Right
                 TextLayout.TEXT_ALIGN_CENTER -> TextAlign.Center
-                TextLayout.TEXT_ALIGN_JUSTIFY -> TextAlign.Justify
+                TextLayout.TEXT_ALIGN_JUSTIFY -> TextAlign.Start
                 TextLayout.TEXT_ALIGN_START -> TextAlign.Start
                 TextLayout.TEXT_ALIGN_END -> TextAlign.End
                 else -> TextAlign.Start
@@ -204,11 +208,31 @@ internal fun RcPlayerText(layout: TextLayout, modifier: Modifier) {
                 TextLayout.OVERFLOW_CLIP -> TextOverflow.Clip
                 TextLayout.OVERFLOW_ELLIPSIS -> TextOverflow.Ellipsis
                 TextLayout.OVERFLOW_VISIBLE -> TextOverflow.Visible
+                TextLayout.OVERFLOW_START_ELLIPSIS -> TextOverflow.StartEllipsis
+                TextLayout.OVERFLOW_MIDDLE_ELLIPSIS -> TextOverflow.MiddleEllipsis
                 else -> TextOverflow.Clip
             },
-        maxLines = data.maxLines,
+        maxLines = javaPlayerMaxLines(data.overflow, data.maxLines),
     )
 }
+
+/**
+ * Match `AndroidPaintContext`'s `StaticLayout` result rather than Compose's stricter line cap.
+ *
+ * The AndroidX Java player only makes `maxLines` truncate a paragraph when an ellipsis mode is
+ * selected. Clip/visible paragraphs with more than one requested line continue laying out and are
+ * bounded by the component's clip rect instead. A one-line request stays one line because Java's
+ * `CoreText` uses its unwrapped fast path for that case.
+ */
+private fun javaPlayerMaxLines(overflow: Int, maxLines: Int): Int =
+    if (
+        maxLines > 1 &&
+            (overflow == CoreText.OVERFLOW_CLIP || overflow == CoreText.OVERFLOW_VISIBLE)
+    ) {
+        Int.MAX_VALUE
+    } else {
+        maxLines
+    }
 
 @Composable
 private fun rememberCustomFontName(fontFamilyType: Int, context: RemoteContext): State<String?> {

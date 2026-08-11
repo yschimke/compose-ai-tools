@@ -61,14 +61,30 @@ lane under an RTL layout direction.
 
 ## The layout-tree modes
 
-![single-line ellipsis on three lanes](layout-single-ellipsis-three-lanes.png)
+![all single-line overflow modes on three lanes](layout-single-modes-three-lanes.png)
 
-![three-line ellipsis on three lanes](layout-wrap-ellipsis-three-lanes.png)
+![all paragraph modes on three lanes](layout-paragraph-modes-three-lanes.png)
 
 The dark rectangle is the box the text was handed; the magenta rule is where the *player's* own
 measurement says a single unwrapped line of the same string ends. On the single-line fixture the
 advance (316px) lands just outside the 300px box, which is why it ellipsised; on the wrapping fixture
 the one-line advance is 1098px and runs off the frame.
+
+The script also compares only the 298x118 interior of each box against `java`; the frame, title and
+numeric guide labels do not count. Before the parity mapping, `cmp-android` differed on **2.280%**
+of single-line pixels and **8.730%** of paragraph pixels. The selected behavior reduces those to
+**0.154%** and **0.000%** respectively. End/start/middle ellipsis and every paragraph mode are
+pixel-identical on Android. Clip/visible retain a tiny right-edge partial-glyph difference.
+
+The JVM column also shows a real remaining limit: its current Compose Desktop/Skiko backend paints
+start and middle ellipsis as end ellipsis. That is tracked in
+[#3662](https://github.com/yschimke/compose-ai-tools/issues/3662), rather than hidden by the aggregate
+score.
+
+The pictures also pin two non-obvious Java behaviors: multi-line clip continues beyond
+`maxLines = 3` while ellipsis stops at three, and the alignment value named `JUSTIFY` maps to normal
+alignment unless separate justification property 17 is enabled. Matching those observations—not
+Compose's similarly named defaults—is what produced the lower residual.
 
 ## Regenerating
 
@@ -76,7 +92,7 @@ the one-line advance is 1098px and runs off the frame.
 scripts/rc-text-metrics/render-strips.sh
 ```
 
-That builds the fixtures, renders all three lanes, and rewrites the five `*-three-lanes.png` files
+That builds the fixtures, renders all three lanes, and rewrites the seven `*-three-lanes.png` files
 in this directory — the images above, not just the per-fixture PNGs. It is one script rather than a
 block of commands to copy because the underlying invocation has **three** ways to look like it
 worked while producing nothing or something stale, and the strips are what the design doc argues
@@ -102,11 +118,11 @@ the lane directories first for the same reason.
 It needs **Pillow** and the **DejaVu Sans** font (`pip install Pillow`, `apt-get install
 fonts-dejavu-core`). Both are checked before the renders start rather than after them, and the font
 is pinned with no fallback on purpose: labelling the strips with whatever face a host happens to
-have would rewrite all five committed PNGs and read as a rendering change when only the caption
+have would rewrite all seven committed PNGs and read as a rendering change when only the caption
 moved.
 
 Pass a directory to keep the per-lane PNGs somewhere predictable
 (`scripts/rc-text-metrics/render-strips.sh /tmp/rc-metrics`); otherwise they go to a temporary
 directory whose path is printed at the end. Which fixtures become strips is
 [`compose_strips.py`](../../scripts/rc-text-metrics/compose_strips.py)'s `STRIPS` table — all 24
-fixtures render, and only the five cited here are composed.
+fixtures render, and only the seven cited here are composed.

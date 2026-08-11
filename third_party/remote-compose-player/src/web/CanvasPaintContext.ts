@@ -1300,12 +1300,23 @@ export class CanvasPaintContext extends PaintContext {
         const size = this.textSize > 0 ? this.textSize : DEFAULT_TEXT_SIZE;
         const lineHeight = size * (lineHeightMultiplier || 1.2);
 
-        // Word-wrap text to fit maxWidth, honoring embedded newlines as hard breaks
+        // AndroidX keeps a one-line clip/visible layout unwrapped and lets the component clip the
+        // glyph run. Wrapping it first loses the partial word at the right edge.
+        if (maxLines === 1 && (overflow === 1 || overflow === 2)) {
+            return {
+                lines: [text.replace(/\n/g, '')], alignment, lineHeight,
+                width: Math.min(this.ctx.measureText(text).width, maxWidth),
+                height: Math.min(lineHeight, maxHeight), visibleLines: 1
+            };
+        }
+
+        // Word-wrap text to fit maxWidth, honoring embedded newlines as hard breaks. Build the
+        // complete paragraph first: the Java player ignores maxLines for multi-line clip/visible
+        // text, while ellipsis modes cap it after layout.
         const lines: string[] = [];
         // First split on hard newlines, then word-wrap each paragraph
         const paragraphs = text.split('\n');
         for (let pi = 0; pi < paragraphs.length; pi++) {
-            if (maxLines > 0 && lines.length >= maxLines) break;
             const para = paragraphs[pi];
             const words = para.split(/(\s+)/);
             let currentLine = '';
@@ -1315,27 +1326,47 @@ export class CanvasPaintContext extends PaintContext {
                 if (metrics.width > maxWidth && currentLine.length > 0) {
                     lines.push(currentLine);
                     currentLine = word.trimStart();
-                    if (maxLines > 0 && lines.length >= maxLines) break;
                 } else {
                     currentLine = testLine;
                 }
             }
-            if (currentLine.length > 0 && (maxLines <= 0 || lines.length < maxLines)) {
+            if (currentLine.length > 0) {
                 lines.push(currentLine);
-            } else if (para.length === 0 && (maxLines <= 0 || lines.length < maxLines)) {
+            } else if (para.length === 0) {
                 // Empty paragraph = blank line from consecutive \n
                 lines.push('');
             }
         }
 
-        // Apply ellipsis if overflowing
-        if (overflow === 1 && maxLines > 0 && lines.length >= maxLines) {
-            const lastIdx = maxLines - 1;
-            let lastLine = lines[lastIdx];
-            while (this.ctx.measureText(lastLine + '...').width > maxWidth && lastLine.length > 0) {
-                lastLine = lastLine.substring(0, lastLine.length - 1);
+        const ellipsizeEnd = (value: string): string => {
+            while (this.ctx.measureText(value + '…').width > maxWidth && value.length > 0) {
+                value = value.substring(0, value.length - 1);
             }
-            lines[lastIdx] = lastLine + '...';
+            return value + '…';
+        };
+        const ellipsizeStart = (value: string): string => {
+            while (this.ctx.measureText('…' + value).width > maxWidth && value.length > 0) {
+                value = value.substring(1);
+            }
+            return '…' + value;
+        };
+        const ellipsizeMiddle = (value: string): string => {
+            let left = Math.ceil(value.length / 2);
+            let right = left;
+            while (this.ctx.measureText(value.substring(0, left) + '…' +
+                    value.substring(right)).width > maxWidth && left > 0) {
+                if ((value.length - right) < left) left--; else right++;
+            }
+            return value.substring(0, left) + '…' + value.substring(right);
+        };
+
+        // StaticLayout only makes maxLines truncate these fixtures when ellipsizing. Compose's
+        // stricter clip cap is intentionally not copied here.
+        if (overflow >= 3 && overflow <= 5 && maxLines > 0 && lines.length > maxLines) {
+            const lastIdx = maxLines - 1;
+            const value = maxLines === 1 ? text.replace(/\n/g, '') : lines[lastIdx];
+            lines[lastIdx] = overflow === 4 ? ellipsizeStart(value)
+                : overflow === 5 ? ellipsizeMiddle(value) : ellipsizeEnd(value);
             lines.length = maxLines;
         }
 
@@ -1362,10 +1393,10 @@ export class CanvasPaintContext extends PaintContext {
         this.ctx.textBaseline = 'top';
         for (let i = 0; i < lines.length; i++) {
             let x = 0;
-            if (alignment === 2 || alignment === 4) {
+            if (alignment === 2 || alignment === 6) {
                 // RIGHT / END
                 x = width - this.ctx.measureText(lines[i]).width;
-            } else if (alignment === 1) {
+            } else if (alignment === 3) {
                 // CENTER
                 x = (width - this.ctx.measureText(lines[i]).width) / 2;
             }
