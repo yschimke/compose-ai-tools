@@ -268,7 +268,7 @@ Each acceptance record carries: a stable `id`; a **mandatory** `issue` URL; the 
 rather than a drag); `mask` and `acceptedCandidate` paths; **three** hashes — `referenceSha256`,
 `acceptedCandidateSha256` **and `maskSha256`**; the **canonical plane the mask was authored
 against** — a `plane: "content-box" | "full-canvas"` discriminant plus the resolved
-`{x, y, width, height}` box, without which the plane gate (step 2 below) cannot be evaluated at
+`{x, y, width, height}` box, without which the plane gate (step 1 below) cannot be evaluated at
 all; an optional structured `finding` matcher (e.g. `{ kind: "color", token: …, expected: …,
 actual: … }`) for the checks design-parity runs that are not pixel comparisons; and free-text
 `note` + `acceptedAt`.
@@ -297,10 +297,19 @@ sequenced as such (§6).
 > and every one of those restatements eventually drifted out of step with the others.
 
 **Pipeline, in order.** Each step consumes the previous step's output; the order is load-bearing.
+The gates are split deliberately: the two that depend only on **metadata** run first, because they
+decide whether a coordinate space even exists to do pixel work in; the two that depend on **pixels**
+can only run once that space is established.
 
-1. **Decode** all four rasters — reference, current candidate, `mask.png`, `accepted-candidate.png`
+1. **Metadata gates** — `reference-changed` and `plane-changed`, in that order. Both precede every
+   pixel operation. The plane gate in particular *cannot* come later: it is what establishes that
+   the plane the acceptance recorded still matches the one this pair resolves to, and steps 3–4
+   have no valid destination to map or resample into until it has. A pair that has crossed
+   `MIN_BOX_COVERAGE` since authoring must return `plane-changed` cleanly here rather than
+   resampling against a stale plane or colliding with incompatible dimensions.
+2. **Decode** all four rasters — reference, current candidate, `mask.png`, `accepted-candidate.png`
    — under the declared pixel/colour semantics.
-2. **Separate** — map the mask onto **both** inputs and split each into masked and unmasked regions,
+3. **Separate** — map the mask onto **both** inputs and split each into masked and unmasked regions,
    in that input's own pixel space, **before any resample.** Separation must precede the resample,
    not follow it: once a kernel has averaged across a mask edge, the accepted and unaccepted
    contributions are mixed irreversibly and no later split can unmix them.
@@ -309,16 +318,15 @@ sequenced as such (§6).
    reference sample contaminated by masked reference pixels can match an unrelated *candidate*
    regression outside the mask and erase it — the same cancellation, arriving from the other side.
    Separating only the candidate closes one direction of a two-directional search.
-3. **Resample** each region into the canonical plane using the named portable kernel. The canonical
-   plane is **whichever plane the acceptance recorded** — the reference's content box in the normal
-   case, or the full canvas when the pair fell back below `MIN_BOX_COVERAGE`. It is not
-   unconditionally the content box: the plane gate has already established that the recorded and
-   recomputed planes agree, and this step resamples into *that* plane, so a fallback comparison
-   sizes and positions its mask against the plane it was authored in.
-4. **Gate** — run every gate below. No scoring happens before this completes.
-5. **Score** the surviving picture, excluding still-valid masked coordinates in **both** roles
+4. **Resample** each region into the canonical plane using the named portable kernel. The
+   destination is **the plane gate's resolved plane** — the reference's content box in the normal
+   case, the full canvas in the `MIN_BOX_COVERAGE` fallback — never unconditionally the content box,
+   so a fallback comparison sizes and positions its mask against the plane it was authored in.
+5. **Pixel gates** — `candidate-changed`, then `element-ambiguous` / `element-moved`. No scoring
+   happens until all four gates have run.
+6. **Score** the surviving picture, excluding still-valid masked coordinates in **both** roles
    (scored source and neighbourhood candidate) in **both** directed passes.
-6. **Report** raw, accepted and unaccepted separately.
+7. **Report** raw, accepted and unaccepted separately.
 
 **Selector contract.** An acceptance's `element` carries an explicit `kind`. **`v1` defines exactly
 one identifying kind**, deliberately:
@@ -537,6 +545,17 @@ with these requirements:
    divergence fails as a resampler divergence instead of surfacing as an unexplained score drift
    months later.
 
+**These are requirements on a deliverable, not the specification itself — deliberately.** Picking
+the exact kernel, the rounding and edge rules, and the concrete channel/alpha/gray formulas is
+Phase 3's first task, not this document's. Two engines could both satisfy the list above and still
+diverge on, say, a translucent pixel at a non-integer scale ratio; that is a real gap, and closing
+it here would mean choosing constants with no implementation to validate them against and no
+fixtures to catch the choice being wrong. The mechanism that actually forces convergence is the
+intermediate-plane fixtures, which fail at the diverging stage — so the sequencing is: choose the
+kernel and semantics as Phase 3 step 1, land the fixtures with them, and treat any later engine
+disagreement as a fixture gap. A planning document that guessed the constants would produce a
+number both engines cite and neither validates.
+
 This is a meaningful increase in Phase 3's cost, and it is load-bearing: without it, "the same
 acceptance semantics are used by design-parity and the preview server" — an explicit acceptance
 criterion of the epic — is not achievable, only approximated.
@@ -555,8 +574,9 @@ things depending on which tool you asked. Options considered:
 - **Publish the effective verdict from the offline run and have serve display it** — cheap, but the
   browser scorer is what runs against a *live* render with overrides in force, so it would have
   nothing to apply acceptance to.
-- **Shared conformance fixtures** — a committed set of `(reference, candidate, acceptance) →
-  expected …` cases, in this repo, run by both the JS unit tests here and design-parity's own suite.
+- **Shared conformance fixtures** — a committed set of
+  `(reference, candidate, acceptance, semanticsPayload) → expected …` cases, in this repo, run by
+  both the JS unit tests here and design-parity's own suite.
 
 **Recommended: the third.** It is the same device already used for `parity-activity.mjs` ↔
 `ServeParityActivityStore` (one committed fixture, two languages, both tests load it), it is cheap,
@@ -570,13 +590,26 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | Stage | Pinned artifact |
 | --- | --- |
 | decode | **all four** raster inputs decoded — reference, current candidate, `mask.png`, `accepted-candidate.png` — in the declared pixel/colour semantics. The candidate gate reads the accepted-candidate decode and mask coverage reads the mask decode, so an alpha or colour divergence in either would otherwise first surface as a wrong verdict rather than as a decoder bug |
-| separation | the masked and unmasked candidate regions **in candidate space**, before any resample (never a pre-averaged composite) |
-| canonical | each separated region after the named resampler, in the reference-defined canonical plane |
-| score plane | the downsampled plane `scorePlanes` actually consumes |
+| separation | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite) |
+| canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
+| score plane | the downsampled planes `scorePlanes` actually consumes, both sides |
+| selector | the resolved element — which node the selector matched, its bounds, and the tag-uniqueness verdict |
 | result | `{raw, accepted, unaccepted, invalidations}` |
 
 The stage order mirrors the normative pipeline exactly, and deliberately so: a fixture suite that
 resampled before separating would enshrine the bug the pipeline order exists to prevent.
+
+**Both sides, at every stage.** The pipeline separates and resamples the reference as well as the
+candidate, so pinning only the candidate's intermediates leaves reference-side mask coverage and
+reference-side resampling unchecked — and a divergence there shows up as a score difference at the
+very end, which is exactly the diagnosis-by-guesswork the fixtures exist to avoid.
+
+**The semantics payload is a fixture input, not context.** With `element.kind: tag`, the verdict
+depends on the current `ComposeSemanticsPayload`: whether the tag is still unique, still present,
+and still within bounds tolerance. A fixture whose inputs are only the two rasters plus the
+acceptance cannot express "the tag became duplicated" or "the tag moved", so both engines could
+implement `element-ambiguous` / `element-moved` differently and pass the suite. Each case therefore
+carries a semantics tree and pins the selector-resolution outcome as its own stage.
 
 A divergence then fails at the stage that caused it, which is the whole point of paying for the
 fixtures at all.
