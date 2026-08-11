@@ -1044,20 +1044,11 @@ private fun textStyleIssue(
   val maxLines = int(11, Int.MAX_VALUE)
   if (maxLines <= 0) return "maxLines must be positive"
   val breakStrategy = int(15, 0)
-  if (breakStrategy != 0) return "line break strategy $breakStrategy is not implemented"
+  if (breakStrategy !in 0..2) return "line break strategy $breakStrategy is not implemented"
   val hyphenation = int(16, 0)
-  if (hyphenation != 0) return "hyphenation frequency $hyphenation is not implemented"
+  if (hyphenation !in 0..1) return "hyphenation frequency $hyphenation is not implemented"
   val justification = int(17, 0)
-  if (justification != 0) return "justification mode $justification is not implemented"
-  if (bool(18, false)) return "underline is not implemented"
-  if (bool(19, false)) return "strikethrough is not implemented"
-  if (bool(22, false)) return "autosize is not implemented"
-  if (float(25, -1f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(-1f)) {
-    return "minimum autosize font size is not implemented"
-  }
-  if (float(26, -1f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(-1f)) {
-    return "maximum autosize font size is not implemented"
-  }
+  if (justification !in 0..1) return "justification mode $justification is not implemented"
   val axes =
     properties.filterIsInstance<RcTextStyleProperty.IntArrayValue>().lastOrNull { it.id == 20 }
   val axisValues =

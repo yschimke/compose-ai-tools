@@ -1306,7 +1306,7 @@ export class CanvasPaintContext extends PaintContext {
             return {
                 lines: [text.replace(/\n/g, '')], alignment, lineHeight,
                 width: Math.min(this.ctx.measureText(text).width, maxWidth),
-                height: Math.min(lineHeight, maxHeight), visibleLines: 1
+                height: Math.min(lineHeight, maxHeight), naturalHeight: lineHeight, visibleLines: 1
             };
         }
 
@@ -1382,7 +1382,7 @@ export class CanvasPaintContext extends PaintContext {
             lines, alignment, lineHeight,
             width: Math.min(totalWidth, maxWidth),
             height: Math.min(totalHeight, maxHeight),
-            visibleLines: lines.length
+            naturalHeight: totalHeight, visibleLines: lines.length
         };
     }
 

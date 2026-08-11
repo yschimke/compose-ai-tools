@@ -19,6 +19,7 @@
 package androidx.compose.remote.player.compose.embedded
 
 import androidx.compose.material3.Text
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.remote.core.RemoteContext
 import androidx.compose.remote.core.operations.layout.managers.CoreText
 import androidx.compose.remote.core.operations.layout.managers.TextLayout
@@ -28,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import ee.schimke.composeai.rcembedded.jvm.GoogleFontTypefaceResolver
 import androidx.compose.ui.text.font.FontStyle
@@ -35,9 +37,12 @@ import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.Hyphens
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 
 /*
  * The jvm counterpart of `RcPlayerTextLayout.kt`'s two `RcPlayerText` composables. The size, weight,
@@ -68,7 +73,8 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
 
     val color = if (paintState.isColorSet) Color(paintState.color) else Color(data.colorValue)
     val fontSize = if (paintState.isTextSizeSet) paintState.textSize else data.fontSizeValue
-    val fontSizeSp = with(LocalDensity.current) { fontSize.toSp() }
+    val density = LocalDensity.current
+    val fontSizeSp = with(density) { fontSize.toSp() }
 
     val fontWeight =
         if (paintState.isTypefaceSet) FontWeight(paintState.fontWeight)
@@ -107,7 +113,7 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
         fontFamily = fontFamily,
         fontStyle = fontStyle,
         textAlign =
-            when (data.textAlignValue) {
+            if (data.justificationMode > 0) TextAlign.Justify else when (data.textAlignValue) {
                 CoreText.TEXT_ALIGN_LEFT -> TextAlign.Left
                 CoreText.TEXT_ALIGN_RIGHT -> TextAlign.Right
                 CoreText.TEXT_ALIGN_CENTER -> TextAlign.Center
@@ -117,6 +123,16 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
                 CoreText.TEXT_ALIGN_START -> TextAlign.Start
                 CoreText.TEXT_ALIGN_END -> TextAlign.End
                 else -> TextAlign.Start
+            },
+        autoSize =
+            if (data.autosize) {
+                TextAutoSize.StepBased(
+                    minFontSize = ((if (data.minFontSize > 0f) data.minFontSize else 4f) / density.density).sp,
+                    maxFontSize = ((if (data.maxFontSize > 0f) data.maxFontSize else 400f) / density.density).sp,
+                    stepSize = (0.5f / density.density).sp,
+                )
+            } else {
+                null
             },
         overflow = composeOverflow(data.overflow),
         maxLines = javaPlayerMaxLines(data.overflow, data.maxLines),
@@ -130,6 +146,16 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
                 TextUnit.Unspecified
             },
         textDecoration = textDecoration,
+        style =
+            TextStyle(
+                lineBreak =
+                    when (data.lineBreakStrategy) {
+                        1 -> LineBreak.Paragraph
+                        2 -> LineBreak.Heading
+                        else -> LineBreak.Simple
+                    },
+                hyphens = if (data.hyphenationFrequency > 0) Hyphens.Auto else Hyphens.None,
+            ),
     )
 }
 
