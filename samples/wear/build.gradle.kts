@@ -47,21 +47,9 @@ dependencies {
   implementation(libs.wear.compose.ui.tooling)
   // Wear navigation — `SwipeDismissableNavHost` drives the gesture-gallery flow in `Gestures.kt`.
   implementation(libs.wear.compose.navigation)
-  // `androidx.compose.animation.graphics` — renders wear-compose-material3's shipped gesture
-  // indicator AVDs (`wear_one_handed_gesture_*_indicator_animation`) via the official
-  // `AnimatedImageVector.animatedVectorResource` API. wear-compose-material3 depends on it at
-  // `runtime` scope only, so declare it here to compile against `AnimatedImageVector`.
-  implementation("androidx.compose.animation:animation-graphics")
   implementation(libs.compose.ui.tooling.preview)
+  implementation(libs.roborazzi.annotations)
   debugImplementation("androidx.compose.ui:ui-tooling")
-
-  // `:data-gestures-connector` — the Wear OS one-handed-gesture data extension. `Gestures.kt`
-  // wires its screens with the connector's `reportedOneHandedGesture` / `GestureHint` seam so the
-  // handlers show up in `compose/gestures` and are drivable via `renderNow.overrides.gestures`.
-  // Static `@Preview` rendering doesn't run the daemon extension chain, so previews activate an
-  // explicit indicator state; the daemon path activates the same state from
-  // `overrides.gestures.showHints`.
-  implementation(project(":data-gestures-connector"))
 
   // `:data-ambient-connector` — the Wear OS ambient-mode data extension. The
   // connector's `AmbientOverrideExtension` (an `AroundComposableExtension` planned

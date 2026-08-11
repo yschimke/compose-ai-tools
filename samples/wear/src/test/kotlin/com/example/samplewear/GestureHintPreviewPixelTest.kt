@@ -5,18 +5,14 @@ import java.io.File
 import org.junit.Test
 
 /**
- * End-to-end verification that `@GestureHintPreview` actually force-shows the one-handed-gesture hint
- * through the renderer's Compose pipeline. Reads the files produced by
+ * End-to-end verification that a clean component can expose its public one-handed-gesture
+ * indicator state for deterministic preview capture. Reads the files produced by
  * `:samples:wear:composePreviewRenderAll` (wired in via `composePreview { renderBeforeUnitTests =
  * true }`) and pixel-asserts that the hint-off vs hint-on renders differ.
  *
- * The two previews render the *same* `MediaGestureScreen()` — ordinary app code with no preview-only
- * flags. The only difference is the `@GestureHintPreview` annotation on one of them. If they
- * hash-match, the override didn't reach `GestureHint`:
- * - discovery dropped the annotation from `previews.json` (the `gestureHint` capture arrives null), or
- * - the renderer didn't wrap the composition with `:data-gestures-connector`'s
- *   `GestureOverrideExtension`, or
- * - `GestureHint`'s forced-still peak-frame path stopped drawing the configured gesture action.
+ * The two previews render the same `MediaGestureScreen`: one at rest and one with
+ * `showIndicators = true`. Both paths use `OneHandedGestureClickIndicatorState.showIndicator()`;
+ * there is no alternate hint UI to overlap the button content.
  */
 class GestureHintPreviewPixelTest {
 
@@ -24,7 +20,8 @@ class GestureHintPreviewPixelTest {
 
   private val hintOffPng = File(rendersDir, "MediaGestureScreenPreview_Media_hints_off.png")
 
-  private val hintOnPng = File(rendersDir, "MediaGestureScreenHintPreview_Media_hints_on.png")
+  private val hintOnPng =
+    File(rendersDir, "MediaGestureScreenHintPreview_Media_hints_on_TIME_800ms.png")
 
   @Test
   fun `hint-off and hint-on renders differ`() {

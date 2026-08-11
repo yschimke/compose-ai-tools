@@ -1,24 +1,13 @@
 package com.example.samplewear
 
-import androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi
-import androidx.compose.animation.graphics.res.animatedVectorResource
-import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
-import androidx.compose.animation.graphics.vector.AnimatedImageVector
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -29,13 +18,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
@@ -48,45 +32,45 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.ListHeader
-import androidx.wear.compose.material3.LocalContentColor
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.onehandedgesture.LocalOneHandedGestureEnabled
+import androidx.wear.compose.material3.onehandedgesture.GestureAction
 import androidx.wear.compose.material3.onehandedgesture.GesturePriority
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureDefaults
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicatorState
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicator
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureConfiguration
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureHorizontalPageIndicator
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGesturePageIndicatorState
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureScrollIndicator
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureScrollIndicatorState
+import androidx.wear.compose.material3.onehandedgesture.oneHandedGesture
 import androidx.wear.compose.material3.onehandedgesture.rememberOneHandedGestureConfiguration
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.wear.compose.ui.tooling.preview.WearPreviewLargeRound
-import ee.schimke.composeai.daemon.GestureHint
-import ee.schimke.composeai.daemon.GestureType
-import ee.schimke.composeai.daemon.reportedOneHandedGesture
 import kotlinx.coroutines.launch
 
 /**
  * A one-handed-gesture gallery for Wear OS, navigated with [SwipeDismissableNavHost].
  *
- * Each screen wires the real `Modifier.oneHandedGesture` API (via the `:data-gestures-connector`
- * [reportedOneHandedGesture] seam, so the handlers also surface in the `compose/gestures` data
- * product) and demonstrates one gesture affordance from the Wear design guide:
- * - **primary** — the double-pinch primary action on a [Button], with a [GestureHint].
+ * Each screen follows the AndroidX samples and uses the public one-handed gesture APIs directly:
+ * - **primary** — the double-pinch primary action on a [Button], with an inline
+ *   [OneHandedGestureClickIndicator].
  * - **dismiss** — the wrist-turn dismiss action mapped to back navigation.
  * - **scroll** — the primary gesture driving `scrollDown` on a list.
  * - **page** — the primary gesture driving `scrollToNextPage` on a pager.
  * - **disabled** — a screen that opts out via `LocalOneHandedGestureEnabled = false`.
  *
- * On-device the gestures fire from the watch's sensors (Pixel Watch 3+); off-device they no-op, so
- * the connector's data product is what makes the wiring observable and invokable under `@Preview`.
+ * On-device the gestures fire from the watch's sensors (Pixel Watch 3+). The preview renderer fakes
+ * Wear's SDK gesture input manager, so these unmodified public-API components can also register,
+ * report availability, and receive gestures under Robolectric. Previews drive the same public
+ * indicator states explicitly for deterministic animation capture.
  */
 object GestureRoutes {
   const val HOME = "home"
@@ -96,17 +80,16 @@ object GestureRoutes {
   const val PAGE = "page"
   const val DISABLED = "disabled"
   const val HINT_BUTTON = "hint-button"
-  const val HINT_FLOATING = "hint-floating"
 }
 
 @Composable
 internal fun rememberGestureConfiguration(
-  type: GestureType,
+  action: GestureAction,
   key: String,
   priority: GesturePriority = GesturePriority.Clickable,
 ): OneHandedGestureConfiguration =
   rememberOneHandedGestureConfiguration(
-    action = type.toGestureAction(),
+    action = action,
     gestureId = key,
     priority = priority,
   )
@@ -168,7 +151,6 @@ fun GestureGalleryApp(
         composable(GestureRoutes.PAGE) { PageGestureScreen() }
         composable(GestureRoutes.DISABLED) { DisabledGestureScreen() }
         composable(GestureRoutes.HINT_BUTTON) { ButtonHintScreen() }
-        composable(GestureRoutes.HINT_FLOATING) { FloatingHintScreen() }
       }
     }
   }
@@ -226,14 +208,6 @@ private fun GestureHomeScreen(onOpen: (String) -> Unit) {
       }
       item {
         FilledTonalButton(
-          onClick = { onOpen(GestureRoutes.HINT_FLOATING) },
-          modifier = Modifier.fillMaxWidth(),
-        ) {
-          Text("Floating hint")
-        }
-      }
-      item {
-        FilledTonalButton(
           onClick = { onOpen(GestureRoutes.DISABLED) },
           modifier = Modifier.fillMaxWidth(),
         ) {
@@ -245,49 +219,13 @@ private fun GestureHomeScreen(onOpen: (String) -> Unit) {
 }
 
 /**
- * Renders wear-compose-material3's shipped gesture-indicator AVD
- * (`wear_one_handed_gesture_{primary,dismiss}_indicator_animation`) as a static, tinted icon via the
- * official `androidx.compose.animation.graphics` API — the same drawable + API
- * one-handed gesture indicator draws internally, shown here at its resting frame so the gesture
- * illustration is visible in a still capture (the interactive indicator only flashes it on-device).
- */
-@OptIn(ExperimentalAnimationGraphicsApi::class)
-@Composable
-private fun GestureHintIcon(
-  type: GestureType,
-  modifier: Modifier = Modifier,
-  size: Dp = 40.dp,
-  tint: Color = LocalContentColor.current,
-) {
-  val resId =
-    when (type) {
-      GestureType.DISMISS ->
-        androidx.wear.compose.material3.R.drawable
-          .wear_one_handed_gesture_dismiss_indicator_animation
-      else ->
-        androidx.wear.compose.material3.R.drawable
-          .wear_one_handed_gesture_primary_indicator_animation
-    }
-  val avd = AnimatedImageVector.animatedVectorResource(resId)
-  Image(
-    painter = rememberAnimatedVectorPainter(avd, atEnd = false),
-    contentDescription = null,
-    colorFilter = ColorFilter.tint(tint),
-    modifier = modifier.size(size),
-  )
-}
-
-/**
- * A titled full-screen gesture demo: a [ListHeader] title, the shipped [GestureHintIcon] gesture
- * illustration, an instruction line, and the interactive affordance centred below — the layout the
- * catalog's full-screen Wear stickers use so the screen reads clearly instead of a bare control lost
- * on the watch face.
+ * A small sample screen shell. Gesture behavior remains in the reusable component passed as
+ * [control], just as it would in application code.
  */
 @Composable
 private fun GestureDemoScreen(
   title: String,
   instruction: String,
-  gestureType: GestureType? = null,
   control: @Composable () -> Unit,
 ) {
   ScreenScaffold {
@@ -297,40 +235,35 @@ private fun GestureDemoScreen(
       verticalArrangement = Arrangement.Center,
     ) {
       ListHeader { Text(title) }
-      gestureType?.let { GestureHintIcon(it, modifier = Modifier.padding(bottom = 4.dp)) }
       Text(instruction, textAlign = TextAlign.Center)
       Box(modifier = Modifier.padding(top = 12.dp)) { control() }
     }
   }
 }
 
-/** The double-pinch primary action on a play/pause [Button], wrapped in its [GestureHint]. */
+/** AndroidX-style button whose indicator owns the inline content and hides it while animating. */
 @Composable
 private fun PlayGestureButton(forceHint: Boolean) {
   var playing by remember { mutableStateOf(false) }
   val interactionSource = remember { MutableInteractionSource() }
   val gestureConfiguration =
-    rememberGestureConfiguration(GestureType.PRIMARY, key = "samplewear:play")
-  val indicatorState = rememberGestureIndicatorState()
-  GestureHint(
-    gestureConfiguration = gestureConfiguration,
-    indicatorState = indicatorState,
-    forceShow = forceHint,
+    rememberGestureConfiguration(GestureAction.Primary, key = "samplewear:play")
+  val indicatorState = rememberGestureIndicatorState(forceShow = forceHint)
+  val coroutineScope = rememberCoroutineScope()
+  Button(
+    onClick = { playing = !playing },
+    interactionSource = interactionSource,
+    modifier =
+      Modifier.oneHandedGesture(
+        gestureConfiguration = gestureConfiguration,
+        interactionSource = interactionSource,
+        onGestureLabel = if (playing) "Pause" else "Play",
+        onGestureAvailable = { coroutineScope.launch { indicatorState.showIndicator() } },
+      ) {
+        playing = !playing
+      },
   ) {
-    Button(
-      onClick = { playing = !playing },
-      interactionSource = interactionSource,
-      modifier =
-        Modifier.reportedOneHandedGesture(
-          type = GestureType.PRIMARY,
-          label = if (playing) "Pause" else "Play",
-          gestureConfiguration = gestureConfiguration,
-          showIndicator = indicatorState::showIndicator,
-          interactionSource = interactionSource,
-        ) {
-          playing = !playing
-        },
-    ) {
+    OneHandedGestureClickIndicator(gestureConfiguration, indicatorState) {
       Text(if (playing) "Pause" else "Play")
     }
   }
@@ -342,7 +275,6 @@ fun PrimaryActionScreen(forceHint: Boolean = false) {
   GestureDemoScreen(
     title = "Primary",
     instruction = "Double-pinch to play",
-    gestureType = GestureType.PRIMARY,
   ) {
     PlayGestureButton(forceHint)
   }
@@ -353,32 +285,26 @@ fun PrimaryActionScreen(forceHint: Boolean = false) {
 fun DismissActionScreen(onDismiss: () -> Unit = {}, forceHint: Boolean = false) {
   val interactionSource = remember { MutableInteractionSource() }
   val gestureConfiguration =
-    rememberGestureConfiguration(GestureType.DISMISS, key = "samplewear:dismiss")
-  val indicatorState = rememberGestureIndicatorState()
+    rememberGestureConfiguration(GestureAction.Dismiss, key = "samplewear:dismiss")
+  val indicatorState = rememberGestureIndicatorState(forceShow = forceHint)
+  val coroutineScope = rememberCoroutineScope()
   GestureDemoScreen(
     title = "Dismiss",
     instruction = "Wrist-turn to go back",
-    gestureType = GestureType.DISMISS,
   ) {
-    GestureHint(
-      gestureConfiguration = gestureConfiguration,
-      indicatorState = indicatorState,
-      forceShow = forceHint,
+    FilledTonalButton(
+      onClick = onDismiss,
+      interactionSource = interactionSource,
+      modifier =
+        Modifier.oneHandedGesture(
+          gestureConfiguration = gestureConfiguration,
+          interactionSource = interactionSource,
+          onGestureLabel = "Dismiss",
+          onGestureAvailable = { coroutineScope.launch { indicatorState.showIndicator() } },
+          onGesture = onDismiss,
+        ),
     ) {
-      FilledTonalButton(
-        onClick = onDismiss,
-        interactionSource = interactionSource,
-        modifier =
-          Modifier.reportedOneHandedGesture(
-            type = GestureType.DISMISS,
-            label = "Dismiss",
-            gestureConfiguration = gestureConfiguration,
-            showIndicator = indicatorState::showIndicator,
-            interactionSource = interactionSource,
-          ) {
-            onDismiss()
-          },
-      ) {
+      OneHandedGestureClickIndicator(gestureConfiguration, indicatorState) {
         Text("Back")
       }
     }
@@ -389,9 +315,13 @@ fun DismissActionScreen(onDismiss: () -> Unit = {}, forceHint: Boolean = false) 
 @Composable
 fun ScrollGestureScreen(forceHint: Boolean = false) {
   val listState = rememberTransformingLazyColumnState()
-  val interactionSource = remember { MutableInteractionSource() }
+  val coroutineScope = rememberCoroutineScope()
   val gestureConfiguration =
-    rememberGestureConfiguration(GestureType.SCROLL, key = "samplewear:scroll")
+    rememberGestureConfiguration(
+      GestureAction.Primary,
+      key = "samplewear:scroll",
+      priority = GesturePriority.Scrollable,
+    )
   val indicatorState = rememberScrollGestureIndicatorState(forceHint)
   ScreenScaffold(scrollState = listState) { contentPadding ->
     Box(modifier = Modifier.fillMaxSize()) {
@@ -400,12 +330,10 @@ fun ScrollGestureScreen(forceHint: Boolean = false) {
         contentPadding = contentPadding,
         modifier =
           Modifier.fillMaxSize()
-            .reportedOneHandedGesture(
-              type = GestureType.SCROLL,
-              label = "Scroll down",
+            .oneHandedGesture(
               gestureConfiguration = gestureConfiguration,
-              showIndicator = indicatorState::showIndicator,
-              interactionSource = interactionSource,
+              onGestureLabel = "Scroll down",
+              onGestureAvailable = { coroutineScope.launch { indicatorState.showIndicator() } },
             ) {
               OneHandedGestureDefaults.scrollDown(listState)
             },
@@ -434,9 +362,13 @@ fun ScrollGestureScreen(forceHint: Boolean = false) {
 @Composable
 fun PageGestureScreen(forceHint: Boolean = false) {
   val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
-  val interactionSource = remember { MutableInteractionSource() }
+  val coroutineScope = rememberCoroutineScope()
   val gestureConfiguration =
-    rememberGestureConfiguration(GestureType.PAGE, key = "samplewear:page")
+    rememberGestureConfiguration(
+      GestureAction.Primary,
+      key = "samplewear:page",
+      priority = GesturePriority.Scrollable,
+    )
   val indicatorState = rememberPageGestureIndicatorState(forceHint)
   ScreenScaffold {
     Box(modifier = Modifier.fillMaxSize()) {
@@ -444,12 +376,10 @@ fun PageGestureScreen(forceHint: Boolean = false) {
         state = pagerState,
         modifier =
           Modifier.fillMaxSize()
-            .reportedOneHandedGesture(
-              type = GestureType.PAGE,
-              label = "Next page",
+            .oneHandedGesture(
               gestureConfiguration = gestureConfiguration,
-              showIndicator = indicatorState::showIndicator,
-              interactionSource = interactionSource,
+              onGestureLabel = "Next page",
+              onGestureAvailable = { coroutineScope.launch { indicatorState.showIndicator() } },
             ) {
               OneHandedGestureDefaults.scrollToNextPage(pagerState)
             },
@@ -481,17 +411,16 @@ fun PageGestureScreen(forceHint: Boolean = false) {
 fun DisabledGestureScreen() {
   val interactionSource = remember { MutableInteractionSource() }
   val gestureConfiguration =
-    rememberGestureConfiguration(GestureType.PRIMARY, key = "samplewear:disabled-play")
+    rememberGestureConfiguration(GestureAction.Primary, key = "samplewear:disabled-play")
   CompositionLocalProvider(LocalOneHandedGestureEnabled provides false) {
     GestureDemoScreen(title = "Disabled", instruction = "Gestures off on this screen") {
       Button(
         onClick = {},
         modifier =
-          Modifier.reportedOneHandedGesture(
-            type = GestureType.PRIMARY,
-            label = "Play (disabled)",
+          Modifier.oneHandedGesture(
             gestureConfiguration = gestureConfiguration,
             interactionSource = interactionSource,
+            onGestureLabel = "Play (disabled)",
           ) {},
       ) {
         Text("Tap only")
@@ -501,101 +430,13 @@ fun DisabledGestureScreen() {
 }
 
 /**
- * The design guide's **button hint**: the gesture-indicator icon drawn *within* the target element,
- * tinted to match the button's content colour (`onPrimary`). This is the affordance
- * one-handed gesture indicator flashes over the button on-device; here it's composited statically so
- * the "icon on the button" treatment is visible in a still frame.
+ * The AndroidX button-hint pattern. [OneHandedGestureClickIndicator] owns the button content, so
+ * the normal label is hidden while the hint is visible instead of being painted underneath it.
  */
 @Composable
 fun ButtonHintScreen(showHint: Boolean = true) {
-  val interactionSource = remember { MutableInteractionSource() }
-  val gestureConfiguration =
-    rememberGestureConfiguration(GestureType.PRIMARY, key = "samplewear:button-hint")
-  GestureDemoScreen(title = "Button hint", instruction = "Icon drawn on the button") {
-    Box(contentAlignment = Alignment.Center) {
-      Button(
-        onClick = {},
-        interactionSource = interactionSource,
-        modifier =
-          Modifier.reportedOneHandedGesture(
-            type = GestureType.PRIMARY,
-            label = "Play",
-            gestureConfiguration = gestureConfiguration,
-            interactionSource = interactionSource,
-          ) {},
-      ) {
-        Text("Play")
-      }
-      if (showHint) {
-        GestureHintIcon(
-          type = GestureType.PRIMARY,
-          size = 28.dp,
-          tint = MaterialTheme.colorScheme.onPrimary,
-        )
-      }
-    }
-  }
-}
-
-/**
- * The design guide's **floating hint**: a `Tertiary` bubble overlay carrying the gesture-indicator
- * icon (`onTertiary`) with a pointer aimed at the target element. Shown above the play button.
- */
-@Composable
-fun FloatingHintScreen(showHint: Boolean = true) {
-  val interactionSource = remember { MutableInteractionSource() }
-  val gestureConfiguration =
-    rememberGestureConfiguration(GestureType.PRIMARY, key = "samplewear:floating-hint")
-  GestureDemoScreen(title = "Floating hint", instruction = "Bubble points to the button") {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-      if (showHint) {
-        FloatingHintBubble()
-        Spacer(Modifier.size(8.dp))
-      }
-      Button(
-        onClick = {},
-        interactionSource = interactionSource,
-        modifier =
-          Modifier.reportedOneHandedGesture(
-            type = GestureType.PRIMARY,
-            label = "Play",
-            gestureConfiguration = gestureConfiguration,
-            interactionSource = interactionSource,
-          ) {},
-      ) {
-        Text("Play")
-      }
-    }
-  }
-}
-
-/** The tertiary hint bubble + downward pointer used by [FloatingHintScreen]. */
-@Composable
-private fun FloatingHintBubble() {
-  val container = MaterialTheme.colorScheme.tertiary
-  val onContainer = MaterialTheme.colorScheme.onTertiary
-  Column(horizontalAlignment = Alignment.CenterHorizontally) {
-    Row(
-      modifier =
-        Modifier.clip(RoundedCornerShape(percent = 50))
-          .background(container)
-          .padding(horizontal = 12.dp, vertical = 6.dp),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      GestureHintIcon(type = GestureType.PRIMARY, size = 24.dp, tint = onContainer)
-      Spacer(Modifier.width(6.dp))
-      Text("Double-pinch", color = onContainer)
-    }
-    Canvas(modifier = Modifier.size(width = 16.dp, height = 8.dp)) {
-      val pointer =
-        Path().apply {
-          moveTo(0f, 0f)
-          lineTo(size.width, 0f)
-          lineTo(size.width / 2f, size.height)
-          close()
-        }
-      drawPath(pointer, color = container)
-    }
+  GestureDemoScreen(title = "Button hint", instruction = "Double-pinch to play") {
+    PlayGestureButton(forceHint = showHint)
   }
 }
 
@@ -622,7 +463,11 @@ fun ScrollIndicatorStickerPreview() {
   GestureSticker {
     val listState = rememberTransformingLazyColumnState()
     val gestureConfiguration =
-      rememberGestureConfiguration(GestureType.SCROLL, key = "samplewear:scroll-sticker")
+      rememberGestureConfiguration(
+        GestureAction.Primary,
+        key = "samplewear:scroll-sticker",
+        priority = GesturePriority.Scrollable,
+      )
     OneHandedGestureScrollIndicator(
       gestureConfiguration = gestureConfiguration,
       indicatorState = rememberScrollGestureIndicatorState(forceShow = true),
@@ -637,7 +482,11 @@ fun ScrollIndicatorStickerPreview() {
 fun PageIndicatorStickerPreview() {
   GestureSticker {
     val gestureConfiguration =
-      rememberGestureConfiguration(GestureType.PAGE, key = "samplewear:page-sticker")
+      rememberGestureConfiguration(
+        GestureAction.Primary,
+        key = "samplewear:page-sticker",
+        priority = GesturePriority.Scrollable,
+      )
     OneHandedGestureHorizontalPageIndicator(
       gestureConfiguration = gestureConfiguration,
       indicatorState = rememberPageGestureIndicatorState(forceShow = true),
@@ -686,10 +535,4 @@ fun DisabledGestureScreenPreview() {
 @Composable
 fun ButtonHintScreenPreview() {
   MaterialTheme { ButtonHintScreen(showHint = true) }
-}
-
-@WearPreviewLargeRound
-@Composable
-fun FloatingHintScreenPreview() {
-  MaterialTheme { FloatingHintScreen(showHint = true) }
 }

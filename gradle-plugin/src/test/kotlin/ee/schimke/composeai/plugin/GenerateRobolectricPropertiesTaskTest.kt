@@ -64,6 +64,16 @@ class GenerateRobolectricPropertiesTaskTest {
   }
 
   @Test
+  fun `the Wear gesture input shadow is registered with its target class instrumented`() {
+    listOf(false, true).forEach { useConsumerApplication ->
+      val body = generate(useConsumerApplication, override = null, compileSdk = 36)
+      assertThat(body).contains("ee.schimke.composeai.daemon.ShadowSdkGestureInputManager")
+      assertThat(body)
+        .contains("androidx.wear.compose.material3.onehandedgesture.SdkGestureInputManagerImpl")
+    }
+  }
+
+  @Test
   fun `useConsumerApplication drops application line but keeps sdk graphicsMode shadows`() {
     val body = generate(useConsumerApplication = true, override = null, compileSdk = 36)
     assertThat(body).contains("sdk=36")
