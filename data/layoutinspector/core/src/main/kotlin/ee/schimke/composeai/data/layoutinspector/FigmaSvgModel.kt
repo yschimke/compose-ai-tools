@@ -1540,18 +1540,36 @@ data class FigmaSvgModel(
      * Containment, not overlap: a raster that merely touches the box (a drawn slider groove under a
      * label, say) redraws none of it, and its neighbour's text must stay live.
      */
-    private fun FigmaSvgLayer.rasterCovers(left: Int, top: Int, right: Int, bottom: Int): Boolean =
-      (raster != null &&
-        // A raster the emitter then hides or trims does not stand in for the text it baked in.
-        // Faded to nothing, or masked to less than the box, it must leave the live text alone —
-        // otherwise the glyphs end up in neither the pixels nor the `<text>`.
-        opacity > 0.0 &&
-        contentOpacity > 0.0 &&
-        clipBox.covers(left, top, right, bottom) &&
+    private fun FigmaSvgLayer.rasterCovers(
+      left: Int,
+      top: Int,
+      right: Int,
+      bottom: Int,
+      ancestorsVisible: Boolean = true,
+      ancestorsCover: Boolean = true,
+    ): Boolean {
+      // Visibility and clipping are inherited. A raster hidden or trimmed by any intermediate
+      // group cannot replace live text owned by an ancestor outside that visible region.
+      val visible = ancestorsVisible && opacity > 0.0 && contentOpacity > 0.0
+      val coversTarget = ancestorsCover && clipBox.covers(left, top, right, bottom)
+      return (raster != null &&
+        visible &&
+        coversTarget &&
         this.left <= left &&
         this.top <= top &&
         this.right >= right &&
-        this.bottom >= bottom) || children.any { it.rasterCovers(left, top, right, bottom) }
+        this.bottom >= bottom) ||
+        children.any {
+          it.rasterCovers(
+            left,
+            top,
+            right,
+            bottom,
+            ancestorsVisible = visible,
+            ancestorsCover = coversTarget,
+          )
+        }
+    }
 
     /** Whether this mask (null = unmasked) leaves the given box entirely visible. */
     private fun LayoutInspectorBounds?.covers(

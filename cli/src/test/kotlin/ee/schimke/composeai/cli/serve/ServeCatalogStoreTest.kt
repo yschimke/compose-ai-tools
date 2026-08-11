@@ -1206,24 +1206,36 @@ class ServeCatalogStoreTest {
       TrustStore(
         branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
       )
-    var fetchPerPreview: ((String) -> File?)? = null
+    var perPreviewAccess: PerPreviewBundleAccess? = null
     val store =
       ServeCatalogStore(
         root = tempRoot(),
         register = { n, h -> registered[n] = h },
         trust = { trust },
         fetch = fetch,
-        buildTrustedBundle = { _, _, _, _, _, fetcher ->
-          fetchPerPreview = fetcher
+        networkProbe = { url ->
+          requested += "HEAD $url"
+          url.endsWith("bundle/previews/FilledButton_Dark.png")
+        },
+        buildTrustedBundle = { _, _, _, _, _, access ->
+          perPreviewAccess = access
           true
         },
       )
     store.load("compose-m3")
 
-    val fetcher = fetchPerPreview
-    assertTrue(fetcher != null, "the builder was handed a per-preview fetcher")
+    val access = assertNotNull(perPreviewAccess)
+    val previewUrl = "bundle/previews/FilledButton_Dark.png"
+    val getsBeforeProbe = requested.count { it.endsWith(previewUrl) && !it.startsWith("HEAD ") }
+    assertTrue(access.available("FilledButton_Dark"))
+    assertEquals(
+      getsBeforeProbe,
+      requested.count { it.endsWith(previewUrl) && !it.startsWith("HEAD ") },
+      "availability probes must not download or hydrate the bundle",
+    )
+    val fetcher = access.fetch
     // A mapped daemon id resolves its own split bundle from previews/<daemon-id>.png…
-    val hit = fetcher!!("FilledButton_Dark")
+    val hit = fetcher("FilledButton_Dark")
     assertTrue(hit != null && hit.isFile)
     assertContentEquals(perPreviewBytes, hit.readBytes())
     assertTrue(requested.any { it.endsWith("bundle/previews/FilledButton_Dark.png") })
@@ -1275,8 +1287,8 @@ class ServeCatalogStoreTest {
           )
         },
         fetch = fetch,
-        buildTrustedBundle = { _, _, _, _, _, fetcher ->
-          fetchPerPreview = fetcher
+        buildTrustedBundle = { _, _, _, _, _, access ->
+          fetchPerPreview = access.fetch
           true
         },
       )
@@ -1326,8 +1338,8 @@ class ServeCatalogStoreTest {
         register = { n, h -> registered[n] = h },
         trust = { trust },
         fetch = fetch,
-        buildTrustedBundle = { _, _, _, _, _, fetcher ->
-          fetchPerPreview = fetcher
+        buildTrustedBundle = { _, _, _, _, _, access ->
+          fetchPerPreview = access.fetch
           true
         },
       )

@@ -214,7 +214,7 @@ before the request body is read, so a throttled caller costs the box nothing. Wa
 
 ```bash
 SERVE_PLAYGROUND_SANDBOX=bwrap
-SERVE_PLAYGROUND_SANDBOX_RO=/root/.m2/repository   # see the Android note below
+SERVE_PLAYGROUND_SANDBOX_RO=/root/.m2/repository,/root/.cache/composeai/fonts
 ```
 
 That gives a snippet no network, no host filesystem beyond the read-only binds, no view of host
@@ -227,9 +227,10 @@ Two things to know about which profile admits the lane, because earlier revision
 it wrong in both directions:
 
 - **Repo-access-gated (this image's posture).** `PlaygroundPublicGate.decide` returns `Allow` for a
-  repo-access-gated host *before* it reaches any profile check, so `bwrap` is accepted here with no
-  caveat. Its lack of a cgroup cap is covered by the container's own `--memory` / `--cpus` /
-  `--pids-limit` plus the JVM ceilings the sandbox applies (`-Xmx`, `-XX:ActiveProcessorCount`).
+  repo-access-gated host *before* it reaches any profile check, so `bwrap` is accepted here. The
+  shipped Compose defaults do not impose container CPU, PID, or memory cgroup caps: operators must
+  configure `--memory`, `--cpus`, and `--pids-limit` (or their orchestrator equivalents). The JVM
+  ceilings (`-Xmx`, `-XX:ActiveProcessorCount`) are defense in depth, not host-level resource caps.
 - **Anonymous (no GitHub auth).** There, and only there, `bwrap` is refused for declaring no CPU or
   process-count cap, and the gate points at `strict` — which needs `systemd-run` and so remains
   unreachable in a container. An anonymous public playground on this image is still not a thing;
@@ -247,8 +248,9 @@ it wrong in both directions:
 every Android-backed catalog — additionally enable the Android / Remote Compose modes. Those need
 the `lib-daemon-android` sidecar plus `android.jar`; the sidecar lives in `/opt`, which is already
 ro-bound, but Robolectric also resolves an `android-all` jar out of `~/.m2/repository` at run time
-and the jail has no network to fetch it. That is the suspected cause of issue #3213's silent "no
-image" inside a jail, and `SERVE_PLAYGROUND_SANDBOX_RO=/root/.m2/repository` is the remedy —
+and the jail has no network to fetch it. Downloadable fonts are likewise prewarmed under
+`/root/.cache/composeai/fonts`. Bind both with
+`SERVE_PLAYGROUND_SANDBOX_RO=/root/.m2/repository,/root/.cache/composeai/fonts` —
 **prewarm that cache before going public**, since a cold cache inside `--unshare-net` cannot fill
 itself. Render an Android preview once with the sandbox off, then turn it on.
 

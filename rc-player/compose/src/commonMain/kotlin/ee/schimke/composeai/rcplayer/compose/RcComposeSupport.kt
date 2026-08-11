@@ -962,6 +962,7 @@ private fun hasUndispatchedAccessibilityClick(
       is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.Row -> listOf(node.content)
       is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.Column -> listOf(node.content)
       is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.Flow -> listOf(node.content)
+      is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.State -> listOf(node.content)
       is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.CollapsibleRow -> listOf(node.content)
       is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.CollapsibleColumn ->
         listOf(node.content)

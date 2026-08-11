@@ -271,6 +271,13 @@ fun declaredThemesFromPreviews(
         name = p.params.name?.takeIf { it.isNotBlank() } ?: p.functionName.ifBlank { p.id },
         providerFqn = fqn,
         group = p.params.group?.takeIf { it.isNotBlank() },
+        mode =
+          if (p.params.kind == "WEAR_THEME_CATALOG") "dark"
+          else
+            inferredThemeMode(
+              p.params.name?.takeIf { it.isNotBlank() } ?: p.functionName.ifBlank { p.id },
+              fqn,
+            ),
       )
     }
     .distinctBy { it.providerFqn }

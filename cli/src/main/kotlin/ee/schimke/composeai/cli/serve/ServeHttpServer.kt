@@ -3270,8 +3270,7 @@ class ServeHttpServer(
         projectHistory
           ?.takeIf { catalogBundleHost(renderHost)?.provenance == null }
           ?.let { history -> withContext(Dispatchers.IO) { history.timelineJsonFor(preview.id) } }
-      // The publication-aware probe may fetch and hydrate this preview's bundle on its first use;
-      // keep that trusted-branch I/O off Ktor's request dispatcher.
+      // The publication-aware HEAD probe is network I/O; keep it off Ktor's request dispatcher.
       val executableBundleAvailable =
         withContext(Dispatchers.IO) { renderHost.canDownloadExecutableBundle(preview.id) }
       markGeneration(

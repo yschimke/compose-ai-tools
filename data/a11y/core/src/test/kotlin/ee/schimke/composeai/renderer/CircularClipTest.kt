@@ -45,6 +45,8 @@ class CircularClipTest {
     assertFalse(isRoundDevice("id:wearos_rect"))
     assertFalse(isRoundDevice("id:pixel_5"))
     assertFalse(isRoundDevice("spec:width=200dp,height=200dp"))
+    assertFalse(isRoundDevice("spec:parent=wearos_small_round,isRound=false"))
+    assertFalse(isRoundDevice("spec:parent=wearos_small_round,shape=square"))
   }
 
   @Test

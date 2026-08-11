@@ -21,6 +21,11 @@ import kotlinx.serialization.json.JsonObject
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
+data class PerPreviewBundleAccess(
+  val available: (daemonId: String) -> Boolean,
+  val fetch: (daemonId: String) -> File?,
+)
+
 /**
  * Serves the **design systems we publish** on a public preview server by fetching a
  * `design-artifacts/<system>` catalog (`catalog.json` + `images/`) from GitHub and registering it
@@ -62,6 +67,7 @@ class ServeCatalogStore(
       Thread(r, "serve-catalog-figma").apply { isDaemon = true }
     },
   private val networkFetch: (url: String, maxBytes: Long) -> ByteArray? = ::httpFetch,
+  private val networkProbe: (url: String) -> Boolean = ::httpExists,
   private val maxImages: Int = DEFAULT_MAX_IMAGES,
   /**
    * Called when the catalog declares an in-browser Wasm app (`webRender` in `catalog.json`) and its
@@ -105,7 +111,7 @@ class ServeCatalogStore(
       externalResourcesDir: File?,
       alias: Map<String, String>,
       bakedFallback: () -> ServeHost,
-      fetchPerPreviewBundle: (daemonId: String) -> File?,
+      perPreviewBundle: PerPreviewBundleAccess,
     ) -> Boolean =
     { _, _, _, _, _, _ ->
       false
@@ -695,11 +701,19 @@ class ServeCatalogStore(
             // per-preview lane for ids with an unambiguous stem; a colliding id resolves null and
             // falls back to the monolithic daemon (which serves every preview correctly).
             val safeStems = uniquePerPreviewStems(alias.values)
-            val fetchPerPreview: (String) -> File? = { daemonId ->
-              safeStems[daemonId]?.let { stem ->
-                fetchPerPreviewBundle(stem, liveBundle, base, dir, safe, res.dir)
-              }
-            }
+            val perPreviewBundle =
+              PerPreviewBundleAccess(
+                available = { daemonId ->
+                  safeStems[daemonId]?.let { stem ->
+                    perPreviewBundleAvailable(stem, liveBundle, base, dir)
+                  } ?: false
+                },
+                fetch = { daemonId ->
+                  safeStems[daemonId]?.let { stem ->
+                    fetchPerPreviewBundle(stem, liveBundle, base, dir, safe, res.dir)
+                  }
+                },
+              )
             if (
               alias.isNotEmpty() &&
                 buildTrustedBundle(
@@ -708,7 +722,7 @@ class ServeCatalogStore(
                   res.dir,
                   alias,
                   { bakedFallback(emptyList(), deferredIds.toList()) },
-                  fetchPerPreview,
+                  perPreviewBundle,
                 )
             ) {
               return Result.Ok(
@@ -1020,8 +1034,7 @@ class ServeCatalogStore(
       target.delete()
     }
     val prefix = liveBundle.path.trim('/')
-    val rel = "$PER_PREVIEW_DIR/$stem.png"
-    val url = if (prefix.isEmpty()) "$base$rel" else "$base$prefix/$rel"
+    val url = perPreviewBundleUrl(stem, liveBundle, base)
     val bytes = runCatching { fetchExecutableBundle(url) }.getOrNull()
     if (bytes == null) {
       // Expected when the branch ships no per-preview bundle for this id (older catalog, view-only
@@ -1029,31 +1042,56 @@ class ServeCatalogStore(
       return null
     }
     target.parentFile?.mkdirs()
-    val thin = File(previewsDir, "$stem.shared.png")
-    thin.writeBytes(bytes)
+    val thin =
+      java.nio.file.Files.createTempFile(previewsDir.toPath(), "$stem.", ".shared.png").toFile()
     val hydrated =
-      runCatching {
-          BundleClasspathHydration.hydrate(
-            source = thin,
-            output = target,
-            resolveClasspath = { entry -> fetchExternalClasspathBlob(entry, base, prefix, system) },
-            resolveResource = { entry ->
-              readMaterializedExternalResource(entry, externalResourcesDir)
-            },
-          )
-        }
-        .onFailure {
-          System.err.println(
-            "serve: $system per-preview '$stem' classpath hydration failed (${it.message})"
-          )
-        }
-        .getOrNull()
-    thin.delete()
+      try {
+        thin.writeBytes(bytes)
+        runCatching {
+            BundleClasspathHydration.hydrate(
+              source = thin,
+              output = target,
+              resolveClasspath = { entry ->
+                fetchExternalClasspathBlob(entry, base, prefix, system)
+              },
+              resolveResource = { entry ->
+                readMaterializedExternalResource(entry, externalResourcesDir)
+              },
+            )
+          }
+          .onFailure {
+            System.err.println(
+              "serve: $system per-preview '$stem' classpath hydration failed (${it.message})"
+            )
+          }
+          .getOrNull()
+      } finally {
+        thin.delete()
+      }
     if (hydrated != null && !isCompleteExecutableBundle(hydrated)) {
       hydrated.delete()
       return null
     }
     return hydrated
+  }
+
+  /** Check publication without downloading and hydrating the potentially 100 MB bundle. */
+  private fun perPreviewBundleAvailable(
+    stem: String,
+    liveBundle: LiveBundle,
+    base: String,
+    dir: File,
+  ): Boolean {
+    val cached = File(File(File(dir, LIVE_BUNDLE_DIR), PER_PREVIEW_DIR), "$stem.png")
+    if (cached.isFile && cached.length() > 0 && isCompleteExecutableBundle(cached)) return true
+    return runCatching { networkProbe(perPreviewBundleUrl(stem, liveBundle, base)) }
+      .getOrDefault(false)
+  }
+
+  private fun perPreviewBundleUrl(stem: String, liveBundle: LiveBundle, base: String): String {
+    val prefix = liveBundle.path.trim('/')
+    val rel = "$PER_PREVIEW_DIR/$stem.png"
+    return if (prefix.isEmpty()) "$base$rel" else "$base$prefix/$rel"
   }
 
   /** A cached download is usable without a sibling pool and was not split as view-only. */
@@ -1962,6 +2000,11 @@ class ServeCatalogStore(
         return readCapped(body.byteStream(), maxBytes)
       }
     }
+
+    private fun httpExists(url: String): Boolean =
+      httpClient.newCall(Request.Builder().url(url).head().build()).execute().use {
+        it.isSuccessful
+      }
 
     private fun readCapped(input: InputStream, max: Long): ByteArray {
       val out = ByteArrayOutputStream()

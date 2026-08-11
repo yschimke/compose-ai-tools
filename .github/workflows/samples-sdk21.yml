@@ -56,6 +56,10 @@ jobs:
         with:
           cache-provider: basic
 
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+
       - name: Bump daemon JVM criteria to 21 (ephemeral, runner-only)
         run: echo "toolchainVersion=21" > gradle/gradle-daemon-jvm.properties
 

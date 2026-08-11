@@ -35,6 +35,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -396,7 +397,7 @@ public fun RcComposePlayer(
     state.beginFrame(frameNanos / 1_000_000_000f)
     // beginFrame resets derived text to the document's literals, so the ids the layout's own data
     // operations publish must be recomputed before this same composition measures and draws.
-    state.applyContentStateOperations(contentStateOperations)
+    state.applyContentStateOperations(contentStateOperations, theme)
     LookaheadScope {
       CompositionLocalProvider(
         LocalRcLookaheadScope provides this,
@@ -452,6 +453,7 @@ public fun RcComposePlayer(
 private fun RenderLayoutNode(
   node: RcLayoutNode,
   modifier: Modifier = Modifier,
+  forceGone: Boolean = false,
   state: RcPlayerState,
   textMeasurer: TextMeasurer,
   images: Map<Int, ImageBitmap>,
@@ -462,7 +464,9 @@ private fun RenderLayoutNode(
   val fontFamilies = LocalRcFonts.current
   val namedFontFamilies = LocalRcNamedFonts.current
   val visibility =
-    if (layoutVersion == Int.MIN_VALUE) {
+    if (forceGone) {
+      0
+    } else if (layoutVersion == Int.MIN_VALUE) {
       error("unreachable layout invalidation version")
     } else {
       node.modifiers.visibility?.let { androidXVisibility(state.integer(it.visibilityId) ?: 0) }
@@ -640,7 +644,12 @@ private fun RenderLayoutNode(
         )
       } else {
         val hasWeightedChildren =
-          node.content.children.any { it.modifiers.width?.type == RcDimensionType.WEIGHT }
+          node.content.children.any { child ->
+            child.modifiers.width?.type == RcDimensionType.WEIGHT &&
+              child.modifiers.visibility?.let {
+                androidXVisibility(state.integer(it.visibilityId) ?: 0) != 0
+              } != false
+          }
         Row(
           rowModifier,
           horizontalArrangement =
@@ -729,6 +738,10 @@ private fun RenderLayoutNode(
     }
     is RcLayoutNode.State -> {
       val selected = state.integer(node.operation.indexId) ?: 0
+      val contentVisibility =
+        node.content.modifiers.visibility?.let {
+          androidXVisibility(state.integer(it.visibilityId) ?: 0)
+        } ?: 1
       Box(
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
@@ -741,14 +754,39 @@ private fun RenderLayoutNode(
           theme,
         )
       ) {
-        node.content.children.getOrNull(selected)?.let { child ->
-          RenderLayoutNode(
-            child,
-            state = state,
-            textMeasurer = textMeasurer,
-            images = images,
-            theme = theme,
-          )
+        val renderChildren: @Composable () -> Unit = {
+          node.content.children.forEachIndexed { index, child ->
+            if (index == selected && contentVisibility != 0) {
+              key(child.componentId) {
+                RenderLayoutNode(
+                  child,
+                  state = state,
+                  textMeasurer = textMeasurer,
+                  images = images,
+                  theme = theme,
+                )
+              }
+            } else {
+              RenderLayoutNode(
+                child,
+                forceGone = true,
+                state = state,
+                textMeasurer = textMeasurer,
+                images = images,
+                theme = theme,
+              )
+            }
+          }
+        }
+        if (contentVisibility == 0) {
+          Layout(Modifier.trackComponentGeometry(listOf(node.content.componentId), state)) { _, _ ->
+            layout(0, 0) {}
+          }
+          renderChildren()
+        } else {
+          Box(Modifier.trackComponentGeometry(listOf(node.content.componentId), state)) {
+            renderChildren()
+          }
         }
       }
     }
@@ -1587,10 +1625,19 @@ private fun Modifier.applyComponentModifiers(
       }
     }
   }
-  modifiers.ordered.forEach { operation ->
+  var scrollApplied = false
+  var operationIndex = 0
+  while (operationIndex < modifiers.ordered.size) {
+    if (modifiers.scrollPosition == operationIndex) {
+      modifiers.scroll?.let {
+        result = result.applyAndroidXScroll(it, state, geometryComponentIds)
+        scrollApplied = true
+      }
+    }
+    val operation = modifiers.ordered[operationIndex]
     // AndroidX paints CanvasOperations at the component's full bounds, temporarily undoing the
-    // content-padding inset. Put the Compose draw wrapper outside the first padding modifier to
-    // preserve that behaviour while retaining wire order for the ordinary modifiers.
+    // content-padding inset. Put the Compose draw wrapper outside the first padding modifier even
+    // when the wire DrawContent marker follows it.
     if (operation is RcPaddingModifier && !appliedCanvasOperations) {
       result = applyCanvasOperations(result)
     }
@@ -1608,13 +1655,24 @@ private fun Modifier.applyComponentModifiers(
             appliedHeight = true
             result.applyHeight(operation, state, density)
           }
-        is RcPaddingModifier ->
-          result.rcPaddingPixels(
-            left = state.dpTypedPixels(state.resolve(operation.left), density),
-            top = state.dpTypedPixels(state.resolve(operation.top), density),
-            right = state.dpTypedPixels(state.resolve(operation.right), density),
-            bottom = state.dpTypedPixels(state.resolve(operation.bottom), density),
-          )
+        is RcPaddingModifier -> {
+          var left = 0f
+          var top = 0f
+          var right = 0f
+          var bottom = 0f
+          var next = operationIndex
+          while (next < modifiers.ordered.size) {
+            if (next > operationIndex && modifiers.scrollPosition == next) break
+            val padding = modifiers.ordered[next] as? RcPaddingModifier ?: break
+            left += state.dpTypedPixels(state.resolve(padding.left), density)
+            top += state.dpTypedPixels(state.resolve(padding.top), density)
+            right += state.dpTypedPixels(state.resolve(padding.right), density)
+            bottom += state.dpTypedPixels(state.resolve(padding.bottom), density)
+            next++
+          }
+          operationIndex = next - 1
+          result.rcPaddingPixels(left = left, top = top, right = right, bottom = bottom)
+        }
         is RcOffsetModifier ->
           result.offset {
             IntOffset(
@@ -1631,11 +1689,20 @@ private fun Modifier.applyComponentModifiers(
         is RcGraphicsLayerModifier ->
           if (operation == modifiers.graphicsLayer) result.applyGraphicsLayer(operation, state)
           else result
+        is RcMarqueeModifier -> result.applyAndroidXMarquee(operation, state)
+        is RcNoArg ->
+          if (
+            operation.opcode == RcOpcodes.MODIFIER_DRAW_CONTENT && !appliedCanvasOperations
+          ) {
+            applyCanvasOperations(result)
+          } else result
         else -> result
       }
+    operationIndex++
   }
-  modifiers.marquee?.let { result = result.applyAndroidXMarquee(it, state) }
-  modifiers.scroll?.let { result = result.applyAndroidXScroll(it, state, geometryComponentIds) }
+  if (!scrollApplied) {
+    modifiers.scroll?.let { result = result.applyAndroidXScroll(it, state, geometryComponentIds) }
+  }
   if (!appliedCanvasOperations) {
     result = applyCanvasOperations(result)
   }
@@ -2213,7 +2280,7 @@ private fun RcLayoutNode.geometryComponentIds(): List<Int> =
     is RcLayoutNode.Row -> listOf(componentId, content.componentId)
     is RcLayoutNode.Column -> listOf(componentId, content.componentId)
     is RcLayoutNode.Flow -> listOf(componentId, content.componentId)
-    is RcLayoutNode.State -> listOf(componentId, content.componentId)
+    is RcLayoutNode.State -> listOf(componentId)
     is RcLayoutNode.CollapsibleRow -> listOf(componentId, content.componentId)
     is RcLayoutNode.CollapsibleColumn -> listOf(componentId, content.componentId)
     is RcLayoutNode.FitBox -> listOf(componentId, content.componentId)
@@ -2551,7 +2618,7 @@ private fun RcPlayerState.borderWidthPixels(word: RcFloatWord, density: Density)
   val version = document.header.version
   val atLeastV7 = version.major > 1 || (version.major == 1 && version.minor >= 1)
   return if (document.header.densityBehavior == RcHeader.DENSITY_BEHAVIOR_LEGACY && !atLeastV7) {
-    word.value * density.density
+    resolve(word) * density.density
   } else {
     dpTypedPixels(resolve(word), density)
   }

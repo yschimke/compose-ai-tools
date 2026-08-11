@@ -78,6 +78,25 @@ class InspectionSidecarCanonicalizerTest {
     assertContentEquals(layout, result.layoutById.getValue("preview"))
   }
 
+  @Test
+  fun `authored strings and future keyed children pass through unchanged`() {
+    val authored =
+      """{"root":{"nodeId":"1","layoutText":"account.name@abcdef.com"}}""".encodeToByteArray()
+    val futureChildren =
+      """{"root":{"nodeId":"1","children":{"first":{"nodeId":"2"}}}}""".encodeToByteArray()
+
+    val result =
+      InspectionSidecarCanonicalizer.canonicalize(
+        semanticsById = mapOf("future" to futureChildren),
+        layoutById = mapOf("authored" to authored),
+      )
+
+    assertContentEquals(futureChildren, result.semanticsById.getValue("future"))
+    assertTrue(
+      result.layoutById.getValue("authored").decodeToString().contains("account.name@abcdef.com")
+    )
+  }
+
   private fun semantics(rootId: String, buttonId: String): ByteArray =
     """
     {"root":{"nodeId":"$rootId","ref":"r","boundsInRoot":"0,0,100,100","children":[

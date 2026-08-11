@@ -554,14 +554,29 @@ public class RcPlayerState(
    * Anything that is not a state operation — draw commands, modifiers, actions, nested containers —
    * is left to the renderer that owns it.
    */
-  public fun applyContentStateOperations(children: List<RcLinkedNode>) {
+  public fun applyContentStateOperations(
+    children: List<RcLinkedNode>,
+    requestedTheme: Int = RcTheme.UNSPECIFIED,
+  ) {
+    var currentTheme = RcTheme.UNSPECIFIED
     children.forEach { child ->
-      when (val operation = (child as? RcLinkedNode.Operation)?.operation) {
+      val operation = (child as? RcLinkedNode.Operation)?.operation
+      if (operation is RcTheme) {
+        currentTheme = operation.theme
+        return@forEach
+      }
+      val visible =
+        requestedTheme == RcTheme.UNSPECIFIED ||
+          currentTheme == RcTheme.UNSPECIFIED ||
+          currentTheme == requestedTheme
+      if (!visible) return@forEach
+      when (operation) {
         // Float producers run before the text operations that reference them: a TEXT_FROM_FLOAT
         // reading an id no expression has computed resolves to the reference's own NaN bits and
         // formats as garbage. Wire order is the document's order, so one pass suffices.
         is RcFloatExpression -> applyFloatExpression(operation)
         is RcIntegerExpression -> applyIntegerExpression(operation)
+        is RcColorTheme -> applyColorTheme(operation, requestedTheme)
         is RcColorExpression -> applyColorExpression(operation)
         is RcColorAttribute -> applyColorAttribute(operation)
         is RcIdLookup,
@@ -948,6 +963,7 @@ public class RcPlayerState(
   }
 
   public fun setInteger(id: Int, value: Int) {
+    if (integers[id] == value) return
     integers[id] = value
     floats[id] = value.toFloat()
   }
