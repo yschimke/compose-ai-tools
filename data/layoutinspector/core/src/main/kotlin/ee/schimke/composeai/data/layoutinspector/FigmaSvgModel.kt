@@ -160,6 +160,9 @@ data class FigmaSvgVector(
    */
   val scaleX: Double = 1.0,
   val scaleY: Double = 1.0,
+  /** The captured graphics-layer mirrors this vector around the corresponding placed axis. */
+  val flipX: Boolean = false,
+  val flipY: Boolean = false,
   /**
    * True when the paths were recorded from the node's own draw lambda rather than an `ImageVector`
    * — which also decides what coordinate space [viewportWidth]/[viewportHeight] are in, and so how
@@ -937,6 +940,8 @@ data class FigmaSvgModel(
       fillBounds: Boolean,
       scaleX: Double = 1.0,
       scaleY: Double = 1.0,
+      flipX: Boolean = false,
+      flipY: Boolean = false,
     ): FigmaSvgVector? {
       if (viewportWidth <= 0f || viewportHeight <= 0f) return null
       val emittable =
@@ -965,6 +970,8 @@ data class FigmaSvgModel(
           fillBounds = fillBounds,
           scaleX = scaleX,
           scaleY = scaleY,
+          flipX = flipX,
+          flipY = flipY,
           fromDrawCapture = fromDrawCapture,
           // A draw capture is imperative chrome (a slider groove, a progress arc), never an
           // `ImageVector` — so it can't be a Material icon whatever its name says.
@@ -1014,8 +1021,12 @@ data class FigmaSvgModel(
       // — the render draws those measured values at `× scale`, so each is scaled into drawn space
       // before it is used (issue #2615). Identity (`1.0`) for the overwhelming majority of nodes,
       // where every expression below is unchanged.
-      val scaleX = transform?.scaleX?.toDouble() ?: 1.0
-      val scaleY = transform?.scaleY?.toDouble() ?: 1.0
+      // Geometry magnitudes shrink/grow with the layer; a negative captured axis additionally
+      // mirrors vector content but must never turn lengths (corner radii, text sizes) negative.
+      val signedScaleX = transform?.scaleX?.toDouble() ?: 1.0
+      val signedScaleY = transform?.scaleY?.toDouble() ?: 1.0
+      val scaleX = abs(signedScaleX)
+      val scaleY = abs(signedScaleY)
       // A corner radius is a single length against a box scaled on both axes; with the uniform
       // scale Wear's edge transform applies, the mean is exactly that scale.
       val scaleMean = (scaleX + scaleY) / 2.0
@@ -1106,8 +1117,10 @@ data class FigmaSvgModel(
           layoutWidth = painted?.let { it.right - it.left } ?: size.width,
           layoutHeight = painted?.let { it.bottom - it.top } ?: size.height,
           fillBounds = hasFillBoundsContentScale(),
-          scaleX = transform?.scaleX?.toDouble() ?: 1.0,
-          scaleY = transform?.scaleY?.toDouble() ?: 1.0,
+          scaleX = scaleX,
+          scaleY = scaleY,
+          flipX = signedScaleX < 0.0,
+          flipY = signedScaleY < 0.0,
         )
         ?.let { vec ->
           val box = painted ?: bounds
@@ -2090,7 +2103,8 @@ data class FigmaSvgModel(
      * `Modifier.drawBehind {…}.placeholder(state)` chain still paints its own imperative art into
      * the frame, and that art is not something the vector export can otherwise represent.
      */
-    private fun LayoutInspectorNode.hasCustomDraw(): Boolean = modifiers.any { it.isCustomDraw() }
+    private fun LayoutInspectorNode.hasCustomDraw(): Boolean =
+      drawsContent || modifiers.any { it.isCustomDraw() }
 
     private fun LayoutInspectorModifier.isCustomDraw(): Boolean =
       name in DRAW_MODIFIERS && !placeholder

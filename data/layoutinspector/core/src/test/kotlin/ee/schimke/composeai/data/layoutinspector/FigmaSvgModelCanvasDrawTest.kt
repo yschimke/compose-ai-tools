@@ -59,6 +59,31 @@ class FigmaSvgModelCanvasDrawTest {
   }
 
   @Test
+  fun delegatedDrawNodeWithoutAnInspectableDrawLambdaStillUsesAFrameCrop() {
+    // A custom Modifier.NodeElement can delegate to CacheDrawModifierNode without exposing an
+    // inspectable `drawWithCache` element. The live node-chain capability is then the only evidence
+    // that this otherwise-empty Spacer paints (Material 3's wavy progress indicators).
+    val node =
+      LayoutInspectorNode(
+        nodeId = "delegated-draw",
+        component = "Spacer",
+        bounds = bounds(3, 5, 103, 45),
+        size = LayoutInspectorSize(100, 40),
+        drawsContent = true,
+      )
+
+    val m = model(node, captureCanvasDraws = true)
+
+    assertEquals("one full-node raster target", 1, m.rasterTargets.size)
+    val target = m.rasterTargets.single()
+    assertEquals(3, target.left)
+    assertEquals(5, target.top)
+    assertEquals(103, target.right)
+    assertEquals(45, target.bottom)
+    assertNotNull("the delegated draw survives as a background image", m.root.background)
+  }
+
+  @Test
   fun aBackgroundOnlyLeafStillCountsAsPaintingSoItContributesExtent() {
     // A draw-only Spacer paints nothing but its background raster; `paints` must see the background
     // or the layer contributes no extent and the export falls back to the 32×32 padding canvas.

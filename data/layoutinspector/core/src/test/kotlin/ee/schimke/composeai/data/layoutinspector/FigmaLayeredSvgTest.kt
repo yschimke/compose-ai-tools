@@ -370,6 +370,41 @@ class FigmaLayeredSvgTest {
     assertTrue(svg, svg.contains("""transform="translate(10 20) scale(2 1)""""))
   }
 
+  @Test
+  fun drawCapturedVectorRetainsAnAxisMirror() {
+    // Material 3 implements a bottom-to-top VerticalSlider track by drawing in its normal local
+    // coordinates through `scale(1f, -1f)`. Bounds retain the same axis-aligned box, so only the
+    // signed captured transform distinguishes the intended mirror from an ordinary track.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "vertical-track",
+        component = "Spacer",
+        bounds = bounds(10, 20, 52, 938),
+        size = LayoutInspectorSize(42, 918),
+        transform = LayoutInspectorTransform(scaleX = 1f, scaleY = -1f),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 42f,
+            viewportHeight = 918f,
+            fromDrawCapture = true,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L42,0 L42,918 L0,918 Z",
+                  fillArgb = "#FF6750A4",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue(
+      "the origin moves to the bottom edge before the negative Y scale\n$svg",
+      svg.contains("""transform="translate(10 938) scale(1 -1)""""),
+    )
+  }
+
   /**
    * Issue #2853: Jetsnack's `Profile/Animating FAB content` draws a square icon into a box the
    * animation has shrunk — the icon is *clipped*, never distorted. Inferring a scale from the ratio
