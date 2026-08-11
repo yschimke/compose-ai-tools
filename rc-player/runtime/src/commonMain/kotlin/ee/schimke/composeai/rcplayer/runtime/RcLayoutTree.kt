@@ -73,6 +73,8 @@ public data class RcLayoutModifiers(
   val clicks: List<RcClickActionBlock> = emptyList(),
   val touchActions: List<RcTouchActionBlock> = emptyList(),
   val scroll: RcScrollBlock? = null,
+  /** Number of direct operation modifiers preceding [scroll] in wire order. */
+  val scrollPosition: Int? = null,
   val marquee: RcMarqueeModifier? = null,
   val visibility: RcVisibilityModifier? = null,
   val graphicsLayer: RcGraphicsLayerModifier? = null,
@@ -510,6 +512,22 @@ public object RcLayoutTree {
   private fun modifiers(container: RcLinkedNode.Container): RcLayoutModifiers {
     val operations =
       container.children.filterIsInstance<RcLinkedNode.Operation>().map { it.operation }
+    val scrollContainers =
+      container.children.filterIsInstance<RcLinkedNode.Container>().filter {
+        it.operation is RcScrollModifier
+      }
+    if (scrollContainers.size > 1) {
+      throw RcLayoutException(
+        "${container.operation::class.simpleName} has ${scrollContainers.size} RcScrollModifier operations"
+      )
+    }
+    val scrollContainer = scrollContainers.singleOrNull()
+    val scroll = scrollContainer?.let {
+      RcScrollBlock(it.operation as RcScrollModifier, it.children)
+    }
+    val scrollPosition = scrollContainer?.let { target ->
+      container.children.takeWhile { it !== target }.count { it is RcLinkedNode.Operation }
+    }
     return RcLayoutModifiers(
       ordered = operations,
       animationSpec = operations.singleModifier<RcAnimationSpec>(container.operation),
@@ -569,20 +587,8 @@ public object RcLayoutTree {
             }
           type?.let { RcTouchActionBlock(it, child.children) }
         },
-      scroll =
-        container.children
-          .filterIsInstance<RcLinkedNode.Container>()
-          .mapNotNull { child ->
-            (child.operation as? RcScrollModifier)?.let { RcScrollBlock(it, child.children) }
-          }
-          .let { blocks ->
-            if (blocks.size > 1) {
-              throw RcLayoutException(
-                "${container.operation::class.simpleName} has ${blocks.size} RcScrollModifier operations"
-              )
-            }
-            blocks.singleOrNull()
-          },
+      scroll = scroll,
+      scrollPosition = scrollPosition,
       marquee = operations.singleModifier<RcMarqueeModifier>(container.operation),
     )
   }

@@ -8,7 +8,7 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),m={"theme:com.example.BrandLightThemeCatalog":"light","theme:com.example.BrandDarkThemeCatalog":"dark"},t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));t=m[t]||t;if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),m={"theme:com.example.BrandLightThemeCatalog":"light","theme:com.example.BrandDarkThemeCatalog":"dark"},t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));t=m[t]||t;if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
@@ -382,6 +382,9 @@ function applyVariant(c, k, withSrc) {
   if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
   c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
 }
+cards.forEach(function (c) {
+  c.setAttribute("data-bg-default", c.getAttribute("data-bg-theme") || "");
+});
 // apply() also runs on every search keystroke; re-point the cards only when the THEME
 // actually changed, so typing never restarts an in-flight themed-render queue.
 function applyThemeChoice() {
@@ -410,6 +413,11 @@ function applyThemeChoice() {
       var base = themeBase[i];
       if (!img || !base) return;
       if (selectedThemeMode) c.setAttribute("data-bg-theme", selectedThemeMode);
+      else {
+        var bgDefault = c.getAttribute("data-bg-default") || "";
+        if (bgDefault) c.setAttribute("data-bg-theme", bgDefault);
+        else c.removeAttribute("data-bg-theme");
+      }
       var themedSrc = base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider);
       var job = {
         card: c,
@@ -466,6 +474,9 @@ function applyThemeChoice() {
     var img = c.querySelector("img");
     var base = themeBase[i];
     if (img && base) setCardSrc(img, base);
+    var bgDefault = c.getAttribute("data-bg-default") || "";
+    if (bgDefault) c.setAttribute("data-bg-theme", bgDefault);
+    else c.removeAttribute("data-bg-theme");
   });
 }
 applyThemeChoice();

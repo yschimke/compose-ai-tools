@@ -113,6 +113,7 @@ import { exportsNoSticker } from "./capture-mode.mjs";
 import {
   bridgeLivePreviewIds,
   expandDeferredRecords,
+  stampPreviewDensities,
 } from "./bridge-live-preview-ids.mjs";
 import {
   catalogImagePath,
@@ -1417,6 +1418,7 @@ if (values["publish-live-bundle"]) {
       );
     }
   }
+  stampPreviewDensities(manifest, spec, [bundle, extraBundle]);
   await writeFile(
     catalogJsonPath,
     `${JSON.stringify(manifest, null, 2)}\n`,

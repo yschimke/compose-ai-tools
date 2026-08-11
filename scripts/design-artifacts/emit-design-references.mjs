@@ -211,7 +211,10 @@ async function sourceRaster(record) {
   const target = targetFor(record);
 
   const supplied = suppliedRaster(ref);
-  if (supplied) return readPng(supplied);
+  if (supplied) {
+    const raster = readPng(supplied);
+    return parseFigmaRef(ref) ? { ...raster, preserveScale: true } : raster;
+  }
 
   if (typeof ref === "string" && ref.toLowerCase().endsWith(".png")) {
     const file = path.resolve(REPO, ref);
@@ -242,10 +245,12 @@ async function sourceRaster(record) {
 }
 
 function targetFor(record) {
+  const boardDensity = referenceDensity(record);
   return {
     width: record.raster.width,
     height: record.raster.height,
     ...(record.raster.density ? { density: record.raster.density } : {}),
+    ...(boardDensity !== undefined ? { boardDensity } : {}),
   };
 }
 

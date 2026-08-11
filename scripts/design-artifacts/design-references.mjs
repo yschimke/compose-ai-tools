@@ -187,7 +187,12 @@ export function imagesByPreviewId(catalog) {
       sanitised.get(key).push(match);
     }
   }
-  return { exact, sanitised };
+  const collisionBases = new Set();
+  for (const id of exact.keys()) {
+    const suffix = id.match(/^(.*)_([1-9][0-9]*)$/);
+    if (suffix && exact.has(suffix[1])) collisionBases.add(suffix[1]);
+  }
+  return { exact, sanitised, collisionBases };
 }
 
 /**
@@ -233,11 +238,13 @@ function collisionFamilyBase(publishedPreviewIds, previewId) {
  * Publishing a reference against a coin-flip is worse than publishing none, so the caller warns
  * instead.
  */
-function matchesForPreviewId({ exact, sanitised }, previewId) {
-  if (collisionFamilyBase(exact.keys(), previewId)) return [];
+function matchesForPreviewId({ exact, sanitised, collisionBases }, previewId) {
+  const mapped = sanitizeBundleEntryId(previewId);
+  const suffix = mapped.match(/^(.*)_([1-9][0-9]*)$/);
+  if (collisionBases.has(mapped) || (suffix && collisionBases.has(suffix[1]))) return [];
   const direct = exact.get(previewId);
   if (direct && direct.length > 0) return direct;
-  const viaSanitised = sanitised.get(sanitizeBundleEntryId(previewId)) ?? [];
+  const viaSanitised = sanitised.get(mapped) ?? [];
   return viaSanitised.length === 1 ? viaSanitised : [];
 }
 
@@ -297,17 +304,18 @@ function narrowToMappedPreviewId(matches, mappedPreviewId, fn, warnings) {
   }
 
   const exact = labelled.filter(({ image }) => image.previewId === mappedPreviewId);
-  const sanitised =
-    exact.length > 0
-      ? []
-      : labelled.filter(
-          ({ image }) =>
-            sanitizeBundleEntryId(image.previewId) === sanitizeBundleEntryId(mappedPreviewId),
-        );
+  if (exact.length > 0) {
+    const unlabelled = matches.filter(({ image }) => typeof image?.previewId !== "string");
+    return [...exact, ...unlabelled];
+  }
+
+  const sanitised = labelled.filter(
+    ({ image }) => sanitizeBundleEntryId(image.previewId) === sanitizeBundleEntryId(mappedPreviewId),
+  );
   // A sanitised collision without a published suffix is still ambiguous when this match set carries
   // several unsanitised ids. Keep exact matches as-is; accept the sanitised fallback only when it
   // names one sticker. Real bundle collision suffixes were rejected above.
-  const narrowed = exact.length > 0 ? exact : sanitised.length === 1 ? sanitised : [];
+  const narrowed = sanitised.length === 1 ? sanitised : [];
   if (narrowed.length === 0) {
     warnings.push(
       `design-map '${fn}' names previewId '${mappedPreviewId}', which matches none of its ` +

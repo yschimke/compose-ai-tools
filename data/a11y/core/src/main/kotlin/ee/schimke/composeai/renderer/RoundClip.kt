@@ -25,6 +25,18 @@ import android.graphics.Shader
 fun isRoundDevice(device: String?): Boolean {
   if (device.isNullOrBlank()) return false
   val lower = device.lowercase()
+  if (lower.startsWith("spec:")) {
+    val params =
+      lower.removePrefix("spec:").split(',').mapNotNull {
+        val pair = it.split('=', limit = 2)
+        pair.takeIf { it.size == 2 }?.let { values ->
+          values[0].trim() to values[1].trim()
+        }
+      }.toMap()
+    if ("isround" in params || "shape" in params) {
+      return params["isround"] == "true" || params["shape"] == "round"
+    }
+  }
   // Match `*_round` device IDs (e.g. `id:wearos_small_round`) and
   // spec parameters `isRound=true` / `shape=Round`. The regex avoids
   // false positives on unrelated words like "ground" or "background".

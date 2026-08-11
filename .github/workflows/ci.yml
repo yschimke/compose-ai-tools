@@ -559,8 +559,7 @@ jobs:
             --player "$GITHUB_WORKSPACE/cli/src/main/resources/rc-player/bundle.js" \
             --out "$RUNNER_TEMP/parity-base" \
             --system remote-m3 \
-            --cmp-wasm "$RUNNER_TEMP/parity-base-source/rc-player/wasm/build/wasmDist" \
-            --require-cmp-wasm
+            --cmp-wasm "$RUNNER_TEMP/parity-base-source/rc-player/wasm/build/wasmDist"
       - name: Render the corpus through this PR's player
         if: ${{ steps.corpus.outputs.available == 'true' }}
         working-directory: scripts/design-artifacts
@@ -1100,7 +1099,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/buildfetch-cache
         with:
-          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Fetch agent audit script from yschimke/skills
         # The script lives in the sibling skills repo since it's part of the

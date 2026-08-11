@@ -107,6 +107,10 @@ jobs:
           cache-provider: basic
           cache-read-only: true
 
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+
       - name: Render :samples:sdk-matrix
         id: render
         env:

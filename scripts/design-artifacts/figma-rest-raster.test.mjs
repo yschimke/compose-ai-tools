@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 
 import {
-  DEFAULT_RENDER_DENSITY,
   FigmaRestRasterizer,
   parseFigmaRef,
 } from "./figma-rest-raster.mjs";
@@ -54,9 +53,9 @@ test("batches nodes and equal-scale image exports, then caches duplicate rasters
   };
   const rasterizer = new FigmaRestRasterizer({ token: "token", fetchImpl });
   const requests = [
-    { ref: "figma:file/1:1", target: { width: 20, height: 20 } },
-    { ref: "figma:file/2:2", target: { width: 40, height: 40 } },
-    { ref: "figma:file/1:1", target: { width: 20, height: 20 } },
+    { ref: "figma:file/1:1", target: { width: 20, height: 20, density: 2.625 } },
+    { ref: "figma:file/2:2", target: { width: 40, height: 40, density: 2.625 } },
+    { ref: "figma:file/1:1", target: { width: 20, height: 20, density: 2.625 } },
   ];
 
   await rasterizer.prepare(requests);
@@ -69,7 +68,7 @@ test("batches nodes and equal-scale image exports, then caches duplicate rasters
   assert.match(calls.find((url) => url.includes("/nodes?")), /ids=1%3A1%2C2%3A2/);
   assert.match(
     calls.find((url) => url.includes("/images/")),
-    new RegExp(`scale=${DEFAULT_RENDER_DENSITY}`),
+    /scale=2.625/,
   );
 });
 
@@ -85,7 +84,11 @@ test("exports at renderer density instead of scaling a tight node to the padded 
   };
   const rasterizer = new FigmaRestRasterizer({ token: "token", fetchImpl });
 
-  await rasterizer.rasterize("figma:file/1:1", { width: 382, height: 210 });
+  await rasterizer.rasterize("figma:file/1:1", {
+    width: 382,
+    height: 210,
+    density: 2.625,
+  });
 
   const imageUrl = calls.find((url) => url.includes("/images/"));
   assert.equal(new URL(imageUrl).searchParams.get("scale"), "2.625");
@@ -97,6 +100,14 @@ test("honours an explicit preview renderer density", async () => {
   const parsed = parseFigmaRef("figma:file/1:1");
   rasterizer.nodes.set(rasterizer.nodeKey(parsed), { document: { absoluteBoundingBox: { width: 95 } } });
   assert.equal(rasterizer.scaleFor(parsed, { width: 382, height: 210, density: 3 }), 3);
+  assert.equal(
+    rasterizer.scaleFor(parsed, { width: 382, height: 210, density: 3, boardDensity: 3 }),
+    1,
+  );
+  assert.throws(
+    () => rasterizer.scaleFor(parsed, { width: 382, height: 210, density: 5 }),
+    /exceeds the API maximum/,
+  );
 });
 
 test("retries a rate-limited batch once and respects Retry-After", async () => {
@@ -118,7 +129,11 @@ test("retries a rate-limited batch once and respects Retry-After", async () => {
     sleep: async (millis) => sleeps.push(millis),
   });
 
-  const raster = await rasterizer.rasterize("figma:file/1:1", { width: 20, height: 20 });
+  const raster = await rasterizer.rasterize("figma:file/1:1", {
+    width: 20,
+    height: 20,
+    density: 2.625,
+  });
 
   assert.equal(nodeAttempts, 2);
   assert.deepEqual(sleeps, [0]);

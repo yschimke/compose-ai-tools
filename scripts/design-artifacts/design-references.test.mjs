@@ -800,7 +800,7 @@ test("planDesignReferences narrows spec matches using a sanitised array primary 
   assert.equal(records[0].origin.ref, "figma:abc/73:6");
 });
 
-test("planDesignReferences refuses collision-suffixed bundle ids without raw aliases", () => {
+test("planDesignReferences refuses every id in an ambiguous bundle collision family", () => {
   // What a real bundle-derived catalog carries after raw `P_A B` and `P_A/B` collide: the first
   // sanitised claimant keeps the base and the second gets `_1`. The raw aliases that identify
   // which is which are not retained in catalog.json, so neither raw id can be reversed safely.
@@ -816,7 +816,7 @@ test("planDesignReferences refuses collision-suffixed bundle ids without raw ali
     ],
   };
 
-  for (const previewId of ["ee.HomeKt.P_A B", "ee.HomeKt.P_A/B", "ee.HomeKt.P_A_B_1"]) {
+  for (const previewId of ["ee.HomeKt.P_A B", "ee.HomeKt.P_A/B"]) {
     const result = planDesignReferences({
       designMap: {
         components: [{ code: "a.kt#P", source: "figma", ref: "figma:abc/1:1", previewId }],
@@ -848,4 +848,24 @@ test("planDesignReferences refuses collision-suffixed bundle ids without raw ali
   assert.deepEqual(specLed.records, []);
   assert.equal(specLed.warnings.length, 1);
   assert.match(specLed.warnings[0], /collision family cannot be reversed/);
+
+  const exactAuthoredSuffix = planDesignReferences({
+    designMap: {
+      components: [
+        {
+          code: "a.kt#P",
+          source: "figma",
+          ref: "figma:abc/1:1",
+          previewId: "ee.HomeKt.P_A_B_1",
+        },
+      ],
+    },
+    spec: {
+      groups: [{ components: [{ componentId: "Home/Round", preview: "P" }] }],
+    },
+    catalog: collidingCatalog,
+  });
+  assert.deepEqual(exactAuthoredSuffix.records, []);
+  assert.equal(exactAuthoredSuffix.warnings.length, 1);
+  assert.match(exactAuthoredSuffix.warnings[0], /collision family cannot be reversed/);
 });

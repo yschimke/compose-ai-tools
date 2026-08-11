@@ -8,7 +8,7 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||p.get("uiMode")||localStorage.getItem("cp-theme:default"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:default"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
@@ -190,6 +190,9 @@ function applyVariant(c, k, withSrc) {
   if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
   c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
 }
+cards.forEach(function (c) {
+  c.setAttribute("data-bg-default", c.getAttribute("data-bg-theme") || "");
+});
 // apply() also runs on every search keystroke; re-point the cards only when the THEME
 // actually changed, so typing never restarts an in-flight themed-render queue.
 function applyThemeChoice() {

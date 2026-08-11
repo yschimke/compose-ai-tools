@@ -2482,7 +2482,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           externalResourcesDir,
           alias,
           bakedFallback,
-          fetchPerPreviewBundle ->
+          perPreviewBundle ->
           // Record where this catalog's verified liveBundle landed, so `--playground-bundle
           // <system>` can compile against the very bytes the live lane runs — no second copy on the
           // config volume, and the playground inherits the catalog's Trusted(Branch) verdict rather
@@ -2506,7 +2506,7 @@ class ServeCommand(args: List<String>) : Command(args) {
             externalResourcesDir,
             alias,
             bakedFallback,
-            fetchPerPreviewBundle,
+            perPreviewBundle,
             registry,
             openHost,
           )
@@ -2639,7 +2639,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     externalResourcesDir: File?,
     alias: Map<String, String>,
     bakedFallback: () -> ServeHost,
-    fetchPerPreviewBundle: (daemonId: String) -> File?,
+    perPreviewBundle: ee.schimke.composeai.cli.serve.PerPreviewBundleAccess,
     registry: ServeSessionRegistry,
     openHost: (ServeSessionState) -> ServeHost?,
   ): Boolean {
@@ -2666,7 +2666,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         liveSeats = liveSeatLimiter,
         seatWeight = { perPreviewSeatWeight },
       ) { daemonId ->
-        val ppFile = fetchPerPreviewBundle(daemonId) ?: return@ServePerPreviewDaemonPool null
+        val ppFile = perPreviewBundle.fetch(daemonId) ?: return@ServePerPreviewDaemonPool null
         val ppDest =
           java.nio.file.Files.createTempDirectory("serve-catalog-preview-$system").toFile().also {
             it.deleteOnExit()
@@ -2700,9 +2700,9 @@ class ServeCommand(args: List<String>) : Command(args) {
           previewAliases = alias,
           bakedFallback = bakedFallback,
           perPreviewResolve = perPreviewPool::get,
-          executableBundleAvailable = { daemonId -> fetchPerPreviewBundle(daemonId) != null },
+          executableBundleAvailable = perPreviewBundle.available,
           executableBundleProvider = { daemonId ->
-            fetchPerPreviewBundle(daemonId)?.takeIf(File::isFile)?.readBytes()
+            perPreviewBundle.fetch(daemonId)?.takeIf(File::isFile)?.readBytes()
           },
           perPreviewStreamCount = perPreviewPool::activeStreamCount,
           perPreviewRenderStats = perPreviewPool::renderPerfStats,

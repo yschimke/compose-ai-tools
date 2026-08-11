@@ -44,6 +44,8 @@
   var next = 0;
   var completed = 0;
   var findings = [];
+  var failures = 0;
+  var GEOMETRY_REPORT_THRESHOLD = 2;
 
   function esc(value) {
     var span = document.createElement("span");
@@ -52,17 +54,25 @@
   }
 
   function finish() {
-    findings.sort(function (a, b) { return a.score - b.score; });
+    findings.sort(function (a, b) { return (a.score ?? -1) - (b.score ?? -1); });
     if (issueBody) {
       issueBody.innerHTML = findings.map(function (finding) {
+        var result = finding.unavailable
+          ? "Unavailable"
+          : finding.score.toFixed(1) + "%" +
+            (finding.geometry >= GEOMETRY_REPORT_THRESHOLD
+              ? " · " + finding.geometry.toFixed(1) + "% proportion drift" : "");
         return "<tr><td>" + esc(finding.name) + "</td><td class=\"cp-parity-missing\">" +
-          finding.score.toFixed(1) + "%</td><td><a href=\"" + esc(finding.review) +
+          result + "</td><td><a href=\"" + esc(finding.review) +
           "\">Compare</a></td></tr>";
       }).join("");
     }
     if (results) results.hidden = findings.length === 0;
-    if (status) status.textContent = findings.length
-      ? findings.length + " mapped component(s) are below 90% structural match."
+    if (status) status.textContent = failures
+      ? failures + " of " + rows.length + " mapped comparison(s) are unavailable; " +
+        findings.length + " require review."
+      : findings.length
+      ? findings.length + " mapped component(s) have a structural or proportion difference."
       : "All " + rows.length + " mapped components are at least 90% structural match.";
   }
 
@@ -72,19 +82,36 @@
     var row = rows[index];
     return compare.scoreImageUrls(row.dataset.reference, row.dataset.actual).then(function (measured) {
       var score = measured.percent;
+      var geometry = typeof measured.geometry === "number" ? measured.geometry : 0;
+      var hasFinding = score < 90 || geometry >= GEOMETRY_REPORT_THRESHOLD;
       var cell = row.querySelector(".cp-parity-score");
       if (cell) {
         cell.textContent = score.toFixed(1) + "%";
-        cell.className = "cp-parity-score " + (score < 90 ? "cp-parity-missing" : "cp-ok");
+        cell.className = "cp-parity-score " + (hasFinding ? "cp-parity-missing" : "cp-ok");
+        if (geometry >= GEOMETRY_REPORT_THRESHOLD) {
+          cell.title = geometry.toFixed(1) + "% proportion difference";
+        }
       }
-      if (score < 90) findings.push({
+      if (hasFinding) findings.push({
         name: row.dataset.name,
         review: row.dataset.review,
         score: score,
+        geometry: geometry,
       });
     }, function () {
       var cell = row.querySelector(".cp-parity-score");
-      if (cell) cell.textContent = "Unavailable";
+      if (cell) {
+        cell.textContent = "Unavailable";
+        cell.className = "cp-parity-score cp-parity-missing";
+      }
+      failures++;
+      findings.push({
+        name: row.dataset.name,
+        review: row.dataset.review,
+        score: null,
+        geometry: 0,
+        unavailable: true,
+      });
     }).then(function () {
       completed++;
       if (status) status.textContent = "Checked " + completed + " of " + rows.length + " comparisons…";

@@ -1635,6 +1635,11 @@ object ServeWeb {
             var base = themeBase[i];
             if (!img || !base) return;
             if (selectedThemeMode) c.setAttribute("data-bg-theme", selectedThemeMode);
+            else {
+              var bgDefault = c.getAttribute("data-bg-default") || "";
+              if (bgDefault) c.setAttribute("data-bg-theme", bgDefault);
+              else c.removeAttribute("data-bg-theme");
+            }
             var themedSrc = base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider);
             var job = {
               card: c,
@@ -1698,7 +1703,10 @@ object ServeWeb {
       if (hasDeclaredThemes)
         "\n            var img = c.querySelector(\"img\");" +
           "\n            var base = themeBase[i];" +
-          "\n            if (img && base) setCardSrc(img, base);"
+          "\n            if (img && base) setCardSrc(img, base);" +
+          "\n            var bgDefault = c.getAttribute(\"data-bg-default\") || \"\";" +
+          "\n            if (bgDefault) c.setAttribute(\"data-bg-theme\", bgDefault);" +
+          "\n            else c.removeAttribute(\"data-bg-theme\");"
       else ""
     val applyTheme =
       if (hasThemes)
@@ -1740,6 +1748,9 @@ object ServeWeb {
           if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
           c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
         }
+        cards.forEach(function (c) {
+          c.setAttribute("data-bg-default", c.getAttribute("data-bg-theme") || "");
+        });
         // apply() also runs on every search keystroke; re-point the cards only when the THEME
         // actually changed, so typing never restarts an in-flight themed-render queue.
         function applyThemeChoice() {
@@ -6648,7 +6659,7 @@ $rows
         ),
       themeCss = themeCss,
       themeStorageKey = themeStorageKey(sessionId, basePath),
-      declaredThemes = viewerDeclaredThemes,
+      declaredThemes = if (overridesLive) viewerDeclaredThemes else emptyList(),
       // Only the `js` chip paints in this document's canvas, and it only exists when the preview
       // carries a captured document.
       rcFonts = hasRemoteComposeDoc,
@@ -6887,7 +6898,7 @@ $rows
     val modeResolve = if (modeEntries.isEmpty()) "" else "t=m[t]||t;"
     return "<script>try{var p=new URLSearchParams(location.search),$modeInit" +
       "t=localStorage.getItem(\"cp-page-theme\")===\"system\"?\"\"" +
-      ":(p.get(\"theme\")||p.get(\"uiMode\")$storedTheme);" +
+      ":(p.get(\"theme\")||(p.get(\"themeProvider\")?\"theme:\"+p.get(\"themeProvider\"):\"\")||p.get(\"uiMode\")$storedTheme);" +
       modeResolve +
       "if(t===\"light\"||t===\"dark\")document.documentElement.classList.add(\"cp-scheme-\"+t);" +
       "}catch(e){}</script>"

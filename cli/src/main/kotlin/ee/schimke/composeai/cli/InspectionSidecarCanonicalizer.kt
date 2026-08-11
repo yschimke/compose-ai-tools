@@ -119,12 +119,15 @@ internal object InspectionSidecarCanonicalizer {
     path: String,
     transform: (JsonObject, String) -> JsonObject,
   ): JsonElement? =
-    (children as? JsonArray)?.let { array ->
-      JsonArray(
-        array.mapIndexed { index, child ->
-          (child as? JsonObject)?.let { transform(it, "$path/$index") } ?: child
-        }
-      )
+    when (children) {
+      null -> null
+      is JsonArray ->
+        JsonArray(
+          children.mapIndexed { index, child ->
+            (child as? JsonObject)?.let { transform(it, "$path/$index") } ?: child
+          }
+        )
+      else -> error("children must be an array")
     }
 
   private fun canonicalChildren(
@@ -162,10 +165,10 @@ internal object InspectionSidecarCanonicalizer {
 }
 
 private val JVM_OBJECT_IDENTITY =
-  Regex("""([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)+)@[0-9a-fA-F]{6,16}\b""")
+  Regex("""^([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)+)@[0-9a-fA-F]{1,16}$""")
 private val JVM_LAMBDA_IDENTITY =
-  Regex("""(\${'$'}\${'$'}Lambda)/0x[0-9a-fA-F]+@[0-9a-fA-F]{6,16}\b""")
-private val JVM_LAMBDA_ADDRESS = Regex("""(\${'$'}\${'$'}Lambda)/0x[0-9a-fA-F]+""")
+  Regex("""^(.+\${'$'}\${'$'}Lambda)/0x[0-9a-fA-F]+@[0-9a-fA-F]{1,16}$""")
+private val JVM_LAMBDA_ADDRESS = Regex("""^(.+\${'$'}\${'$'}Lambda)/0x[0-9a-fA-F]+$""")
 
 internal fun String.canonicalizeJvmRuntimeIdentity(): String =
   replace(JVM_LAMBDA_IDENTITY, "${'$'}1/<address>@<identity>")

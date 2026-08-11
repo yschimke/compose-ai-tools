@@ -14,6 +14,7 @@ import { test } from "node:test";
 import {
   bridgeLivePreviewIds,
   expandDeferredRecords,
+  stampPreviewDensities,
 } from "./bridge-live-preview-ids.mjs";
 
 /** previewId by image state, for one single-component manifest. */
@@ -965,6 +966,33 @@ test("an un-themed catalog is unaffected by the untagged-sticker preference", ()
     manifest.components[0].images.map((i) => i.previewId),
     ["pkg.CatalogKt.FilledButton", "pkg.CatalogKt.ButtonPressed"],
   );
+});
+
+test("static and unbridged images retain the density of the preview that rendered them", () => {
+  const spec = {
+    groups: [
+      {
+        components: [{ componentId: "Button/Filled", preview: "FilledButton" }],
+      },
+    ],
+  };
+  const manifest = {
+    components: [
+      { componentId: "Button/Filled", images: [{ state: "default", path: "button.png" }] },
+    ],
+  };
+  const primary = {
+    previews: [
+      { id: "primary", functionName: "FilledButton", params: { density: 2.625 } },
+    ],
+  };
+  const supplement = {
+    previews: [{ id: "extra", functionName: "FilledButton", params: { density: 2 } }],
+  };
+
+  assert.equal(stampPreviewDensities(manifest, spec, [primary, supplement]), 1);
+  assert.equal(manifest.components[0].images[0].density, 2);
+  assert.equal(manifest.components[0].images[0].previewId, undefined);
 });
 
 // --- deferred (live-only) records -------------------------------------------------------------

@@ -1,8 +1,5 @@
 import { PNG } from "pngjs";
 
-/** Compose Desktop's renderer density when an @Preview does not override it. */
-export const DEFAULT_RENDER_DENSITY = 2.625;
-
 /** `figma:<fileKey>/<nodeId>` -> `{ fileKey, nodeId }`, or null. */
 export function parseFigmaRef(ref) {
   const match = /^figma:([^/]+)\/(.+)$/.exec(String(ref ?? ""));
@@ -85,13 +82,20 @@ export class FigmaRestRasterizer {
     const entry = this.nodes.get(this.nodeKey(parsed));
     if (entry instanceof Error) throw entry;
     const requested = target?.density;
-    const raw =
-      typeof requested === "number" && Number.isFinite(requested) && requested > 0
-        ? requested
-        : DEFAULT_RENDER_DENSITY;
+    if (typeof requested !== "number" || !Number.isFinite(requested) || requested <= 0) {
+      throw new Error("catalog image is missing its renderer density");
+    }
+    const boardDensity = target?.boardDensity ?? 1;
+    if (typeof boardDensity !== "number" || !Number.isFinite(boardDensity) || boardDensity <= 0) {
+      throw new Error("Figma board density must be a positive number");
+    }
+    const raw = requested / boardDensity;
+    if (raw > 4) {
+      throw new Error(`Figma export scale ${raw} exceeds the API maximum of 4`);
+    }
     // Four decimals keep requests stable and batch components rendered at the same density while
     // remaining far below a physical pixel of error at Figma's maximum scale.
-    return Number(Math.min(4, Math.max(0.01, raw)).toFixed(4));
+    return Number(Math.max(0.01, raw).toFixed(4));
   }
 
   imageKey(parsed, target) {

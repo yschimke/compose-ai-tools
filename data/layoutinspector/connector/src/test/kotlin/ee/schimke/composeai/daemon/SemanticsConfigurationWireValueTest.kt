@@ -32,18 +32,28 @@ class SemanticsConfigurationWireValueTest {
   }
 
   @Test
-  fun `wire value canonicalizes runtime identities inside string properties`() {
+  fun `wire value preserves authored strings that resemble runtime identities`() {
     val custom = SemanticsPropertyKey<String>("Custom")
-    val first = SemanticsConfiguration().apply { this[custom] = "example.Value@1234abcd" }
-    val second = SemanticsConfiguration().apply { this[custom] = "example.Value@8765dcba" }
+    val configuration = SemanticsConfiguration().apply { this[custom] = "account.name@abcdef.com" }
 
     assertEquals(
-      ComposeLayoutInspector.canonicalWireValue(first),
-      ComposeLayoutInspector.canonicalWireValue(second),
+      "{Custom=account.name@abcdef.com}",
+      ComposeLayoutInspector.canonicalWireValue(configuration),
     )
+  }
+
+  @Test
+  fun `wire value canonicalizes short runtime identities from non-string values`() {
+    val custom = SemanticsPropertyKey<Any>("Custom")
+    val runtimeValue =
+      object {
+        override fun toString() = "example.Value@abcde"
+      }
+    val configuration = SemanticsConfiguration().apply { this[custom] = runtimeValue }
+
     assertEquals(
       "{Custom=example.Value@<identity>}",
-      ComposeLayoutInspector.canonicalWireValue(first),
+      ComposeLayoutInspector.canonicalWireValue(configuration),
     )
   }
 

@@ -1257,9 +1257,15 @@ internal object ComposeLayoutInspector {
           // region nothing painted). A ring-only node — an `OutlinedCard`, a divider — still gets
           // its own box from the `border`.
           ?.let { resolved ->
+            val hasVisibleFill =
+              resolved.backgroundGradient != null ||
+                resolved.backgroundColor?.let { color ->
+                  color.length >= 3 && !color.substring(1, 3).equals("00", ignoreCase = true)
+                } == true
             val paint =
-              modifiers.firstOrNull { ModifierTokenResolver.fillsContainer(it.modifier) }
-                ?: modifiers.firstOrNull { ModifierTokenResolver.ringsContainer(it.modifier) }
+              modifiers.firstOrNull {
+                hasVisibleFill && ModifierTokenResolver.fillsContainer(it.modifier)
+              } ?: modifiers.firstOrNull { ModifierTokenResolver.ringsContainer(it.modifier) }
             paint
               ?.coordinates
               ?.boundsIn(rootCoords)
@@ -1526,21 +1532,32 @@ internal object ComposeLayoutInspector {
 
   internal fun canonicalWireValue(configuration: SemanticsConfiguration): String =
     configuration
-      .map { entry -> entry.key.name to entry.value.wireValue().canonicalizeJvmRuntimeIdentity() }
+      .map { entry ->
+        entry.key.name.canonicalizeJvmRuntimeIdentity(wholeValueOnly = true) to
+          entry.value.wireValue()
+      }
       .sortedWith(compareBy<Pair<String, String>>({ it.first }, { it.second }))
       .joinToString(prefix = "{", postfix = "}") { (key, value) -> "$key=$value" }
-      .canonicalizeJvmRuntimeIdentity()
 
-  private fun String.canonicalizeJvmRuntimeIdentity(): String =
-    replace(
-        Regex("""(\${'$'}\${'$'}Lambda)/0x[0-9a-fA-F]+@[0-9a-fA-F]{6,16}\b"""),
+  private fun String.canonicalizeJvmRuntimeIdentity(wholeValueOnly: Boolean = false): String {
+    val anchor = if (wholeValueOnly) "^" to "\$" else "" to ""
+    return replace(
+        Regex(
+          """${anchor.first}(.+\${'$'}\${'$'}Lambda)/0x[0-9a-fA-F]+@[0-9a-fA-F]{1,16}${anchor.second}"""
+        ),
         "${'$'}1/<address>@<identity>",
       )
-      .replace(Regex("""(\${'$'}\${'$'}Lambda)/0x[0-9a-fA-F]+"""), "${'$'}1/<address>")
       .replace(
-        Regex("""([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)+)@[0-9a-fA-F]{6,16}\b"""),
+        Regex("""${anchor.first}(.+\${'$'}\${'$'}Lambda)/0x[0-9a-fA-F]+${anchor.second}"""),
+        "${'$'}1/<address>",
+      )
+      .replace(
+        Regex(
+          """${anchor.first}([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)+)@[0-9a-fA-F]{1,16}${anchor.second}"""
+        ),
         "${'$'}1@<identity>",
       )
+  }
 
   /**
    * Extracts Wear curved text (a `CurvedLayout`/`TimeText` clock) from a layout node. Curved text

@@ -933,6 +933,26 @@ class RcPlayerStateTest {
   }
 
   @Test
+  fun resetsThemeFilteringBetweenLayoutContentScopes() {
+    val state = RcPlayerState(RcDocument(RcHeader(RcVersion(0, 1, 0)), emptyList()))
+    val darkScope =
+      listOf<RcLinkedNode>(
+        RcLinkedNode.Operation(RcTheme(RcTheme.DARK)),
+        RcLinkedNode.Operation(RcColorTheme(30, 0, 0, 0, 0xffeeeeee.toInt(), 0xff111111.toInt())),
+      )
+    val followingScope =
+      listOf<RcLinkedNode>(
+        RcLinkedNode.Operation(RcColorTheme(31, 0, 0, 0, 0xffabcdef.toInt(), 0xff123456.toInt()))
+      )
+
+    state.applyContentStateOperations(darkScope, RcTheme.LIGHT)
+    state.applyContentStateOperations(followingScope, RcTheme.LIGHT)
+
+    assertEquals(0, state.color(30))
+    assertEquals(0xffabcdef.toInt(), state.color(31))
+  }
+
+  @Test
   fun replaysColorAttributesAfterTheColorExpressionsTheyRead() {
     val state =
       RcPlayerState(

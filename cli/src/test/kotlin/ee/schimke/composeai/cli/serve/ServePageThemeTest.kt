@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.PreviewInfo
+import ee.schimke.composeai.cli.PreviewParams
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -42,6 +44,28 @@ class ServePageThemeTest {
     )
 
   @Test
+  fun `Wear themes infer explicit modes before falling back to dark`() {
+    fun wearTheme(name: String, fqn: String) =
+      PreviewInfo(
+        id = name,
+        functionName = name,
+        className = "Catalog",
+        params = PreviewParams(name = name, kind = "WEAR_THEME_CATALOG", wrapperClassName = fqn),
+      )
+
+    val themes =
+      declaredThemesFromPreviews(
+        listOf(
+          wearTheme("Light", "com.example.LightWearTheme"),
+          wearTheme("Coral", "com.example.CoralWearTheme"),
+        )
+      )
+
+    assertTrue(themes.first { it.name == "Light" }.mode == "light")
+    assertTrue(themes.first { it.name == "Coral" }.mode == "dark")
+  }
+
+  @Test
   fun `the resolved scheme is pinned before first paint, not after the page loads`() {
     // Deferring this to page-theme.js would paint the page in the wrong mode and correct it a frame
     // later — a full-screen flash on a dark-to-light swap. It has to be inline, in the head, and
@@ -54,7 +78,12 @@ class ServePageThemeTest {
       "the scheme must be pinned in the head, before the body paints",
     )
     // The URL outranks the remembered choice, exactly as the theme itself does.
-    assertTrue(script.contains("p.get(\"theme\")||p.get(\"uiMode\")"), script)
+    assertTrue(
+      script.contains(
+        "p.get(\"theme\")||(p.get(\"themeProvider\")?\"theme:\"+p.get(\"themeProvider\"):\"\")||p.get(\"uiMode\")"
+      ),
+      script,
+    )
     assertTrue(script.contains("localStorage.getItem(\"cp-theme:wear-m3\")"), script)
     // …and only an explicit light/dark says anything about the page's mode.
     assertTrue(script.contains("if(t===\"light\"||t===\"dark\")"), script)
