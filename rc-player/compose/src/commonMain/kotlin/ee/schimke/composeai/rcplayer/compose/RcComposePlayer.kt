@@ -194,7 +194,6 @@ import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutAnimation
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
-import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
@@ -214,7 +213,6 @@ import ee.schimke.composeai.rcplayer.protocol.RcPathExpression
 import ee.schimke.composeai.rcplayer.protocol.RcPathTween
 import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
-import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
@@ -357,8 +355,6 @@ public fun RcComposePlayer(
   }
   val linkedDocument = remember(document) { RcDocumentLinker.link(document) }
   val layout = remember(linkedDocument) { RcLayoutTree.build(linkedDocument) }
-  val contentStateOperationScopes =
-    remember(linkedDocument) { linkedDocument.operations.collectContentStateOperationScopes() }
   LaunchedEffect(linkedDocument, layout) {
     // Layout rendering consumes paint operations through component content rather than walking
     // the document root. AndroidX still applies root-level diagnostics during document execution.
@@ -397,9 +393,7 @@ public fun RcComposePlayer(
     state.beginFrame(frameNanos / 1_000_000_000f)
     // beginFrame resets derived text to the document's literals, so the ids the layout's own data
     // operations publish must be recomputed before this same composition measures and draws.
-    contentStateOperationScopes.forEach { operations ->
-      state.applyContentStateOperations(operations, theme)
-    }
+    state.applyLayoutContentStateOperations(linkedDocument.operations, theme)
     LookaheadScope {
       CompositionLocalProvider(
         LocalRcLookaheadScope provides this,
@@ -1693,7 +1687,11 @@ private fun Modifier.applyComponentModifiers(
           else result
         is RcMarqueeModifier -> result.applyAndroidXMarquee(operation, state)
         is RcNoArg ->
-          if (operation.opcode == RcOpcodes.MODIFIER_DRAW_CONTENT && !appliedCanvasOperations) {
+          if (
+            operation.opcode == RcOpcodes.MODIFIER_DRAW_CONTENT &&
+              !appliedCanvasOperations &&
+              modifiers.ordered.drop(operationIndex + 1).none { it is RcPaddingModifier }
+          ) {
             applyCanvasOperations(result)
           } else result
         else -> result
@@ -4203,25 +4201,4 @@ private fun blendMode(value: Int): BlendMode =
     27 -> BlendMode.Color
     28 -> BlendMode.Luminosity
     else -> BlendMode.SrcOver
-  }
-
-/**
- * Collects, in document order, the state operations layout containers carry beside their
- * components.
- *
- * The layout tree keeps only components, so these — a `TEXT_LOOKUP_INT` publishing a card title or
- * a `COLOR_EXPRESSIONS` feeding a background modifier — have no other execution site in the layout
- * path. Operations nested in a container that owns its own execution (CanvasOperations,
- * LayoutCompute) are left to that owner; only the direct children of a LayoutComponentContent are
- * replayed here. RootLayout also executes direct ComponentData before it paints its children.
- */
-private fun List<RcLinkedNode>.collectContentStateOperationScopes(): List<List<RcLinkedNode>> =
-  buildList {
-    this@collectContentStateOperationScopes.filterIsInstance<RcLinkedNode.Container>().forEach {
-      container ->
-      if (container.operation is RcRootLayout || container.operation is RcLayoutContent) {
-        add(container.children.filterIsInstance<RcLinkedNode.Operation>())
-      }
-      addAll(container.children.collectContentStateOperationScopes())
-    }
   }
