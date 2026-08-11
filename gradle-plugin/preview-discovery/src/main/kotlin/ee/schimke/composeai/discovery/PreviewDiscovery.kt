@@ -95,6 +95,13 @@ object PreviewDiscovery {
      */
     val projectClassJars: List<File> = emptyList(),
     /**
+     * The class directories produced by the active compilation. Discovery may scan several
+     * compatibility fallbacks in [classDirs], but those can contain stale classes from an inactive
+     * target and must not satisfy the empty-compile integrity check. Empty falls back to
+     * [classDirs] for non-Gradle callers that do not distinguish the two sets.
+     */
+    val activeClassDirs: List<File> = emptyList(),
+    /**
      * Whether this module's render backend can draw `@ColorCatalog` sheets. `true` (the default)
      * for the Android backend, which renders them; `false` for the desktop backend, which can't yet
      * (#2135). When `false`, the synthetic `CATALOG` captures are emitted `optional` so a missing
@@ -413,25 +420,35 @@ object PreviewDiscovery {
     // A successfully restored compile-task cache entry can still be semantically empty: Gradle
     // reports FROM-CACHE, but the output directory contains no classes. Asset discovery below can
     // then make the manifest non-empty and hide the broken compilation completely (#3600). Avoid
-    // treating "no @Preview methods" as suspicious (many modules legitimately have none); the
-    // stronger invariant is source inputs + declared project outputs + zero project class files.
-    // `sourceFiles` also supplies source-location metadata and can include `src/*Test` trees even
-    // though the class outputs above are for the production compilation. Exclude those source sets
-    // from this invariant so a test-only module does not produce a false cache-corruption warning.
-    val sourceFileCount = input.sourceFiles.count { it.isFile && !it.isTestSourceSetFile() }
-    val classDirCounts = input.classDirs.associateWith(::classFileCount)
+    // treating "no @Preview methods" as suspicious (many modules legitimately have none). Only
+    // source files that actually declare @Preview establish the stronger invariant. This avoids
+    // false positives for valid source-only constructs (typealiases, expect declarations and
+    // package docs) as well as intentional asset-only modules. Test source sets are excluded
+    // because the project outputs here belong to the production compilation.
+    //
+    // Check only the active compilation output. [Input.classDirs] deliberately contains fallback
+    // layouts for discovery compatibility; stale classes in an inactive target must not hide an
+    // empty cache restore in the compilation that just ran.
+    val previewSourceFiles =
+      input.sourceFiles.filter {
+        it.isFile && !it.isTestSourceSetFile() && it.declaresPreviewAnnotation()
+      }
+    val integrityClassDirs = input.activeClassDirs.ifEmpty { input.classDirs }
+    val classDirCounts = integrityClassDirs.associateWith(::classFileCount)
     val projectJarCounts = input.projectClassJars.associateWith(::classFileCount)
-    val declaredProjectOutputs = input.classDirs.isNotEmpty() || input.projectClassJars.isNotEmpty()
+    val declaredProjectOutputs =
+      integrityClassDirs.isNotEmpty() || input.projectClassJars.isNotEmpty()
     val projectClassFileCount = classDirCounts.values.sum() + projectJarCounts.values.sum()
     val emptyCompiledOutputs =
-      sourceFileCount > 0 && declaredProjectOutputs && projectClassFileCount == 0
+      previewSourceFiles.isNotEmpty() && declaredProjectOutputs && projectClassFileCount == 0
     if (emptyCompiledOutputs) {
       warnings.add(
         buildString {
           append(
-            "composePreview: module '${input.moduleName}' has $sourceFileCount source file(s) "
+            "composePreview: module '${input.moduleName}' has ${previewSourceFiles.size} " +
+              "source file(s) declaring @Preview "
           )
-          append("but its declared class outputs contain 0 .class files. ")
+          append("but its active class outputs contain 0 .class files. ")
           append("A compile task may have restored an empty build-cache entry; rerun with ")
           append("--no-build-cache --rerun-tasks. Resolved project class outputs:")
           classDirCounts.forEach { (file, count) ->
@@ -757,8 +774,13 @@ object PreviewDiscovery {
         }
       return Outcome.Failure(
         reason =
-          "composePreview: $failureSummary in module '${input.moduleName}' — $reason. " +
-            "See diagnostics above.",
+          if (emptyCompiledOutputs) {
+            "composePreview: $failureSummary in module '${input.moduleName}' — $reason. " +
+              "See diagnostics above."
+          } else {
+            "composePreview: discovered 0 previews in module '${input.moduleName}' " +
+              "($failureSummary) — $reason. See diagnostics above."
+          },
         diagnostics = diagnostics,
         warnings = warnings.toList(),
       )
@@ -1428,6 +1450,16 @@ object PreviewDiscovery {
   }
 
   private val ASSET_PREVIEW_KINDS = setOf(PreviewKind.LOTTIE, PreviewKind.SVG)
+
+  // Source-level signal for the empty-compile guard. Anchoring at the start of a code line avoids
+  // examples in line comments and KDoc; accepting a qualified prefix covers annotation use without
+  // an import. A user-defined multi-preview annotation also contains @Preview when its declaration
+  // lives in this module, so an empty compilation of that wrapper still trips the guard.
+  private val PREVIEW_SOURCE_ANNOTATION =
+    Regex("""(?m)^[\t ]*@(?!file:)(?:[A-Za-z_][A-Za-z0-9_.]*\.)?Preview(?=[\t (\r\n])""")
+
+  private fun File.declaresPreviewAnnotation(): Boolean =
+    runCatching { PREVIEW_SOURCE_ANNOTATION.containsMatchIn(readText()) }.getOrDefault(false)
 
   private fun File.isTestSourceSetFile(): Boolean {
     val marker = "/src/"

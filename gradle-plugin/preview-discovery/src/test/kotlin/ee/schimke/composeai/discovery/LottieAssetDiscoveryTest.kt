@@ -86,7 +86,7 @@ class LottieAssetDiscoveryTest {
     val source =
       project.resolve("src/main/kotlin/Previews.kt").apply {
         parentFile.mkdirs()
-        writeText("fun Preview() = Unit")
+        writeText("@Preview\nfun preview() = Unit")
       }
     val resources = project.resolve("resources").apply { mkdirs() }
     resources.resolve("spin.json").writeText("""{"v":"5.7.0","layers":[]}""")
@@ -107,7 +107,7 @@ class LottieAssetDiscoveryTest {
 
     assertThat(outcome.manifest.previews).hasSize(1)
     val warning = outcome.warnings.joinToString("\n")
-    assertThat(warning).contains("declared class outputs contain 0 .class files")
+    assertThat(warning).contains("active class outputs contain 0 .class files")
     assertThat(warning).contains("--no-build-cache --rerun-tasks")
     assertThat(warning).contains("classFiles=0")
   }
@@ -119,7 +119,7 @@ class LottieAssetDiscoveryTest {
     val source =
       project.resolve("src/main/kotlin/Previews.kt").apply {
         parentFile.mkdirs()
-        writeText("fun Preview() = Unit")
+        writeText("@Preview\nfun preview() = Unit")
       }
     val resources = project.resolve("resources").apply { mkdirs() }
     resources.resolve("spin.json").writeText("""{"v":"5.7.0","layers":[]}""")
@@ -142,5 +142,70 @@ class LottieAssetDiscoveryTest {
     val failure = outcome as PreviewDiscovery.Outcome.Failure
     assertThat(failure.reason).contains("empty compiled outputs")
     assertThat(failure.reason).contains("0 code previews; 1 total")
+  }
+
+  @Test
+  fun `source-only declarations do not flag an intentional asset-only module`() {
+    val project = tempDir.newFolder("intentional-asset-only")
+    val classes = project.resolve("classes").apply { mkdirs() }
+    val source =
+      project.resolve("src/main/kotlin/Aliases.kt").apply {
+        parentFile.mkdirs()
+        writeText("typealias PreviewName = String\nexpect class PlatformValue")
+      }
+    val resources = project.resolve("resources").apply { mkdirs() }
+    resources.resolve("spin.json").writeText("""{"v":"5.7.0","layers":[]}""")
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = listOf(classes),
+          dependencyJars = emptyList(),
+          sourceFiles = listOf(source),
+          moduleName = ":assets",
+          variantName = "desktop",
+          projectDirectory = project,
+          failOnEmpty = false,
+          resourceDirs = listOf(resources),
+        )
+      ) as PreviewDiscovery.Outcome.Success
+
+    assertThat(outcome.manifest.previews).hasSize(1)
+    assertThat(outcome.warnings.joinToString("\n")).doesNotContain("empty build-cache entry")
+  }
+
+  @Test
+  fun `stale fallback classes do not mask an empty active compilation output`() {
+    val project = tempDir.newFolder("stale-fallback")
+    val activeClasses = project.resolve("classes/kotlin/desktop/main").apply { mkdirs() }
+    val staleClasses = project.resolve("classes/kotlin/jvm/main").apply { mkdirs() }
+    staleClasses.resolve("Stale.class").writeBytes(byteArrayOf())
+    val source =
+      project.resolve("src/main/kotlin/Previews.kt").apply {
+        parentFile.mkdirs()
+        writeText("@Preview\nfun preview() = Unit")
+      }
+    val resources = project.resolve("resources").apply { mkdirs() }
+    resources.resolve("spin.json").writeText("""{"v":"5.7.0","layers":[]}""")
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = listOf(staleClasses, activeClasses),
+          activeClassDirs = listOf(activeClasses),
+          dependencyJars = emptyList(),
+          sourceFiles = listOf(source),
+          moduleName = ":app",
+          variantName = "desktop",
+          projectDirectory = project,
+          failOnEmpty = false,
+          resourceDirs = listOf(resources),
+        )
+      ) as PreviewDiscovery.Outcome.Success
+
+    val warning = outcome.warnings.joinToString("\n")
+    assertThat(warning).contains("active class outputs contain 0 .class files")
+    assertThat(warning).contains(activeClasses.absolutePath)
+    assertThat(warning).doesNotContain(staleClasses.absolutePath)
   }
 }

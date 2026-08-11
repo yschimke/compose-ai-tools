@@ -293,6 +293,29 @@ internal object ComposePreviewTasks {
         },
       )
 
+    // Discovery scans every compatible layout above, but the cache-integrity guard must examine
+    // only the output of the compilation this project actually exposes. Otherwise stale classes
+    // left in an inactive fallback (for example `jvm/main` beside an active `desktop/main`) can
+    // mask a valid-but-empty cache restore. Resolve lazily so Kotlin tasks registered after this
+    // plugin still participate.
+    val activeSourceClassDirs =
+      project.files(
+        project.provider {
+          val activeCompileTask = DESKTOP_COMPILE_TASK_CANDIDATES.firstOrNull {
+            it in project.tasks.names
+          }
+          val relativePath =
+            when (activeCompileTask) {
+              "compileKotlinJvm" -> "classes/kotlin/jvm/main"
+              "compileKotlinDesktop" -> "classes/kotlin/desktop/main"
+              "compileAndroidMain" -> "classes/kotlin/android/main"
+              "compileKotlin" -> "classes/kotlin/main"
+              else -> null
+            }
+          relativePath?.let { listOf(project.layout.buildDirectory.dir(it).get()) }.orEmpty()
+        }
+      )
+
     // Processed-resources output dirs, in the same priority order as [sourceClassDirs]. Linked onto
     // the render classpath so a `@Preview` can load a classpath resource (e.g. a Lottie `.json`
     // asset) at render time. Non-existent dirs resolve to nothing — harmless on resource-free
@@ -333,6 +356,7 @@ internal object ComposePreviewTasks {
         resolveDependencyConfigName,
         previewOutputDir,
         extension,
+        activeSourceClassDirs = activeSourceClassDirs,
         // Desktop fallback can resolve a KMP-Android module's androidRuntimeClasspath, whose
         // single AGP variant trips AmbiguousArtifactsFailure under a forced artifactType view —
         // allow discovery to go lenient *for that config only* so `compose-preview list` never
@@ -1482,6 +1506,7 @@ internal object ComposePreviewTasks {
     dependencyConfigName: () -> String,
     previewOutputDir: Provider<Directory>,
     extension: PreviewExtension,
+    activeSourceClassDirs: FileCollection = sourceClassDirs,
     // Desktop callers pass `true`: the desktop runtime-config fallback can land on a
     // KMP-Android module's `androidRuntimeClasspath` (a `:shared` module with no
     // `jvm("desktop")` target), whose single AGP `android` variant trips an
@@ -1504,6 +1529,7 @@ internal object ComposePreviewTasks {
     return project.tasks.register("composePreviewDiscover", DiscoverPreviewsTask::class.java) {
       this.catalogRenderSupported.set(catalogRenderSupported)
       classDirs.from(sourceClassDirs)
+      activeClassDirs.from(activeSourceClassDirs)
       sourceFiles.from(
         project.fileTree("src") {
           include("**/*.kt")
