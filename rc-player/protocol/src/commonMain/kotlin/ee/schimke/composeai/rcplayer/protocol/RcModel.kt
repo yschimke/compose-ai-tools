@@ -911,6 +911,17 @@ public data class RcFlowLayout(
   override val opcode: Int = RcOpcodes.LAYOUT_FLOW
 }
 
+/** Layout that displays the child selected by an integer state variable. */
+public data class RcStateLayout(
+  val componentId: Int,
+  val animationId: Int,
+  val horizontalPositioning: Int,
+  val verticalPositioning: Int,
+  val indexId: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_STATE
+}
+
 /** Row that omits lower-priority children when its measured width is exhausted. */
 public data class RcCollapsibleRowLayout(
   val componentId: Int,
@@ -1600,6 +1611,7 @@ public object RcOpcodes {
   public const val CONTAINER_END: Int = 214
   public const val LOOP_START: Int = 215
   public const val HOST_METADATA_ACTION: Int = 216
+  public const val LAYOUT_STATE: Int = 217
   public const val VALUE_INTEGER_EXPRESSION_CHANGE_ACTION: Int = 218
   public const val MODIFIER_TOUCH_DOWN: Int = 219
   public const val MODIFIER_TOUCH_UP: Int = 220

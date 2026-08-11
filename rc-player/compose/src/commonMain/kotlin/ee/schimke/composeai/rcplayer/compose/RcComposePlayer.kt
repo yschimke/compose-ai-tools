@@ -714,6 +714,31 @@ private fun RenderLayoutNode(
         )
       }
     }
+    is RcLayoutNode.State -> {
+      val selected = state.integer(node.operation.indexId) ?: 0
+      Box(
+        effectiveModifier.applyComponentModifiers(
+          node.modifiers,
+          state,
+          geometryIds,
+          fillMissingDimensions = false,
+          canvasOperations = null,
+          textMeasurer,
+          images,
+          theme,
+        )
+      ) {
+        node.content.children.getOrNull(selected)?.let { child ->
+          RenderLayoutNode(
+            child,
+            state = state,
+            textMeasurer = textMeasurer,
+            images = images,
+            theme = theme,
+          )
+        }
+      }
+    }
     is RcLayoutNode.CollapsibleRow -> {
       val density = androidx.compose.ui.platform.LocalDensity.current
       RcCollapsibleLayout(
@@ -2104,6 +2129,7 @@ private fun RcLayoutNode.geometryComponentIds(): List<Int> =
     is RcLayoutNode.Row -> listOf(componentId, content.componentId)
     is RcLayoutNode.Column -> listOf(componentId, content.componentId)
     is RcLayoutNode.Flow -> listOf(componentId, content.componentId)
+    is RcLayoutNode.State -> listOf(componentId, content.componentId)
     is RcLayoutNode.CollapsibleRow -> listOf(componentId, content.componentId)
     is RcLayoutNode.CollapsibleColumn -> listOf(componentId, content.componentId)
     is RcLayoutNode.FitBox -> listOf(componentId, content.componentId)
