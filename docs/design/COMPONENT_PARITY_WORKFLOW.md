@@ -475,14 +475,29 @@ things depending on which tool you asked. Options considered:
   browser scorer is what runs against a *live* render with overrides in force, so it would have
   nothing to apply acceptance to.
 - **Shared conformance fixtures** — a committed set of `(reference, candidate, acceptance) →
-  expected {raw, accepted, unaccepted, invalidations}` cases, in this repo, run by both the JS unit
-  tests here and design-parity's own suite.
+  expected …` cases, in this repo, run by both the JS unit tests here and design-parity's own suite.
 
 **Recommended: the third.** It is the same device already used for `parity-activity.mjs` ↔
 `ServeParityActivityStore` (one committed fixture, two languages, both tests load it), it is cheap,
 and it fails loudly.
 
-The fixtures have to pin the **active** scorer's behaviour, not a textbook one: `scorePlanes`'
+**A fixture must pin the intermediate planes, not only the final numbers.** Expecting just
+`{raw, accepted, unaccepted, invalidations}` is what the portable-comparison-path requirement above
+rules out: a resampler divergence would surface as an opaque score difference, or be hidden entirely
+when two later steps happen to cancel it. So each case pins, as named artifacts:
+
+| Stage | Pinned artifact |
+| --- | --- |
+| decode | the two decoded planes, in the declared pixel/colour semantics |
+| canonical | the reference-defined canonical plane, after the named resampler |
+| separation | the masked and unmasked regions, kept apart (never a pre-averaged composite) |
+| score plane | the downsampled plane `scorePlanes` actually consumes |
+| result | `{raw, accepted, unaccepted, invalidations}` |
+
+A divergence then fails at the stage that caused it, which is the whole point of paying for the
+fixtures at all.
+
+The fixtures also have to pin the **active** scorer's behaviour, not a textbook one: `scorePlanes`'
 bidirectional search at `EDGE_SEARCH_RADIUS = 5`, its `LUMA_TOLERANCE = 16` floor, and the
 `MAX_SIDE = 192` cap on the score plane are all load-bearing to the number that comes out. A fixture
 suite written against SSIM windows would pass in both engines and describe neither.
@@ -542,13 +557,21 @@ So durability is a property to **test for, not assume**:
 | `r/role:<role>` (lone anchor) | no — gaining a sibling turns it into `[0]`/`[1]` | no, but fails *loudly* |
 | `r/node` | no — purely structural | no |
 
-**Checking that a ref "is tag-anchored" is checking the wrong segment.** `SemanticsRefs` builds a
-`/`-joined path from the root and indexes *every* level whose siblings share an anchor, so a
-tag-anchored leaf can still sit inside a positional ancestor path. Reorder the repeated ancestors
-and `r/role:Row[0]/tag:item` resolves — successfully, to a different node, with a reused tag and
-plausibly the same bounds. The durable property is not "contains `tag:`" but **"the whole path is
-tag-anchored, and the tag is unique across the tree"**; resolution should then match on that tag
-identity rather than by walking the path.
+**The durable property is the tag's uniqueness, not the path's shape.** It is tempting to require
+the whole ref path to be tag-anchored, since `SemanticsRefs` indexes every level whose siblings
+share an anchor and `r/role:Row[0]/tag:item` retargets when those `Row`s reorder. But that is only
+true of a resolver that *walks the path*. **Resolve by tag identity instead** — search the tree for
+the node carrying that `testTag` — and the ancestor segments stop mattering entirely: reordering
+ancestors cannot retarget a tag that only one node has. Requiring a fully tag-anchored path would
+reject a perfectly durable selector on a tagged element sitting under ordinary `Row`/`Column`
+ancestors, which is most real Compose UI, and would push those elements onto the weaker geometric
+fallback for no safety gain.
+
+So the rule is: **the `testTag` must be unique across the semantics tree**, wherever it sits, and
+resolution matches on the tag rather than the path. If the tag later becomes non-unique — a second
+node adopts it — the selector is ambiguous and the acceptance is `invalidated: element-ambiguous`
+rather than resolved to an arbitrary one of them. Uniqueness is therefore checked at authoring time
+*and* re-checked at evaluation time; only the first is under the acceptance author's control.
 
 **Persist an element selector only when that holds** (or when the producer supplies its own stable
 identity). **Otherwise keep the drag rectangle** and accept the region geometrically, with no
@@ -595,6 +618,17 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
    indefinitely. Derive the locator from the successfully displayed frame's recorded state, or
    disable the report affordance until the requested frame has loaded — the second is cruder but
    cannot be got subtly wrong.
+
+   **And neither remedy reaches the interactive lanes at all.** In the Live, Wasm and Remote Compose
+   lanes the visible frame is painted into a canvas or an iframe, overrides are applied in place, and
+   `#cp-img` / `data-cp-blob` / `data-cp-src` go on describing the static snapshot the visitor
+   arrived from. `viewer.js` already documents this precisely — `specActualUrl()` calls that blob "a
+   stale bystander" in exactly these lanes and falls back to asking the server. An `onload` hook on
+   the replacement `<img>` therefore fires for a frame nobody is looking at. Either each lane grows
+   its own frame-arrival/provenance signal, or — simpler, and consistent with §1's finding 1 — **the
+   report affordance is disabled throughout the interactive lanes and points at the focused
+   comparison instead**, which has a defined pair and a defined frame. Recommend the latter until a
+   lane demonstrably needs its own reporting.
 
    **The raw score is a separate problem: the surface with the report form is not the surface that
    knows the score.** The form (`cp-report-body`) and `refreshReportLink()` live only on the viewer,
