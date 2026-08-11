@@ -158,6 +158,7 @@ class ServeCatalogLiveHostTest {
         mapOf(catalogId to daemonId),
         live,
         baked,
+        executableBundleAvailable = { it == daemonId },
         executableBundleProvider = {
           requested = it
           bytes
@@ -168,6 +169,26 @@ class ServeCatalogLiveHostTest {
     assertFalse(composite.canDownloadExecutableBundle(androidOnlyId))
     assertEquals(bytes.toList(), composite.executableBundle(catalogId)?.toList())
     assertEquals(daemonId, requested)
+  }
+
+  @Test
+  fun `executable download is not advertised when the per-preview bundle is unpublished`() {
+    val (_, live, baked) = host()
+    var providerCalled = false
+    val composite =
+      ServeCatalogLiveHost(
+        mapOf(catalogId to daemonId),
+        live,
+        baked,
+        executableBundleAvailable = { false },
+        executableBundleProvider = {
+          providerCalled = true
+          byteArrayOf(1)
+        },
+      )
+
+    assertFalse(composite.canDownloadExecutableBundle(catalogId))
+    assertFalse(providerCalled)
   }
 
   private fun themeOverride(provider: String = "com.example.BrandDark") =

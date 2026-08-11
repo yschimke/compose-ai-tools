@@ -3158,7 +3158,11 @@ class ServeHttpServer(
     if (rejectBadToken()) return
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
       val previewId = call.parameters["name"]
-      if (previewId == null || !renderHost.canDownloadExecutableBundle(previewId)) {
+      val available =
+        previewId?.let {
+          withContext(Dispatchers.IO) { renderHost.canDownloadExecutableBundle(it) }
+        } == true
+      if (!available) {
         call.respondText("executable bundle unavailable", status = HttpStatusCode.NotFound)
         return@withLeasedSession
       }
@@ -3266,6 +3270,10 @@ class ServeHttpServer(
         projectHistory
           ?.takeIf { catalogBundleHost(renderHost)?.provenance == null }
           ?.let { history -> withContext(Dispatchers.IO) { history.timelineJsonFor(preview.id) } }
+      // The publication-aware probe may fetch and hydrate this preview's bundle on its first use;
+      // keep that trusted-branch I/O off Ktor's request dispatcher.
+      val executableBundleAvailable =
+        withContext(Dispatchers.IO) { renderHost.canDownloadExecutableBundle(preview.id) }
       markGeneration(
         "static-page",
         viewerCacheControl(githubAuthConfigured = githubAuth != null, isPublic = isPublic),
@@ -3289,7 +3297,7 @@ class ServeHttpServer(
           hasSvgExport = renderHost.hasSvgExportFor(preview.id),
           hasScrollExport = renderHost.hasScrollExportFor(preview.id),
           executableBundleHref =
-            if (renderHost.canDownloadExecutableBundle(preview.id))
+            if (executableBundleAvailable)
               "$basePath/bundle/${WebEscaping.urlEncodeSegment(preview.id)}${requestQuerySuffix()}"
             else null,
           // The inspection layers: the accessibility focus map needs an a11y-capable daemon, the
