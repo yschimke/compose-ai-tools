@@ -34,7 +34,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -390,12 +389,10 @@ public fun RcComposePlayer(
     // composition/measurement rather than painting, so action mutations must invalidate this
     // branch as well as the draw layer.
     invalidationVersion
-    SideEffect {
-      state.beginFrame(frameNanos / 1_000_000_000f)
-      // beginFrame resets derived text to the document's literals, so the ids the layout's own
-      // data operations publish have to be recomputed before measurement and drawing read them.
-      state.applyContentStateOperations(contentStateOperations)
-    }
+    state.beginFrame(frameNanos / 1_000_000_000f)
+    // beginFrame resets derived text to the document's literals, so the ids the layout's own data
+    // operations publish must be recomputed before this same composition measures and draws.
+    state.applyContentStateOperations(contentStateOperations)
     LookaheadScope {
       CompositionLocalProvider(
         LocalRcLookaheadScope provides this,
