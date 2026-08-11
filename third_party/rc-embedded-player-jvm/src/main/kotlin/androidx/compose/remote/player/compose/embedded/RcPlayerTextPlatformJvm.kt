@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asSkiaPath
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
+import kotlin.math.roundToInt
 import org.jetbrains.skia.Font
 import org.jetbrains.skia.FontMgr
 import org.jetbrains.skia.FontSlant
@@ -230,6 +231,25 @@ internal fun measureTextWidth(text: String, spec: TextPaintSpec, context: Remote
     return Shaper.make(FontMgr.default).use { shaper ->
         shaper.shapeLine(text, spec.toSkiaFont(context), SHAPING_OPTIONS).use { it.width }
     }
+}
+
+/** Skiko counterpart of AndroidX's complete `PaintContext.getTextBounds` input tuple. */
+internal fun measureTextBounds(
+    text: String,
+    spec: TextPaintSpec,
+    context: RemoteContext,
+): TextMeasureBounds {
+    val ink = measureTextInkBounds(text, spec, context)
+    val metrics = spec.toSkiaFont(context).metrics
+    return TextMeasureBounds(
+        left = ink.left,
+        top = ink.top,
+        right = ink.right,
+        bottom = ink.bottom,
+        fontTop = metrics.ascent.roundToInt().toFloat(),
+        fontBottom = metrics.descent.roundToInt().toFloat(),
+        advance = measureTextWidth(text, spec, context),
+    )
 }
 
 /**

@@ -1216,7 +1216,7 @@ export class CanvasPaintContext extends PaintContext {
         // deterministic height is what layout needs, and exact agreement with a real font
         // was never on offer here.
         const size = this.textSize > 0 ? this.textSize : DEFAULT_TEXT_SIZE;
-        const wantFontBox = (flags & 0x02 /* TEXT_MEASURE_FONT_HEIGHT */) !== 0;
+        const wantFontBox = (flags & 0x02 /* MEASURE_MAX_HEIGHT_FLAG */) !== 0;
         const pick = (...vals: any[]) => {
             for (const v of vals) if (typeof v === 'number' && isFinite(v) && v > 0) return v;
             return 0;
@@ -1234,9 +1234,30 @@ export class CanvasPaintContext extends PaintContext {
             descent = DESCENT_RATIO * size;
         }
 
-        bounds[0] = 0;
+        const advance = pick(metrics.width, substr.length * AVG_ADVANCE * size);
+
+        // Canvas reports distances from the alignment point, whereas Android's
+        // Paint.getTextBounds returns baseline-relative coordinates. Negating the left distance
+        // converts it to the same coordinate vocabulary (a glyph beginning 3px after the pen has
+        // left=3, not actualBoundingBoxLeft=-3). Engines without ink metrics retain the historical
+        // advance box fallback.
+        const actualLeft = metrics.actualBoundingBoxLeft;
+        const actualRight = metrics.actualBoundingBoxRight;
+        let left = typeof actualLeft === 'number' && isFinite(actualLeft) ? -actualLeft : 0;
+        let right = typeof actualRight === 'number' && isFinite(actualRight) ? actualRight : advance;
+
+        // Match AndroidPaintContext's flag order exactly. 0x04 is the unnamed advance flag; 0x01
+        // is AndroidX's MEASURE_MONOSPACE_FLAG. When both are present, advance wins.
+        if ((flags & 0x04) !== 0) {
+            left = 0;
+            right = advance;
+        } else if ((flags & 0x01) !== 0) {
+            right = advance - left;
+        }
+
+        bounds[0] = left;
         bounds[1] = -ascent;
-        bounds[2] = pick(metrics.width, substr.length * AVG_ADVANCE * size);
+        bounds[2] = right;
         bounds[3] = descent;
     }
 

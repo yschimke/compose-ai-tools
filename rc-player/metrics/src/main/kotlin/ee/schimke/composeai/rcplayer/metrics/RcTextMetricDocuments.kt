@@ -45,11 +45,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
  * 2. a float id is a legal draw coordinate;
  * 3. so a line drawn *at* that float is the lane's own measurement, rendered by the lane itself.
  *
- * That holds wherever `TextMeasure` is implemented, which is not everywhere: rendering these
- * fixtures showed the `cmp-android` and `cmp-jvm` embedded players write nothing for it, so every
- * guide there reads `0.0` and collapses onto the origin. Those two lanes do need a player change
- * before they can answer — see `docs/design/RC_TEXT_METRICS.md`. The fixtures themselves are
- * unchanged by that: a lane reporting zeros is a finding the harness produced, not a fixture bug.
+ * The first render exposed that `cmp-android` and `cmp-jvm` decoded `TextMeasure` but never
+ * executed it. The operation is now implemented by every player in this repo; the fixtures remain
+ * the conformance probe that makes a missing write or a bounds-semantics regression visible.
  *
  * The canvas is translated to the text origin before the guides are drawn, which is what keeps this
  * arithmetic-free: `getTextBounds` reports origin-relative horizontals and baseline-relative

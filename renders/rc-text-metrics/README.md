@@ -12,16 +12,18 @@ the image carries the numbers without a sidecar.
 
 ![text-metrics-card on java, cmp-android and cmp-jvm](card-three-lanes.png)
 
-Two readings, immediately:
+The refreshed strip above comes from a 2026-08-11 run that generated 24/24 images on every
+server-side lane with no `.error` files. Its card values are:
 
-- **`TextMeasure` writes nothing on the two embedded lanes.** Every guide on `cmp-android` and
-  `cmp-jvm` reads `0.0` and every rule collapses onto the origin. The vendored embedded player's
-  canvas-operation walker has branches for `DrawTextAnchored` and friends and none for
-  `TextMeasure`.
-- **The same 48px string is 12.8% wider on `cmp-jvm`.** Measured ink extents: `java` 92..623 (532px),
-  `cmp-android` 92..623 (532px), `cmp-jvm` 93..692 (600px). The two Android-backed lanes agree to the
-  pixel; the Skiko lane does not. No font is pinned in these fixtures, so this points at typeface
-  resolution rather than at layout — which is the useful kind of answer.
+| metric | `java` | `cmp-android` | `cmp-jvm` |
+| --- | ---: | ---: | ---: |
+| font top / bottom | -45.0 / 12.0 | -45.0 / 12.0 | -37.0 / 11.0 |
+| ink top / bottom | -37.0 / 11.0 | -37.0 / 11.0 | -36.0 / 12.0 |
+| ink left / right | 3.0 / 537.0 | 3.0 / 537.0 | 2.0 / 535.6 |
+| advance | 539.0 | 539.0 | 540.0 |
+
+The Android embedded lane now matches AndroidX Java exactly. The JVM lane executes the same
+selector/flag behavior and exposes its own Skiko metrics rather than zeroes.
 
 ## The weight sweep
 

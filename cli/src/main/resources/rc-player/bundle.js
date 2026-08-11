@@ -13151,7 +13151,7 @@ ${inner}`;
       const val = this.mType & 255;
       const flags = this.mType >> 8;
       context.getTextBounds(this.mTextId, 0, -1, flags, this.mBounds);
-      let result = 0;
+      let result;
       switch (val) {
         case MEASURE_WIDTH:
           result = this.mBounds[2] - this.mBounds[0];
@@ -13172,7 +13172,7 @@ ${inner}`;
           result = this.mBounds[3];
           break;
       }
-      context.getContext().loadFloat(this.mId, result);
+      if (result !== void 0) context.getContext().loadFloat(this.mId, result);
     }
     static read(buffer, operations) {
       const id = buffer.readInt();
@@ -19033,9 +19033,20 @@ void main() {
         ascent = ASCENT_RATIO * size;
         descent = DESCENT_RATIO * size;
       }
-      bounds[0] = 0;
+      const advance = pick(metrics.width, substr.length * AVG_ADVANCE * size);
+      const actualLeft = metrics.actualBoundingBoxLeft;
+      const actualRight = metrics.actualBoundingBoxRight;
+      let left = typeof actualLeft === "number" && isFinite(actualLeft) ? -actualLeft : 0;
+      let right = typeof actualRight === "number" && isFinite(actualRight) ? actualRight : advance;
+      if ((flags & 4) !== 0) {
+        left = 0;
+        right = advance;
+      } else if ((flags & 1) !== 0) {
+        right = advance - left;
+      }
+      bounds[0] = left;
       bounds[1] = -ascent;
-      bounds[2] = pick(metrics.width, substr.length * AVG_ADVANCE * size);
+      bounds[2] = right;
       bounds[3] = descent;
     }
     layoutComplexText(textId, start, end, alignment, overflow, maxLines, maxWidth, maxHeight, _letterSpacing, _lineHeightAdd, lineHeightMultiplier, _lineBreakStrategy, _hyphenationFrequency, _justificationMode, _useUnderline, _strikethrough, _flags) {

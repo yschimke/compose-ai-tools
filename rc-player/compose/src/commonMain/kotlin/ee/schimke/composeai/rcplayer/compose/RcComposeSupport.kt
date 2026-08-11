@@ -216,13 +216,23 @@ public fun RcDocument.composeSupportReport(
       issues +=
         RcComposeSupportIssue(index, "DebugMessage", "text id ${operation.textId} is not declared")
     }
+    val supportedMeasurementTypes =
+      when (operation) {
+        is RcTextMeasure -> 0..5
+        is RcTextAttribute -> 0..6
+        else -> null
+      }
     val measurementType =
       when (operation) {
         is RcTextMeasure -> operation.type and 0xff
         is RcTextAttribute -> operation.type and 0xff
         else -> null
       }
-    if (measurementType != null && measurementType !in 0..6) {
+    if (
+      measurementType != null &&
+        supportedMeasurementTypes != null &&
+        measurementType !in supportedMeasurementTypes
+    ) {
       issues +=
         RcComposeSupportIssue(index, "TextMeasurement", "type $measurementType is not implemented")
     }

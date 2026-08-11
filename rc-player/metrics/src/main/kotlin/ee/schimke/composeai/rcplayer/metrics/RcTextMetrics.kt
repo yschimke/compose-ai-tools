@@ -6,8 +6,7 @@ package ee.schimke.composeai.rcplayer.metrics
  * This is the whole reason the harness needs no new opcode: `TextMeasure` (opcode 155) writes its
  * answer into a float id, and a float id can be a draw coordinate. So a document can measure itself
  * and then draw a line at the answer — each lane drawing *its own* metrics, in its own render, with
- * nothing to reconcile afterwards. It works on any lane that actually executes op 155, which the
- * two embedded players currently do not (see [RcTextMetricDocuments]).
+ * nothing to reconcile afterwards. See [RcTextMetricDocuments] for the cross-player fixture set.
  *
  * `type` is a packed word: the low byte selects *which* number, the high bits select *how the box
  * is derived*. The authority is `AndroidPaintContext.getTextBounds` in `remote-player-core`, whose
@@ -48,9 +47,10 @@ public object RcTextMeasurement {
   public const val BOTTOM: Int = 5
 
   /**
-   * String length in **UTF-16 code units**, not characters — every implementation reads
-   * `text.length`, so one supplementary code point (an emoji, most CJK extension blocks) counts
-   * twice. Included for completeness; the fixtures don't draw it.
+   * String length in **UTF-16 code units**, not characters. This selector belongs to
+   * `TextAttribute`, not opcode 155 `TextMeasure`; AndroidX leaves a `TextMeasure` destination
+   * untouched when its low byte is 6. Included because this vocabulary is shared by both
+   * operations; the fixtures don't draw it.
    */
   public const val LENGTH: Int = 6
 

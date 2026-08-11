@@ -55,6 +55,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcTextLookup
 import ee.schimke.composeai.rcplayer.protocol.RcTextLookupInt
+import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
 import ee.schimke.composeai.rcplayer.protocol.RcTextMerge
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
@@ -918,6 +919,18 @@ class RcComposeSupportTest {
 
     assertEquals("TextMeasurement", issue.operation)
     assertEquals("type 99 is not implemented", issue.detail)
+  }
+
+  @Test
+  fun textLengthSelectorBelongsToTextAttributeOnly() {
+    assertTrue(
+      RcDocument(header, listOf(RcTextAttribute(3, 4, 6))).composeSupportReport().fullyRenderable
+    )
+    val issue =
+      RcDocument(header, listOf(RcTextMeasure(3, 4, 6))).composeSupportReport().issues.single()
+
+    assertEquals("TextMeasurement", issue.operation)
+    assertEquals("type 6 is not implemented", issue.detail)
   }
 
   @Test
