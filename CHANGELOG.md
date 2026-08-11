@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.19.60](https://github.com/yschimke/compose-ai-tools/compare/v0.19.59...v0.19.60) (2026-08-11)
+
+
+### Features
+
+* annotate per-reference Figma backgrounds ([#3678](https://github.com/yschimke/compose-ai-tools/issues/3678)) ([8551345](https://github.com/yschimke/compose-ai-tools/commit/85513450ddb60f5f110f6a5ced3c4fe3699d73a0))
+* **rc-js-player:** implement FontData opcode 189 ([#3656](https://github.com/yschimke/compose-ai-tools/issues/3656)) ([d4ce778](https://github.com/yschimke/compose-ai-tools/commit/d4ce7781d48c8dc38278391c74451fd71b1a9b21))
+* **rc-player:** implement extended CoreText properties ([#3667](https://github.com/yschimke/compose-ai-tools/issues/3667)) ([7bd928d](https://github.com/yschimke/compose-ai-tools/commit/7bd928dca06ae51cb82a7714ff70b759b48d3872))
+
+
+### Bug Fixes
+
+* **daemon:** preserve natural pixel input coordinates ([#3661](https://github.com/yschimke/compose-ai-tools/issues/3661)) ([4cc584e](https://github.com/yschimke/compose-ai-tools/commit/4cc584e4ec9d5572f8218ab001754522698195db))
+* match Figma and render layout annotations ([#3668](https://github.com/yschimke/compose-ai-tools/issues/3668)) ([7cd2f7d](https://github.com/yschimke/compose-ai-tools/commit/7cd2f7dab03704df2e34c0254c78821e76cebb9c))
+* **previews:** detect empty compiled outputs ([#3654](https://github.com/yschimke/compose-ai-tools/issues/3654)) ([2f23b53](https://github.com/yschimke/compose-ai-tools/commit/2f23b536dc27f357043c4619539da60523a32c6a))
+* **rc-player:** match Java text layout modes ([#3663](https://github.com/yschimke/compose-ai-tools/issues/3663)) ([6afd025](https://github.com/yschimke/compose-ai-tools/commit/6afd0252cba621b7886b4ecbaacd882b514de116))
+* **render:** provide hosted font fallbacks ([#3679](https://github.com/yschimke/compose-ai-tools/issues/3679)) ([71be0bc](https://github.com/yschimke/compose-ai-tools/commit/71be0bcbe15df57a271cc4fe60daf174d3e02407))
+* tolerate rasterizer edge differences in parity scores ([#3657](https://github.com/yschimke/compose-ai-tools/issues/3657)) ([02cb33a](https://github.com/yschimke/compose-ai-tools/commit/02cb33acf7b73ae668e83928b0940f00e0ece2fa))
+
 ## [0.19.59](https://github.com/yschimke/compose-ai-tools/compare/v0.19.58...v0.19.59) (2026-08-11)
 
 
