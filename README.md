@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 309 preview(s) across 20 module(s) · 46 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 308 preview(s) across 20 module(s) · 46 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1839,7 +1839,7 @@ _No findings._
 
 ### `ButtonHintScreenPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ButtonHintScreenPreview_Devices_Large_Round.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ButtonHintScreenPreview_Devices_Large_Round_TIME_800ms.a11y.png" width="400" />
 
 _No findings._
 
@@ -1857,19 +1857,13 @@ _No findings._
 
 ### `DisabledGestureScreenPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/DisabledGestureScreenPreview_Devices_Large_Round.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/DisabledGestureScreenPreview_Devices_Large_Round.a11y.png" width="400" />
 
 _No findings._
 
 ### `DismissActionScreenPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/DismissActionScreenPreview_Devices_Large_Round.png" width="400" />
-
-_No findings._
-
-### `FloatingHintScreenPreview` · `wearos_large_round`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/FloatingHintScreenPreview_Devices_Large_Round.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/DismissActionScreenPreview_Devices_Large_Round_TIME_800ms.a11y.png" width="400" />
 
 _No findings._
 
@@ -1884,19 +1878,19 @@ _No findings._
 
 ### `MediaGestureScreenHintPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/MediaGestureScreenHintPreview_Media_hints_on.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/MediaGestureScreenHintPreview_Media_hints_on_TIME_800ms.a11y.png" width="400" />
 
 _No findings._
 
 ### `MediaGestureScreenPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/MediaGestureScreenPreview_Media_hints_off.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/MediaGestureScreenPreview_Media_hints_off.a11y.png" width="400" />
 
 _No findings._
 
 ### `PageGestureScreenPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PageGestureScreenPreview_Devices_Large_Round.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PageGestureScreenPreview_Devices_Large_Round.a11y.png" width="400" />
 
 _No findings._
 
@@ -1922,19 +1916,19 @@ _No findings._
 
 ### `PrimaryActionScreenPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PrimaryActionScreenPreview_Devices_Large_Round.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PrimaryActionScreenPreview_Devices_Large_Round_TIME_800ms.a11y.png" width="400" />
 
 _No findings._
 
 ### `PrimaryActionStickerPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PrimaryActionStickerPreview.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PrimaryActionStickerPreview_TIME_800ms.a11y.png" width="400" />
 
 _No findings._
 
 ### `ScrollGestureScreenPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ScrollGestureScreenPreview_Devices_Large_Round.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ScrollGestureScreenPreview_Devices_Large_Round.a11y.png" width="400" />
 
 _No findings._
 

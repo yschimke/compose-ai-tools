@@ -3440,8 +3440,8 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "",
-      "cleanBasename": "ButtonHintScreenPreview_Devices_Large_Round.png",
+      "annotatedBasename": "ButtonHintScreenPreview_Devices_Large_Round_TIME_800ms.a11y.png",
+      "cleanBasename": "ButtonHintScreenPreview_Devices_Large_Round_TIME_800ms.png",
       "findings": [],
       "functionName": "ButtonHintScreenPreview",
       "module": "wear",
@@ -3470,7 +3470,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "DisabledGestureScreenPreview_Devices_Large_Round.a11y.png",
       "cleanBasename": "DisabledGestureScreenPreview_Devices_Large_Round.png",
       "findings": [],
       "functionName": "DisabledGestureScreenPreview",
@@ -3480,22 +3480,12 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
-      "cleanBasename": "DismissActionScreenPreview_Devices_Large_Round.png",
+      "annotatedBasename": "DismissActionScreenPreview_Devices_Large_Round_TIME_800ms.a11y.png",
+      "cleanBasename": "DismissActionScreenPreview_Devices_Large_Round_TIME_800ms.png",
       "findings": [],
       "functionName": "DismissActionScreenPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.DismissActionScreenPreview_Devices - Large Round",
-      "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
-      "variant": "wearos_large_round"
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "FloatingHintScreenPreview_Devices_Large_Round.png",
-      "findings": [],
-      "functionName": "FloatingHintScreenPreview",
-      "module": "wear",
-      "previewId": "com.example.samplewear.GesturesKt.FloatingHintScreenPreview_Devices - Large Round",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": "wearos_large_round"
     },
@@ -3525,8 +3515,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
-      "cleanBasename": "MediaGestureScreenHintPreview_Media_hints_on.png",
+      "annotatedBasename": "MediaGestureScreenHintPreview_Media_hints_on_TIME_800ms.a11y.png",
+      "cleanBasename": "MediaGestureScreenHintPreview_Media_hints_on_TIME_800ms.png",
       "findings": [],
       "functionName": "MediaGestureScreenHintPreview",
       "module": "wear",
@@ -3535,7 +3525,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "MediaGestureScreenPreview_Media_hints_off.a11y.png",
       "cleanBasename": "MediaGestureScreenPreview_Media_hints_off.png",
       "findings": [],
       "functionName": "MediaGestureScreenPreview",
@@ -3545,7 +3535,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PageGestureScreenPreview_Devices_Large_Round.a11y.png",
       "cleanBasename": "PageGestureScreenPreview_Devices_Large_Round.png",
       "findings": [],
       "functionName": "PageGestureScreenPreview",
@@ -3593,8 +3583,8 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "",
-      "cleanBasename": "PrimaryActionScreenPreview_Devices_Large_Round.png",
+      "annotatedBasename": "PrimaryActionScreenPreview_Devices_Large_Round_TIME_800ms.a11y.png",
+      "cleanBasename": "PrimaryActionScreenPreview_Devices_Large_Round_TIME_800ms.png",
       "findings": [],
       "functionName": "PrimaryActionScreenPreview",
       "module": "wear",
@@ -3603,8 +3593,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
-      "cleanBasename": "PrimaryActionStickerPreview.png",
+      "annotatedBasename": "PrimaryActionStickerPreview_TIME_800ms.a11y.png",
+      "cleanBasename": "PrimaryActionStickerPreview_TIME_800ms.png",
       "findings": [],
       "functionName": "PrimaryActionStickerPreview",
       "module": "wear",
@@ -3613,7 +3603,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "ScrollGestureScreenPreview_Devices_Large_Round.a11y.png",
       "cleanBasename": "ScrollGestureScreenPreview_Devices_Large_Round.png",
       "findings": [],
       "functionName": "ScrollGestureScreenPreview",
