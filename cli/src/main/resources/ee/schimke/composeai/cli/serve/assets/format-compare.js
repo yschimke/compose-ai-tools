@@ -829,7 +829,18 @@
     return Array.from(byKey.values());
   }
 
+  function typographyDefaults(groups) {
+    var defaults = new Map();
+    groups.forEach(function (group) {
+      if (!group.spec.token) return;
+      var current = defaults.get(group.spec.token);
+      if (!current || group.items.length > current.items.length) defaults.set(group.spec.token, group);
+    });
+    return defaults;
+  }
+
   function typographyDistance(left, right) {
+    if (left.key === right.key) return -200;
     if (left.spec.token && right.spec.token && left.spec.token === right.spec.token) return -100;
     var commonRoles = 0;
     left.roles.forEach(function (role) { if (right.roles.has(role)) commonRoles += 1; });
@@ -938,7 +949,7 @@
     return typographyValue(spec, field).toLowerCase();
   }
 
-  function typographyInlineSide(label, group, other) {
+  function typographyInlineSide(label, group, other, baseline) {
     var side = document.createElement("span");
     side.className = "cp-typography-inline";
     var sideLabel = document.createElement("span");
@@ -959,18 +970,46 @@
       if (field === "size" && group.spec.lineHeight !== undefined)
         text += "/" + group.spec.lineHeight;
       value.textContent = text;
-      var changed = other && (
+      var comparisonChanged = other && (
         typographyComparableValue(group.spec, field) !== typographyComparableValue(other.spec, field) ||
         (field === "size" && typographyComparableValue(group.spec, "lineHeight") !== typographyComparableValue(other.spec, "lineHeight"))
       );
-      if (changed) value.className = "cp-typography-changed";
+      var overrideChanged = baseline && baseline !== group && (
+        typographyComparableValue(group.spec, field) !== typographyComparableValue(baseline.spec, field) ||
+        (field === "size" && typographyComparableValue(group.spec, "lineHeight") !== typographyComparableValue(baseline.spec, "lineHeight"))
+      );
+      if (comparisonChanged || overrideChanged) value.className = "cp-typography-changed";
+      if (overrideChanged) {
+        value.classList.add("cp-typography-override");
+        value.title = "Changed from " + group.spec.token + " default";
+      }
       side.appendChild(value);
     });
     if (group.spec.tracking && group.spec.tracking !== "default") {
-      side.appendChild(document.createTextNode(" · tracking " + group.spec.tracking));
+      side.appendChild(document.createTextNode(" · "));
+      var tracking = document.createElement("span");
+      tracking.textContent = "tracking " + group.spec.tracking;
+      var trackingChanged = (other && typographyComparableValue(group.spec, "tracking") !== typographyComparableValue(other.spec, "tracking")) ||
+        (baseline && baseline !== group && typographyComparableValue(group.spec, "tracking") !== typographyComparableValue(baseline.spec, "tracking"));
+      if (trackingChanged) tracking.className = "cp-typography-changed";
+      if (baseline && baseline !== group && typographyComparableValue(group.spec, "tracking") !== typographyComparableValue(baseline.spec, "tracking")) {
+        tracking.classList.add("cp-typography-override");
+        tracking.title = "Changed from " + group.spec.token + " default";
+      }
+      side.appendChild(tracking);
     }
     if (group.spec.style && group.spec.style !== "normal") {
-      side.appendChild(document.createTextNode(" · " + group.spec.style));
+      side.appendChild(document.createTextNode(" · "));
+      var style = document.createElement("span");
+      style.textContent = group.spec.style;
+      var styleChanged = (other && typographyComparableValue(group.spec, "style") !== typographyComparableValue(other.spec, "style")) ||
+        (baseline && baseline !== group && typographyComparableValue(group.spec, "style") !== typographyComparableValue(baseline.spec, "style"));
+      if (styleChanged) style.className = "cp-typography-changed";
+      if (baseline && baseline !== group && typographyComparableValue(group.spec, "style") !== typographyComparableValue(baseline.spec, "style")) {
+        style.classList.add("cp-typography-override");
+        style.title = "Changed from " + group.spec.token + " default";
+      }
+      side.appendChild(style);
     }
     var count = document.createElement("span");
     count.className = "cp-typography-count";
@@ -980,7 +1019,7 @@
     return side;
   }
 
-  function appendTypographySummary(root, grid, pairs) {
+  function appendTypographySummary(root, grid, pairs, referenceDefaults, actualDefaults) {
     if (!pairs.length) return;
     var summary = document.createElement("section");
     summary.className = "cp-typography-summary";
@@ -1001,13 +1040,15 @@
       marker.className = "cp-annotation-badge cp-typography-marker";
       marker.textContent = pair.marker;
       row.appendChild(marker);
-      row.appendChild(typographyInlineSide("Reference", pair.reference, pair.actual));
+      row.appendChild(typographyInlineSide("Reference", pair.reference, pair.actual,
+        pair.reference && referenceDefaults.get(pair.reference.spec.token)));
       var arrow = document.createElement("span");
       arrow.className = "cp-typography-arrow";
       arrow.setAttribute("aria-hidden", "true");
       arrow.textContent = "→";
       row.appendChild(arrow);
-      row.appendChild(typographyInlineSide("Actual", pair.actual, pair.reference));
+      row.appendChild(typographyInlineSide("Actual", pair.actual, pair.reference,
+        pair.actual && actualDefaults.get(pair.actual.spec.token)));
       list.appendChild(row);
     });
     summary.appendChild(list);
@@ -1045,7 +1086,8 @@
     var actualGroups = groupTypography(payload.actual || []);
     var typographyPairs = pairTypography(referenceGroups, actualGroups);
     var grid = root.querySelector(".cp-reference-grid");
-    if (grid) appendTypographySummary(root, grid, typographyPairs);
+    if (grid) appendTypographySummary(root, grid, typographyPairs,
+      typographyDefaults(referenceGroups), typographyDefaults(actualGroups));
 
     // Layout remains an instance-level redline. Typography is style-level: every matching use gets
     // the same letter and nearby uses are surrounded by one cluster box, while the readable type

@@ -1421,6 +1421,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-typography-side { color: var(--cp-fg-muted); font-size: 0.68rem; font-weight: 700;
   letter-spacing: 0.04em; text-transform: uppercase; }
 .cp-typography-changed { color: var(--md-sys-color-error); font-weight: 650; }
+.cp-typography-override { text-decoration: underline 2px rgba(214, 51, 108, 0.55);
+  text-underline-offset: 2px; }
 .cp-typography-count { color: var(--cp-fg-faint); }
 .cp-typography-arrow { flex: none; color: var(--cp-fg-muted); }
 .cp-annotation-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 14px;
