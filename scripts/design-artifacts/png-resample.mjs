@@ -126,3 +126,39 @@ export function fitRgba(data, width, height, targetWidth, targetHeight) {
   }
   return { data: out, box };
 }
+
+/**
+ * Centre a raster on a transparent target canvas without enlarging it.
+ *
+ * This is the operation a density-matched component export needs. Its pixel dimensions already
+ * describe the component at the renderer's scale; fitting it upward to consume a padded preview
+ * canvas would change that scale. An oversized source is still reduced uniformly so it remains
+ * representable rather than being clipped.
+ */
+export function placeRgba(data, width, height, targetWidth, targetHeight) {
+  if (width <= 0 || height <= 0 || targetWidth <= 0 || targetHeight <= 0) {
+    throw new Error(`place: bad dimensions ${width}x${height} -> ${targetWidth}x${targetHeight}`);
+  }
+  const scale = Math.min(1, targetWidth / width, targetHeight / height);
+  const placedWidth = Math.max(1, Math.min(targetWidth, Math.round(width * scale)));
+  const placedHeight = Math.max(1, Math.min(targetHeight, Math.round(height * scale)));
+  const box = {
+    width: placedWidth,
+    height: placedHeight,
+    x: Math.floor((targetWidth - placedWidth) / 2),
+    y: Math.floor((targetHeight - placedHeight) / 2),
+  };
+  const placed =
+    placedWidth === width && placedHeight === height
+      ? data
+      : resampleRgba(data, width, height, placedWidth, placedHeight);
+  if (box.width === targetWidth && box.height === targetHeight) return { data: placed, box };
+  const out = Buffer.alloc(targetWidth * targetHeight * 4);
+  const rowBytes = box.width * 4;
+  for (let y = 0; y < box.height; y++) {
+    const from = y * rowBytes;
+    const to = ((y + box.y) * targetWidth + box.x) * 4;
+    out.set(placed.subarray(from, from + rowBytes), to);
+  }
+  return { data: out, box };
+}

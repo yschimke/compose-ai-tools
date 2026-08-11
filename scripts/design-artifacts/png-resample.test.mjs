@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { fitBox, fitRgba, isRoundingDelta, resampleRgba } from "./png-resample.mjs";
+import { fitBox, fitRgba, isRoundingDelta, placeRgba, resampleRgba } from "./png-resample.mjs";
 
 /** An RGBA buffer whose pixels are produced by `fn(x, y)` returning `[r,g,b,a]`. */
 function raster(width, height, fn) {
@@ -124,4 +124,21 @@ test("fitRgba is a plain resample when the proportions already agree", () => {
 test("fitRgba rejects bad dimensions rather than emitting a malformed buffer", () => {
   const data = raster(2, 2, () => [0, 0, 0, 255]);
   assert.throws(() => fitRgba(data, 2, 2, 0, 4), /bad dimensions/);
+});
+
+test("placeRgba centres a density-matched component without enlarging it", () => {
+  const data = raster(2, 2, () => [10, 20, 30, 255]);
+  const { data: out, box } = placeRgba(data, 2, 2, 6, 4);
+  assert.deepEqual(box, { width: 2, height: 2, x: 2, y: 1 });
+  const alphaAt = (x, y) => out[(y * 6 + x) * 4 + 3];
+  assert.equal(alphaAt(1, 1), 0);
+  assert.equal(alphaAt(2, 1), 255);
+  assert.equal(alphaAt(3, 2), 255);
+  assert.equal(alphaAt(4, 2), 0);
+});
+
+test("placeRgba only scales when the source would overflow the target", () => {
+  const data = raster(4, 2, () => [1, 2, 3, 255]);
+  const { box } = placeRgba(data, 4, 2, 2, 2);
+  assert.deepEqual(box, { width: 2, height: 1, x: 0, y: 0 });
 });

@@ -28,11 +28,11 @@
  *    token is present (`FIGMA_TOKEN` / `FIGMA_PAT` / `FIGMA_ACCESS_TOKEN`). No token ⇒ the entry is
  *    skipped with a warning, which is the normal state for a fork or a PR run.
  *
- * Every raster is then fitted to the dimensions of the catalog sticker it is mapped to and hashed,
- * so the server can verify it before advertising the reference. Fitted, not stretched: a raster
- * within rounding distance is resampled, and one authored at genuinely different proportions is
- * scaled to fit and letterboxed rather than distorted into the sticker's shape. See
- * png-resample.mjs for why that distinction matters.
+ * Every raster is then placed on a canvas matching the catalog sticker and hashed, so the server
+ * can verify it before advertising the reference. Figma components are exported at the Compose
+ * renderer's density and centred without enlargement; other rasters within rounding distance are
+ * resampled, while genuinely different proportions are fitted and letterboxed. See
+ * png-resample.mjs for why those distinctions matter.
  *
  * ## Failure posture
  *
@@ -54,7 +54,7 @@ import {
   planDesignReferences,
   referenceManifest,
 } from "./design-references.mjs";
-import { fitRgba, isRoundingDelta, resampleRgba } from "./png-resample.mjs";
+import { fitRgba, isRoundingDelta, placeRgba, resampleRgba } from "./png-resample.mjs";
 import { layoutFromNode } from "@design-parity/adapter-figma";
 import { scaleTree } from "./reference-layout.mjs";
 import { withReferenceAnnotations } from "@design-parity/catalog-export";
@@ -208,7 +208,7 @@ function suppliedRaster(ref) {
 /** Obtain the raw raster for one planned record, or null with a warning. */
 async function sourceRaster(record) {
   const { source, ref } = record.origin;
-  const target = { width: record.raster.width, height: record.raster.height };
+  const target = targetFor(record);
 
   const supplied = suppliedRaster(ref);
   if (supplied) return readPng(supplied);
@@ -239,6 +239,14 @@ async function sourceRaster(record) {
 
   warn(`${record.id}: don't know how to rasterise a '${source}' reference from '${ref}'`);
   return null;
+}
+
+function targetFor(record) {
+  return {
+    width: record.raster.width,
+    height: record.raster.height,
+    ...(record.raster.density ? { density: record.raster.density } : {}),
+  };
 }
 
 /**
@@ -277,12 +285,12 @@ if (FIGMA_TOKEN) {
       .filter((record) => parseFigmaRef(record.origin.ref) && !suppliedRaster(record.origin.ref))
       .map((record) => ({
         ref: record.origin.ref,
-        target: { width: record.raster.width, height: record.raster.height },
+        target: targetFor(record),
       })),
   );
 }
 for (const record of records) {
-  const target = { width: record.raster.width, height: record.raster.height };
+  const target = targetFor(record);
   let raster;
   try {
     raster = await sourceRaster(record);
@@ -303,36 +311,59 @@ for (const record of records) {
       })
     : undefined;
 
-  // Where the artwork ends up inside the published raster. Full-bleed unless a fit letterboxes it.
+  // Where the artwork ends up inside the published raster. Full-bleed unless it is placed/fitted.
   let placement = { width: target.width, height: target.height, x: 0, y: 0 };
   if (raster.width !== target.width || raster.height !== target.height) {
-    const rounding = isRoundingDelta(raster.width, raster.height, target.width, target.height);
-    const message =
-      `${record.id}: ${rounding ? "resampling" : "fitting"} reference ` +
-      `${raster.width}x${raster.height} -> ${target.width}x${target.height}`;
-    if (rounding) {
-      // Sub-pixel: the proportions already agree, so stretch and say nothing.
-      console.log(`design-references: ${message}`);
-      raster = {
-        width: target.width,
-        height: target.height,
-        data: resampleRgba(raster.data, raster.width, raster.height, target.width, target.height),
-      };
+    if (raster.preserveScale) {
+      // A Figma component is exported at the Compose renderer's density. Its artboard is normally
+      // tight while the target sticker includes scaffold padding, so centre it at that natural
+      // size. Scaling it up to fill the canvas is the bug that made correctly sized components
+      // appear ~1.5x too large in the comparison lane.
+      const placed = placeRgba(
+        raster.data,
+        raster.width,
+        raster.height,
+        target.width,
+        target.height,
+      );
+      placement = placed.box;
+      const reduced = placed.box.width !== raster.width || placed.box.height !== raster.height;
+      const message =
+        `${record.id}: placing density-matched reference ${raster.width}x${raster.height} ` +
+        `on ${target.width}x${target.height} canvas`;
+      if (reduced) warn(`${message} (too large; reduced to fit)`);
+      else console.log(`design-references: ${message}`);
+      raster = { width: target.width, height: target.height, data: placed.data };
     } else {
-      // A real size difference. Stretching here would republish the design at proportions its
-      // author never drew, so scale it to fit and leave the remainder transparent — the comparison
-      // normalises to the content box, so the padding costs nothing and the shape survives.
-      const fitted = fitRgba(raster.data, raster.width, raster.height, target.width, target.height);
-      placement = fitted.box;
-      if (fitted.box.width !== target.width || fitted.box.height !== target.height) {
-        warn(
-          `${message} (letterboxed to ${fitted.box.width}x${fitted.box.height} — the reference's ` +
-            `proportions differ from the sticker's)`
-        );
-      } else {
+      const rounding = isRoundingDelta(raster.width, raster.height, target.width, target.height);
+      const message =
+        `${record.id}: ${rounding ? "resampling" : "fitting"} reference ` +
+        `${raster.width}x${raster.height} -> ${target.width}x${target.height}`;
+      if (rounding) {
+        // Sub-pixel: the proportions already agree, so stretch and say nothing.
         console.log(`design-references: ${message}`);
+        raster = {
+          width: target.width,
+          height: target.height,
+          data: resampleRgba(raster.data, raster.width, raster.height, target.width, target.height),
+        };
+      } else {
+        // A real size difference. Stretching here would republish the design at proportions its
+        // author never drew, so scale it to fit and leave the remainder transparent — the
+        // comparison normalises to the content box, so the padding costs nothing and the shape
+        // survives.
+        const fitted = fitRgba(raster.data, raster.width, raster.height, target.width, target.height);
+        placement = fitted.box;
+        if (fitted.box.width !== target.width || fitted.box.height !== target.height) {
+          warn(
+            `${message} (letterboxed to ${fitted.box.width}x${fitted.box.height} — the reference's ` +
+              `proportions differ from the sticker's)`,
+          );
+        } else {
+          console.log(`design-references: ${message}`);
+        }
+        raster = { width: target.width, height: target.height, data: fitted.data };
       }
-      raster = { width: target.width, height: target.height, data: fitted.data };
     }
   }
 

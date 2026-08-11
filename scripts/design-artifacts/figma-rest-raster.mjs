@@ -1,5 +1,8 @@
 import { PNG } from "pngjs";
 
+/** Compose Desktop's renderer density when an @Preview does not override it. */
+export const DEFAULT_RENDER_DENSITY = 2.625;
+
 /** `figma:<fileKey>/<nodeId>` -> `{ fileKey, nodeId }`, or null. */
 export function parseFigmaRef(ref) {
   const match = /^figma:([^/]+)\/(.+)$/.exec(String(ref ?? ""));
@@ -81,8 +84,11 @@ export class FigmaRestRasterizer {
   scaleFor(parsed, target) {
     const entry = this.nodes.get(this.nodeKey(parsed));
     if (entry instanceof Error) throw entry;
-    const width = entry?.document?.absoluteBoundingBox?.width;
-    const raw = width ? target.width / width : 2;
+    const requested = target?.density;
+    const raw =
+      typeof requested === "number" && Number.isFinite(requested) && requested > 0
+        ? requested
+        : DEFAULT_RENDER_DENSITY;
     // Four decimals keep requests stable and batch components rendered at the same density while
     // remaining far below a physical pixel of error at Figma's maximum scale.
     return Number(Math.min(4, Math.max(0.01, raw)).toFixed(4));
@@ -187,6 +193,9 @@ export class FigmaRestRasterizer {
             data: decoded.data,
             document: node?.document,
             styles: node?.styles,
+            // This export was requested at the renderer's density. The emitter must preserve that
+            // scale when it adds the preview canvas around the tight Figma component.
+            preserveScale: true,
           };
         })(),
       );

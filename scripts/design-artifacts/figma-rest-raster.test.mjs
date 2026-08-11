@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 
-import { FigmaRestRasterizer, parseFigmaRef } from "./figma-rest-raster.mjs";
+import {
+  DEFAULT_RENDER_DENSITY,
+  FigmaRestRasterizer,
+  parseFigmaRef,
+} from "./figma-rest-raster.mjs";
 
 function json(value, init) {
   return new Response(JSON.stringify(value), {
@@ -63,7 +67,36 @@ test("batches nodes and equal-scale image exports, then caches duplicate rasters
   assert.equal(calls.filter((url) => url.includes("/images/")).length, 1);
   assert.equal(calls.filter((url) => url.includes("cdn.test")).length, 2);
   assert.match(calls.find((url) => url.includes("/nodes?")), /ids=1%3A1%2C2%3A2/);
-  assert.match(calls.find((url) => url.includes("/images/")), /scale=2/);
+  assert.match(
+    calls.find((url) => url.includes("/images/")),
+    new RegExp(`scale=${DEFAULT_RENDER_DENSITY}`),
+  );
+});
+
+test("exports at renderer density instead of scaling a tight node to the padded canvas", async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    if (url.includes("/nodes?")) {
+      return json({ nodes: { "1:1": { document: { absoluteBoundingBox: { width: 95 } } } } });
+    }
+    if (url.includes("/images/")) return json({ images: { "1:1": "https://cdn.test/1:1" } });
+    return new Response(onePixelPng(), { status: 200 });
+  };
+  const rasterizer = new FigmaRestRasterizer({ token: "token", fetchImpl });
+
+  await rasterizer.rasterize("figma:file/1:1", { width: 382, height: 210 });
+
+  const imageUrl = calls.find((url) => url.includes("/images/"));
+  assert.equal(new URL(imageUrl).searchParams.get("scale"), "2.625");
+  assert.notEqual(new URL(imageUrl).searchParams.get("scale"), "4");
+});
+
+test("honours an explicit preview renderer density", async () => {
+  const rasterizer = new FigmaRestRasterizer({ token: "token", fetchImpl: async () => json({}) });
+  const parsed = parseFigmaRef("figma:file/1:1");
+  rasterizer.nodes.set(rasterizer.nodeKey(parsed), { document: { absoluteBoundingBox: { width: 95 } } });
+  assert.equal(rasterizer.scaleFor(parsed, { width: 382, height: 210, density: 3 }), 3);
 });
 
 test("retries a rate-limited batch once and respects Retry-After", async () => {
