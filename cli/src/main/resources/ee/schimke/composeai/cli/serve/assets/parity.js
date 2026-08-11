@@ -32,7 +32,7 @@
     });
   }
 
-  // Score every published render/reference pair with the same SSIM implementation as the focused
+  // Score every published render/reference pair with the same edge-tolerant metric as the focused
   // comparison page. Four workers keep a large catalog responsive while still turning the parity
   // page into an issues view instead of treating "mapped" as "matching".
   var compare = window.ComposePreviewCompare;

@@ -4,6 +4,12 @@
   var C1 = 6.5025;
   var C2 = 58.5225;
   var MAX_SIDE = 192;
+  // Figma's browser SVG rasteriser and Skia's Compose rasteriser cover the same vector edge with
+  // different sub-pixels. Search a small neighbourhood on the comparison plane, symmetrically, so
+  // those edge pixels do not become a structural failure. Five pixels at the capped 192 px plane
+  // is still narrow enough that displaced or missing marks remain visible to the score.
+  var EDGE_SEARCH_RADIUS = 5;
+  var LUMA_TOLERANCE = 16;
   // Longest side of the downscale that content-box detection samples, and how far a pixel may sit
   // from the backdrop colour before it counts as drawn.
   var BOX_SAMPLE_SIDE = 256;
@@ -156,8 +162,27 @@
   }
 
   function scorePlanes(reference, candidate, width, height) {
-    var value = ssim(blur(reference, width, height), blur(candidate, width, height), width, height);
-    return Math.max(0, Math.min(100, value * 100));
+    function directed(source, target) {
+      var total = 0;
+      for (var y = 0; y < height; y++) {
+        for (var x = 0; x < width; x++) {
+          var value = source[y * width + x];
+          var best = 255;
+          for (var oy = -EDGE_SEARCH_RADIUS; oy <= EDGE_SEARCH_RADIUS; oy++) {
+            var yy = Math.max(0, Math.min(height - 1, y + oy));
+            for (var ox = -EDGE_SEARCH_RADIUS; ox <= EDGE_SEARCH_RADIUS; ox++) {
+              var xx = Math.max(0, Math.min(width - 1, x + ox));
+              best = Math.min(best, Math.abs(value - target[yy * width + xx]));
+            }
+          }
+          total += Math.max(0, best - LUMA_TOLERANCE) / (255 - LUMA_TOLERANCE);
+        }
+      }
+      return total / (width * height);
+    }
+    // Both directions matter: a one-way search would let an extra mark hide beside a matching one.
+    var mismatch = (directed(reference, candidate) + directed(candidate, reference)) / 2;
+    return Math.max(0, Math.min(100, (1 - mismatch) * 100));
   }
 
   function scoreSvgUrls(pngUrl, svgUrl) {
@@ -239,7 +264,7 @@
    * whatever its `@Preview` scaffold added — `showBackground`'s opaque sheet, a `padding()` inset, a
    * fixed-height container the content does not fill — while the reference is usually cropped to the
    * artboard. Scoring those against each other measures the scaffold, not the component: the whole
-   * image is translated and rescaled relative to its partner, which SSIM reads as total mismatch.
+   * image is translated and rescaled relative to its partner, which reads as total mismatch.
    *
    * Detection uses alpha where the image has any: a transparent pixel is unambiguously not artwork.
    *
