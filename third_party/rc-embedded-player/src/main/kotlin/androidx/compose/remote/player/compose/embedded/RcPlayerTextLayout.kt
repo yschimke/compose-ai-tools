@@ -18,6 +18,7 @@
 
 package androidx.compose.remote.player.compose.embedded
 
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.remote.core.RemoteContext
@@ -38,7 +39,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.googlefonts.Font as GoogleFontFactory
 import androidx.compose.ui.text.googlefonts.GoogleFont
 import ee.schimke.composeai.rcembedded.GoogleVariableFontFamilies
@@ -110,6 +110,8 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
             LocalRemoteContext.current,
         )
 
+    val baseStyle = LocalTextStyle.current
+
     val textDecoration =
         when {
             data.underline && data.strikethrough ->
@@ -171,15 +173,26 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
                 TextUnit.Unspecified
             },
         textDecoration = textDecoration,
+        // Only the properties the document actually sets are overridden. Building a fresh
+        // `TextStyle` here instead — and in particular pinning `LineBreak.Simple` for the default
+        // strategy rather than leaving it unspecified — remeasured every text in every document,
+        // not just the ones using these properties: it grew the AppCard fixture's card by 3px and
+        // moved its clip rect (#3667).
+        //
+        // Unset means `Unspecified`, not "inherit": a document that says nothing about line
+        // breaking must not pick up a host's `LineBreak.Heading` (Material3 sets one per type role)
+        // just because the player happens to be composed inside a slot that provides a text style.
+        // Every other property still rides on the ambient style.
         style =
-            TextStyle(
+            baseStyle.copy(
                 lineBreak =
                     when (data.lineBreakStrategy) {
                         1 -> LineBreak.Paragraph
                         2 -> LineBreak.Heading
-                        else -> LineBreak.Simple
+                        else -> LineBreak.Unspecified
                     },
-                hyphens = if (data.hyphenationFrequency > 0) Hyphens.Auto else Hyphens.None,
+                hyphens =
+                    if (data.hyphenationFrequency > 0) Hyphens.Auto else Hyphens.Unspecified,
             ),
     )
 }
