@@ -89,8 +89,8 @@ for the `default` role; a canvas paint's built-in family id is decoded straight 
 `FontFamily.Default`. On a lane with no manifest — all three rendered here — both land on the same
 face and the comparison is sound. On a lane that installs one (cmp-wasm does) they can differ, and an
 apparent wrapping or advance divergence there might be this fixture rather than the player. Pinning
-the face via embedded `FontData` closes it; until then, read cmp-wasm's mode fixtures with that in
-mind.
+the face via embedded `FontData` closes it. The Java, CMP Wasm and JS lanes now support that pin;
+the two vendored embedded-player lanes still substitute their host face.
 
 With that caveat noted, the point stands: where the host stack actually broke, clipped or ellipsised
 the line, against where the player thinks the line ends, is a picture rather than an adjective.
@@ -244,10 +244,9 @@ which is what the fixture is for.
   contract; the JS canvas backend uses `actualBoundingBoxLeft` / `actualBoundingBoxRight` where the
   browser supplies them and falls back to the advance box otherwise.
 - **A pinned face.** The fixtures use the lane's default family, which leaves every reading entangled
-  with typeface resolution. Embedding the face as `FontData` fixes that for `java` and `cmp-wasm`;
-  the JS lane doesn't have opcode 189 in its registry and truncates the document rather than
-  substituting. That missing operation is tracked by
-  [#3647](https://github.com/yschimke/compose-ai-tools/issues/3647).
+  with typeface resolution. Embedding the face as `FontData` now pins `java`, `cmp-wasm` and `js`;
+  both vendored embedded-player lanes still ignore the bytes. Add support there before reading a
+  five-lane residual as a measurement difference.
 - **A machine-readable metric dump.** The numbers are currently rendered into the image. A per-lane
   JSON table would let the comparison be asserted rather than read, which is what turns this from a
   diagnostic into a gate.

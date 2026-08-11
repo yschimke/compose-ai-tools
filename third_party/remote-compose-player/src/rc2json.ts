@@ -100,6 +100,7 @@ const OP_NAMES: Record<number, string> = {
     186: "MATRIX_CONSTANT",
     187: "MATRIX_EXPRESSION",
     188: "MATRIX_VECTOR_MATH",
+    189: "DATA_FONT",
     190: "DRAW_TO_BITMAP",
     191: "WAKE_IN",
     192: "ID_LOOKUP",

@@ -18,8 +18,8 @@ question:
 
 | | built-in ids | named (local) | `google:` downloadable | embedded `FontData` |
 | --- | --- | --- | --- | --- |
-| **JS** (vendored TS player, in-browser) | ✅ concrete stacks | ⚠️ passed to CSS; host must have the face | ✅ fetched from the Google Fonts CSS API | ❌ bytes stored, never registered |
-| **JS** — font-variation axes | ✅ `wght` exactly, `wdth` quantised to the nine `font-stretch` keywords | — | ✅ requested as axis *ranges*, which is what makes the face variable | ❌ other axes have no canvas expression |
+| **JS** (vendored TS player, in-browser) | ✅ concrete stacks | ⚠️ passed to CSS; host must have the face | ✅ fetched from the Google Fonts CSS API | ✅ registered as a `FontFace` keyed by document font id |
+| **JS** — font-variation axes | ✅ `wght` exactly, `wdth` quantised to the nine `font-stretch` keywords | — | ✅ requested as axis *ranges*, which is what makes the face variable | ⚠️ the same canvas `wght`/`wdth` support; other axes have no canvas expression |
 | **CMP Wasm** (this repo's player, in-browser) | ✅ from the host manifest | ✅ if the manifest carries it | ⚠️ manifest only — no fetch | ✅ `decodeInlineFonts` |
 | **CMP Wasm** — font-variation axes | ✅ layout ops (`CoreText`) | — | — | ❌ canvas ops (reported, not silent) |
 | **Java** (AOSP `remote-player-view`, server-side) | ✅ framework typefaces | ⚠️ `/system/fonts/` filename scan | ✅ served by `RcGoogleFontTypefaceResolver` | ✅ `Font.Builder(ByteBuffer)` |
@@ -50,21 +50,12 @@ viewer disagree about the *same* document:
    and then `java` both got a shim over the shared `GoogleFontCache` — for the view player, a
    `TypefaceResolver` installed on the `RemoteComposePlayer` that serves `google:` names from that
    cache and delegates everything else to `DefaultTypefaceResolver` (see the Java section).
-2. **Embedded `FontData` is supported by exactly the two lanes nobody looks at first.** The Java and
-   CMP Wasm lanes build a real face from the document's own bytes; neither vendored embedded player
-   (Android or JVM) consults them at all, and the JS lane is **worse than "ignores them"** — the
-   `FontData` opcode (189) is not in its operation registry, and an opcode the registry doesn't know
-   makes `RemoteComposeBuffer.inflateFromBuffer` warn `Unknown operation opcode` and **return**,
-   dropping every remaining operation in the buffer. So a document that ships its typeface doesn't
-   merely render in a substituted face there; it renders *truncated* from the font onward. (The
-   player does carry a `RemoteContext.loadFont` that would stash the bytes, but nothing calls it —
-   it is dead code with no decoder in front of it. `rc-compare` already flags such a render, via the
-   same `Unknown operation opcode` warning, as `truncated`.)
-
-   Closing it in the JS lane is a decoder (a `FontData` operation reading `fontId`/`type`/`data` and
-   calling the existing `loadFont`) plus a `FontFace` registration keyed by font id, so a paint's
-   typeface id resolves to the embedded family rather than to a text-table name. That is the one
-   typeface gap this document still records as open.
+2. **Embedded `FontData` remains absent from the two vendored embedded players.** Java and CMP Wasm
+   build a face from the document's bytes, while CMP Android and CMP JVM still ignore them. The JS
+   lane now decodes opcode 189, registers the bytes as a collision-resistant `FontFace` alias, and
+   resolves both canvas paint and `CoreText` through that alias. Its registration joins the same
+   readiness/repaint path as downloadable fonts, and a browser fixture verifies that an operation
+   after `FontData` still draws in the embedded face rather than the decoder truncating the stream.
 
 ## Where the files come from
 
