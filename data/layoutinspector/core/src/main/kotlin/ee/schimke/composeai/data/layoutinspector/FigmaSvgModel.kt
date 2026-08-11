@@ -2384,7 +2384,16 @@ data class FigmaSvgModel(
       val bestDistForNode = HashMap<String, Int>()
       fun walk(node: ComposeSemanticsNode) {
         val measuredContent = node.layoutText?.takeIf { it.isNotBlank() }
-        val legacySemanticsContent = node.text?.takeIf { it.isNotBlank() }
+        // Before layoutText was carried separately, a visual TextLayoutResult still supplied at
+        // least one of typography / colour / overflow. Accessibility-only wrappers (Material 3's
+        // date cells are the canonical example) deliberately set SemanticsProperties.Text without
+        // drawing that sentence. Treating every plain semantics string as legacy visual text
+        // paints those screen-reader labels over the real child glyphs in the SVG.
+        val legacySemanticsContent =
+          node.text?.takeIf {
+            it.isNotBlank() &&
+              (node.typography != null || node.textColor != null || node.textOverflow != null)
+          }
         val raw = parseBoundsList(node.boundsInRoot)
         // `(0,0,0,0)` is the "no coordinates" signature, not a box at the origin — see
         // [isNoGeometry], which is also where the identity fallback below is motivated.
@@ -2426,8 +2435,8 @@ data class FigmaSvgModel(
           val chosen = bestId
           // TextLayoutResult is visual ground truth despite being exposed through a semantics
           // action. Plain SemanticsProperties.Text is accessibility data and may be overridden or
-          // merged, so it is only a compatibility fallback for old layout captures that have no
-          // modifier text projection.
+          // merged, so it is only a compatibility fallback when the old capture also carries
+          // visual text details and the matched node has no modifier text projection.
           val content =
             measuredContent
               ?: legacySemanticsContent?.takeUnless { chosen in nodesWithModifierText }

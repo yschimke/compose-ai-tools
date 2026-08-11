@@ -1,7 +1,11 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.platform.Font
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -41,5 +45,16 @@ class FontFamilyLabelTest {
     )
     assertEquals("sans-serif", layoutTextFontFamilyLabel(FontFamily.SansSerif))
     assertEquals("monospace", layoutTextFontFamilyLabel(FontFamily.Monospace))
+  }
+
+  @Test
+  fun modifierProjectionResolvesFontListsToTheSelectedFace() {
+    val bytes = checkNotNull(javaClass.getResourceAsStream("/fonts/DroidSansMono.ttf")).readBytes()
+    val family = FontFamily(Font("DroidSansMono", bytes, FontWeight.Normal, FontStyle.Normal))
+
+    val label = layoutTextFontFamilyLabel(family, FontWeight.Normal, FontStyle.Normal)
+
+    assertEquals("DroidSansMono", label)
+    assertFalse(label.orEmpty().contains("FontListFontFamily"))
   }
 }

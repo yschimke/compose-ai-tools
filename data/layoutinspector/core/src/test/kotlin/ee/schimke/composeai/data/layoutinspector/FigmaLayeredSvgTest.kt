@@ -1,6 +1,7 @@
 package ee.schimke.composeai.data.layoutinspector
 
 import java.io.ByteArrayInputStream
+import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -2234,6 +2235,66 @@ class FigmaLayeredSvgTest {
 
     assertTrue(svg.contains(">Visible modifier</text>"))
     assertFalse(svg.contains("Accessibility copy"))
+  }
+
+  @Test
+  fun accessibilityOnlyParentTextIsNotPaintedOverVisualChild() {
+    val layout =
+      layoutNode(
+        "Screen",
+        0,
+        0,
+        200,
+        100,
+        children =
+          listOf(
+            layoutNode(
+              "Box",
+              20,
+              20,
+              80,
+              80,
+              children =
+                listOf(
+                  layoutNode(
+                    "Text",
+                    38,
+                    30,
+                    62,
+                    70,
+                    modifiers =
+                      listOf(
+                        LayoutInspectorModifier(
+                          name = "text",
+                          properties = mapOf("layoutText" to "17", "layoutTextFontSizePx" to "24"),
+                        )
+                      ),
+                  )
+                ),
+            )
+          ),
+      )
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "date-cell",
+              boundsInRoot = "20,20,80,80",
+              text = "Start date, Thursday, August 17, 2023",
+              mergeMode = "clearAndSet",
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    val evidenceDir = File("build/figma-svg-datepicker").apply { mkdirs() }
+    File(evidenceDir, "date-cell.svg").writeText(svg)
+
+    assertTrue(svg.contains(">17</text>"))
+    assertFalse(svg.contains("Start date, Thursday, August 17, 2023"))
   }
 
   /**

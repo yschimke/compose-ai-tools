@@ -947,12 +947,11 @@ internal fun chooseWeight(available: List<Int>, target: Int): Int? {
  * path's `fontFamilyLabel` reports — rather than whatever its `toString()` happens to spell, so the
  * two capture paths can't disagree about the same style.
  */
-internal fun layoutTextFontFamilyLabel(family: FontFamily?): String? =
-  when {
-    family == null || family == FontFamily.Default -> null
-    family is GenericFontFamily -> family.name.takeIf { it.isNotBlank() }
-    else -> family.toString().takeIf { it.isNotBlank() }
-  }
+internal fun layoutTextFontFamilyLabel(
+  family: FontFamily?,
+  weight: FontWeight? = null,
+  style: FontStyle? = null,
+): String? = ComposeSemanticsDataProducer.fontFamilyLabel(family, weight, style)
 
 typealias ComposeSemanticsPayload =
   ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
@@ -1358,7 +1357,7 @@ internal object ComposeLayoutInspector {
         val fontSizePx = it.fontSize.resolveLayoutTextPx(density, fontScale)
         it.fontSize.toLayoutTextUnit()?.let { value -> properties["layoutTextFontSize"] = value }
         fontSizePx?.let { value -> properties["layoutTextFontSizePx"] = value.toString() }
-        layoutTextFontFamilyLabel(it.fontFamily)?.let { family ->
+        layoutTextFontFamilyLabel(it.fontFamily, it.fontWeight, it.fontStyle)?.let { family ->
           properties["layoutTextFontFamily"] = family
         }
         it.fontWeight?.weight?.let { weight ->
