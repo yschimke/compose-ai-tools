@@ -357,8 +357,8 @@ public fun RcComposePlayer(
   }
   val linkedDocument = remember(document) { RcDocumentLinker.link(document) }
   val layout = remember(linkedDocument) { RcLayoutTree.build(linkedDocument) }
-  val contentStateOperations =
-    remember(linkedDocument) { linkedDocument.operations.collectContentStateOperations() }
+  val contentStateOperationScopes =
+    remember(linkedDocument) { linkedDocument.operations.collectContentStateOperationScopes() }
   LaunchedEffect(linkedDocument, layout) {
     // Layout rendering consumes paint operations through component content rather than walking
     // the document root. AndroidX still applies root-level diagnostics during document execution.
@@ -397,7 +397,9 @@ public fun RcComposePlayer(
     state.beginFrame(frameNanos / 1_000_000_000f)
     // beginFrame resets derived text to the document's literals, so the ids the layout's own data
     // operations publish must be recomputed before this same composition measures and draws.
-    state.applyContentStateOperations(contentStateOperations, theme)
+    contentStateOperationScopes.forEach { operations ->
+      state.applyContentStateOperations(operations, theme)
+    }
     LookaheadScope {
       CompositionLocalProvider(
         LocalRcLookaheadScope provides this,
@@ -1691,9 +1693,7 @@ private fun Modifier.applyComponentModifiers(
           else result
         is RcMarqueeModifier -> result.applyAndroidXMarquee(operation, state)
         is RcNoArg ->
-          if (
-            operation.opcode == RcOpcodes.MODIFIER_DRAW_CONTENT && !appliedCanvasOperations
-          ) {
+          if (operation.opcode == RcOpcodes.MODIFIER_DRAW_CONTENT && !appliedCanvasOperations) {
             applyCanvasOperations(result)
           } else result
         else -> result
@@ -4204,12 +4204,13 @@ private fun blendMode(value: Int): BlendMode =
  * LayoutCompute) are left to that owner; only the direct children of a LayoutComponentContent are
  * replayed here. RootLayout also executes direct ComponentData before it paints its children.
  */
-private fun List<RcLinkedNode>.collectContentStateOperations(): List<RcLinkedNode> = buildList {
-  this@collectContentStateOperations.filterIsInstance<RcLinkedNode.Container>().forEach { container
-    ->
-    if (container.operation is RcRootLayout || container.operation is RcLayoutContent) {
-      addAll(container.children.filterIsInstance<RcLinkedNode.Operation>())
+private fun List<RcLinkedNode>.collectContentStateOperationScopes(): List<List<RcLinkedNode>> =
+  buildList {
+    this@collectContentStateOperationScopes.filterIsInstance<RcLinkedNode.Container>().forEach {
+      container ->
+      if (container.operation is RcRootLayout || container.operation is RcLayoutContent) {
+        add(container.children.filterIsInstance<RcLinkedNode.Operation>())
+      }
+      addAll(container.children.collectContentStateOperationScopes())
     }
-    addAll(container.children.collectContentStateOperations())
   }
-}

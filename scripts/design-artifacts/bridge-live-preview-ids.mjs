@@ -101,6 +101,10 @@ function variantIdentity(preview) {
       : null;
   return {
     id: preview.id,
+    density:
+      typeof params.density === "number" && Number.isFinite(params.density) && params.density > 0
+        ? params.density
+        : undefined,
     night,
     // The annotation's own device id — the axis a multipreview expansion actually varies. Scored
     // ahead of width below: two Wear round devices can render at the same width, and a device the
@@ -285,6 +289,33 @@ function breakpointForSizeOf(spec) {
 
 const EMPTY_BREAKPOINT = Object.freeze({});
 
+function previewForStateOf(spec) {
+  const previewForState = new Map();
+  for (const group of spec.groups ?? []) {
+    for (const component of group.components ?? []) {
+      previewForState.set(
+        variantKey(component.componentId, "default"),
+        component.preview,
+      );
+      for (const variant of component.variants ?? []) {
+        if (variant.preview && (variant.state || variant.props || variant.theme || variant.size)) {
+          previewForState.set(
+            variantKey(
+              component.componentId,
+              variant.state ?? "default",
+              variant.props,
+              variant.theme,
+              variant.size,
+            ),
+            variant.preview,
+          );
+        }
+      }
+    }
+  }
+  return previewForState;
+}
+
 /**
  * The breakpoint `size` a candidate annotation renders, or undefined — by its `@Preview(device = …)`
  * id first, then its width, through the same matcher that tagged the baked stickers.
@@ -399,33 +430,7 @@ export function bridgeLivePreviewIds(
   bundles,
   overriddenFunctions,
 ) {
-  const previewForState = new Map();
-  for (const group of spec.groups ?? []) {
-    for (const component of group.components ?? []) {
-      previewForState.set(
-        variantKey(component.componentId, "default"),
-        component.preview,
-      );
-      for (const v of component.variants ?? []) {
-        // `v.theme` counts as a distinguishing axis alongside state/props: a theme-only
-        // variant (the split light/dark screen case) carries neither, and was previously
-        // dropped here — so its sticker fell back to the component's default function and
-        // silently took the LIGHT preview's id. `v.size` is the same story one axis over.
-        if (v.preview && (v.state || v.props || v.theme || v.size)) {
-          previewForState.set(
-            variantKey(
-              component.componentId,
-              v.state ?? "default",
-              v.props,
-              v.theme,
-              v.size,
-            ),
-            v.preview,
-          );
-        }
-      }
-    }
-  }
+  const previewForState = previewForStateOf(spec);
   // Every preview id in the bundle, so the `@OverrideVariant` fallback below can confirm a
   // reconstructed `<baseId>_VARIANT_<state>` id actually rendered before routing to it — filled in
   // as `previewsByFunction` folds the bundles.
@@ -487,4 +492,33 @@ export function bridgeLivePreviewIds(
     }
   }
   console.log(`[${spec.system}] bridged ${mapped} live preview id(s) → daemon`);
+}
+
+/**
+ * Stamp each baked image with the density of the preview annotation that rendered it. This is
+ * independent of live alias publication: static catalogs and intentionally unbridged supplement
+ * images still need the density to export Figma references at the correct physical scale.
+ */
+export function stampPreviewDensities(manifest, spec, bundles) {
+  const previewForState = previewForStateOf(spec);
+  // Extra renders replace primary renders on a function clash, so their annotation metadata wins
+  // just as their baked pixels do.
+  const orderedBundles = (Array.isArray(bundles) ? bundles : [bundles]).filter(Boolean).reverse();
+  const previewsByFn = previewsByFunction(orderedBundles);
+  const breakpointForSize = breakpointForSizeOf(spec);
+  let stamped = 0;
+  for (const component of manifest.components ?? []) {
+    for (const image of component.images ?? []) {
+      const state = image.state ?? "default";
+      const fn = resolveFunction(previewForState, component.componentId, image, state);
+      const candidates = previewsByFn.get(fn) ?? [];
+      const candidateId = pickVariantId(candidates, image, breakpointForSize);
+      const candidate = candidates.find((it) => it.id === candidateId);
+      if (candidate?.density !== undefined) {
+        image.density = candidate.density;
+        stamped++;
+      }
+    }
+  }
+  return stamped;
 }

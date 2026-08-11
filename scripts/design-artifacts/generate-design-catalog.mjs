@@ -113,6 +113,7 @@ import { exportsNoSticker } from "./capture-mode.mjs";
 import {
   bridgeLivePreviewIds,
   expandDeferredRecords,
+  stampPreviewDensities,
 } from "./bridge-live-preview-ids.mjs";
 import {
   catalogImagePath,
@@ -1402,21 +1403,6 @@ if (values["publish-live-bundle"]) {
       [bundle, extraBundle],
       overriddenFunctions,
     );
-    const densityByPreviewId = new Map();
-    for (const sourceBundle of [bundle, extraBundle]) {
-      for (const preview of sourceBundle?.previews ?? []) {
-        const density = preview.params?.density;
-        if (typeof density === "number" && Number.isFinite(density) && density > 0) {
-          densityByPreviewId.set(preview.id, density);
-        }
-      }
-    }
-    for (const component of manifest.components ?? []) {
-      for (const image of component.images ?? []) {
-        const density = densityByPreviewId.get(image.previewId);
-        if (density !== undefined) image.density = density;
-      }
-    }
     // The shared live daemon opens only the primary bundle. An extra-only image renders through a
     // per-preview supplement bundle that stays closed until first render, so the browse surface
     // cannot discover its authored knobs / focus / gesture controls from the daemon. Record those
@@ -1432,6 +1418,7 @@ if (values["publish-live-bundle"]) {
       );
     }
   }
+  stampPreviewDensities(manifest, spec, [bundle, extraBundle]);
   await writeFile(
     catalogJsonPath,
     `${JSON.stringify(manifest, null, 2)}\n`,

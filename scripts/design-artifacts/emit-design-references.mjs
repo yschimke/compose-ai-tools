@@ -245,11 +245,12 @@ async function sourceRaster(record) {
 }
 
 function targetFor(record) {
+  const boardDensity = referenceDensity(record);
   return {
     width: record.raster.width,
     height: record.raster.height,
     ...(record.raster.density ? { density: record.raster.density } : {}),
-    ...(record.origin?.density ? { boardDensity: record.origin.density } : {}),
+    ...(boardDensity !== undefined ? { boardDensity } : {}),
   };
 }
 

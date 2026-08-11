@@ -239,10 +239,11 @@ function collisionFamilyBase(publishedPreviewIds, previewId) {
  * instead.
  */
 function matchesForPreviewId({ exact, sanitised, collisionBases }, previewId) {
+  const mapped = sanitizeBundleEntryId(previewId);
+  const suffix = mapped.match(/^(.*)_([1-9][0-9]*)$/);
+  if (collisionBases.has(mapped) || (suffix && collisionBases.has(suffix[1]))) return [];
   const direct = exact.get(previewId);
   if (direct && direct.length > 0) return direct;
-  const mapped = sanitizeBundleEntryId(previewId);
-  if (collisionBases.has(mapped)) return [];
   const viaSanitised = sanitised.get(mapped) ?? [];
   return viaSanitised.length === 1 ? viaSanitised : [];
 }
@@ -290,11 +291,6 @@ function narrowToMappedPreviewId(matches, mappedPreviewId, fn, warnings) {
   const labelled = matches.filter(({ image }) => typeof image?.previewId === "string");
   if (labelled.length === 0) return matches;
 
-  const exact = labelled.filter(({ image }) => image.previewId === mappedPreviewId);
-  if (exact.length > 0) {
-    const unlabelled = matches.filter(({ image }) => typeof image?.previewId !== "string");
-    return [...exact, ...unlabelled];
-  }
   const collisionBase = collisionFamilyBase(
     labelled.map(({ image }) => image.previewId),
     mappedPreviewId,
@@ -305,6 +301,12 @@ function narrowToMappedPreviewId(matches, mappedPreviewId, fn, warnings) {
         `the '${collisionBase}' collision family cannot be reversed without raw-id aliases`,
     );
     return [];
+  }
+
+  const exact = labelled.filter(({ image }) => image.previewId === mappedPreviewId);
+  if (exact.length > 0) {
+    const unlabelled = matches.filter(({ image }) => typeof image?.previewId !== "string");
+    return [...exact, ...unlabelled];
   }
 
   const sanitised = labelled.filter(

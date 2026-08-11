@@ -800,7 +800,7 @@ test("planDesignReferences narrows spec matches using a sanitised array primary 
   assert.equal(records[0].origin.ref, "figma:abc/73:6");
 });
 
-test("planDesignReferences refuses ambiguous raw aliases but accepts exact authored ids", () => {
+test("planDesignReferences refuses every id in an ambiguous bundle collision family", () => {
   // What a real bundle-derived catalog carries after raw `P_A B` and `P_A/B` collide: the first
   // sanitised claimant keeps the base and the second gets `_1`. The raw aliases that identify
   // which is which are not retained in catalog.json, so neither raw id can be reversed safely.
@@ -865,6 +865,7 @@ test("planDesignReferences refuses ambiguous raw aliases but accepts exact autho
     },
     catalog: collidingCatalog,
   });
-  assert.equal(exactAuthoredSuffix.records.length, 1);
-  assert.deepEqual(exactAuthoredSuffix.warnings, []);
+  assert.deepEqual(exactAuthoredSuffix.records, []);
+  assert.equal(exactAuthoredSuffix.warnings.length, 1);
+  assert.match(exactAuthoredSuffix.warnings[0], /collision family cannot be reversed/);
 });
