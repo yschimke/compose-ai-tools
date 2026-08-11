@@ -40,10 +40,16 @@ assigned_profiles() {
     sed 's/^SERVE_PLAYGROUND_SANDBOX=//' | sort -u
 }
 
-# The apt package list the Dockerfile installs.
+# The apt package list the Dockerfile installs. The package may sit anywhere on a continued RUN
+# line — `install-linux-font-fallbacks` takes its extra packages as argv, so `bubblewrap` shares a
+# line with `curl ca-certificates git` rather than standing alone. Match it as a whole word, not as
+# the start of a line: anchoring to the line start made this detector go blind the moment the
+# package list was reflowed, and it reported a missing package the image was in fact installing.
+# Comment lines are stripped first so the rationale comment above the RUN — which names the package
+# it is explaining — cannot stand in for actually installing it.
 dockerfile_installs() {
   local dockerfile="$1" pkg="$2"
-  grep -qE "^[[:space:]]*${pkg}([[:space:]]|\\\\|$)" "${dockerfile}"
+  grep -vE '^[[:space:]]*#' "${dockerfile}" | grep -qE "(^|[[:space:]])${pkg}([[:space:]]|\\\\|$)"
 }
 
 check() {
@@ -116,6 +122,15 @@ expect_fail() {
   echo "PASS: self-test — ${label}"
 }
 
+expect_pass() {
+  local label="$1" dockerfile="$2" readme="$3"
+  if ! check "${dockerfile}" "${readme}" >/dev/null 2>&1; then
+    echo "FAIL: self-test '${label}' failed the check but should have passed." >&2
+    exit 1
+  fi
+  echo "PASS: self-test — ${label}"
+}
+
 # 1. The regression this whole change fixes: docs say bwrap, image lacks bubblewrap.
 printf 'FROM x\nRUN apt-get install -y \\\n      curl \\\n      git\n' >"${tmp}/no-bwrap.Dockerfile"
 printf 'SERVE_PLAYGROUND_SANDBOX=bwrap\n' >"${tmp}/bwrap.md"
@@ -133,5 +148,18 @@ expect_fail "custom: argv recommended" "${real_dockerfile}" "${tmp}/custom.md"
 # 4. The detector itself going blind — docs that recommend nothing at all.
 printf 'no sandbox guidance here\n' >"${tmp}/empty.md"
 expect_fail "no profile assignment found" "${real_dockerfile}" "${tmp}/empty.md"
+
+# 5. The false alarm this detector used to raise: the package IS installed, but shares a continued
+# line with its neighbours rather than starting one. A line-anchored match called this missing.
+printf 'FROM x\nRUN /usr/local/bin/install-linux-font-fallbacks \\\n      libgl1 \\\n      curl ca-certificates git bubblewrap\n' \
+  >"${tmp}/inline-bwrap.Dockerfile"
+expect_pass "bubblewrap installed mid-line, not at the start of one" \
+  "${tmp}/inline-bwrap.Dockerfile" "${tmp}/bwrap.md"
+
+# 6. …and the flip side: naming the package in a comment is not installing it.
+printf 'FROM x\n# bubblewrap belongs here, one day\nRUN apt-get install -y \\\n      curl\n' \
+  >"${tmp}/commented-bwrap.Dockerfile"
+expect_fail "bubblewrap only mentioned in a comment" \
+  "${tmp}/commented-bwrap.Dockerfile" "${tmp}/bwrap.md"
 
 echo "PASS: all sandbox tooling checks"
