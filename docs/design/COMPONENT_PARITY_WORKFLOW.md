@@ -170,22 +170,41 @@ would be a copy step that runs before the race is discovered, and an index commi
 publish is dropped wholesale by the reparent — leaving badges stale until the next issue event
 happens to fire, which could be days.
 
-Three ways out, in increasing order of cost:
+**The race is asymmetric, and the fix has to be too.** The two publishers are not peers: the render
+publisher's tree is authoritative for the whole bundle *except* the index, and the index publisher's
+tree is authoritative for *only* the index. A single symmetric "carry these paths forward" rule
+breaks in one of the two orderings — an index publisher enabling carry-forward on
+`parity/issues.json` would replace its own freshly-generated blob with the stale copy from the
+fetched parent and never publish anything, while an index publisher *without* it reparents its stale
+render tree and rolls back whatever renders just landed. So each side gets the rule that matches
+what it actually owns:
 
-1. **Re-run the preservation inside the retry loop** — on each fetch, read `parity/issues.json` out
-   of the fetched parent, restage it, and recompute the tree before `commit-tree`. Requires touching
-   `push-branch.sh` (shared with other publishers, so the change must be opt-in via an env var
-   naming the paths to carry forward).
-2. **Serialize the two publishers** with a shared GitHub Actions `concurrency` group per system, so
-   an index commit and a render publish never overlap. Cheapest, but couples two workflows in two
-   repos and turns a fast index update into something that can queue behind a 30-minute render.
-3. **Keep the index off the delivery branch entirely** — publish it as its own branch or release
-   asset that `ServeCatalogStore` fetches separately. Cleanest isolation, most new plumbing.
+- **Render publisher — carry forward.** On each fetch inside the retry loop, take
+  `parity/issues.json` from the fetched parent, restage it, recompute the tree, then `commit-tree`.
+  Its own tree wins everywhere else.
+- **Index publisher — one-path delta.** Never build a tree from a working directory at all. On each
+  fetched tip, start from the **parent's** tree and replace exactly one path with its own new index
+  blob. Everything else comes from the parent by construction, so a render that landed mid-flight is
+  preserved whichever order the two pushes arrive in.
 
-**Recommended: (1)**, with the carried-forward path list explicit and unit-tested, because it fixes
-the race for any future file with the same "written by a different job" shape rather than only this
-one. This should be settled before Phase 1 step 3 ships, not after — the failure is silent and
-looks like "the index is just a bit behind".
+Both are changes to `push-branch.sh`, which is shared with other publishers, so both must be opt-in
+(one env var naming paths to carry forward, one selecting delta-on-tip mode) and covered by tests
+that exercise **both orderings** — index-wins-then-render-retries and render-wins-then-index-retries.
+A test for only the first ordering would pass against the broken design.
+
+Two alternatives, if that turns out to be more surgery on a shared helper than is wanted:
+
+- **Serialize the two publishers** with a shared `concurrency` group per system, so an index commit
+  and a render publish never overlap. Cheapest to build, but couples two workflows across two repos
+  and turns a fast index update into something that can queue behind a 30-minute render.
+- **Keep the index off the delivery branch entirely** — its own branch or a release asset that
+  `ServeCatalogStore` fetches separately. Cleanest isolation, most new plumbing, and it gives up the
+  "one branch is the whole catalog" property the rest of the design leans on.
+
+**Recommended: the two-sided rule above.** It fixes the race for any future file with the same
+"written by a different job" shape rather than only this one. Settle it before Phase 1 step 3 ships —
+the failure is silent and looks like "the index is just a bit behind", or worse, like renders
+mysteriously reverting.
 
 **Cross-repository triggers.** One delivery branch can carry issues from several repositories (a
 catalog whose components are implemented elsewhere). `repository` is per-issue in the schema, so the
@@ -252,8 +271,9 @@ So acceptance gets **its own canonical plane, defined by the reference**:
 - **The canonical plane is the reference's content box, at the reference raster's own resolution.**
   The reference is a published PNG with fixed dimensions and a `sha256` that the acceptance already
   pins, so this plane is byte-stable by construction — it cannot move unless the reference changes,
-  and a changed reference is already gate 1. Annotation bounds are in this space too.
-- **`mask.png` is authored in it directly.** No transform, no scale factor to get wrong.
+  and a changed reference is already gate 1.
+- **`mask.png` is authored in it directly** — but *nothing else is already in it*, and that is the
+  easy mistake. See the translation rules below.
 - **`accepted-candidate.png` is stored in it**, cropped to the mask's bounding box. Evaluating an
   acceptance therefore means resampling the *current* candidate's content box into the canonical
   plane — one resample of the live frame, against a stored crop that never moves — rather than
@@ -268,6 +288,31 @@ So acceptance gets **its own canonical plane, defined by the reference**:
 This costs one extra resample per acceptance per comparison, on a page that is already decoding two
 PNGs and walking them pixel by pixel. That is the right trade for making "did this exact accepted
 region change?" a question with a stable answer.
+
+#### Translating a selection into the canonical plane
+
+The canonical plane is a **crop**, so its origin is `(referenceBox.x, referenceBox.y)` in the
+reference raster — generally non-zero. Nothing a human or the UI hands us starts there, and treating
+any of these as already-canonical shifts the mask by the content-box origin, which silently targets
+the wrong pixels. Every source needs an explicit transform, and every result needs clipping to the
+plane:
+
+| Source | Native space | Transform into the canonical plane |
+| --- | --- | --- |
+| Reference annotation `bounds` | the **full reference raster** (`DesignAnnotation` KDoc: "the annotated image's own pixel space") | subtract `(referenceBox.x, referenceBox.y)`; scale 1; clip |
+| Drag rectangle on the reference panel | CSS/display pixels of the `<img>` | scale by `rasterWidth / displayWidth`, then subtract the box origin; clip |
+| Render-side annotation `bounds` | **render** pixel space | map through the candidate content box → the shared box, i.e. subtract `(candidateBox.x, candidateBox.y)` then scale by `referenceBox.width / candidateBox.width`; clip |
+
+A selection that clips to empty is refused at authoring time rather than stored as a zero-area mask.
+
+**One stability hazard to pin down before implementing.** `normalisedBoxes` does not always use the
+content box: when either side's box covers less than `MIN_BOX_COVERAGE` (5%) of its canvas it falls
+back to the **full canvas** for *both* sides. So the plane's definition can flip between "content
+box" and "full raster" depending on the candidate's coverage — which the reference's `sha256` does
+not pin. An acceptance must therefore record **which of the two the plane was** (a `plane:
+"content-box" | "full-canvas"` discriminant plus the resolved box), and a comparison whose fallback
+disagrees with the recorded one is `invalidated: plane-changed` rather than silently compared in the
+wrong space.
 
 ### Evaluation order (the safety requirements, as an algorithm)
 
