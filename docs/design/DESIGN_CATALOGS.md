@@ -321,42 +321,73 @@ Feed the result through `@design-parity/catalog-export` to produce the importabl
 bundle, and commit it to the system's `design-artifacts/<system>` delivery
 branch.
 
-## Two lanes: what a click does
+## Two lanes: one composable, not two
 
-Every catalog sticker is rendered on **two** surfaces, and they want opposite
-things from a pointer:
+Every catalog sticker is rendered on **two** surfaces — the baked snapshot /
+one-shot `/render` that produces the published sticker sheet, and the held Live
+Compose session (plus the in-browser wasm tier for `compose-m3`). Both lanes
+compose the **same** component, with the same handlers wired.
 
-| Lane | Signal | A click must |
-|---|---|---|
-| Baked snapshot / one-shot `/render` / the published sticker sheet | `LocalInspectionMode = true` | do **nothing** — a published PNG can't depend on whether something tapped it |
-| Held Live Compose session, and the in-browser wasm tier for `compose-m3` | `LocalInspectionMode = false` | visibly change the component |
+They used to not. A single `interactive` flag derived from
+`LocalInspectionMode.current` picked a stateful control on the live lane and an
+inert look-alike on the baked one, so the published PNG was not always a
+photograph of the component that actually runs. That branch is gone (issue
+#3674): `:samples:design-catalog-m3-shared`'s `CatalogComponent(id)` takes no
+lane parameter, and the Wear sheet's `catalogInteractive()` has been deleted.
 
-The split is a single `interactive` flag derived from that signal
-(`interactive = !LocalInspectionMode.current`), never a hard-coded constant —
-one sticker body serves both lanes. `:samples:design-catalog-m3-shared`'s
-`CatalogComponent(id, interactive)` takes it as a parameter (the wasm app passes
-`true` directly); the Wear sheet reads it through `catalogInteractive()` in
-`CatalogInteractive.kt`.
+What makes the baked capture deterministic without a branch is that **a static
+render never clicks anything**. A correctly-authored stateful control sits at
+its initial value, and that initial value is the seeded
+`catalogOverride*` / `previewOverride*` knob — which is exactly what the
+`@OverrideVariant` folds (`switch-on` → `off`, `checkbox-checked` →
+`unchecked`) depend on. Time-based animation is pinned by the renderer's paused
+clock, not by a lane check. If you find yourself reaching for
+`LocalInspectionMode` to keep a capture still, the component's state is not
+hoisted far enough.
+
+Two families resolve the lane tension by **choosing one composable on merit**
+rather than branching:
+
+- **Cards** compose the plain (non-clickable) overload everywhere. The
+  clickable overload would add a clickable node to the semantics tree, and that
+  tree is itself published — the `a11y/touchTargets` greenlines and the
+  `compose/semantics-wireframe` layout variant both describe it. A card click
+  tally is not worth invalidating those.
+- **Progress** composes the determinate overload everywhere. The indeterminate
+  ring is a genuinely different composable, not a state of the same one; if the
+  sheet wants to show it, it should get its own catalog id the way the Wear
+  sheet already does (`Progress/Circular` + `Progress/Circular/Indeterminate`),
+  which is an inventory change rather than a lane check.
+
+**Pressed and focused stickers use real input, not forged interactions.** The
+Android sheets (`design-catalog-wear-m3`, `design-catalog-m3-android`) drive
+them with `@FocusedPreview(indices = [0])` / `@FocusedPreview(indices = [0],
+pressed = true)`, which performs a real `FocusManager.moveFocus` walk — flipping
+`LocalInputModeManager` to Keyboard mode, since Robolectric's host environment
+is permanently Touch — and dispatches a real indirect-pointer Press onto
+whatever the walk lands on. That proves the component can actually *receive* the
+state, which emitting a bare `PressInteraction.Press` into a hand-made
+`MutableInteractionSource` never did (issue #3672). Note `pressed = true`
+necessarily focuses *and* presses, so such a capture may carry a focus
+indicator alongside the pressed state layer.
+
+The CMP/desktop sheet still seeds those two stickers through held
+`MutableInteractionSource` helpers, because the desktop `ImageComposeScene`
+renderer has no focus traversal or press dispatch yet. Those helpers are marked
+in-source as a stopgap and should be deleted the moment it does.
 
 **No sticker may ship a dead handler.** Components that carry state — switch,
 checkbox, radio, filter chip, slider, segmented button, text fields, Wear's
-`SwitchButton` / `CheckboxButton` — own it and mutate it on the interactive
-lane.
+`SwitchButton` / `CheckboxButton` — own it and mutate it, unconditionally.
 
 Everything else takes the **click tally** as its default: `counted` /
 `wearCounted` / `countedRemote` append `(n)` to the label, `Filled` →
-`Filled (1)`. At `n == 0` the tally returns the bare label and a no-op handler,
-so the baked capture is byte-identical either way. Prefer it over a bespoke
-affordance — it reads the same across all three sheets, and it composes over a
-label that is itself bound (remote-m3's named-value button counts on top of its
-override rather than replacing it).
-
-M3's cards are the one family that ships *both* a plain and a clickable
-overload (Wear's and Remote's take a required `onClick`). The interactive lane
-picks the clickable one; the baked lane composes the same plain overload it
-always did, so the published capture keeps its exact node tree rather than just
-its pixels — otherwise the `a11y/touchTargets` greenlines and the layout
-wireframe would gain a clickable node that no longer describes the sticker.
+`Filled (1)`. The tally is what keeps the baked capture stable without a lane
+check: at `n == 0` it renders the bare label, and a static render never clicks,
+so the published PNG is the `n == 0` frame by construction. Prefer it over a
+bespoke affordance — it reads the same across all three sheets, and it composes
+over a label that is itself bound (remote-m3's named-value button counts on top
+of its override rather than replacing it).
 
 Four kinds of exception, all deliberate:
 
@@ -381,10 +412,14 @@ genuinely means "tell the host" rather than "change me", and stays in the file
 documented as such — but nothing in the catalog uses it any more.
 
 Guarded by `CatalogInteractivityTest` in the shared M3 module (desktop
-`runComposeUiTest`) and the Wear module (Robolectric + `createComposeRule`),
-each asserting **both** lanes, plus `InteractiveActionCaptureTest` on the remote
-sheet, which reads the encoded `.rc` sidecar because the counter branch is
-invisible in a static raster by construction.
+`runComposeUiTest`) and the Wear module (Robolectric + `createComposeRule`).
+Each now asserts the property that replaced the lane split: a sticker composes
+the **same** control under either `LocalInspectionMode` value, presents the same
+initial frame in both, and still responds to input — so a regression that
+reintroduces an inspection-mode branch fails the test rather than silently
+publishing a look-alike. `InteractiveActionCaptureTest` covers the remote sheet,
+reading the encoded `.rc` sidecar because the counter branch is invisible in a
+static raster by construction.
 
 ## Wireframes
 

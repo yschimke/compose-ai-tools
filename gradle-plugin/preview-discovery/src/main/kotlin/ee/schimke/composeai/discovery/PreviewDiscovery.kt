@@ -233,6 +233,12 @@ object PreviewDiscovery {
   // Wear one-handed-gesture hint capture — sibling annotation to @AmbientPreview, same FQN-match
   // policy. See `GestureHintPreview.kt`.
   private const val GESTURE_HINT_PREVIEW_FQN = "ee.schimke.composeai.preview.GestureHintPreview"
+  // Android runtime-permission grant state for the STATIC render lane — sibling annotation to
+  // @AmbientPreview / @GestureHintPreview, same FQN-match policy. Unlike those two it does not
+  // wrap the composition: the renderer seeds Robolectric's grant set before `setContent`, because
+  // `ContextCompat.checkSelfPermission(...)` is read on the first composition. See
+  // `PermissionPreview.kt` and issue #3676.
+  internal const val PERMISSION_PREVIEW_FQN = "ee.schimke.composeai.preview.PermissionPreview"
   // "this preview's subject IS a theme — never re-render it under a themeProvider override". A
   // marker with no parameters, matched by FQN like its siblings. See `FixedTheme.kt`.
   private const val FIXED_THEME_FQN = "ee.schimke.composeai.preview.FixedTheme"
@@ -1743,6 +1749,8 @@ object PreviewDiscovery {
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
     val gestureHintSpec = extractGestureHintSpec(annotations)
+    val permissionSpec =
+      extractPermissionSpec(annotations, "${classInfo.name}.${method.name}", warnings)
     val launcherWidgetSpec = extractLauncherWidgetSpec(annotations)
     val launcherWidgetResizeSpec = extractLauncherWidgetResizeSpec(annotations)
     // `@OverrideVariant` (repeatable) — each spec yields one extra synthetic preview per @Preview
@@ -1858,6 +1866,7 @@ object PreviewDiscovery {
             focusGifSpec,
             ambientSpec,
             gestureHintSpec,
+            permissionSpec,
             launcherWidgetSpec,
             launcherWidgetResizeSpec,
             timings,
@@ -1885,6 +1894,7 @@ object PreviewDiscovery {
           focusGifSpec,
           ambientSpec,
           gestureHintSpec,
+          permissionSpec,
           launcherWidgetSpec,
           launcherWidgetResizeSpec,
           timings,
@@ -1912,6 +1922,7 @@ object PreviewDiscovery {
           focusGifSpec,
           ambientSpec,
           gestureHintSpec,
+          permissionSpec,
           launcherWidgetSpec,
           launcherWidgetResizeSpec,
           timings,
@@ -2599,6 +2610,7 @@ object PreviewDiscovery {
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     gestureHint: GestureHintCapture?,
+    permissions: PermissionsCapture?,
     launcherWidget: LauncherWidgetCapture?,
     launcherWidgetResize: LauncherWidgetResizeSpec?,
     timings: List<Long>,
@@ -2657,6 +2669,12 @@ object PreviewDiscovery {
     // `@GestureHintPreview` force-shows the Wear one-handed-gesture indicator, which lives in the
     // Compose composition — same reasoning as ambient: a no-op for non-composable previews.
     val effectiveGestureHint = if (nonComposable) null else gestureHint
+    // `@PermissionPreview` reaches the screen through `:data-permissions-connector`'s
+    // around-composable seam (the extension seeds Robolectric's grant set on construction, then
+    // wraps the composition to scope the query tracking). A tile / notification / Glance / XR
+    // preview never enters that composition, so the override has nothing to attach to there —
+    // same reasoning, and same treatment, as ambient and gesture hints.
+    val effectivePermissions = if (nonComposable) null else permissions
     // `@LauncherWidgetPreview` wraps the composition in a sized Box — same reasoning as ambient:
     // non-composable previews have no Compose layout pass to wrap. The override is also dropped
     // for tile / notification renders.
@@ -2703,6 +2721,7 @@ object PreviewDiscovery {
             ),
           ambient = effectiveAmbient,
           gestureHint = effectiveGestureHint,
+          permissions = effectivePermissions,
           renderOutput = "renders/${previewId}_RESIZE_${w}x${h}.png",
           cost = STATIC_COST,
         )
@@ -2716,6 +2735,7 @@ object PreviewDiscovery {
               focusGif = effectiveFocusGif,
               ambient = effectiveAmbient,
               gestureHint = effectiveGestureHint,
+              permissions = effectivePermissions,
               launcherWidget = effectiveLauncherWidget,
               renderOutput = "renders/${previewId}${suffix}.gif",
               cost = FOCUS_GIF_COST,
@@ -2752,6 +2772,7 @@ object PreviewDiscovery {
             focusGif = effectiveFocusGif,
             ambient = effectiveAmbient,
             gestureHint = effectiveGestureHint,
+            permissions = effectivePermissions,
             launcherWidget = effectiveLauncherWidget,
             renderOutput = "renders/${previewId}${suffix}.gif",
             cost = FOCUS_GIF_COST,
@@ -2852,6 +2873,7 @@ object PreviewDiscovery {
                 focus = focus,
                 ambient = effectiveAmbient,
                 gestureHint = effectiveGestureHint,
+                permissions = effectivePermissions,
                 launcherWidget = effectiveLauncherWidget,
                 renderOutput =
                   "renders/${previewId}${scrollSuffix}${timeSuffix}${focusSuffix}.${ext}",
@@ -3119,6 +3141,86 @@ object PreviewDiscovery {
     val ann = annotations.firstOrNull { it.name == GESTURE_HINT_PREVIEW_FQN } ?: return null
     val showHints = (ann.parameterValues.getValue("showHints") as? Boolean) ?: true
     return GestureHintCapture(showHints = showHints)
+  }
+
+  /**
+   * Reads a `@PermissionPreview(grants = ["android.permission.CAMERA=granted"])` off [annotations]
+   * into a [PermissionsCapture], or `null` when the annotation is absent or contributed nothing
+   * usable. Single-shot per function like [extractAmbientSpec] / [extractGestureHintSpec] — the
+   * consumer pairs a bare `@Preview` (denied) with a `@PermissionPreview` `@Preview` (granted) over
+   * the same screen — and the resulting capture is stamped onto every `@Preview` expansion.
+   *
+   * Returning `null` for "annotation present but empty" is deliberate: the renderer only builds the
+   * permissions extension when the capture is non-null, and an empty grant map would otherwise mean
+   * "deny everything", which is a different (and surprising) statement from "no override".
+   */
+  private fun extractPermissionSpec(
+    annotations: List<AnnotationInfo>,
+    owner: String,
+    warnings: MutableList<String>,
+  ): PermissionsCapture? {
+    val ann = annotations.firstOrNull { it.name == PERMISSION_PREVIEW_FQN } ?: return null
+    val entries = readStringArray(ann.parameterValues.getValue("grants"))
+    val grants = parsePermissionGrants(entries, owner, warnings)
+    return if (grants.isEmpty()) null else PermissionsCapture(grants = grants)
+  }
+
+  /**
+   * Parses `@PermissionPreview.grants` entries — each `"<permission>=<state>"`, e.g.
+   * `"android.permission.CAMERA=granted"` — into the capture's grant map.
+   *
+   * Split on the **first** `=` only: an Android permission constant never contains one, but
+   * splitting on all of them would silently mangle a hypothetical vendor permission that does, and
+   * a wrong grant is worse than a rejected one. `granted` / `denied` are matched case-insensitively
+   * after trimming, so `GRANTED` and ` Granted ` both parse.
+   *
+   * Malformed entries are dropped with a warning rather than failing the build — the same policy
+   * [extractPreviewAxes] applies to an unusable axis. That matters here because the silent symptom
+   * is a preview *named* "granted" capturing the denied branch (issue #3676), so the warning names
+   * the offending entry and the accepted spellings.
+   *
+   * Duplicate permissions keep the first entry. A duplicate that agrees is not worth a warning (an
+   * annotation reached twice is a normal discovery outcome); one that disagrees is a contradiction
+   * the author has to resolve, so it warns.
+   *
+   * `internal` purely so [PreviewDiscoveryPermissionGrantsTest] can exercise the grammar without
+   * standing up a Gradle build.
+   */
+  internal fun parsePermissionGrants(
+    entries: List<String>,
+    owner: String,
+    warnings: MutableList<String>,
+  ): Map<String, PermissionGrantCaptureState> {
+    val grants = LinkedHashMap<String, PermissionGrantCaptureState>()
+    for (entry in entries) {
+      val separator = entry.indexOf('=')
+      val permission = if (separator < 0) "" else entry.substring(0, separator).trim()
+      val rawState = if (separator < 0) "" else entry.substring(separator + 1).trim()
+      val state =
+        when (rawState.lowercase()) {
+          "granted" -> PermissionGrantCaptureState.GRANTED
+          "denied" -> PermissionGrantCaptureState.DENIED
+          else -> null
+        }
+      if (permission.isEmpty() || state == null) {
+        warnings.add(
+          "composePreview: '$owner' declares @PermissionPreview with the entry \"$entry\", which " +
+            "is not a \"<permission>=<state>\" pair with a state of granted or denied " +
+            "(case-insensitive) — e.g. \"android.permission.CAMERA=granted\". Ignoring it; " +
+            "the preview will capture whatever branch the un-overridden permission check returns."
+        )
+        continue
+      }
+      val existing = grants.putIfAbsent(permission, state)
+      if (existing != null && existing != state) {
+        warnings.add(
+          "composePreview: '$owner' declares @PermissionPreview with conflicting states for " +
+            "\"$permission\" ($existing then $state) — a permission has one grant state per " +
+            "capture. Keeping $existing."
+        )
+      }
+    }
+    return grants
   }
 
   /**
@@ -3414,6 +3516,7 @@ object PreviewDiscovery {
       FOCUSED_PREVIEW_FQN,
       AMBIENT_PREVIEW_FQN,
       GESTURE_HINT_PREVIEW_FQN,
+      PERMISSION_PREVIEW_FQN,
       LAUNCHER_WIDGET_PREVIEW_FQN,
       LAUNCHER_WIDGET_RESIZE_FQN,
       OVERRIDE_VARIANT_FQN,
@@ -3662,6 +3765,7 @@ object PreviewDiscovery {
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     gestureHint: GestureHintCapture?,
+    permissions: PermissionsCapture?,
     launcherWidget: LauncherWidgetCapture?,
     launcherWidgetResize: LauncherWidgetResizeSpec?,
     timings: List<Long>,
@@ -3680,6 +3784,7 @@ object PreviewDiscovery {
       focusGif,
       ambient,
       gestureHint,
+      permissions,
       launcherWidget,
       launcherWidgetResize,
       timings,
@@ -3706,6 +3811,7 @@ object PreviewDiscovery {
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     gestureHint: GestureHintCapture?,
+    permissions: PermissionsCapture?,
     launcherWidget: LauncherWidgetCapture?,
     launcherWidgetResize: LauncherWidgetResizeSpec?,
     timings: List<Long>,
@@ -3724,6 +3830,7 @@ object PreviewDiscovery {
         focusGif,
         ambient,
         gestureHint,
+        permissions,
         launcherWidget,
         launcherWidgetResize,
         timings,
