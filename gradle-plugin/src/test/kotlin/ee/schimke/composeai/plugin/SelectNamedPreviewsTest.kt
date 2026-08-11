@@ -2,6 +2,8 @@ package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
 import ee.schimke.composeai.discovery.PreviewInfo
+import ee.schimke.composeai.discovery.PreviewKind
+import ee.schimke.composeai.discovery.PreviewParams
 import org.gradle.api.GradleException
 import org.junit.Test
 
@@ -72,5 +74,28 @@ class SelectNamedPreviewsTest {
         e
       }
     assertThat(thrown!!.message).contains("no discovered previews")
+  }
+
+  @Test
+  fun `no match reports manifest path and separates code from asset previews`() {
+    val asset =
+      PreviewInfo(
+        id = "svg__badge",
+        functionName = "svg/badge.svg",
+        className = "",
+        params = PreviewParams(kind = PreviewKind.SVG),
+      )
+
+    val thrown =
+      try {
+        selectNamedPreviews(listOf(asset), listOf("HomePreview"), "/tmp/previews.json")
+        null
+      } catch (e: GradleException) {
+        e
+      }
+
+    val message = thrown!!.message
+    assertThat(message).contains("0 code preview(s) and 1 asset preview(s)")
+    assertThat(message).contains("/tmp/previews.json")
   }
 }

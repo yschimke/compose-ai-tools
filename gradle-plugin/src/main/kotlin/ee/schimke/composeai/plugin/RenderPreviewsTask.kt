@@ -309,7 +309,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // Filtered-out previews keep their PNGs on disk (protected by the raw-manifest fan-out guard
     // below), so an unrelated broken preview is never scheduled and can't poison a filtered run.
     val nameFiltered =
-      selectNamedPreviews(rawManifest.previews, previewFilters.getOrElse(emptyList()))
+      selectNamedPreviews(
+        rawManifest.previews,
+        previewFilters.getOrElse(emptyList()),
+        previewsJson.get().asFile.absolutePath,
+      )
 
     // Id filter (issue #2966) — narrows to individual fan-out members within the functions the name
     // filter kept, which is the granularity a catalog's per-theme `modePriority` needs to skip the
@@ -317,7 +321,12 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // before tier/kind/catalog filtering, and so `--preview Foo --preview-id *_Light` composes.
     val idFiltered =
       excludePreviewIds(
-        selectPreviewIds(nameFiltered, previewIdFilters.getOrElse(emptyList())),
+        selectPreviewIds(
+          nameFiltered,
+          previewIdFilters.getOrElse(emptyList()),
+          previewsJson.get().asFile.absolutePath,
+          rawManifest.previews,
+        ),
         previewIdExcludes.getOrElse(emptyList()),
       )
 
@@ -868,6 +877,7 @@ private val SYNTHETIC_CATALOG_KINDS_UNSUPPORTED_ON_DESKTOP =
 internal fun selectNamedPreviews(
   previews: List<PreviewInfo>,
   filters: List<String>,
+  manifestPath: String? = null,
 ): List<PreviewInfo> {
   val cleaned = filters.map(String::trim).filter(String::isNotEmpty)
   if (cleaned.isEmpty()) return previews
@@ -884,6 +894,7 @@ internal fun selectNamedPreviews(
       append("composePreviewRender --preview matched no previews for ")
       append(cleaned.joinToString(", ") { "'$it'" })
       append(".")
+      appendManifestContext(previews, manifestPath)
       if (available.isEmpty()) {
         append(" This module has no discovered previews — run composePreviewDiscover to confirm.")
       } else {
@@ -920,6 +931,8 @@ internal fun selectNamedPreviews(
 internal fun selectPreviewIds(
   previews: List<PreviewInfo>,
   filters: List<String>,
+  manifestPath: String? = null,
+  manifestPreviews: List<PreviewInfo> = previews,
 ): List<PreviewInfo> {
   val cleaned = filters.map(String::trim).filter(String::isNotEmpty)
   if (cleaned.isEmpty()) return previews
@@ -933,6 +946,7 @@ internal fun selectPreviewIds(
       append("composePreviewRender --preview-id matched no previews for ")
       append(cleaned.joinToString(", ") { "'$it'" })
       append(".")
+      appendManifestContext(manifestPreviews, manifestPath)
       if (available.isEmpty()) {
         append(" This module has no discovered previews — run composePreviewDiscover to confirm.")
       } else {
@@ -947,6 +961,19 @@ internal fun selectPreviewIds(
       }
     }
   )
+}
+
+private fun StringBuilder.appendManifestContext(
+  previews: List<PreviewInfo>,
+  manifestPath: String?,
+) {
+  val assetCount = previews.count {
+    it.params.kind == PreviewKind.LOTTIE || it.params.kind == PreviewKind.SVG
+  }
+  val codeCount = previews.size - assetCount
+  append(" Manifest contains $codeCount code preview(s) and $assetCount asset preview(s)")
+  manifestPath?.let { append(" at $it") }
+  append(".")
 }
 
 /**

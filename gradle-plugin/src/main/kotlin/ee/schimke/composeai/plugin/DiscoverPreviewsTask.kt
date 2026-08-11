@@ -40,6 +40,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   abstract val classDirs: ConfigurableFileCollection
 
   /**
+   * Class directories produced by the active compilation. [classDirs] can include compatibility
+   * fallbacks for several Kotlin targets; stale classes in one of those inactive directories must
+   * not hide an empty output restored for the compilation that discovery depends on.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val activeClassDirs: ConfigurableFileCollection
+
+  /**
    * The module's own compiled classes laid out as directories, sourced from AGP's scoped `PROJECT`
    * `CLASSES` artifact (`variant.artifacts.forScope(PROJECT).toGet(CLASSES, …)`). Wired by the
    * Android backend in addition to [classDirs]; resolving the scoped artifact also creates the
@@ -201,6 +211,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         lottieRenderSubdir = lottieRenderSubdir.getOrElse("renders"),
         svgRenderSubdir = svgRenderSubdir.getOrElse("renders"),
         projectClassJars = scopedClassJars,
+        activeClassDirs = activeClassDirs.files.toList(),
         catalogRenderSupported = catalogRenderSupported.getOrElse(true),
         isWear = isWear,
         retargetWearPreviews = retargetWearPreviews.getOrElse(true),

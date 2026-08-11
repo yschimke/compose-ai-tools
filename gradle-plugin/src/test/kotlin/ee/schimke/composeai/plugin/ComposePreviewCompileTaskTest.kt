@@ -69,4 +69,28 @@ class ComposePreviewCompileTaskTest {
 
     assertThat(deps).contains(compileTask.get())
   }
+
+  @Test
+  fun `desktop integrity check uses only the highest priority active compilation output`() {
+    val project = ProjectBuilder.builder().build()
+    val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
+    project.configurations.create("runtimeClasspath") {
+      isCanBeResolved = true
+      isCanBeConsumed = false
+    }
+
+    ComposePreviewTasks.registerDesktopTasks(project, extension)
+    project.tasks.register("compileKotlin", DefaultTask::class.java)
+    project.tasks.register("compileKotlinDesktop", DefaultTask::class.java)
+
+    val discover =
+      project.tasks.named("composePreviewDiscover", DiscoverPreviewsTask::class.java).get()
+    val buildDir = project.layout.buildDirectory.get().asFile.invariantSeparatorsPath
+
+    assertThat(discover.activeClassDirs.files).hasSize(1)
+    assertThat(discover.activeClassDirs.singleFile.invariantSeparatorsPath)
+      .endsWith("/build/classes/kotlin/desktop/main")
+    assertThat(discover.classDirs.files.map { it.invariantSeparatorsPath })
+      .containsAtLeast("$buildDir/classes/kotlin/main", "$buildDir/classes/kotlin/jvm/main")
+  }
 }
