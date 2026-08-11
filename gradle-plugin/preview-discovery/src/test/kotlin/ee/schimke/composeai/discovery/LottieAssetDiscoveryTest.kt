@@ -78,4 +78,69 @@ class LottieAssetDiscoveryTest {
     val res = tempDir.newFolder("empty")
     assertThat(discover(res).previews).isEmpty()
   }
+
+  @Test
+  fun `asset preview cannot mask empty compiled outputs`() {
+    val project = tempDir.newFolder("empty-compile")
+    val classes = project.resolve("classes").apply { mkdirs() }
+    val source =
+      project.resolve("src/main/kotlin/Previews.kt").apply {
+        parentFile.mkdirs()
+        writeText("fun Preview() = Unit")
+      }
+    val resources = project.resolve("resources").apply { mkdirs() }
+    resources.resolve("spin.json").writeText("""{"v":"5.7.0","layers":[]}""")
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = listOf(classes),
+          dependencyJars = emptyList(),
+          sourceFiles = listOf(source),
+          moduleName = ":app",
+          variantName = "desktop",
+          projectDirectory = project,
+          failOnEmpty = false,
+          resourceDirs = listOf(resources),
+        )
+      ) as PreviewDiscovery.Outcome.Success
+
+    assertThat(outcome.manifest.previews).hasSize(1)
+    val warning = outcome.warnings.joinToString("\n")
+    assertThat(warning).contains("declared class outputs contain 0 .class files")
+    assertThat(warning).contains("--no-build-cache --rerun-tasks")
+    assertThat(warning).contains("classFiles=0")
+  }
+
+  @Test
+  fun `failOnEmpty rejects asset-only discovery when compiled outputs are empty`() {
+    val project = tempDir.newFolder("asset-only-failure")
+    val classes = project.resolve("classes").apply { mkdirs() }
+    val source =
+      project.resolve("src/main/kotlin/Previews.kt").apply {
+        parentFile.mkdirs()
+        writeText("fun Preview() = Unit")
+      }
+    val resources = project.resolve("resources").apply { mkdirs() }
+    resources.resolve("spin.json").writeText("""{"v":"5.7.0","layers":[]}""")
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = listOf(classes),
+          dependencyJars = emptyList(),
+          sourceFiles = listOf(source),
+          moduleName = ":app",
+          variantName = "desktop",
+          projectDirectory = project,
+          failOnEmpty = true,
+          resourceDirs = listOf(resources),
+        )
+      )
+
+    assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Failure::class.java)
+    val failure = outcome as PreviewDiscovery.Outcome.Failure
+    assertThat(failure.reason).contains("empty compiled outputs")
+    assertThat(failure.reason).contains("0 code previews; 1 total")
+  }
 }

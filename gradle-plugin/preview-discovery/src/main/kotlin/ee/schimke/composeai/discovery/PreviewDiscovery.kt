@@ -9,6 +9,7 @@ import io.github.classgraph.MethodInfo
 import io.github.classgraph.MethodParameterInfo
 import io.github.classgraph.ScanResult
 import java.io.File
+import java.util.zip.ZipFile
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -409,6 +410,40 @@ object PreviewDiscovery {
     // ClassGraph to the project element and method-walked.
     val classpath = existingClassDirs + existingProjectJars + filteredDependencyJars
 
+    // A successfully restored compile-task cache entry can still be semantically empty: Gradle
+    // reports FROM-CACHE, but the output directory contains no classes. Asset discovery below can
+    // then make the manifest non-empty and hide the broken compilation completely (#3600). Avoid
+    // treating "no @Preview methods" as suspicious (many modules legitimately have none); the
+    // stronger invariant is source inputs + declared project outputs + zero project class files.
+    // `sourceFiles` also supplies source-location metadata and can include `src/*Test` trees even
+    // though the class outputs above are for the production compilation. Exclude those source sets
+    // from this invariant so a test-only module does not produce a false cache-corruption warning.
+    val sourceFileCount = input.sourceFiles.count { it.isFile && !it.isTestSourceSetFile() }
+    val classDirCounts = input.classDirs.associateWith(::classFileCount)
+    val projectJarCounts = input.projectClassJars.associateWith(::classFileCount)
+    val declaredProjectOutputs = input.classDirs.isNotEmpty() || input.projectClassJars.isNotEmpty()
+    val projectClassFileCount = classDirCounts.values.sum() + projectJarCounts.values.sum()
+    val emptyCompiledOutputs =
+      sourceFileCount > 0 && declaredProjectOutputs && projectClassFileCount == 0
+    if (emptyCompiledOutputs) {
+      warnings.add(
+        buildString {
+          append(
+            "composePreview: module '${input.moduleName}' has $sourceFileCount source file(s) "
+          )
+          append("but its declared class outputs contain 0 .class files. ")
+          append("A compile task may have restored an empty build-cache entry; rerun with ")
+          append("--no-build-cache --rerun-tasks. Resolved project class outputs:")
+          classDirCounts.forEach { (file, count) ->
+            append("\n  classDir: $file (exists=${file.exists()}, classFiles=$count)")
+          }
+          projectJarCounts.forEach { (file, count) ->
+            append("\n  projectClassJar: $file (exists=${file.exists()}, classFiles=$count)")
+          }
+        }
+      )
+    }
+
     val previews = mutableListOf<PreviewInfo>()
     // Populated only on the diagnostics path (failOnEmpty + 0 previews)
     // so we can tell users whether ClassGraph saw any classes at all,
@@ -688,10 +723,20 @@ object PreviewDiscovery {
     // path below so consumers still see the cause without the build
     // breaking on it.
     val previewAnnotationsMissing = scanClassCount > 0 && reachablePreviewFqns.isEmpty()
-    if (normalized.isEmpty() && input.failOnEmpty) {
+    val codePreviewCount = allPreviews.count { it.params.kind !in ASSET_PREVIEW_KINDS }
+    // Preserve asset-only modules as valid: the stricter failure applies only when the original
+    // zero-preview contract fires, or when the source/output invariant above proves compilation is
+    // empty. This catches #3600 without making --fail-on-empty reject intentional asset catalogs.
+    if ((normalized.isEmpty() || emptyCompiledOutputs) && input.failOnEmpty) {
+      val failureSummary =
+        if (emptyCompiledOutputs) {
+          "empty compiled outputs ($codePreviewCount code previews; ${allPreviews.size} total)"
+        } else {
+          "0 code previews discovered; ${allPreviews.size} total including assets"
+        }
       val diagnostics =
         buildEmptyDiagnostics(
-          header = "composePreview: failOnEmpty diagnostics (0 previews discovered):",
+          header = "composePreview: failOnEmpty diagnostics ($failureSummary):",
           existingClassDirs = existingClassDirs,
           allClassDirs = input.classDirs,
           projectJars = existingProjectJars,
@@ -712,8 +757,8 @@ object PreviewDiscovery {
         }
       return Outcome.Failure(
         reason =
-          "composePreview: discovered 0 previews in module '${input.moduleName}' — " +
-            "$reason. See diagnostics above.",
+          "composePreview: $failureSummary in module '${input.moduleName}' — $reason. " +
+            "See diagnostics above.",
         diagnostics = diagnostics,
         warnings = warnings.toList(),
       )
@@ -1193,7 +1238,8 @@ object PreviewDiscovery {
    * token catalogs.
    */
   /**
-   * Canvas for a synthetic theme sheet: 900x760dp at density 1 (`dpi=160`), so the PNG is 900x760px.
+   * Canvas for a synthetic theme sheet: 900x760dp at density 1 (`dpi=160`), so the PNG is
+   * 900x760px.
    *
    * These previews have no `@Preview` of their own to size them, so they used to fall back to the
    * 400x800dp sandbox — and a theme sheet does not fit in it. A Wear scheme alone is 21 colour rows
@@ -1380,6 +1426,29 @@ object PreviewDiscovery {
     }
     return out
   }
+
+  private val ASSET_PREVIEW_KINDS = setOf(PreviewKind.LOTTIE, PreviewKind.SVG)
+
+  private fun File.isTestSourceSetFile(): Boolean {
+    val marker = "/src/"
+    val normalized = absolutePath.replace(File.separatorChar, '/')
+    val sourceSet =
+      normalized.substringAfter(marker, missingDelimiterValue = "").substringBefore('/')
+    return sourceSet.contains("test", ignoreCase = true)
+  }
+
+  private fun classFileCount(file: File): Int =
+    when {
+      file.isDirectory -> file.walkTopDown().count { it.isFile && it.extension == "class" }
+      file.isFile && file.extension.equals("jar", ignoreCase = true) ->
+        runCatching {
+            ZipFile(file).use { zip ->
+              zip.entries().asSequence().count { it.name.endsWith(".class") }
+            }
+          }
+          .getOrDefault(0)
+      else -> 0
+    }
 
   /**
    * Rewrite each capture's `renderOutput` (and each `dataProduct.output`) to a shorter, shell-safe
