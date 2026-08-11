@@ -67,6 +67,18 @@ import kotlin.test.assertTrue
 
 class RcPlayerStateTest {
   @Test
+  fun integerValuesAlsoPopulateTheSharedFloatNamespace() {
+    val reference = RcFloatWord(0x7fc00000 or 51)
+    val state =
+      RcPlayerState(RcDocument(RcHeader(RcVersion(1, 0, 0)), listOf(RcIntegerConstant(51, 1))))
+
+    assertEquals(1f, state.resolve(reference))
+
+    state.setInteger(51, 7)
+    assertEquals(7f, state.resolve(reference))
+  }
+
+  @Test
   fun componentGeometryPublishesAllEightKindsAndConverges() {
     var invalidations = 0
     val bindings =

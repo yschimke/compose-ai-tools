@@ -154,7 +154,7 @@ public class RcPlayerState(
         is RcFloatConstant -> floats[operation.id] = operation.value.value
         is RcColorConstant -> colors[operation.id] = operation.argb
         is RcTextData -> baseTexts[operation.id] = operation.text
-        is RcIntegerConstant -> integers[operation.id] = operation.value
+        is RcIntegerConstant -> setInteger(operation.id, operation.value)
         is RcBooleanConstant -> booleans[operation.id] = operation.value
         is RcLongConstant -> longs[operation.id] = operation.value
         is RcPathData -> basePaths[operation.id] = operation
@@ -393,8 +393,10 @@ public class RcPlayerState(
   public fun applyDataOperation(operation: RcOperation) {
     when (operation) {
       is RcIdLookup ->
-        integers[operation.outId] =
-          requireNotNull(idLists[operation.listId]).ids[resolve(operation.index).toInt()]
+        setInteger(
+          operation.outId,
+          requireNotNull(idLists[operation.listId]).ids[resolve(operation.index).toInt()],
+        )
       is RcDataMapLookup -> {
         val key = requireNotNull(texts[operation.keyTextId])
         val entry =
@@ -402,11 +404,11 @@ public class RcPlayerState(
             ?: error("Missing AndroidX data-map key '$key'")
         when (entry.type) {
           RcIdMap.TYPE_STRING -> texts[operation.outId] = requireNotNull(texts[entry.id])
-          RcIdMap.TYPE_INT -> integers[operation.outId] = requireNotNull(integers[entry.id])
+          RcIdMap.TYPE_INT -> setInteger(operation.outId, requireNotNull(integers[entry.id]))
           RcIdMap.TYPE_FLOAT -> floats[operation.outId] = requireNotNull(floats[entry.id])
-          RcIdMap.TYPE_LONG -> integers[operation.outId] = requireNotNull(longs[entry.id]).toInt()
+          RcIdMap.TYPE_LONG -> setInteger(operation.outId, requireNotNull(longs[entry.id]).toInt())
           RcIdMap.TYPE_BOOLEAN ->
-            integers[operation.outId] = if (requireNotNull(booleans[entry.id])) 1 else 0
+            setInteger(operation.outId, if (requireNotNull(booleans[entry.id])) 1 else 0)
           else -> error("Unknown AndroidX data-map type ${entry.type}")
         }
       }
@@ -432,8 +434,10 @@ public class RcPlayerState(
   }
 
   public fun applyIntegerExpression(operation: RcIntegerExpression) {
-    integers[operation.outId] =
-      RcIntegerExpressionEvaluator.evaluate(operation) { id -> integers[id] ?: 0 }
+    setInteger(
+      operation.outId,
+      RcIntegerExpressionEvaluator.evaluate(operation) { id -> integers[id] ?: 0 },
+    )
   }
 
   public fun applyImageAttribute(operation: RcImageAttribute) {
@@ -944,6 +948,7 @@ public class RcPlayerState(
 
   public fun setInteger(id: Int, value: Int) {
     integers[id] = value
+    floats[id] = value.toFloat()
   }
 
   public fun setLong(id: Int, value: Long) {
@@ -960,7 +965,7 @@ public class RcPlayerState(
       variable.type == RcNamedVariable.COLOR_TYPE && value is RcNamedValue.Color ->
         colors[variable.id] = value.argb
       variable.type == RcNamedVariable.INT_TYPE && value is RcNamedValue.Integer ->
-        integers[variable.id] = value.value
+        setInteger(variable.id, value.value)
       variable.type == RcNamedVariable.LONG_TYPE && value is RcNamedValue.LongValue ->
         longs[variable.id] = value.value
       else ->
