@@ -67,6 +67,8 @@ class ServeCatalogLiveHost(
    * per-preview lane, leaving the plain monolithic-only host.
    */
   private val perPreviewResolve: ((daemonId: String) -> ServeHost?)? = null,
+  /** Availability probe backed by the publication-aware per-preview fetcher. */
+  private val executableBundleAvailable: ((daemonId: String) -> Boolean)? = null,
   /** Hydrated per-preview bundle bytes for the viewer's executable download lane. */
   private val executableBundleProvider: ((daemonId: String) -> ByteArray?)? = null,
   /** Live upstream stream count across the pooled per-preview daemons (supplied by the pool). */
@@ -145,7 +147,9 @@ class ServeCatalogLiveHost(
   private val clock: () -> Long = System::currentTimeMillis,
 ) : ServeHost {
   override fun canDownloadExecutableBundle(previewId: String): Boolean =
-    executableBundleProvider != null && alias[previewId] != null
+    alias[previewId]?.let { daemonId ->
+      executableBundleProvider != null && executableBundleAvailable?.invoke(daemonId) == true
+    } == true
 
   override fun executableBundle(previewId: String): ByteArray? =
     alias[previewId]?.let { executableBundleProvider?.invoke(it) }

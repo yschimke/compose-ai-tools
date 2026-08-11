@@ -697,7 +697,7 @@ class ServeCatalogStore(
             val safeStems = uniquePerPreviewStems(alias.values)
             val fetchPerPreview: (String) -> File? = { daemonId ->
               safeStems[daemonId]?.let { stem ->
-                fetchPerPreviewBundle(stem, liveBundle, base, dir, safe)
+                fetchPerPreviewBundle(stem, liveBundle, base, dir, safe, res.dir)
               }
             }
             if (
@@ -1005,6 +1005,7 @@ class ServeCatalogStore(
     base: String,
     dir: File,
     system: String,
+    externalResourcesDir: File?,
   ): File? {
     val previewsDir = File(File(dir, LIVE_BUNDLE_DIR), PER_PREVIEW_DIR)
     val previewsRoot = previewsDir.canonicalFile.toPath()
@@ -1014,7 +1015,10 @@ class ServeCatalogStore(
       return null
     }
     // Cached on disk from a prior request for the same id (the pool reopens lazily on eviction).
-    if (target.isFile && target.length() > 0) return target
+    if (target.isFile && target.length() > 0) {
+      if (isCompleteExecutableBundle(target)) return target
+      target.delete()
+    }
     val prefix = liveBundle.path.trim('/')
     val rel = "$PER_PREVIEW_DIR/$stem.png"
     val url = if (prefix.isEmpty()) "$base$rel" else "$base$prefix/$rel"
@@ -1029,9 +1033,14 @@ class ServeCatalogStore(
     thin.writeBytes(bytes)
     val hydrated =
       runCatching {
-          BundleClasspathHydration.hydrate(thin, target) { entry ->
-            fetchExternalClasspathBlob(entry, base, prefix, system)
-          }
+          BundleClasspathHydration.hydrate(
+            source = thin,
+            output = target,
+            resolveClasspath = { entry -> fetchExternalClasspathBlob(entry, base, prefix, system) },
+            resolveResource = { entry ->
+              readMaterializedExternalResource(entry, externalResourcesDir)
+            },
+          )
         }
         .onFailure {
           System.err.println(
@@ -1040,7 +1049,36 @@ class ServeCatalogStore(
         }
         .getOrNull()
     thin.delete()
+    if (hydrated != null && !isCompleteExecutableBundle(hydrated)) {
+      hydrated.delete()
+      return null
+    }
     return hydrated
+  }
+
+  /** A cached download is usable without a sibling pool and was not split as view-only. */
+  private fun isCompleteExecutableBundle(bundle: File): Boolean =
+    runCatching {
+        BundleReader.readMetadata(bundle).manifest.let { manifest ->
+          manifest.resolution != "view-only" &&
+            manifest.externalClasspath.isEmpty() &&
+            manifest.externalResources.isEmpty()
+        }
+      }
+      .getOrDefault(false)
+
+  /** Read one already-verified external resource from the monolithic bundle's materialized pool. */
+  private fun readMaterializedExternalResource(
+    entry: BundleReader.ExternalResource,
+    externalResourcesDir: File?,
+  ): ByteArray? {
+    val root = externalResourcesDir?.canonicalFile?.toPath() ?: return null
+    if (entry.path.isBlank() || entry.path.startsWith("/") || ".." in entry.path.split("/")) {
+      return null
+    }
+    val file = File(externalResourcesDir, entry.path).canonicalFile
+    if (!file.toPath().startsWith(root) || !file.isFile) return null
+    return file.readBytes()
   }
 
   /** Fetch and verify one whole classpath entry into the shared content-addressed cache. */

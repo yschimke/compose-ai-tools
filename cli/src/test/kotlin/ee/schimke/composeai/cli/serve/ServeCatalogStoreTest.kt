@@ -1,11 +1,14 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.BundleReader
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.util.Collections
+import java.util.zip.ZipInputStream
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -1237,6 +1240,58 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `the per-preview fetcher re-embeds the live bundle's external resources`() {
+    val font = "FONT-BYTES".encodeToByteArray()
+    val sha = shaHex(font)
+    val manifest =
+      """{"schemaVersion":8,"backend":"desktop","previewIds":["a"],"coverPreviewId":"a","classpath":[{"kind":"module","path":"classes/app.jar"}],"modulePath":":app","producedBy":"test","externalResources":[{"path":"fonts/Test.ttf","sha256":"$sha","size":${font.size}}]}"""
+    val bundleBytes = polyglotBundle(manifest)
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","images":[
+         {"path":"images/button-filled/ideal__default__dark.png","previewId":"FilledButton_Dark"}]}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+        url.endsWith("bundle/compose-m3-bundle.png") -> bundleBytes
+        url.endsWith("bundle/previews/FilledButton_Dark.png") -> bundleBytes
+        url.endsWith("bundle/res/$sha") -> font
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    var fetchPerPreview: ((String) -> File?)? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = {
+          TrustStore(
+            branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+          )
+        },
+        fetch = fetch,
+        buildTrustedBundle = { _, _, _, _, _, fetcher ->
+          fetchPerPreview = fetcher
+          true
+        },
+      )
+    store.load("compose-m3")
+
+    val hydrated = assertNotNull(fetchPerPreview?.invoke("FilledButton_Dark"))
+    val outer = zipEntries(BundleReader.extractZipBytes(hydrated))
+    val hydratedManifest =
+      Json.parseToJsonElement(outer.getValue("bundle.json").decodeToString()).jsonObject
+    assertFalse("externalResources" in hydratedManifest)
+    val appJar = zipEntries(outer.getValue("classes/app.jar"))
+    assertContentEquals(font, appJar.getValue("fonts/Test.ttf"))
+  }
+
+  @Test
   fun `daemon ids that sanitize to the same stem skip the per-preview lane`() {
     // `bundle split` disambiguates colliding sanitised ids with -2/-3 suffixes the server can't
     // reconstruct, so two daemon ids that sanitise to one stem ("Foo Bar" and "Foo_Bar" → Foo_Bar)
@@ -1575,6 +1630,16 @@ class ServeCatalogStoreTest {
         }
         .toByteArray()
     return cover + zip
+  }
+
+  private fun zipEntries(bytes: ByteArray): Map<String, ByteArray> = buildMap {
+    ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+      while (true) {
+        val entry = zip.nextEntry ?: break
+        if (!entry.isDirectory) put(entry.name, zip.readBytes())
+        zip.closeEntry()
+      }
+    }
   }
 
   @Test
