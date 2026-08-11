@@ -1513,11 +1513,22 @@ internal object ComposeLayoutInspector {
       is String -> this
       is Number,
       is Boolean -> toString()
+      // SemanticsConfiguration.toString() delegates to an internal hash-based property map. Its
+      // iteration order can change between otherwise identical renderer processes, which made the
+      // published layout sidecar (and therefore its containing bundle) differ byte-for-byte. Keep
+      // the established map-like wire shape, but order entries by the stable property-key name.
+      is SemanticsConfiguration -> canonicalWireValue(this)
       // Compose's inspector frequently exposes lambdas and runtime objects. Their default
       // `toString()` includes a JVM identity hash (and generated lambdas also carry a VM address),
       // making an otherwise identical layout-inspector capture differ on every renderer process.
       else -> toString().canonicalizeJvmRuntimeIdentity()
     }
+
+  internal fun canonicalWireValue(configuration: SemanticsConfiguration): String =
+    configuration
+      .map { entry -> entry.key.name to entry.value.wireValue() }
+      .sortedBy { it.first }
+      .joinToString(prefix = "{", postfix = "}") { (key, value) -> "$key=$value" }
 
   private fun String.canonicalizeJvmRuntimeIdentity(): String =
     replace(
