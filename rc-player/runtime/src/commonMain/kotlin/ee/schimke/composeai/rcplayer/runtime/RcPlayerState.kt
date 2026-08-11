@@ -30,6 +30,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
+import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcLongConstant
 import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixConstant
@@ -41,6 +42,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPathData
 import ee.schimke.composeai.rcplayer.protocol.RcPathExpression
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentDescription
+import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcTextFromFloat
 import ee.schimke.composeai.rcplayer.protocol.RcTextLength
@@ -561,36 +563,73 @@ public class RcPlayerState(
     var currentTheme = RcTheme.UNSPECIFIED
     children.forEach { child ->
       val operation = (child as? RcLinkedNode.Operation)?.operation
-      if (operation is RcTheme) {
-        currentTheme = operation.theme
-        return@forEach
-      }
-      val visible =
-        requestedTheme == RcTheme.UNSPECIFIED ||
-          currentTheme == RcTheme.UNSPECIFIED ||
-          currentTheme == requestedTheme
-      if (!visible) return@forEach
-      when (operation) {
-        // Float producers run before the text operations that reference them: a TEXT_FROM_FLOAT
-        // reading an id no expression has computed resolves to the reference's own NaN bits and
-        // formats as garbage. Wire order is the document's order, so one pass suffices.
-        is RcFloatExpression -> applyFloatExpression(operation)
-        is RcIntegerExpression -> applyIntegerExpression(operation)
-        is RcColorTheme -> applyColorTheme(operation, requestedTheme)
-        is RcColorExpression -> applyColorExpression(operation)
-        is RcColorAttribute -> applyColorAttribute(operation)
-        is RcIdLookup,
-        is RcDataMapLookup -> applyDataOperation(operation)
-        is RcTextMerge,
-        is RcTextLength,
-        is RcTextSubtext,
-        is RcTextTransform,
-        is RcTextFromFloat,
-        is RcTextLookup,
-        is RcTextLookupInt -> applyTextOperation(operation)
-        else -> Unit
+      currentTheme = applyContentStateOperation(operation, currentTheme, requestedTheme)
+    }
+  }
+
+  /**
+   * Replays state operations from layout-content containers with lexical theme scoping.
+   *
+   * A nested content block inherits the theme active in its parent, but any theme markers it
+   * contains stop at that container's boundary. This mirrors the wire tree without letting a dark
+   * branch suppress an otherwise untagged sibling.
+   */
+  public fun applyLayoutContentStateOperations(
+    children: List<RcLinkedNode>,
+    requestedTheme: Int = RcTheme.UNSPECIFIED,
+  ) {
+    fun applyScope(nodes: List<RcLinkedNode>, inheritedTheme: Int, applyDirect: Boolean) {
+      var currentTheme = inheritedTheme
+      nodes.forEach { node ->
+        when (node) {
+          is RcLinkedNode.Operation ->
+            if (applyDirect) {
+              currentTheme =
+                applyContentStateOperation(node.operation, currentTheme, requestedTheme)
+            }
+          is RcLinkedNode.Container -> {
+            val isContentScope = node.operation is RcRootLayout || node.operation is RcLayoutContent
+            applyScope(node.children, currentTheme, isContentScope)
+          }
+        }
       }
     }
+
+    applyScope(children, RcTheme.UNSPECIFIED, applyDirect = false)
+  }
+
+  private fun applyContentStateOperation(
+    operation: RcOperation?,
+    currentTheme: Int,
+    requestedTheme: Int,
+  ): Int {
+    if (operation is RcTheme) return operation.theme
+    val visible =
+      requestedTheme == RcTheme.UNSPECIFIED ||
+        currentTheme == RcTheme.UNSPECIFIED ||
+        currentTheme == requestedTheme
+    if (!visible) return currentTheme
+    when (operation) {
+      // Float producers run before the text operations that reference them: a TEXT_FROM_FLOAT
+      // reading an id no expression has computed resolves to the reference's own NaN bits and
+      // formats as garbage. Wire order is the document's order, so one pass suffices.
+      is RcFloatExpression -> applyFloatExpression(operation)
+      is RcIntegerExpression -> applyIntegerExpression(operation)
+      is RcColorTheme -> applyColorTheme(operation, requestedTheme)
+      is RcColorExpression -> applyColorExpression(operation)
+      is RcColorAttribute -> applyColorAttribute(operation)
+      is RcIdLookup,
+      is RcDataMapLookup -> applyDataOperation(operation)
+      is RcTextMerge,
+      is RcTextLength,
+      is RcTextSubtext,
+      is RcTextTransform,
+      is RcTextFromFloat,
+      is RcTextLookup,
+      is RcTextLookupInt -> applyTextOperation(operation)
+      else -> Unit
+    }
+    return currentTheme
   }
 
   public fun executeLayoutCompute(children: List<RcLinkedNode>) {

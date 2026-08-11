@@ -30,6 +30,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcIdMap
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
+import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcLongConstant
 import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixConstant
@@ -38,6 +39,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcMatrixVectorMath
 import ee.schimke.composeai.rcplayer.protocol.RcNamedVariable
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentDescription
+import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcTextFromFloat
 import ee.schimke.composeai.rcplayer.protocol.RcTextLength
@@ -933,23 +935,48 @@ class RcPlayerStateTest {
   }
 
   @Test
-  fun resetsThemeFilteringBetweenLayoutContentScopes() {
+  fun preservesParentThemeWithoutLeakingAChildThemeIntoItsSibling() {
     val state = RcPlayerState(RcDocument(RcHeader(RcVersion(0, 1, 0)), emptyList()))
-    val darkScope =
-      listOf<RcLinkedNode>(
-        RcLinkedNode.Operation(RcTheme(RcTheme.DARK)),
-        RcLinkedNode.Operation(RcColorTheme(30, 0, 0, 0, 0xffeeeeee.toInt(), 0xff111111.toInt())),
-      )
-    val followingScope =
-      listOf<RcLinkedNode>(
-        RcLinkedNode.Operation(RcColorTheme(31, 0, 0, 0, 0xffabcdef.toInt(), 0xff123456.toInt()))
+    val tree =
+      listOf(
+        RcLinkedNode.Container(
+          RcRootLayout(1),
+          listOf(
+            RcLinkedNode.Operation(RcTheme(RcTheme.LIGHT)),
+            RcLinkedNode.Container(
+              RcLayoutContent(2),
+              listOf(
+                RcLinkedNode.Operation(
+                  RcColorTheme(30, 0, 0, 0, 0xffeeeeee.toInt(), 0xff111111.toInt())
+                )
+              ),
+            ),
+            RcLinkedNode.Container(
+              RcLayoutContent(3),
+              listOf(
+                RcLinkedNode.Operation(RcTheme(RcTheme.DARK)),
+                RcLinkedNode.Operation(
+                  RcColorTheme(31, 0, 0, 0, 0xffabcdef.toInt(), 0xff123456.toInt())
+                ),
+              ),
+            ),
+            RcLinkedNode.Container(
+              RcLayoutContent(4),
+              listOf(
+                RcLinkedNode.Operation(
+                  RcColorTheme(32, 0, 0, 0, 0xfffedcba.toInt(), 0xff654321.toInt())
+                )
+              ),
+            ),
+          ),
+        )
       )
 
-    state.applyContentStateOperations(darkScope, RcTheme.LIGHT)
-    state.applyContentStateOperations(followingScope, RcTheme.LIGHT)
+    state.applyLayoutContentStateOperations(tree, RcTheme.LIGHT)
 
-    assertEquals(0, state.color(30))
-    assertEquals(0xffabcdef.toInt(), state.color(31))
+    assertEquals(0xffeeeeee.toInt(), state.color(30))
+    assertEquals(0, state.color(31))
+    assertEquals(0xfffedcba.toInt(), state.color(32))
   }
 
   @Test
