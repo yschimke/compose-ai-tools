@@ -765,6 +765,255 @@
    * shared coordinate space. The boxes are re-laid-out on resize and once the image has loaded,
    * since natural dimensions are what the scale is computed from.
    */
+  function annotationNumber(value) {
+    if (value === undefined || value === null || value === "") return undefined;
+    var number = Number(value);
+    return Number.isFinite(number) ? number : undefined;
+  }
+
+  function typographyToken(detail) {
+    var token = String((detail && detail.token) || "").trim();
+    if (!token || token.toLowerCase() === "text") return undefined;
+    var m3 = token.match(/^m3[\/-](display|headline|title|body|label)[\/-](large|medium|small)$/i);
+    if (m3) return m3[1].toLowerCase() + m3[2].charAt(0).toUpperCase() + m3[2].slice(1).toLowerCase();
+    return token;
+  }
+
+  function typographyFamily(value) {
+    var raw = String(value || "").trim();
+    if (!raw) return undefined;
+    return raw.replace(/[-_](regular|medium|semibold|bold)$/i, "").trim();
+  }
+
+  function typographySpec(item) {
+    var detail = item.detail || {};
+    var size = annotationNumber(detail.fontSize !== undefined ? detail.fontSize : detail.size);
+    var lineHeight = annotationNumber(detail.lineHeight);
+    var weight = annotationNumber(detail.fontWeight);
+    var family = String(detail.fontFamily || "").trim() || undefined;
+    var unit = String(detail.unit || "").trim() || undefined;
+    var tracking = String(detail.letterSpacing || detail.tracking || "").trim() || undefined;
+    var style = String(detail.fontStyle || "").trim() || undefined;
+    return {
+      token: typographyToken(detail),
+      family: family,
+      familyKey: typographyFamily(family),
+      size: size,
+      lineHeight: lineHeight,
+      weight: weight,
+      unit: unit,
+      tracking: tracking,
+      style: style,
+      label: item.label
+    };
+  }
+
+  function typographyGroupKey(spec) {
+    return [spec.token || "", spec.familyKey || "", spec.size, spec.lineHeight, spec.weight,
+      spec.tracking || "", spec.style || ""].join("|");
+  }
+
+  function groupTypography(items) {
+    var byKey = new Map();
+    items.filter(function (item) { return item.kind === "typography"; }).forEach(function (item) {
+      var spec = typographySpec(item);
+      var key = typographyGroupKey(spec);
+      var group = byKey.get(key);
+      if (!group) {
+        group = { key: key, spec: spec, items: [], roles: new Set() };
+        byKey.set(key, group);
+      }
+      group.items.push(item);
+      if (item.role) group.roles.add(String(item.role).trim().toLowerCase());
+    });
+    return Array.from(byKey.values());
+  }
+
+  function typographyDistance(left, right) {
+    if (left.spec.token && right.spec.token && left.spec.token === right.spec.token) return -100;
+    var commonRoles = 0;
+    left.roles.forEach(function (role) { if (right.roles.has(role)) commonRoles += 1; });
+    if (commonRoles) return -50 - commonRoles;
+    var a = left.spec;
+    var b = right.spec;
+    var distance = 0;
+    if (a.size !== undefined && b.size !== undefined) distance += Math.abs(a.size - b.size) * 3;
+    else if (a.size !== b.size) distance += 8;
+    if (a.lineHeight !== undefined && b.lineHeight !== undefined)
+      distance += Math.abs(a.lineHeight - b.lineHeight) * 2;
+    else if (a.lineHeight !== b.lineHeight) distance += 5;
+    if (a.weight !== undefined && b.weight !== undefined) distance += Math.abs(a.weight - b.weight) / 100;
+    else if (a.weight !== b.weight) distance += 2;
+    if ((a.familyKey || "").toLowerCase() !== (b.familyKey || "").toLowerCase()) distance += 2;
+    if ((a.style || "").toLowerCase() !== (b.style || "").toLowerCase()) distance += 1;
+    if ((a.tracking || "") !== (b.tracking || "")) distance += 1;
+    return distance;
+  }
+
+  function pairTypography(reference, actual) {
+    var remaining = actual.slice();
+    var pairs = reference.map(function (ref) {
+      var bestIndex = -1;
+      var bestDistance = Infinity;
+      remaining.forEach(function (candidate, index) {
+        var distance = typographyDistance(ref, candidate);
+        if (distance < bestDistance) {
+          bestIndex = index;
+          bestDistance = distance;
+        }
+      });
+      var matched = bestIndex >= 0 && bestDistance <= 15 ? remaining.splice(bestIndex, 1)[0] : undefined;
+      return { reference: ref, actual: matched };
+    });
+    remaining.forEach(function (actualOnly) { pairs.push({ actual: actualOnly }); });
+    pairs.forEach(function (pair, index) {
+      var marker = index < 26 ? String.fromCharCode(65 + index) : String(index + 1);
+      pair.marker = marker;
+      if (pair.reference) pair.reference.marker = marker;
+      if (pair.actual) pair.actual.marker = marker;
+    });
+    return pairs;
+  }
+
+  function expandedBoxesTouch(left, right, xGap, yGap) {
+    return left.x <= right.x + right.width + xGap &&
+      right.x <= left.x + left.width + xGap &&
+      left.y <= right.y + right.height + yGap &&
+      right.y <= left.y + left.height + yGap;
+  }
+
+  function unionBounds(items) {
+    var left = Math.min.apply(null, items.map(function (item) { return item.bounds.x; }));
+    var top = Math.min.apply(null, items.map(function (item) { return item.bounds.y; }));
+    var right = Math.max.apply(null, items.map(function (item) { return item.bounds.x + item.bounds.width; }));
+    var bottom = Math.max.apply(null, items.map(function (item) { return item.bounds.y + item.bounds.height; }));
+    return { x: left, y: top, width: right - left, height: bottom - top };
+  }
+
+  function clusterTypography(group) {
+    var lineHeight = group.spec.lineHeight || 16;
+    var xGap = Math.max(12, lineHeight * 4);
+    var yGap = Math.max(8, lineHeight * 1.25);
+    var clusters = [];
+    group.items.forEach(function (item) {
+      var touching = [];
+      clusters.forEach(function (cluster, index) {
+        if (cluster.items.some(function (other) {
+          return expandedBoxesTouch(item.bounds, other.bounds, xGap, yGap);
+        })) touching.push(index);
+      });
+      if (!touching.length) {
+        clusters.push({ items: [item] });
+        return;
+      }
+      var target = clusters[touching[0]];
+      target.items.push(item);
+      for (var i = touching.length - 1; i > 0; i -= 1) {
+        target.items = target.items.concat(clusters[touching[i]].items);
+        clusters.splice(touching[i], 1);
+      }
+    });
+    return clusters.map(function (cluster) { return unionBounds(cluster.items); });
+  }
+
+  function typographyValue(spec, field) {
+    if (!spec) return "—";
+    if (field === "token") return spec.token || "unmapped";
+    if (field === "family") return spec.family || "unspecified";
+    if (field === "size") {
+      if (spec.size === undefined) return "—";
+      return String(spec.size) + (spec.unit || "");
+    }
+    if (field === "lineHeight") return spec.lineHeight === undefined ? "—" : String(spec.lineHeight);
+    if (field === "weight") return spec.weight === undefined ? "—" : String(spec.weight);
+    if (field === "tracking") return spec.tracking || "default";
+    if (field === "style") return spec.style || "normal";
+    return "—";
+  }
+
+  function typographyComparableValue(spec, field) {
+    if (!spec) return "—";
+    if (field === "family") return (spec.familyKey || "unspecified").toLowerCase();
+    if (field === "size") return spec.size === undefined ? "—" : String(spec.size);
+    return typographyValue(spec, field).toLowerCase();
+  }
+
+  function typographyInlineSide(label, group, other) {
+    var side = document.createElement("span");
+    side.className = "cp-typography-inline";
+    var sideLabel = document.createElement("span");
+    sideLabel.className = "cp-typography-side";
+    sideLabel.textContent = label;
+    side.appendChild(sideLabel);
+    if (!group) {
+      side.appendChild(document.createTextNode(" No matching usage"));
+      return side;
+    }
+    var fields = ["token", "family", "weight"];
+    fields.push("size");
+    fields.forEach(function (field) {
+      side.appendChild(document.createTextNode(" · "));
+      var value = document.createElement("span");
+      var text = typographyValue(group.spec, field);
+      if (field === "weight" && text !== "—") text = "wght " + text;
+      if (field === "size" && group.spec.lineHeight !== undefined)
+        text += "/" + group.spec.lineHeight;
+      value.textContent = text;
+      var changed = other && (
+        typographyComparableValue(group.spec, field) !== typographyComparableValue(other.spec, field) ||
+        (field === "size" && typographyComparableValue(group.spec, "lineHeight") !== typographyComparableValue(other.spec, "lineHeight"))
+      );
+      if (changed) value.className = "cp-typography-changed";
+      side.appendChild(value);
+    });
+    if (group.spec.tracking && group.spec.tracking !== "default") {
+      side.appendChild(document.createTextNode(" · tracking " + group.spec.tracking));
+    }
+    if (group.spec.style && group.spec.style !== "normal") {
+      side.appendChild(document.createTextNode(" · " + group.spec.style));
+    }
+    var count = document.createElement("span");
+    count.className = "cp-typography-count";
+    count.textContent = group.items.length + (group.items.length === 1 ? " usage" : " usages");
+    side.appendChild(document.createTextNode(" · "));
+    side.appendChild(count);
+    return side;
+  }
+
+  function appendTypographySummary(root, grid, pairs) {
+    if (!pairs.length) return;
+    var summary = document.createElement("section");
+    summary.className = "cp-typography-summary";
+    summary.setAttribute("aria-label", "Typography style comparison");
+    var heading = document.createElement("h2");
+    heading.textContent = "Typography styles";
+    summary.appendChild(heading);
+    var list = document.createElement("div");
+    list.className = "cp-typography-groups";
+    pairs.forEach(function (pair) {
+      var ref = pair.reference && pair.reference.spec;
+      var actual = pair.actual && pair.actual.spec;
+      var row = document.createElement("article");
+      row.className = "cp-typography-group";
+      row.setAttribute("data-cp-typography-marker", pair.marker);
+      row.setAttribute("tabindex", "0");
+      var marker = document.createElement("span");
+      marker.className = "cp-annotation-badge cp-typography-marker";
+      marker.textContent = pair.marker;
+      row.appendChild(marker);
+      row.appendChild(typographyInlineSide("Reference", pair.reference, pair.actual));
+      var arrow = document.createElement("span");
+      arrow.className = "cp-typography-arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.textContent = "→";
+      row.appendChild(arrow);
+      row.appendChild(typographyInlineSide("Actual", pair.actual, pair.reference));
+      list.appendChild(row);
+    });
+    summary.appendChild(list);
+    grid.parentNode.insertBefore(summary, grid.nextSibling);
+  }
+
   function setUpAnnotations(root) {
     var payloadNode = document.getElementById("cp-annotations");
     if (!payloadNode) return;
@@ -788,18 +1037,24 @@
       var layer = document.createElement("div");
       layer.className = "cp-annotation-layer";
       shot.appendChild(layer);
-      panels.push({ shot: shot, image: image, items: items, layer: layer, boxes: [] });
+      panels.push({ shot: shot, image: image, side: side, items: items, layer: layer, boxes: [] });
     });
     if (!panels.length) return;
 
-    // A spec label runs ~100px against panels ~200px wide, so an always-on caption per box cannot
-    // fit once two annotations overlap — they truncate each other exactly where the nesting is
-    // densest. The box therefore carries only an index badge, and the readable text goes in a
-    // legend under the panel, where it also stays selectable and reachable without a pointer.
+    var referenceGroups = groupTypography(payload.reference || []);
+    var actualGroups = groupTypography(payload.actual || []);
+    var typographyPairs = pairTypography(referenceGroups, actualGroups);
+    var grid = root.querySelector(".cp-reference-grid");
+    if (grid) appendTypographySummary(root, grid, typographyPairs);
+
+    // Layout remains an instance-level redline. Typography is style-level: every matching use gets
+    // the same letter and nearby uses are surrounded by one cluster box, while the readable type
+    // settings live once in the comparison table below the three panels.
     panels.forEach(function (panel) {
       var legend = document.createElement("ol");
       legend.className = "cp-annotation-legend";
-      panel.items.forEach(function (item, index) {
+      var layoutItems = panel.items.filter(function (item) { return item.kind !== "typography"; });
+      layoutItems.forEach(function (item, index) {
         var ordinal = String(item.comparisonOrdinal || index + 1);
         var box = document.createElement("div");
         box.className = "cp-annotation cp-annotation--" + item.kind;
@@ -831,7 +1086,46 @@
         row.appendChild(text);
         legend.appendChild(row);
       });
-      panel.shot.parentNode.appendChild(legend);
+      if (layoutItems.length) panel.shot.parentNode.appendChild(legend);
+
+      var groups = panel.side === "reference" ? referenceGroups : actualGroups;
+      groups.forEach(function (group) {
+        clusterTypography(group).forEach(function (bounds) {
+          var box = document.createElement("div");
+          box.className = "cp-annotation cp-annotation--typography cp-annotation--typography-cluster";
+          box.setAttribute("data-cp-kind", "typography");
+          box.setAttribute("data-cp-typography-marker", group.marker);
+          box.title = ((group.spec.token || "Resolved style") + " · " + group.spec.label);
+          var badge = document.createElement("span");
+          badge.className = "cp-annotation-badge";
+          badge.textContent = group.marker;
+          box.appendChild(badge);
+          panel.layer.appendChild(box);
+          panel.boxes.push({ node: box, bounds: bounds });
+        });
+        group.items.forEach(function (item) {
+          var hit = document.createElement("div");
+          hit.className = "cp-annotation cp-annotation--typography cp-annotation--typography-hit";
+          hit.setAttribute("data-cp-kind", "typography");
+          hit.setAttribute("data-cp-typography-marker", group.marker);
+          panel.layer.appendChild(hit);
+          panel.boxes.push({ node: hit, bounds: item.bounds });
+        });
+      });
+    });
+
+    Array.prototype.forEach.call(root.querySelectorAll(".cp-typography-group"), function (row) {
+      var marker = row.getAttribute("data-cp-typography-marker");
+      var setActive = function (active) {
+        Array.prototype.forEach.call(
+          root.querySelectorAll('.cp-annotation[data-cp-typography-marker="' + marker + '"]'),
+          function (node) { node.classList.toggle("cp-annotation-active", active); }
+        );
+      };
+      row.addEventListener("mouseenter", function () { setActive(true); });
+      row.addEventListener("mouseleave", function () { setActive(false); });
+      row.addEventListener("focus", function () { setActive(true); });
+      row.addEventListener("blur", function () { setActive(false); });
     });
 
     function place() {

@@ -1232,7 +1232,30 @@ class ServeWebFixtureTest {
               bounds = AnnotationBounds(x = 46, y = 26, width = 128, height = 20),
               label = "labelLarge 14sp/20",
               role = "Label",
-              detail = mapOf("token" to "labelLarge", "size" to "14", "lineHeight" to "20"),
+              detail =
+                mapOf(
+                  "token" to "labelLarge",
+                  "fontFamily" to "Roboto",
+                  "fontSize" to "14",
+                  "fontWeight" to "500",
+                  "lineHeight" to "20",
+                  "unit" to "sp",
+                ),
+            ),
+            DesignAnnotation(
+              kind = AnnotationKind.TYPOGRAPHY,
+              bounds = AnnotationBounds(x = 46, y = 58, width = 128, height = 20),
+              label = "labelLarge 14sp/20",
+              role = "Secondary label",
+              detail =
+                mapOf(
+                  "token" to "labelLarge",
+                  "fontFamily" to "Roboto",
+                  "fontSize" to "14",
+                  "fontWeight" to "500",
+                  "lineHeight" to "20",
+                  "unit" to "sp",
+                ),
             ),
           ),
         actualAnnotations =
@@ -1249,7 +1272,30 @@ class ServeWebFixtureTest {
               bounds = AnnotationBounds(x = 46, y = 26, width = 128, height = 20),
               label = "bodyMedium 14sp/20",
               role = "Label",
-              detail = mapOf("token" to "bodyMedium", "size" to "14", "lineHeight" to "20"),
+              detail =
+                mapOf(
+                  "token" to "bodyMedium",
+                  "fontFamily" to "Roboto-Medium",
+                  "fontSize" to "14",
+                  "fontWeight" to "500",
+                  "lineHeight" to "20",
+                  "unit" to "sp",
+                ),
+            ),
+            DesignAnnotation(
+              kind = AnnotationKind.TYPOGRAPHY,
+              bounds = AnnotationBounds(x = 46, y = 58, width = 128, height = 20),
+              label = "bodyMedium 14sp/20",
+              role = "Secondary label",
+              detail =
+                mapOf(
+                  "token" to "bodyMedium",
+                  "fontFamily" to "Roboto-Medium",
+                  "fontSize" to "14",
+                  "fontWeight" to "500",
+                  "lineHeight" to "20",
+                  "unit" to "sp",
+                ),
             ),
           ),
       )

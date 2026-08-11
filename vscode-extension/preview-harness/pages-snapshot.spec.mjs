@@ -759,6 +759,26 @@ const FIXTURE_STATES = [
                 const box = document.querySelector(".cp-annotation");
                 return box && box.getBoundingClientRect().width > 0;
             });
+            // Two adjacent text nodes per panel share one style. The annotation layer must cluster
+            // them into one outline on each side and the summary must describe the style once,
+            // instead of regressing to four numbered rows.
+            await expect(page.locator(".cp-typography-group")).toHaveCount(1);
+            await expect(
+                page.locator(".cp-annotation--typography-cluster"),
+            ).toHaveCount(2);
+            await expect(
+                page.locator(".cp-annotation--typography-hit"),
+            ).toHaveCount(4);
+            await expect(page.locator(".cp-typography-count")).toHaveText([
+                "2 usages",
+                "2 usages",
+            ]);
+            await page.locator(".cp-typography-group").hover();
+            await expect(
+                page.locator(
+                    ".cp-annotation--typography-hit.cp-annotation-active",
+                ),
+            ).toHaveCount(4);
         },
     },
     {
