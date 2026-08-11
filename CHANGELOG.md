@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.19.57](https://github.com/yschimke/compose-ai-tools/compare/v0.19.56...v0.19.57) (2026-08-11)
+
+
+### Features
+
+* **rc-player:** support state layout operation ([#3634](https://github.com/yschimke/compose-ai-tools/issues/3634)) ([876d0a7](https://github.com/yschimke/compose-ai-tools/commit/876d0a751ef4de7dcfb12a8253a0f35d13ce17e5))
+
+
+### Bug Fixes
+
+* batch Figma design reference requests ([#3626](https://github.com/yschimke/compose-ai-tools/issues/3626)) ([92c0075](https://github.com/yschimke/compose-ai-tools/commit/92c00758c7c5b705756d085731f1dd476325704b))
+* **layout:** stabilize semantics property order ([#3637](https://github.com/yschimke/compose-ai-tools/issues/3637)) ([702bb2f](https://github.com/yschimke/compose-ai-tools/commit/702bb2f9b6ce18c4851418e8e8a44a72192c0999))
+* **rc-player:** align AndroidX operation semantics ([#3636](https://github.com/yschimke/compose-ai-tools/issues/3636)) ([90a8dcc](https://github.com/yschimke/compose-ai-tools/commit/90a8dcc34f8f821e1ece59fd65d0ed6f2ab885f4))
+* **rc-player:** mirror integer values into float state ([#3632](https://github.com/yschimke/compose-ai-tools/issues/3632)) ([0f396c9](https://github.com/yschimke/compose-ai-tools/commit/0f396c985b6c73ea5f9bc0728f0cdd9ed61d0465))
+* **rc-player:** replay layout color attributes ([#3629](https://github.com/yschimke/compose-ai-tools/issues/3629)) ([543f806](https://github.com/yschimke/compose-ai-tools/commit/543f806676830ae3b287be7fd161fb94666b1f50))
+* **rc-player:** replay root layout state operations ([#3631](https://github.com/yschimke/compose-ai-tools/issues/3631)) ([3de4f9e](https://github.com/yschimke/compose-ai-tools/commit/3de4f9e9680e13b6717fd86b42097c698d8bde2d))
+
 ## [0.19.56](https://github.com/yschimke/compose-ai-tools/compare/v0.19.55...v0.19.56) (2026-08-10)
 
 
