@@ -97,6 +97,29 @@ async function scorePairs(page) {
             c.fill();
         });
 
+        // A missing repeated mark used to match its neighbour inside the unrestricted 11×11
+        // luminance search and score as unchanged. A one-pixel edge shift remains tolerated.
+        const repeatedReference = make(100, 60, (c) => {
+            c.fillStyle = "#fff";
+            c.fillRect(0, 0, 100, 60);
+            c.fillStyle = "#000";
+            c.fillRect(30, 10, 2, 40);
+            c.fillRect(36, 10, 2, 40);
+        });
+        const missingRepeatedMark = make(100, 60, (c) => {
+            c.fillStyle = "#fff";
+            c.fillRect(0, 0, 100, 60);
+            c.fillStyle = "#000";
+            c.fillRect(30, 10, 2, 40);
+        });
+        const shiftedEdges = make(100, 60, (c) => {
+            c.fillStyle = "#fff";
+            c.fillRect(0, 0, 100, 60);
+            c.fillStyle = "#000";
+            c.fillRect(31, 10, 2, 40);
+            c.fillRect(37, 10, 2, 40);
+        });
+
         // An OPAQUE reference cropped tight to a card, so the card's own fill reaches (0, 0) — the
         // usual shape of a design-tool export. Its corner is artwork, not a backdrop. Denser cards
         // used to score worse, because boxing "everything that isn't the corner colour" reduces to
@@ -114,6 +137,8 @@ async function scorePairs(page) {
             nearEmpty: await score(emptyReference, emptyPreview),
             unrelated: await score(bleedReference, unrelatedPreview),
             opaqueBled: await score(opaqueBledCard, scaffoldedPreview),
+            missingRepeated: await score(repeatedReference, missingRepeatedMark),
+            shiftedEdges: await score(repeatedReference, shiftedEdges),
         };
     });
 }
@@ -153,6 +178,13 @@ test.describe("format-compare · design reference scorer", () => {
     test("unrelated content still reads as a mismatch", async ({ page }) => {
         const { unrelated } = await scorePairs(page);
         expect(unrelated.percent).toBeLessThan(75);
+    });
+
+    test("edge tolerance preserves position and still tolerates raster shifts", async ({ page }) => {
+        const { missingRepeated, shiftedEdges } = await scorePairs(page);
+        expect(missingRepeated.percent).toBeLessThan(99.5);
+        expect(shiftedEdges.percent).toBeGreaterThan(missingRepeated.percent);
+        expect(shiftedEdges.percent).toBeGreaterThan(95);
     });
 });
 
@@ -308,5 +340,101 @@ test.describe("format-compare · annotation correspondence", () => {
             actual: 3,
             weights: [400, 400, 700],
         });
+    });
+
+    test("chooses the globally minimal annotation pairing", async ({ page }) => {
+        await page.goto("/preview-harness/index.html");
+        await page.addScriptTag({ content: SCORER });
+        const roles = await page.evaluate(() => {
+            const item = (x, role) => ({
+                kind: "layout",
+                bounds: { x, y: 0, width: 2, height: 2 },
+                role,
+                label: "spacing",
+            });
+            const matched = window.ComposePreviewCompare.matchAnnotationItems(
+                [item(9, "reference-10"), item(19, "reference-20")],
+                [item(15, "candidate-16"), item(18, "candidate-19")],
+            );
+            return matched.actual.map((entry) => entry.role);
+        });
+        expect(roles).toEqual(["candidate-16", "candidate-19"]);
+    });
+
+    test("normalizes suffix units when labels break geometric ties", async ({ page }) => {
+        await page.goto("/preview-harness/index.html");
+        await page.addScriptTag({ content: SCORER });
+        const labels = await page.evaluate(() => {
+            const item = (label) => ({
+                kind: "layout",
+                bounds: { x: 0, y: 0, width: 20, height: 20 },
+                label,
+            });
+            const matched = window.ComposePreviewCompare.matchAnnotationItems(
+                [item("r 16px"), item("r 24px")],
+                [item("r 24dp"), item("r 16dp")],
+            );
+            return matched.actual.map((entry) => entry.label);
+        });
+        expect(labels).toEqual(["r 16dp", "r 24dp"]);
+    });
+
+    test("retains reference-only typography usages", async ({ page }) => {
+        await page.goto("/preview-harness/index.html");
+        await page.addScriptTag({ content: SCORER });
+        const result = await page.evaluate(() => {
+            const item = (y, token) => ({
+                kind: "typography",
+                bounds: { x: 0, y, width: 100, height: 20 },
+                label: token,
+                detail: { token },
+            });
+            return window.ComposePreviewCompare.matchAnnotationItems(
+                [item(0, "bodyLarge"), item(20, "labelSmall")],
+                [item(0, "bodyLarge")],
+            );
+        });
+        expect(result.reference).toHaveLength(2);
+        expect(result.actual).toHaveLength(1);
+    });
+
+    test("groups and pairs typography by resolved metric identity", async ({ page }) => {
+        await page.goto("/preview-harness/index.html");
+        await page.addScriptTag({ content: SCORER });
+        const result = await page.evaluate(() => {
+            const item = (label, detail) => ({
+                kind: "typography",
+                bounds: { x: 0, y: 0, width: 100, height: 60 },
+                label,
+                detail,
+            });
+            const groups = window.ComposePreviewCompare.groupTypography([
+                item("body", { token: "body", fontSize: "14.0sp", lineHeight: "20.0sp" }),
+                item("title", { token: "title", fontSize: "16.0sp", lineHeight: "24.0sp" }),
+                item("file", { fontFamily: "/fonts/Roboto-Medium.ttf" }),
+                item("compact", { token: "body", fontVariationSettings: '"wdth" 75' }),
+                item("wide", { token: "body", fontVariationSettings: '"wdth" 100' }),
+                item("label-only-a", {}),
+                item("label-only-b", {}),
+            ]);
+            const reference = window.ComposePreviewCompare.groupTypography([
+                item("regular", { token: "body", fontWeight: 400 }),
+            ]);
+            const actual = window.ComposePreviewCompare.groupTypography([
+                item("bold", { token: "body", fontWeight: 700 }),
+                item("regular", { token: "body", fontWeight: 400 }),
+            ]);
+            const paired = window.ComposePreviewCompare.pairTypography(reference, actual);
+            return {
+                keys: groups.map((group) => group.key),
+                families: groups.map((group) => group.spec.family),
+                sizes: groups.map((group) => window.ComposePreviewCompare.typographyValue(group.spec, "size")),
+                matchedWeight: paired[0].actual.spec.weight,
+            };
+        });
+        expect(result.keys).toHaveLength(7);
+        expect(result.families).toContain("Roboto");
+        expect(result.sizes).toContain("14sp");
+        expect(result.matchedWeight).toBe(400);
     });
 });

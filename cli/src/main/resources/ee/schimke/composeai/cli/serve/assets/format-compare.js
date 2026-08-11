@@ -5,10 +5,11 @@
   var C2 = 58.5225;
   var MAX_SIDE = 192;
   // Figma's browser SVG rasteriser and Skia's Compose rasteriser cover the same vector edge with
-  // different sub-pixels. Search a small neighbourhood on the comparison plane, symmetrically, so
-  // those edge pixels do not become a structural failure. Five pixels at the capped 192 px plane
-  // is still narrow enough that displaced or missing marks remain visible to the score.
+  // different sub-pixels. Search a small neighbourhood only for actual edge pixels, and charge a
+  // positional cost for displacement so repeated luminances cannot hide a missing/added mark.
   var EDGE_SEARCH_RADIUS = 5;
+  var EDGE_POSITION_COST = 10;
+  var EDGE_GRADIENT_THRESHOLD = 12;
   var LUMA_TOLERANCE = 16;
   // Longest side of the downscale that content-box detection samples, and how far a pixel may sit
   // from the backdrop colour before it counts as drawn.
@@ -161,27 +162,66 @@
     return count ? total / count : 1;
   }
 
-  function scorePlanes(reference, candidate, width, height) {
-    function directed(source, target) {
+  function edgeMask(plane, width, height) {
+    var mask = new Uint8Array(width * height);
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width; x++) {
+        var index = y * width + x;
+        var value = plane[index];
+        var gradient = Math.max(
+          Math.abs(value - plane[y * width + Math.max(0, x - 1)]),
+          Math.abs(value - plane[y * width + Math.min(width - 1, x + 1)]),
+          Math.abs(value - plane[Math.max(0, y - 1) * width + x]),
+          Math.abs(value - plane[Math.min(height - 1, y + 1) * width + x])
+        );
+        if (gradient >= EDGE_GRADIENT_THRESHOLD) mask[index] = 1;
+      }
+    }
+    return mask;
+  }
+
+  function yieldScorer() {
+    return new Promise(function (resolve) { setTimeout(resolve, 0); });
+  }
+
+  async function scorePlanes(reference, candidate, width, height) {
+    var referenceEdges = edgeMask(reference, width, height);
+    var candidateEdges = edgeMask(candidate, width, height);
+    async function directed(source, target, sourceEdges, targetEdges) {
       var total = 0;
       for (var y = 0; y < height; y++) {
         for (var x = 0; x < width; x++) {
-          var value = source[y * width + x];
-          var best = 255;
-          for (var oy = -EDGE_SEARCH_RADIUS; oy <= EDGE_SEARCH_RADIUS; oy++) {
-            var yy = Math.max(0, Math.min(height - 1, y + oy));
-            for (var ox = -EDGE_SEARCH_RADIUS; ox <= EDGE_SEARCH_RADIUS; ox++) {
-              var xx = Math.max(0, Math.min(width - 1, x + ox));
-              best = Math.min(best, Math.abs(value - target[yy * width + xx]));
+          var index = y * width + x;
+          var value = source[index];
+          var best = Math.abs(value - target[index]);
+          if (sourceEdges[index] && best > LUMA_TOLERANCE) {
+            for (var oy = -EDGE_SEARCH_RADIUS; oy <= EDGE_SEARCH_RADIUS; oy++) {
+              var yy = y + oy;
+              if (yy < 0 || yy >= height) continue;
+              for (var ox = -EDGE_SEARCH_RADIUS; ox <= EDGE_SEARCH_RADIUS; ox++) {
+                var xx = x + ox;
+                if (xx < 0 || xx >= width) continue;
+                var targetIndex = yy * width + xx;
+                if (!targetEdges[targetIndex]) continue;
+                var displaced = Math.abs(value - target[targetIndex]) +
+                  Math.sqrt(ox * ox + oy * oy) * EDGE_POSITION_COST;
+                best = Math.min(best, displaced);
+              }
             }
           }
           total += Math.max(0, best - LUMA_TOLERANCE) / (255 - LUMA_TOLERANCE);
         }
+        // A full catalog performs dozens of comparisons. Yield in row-sized chunks so input and
+        // painting remain responsive even for a dense edge mask.
+        if (y % 8 === 7) await yieldScorer();
       }
       return total / (width * height);
     }
     // Both directions matter: a one-way search would let an extra mark hide beside a matching one.
-    var mismatch = (directed(reference, candidate) + directed(candidate, reference)) / 2;
+    var mismatch = (
+      await directed(reference, candidate, referenceEdges, candidateEdges) +
+      await directed(candidate, reference, candidateEdges, referenceEdges)
+    ) / 2;
     return Math.max(0, Math.min(100, (1 - mismatch) * 100));
   }
 
@@ -442,10 +482,9 @@
           0, 0, width, height
         );
       }, width, height);
-      return {
-        percent: scorePlanes(reference, candidate, width, height),
-        geometry: boxes.geometry
-      };
+      return scorePlanes(reference, candidate, width, height).then(function (percent) {
+        return { percent: percent, geometry: boxes.geometry };
+      });
     });
   }
 
@@ -566,7 +605,10 @@
     normaliseImageUrls: normaliseImageUrls,
     diffCanvases: diffCanvases,
     compareImageUrls: compareImageUrls,
-    matchAnnotationItems: matchAnnotationItems
+    matchAnnotationItems: matchAnnotationItems,
+    groupTypography: groupTypography,
+    pairTypography: pairTypography,
+    typographyValue: typographyValue
   };
 
   var referenceRoot = document.getElementById("cp-reference-compare");
@@ -650,29 +692,44 @@
         return;
       }
 
-      var used = {};
-      cands.forEach(function (cand) {
-        var mapped = mapAnnotationBounds(cand.item.bounds, referenceFrame, actualFrame, scale);
-        var best = -1;
-        var bestCost = Infinity;
-        refs.forEach(function (ref, refIndex) {
-          if (used[refIndex]) return;
-          var cost = annotationMatchCost(ref.item, cand.item, ref.item.bounds, mapped, referenceFrame);
-          if (cost < bestCost) {
-            bestCost = cost;
-            best = refIndex;
-          }
-        });
-        // Once the design inventory is exhausted, extra layout nodes have no design element to
-        // compare with. Typography is different: its style summary must retain extra usages so a
-        // token override (for example bodyLarge with a different weight) remains visible.
-        if (best < 0) {
-          if (kind === "typography") actualOnly.push(cand);
-          return;
-        }
-        used[best] = true;
-        pairs.push({ reference: refs[best], actual: cand });
+      var mapped = cands.map(function (cand) {
+        return mapAnnotationBounds(cand.item.bounds, referenceFrame, actualFrame, scale);
       });
+      var usedRefs = {};
+      var usedCands = {};
+      if (cands.length <= refs.length) {
+        var candCosts = cands.map(function (cand, candIndex) {
+          return refs.map(function (ref) {
+            return annotationMatchCost(
+              ref.item, cand.item, ref.item.bounds, mapped[candIndex], referenceFrame
+            );
+          });
+        });
+        minimumCostAssignment(candCosts).forEach(function (refIndex, candIndex) {
+          usedRefs[refIndex] = true;
+          usedCands[candIndex] = true;
+          pairs.push({ reference: refs[refIndex], actual: cands[candIndex] });
+        });
+      } else {
+        var refCosts = refs.map(function (ref) {
+          return cands.map(function (cand, candIndex) {
+            return annotationMatchCost(
+              ref.item, cand.item, ref.item.bounds, mapped[candIndex], referenceFrame
+            );
+          });
+        });
+        minimumCostAssignment(refCosts).forEach(function (candIndex, refIndex) {
+          usedRefs[refIndex] = true;
+          usedCands[candIndex] = true;
+          pairs.push({ reference: refs[refIndex], actual: cands[candIndex] });
+        });
+      }
+      // Extra layout nodes have no counterpart and remain omitted. Typography inventories retain
+      // both sides' overflow so missing design usages and local render overrides stay visible.
+      if (kind === "typography") {
+        refs.forEach(function (ref, index) { if (!usedRefs[index]) referenceOnly.push(ref); });
+        cands.forEach(function (cand, index) { if (!usedCands[index]) actualOnly.push(cand); });
+      }
     });
 
     // Both legends follow design order, so a shared ordinal identifies the same element on the two
@@ -692,6 +749,61 @@
       actualOut.push(withAnnotationOrdinal(entry.item, actualOut.length + 1));
     });
     return { reference: referenceOut, actual: actualOut };
+  }
+
+  /** Minimum-cost one-to-one assignment for a rectangular matrix with rows <= columns. */
+  function minimumCostAssignment(costs) {
+    var rows = costs.length;
+    if (!rows) return [];
+    var columns = costs[0].length;
+    var u = new Float64Array(rows + 1);
+    var v = new Float64Array(columns + 1);
+    var p = new Int32Array(columns + 1);
+    var way = new Int32Array(columns + 1);
+    for (var i = 1; i <= rows; i++) {
+      p[0] = i;
+      var j0 = 0;
+      var minv = new Float64Array(columns + 1);
+      minv.fill(Infinity);
+      var used = new Uint8Array(columns + 1);
+      do {
+        used[j0] = 1;
+        var i0 = p[j0];
+        var delta = Infinity;
+        var j1 = 0;
+        for (var j = 1; j <= columns; j++) {
+          if (used[j]) continue;
+          var current = costs[i0 - 1][j - 1] - u[i0] - v[j];
+          if (current < minv[j]) {
+            minv[j] = current;
+            way[j] = j0;
+          }
+          if (minv[j] < delta) {
+            delta = minv[j];
+            j1 = j;
+          }
+        }
+        for (var k = 0; k <= columns; k++) {
+          if (used[k]) {
+            u[p[k]] += delta;
+            v[k] -= delta;
+          } else {
+            minv[k] -= delta;
+          }
+        }
+        j0 = j1;
+      } while (p[j0] !== 0);
+      do {
+        var previous = way[j0];
+        p[j0] = p[previous];
+        j0 = previous;
+      } while (j0 !== 0);
+    }
+    var assignment = new Array(rows);
+    for (var column = 1; column <= columns; column++) {
+      if (p[column]) assignment[p[column] - 1] = column - 1;
+    }
+    return assignment;
   }
 
   function annotationHasBounds(item) {
@@ -723,7 +835,7 @@
   }
 
   function annotationText(value) {
-    return String(value || "").trim().toLowerCase().replace(/\b(?:px|dp|sp)\b/g, "u");
+    return String(value || "").trim().toLowerCase().replace(/(?:px|dp|sp)\b/g, "u");
   }
 
   function annotationRoleFamily(value) {
@@ -772,8 +884,15 @@
    */
   function annotationNumber(value) {
     if (value === undefined || value === null || value === "") return undefined;
-    var number = Number(value);
+    var match = String(value).trim().match(/^(-?(?:\d+(?:\.\d+)?|\.\d+))(?:\s*[a-z%]+)?$/i);
+    var number = match ? Number(match[1]) : NaN;
     return Number.isFinite(number) ? number : undefined;
+  }
+
+  function annotationUnit(value) {
+    if (value === undefined || value === null) return undefined;
+    var match = String(value).trim().match(/[a-z%]+$/i);
+    return match ? match[0].toLowerCase() : undefined;
   }
 
   function typographyToken(detail) {
@@ -787,35 +906,70 @@
   function typographyFamily(value) {
     var raw = String(value || "").trim();
     if (!raw) return undefined;
-    return raw.replace(/[-_](regular|medium|semibold|bold)$/i, "").trim();
+    var filename = raw.split(/[\\/]/).pop().replace(/\.(?:ttf|otf|woff2?|ttc)$/i, "");
+    return filename.replace(/[-_](thin|extralight|light|regular|medium|semibold|bold|extrabold|black)$/i, "").trim();
+  }
+
+  function typographyAxes(value) {
+    var axes = [];
+    if (Array.isArray(value)) {
+      value.forEach(function (entry) {
+        if (entry && entry.tag !== undefined && entry.value !== undefined) {
+          axes.push([String(entry.tag).toLowerCase(), annotationNumber(entry.value)]);
+        }
+      });
+    } else if (value && typeof value === "object") {
+      Object.keys(value).forEach(function (tag) {
+        axes.push([tag.toLowerCase(), annotationNumber(value[tag])]);
+      });
+    } else {
+      var text = String(value || "");
+      var pattern = /["']?([A-Za-z0-9]{4})["']?\s*(?:=|\s)\s*(-?(?:\d+(?:\.\d+)?|\.\d+))/g;
+      var match;
+      while ((match = pattern.exec(text))) axes.push([match[1].toLowerCase(), Number(match[2])]);
+    }
+    return axes.filter(function (axis) { return axis[0] && axis[1] !== undefined; })
+      .sort(function (a, b) { return a[0].localeCompare(b[0]); })
+      .map(function (axis) { return axis[0] + "=" + axis[1]; }).join(",");
   }
 
   function typographySpec(item) {
     var detail = item.detail || {};
-    var size = annotationNumber(detail.fontSize !== undefined ? detail.fontSize : detail.size);
+    var sizeValue = detail.fontSize !== undefined ? detail.fontSize : detail.size;
+    var size = annotationNumber(sizeValue);
     var lineHeight = annotationNumber(detail.lineHeight);
     var weight = annotationNumber(detail.fontWeight);
-    var family = String(detail.fontFamily || "").trim() || undefined;
-    var unit = String(detail.unit || "").trim() || undefined;
+    var family = typographyFamily(detail.fontFamily);
+    var unit = annotationUnit(sizeValue) || String(detail.unit || "").trim() || undefined;
+    var lineHeightUnit = annotationUnit(detail.lineHeight) ||
+      String(detail.lineHeightUnit || "").trim() || unit;
     var tracking = String(detail.letterSpacing || detail.tracking || "").trim() || undefined;
     var style = String(detail.fontStyle || "").trim() || undefined;
+    var axes = typographyAxes(detail.fontVariationSettings || detail.variationSettings || detail.axes);
+    var token = typographyToken(detail);
+    var labelOnly = !token && !family && size === undefined && lineHeight === undefined &&
+      weight === undefined && !tracking && !style && !axes;
     return {
-      token: typographyToken(detail),
+      token: token,
       family: family,
       familyKey: typographyFamily(family),
       size: size,
       lineHeight: lineHeight,
       weight: weight,
       unit: unit,
+      lineHeightUnit: lineHeightUnit,
       tracking: tracking,
       style: style,
-      label: item.label
+      axes: axes || undefined,
+      label: item.label,
+      labelOnly: labelOnly
     };
   }
 
   function typographyGroupKey(spec) {
-    return [spec.token || "", spec.familyKey || "", spec.size, spec.lineHeight, spec.weight,
-      spec.tracking || "", spec.style || ""].join("|");
+    return [spec.token || "", spec.familyKey || "", spec.size, spec.unit || "",
+      spec.lineHeight, spec.lineHeightUnit || "", spec.weight, spec.tracking || "",
+      spec.style || "", spec.axes || "", spec.labelOnly ? spec.label || "" : ""].join("|");
   }
 
   function groupTypography(items) {
@@ -846,10 +1000,11 @@
 
   function typographyDistance(left, right) {
     if (left.key === right.key) return -200;
-    if (left.spec.token && right.spec.token && left.spec.token === right.spec.token) return -100;
+    var tokenBias = left.spec.token && right.spec.token && left.spec.token === right.spec.token
+      ? -100 : 0;
     var commonRoles = 0;
     left.roles.forEach(function (role) { if (right.roles.has(role)) commonRoles += 1; });
-    if (commonRoles) return -50 - commonRoles;
+    var roleBias = commonRoles ? -50 - commonRoles : 0;
     var a = left.spec;
     var b = right.spec;
     var distance = 0;
@@ -863,7 +1018,11 @@
     if ((a.familyKey || "").toLowerCase() !== (b.familyKey || "").toLowerCase()) distance += 2;
     if ((a.style || "").toLowerCase() !== (b.style || "").toLowerCase()) distance += 1;
     if ((a.tracking || "") !== (b.tracking || "")) distance += 1;
-    return distance;
+    if ((a.unit || "") !== (b.unit || "")) distance += 4;
+    if ((a.lineHeightUnit || "") !== (b.lineHeightUnit || "")) distance += 3;
+    if ((a.axes || "") !== (b.axes || "")) distance += 3;
+    if (a.labelOnly || b.labelOnly) distance += a.label === b.label ? 0 : 8;
+    return tokenBias + roleBias + distance;
   }
 
   function pairTypography(reference, actual) {
@@ -908,8 +1067,14 @@
 
   function clusterTypography(group) {
     var lineHeight = group.spec.lineHeight || 16;
-    var xGap = Math.max(12, lineHeight * 4);
-    var yGap = Math.max(8, lineHeight * 1.25);
+    var ratios = group.items.map(function (item) {
+      return item.bounds.height / Math.max(lineHeight, 1);
+    }).filter(function (ratio) { return Number.isFinite(ratio) && ratio > 0; })
+      .sort(function (a, b) { return a - b; });
+    var pixelScale = ratios.length ? ratios[Math.floor(ratios.length / 2)] : 1;
+    pixelScale = Math.max(0.5, Math.min(8, pixelScale));
+    var xGap = Math.max(12, lineHeight * pixelScale * 4);
+    var yGap = Math.max(8, lineHeight * pixelScale * 1.25);
     var clusters = [];
     group.items.forEach(function (item) {
       var touching = [];
@@ -940,17 +1105,20 @@
       if (spec.size === undefined) return "—";
       return String(spec.size) + (spec.unit || "");
     }
-    if (field === "lineHeight") return spec.lineHeight === undefined ? "—" : String(spec.lineHeight);
+    if (field === "lineHeight") return spec.lineHeight === undefined ? "—" :
+      String(spec.lineHeight) + (spec.lineHeightUnit || "");
     if (field === "weight") return spec.weight === undefined ? "—" : String(spec.weight);
     if (field === "tracking") return spec.tracking || "default";
     if (field === "style") return spec.style || "normal";
+    if (field === "axes") return spec.axes || "default";
     return "—";
   }
 
   function typographyComparableValue(spec, field) {
     if (!spec) return "—";
     if (field === "family") return (spec.familyKey || "unspecified").toLowerCase();
-    if (field === "size") return spec.size === undefined ? "—" : String(spec.size);
+    if (field === "size") return spec.size === undefined ? "—" :
+      String(spec.size) + (spec.unit || "");
     return typographyValue(spec, field).toLowerCase();
   }
 
@@ -965,15 +1133,18 @@
       side.appendChild(document.createTextNode(" No matching usage"));
       return side;
     }
+    if (group.spec.labelOnly) {
+      side.appendChild(document.createTextNode(" " + (group.spec.label || "Unspecified typography")));
+    }
     var fields = ["token", "family", "weight"];
     fields.push("size");
-    fields.forEach(function (field) {
+    if (!group.spec.labelOnly) fields.forEach(function (field) {
       side.appendChild(document.createTextNode(" · "));
       var value = document.createElement("span");
       var text = typographyValue(group.spec, field);
       if (field === "weight" && text !== "—") text = "wght " + text;
       if (field === "size" && group.spec.lineHeight !== undefined)
-        text += "/" + group.spec.lineHeight;
+        text += "/" + typographyValue(group.spec, "lineHeight");
       value.textContent = text;
       var comparisonChanged = other && (
         typographyComparableValue(group.spec, field) !== typographyComparableValue(other.spec, field) ||
@@ -990,12 +1161,12 @@
       }
       side.appendChild(value);
     });
-    if (group.spec.tracking && group.spec.tracking !== "default") {
+    var trackingChanged = (other && typographyComparableValue(group.spec, "tracking") !== typographyComparableValue(other.spec, "tracking")) ||
+      (baseline && baseline !== group && typographyComparableValue(group.spec, "tracking") !== typographyComparableValue(baseline.spec, "tracking"));
+    if (group.spec.tracking && (group.spec.tracking !== "default" || trackingChanged)) {
       side.appendChild(document.createTextNode(" · "));
       var tracking = document.createElement("span");
       tracking.textContent = "tracking " + group.spec.tracking;
-      var trackingChanged = (other && typographyComparableValue(group.spec, "tracking") !== typographyComparableValue(other.spec, "tracking")) ||
-        (baseline && baseline !== group && typographyComparableValue(group.spec, "tracking") !== typographyComparableValue(baseline.spec, "tracking"));
       if (trackingChanged) tracking.className = "cp-typography-changed";
       if (baseline && baseline !== group && typographyComparableValue(group.spec, "tracking") !== typographyComparableValue(baseline.spec, "tracking")) {
         tracking.classList.add("cp-typography-override");
@@ -1003,18 +1174,31 @@
       }
       side.appendChild(tracking);
     }
-    if (group.spec.style && group.spec.style !== "normal") {
+    var styleChanged = (other && typographyComparableValue(group.spec, "style") !== typographyComparableValue(other.spec, "style")) ||
+      (baseline && baseline !== group && typographyComparableValue(group.spec, "style") !== typographyComparableValue(baseline.spec, "style"));
+    if (group.spec.style && (group.spec.style !== "normal" || styleChanged)) {
       side.appendChild(document.createTextNode(" · "));
       var style = document.createElement("span");
       style.textContent = group.spec.style;
-      var styleChanged = (other && typographyComparableValue(group.spec, "style") !== typographyComparableValue(other.spec, "style")) ||
-        (baseline && baseline !== group && typographyComparableValue(group.spec, "style") !== typographyComparableValue(baseline.spec, "style"));
       if (styleChanged) style.className = "cp-typography-changed";
       if (baseline && baseline !== group && typographyComparableValue(group.spec, "style") !== typographyComparableValue(baseline.spec, "style")) {
         style.classList.add("cp-typography-override");
         style.title = "Changed from " + group.spec.token + " default";
       }
       side.appendChild(style);
+    }
+    if (group.spec.axes) {
+      side.appendChild(document.createTextNode(" · "));
+      var axes = document.createElement("span");
+      axes.textContent = "axes " + group.spec.axes;
+      var axesChanged = (other && typographyComparableValue(group.spec, "axes") !== typographyComparableValue(other.spec, "axes")) ||
+        (baseline && baseline !== group && typographyComparableValue(group.spec, "axes") !== typographyComparableValue(baseline.spec, "axes"));
+      if (axesChanged) axes.className = "cp-typography-changed";
+      if (baseline && baseline !== group && typographyComparableValue(group.spec, "axes") !== typographyComparableValue(baseline.spec, "axes")) {
+        axes.classList.add("cp-typography-override");
+        axes.title = "Changed from " + group.spec.token + " default";
+      }
+      side.appendChild(axes);
     }
     var count = document.createElement("span");
     count.className = "cp-typography-count";
@@ -1163,16 +1347,19 @@
 
     Array.prototype.forEach.call(root.querySelectorAll(".cp-typography-group"), function (row) {
       var marker = row.getAttribute("data-cp-typography-marker");
+      var hovered = false;
+      var focused = false;
       var setActive = function (active) {
         Array.prototype.forEach.call(
           root.querySelectorAll('.cp-annotation[data-cp-typography-marker="' + marker + '"]'),
           function (node) { node.classList.toggle("cp-annotation-active", active); }
         );
       };
-      row.addEventListener("mouseenter", function () { setActive(true); });
-      row.addEventListener("mouseleave", function () { setActive(false); });
-      row.addEventListener("focus", function () { setActive(true); });
-      row.addEventListener("blur", function () { setActive(false); });
+      var syncActive = function () { setActive(hovered || focused); };
+      row.addEventListener("mouseenter", function () { hovered = true; syncActive(); });
+      row.addEventListener("mouseleave", function () { hovered = false; syncActive(); });
+      row.addEventListener("focus", function () { focused = true; syncActive(); });
+      row.addEventListener("blur", function () { focused = false; syncActive(); });
     });
 
     function place() {

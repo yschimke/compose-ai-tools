@@ -1212,6 +1212,14 @@ internal object AndroidPreviewSupport {
         { dependencyConfigName },
         previewOutputDir,
         extension,
+        activeCompilationSourceFiles =
+          project
+            .files(listOfNotNull(variant.sources.java?.all, variant.sources.kotlin?.all))
+            .asFileTree
+            .matching {
+              include("**/*.kt")
+              include("**/*.java")
+            },
       ) {
         // Lazy `tasks.matching` rather than strict `dependsOn(taskName)` so KMP-Android modules
         // (where `compileDebugKotlin` doesn't exist — only `compileDebugKotlinAndroid` does)

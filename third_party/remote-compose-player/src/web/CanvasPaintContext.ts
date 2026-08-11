@@ -6,7 +6,7 @@ import { isNaNBits, idFromBits, floatToRawIntBits } from '../core/operations/Uti
 import { transpileAgslToGlsl } from '../core/shader/AgslTranspiler';
 import { WebGLShaderRenderer } from './shader/WebGLShaderRenderer';
 import { RemoteComposeState } from '../core/RemoteComposeState';
-import { ensureWebFont, parseFamily, cssQuoted, registerEmbeddedFont } from './WebFonts';
+import { ensureWebFont, parseFamily, cssQuoted, registerEmbeddedFont, releaseEmbeddedFont } from './WebFonts';
 import type { ShaderData } from '../core/operations/ShaderData';
 import type { RemoteContext } from '../core/RemoteContext';
 
@@ -173,6 +173,10 @@ export class CanvasPaintContext extends PaintContext {
             this.shaderRenderer.destroy();
             this.shaderRenderer = null;
         }
+        this.embeddedFontFamilies.forEach(({ data }, fontId) => {
+            releaseEmbeddedFont(fontId, data, this.onFontLoaded ?? undefined);
+        });
+        this.embeddedFontFamilies.clear();
     }
     private glslCache = new Map<number, string>();  // shaderTextId -> transpiled GLSL
 
@@ -250,6 +254,7 @@ export class CanvasPaintContext extends PaintContext {
         // font file again on every frame; a changed operation carries a different byte-array view.
         const current = this.embeddedFontFamilies.get(fontId);
         if (current?.data === data) return;
+        if (current) releaseEmbeddedFont(fontId, current.data, this.onFontLoaded ?? undefined);
         this.embeddedFontFamilies.set(fontId, {
             data,
             family: registerEmbeddedFont(fontId, data, this.onFontLoaded ?? undefined),
@@ -1301,11 +1306,13 @@ export class CanvasPaintContext extends PaintContext {
         const lineHeight = size * (lineHeightMultiplier || 1.2);
 
         // AndroidX keeps a one-line clip/visible layout unwrapped and lets the component clip the
-        // glyph run. Wrapping it first loses the partial word at the right edge.
+        // glyph run. Wrapping it first loses the partial word at the right edge. A hard break still
+        // terminates that one line; deleting it would concatenate two paragraphs.
         if (maxLines === 1 && (overflow === 1 || overflow === 2)) {
+            const firstLine = text.split('\n', 1)[0];
             return {
-                lines: [text.replace(/\n/g, '')], alignment, lineHeight,
-                width: Math.min(this.ctx.measureText(text).width, maxWidth),
+                lines: [firstLine], alignment, lineHeight,
+                width: Math.min(this.ctx.measureText(firstLine).width, maxWidth),
                 height: Math.min(lineHeight, maxHeight), naturalHeight: lineHeight, visibleLines: 1
             };
         }
@@ -1338,36 +1345,53 @@ export class CanvasPaintContext extends PaintContext {
             }
         }
 
-        const ellipsizeEnd = (value: string): string => {
-            while (this.ctx.measureText(value + '…').width > maxWidth && value.length > 0) {
-                value = value.substring(0, value.length - 1);
+        const graphemes = (value: string): string[] => {
+            const Segmenter = (Intl as any).Segmenter;
+            if (Segmenter) {
+                return Array.from(new Segmenter(undefined, { granularity: 'grapheme' }).segment(value),
+                    (part: any) => part.segment);
             }
-            return value + '…';
+            // Code points are the safe minimum: unlike substring they never leave an unpaired
+            // UTF-16 surrogate. Browsers with Intl.Segmenter additionally preserve joined emoji.
+            return Array.from(value);
+        };
+        const ellipsizeEnd = (value: string): string => {
+            const parts = graphemes(value);
+            while (this.ctx.measureText(parts.join('') + '…').width > maxWidth && parts.length > 0) {
+                parts.pop();
+            }
+            return parts.join('') + '…';
         };
         const ellipsizeStart = (value: string): string => {
-            while (this.ctx.measureText('…' + value).width > maxWidth && value.length > 0) {
-                value = value.substring(1);
+            const parts = graphemes(value);
+            while (this.ctx.measureText('…' + parts.join('')).width > maxWidth && parts.length > 0) {
+                parts.shift();
             }
-            return '…' + value;
+            return '…' + parts.join('');
         };
         const ellipsizeMiddle = (value: string): string => {
-            let left = Math.ceil(value.length / 2);
+            const parts = graphemes(value);
+            let left = Math.ceil(parts.length / 2);
             let right = left;
-            while (this.ctx.measureText(value.substring(0, left) + '…' +
-                    value.substring(right)).width > maxWidth && left > 0) {
-                if ((value.length - right) < left) left--; else right++;
+            while (this.ctx.measureText(parts.slice(0, left).join('') + '…' +
+                    parts.slice(right).join('')).width > maxWidth && (left > 0 || right < parts.length)) {
+                if ((parts.length - right) < left) left--; else right++;
             }
-            return value.substring(0, left) + '…' + value.substring(right);
+            return parts.slice(0, left).join('') + '…' + parts.slice(right).join('');
         };
 
         // StaticLayout only makes maxLines truncate these fixtures when ellipsizing. Compose's
         // stricter clip cap is intentionally not copied here.
-        if (overflow >= 3 && overflow <= 5 && maxLines > 0 && lines.length > maxLines) {
-            const lastIdx = maxLines - 1;
-            const value = maxLines === 1 ? text.replace(/\n/g, '') : lines[lastIdx];
+        const retainedLast = maxLines > 0 ? lines[Math.min(lines.length, maxLines) - 1] : undefined;
+        const horizontalOverflow = retainedLast !== undefined &&
+            this.ctx.measureText(retainedLast).width > maxWidth;
+        if (overflow >= 3 && overflow <= 5 && maxLines > 0 &&
+                (lines.length > maxLines || horizontalOverflow)) {
+            const lastIdx = Math.min(maxLines, lines.length) - 1;
+            const value = lines[lastIdx] || '';
             lines[lastIdx] = overflow === 4 ? ellipsizeStart(value)
                 : overflow === 5 ? ellipsizeMiddle(value) : ellipsizeEnd(value);
-            lines.length = maxLines;
+            if (lines.length > maxLines) lines.length = maxLines;
         }
 
         // Compute total dimensions

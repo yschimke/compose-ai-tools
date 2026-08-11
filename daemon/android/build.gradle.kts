@@ -87,6 +87,7 @@ dependencies {
   // Gated at registration on the wear-compose gesture API (`isWearGestureAvailable`), same shape as
   // the ambient connector above.
   implementation(project(":data-gestures-connector"))
+  runtimeOnly(project(":data-gestures-robolectric-stubs"))
   // Display-filter connector — DisplayFilterDataProductRegistry + DisplayFilterDataProducer.
   // DaemonMain reads `composeai.displayfilter.filters` via `DisplayFilterConfig` to decide
   // whether to register the extension; the host's render pipeline reads the same prop and

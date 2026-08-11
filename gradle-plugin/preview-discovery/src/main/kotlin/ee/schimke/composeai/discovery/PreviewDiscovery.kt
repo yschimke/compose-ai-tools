@@ -44,6 +44,13 @@ object PreviewDiscovery {
     /** Source files used to attach module-relative `sourceFile` paths to each [PreviewInfo]. */
     val sourceFiles: List<File>,
     /**
+     * Source files belonging to the compilation represented by [activeClassDirs]. [sourceFiles] can
+     * contain every source set so discovery can map class metadata back to source paths, but
+     * inactive source sets must not trigger the empty-compile integrity guard. Empty falls back to
+     * [sourceFiles] for non-Gradle callers.
+     */
+    val activeSourceFiles: List<File> = emptyList(),
+    /**
      * Logical module name surfaced via [PreviewManifest.module]. Bazel rules use the target label;
      * Gradle uses the project path.
      */
@@ -429,10 +436,10 @@ object PreviewDiscovery {
     // Check only the active compilation output. [Input.classDirs] deliberately contains fallback
     // layouts for discovery compatibility; stale classes in an inactive target must not hide an
     // empty cache restore in the compilation that just ran.
-    val previewSourceFiles =
-      input.sourceFiles.filter {
-        it.isFile && !it.isTestSourceSetFile() && it.declaresPreviewAnnotation()
-      }
+    val integritySourceFiles = input.activeSourceFiles.ifEmpty { input.sourceFiles }
+    val previewSourceFiles = integritySourceFiles.filter {
+      it.isFile && !it.isTestSourceSetFile() && it.declaresPreviewAnnotation()
+    }
     val integrityClassDirs = input.activeClassDirs.ifEmpty { input.classDirs }
     val classDirCounts = integrityClassDirs.associateWith(::classFileCount)
     val projectJarCounts = input.projectClassJars.associateWith(::classFileCount)
@@ -1454,10 +1461,15 @@ object PreviewDiscovery {
 
   // Source-level signal for the empty-compile guard. Anchoring at the start of a code line avoids
   // examples in line comments and KDoc; accepting a qualified prefix covers annotation use without
-  // an import. A user-defined multi-preview annotation also contains @Preview when its declaration
-  // lives in this module, so an empty compilation of that wrapper still trips the guard.
+  // an import. Supported direct and multi-preview annotations conventionally end in Preview or
+  // Previews (`NotificationPreview`, `XrSubspacePreview`, imported aliases such as
+  // `GlancePreview`, and dependency-defined wrappers such as `WearPreviewDevices`). A user-defined
+  // multi-preview annotation also contains @Preview when its declaration lives in this module, so
+  // an empty compilation of that wrapper still trips the guard.
   private val PREVIEW_SOURCE_ANNOTATION =
-    Regex("""(?m)^[\t ]*@(?!file:)(?:[A-Za-z_][A-Za-z0-9_.]*\.)?Preview(?=[\t (\r\n])""")
+    Regex(
+      """(?m)^[\t ]*@(?!file:)(?:[A-Za-z_][A-Za-z0-9_.]*\.)?(?!(?:PreviewParameter|PreviewParameterProvider)\b)(?:[A-Za-z_][A-Za-z0-9_]*)?Preview[A-Za-z0-9_]*(?=[\t (\r\n])"""
+    )
 
   private fun File.declaresPreviewAnnotation(): Boolean =
     runCatching { PREVIEW_SOURCE_ANNOTATION.containsMatchIn(readText()) }.getOrDefault(false)

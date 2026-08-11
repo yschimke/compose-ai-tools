@@ -83,6 +83,14 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   abstract val sourceFiles: ConfigurableFileCollection
 
   /**
+   * Source files compiled into [activeClassDirs], used only by the empty-output integrity guard.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val activeSourceFiles: ConfigurableFileCollection
+
+  /**
    * Processed-resource roots (`build/resources/main`, `build/processedResources/<target>/main`)
    * scanned for Lottie animation assets — each becomes a `kind=LOTTIE` preview with no consumer
    * composable. Optional: empty on modules without resources, which simply skips the asset scan.
@@ -203,6 +211,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         classDirs = classDirs.files.toList() + scopedClassDirs,
         dependencyJars = dependencyJars.files.toList(),
         sourceFiles = sourceFiles.files.toList(),
+        activeSourceFiles = activeSourceFiles.files.toList(),
         moduleName = moduleName.get(),
         variantName = variantName.get(),
         projectDirectory = File(projectDirectory.get()),

@@ -496,6 +496,10 @@ include(":data-gestures-connector")
 
 project(":data-gestures-connector").projectDir = file("data/gestures/connector")
 
+include(":data-gestures-robolectric-stubs")
+
+project(":data-gestures-robolectric-stubs").projectDir = file("data/gestures/robolectric-stubs")
+
 include(":data-shared-element-core")
 
 project(":data-shared-element-core").projectDir = file("data/shared-element/core")

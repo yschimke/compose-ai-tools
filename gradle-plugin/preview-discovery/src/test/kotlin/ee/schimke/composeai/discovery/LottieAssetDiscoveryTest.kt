@@ -208,4 +208,73 @@ class LottieAssetDiscoveryTest {
     assertThat(warning).contains(activeClasses.absolutePath)
     assertThat(warning).doesNotContain(staleClasses.absolutePath)
   }
+
+  @Test
+  fun `inactive preview sources do not flag an empty active compilation`() {
+    val project = tempDir.newFolder("inactive-preview-source")
+    val classes = project.resolve("classes/kotlin/desktop/main").apply { mkdirs() }
+    val commonSource =
+      project.resolve("src/commonMain/kotlin/Aliases.kt").apply {
+        parentFile.mkdirs()
+        writeText("typealias PreviewName = String")
+      }
+    val inactiveSource =
+      project.resolve("src/androidMain/kotlin/AndroidPreview.kt").apply {
+        parentFile.mkdirs()
+        writeText("@NotificationPreview\nfun preview() = Unit")
+      }
+    val resources = project.resolve("resources").apply { mkdirs() }
+    resources.resolve("spin.json").writeText("""{"v":"5.7.0","layers":[]}""")
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = listOf(classes),
+          activeClassDirs = listOf(classes),
+          dependencyJars = emptyList(),
+          sourceFiles = listOf(commonSource, inactiveSource),
+          activeSourceFiles = listOf(commonSource),
+          moduleName = ":app",
+          variantName = "desktop",
+          projectDirectory = project,
+          failOnEmpty = false,
+          resourceDirs = listOf(resources),
+        )
+      ) as PreviewDiscovery.Outcome.Success
+
+    assertThat(outcome.warnings.joinToString("\n")).doesNotContain("empty build-cache entry")
+  }
+
+  @Test
+  fun `supported preview annotation names flag empty compiled outputs`() {
+    val project = tempDir.newFolder("supported-preview-names")
+    val classes = project.resolve("classes").apply { mkdirs() }
+    val resources = project.resolve("resources").apply { mkdirs() }
+    resources.resolve("spin.json").writeText("""{"v":"5.7.0","layers":[]}""")
+
+    listOf("NotificationPreview", "XrSubspacePreview", "GlancePreview", "WearPreviewDevices")
+      .forEach { annotation ->
+        val source =
+          project.resolve("src/main/kotlin/$annotation.kt").apply {
+            parentFile.mkdirs()
+            writeText("@$annotation\nfun preview() = Unit")
+          }
+        val outcome =
+          PreviewDiscovery.discover(
+            PreviewDiscovery.Input(
+              classDirs = listOf(classes),
+              dependencyJars = emptyList(),
+              sourceFiles = listOf(source),
+              moduleName = ":app",
+              variantName = "desktop",
+              projectDirectory = project,
+              failOnEmpty = false,
+              resourceDirs = listOf(resources),
+            )
+          ) as PreviewDiscovery.Outcome.Success
+
+        assertThat(outcome.warnings.joinToString("\n"))
+          .contains("active class outputs contain 0 .class files")
+      }
+  }
 }

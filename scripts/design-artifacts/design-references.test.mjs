@@ -412,6 +412,23 @@ test("planDesignReferences carries a per-reference contents-only override to the
   assert.equal(records[0].origin.referenceContentsOnly, false);
 });
 
+test("planDesignReferences falls back to the annotation contents-only setting", () => {
+  const spec = structuredClone(SPEC);
+  spec.groups[0].components[0].referenceContentsOnly = false;
+  const designMap = {
+    components: [
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatPreview",
+        source: "figma",
+        ref: "figma:abc/73:5",
+      },
+    ],
+  };
+
+  const { records } = planDesignReferences({ designMap, spec, catalog: CATALOG });
+  assert.equal(records[0].origin.referenceContentsOnly, false);
+});
+
 test("planDesignReferences carries an image renderer density to the raster target", () => {
   const catalog = structuredClone(CATALOG);
   catalog.components[0].images[0].density = 3;

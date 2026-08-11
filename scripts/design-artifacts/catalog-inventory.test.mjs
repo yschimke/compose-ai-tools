@@ -111,6 +111,21 @@ test("inventoryFromPreviews defaults the group to Components and carries section
   );
 });
 
+test("inventoryFromPreviews carries the Figma contents-only annotation", () => {
+  const { groups } = inventoryFromPreviews([
+    {
+      functionName: "FilledCard",
+      catalog: {
+        role: "COMPONENT",
+        componentId: "Card/Filled",
+        referenceContentsOnly: false,
+      },
+    },
+  ]);
+
+  assert.equal(groups[0].components[0].referenceContentsOnly, false);
+});
+
 test("inventoryFromPreviews dedupes a light/dark multipreview (same function, two records)", () => {
   const { groups } = inventoryFromPreviews([
     component("FilledButton", { componentId: "Button/Filled", group: "Buttons" }),

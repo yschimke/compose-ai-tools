@@ -145,6 +145,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -939,6 +940,9 @@ private fun RenderLayoutNode(
       val autosize = properties.booleanProperty(22, false)
       val minFontSize = properties.floatProperty(25, -1f).let(state::resolve)
       val maxFontSize = properties.floatProperty(26, -1f).let(state::resolve)
+      val resolvedMaxFontSize = if (maxFontSize > 0f) maxFontSize else 400f
+      val resolvedMinFontSize =
+        minOf(if (minFontSize > 0f) minFontSize else 4f, resolvedMaxFontSize)
       // Font-variation axes (properties 20/21) — a variable font's `wght` / `wdth` / … instance.
       // The tags arrive as text ids and the values may be document floats, so both are resolved
       // through the player state before they are paired up.
@@ -968,11 +972,14 @@ private fun RenderLayoutNode(
                 if (colorId == -1) properties.intProperty(3, 0xff000000.toInt())
                 else state.color(colorId)
               ),
-            fontSize = (fontSize / density.density).sp,
-            letterSpacing = (state.resolve(properties.floatProperty(12, 0f)) / density.density).sp,
+            fontSize = with(density) { fontSize.toSp() },
+            letterSpacing =
+              with(density) { state.resolve(properties.floatProperty(12, 0f)).toSp() },
             lineHeight =
               if (lineHeightAdd == 0f && lineHeightMultiplier == 1f) TextUnit.Unspecified
-              else ((fontSize * lineHeightMultiplier + lineHeightAdd) / density.density).sp,
+              else if (autosize)
+                (lineHeightMultiplier + lineHeightAdd / fontSize.coerceAtLeast(0.0001f)).em
+              else with(density) { (fontSize * lineHeightMultiplier + lineHeightAdd).toSp() },
             fontWeight = FontWeight(boldWeight),
             fontStyle = if (fontStyle and 2 != 0) FontStyle.Italic else FontStyle.Normal,
             fontFamily =
@@ -984,7 +991,7 @@ private fun RenderLayoutNode(
                 withWeightAxis(variationSettings, boldWeight),
               ),
             textAlign =
-              if (properties.intProperty(17, 0) > 0) TextAlign.Justify
+              if (properties.intProperty(17, 0) == 1) TextAlign.Justify
               else androidXTextAlign(properties.intProperty(9, RcTextLayout.ALIGN_LEFT)),
             lineBreak =
               when (properties.intProperty(15, 0)) {
@@ -1013,9 +1020,9 @@ private fun RenderLayoutNode(
         autoSize =
           if (autosize)
             TextAutoSize.StepBased(
-              minFontSize = ((if (minFontSize > 0f) minFontSize else 4f) / density.density).sp,
-              maxFontSize = ((if (maxFontSize > 0f) maxFontSize else 400f) / density.density).sp,
-              stepSize = (0.5f / density.density).sp,
+              minFontSize = with(density) { resolvedMinFontSize.toSp() },
+              maxFontSize = with(density) { resolvedMaxFontSize.toSp() },
+              stepSize = with(density) { 0.5f.toSp() },
             )
           else null,
       )

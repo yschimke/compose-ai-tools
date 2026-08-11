@@ -117,10 +117,10 @@ export function imagesByPreviewFunction(spec, catalog) {
   }
 
   const index = new Map();
-  const add = (fn, componentId, image) => {
+  const add = (fn, componentId, image, specComponent) => {
     if (!fn) return;
     if (!index.has(fn)) index.set(fn, []);
-    index.get(fn).push({ componentId, image });
+    index.get(fn).push({ componentId, image, specComponent });
   };
 
   for (const group of spec?.groups ?? []) {
@@ -130,8 +130,8 @@ export function imagesByPreviewFunction(spec, catalog) {
       const variants = Array.isArray(specComponent.variants) ? specComponent.variants : [];
       for (const image of component.images ?? []) {
         const variant = variants.find((v) => v?.preview && imageHasVariantAxes(image, v));
-        if (variant) add(variant.preview, component.componentId, image);
-        else add(specComponent.preview, component.componentId, image);
+        if (variant) add(variant.preview, component.componentId, image, specComponent);
+        else add(specComponent.preview, component.componentId, image, specComponent);
       }
     }
   }
@@ -431,7 +431,7 @@ export function planDesignReferences({ designMap, spec, catalog }) {
       ? allMatches
       : narrowToMappedPreviewId(allMatches, entry?.previewId, fn, warnings);
     if (matches.length === 0) continue;
-    for (const { componentId, image } of matches) {
+    for (const { componentId, image, specComponent } of matches) {
       const previewId = servePreviewId(image.path);
       const ordinal = ordinals.get(previewId) ?? 0;
       ordinals.set(previewId, ordinal + 1);
@@ -465,6 +465,8 @@ export function planDesignReferences({ designMap, spec, catalog }) {
           density: entry.density,
           ...(typeof entry.referenceContentsOnly === "boolean"
             ? { referenceContentsOnly: entry.referenceContentsOnly }
+            : typeof specComponent?.referenceContentsOnly === "boolean"
+              ? { referenceContentsOnly: specComponent.referenceContentsOnly }
             : {}),
         },
       };
