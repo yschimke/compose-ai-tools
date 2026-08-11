@@ -512,6 +512,44 @@ class RcLayoutRenderTest {
   }
 
   @Test
+  fun fractionalPixelPaddingDoesNotAccumulateIndependentEdgeRounding() {
+    val red = 0xffff0000.toInt()
+    val green = 0xff00ff00.toInt()
+    val blue = 0xff0000ff.toInt()
+    val yellow = 0xffffff00.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 1, 0), legacyWidth = 819, legacyHeight = 247, modern = false),
+        listOf<RcOperation>(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcFlowLayout(3, 30, 1, 4, RcFloatWord.literal(21f), Int.MAX_VALUE, Int.MAX_VALUE),
+          width(819f),
+          height(247f),
+          RcLayoutContent(4),
+        ) +
+          paddedCanvas(5, red) +
+          paddedCanvas(6, green) +
+          paddedCanvas(7, blue) +
+          paddedCanvas(8, yellow) +
+          List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+    val scene =
+      ImageComposeScene(width = 819, height = 247, density = Density(2.625f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val bitmap = Bitmap().apply { allocN32Pixels(819, 247) }
+      check(scene.render().readPixels(bitmap))
+
+      assertEquals(63, rcCombinedPaddingPixels(31.5f, 31.5f))
+      assertEquals(yellow, bitmap.getColor(670, 50), "the fourth 189px card must not wrap")
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
   fun coreTextRendersInheritedSparseStyle() {
     val document =
       RcDocument(
@@ -1239,6 +1277,30 @@ class RcLayoutRenderTest {
         RcFloatWord.literal(0f),
         RcFloatWord.literal(size),
         RcFloatWord.literal(size),
+      ),
+      RcNoArg(RcOpcodes.CONTAINER_END),
+      RcNoArg(RcOpcodes.CONTAINER_END),
+    )
+
+  private fun paddedCanvas(componentId: Int, color: Int): List<RcOperation> =
+    listOf(
+      RcCanvasLayout(componentId, componentId * 10),
+      width(126f),
+      height(126f),
+      RcPaddingModifier(
+        RcFloatWord.literal(31.5f),
+        RcFloatWord.literal(31.5f),
+        RcFloatWord.literal(31.5f),
+        RcFloatWord.literal(31.5f),
+      ),
+      RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+      RcPaintData(listOf(4, color)),
+      RcDraw4(
+        RcOpcodes.DRAW_RECT,
+        RcFloatWord.literal(0f),
+        RcFloatWord.literal(0f),
+        RcFloatWord.literal(126f),
+        RcFloatWord.literal(126f),
       ),
       RcNoArg(RcOpcodes.CONTAINER_END),
       RcNoArg(RcOpcodes.CONTAINER_END),

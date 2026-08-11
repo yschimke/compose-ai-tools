@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeightIn
 import androidx.compose.foundation.layout.requiredWidthIn
 import androidx.compose.foundation.layout.width
@@ -141,6 +140,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
@@ -1570,11 +1570,11 @@ private fun Modifier.applyComponentModifiers(
             result.applyHeight(operation, state, density)
           }
         is RcPaddingModifier ->
-          result.padding(
-            start = state.dpTypedDp(state.resolve(operation.left), density),
-            top = state.dpTypedDp(state.resolve(operation.top), density),
-            end = state.dpTypedDp(state.resolve(operation.right), density),
-            bottom = state.dpTypedDp(state.resolve(operation.bottom), density),
+          result.rcPaddingPixels(
+            left = state.dpTypedPixels(state.resolve(operation.left), density),
+            top = state.dpTypedPixels(state.resolve(operation.top), density),
+            right = state.dpTypedPixels(state.resolve(operation.right), density),
+            bottom = state.dpTypedPixels(state.resolve(operation.bottom), density),
           )
         is RcOffsetModifier ->
           result.offset {
@@ -1633,6 +1633,31 @@ private fun Modifier.applyComponentModifiers(
   }
   return result
 }
+
+/**
+ * AndroidX keeps padding in physical pixels until measure, then rounds the combined inset on each
+ * axis. Compose's Dp padding rounds each edge independently, which adds a pixel whenever both wire
+ * edges end in .5 (for example 31.5px + 31.5px must occupy 63px, not 64px).
+ */
+private fun Modifier.rcPaddingPixels(
+  left: Float,
+  top: Float,
+  right: Float,
+  bottom: Float,
+): Modifier = layout { measurable, constraints ->
+  val safeLeft = left.coerceAtLeast(0f)
+  val safeTop = top.coerceAtLeast(0f)
+  val horizontal = rcCombinedPaddingPixels(left, right)
+  val vertical = rcCombinedPaddingPixels(top, bottom)
+  val placeable =
+    measurable.measure(constraints.offset(horizontal = -horizontal, vertical = -vertical))
+  val width = constraints.constrainWidth(placeable.width + horizontal)
+  val height = constraints.constrainHeight(placeable.height + vertical)
+  layout(width, height) { placeable.placeRelative(safeLeft.roundToInt(), safeTop.roundToInt()) }
+}
+
+internal fun rcCombinedPaddingPixels(first: Float, second: Float): Int =
+  (first.coerceAtLeast(0f) + second.coerceAtLeast(0f)).roundToInt()
 
 private fun Modifier.applyAndroidXClickAreas(
   areas: List<RcClickArea>,
