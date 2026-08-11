@@ -52,6 +52,8 @@ import ee.schimke.composeai.rcplayer.trace.RcTraceCategory
 import ee.schimke.composeai.rcplayer.trace.rcTrace
 
 public data class RcLayoutModifiers(
+  /** Direct component operations in wire order. AndroidX modifier semantics are order-sensitive. */
+  val ordered: List<RcOperation> = emptyList(),
   /** Last AndroidX animation policy attached to this component. */
   val animationSpec: RcAnimationSpec? = null,
   val width: RcWidthModifier? = null,
@@ -509,6 +511,7 @@ public object RcLayoutTree {
     val operations =
       container.children.filterIsInstance<RcLinkedNode.Operation>().map { it.operation }
     return RcLayoutModifiers(
+      ordered = operations,
       animationSpec = operations.singleModifier<RcAnimationSpec>(container.operation),
       // AndroidX applies dimension modifiers in wire order. Once the first required dimension
       // fixes the constraints, later width/height modifiers cannot expand past it.
