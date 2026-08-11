@@ -406,20 +406,51 @@ part not. Either choice is wrong in one direction: drop it and an adjacent regre
 inside the boundary ring; keep it and accepted pixels bleed into the score they were supposed to
 leave alone.
 
-**Resolve it conservatively: a score-plane pixel is masked only if its *entire* source footprint is
-masked.** A partially-covered pixel is scored normally. That biases the boundary ring toward
-over-reporting — an accepted difference may leak a thin halo into the score — which is the correct
-direction to be wrong given the non-goals: an acceptance that reports slightly too much is a
-cosmetic annoyance, one that reports too little is the failure mode the whole model exists to
-prevent. The halo is also bounded and explainable, so the page can say so rather than looking like
-an unexplained residue.
+There is no binary rule at score-plane resolution that fixes this. "Mask the pixel only if its whole
+footprint is masked" *sounds* conservative and is not: `drawImage` averages **signed** luma, so an
+accepted difference on one side of a straddling footprint can cancel an opposite unaccepted
+regression on the other before `scorePlanes` ever sees the pixel. Masking it instead just hides the
+boundary ring outright. Both choices can hide an adjacent regression, which is the one outcome the
+model may not have.
 
-The alternative — evaluating mask boundaries at canonical resolution and only then downsampling — is
-more faithful but means restructuring the scoring path around the mask. Worth revisiting if the halo
-turns out to be visible in practice; not worth it up front.
+**So the masked and unmasked contributions have to stay separate through the resample** — score the
+mask boundary at canonical resolution, or build the two regions as separate planes before
+downsampling. This is not a tuning parameter; see the architectural note below.
 
-Either way, **the fixtures must include a mask edge deliberately not aligned to the score-plane
-grid**, since an axis-aligned fixture at a convenient scale would never exercise this at all.
+**The fixtures must include a mask edge deliberately not aligned to the score-plane grid**, since an
+axis-aligned fixture at a convenient scale would never exercise this at all.
+
+#### The acceptance comparison needs its own comparison path
+
+Two findings above point at the same conclusion, and it is worth stating outright rather than
+patching around: **acceptance cannot be implemented as a mask bolted onto the existing browser
+scorer.**
+
+- The straddling-footprint problem has no correct resolution at score-plane resolution, because the
+  downsample has already mixed accepted and unaccepted signal.
+- The canonical-plane resample itself is undefined across engines. `drawImage`'s smoothing is
+  implementation-dependent, and the offline engine will use some other image library — so the *same*
+  unchanged candidate bytes can produce different canonical pixels in the two engines and get
+  falsely invalidated as `candidate-changed`. Shared expected-value fixtures cannot fix this: they
+  pin the answer, not the resampler that produces it.
+
+Phase 3 therefore owns a **specified, portable comparison path** as a deliverable in its own right,
+with these requirements:
+
+1. **A named resampling algorithm** with defined kernel and rounding (e.g. box-filter at integer
+   ratios, explicit bilinear with specified edge handling otherwise), implemented identically in
+   both engines rather than delegated to whatever the host provides.
+2. **Defined pixel and colour semantics** — channel order, alpha handling, premultiplication, the
+   gray projection — since these differ between canvas and most image libraries.
+3. **Masked and unmasked regions kept separate through every resample**, so no averaged pixel ever
+   carries both.
+4. **Conformance fixtures that pin intermediate planes, not only final scores**, so a resampler
+   divergence fails as a resampler divergence instead of surfacing as an unexplained score drift
+   months later.
+
+This is a meaningful increase in Phase 3's cost, and it is load-bearing: without it, "the same
+acceptance semantics are used by design-parity and the preview server" — an explicit acceptance
+criterion of the epic — is not achievable, only approximated.
 
 This is deliberately more expensive than a threshold or an ignore rectangle, and that expense is the
 point: the epic's non-goals rule out anything that can hide an unrelated regression, and gates 3 and
@@ -497,15 +528,24 @@ So durability is a property to **test for, not assume**:
 
 | Ref shape | Durable? | Use as acceptance identity |
 | --- | --- | --- |
-| `r/tag:<tag>` | yes — a tag change moves the ref, which is detectable | **yes** |
+| `r/tag:<tag>`, whole path tag-anchored | yes — a tag change moves the ref, which is detectable | **yes** |
+| `r/role:Row[0]/tag:<tag>` | **no** — a positional *ancestor* segment retargets the whole path | **no** |
 | `r/role:<role>[n]` | no — the index is positional and silently retargets | **no** |
 | `r/role:<role>` (lone anchor) | no — gaining a sibling turns it into `[0]`/`[1]` | no, but fails *loudly* |
 | `r/node` | no — purely structural | no |
 
-**Persist an element selector only when it is a `tag:`-anchored ref or another producer-defined
-stable identity. Otherwise keep the drag rectangle** and accept the region geometrically, with no
+**Checking that a ref "is tag-anchored" is checking the wrong segment.** `SemanticsRefs` builds a
+`/`-joined path from the root and indexes *every* level whose siblings share an anchor, so a
+tag-anchored leaf can still sit inside a positional ancestor path. Reorder the repeated ancestors
+and `r/role:Row[0]/tag:item` resolves — successfully, to a different node, with a reused tag and
+plausibly the same bounds. The durable property is not "contains `tag:`" but **"the whole path is
+tag-anchored, and the tag is unique across the tree"**; resolution should then match on that tag
+identity rather than by walking the path.
+
+**Persist an element selector only when that holds** (or when the producer supplies its own stable
+identity). **Otherwise keep the drag rectangle** and accept the region geometrically, with no
 element gate. A geometric acceptance is weaker — it cannot tell "the glyph disappeared" from "the
-glyph is still wrong" — but it is honest about what it knows, whereas an indexed ref claims an
+glyph is still wrong" — but it is honest about what it knows, whereas a positional ref claims an
 identity it cannot keep. The non-indexed `r/role:` case is worth distinguishing in the
 implementation because its failure is the safe one: it stops resolving and reports `element-moved`
 rather than pointing somewhere new.
