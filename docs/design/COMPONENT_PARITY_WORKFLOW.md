@@ -31,7 +31,7 @@ machinery.
 | Design references | [`ServeDesignReferences.kt`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeDesignReferences.kt) | `compose-preview-references/v1` — one reference per exact preview id, canonical PNG, **optional `sha256`**, provider/revision provenance |
 | Focused comparison | `ServeWeb.referenceComparisonPage`, route `GET /{system}/compare/{previewId}?reference=<id>` | Reference / Diff / Actual triptych, opacity overlay, annotation layers |
 | Annotations | [`ServeAnnotations.kt`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeAnnotations.kt), [`ServeDesignAnnotations.kt`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeDesignAnnotations.kt) | Numbered boxes with `bounds` in each panel's own pixel space, `role`, structured `detail`. Reference side authored by the producer; render side derivable from the `compose/semantics` tree |
-| Scoring | [`format-compare.js`](../../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js) | SSIM over content-box-normalised, downscaled gray planes + a magenta delta map — **entirely in the visitor's browser** |
+| Scoring | [`format-compare.js`](../../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js) | `scorePlanes` — a **bidirectional edge-tolerant nearest-neighbour search** over content-box-normalised gray planes — plus a magenta delta map, **entirely in the visitor's browser** |
 | Parity dashboard | [`ServeParityDashboard.kt`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeParityDashboard.kt), route `/{system}/parity(.json)` | Coverage (live), drift correlation, merged activity feed, mapping gaps |
 | Published snapshot precedent | [`ServeParityActivity.kt`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeParityActivity.kt) + [`parity-activity.mjs`](../../scripts/design-artifacts/parity-activity.mjs) | The exact pattern the issue index should copy — see §3 |
 | Catalog refresh | [`ServeCatalogRefresher.kt`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeCatalogRefresher.kt) | Polls each `design-artifacts/<system>` branch head and re-fetches on **any** new commit |
@@ -47,11 +47,22 @@ difference. **Recommendation: do not invent a component page.** Put issues on th
 focused comparison, the grid cards, and the dashboard, which is what the epic's presentation section
 actually asks for once "component page" is read as "the page you are on when you see the problem".
 
-**2. Scoring is client-side, in a normalised space.** `format-compare.js` crops each side to its
-content box, redraws both into one shared box, and scores there. So a mask expressed in raw
-reference pixels is *not* directly usable — it has to ride through the same `normalisedBoxes`
-transform the score uses. This is the single largest implementation constraint and §4 designs around
-it.
+**2. Scoring is client-side, in a candidate-sized normalised space — and it is not SSIM.** Two
+details matter and both were easy to get wrong:
+
+- **The active scorer is `scorePlanes`**, a bidirectional nearest-neighbour search within
+  `EDGE_SEARCH_RADIUS = 5` px with a `LUMA_TOLERANCE = 16` floor, scored symmetrically in both
+  directions. `ssim` / `globalSsim` are still in the file but **have no callers**. Anything that
+  claims to reproduce the server's verdict — the mask algorithm, the cross-engine conformance
+  fixtures in §4 — has to reproduce *that* edge-search behaviour, not an SSIM window.
+- **There are already two planes, both keyed off the candidate.** The score runs on a plane capped
+  at `MAX_SIDE = 192` px on its longest side; the diff map and triptych run on the uncapped
+  candidate content box. Both take their dimensions from `boxes.candidate`, which moves with device
+  size, density and content — so neither is a stable place to *store* anything. At 192 px an
+  `EDGE_SEARCH_RADIUS` of 5 is also a very coarse neighbourhood for a glyph-sized region.
+
+This is the single largest implementation constraint, and it is why §4 gives acceptance its own
+canonical plane rather than reusing either of these.
 
 **3. The reference already carries a fingerprint.** `DesignReferenceRaster.sha256` is optional today
 and verified at ingestion when present. The epic's "require the reference fingerprint to match"
@@ -147,15 +158,44 @@ workflow **in the catalog repo** (`m3-catalog`), triggered on `issues:
 `parity/issues.json`, and commits **that one file** onto `design-artifacts/<system>`. Serving hosts
 pick it up on their next refresh tick with no render.
 
-Two consequences to design for:
+Two consequences to design for, both sharper than they first look:
 
-- The index is written by a *different* job than the one that writes the rest of the branch, so it
-  must never rewrite anything else, and the render pipeline must not clobber it. Simplest safe rule:
-  `design-artifacts-reusable.yml` **preserves** an existing `parity/issues.json` when re-publishing
-  rather than treating the bundle as authoritative for that path. Worth an explicit test.
-- One delivery branch can carry issues from several repositories (a catalog whose components are
-  implemented elsewhere). `repository` is per-issue in the schema, so this works, but the emitter
-  needs to be told which repos to scan rather than assuming `github.repository`.
+**The two publishers race, and the existing push helper resolves that race by discarding one side.**
+`design-artifacts-reusable.yml` publishes through
+[`push-branch.sh`](../../.github/actions/apply/lib/push-branch.sh), which computes `TREE=$(git
+write-tree)` **once, before** its retry loop, and on a non-fast-forward re-fetches the tip and
+re-parents *that same tree* onto it. It never merges files from the newly fetched parent. So
+"preserve an existing `parity/issues.json` when re-publishing" is not sufficient: the preservation
+would be a copy step that runs before the race is discovered, and an index committed during a render
+publish is dropped wholesale by the reparent — leaving badges stale until the next issue event
+happens to fire, which could be days.
+
+Three ways out, in increasing order of cost:
+
+1. **Re-run the preservation inside the retry loop** — on each fetch, read `parity/issues.json` out
+   of the fetched parent, restage it, and recompute the tree before `commit-tree`. Requires touching
+   `push-branch.sh` (shared with other publishers, so the change must be opt-in via an env var
+   naming the paths to carry forward).
+2. **Serialize the two publishers** with a shared GitHub Actions `concurrency` group per system, so
+   an index commit and a render publish never overlap. Cheapest, but couples two workflows in two
+   repos and turns a fast index update into something that can queue behind a 30-minute render.
+3. **Keep the index off the delivery branch entirely** — publish it as its own branch or release
+   asset that `ServeCatalogStore` fetches separately. Cleanest isolation, most new plumbing.
+
+**Recommended: (1)**, with the carried-forward path list explicit and unit-tested, because it fixes
+the race for any future file with the same "written by a different job" shape rather than only this
+one. This should be settled before Phase 1 step 3 ships, not after — the failure is silent and
+looks like "the index is just a bit behind".
+
+**Cross-repository triggers.** One delivery branch can carry issues from several repositories (a
+catalog whose components are implemented elsewhere). `repository` is per-issue in the schema, so the
+*format* handles it — but a workflow triggered only by `issues:` events in the catalog repo never
+wakes when someone closes or relabels an issue in one of the other scanned repos, so those rows go
+stale indefinitely. Telling the emitter which repos to scan is necessary and not sufficient. Every
+configured source repo needs either a `repository_dispatch` into the catalog repo from its own
+`issues:` workflow, or the whole thing needs a scheduled reconciliation pass as a backstop.
+**Recommended: both** — dispatch for latency, a daily cron for the repos nobody remembered to wire
+up. A reconciliation pass is cheap here precisely because regenerating the index costs no render.
 
 Both the serve host and the design-parity CI run read the same file. Neither ever calls the GitHub
 API at page-render time — same rule that keeps the host away from Figma.
@@ -172,16 +212,25 @@ Committed in the **source** repo, beside `design-map.json`:
       known-differences.json                       # compose-preview-known-differences/v1
       known-differences/
         m3-iconbutton-tonal-glyph/
-          mask.png                                 # binary mask, reference raster pixel space
-          accepted-candidate.png                   # the render crop that was accepted
+          mask.png                                 # binary mask, canonical (reference) plane
+          accepted-candidate.png                   # the accepted crop, same plane
 
 Each acceptance record carries: a stable `id`; a **mandatory** `issue` URL; the locator scope
 (`system` / `component` / `previewId` / `referenceId` / `variant`); an optional `element` selector
-(annotation `role` / `testTag`, when the region came from an annotated element rather than a drag);
-`mask` and `acceptedCandidate` paths; `referenceSha256`; `acceptedCandidateSha256`; an optional
-structured `finding` matcher (e.g. `{ kind: "color", token: "onSecondaryContainer", expected: …,
-actual: … }`) for the checks design-parity runs that are not pixel comparisons; and free-text
-`note` + `acceptedAt`.
+(see the annotation-contract prerequisite in §5, when the region came from an annotated element
+rather than a drag); `mask` and `acceptedCandidate` paths; **three** hashes — `referenceSha256`,
+`acceptedCandidateSha256` **and `maskSha256`**; an optional structured `finding` matcher (e.g.
+`{ kind: "color", token: "onSecondaryContainer", expected: …, actual: … }`) for the checks
+design-parity runs that are not pixel comparisons; and free-text `note` + `acceptedAt`.
+
+**The mask must be hashed, not just referenced by path.** The mask is the thing that decides *what
+gets suppressed*, so an edited or swapped `mask.png` with an unchanged JSON record silently widens
+the accepted region — hiding regressions the record still claims are in scope, with no invalidation
+anywhere. That is a direct breach of the safety requirement the whole model exists for, and it is
+the one tampering path the other two hashes do not cover. A mask whose bytes don't match its
+`maskSha256` is a **hard validation failure** (the acceptance is refused outright and reported),
+not an invalidation that degrades to "compare normally" — a mask we cannot trust is a broken
+artifact, not a stale one.
 
 The schema is defined **here**, in this repo, because `serve` is a consumer and this is where the
 other wire contracts (`compose-preview-references/v1`, `compose-preview-annotations/v1`,
@@ -191,20 +240,34 @@ sequenced as such (§6).
 
 ### Coordinate space — the real problem
 
-The mask has to be authored somewhere stable and applied somewhere normalised.
+The mask has to be authored somewhere stable, and the accepted pixels have to be *stored* somewhere
+stable. Neither of the planes `format-compare.js` already builds qualifies, because both are sized
+from `boxes.candidate` (finding 2 in §1): the same component re-rendered at a different device size
+or density produces a different plane, so a stored crop would mismatch on dimensions alone and every
+acceptance would false-invalidate as `candidate-changed` — or would need a resample whose resampling
+error immediately swamps the tight per-pixel tolerance §7 calls for.
 
-- **Author in reference-raster pixel space.** The reference is a published PNG with fixed
-  dimensions, a `sha256`, and annotation bounds already expressed in that space. The render's pixel
-  space is not stable — it moves with device size, density, font scale and any override in force.
-- **Apply after normalisation.** `normalisedBoxes(referenceImage, candidateImage)` already computes
-  each side's content box and the shared output box. The mask goes through the *reference* side of
-  that same transform, giving mask coverage in the shared space that both the score and the delta
-  map live in. No new geometry, and the mask automatically follows a reference re-exported at a
-  different scale.
-- **`accepted-candidate.png` is stored in the shared normalised space**, cropped to the mask's
-  bounding box. Storing it in raw render pixels would make it invalid the moment anyone changes a
-  device size, which is precisely the kind of silent staleness the acceptance model exists to catch
-  *deliberately*, not accidentally.
+So acceptance gets **its own canonical plane, defined by the reference**:
+
+- **The canonical plane is the reference's content box, at the reference raster's own resolution.**
+  The reference is a published PNG with fixed dimensions and a `sha256` that the acceptance already
+  pins, so this plane is byte-stable by construction — it cannot move unless the reference changes,
+  and a changed reference is already gate 1. Annotation bounds are in this space too.
+- **`mask.png` is authored in it directly.** No transform, no scale factor to get wrong.
+- **`accepted-candidate.png` is stored in it**, cropped to the mask's bounding box. Evaluating an
+  acceptance therefore means resampling the *current* candidate's content box into the canonical
+  plane — one resample of the live frame, against a stored crop that never moves — rather than
+  storing a crop in a plane that moves under it.
+- **Suppression is then mapped into whichever plane is being reported.** The canonical plane, the
+  score plane and the diff plane are all content-box crops related by an affine scale, so the mask's
+  coverage maps into each with the same arithmetic `boxCanvas` already does. Do the *comparison* at
+  canonical resolution and the *reporting* wherever the surface lives; do not do the comparison at
+  the 192 px score plane, where a glyph is a handful of pixels and a 5 px edge search covers most of
+  it.
+
+This costs one extra resample per acceptance per comparison, on a page that is already decoding two
+PNGs and walking them pixel by pixel. That is the right trade for making "did this exact accepted
+region change?" a question with a stable answer.
 
 ### Evaluation order (the safety requirements, as an algorithm)
 
@@ -250,6 +313,11 @@ things depending on which tool you asked. Options considered:
 `ServeParityActivityStore` (one committed fixture, two languages, both tests load it), it is cheap,
 and it fails loudly.
 
+The fixtures have to pin the **active** scorer's behaviour, not a textbook one: `scorePlanes`'
+bidirectional search at `EDGE_SEARCH_RADIUS = 5`, its `LUMA_TOLERANCE = 16` floor, and the
+`MAX_SIDE = 192` cap on the score plane are all load-bearing to the number that comes out. A fixture
+suite written against SSIM windows would pass in both engines and describe neither.
+
 ---
 
 ## 5. Element selection on the focused comparison
@@ -259,13 +327,33 @@ as numbered boxes. Element selection is therefore: make an annotation box clicka
 selection become the reported region. Manual drag-rectangle is the fallback for the common catalog
 that publishes no annotations.
 
-One nuance found while reading the handler: `handleReferenceComparison` sources the *actual* layer
-from `annotationsForPreview` — the **producer-authored** `annotations/index.json`, not the
-semantics-derived layer `ServeDesignAnnotations` builds for the viewer's inspection overlays. So on
-most catalogs the render side of this page has no annotations to click. Feeding the semantics-derived
-layer into this page (as the viewer already does) is a small, independently useful change and should
-land **before** element selection, or the feature ships with nothing to select on the side that
-matters most.
+Two prerequisites came out of reading the handler and the annotation model, and **both** have to
+land before element selection can back an acceptance.
+
+**The render side of this page has nothing to click.** `handleReferenceComparison` sources the
+*actual* layer from `annotationsForPreview` — the **producer-authored** `annotations/index.json` —
+not the semantics-derived layer `ServeDesignAnnotations` builds for the viewer's inspection
+overlays. So on most catalogs the render column carries no annotations at all. Feeding the
+semantics-derived layer into this page (as the viewer already does) is small and independently
+useful.
+
+**`DesignAnnotation` cannot express a stable element identity.** There is no `testTag` field on the
+type at all, and the projection throws the tag away: `themeAnnotation` collapses
+`node.role ?: node.testTag ?: node.textSnippet()` into a single `role` string, and
+`typographyAnnotation` sets `role` from `textSnippet()` alone, dropping the tag entirely. So an
+`element` selector keyed on "role / testTag" is not a selector — a node carrying a common role
+(`Button`) and a unique `testTag` loses the only part that identified it, and the gate-4 element
+check would either resolve the wrong one of several repeated roles or fail to resolve at all. Both
+outcomes are worse than no element check: one silently moves an acceptance onto a different element,
+the other permanently reports `element-moved`.
+
+The fix is a **distinct, additive selector field on the annotation contract** — carry `testTag` (and
+the semantics `ref` that `SemanticsRefs` already assigns as a stable, content-independent node
+handle) as their own fields rather than folding them into the display `role`. `role` stays what it
+is: a human-facing label for the legend. Selection prefers `ref`, then `testTag`, then falls back to
+the drag rectangle — never to `role`, which is a label and not an identity. This is a
+`compose-preview-annotations/v1` addition and should be sequenced with the semantics-layer wiring
+above, in Phase 2 step 5.
 
 Reporting an issue from a selection must **not** accept the difference. Filing and accepting are
 separate, deliberate acts by separate artifacts — one is a GitHub issue the visitor's own browser
@@ -281,8 +369,20 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
 
 1. **Locator contract + richer issue body.** Extend `ServeIssueReport.Context` with `componentId`,
    `referenceId`, variant axes, active overrides, comparison URL and raw scores; emit the
-   `compose-parity-locator/v1` block alongside the existing prose table. Pure Kotlin + tests, no new
-   files on the wire. *Smallest useful PR; everything else keys off it.*
+   `compose-parity-locator/v1` block alongside the existing prose table. No new files on the wire —
+   but **not pure Kotlin**, see below. *Smallest useful PR; everything else keys off it.*
+
+   The server fills the form's hidden `body` for the settings the page was **served** at, and
+   `viewer.js`'s `refreshReportLink()` then rewrites exactly one thing: it swaps `{{render}}` for
+   the live `/render` URL. Every other character of the body stays the initial server template. So
+   a locator built entirely server-side would record the *default* variant while the embedded
+   screenshot shows whatever the reporter had dialled in — the index would key the issue to one
+   identity and the pixels would show another, and the acceptance lookup in Phase 3 would then miss.
+   The override-dependent fields (variant, active overrides, comparison URL, raw score — the score
+   is only ever known client-side anyway) need their own placeholders that `refreshReportLink()`
+   substitutes from live viewer state, on the same "write an input value, never an href" rule the
+   existing substitution already follows. The JS-off path keeps the server-rendered defaults, which
+   are correct for a page nobody has touched.
 2. **`compose-preview-issues/v1` + reader + staging.** `ServeParityIssues.kt`, `ServeCatalogStore`
    staging, fixture-backed tests. Serves nothing yet.
 3. **Producer + regeneration workflow.** `parity-issues.mjs` / `emit-parity-issues.mjs` here; the
@@ -323,9 +423,17 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
   selection as an acceptance stub" from the focused comparison is the obvious follow-up, and worth
   deciding on before Phase 3 rather than after.
 - **Tolerance is a threshold, and the epic is against thresholds.** Step 3 of §4 needs *some*
-  tolerance for the candidate-vs-accepted-candidate comparison (PNG re-encoding, resampling). It
-  should be tight, fixed, and per-pixel rather than aggregate — an aggregate tolerance is exactly the
-  global threshold the non-goals rule out.
+  tolerance for the candidate-vs-accepted-candidate comparison (PNG re-encoding, and the one
+  resample of the live candidate into the canonical plane). It should be tight, fixed, and
+  **per-pixel rather than aggregate** — an aggregate tolerance is exactly the global threshold the
+  non-goals rule out. Pinning the canonical plane to the reference (§4) is what keeps that resample
+  to a single, well-defined step instead of a moving target; if the tolerance still has to be loose
+  enough to be uncomfortable, that is the signal to store the accepted candidate losslessly at
+  canonical resolution rather than to widen it.
+- **Fixing the publish race means touching a shared helper.** `push-branch.sh` is used by other
+  publishers, so the carry-forward behaviour in §3 has to be opt-in (an env var naming the paths)
+  and covered by its own test. A change that silently altered how every publisher resolves a race
+  would be a much worse bug than the one it fixes.
 - **Cross-repo schema ownership.** Defining the known-difference schema here and consuming it in
   `design-parity` means a version bump is a two-repo change. The conformance fixtures are the
   mitigation; a `v1`-frozen-then-`v2` discipline (as with the other wire formats) is the other.
