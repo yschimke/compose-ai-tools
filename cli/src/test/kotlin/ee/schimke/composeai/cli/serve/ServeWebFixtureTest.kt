@@ -1297,6 +1297,21 @@ class ServeWebFixtureTest {
                   "unit" to "sp",
                 ),
             ),
+            DesignAnnotation(
+              kind = AnnotationKind.TYPOGRAPHY,
+              bounds = AnnotationBounds(x = 46, y = 90, width = 128, height = 20),
+              label = "bodyMedium 14sp/20 wght 700",
+              role = "Emphasized label",
+              detail =
+                mapOf(
+                  "token" to "bodyMedium",
+                  "fontFamily" to "Roboto-Medium",
+                  "fontSize" to "14",
+                  "fontWeight" to "700",
+                  "lineHeight" to "20",
+                  "unit" to "sp",
+                ),
+            ),
           ),
       )
     // The same themed catalog served LIVE by a session whose app declares `@ThemeCatalog` themes:

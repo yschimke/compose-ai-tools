@@ -610,8 +610,9 @@
    * scale used by design-parity's structural layout diff; aligning the two largest layout boxes
    * also removes a preview scaffold/crop offset. Role/label similarity breaks geometric ties.
    *
-   * The result contains min(reference, actual) items for every kind present on both sides. An
-   * annotation kind captured on only one side is retained as a useful inspection-only layer.
+   * Layout output contains min(reference, actual) items when both sides are present. Extra
+   * typography usages are retained because style grouping needs them to expose local token
+   * variants; an annotation kind captured on only one side is also retained for inspection.
    */
   function matchAnnotationItems(reference, actual) {
     reference = Array.isArray(reference) ? reference.filter(annotationHasBounds) : [];
@@ -662,9 +663,13 @@
             best = refIndex;
           }
         });
-        // Once the design inventory is exhausted, extra render nodes have no design element to
-        // compare with. Deliberately omit them rather than restarting/reusing ordinal numbers.
-        if (best < 0) return;
+        // Once the design inventory is exhausted, extra layout nodes have no design element to
+        // compare with. Typography is different: its style summary must retain extra usages so a
+        // token override (for example bodyLarge with a different weight) remains visible.
+        if (best < 0) {
+          if (kind === "typography") actualOnly.push(cand);
+          return;
+        }
         used[best] = true;
         pairs.push({ reference: refs[best], actual: cand });
       });
