@@ -1137,6 +1137,7 @@ object PreviewDiscovery {
       reference = annStringOrNull(component, "reference"),
       referenceSet = annStringOrNull(component, "referenceSet"),
       noReference = annStringOrNull(component, "noReference"),
+      referenceContentsOnly = annBoolean(component, "referenceContentsOnly", default = true),
       parallel = annStringOrNull(component, "parallel"),
       perBreakpoint = annBoolean(component, "perBreakpoint"),
     )
@@ -1148,9 +1149,9 @@ object PreviewDiscovery {
     return raw?.takeIf { it.isNotBlank() }
   }
 
-  /** Reads a `Boolean` annotation parameter, defaulting to false when absent or not a boolean. */
-  private fun annBoolean(ann: AnnotationInfo, param: String): Boolean =
-    runCatching { ann.parameterValues.getValue(param) as? Boolean }.getOrNull() ?: false
+  /** Reads a `Boolean` annotation parameter, using [default] when absent or not a boolean. */
+  private fun annBoolean(ann: AnnotationInfo, param: String, default: Boolean = false): Boolean =
+    runCatching { ann.parameterValues.getValue(param) as? Boolean }.getOrNull() ?: default
 
   /** Reads a `String[]` annotation parameter (ClassGraph yields an `Object[]`) as a list. */
   private fun annStringArray(ann: AnnotationInfo, param: String): List<String> {

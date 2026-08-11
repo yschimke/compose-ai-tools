@@ -858,6 +858,7 @@ class DiscoveryFunctionalTest {
           val perBreakpoint: Boolean = false,
           val referenceSet: String = "",
           val noReference: String = "",
+          val referenceContentsOnly: Boolean = true,
         )
 
         @Retention(AnnotationRetention.BINARY)
@@ -895,6 +896,7 @@ class DiscoveryFunctionalTest {
           caption = "Highest emphasis; the primary action.",
           reference = "figma:AbCdEf/10:5",
           referenceSet = "figma:AbCdEf/10:1",
+          referenceContentsOnly = false,
           parallel = "FilledButton",
         )
         @Preview @Composable fun FilledButton() {}
@@ -965,6 +967,7 @@ class DiscoveryFunctionalTest {
     // against, `referenceSet` the family a screen's sibling variant matches through.
     assertThat(filled.reference).isEqualTo("figma:AbCdEf/10:5")
     assertThat(filled.referenceSet).isEqualTo("figma:AbCdEf/10:1")
+    assertThat(filled.referenceContentsOnly).isFalse()
 
     // Variant: parent id on componentId, state + parsed `key=value` prop, own caption.
     val pressed = byFn.getValue("FilledButtonPressed").catalog
@@ -983,6 +986,7 @@ class DiscoveryFunctionalTest {
     assertThat(plain.parallel).isNull()
     assertThat(plain.reference).isNull()
     assertThat(plain.referenceSet).isNull()
+    assertThat(plain.referenceContentsOnly).isTrue()
     // Said nothing either way, so `noReference` is silent too. This is the "nobody has looked yet"
     // case the stated-absence assertion below has to stay distinguishable from.
     assertThat(plain.noReference).isNull()

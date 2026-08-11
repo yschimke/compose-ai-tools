@@ -47,12 +47,14 @@ export class FigmaRestRasterizer {
     sleep = (millis) => new Promise((resolve) => setTimeout(resolve, millis)),
     batchSize = 50,
     maxAttempts = 5,
+    contentsOnly = true,
   }) {
     this.token = token;
     this.fetchImpl = fetchImpl;
     this.sleep = sleep;
     this.batchSize = batchSize;
     this.maxAttempts = maxAttempts;
+    this.contentsOnly = contentsOnly;
     this.nodes = new Map();
     this.imageUrls = new Map();
     this.rasters = new Map();
@@ -157,7 +159,8 @@ export class FigmaRestRasterizer {
         try {
           const url =
             `https://api.figma.com/v1/images/${encodeURIComponent(fileKey)}` +
-            `?ids=${encodeURIComponent(batch.join(","))}&format=png&scale=${scale}`;
+            `?ids=${encodeURIComponent(batch.join(","))}&format=png&scale=${scale}` +
+            `&contents_only=${this.contentsOnly}`;
           const response = await this.fetchWithRetry(url, { headers: this.headers() }, "figma images");
           const json = await response.json();
           for (const nodeId of batch) {

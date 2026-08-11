@@ -28,6 +28,9 @@ package ee.schimke.composeai.preview
  *   absence is a finding rather than a gap — the kit retired the pattern, never published it, or
  *   publishes something close enough to mislead. An empty [reference] otherwise means only "nobody
  *   has looked yet", and a consumer cannot tell the two apart.
+ * * [referenceContentsOnly] defaults to true. Set it to false only when the referenced Figma node
+ *   intentionally relies on overlapping sheet content, such as an authored backdrop. Keeping this
+ *   next to [reference] avoids changing unrelated previews on the same component sheet.
  *
  * ```kotlin
  * @file:CatalogGroup("Buttons")
@@ -111,6 +114,7 @@ annotation class CatalogComponent(
   // Declaration order is source API here; the grouping is documented above instead.
   val referenceSet: String = "",
   val noReference: String = "",
+  val referenceContentsOnly: Boolean = true,
 )
 
 /**

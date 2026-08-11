@@ -162,6 +162,13 @@ on:
         required: false
         type: string
         default: ''
+      figma-contents-only:
+        description: >
+          Whether published Figma references include only the mapped node. Set false to include
+          overlapping layers, such as a component-sheet background. Defaults true, matching Figma.
+        required: false
+        type: boolean
+        default: true
       fold-artifact:
         description: 'Name of an artifact (uploaded by a prior caller job) holding a pre-built render bundle to fold in as its own top-level section AFTER generate — e.g. a re-themed sibling catalog. Empty ⇒ no fold-in. Requires fold-bundle, fold-spec, fold-section.'
         required: false
@@ -1066,6 +1073,7 @@ jobs:
           # with no Figma references) those entries are skipped with a warning and
           # the rest of the manifest still publishes.
           FIGMA_TOKEN: ${{ secrets.figma_token }}
+          FIGMA_CONTENTS_ONLY: ${{ inputs.figma-contents-only }}
         run: |
           set -euo pipefail
           if [ ! -f "design-map.json" ]; then
@@ -1087,7 +1095,8 @@ jobs:
           node compose-ai-tools/scripts/design-artifacts/emit-design-references.mjs \
             --out "$GITHUB_WORKSPACE/out" \
             --repo "$GITHUB_WORKSPACE" \
-            --spec "${{ inputs.spec }}"
+            --spec "${{ inputs.spec }}" \
+            --figma-contents-only "$FIGMA_CONTENTS_ONLY"
 
       # The design-parity dashboard's feed (`parity/activity.json`) — recent
       # commits, recent Figma versions/comments, and the mapping gaps behind

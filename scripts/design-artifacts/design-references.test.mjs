@@ -396,6 +396,22 @@ test("planDesignReferences carries a declared board density to the driver", () =
   assert.equal(records[1].origin.density, undefined);
 });
 
+test("planDesignReferences carries a per-reference contents-only override to the driver", () => {
+  const designMap = {
+    components: [
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatPreview",
+        source: "figma",
+        ref: "figma:abc/73:5",
+        referenceContentsOnly: false,
+      },
+    ],
+  };
+
+  const { records } = planDesignReferences({ designMap, spec: SPEC, catalog: CATALOG });
+  assert.equal(records[0].origin.referenceContentsOnly, false);
+});
+
 test("planDesignReferences carries an image renderer density to the raster target", () => {
   const catalog = structuredClone(CATALOG);
   catalog.components[0].images[0].density = 3;
