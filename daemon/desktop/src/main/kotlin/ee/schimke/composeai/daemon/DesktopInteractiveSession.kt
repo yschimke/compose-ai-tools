@@ -38,8 +38,9 @@ import java.util.concurrent.TimeUnit
  *
  * **Pixel coords.** `interactive/input` carries image-natural pixel coords (the same pixel space
  * the renderer renders to — see `INTERACTIVE.md § 6/§ 7`). `ImageComposeScene.sendPointerEvent`
- * takes scene-px which equals natural pixels at density 1.0; we divide by the held density before
- * dispatch. Null coords (e.g. for keyboard events, which we no-op anyway) skip the dispatch.
+ * also takes physical scene pixels; density only controls dp-to-pixel layout inside the scene and
+ * must not be applied to pointer coordinates a second time. Null coords (e.g. for keyboard events,
+ * which we no-op anyway) skip the dispatch.
  *
  * **Shared with the recording lane.** Pointer and key translation live in `DesktopSceneInput.kt`
  * ([ScenePointerDispatch] / [SceneKeyDispatch]) and are used verbatim by [DesktopRecordingSession],
@@ -301,13 +302,10 @@ class DesktopInteractiveSession(
   }
 
   /**
-   * Convert image-natural pixel coords (what `interactive/input` carries on the wire) to
-   * scene-space [androidx.compose.ui.geometry.Offset] for `sendPointerEvent`. The scene's density
-   * scales between the two coordinate systems.
+   * Image-natural pixels and `ImageComposeScene` pointer positions share one physical-pixel space.
    */
   private fun sceneOffset(px: Int, py: Int): androidx.compose.ui.geometry.Offset {
-    val d = state.density.density
-    return androidx.compose.ui.geometry.Offset(px.toFloat() / d, py.toFloat() / d)
+    return androidx.compose.ui.geometry.Offset(px.toFloat(), py.toFloat())
   }
 
   /** For tests that want to peek at the held scene's identity without exposing it permanently. */

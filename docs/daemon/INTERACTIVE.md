@@ -108,7 +108,9 @@ on-screen card untouched.
 
 The webview reports image-natural pixel coordinates. It reads
 `naturalWidth`/`naturalHeight` and scales `offsetX`/`offsetY` by their
-displayed-vs-natural ratio.
+displayed-vs-natural ratio. Those values are physical scene pixels: Desktop
+passes them directly to `ImageComposeScene.sendPointerEvent`. Preview density
+already shaped the scene's dp-to-pixel layout and must not scale input again.
 
 ## 7. Click capture
 

@@ -1095,8 +1095,10 @@ class DesktopRecordingSession(
   }
 
   private fun sceneOffset(px: Int, py: Int): androidx.compose.ui.geometry.Offset {
-    val d = state.density.density
-    return androidx.compose.ui.geometry.Offset(px.toFloat() / d, py.toFloat() / d)
+    // Recording scripts use the same image-natural pixel contract as interactive/input.
+    // ImageComposeScene pointer positions are already physical pixels; density only scales dp
+    // during layout, so applying it here again shifts every non-1x input toward the top-left.
+    return androidx.compose.ui.geometry.Offset(px.toFloat(), py.toFloat())
   }
 }
 
