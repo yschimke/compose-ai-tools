@@ -176,6 +176,13 @@ export class WebRemoteContext extends RemoteContext {
         this.canvasPaintContext.loadBitmap(imageId, encoding, type, width, height, bitmap);
     }
 
+    // --- Font ---
+
+    override loadFont(fontId: number, fontData: Uint8Array): void {
+        super.loadFont(fontId, fontData);
+        this.canvasPaintContext.loadFont(fontId, fontData);
+    }
+
     // --- Text ---
 
     loadText(id: number, text: string): void {

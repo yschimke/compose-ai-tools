@@ -6,8 +6,9 @@ import { isNaNBits, idFromBits, floatToRawIntBits } from '../core/operations/Uti
 import { transpileAgslToGlsl } from '../core/shader/AgslTranspiler';
 import { WebGLShaderRenderer } from './shader/WebGLShaderRenderer';
 import { RemoteComposeState } from '../core/RemoteComposeState';
-import { ensureWebFont, parseFamily, cssQuoted } from './WebFonts';
+import { ensureWebFont, parseFamily, cssQuoted, registerEmbeddedFont } from './WebFonts';
 import type { ShaderData } from '../core/operations/ShaderData';
+import type { RemoteContext } from '../core/RemoteContext';
 
 /** One font-variation axis of the current paint: an OpenType tag and the value asked for. */
 interface FontAxis {
@@ -241,6 +242,20 @@ export class CanvasPaintContext extends PaintContext {
 
     getText(id: number): string | null { return this.textCache.get(id) ?? null; }
 
+    /** Embedded FontData families, keyed by the same document id used by TYPEFACE/CoreText. */
+    private embeddedFontFamilies = new Map<number, { data: Uint8Array; family: string }>();
+
+    loadFont(fontId: number, data: Uint8Array): void {
+        // FontData is applied in both the data and paint passes. Avoid hashing a potentially large
+        // font file again on every frame; a changed operation carries a different byte-array view.
+        const current = this.embeddedFontFamilies.get(fontId);
+        if (current?.data === data) return;
+        this.embeddedFontFamilies.set(fontId, {
+            data,
+            family: registerEmbeddedFont(fontId, data, this.onFontLoaded ?? undefined),
+        });
+    }
+
     // --- Typeface resolution ---
 
     /**
@@ -267,6 +282,11 @@ export class CanvasPaintContext extends PaintContext {
      */
     private fontStackForTypeface(fontType: number): string {
         if (fontType < RemoteComposeState.START_ID) return cssFontStackFor(fontType);
+        const embedded = this.embeddedFontFamilies.get(fontType);
+        if (embedded) {
+            this.googleFamily = null;
+            return namedFontStack(embedded.family);
+        }
         const family = this.getText(fontType);
         // A named family whose text id resolves to nothing means the document referenced a string it
         // never loaded; treat it as unstyled rather than painting a stack named "null".

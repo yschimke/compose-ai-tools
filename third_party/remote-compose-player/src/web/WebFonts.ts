@@ -1,12 +1,13 @@
-// WebFonts: on-demand registration of *named* font families, served from Google Fonts.
+// WebFonts: browser registration of named and document-embedded font families.
 //
-// A Remote Compose document names its typeface in one of two ways. The four generic ids
+// A Remote Compose document names its typeface in three ways. The four generic ids
 // (`0=DEFAULT, 1=SANS_SERIF, 2=SERIF, 3=MONOSPACE`) are a closed set that `cssFontStackFor` maps to
 // the concrete faces Android resolves them to. Anything else — `RemoteFontFamily.Named("Orbitron")`
 // — reaches the paint layer as the document's *text id* for the family name, not as a name, because
 // `CoreText.updateVariables` falls through to `mType = mFontFamilyId` for a family it doesn't
 // recognise. Resolving that id back through the text table is what turns it into a family a browser
-// can be asked for; this module is what makes the ask resolvable, by registering the face.
+// can be asked for. A FontData operation can attach bytes to that same id instead; this module
+// registers both sources and gives an embedded face a collision-resistant private CSS family.
 //
 // Fetching from Google Fonts (rather than vendoring) is the only approach that generalises: a
 // document may name *any* family, and the set isn't known until the document is read. The faces
@@ -149,6 +150,9 @@ const stylesheets = new Map<string, Promise<void>>();
  * six weights the family publishes.
  */
 const variants = new Map<string, Promise<void>>();
+
+/** FontFace objects created from inline FontData, retained for reset and document-font matching. */
+const embeddedFaces = new Map<string, FontFace>();
 
 /** Variants that have finished, so a settled one is never re-announced. See [notify]. */
 const done = new Set<string>();
@@ -388,6 +392,57 @@ export function ensureWebFont(
     return p;
 }
 
+/** Stable, CSS-safe family alias for an embedded face. */
+function embeddedFamily(fontId: number, data: Uint8Array): string {
+    // Font ids are document-local and commonly start at 42, so the bytes must participate in the
+    // alias: two players on one page can otherwise register different faces under the same family.
+    let hash = 0x811C9DC5;
+    for (const byte of data) {
+        hash ^= byte;
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return `__rc_font_${fontId}_${data.length}_${(hash >>> 0).toString(16)}`;
+}
+
+/**
+ * Register FontData bytes with the browser and return the family name canvas can use immediately.
+ *
+ * The load joins [webFontsReady], just like a downloadable named face. Interactive players receive
+ * [onLoaded] once and repaint; single-shot renderers await the same promise before keeping a frame.
+ */
+export function registerEmbeddedFont(
+    fontId: number,
+    data: Uint8Array,
+    onLoaded?: () => void,
+): string {
+    const family = embeddedFamily(fontId, data);
+    const key = `embedded|${family}`;
+    if (onLoaded && !done.has(key)) {
+        const set = waiting.get(key) ?? new Set<() => void>();
+        set.add(onLoaded);
+        waiting.set(key, set);
+    }
+    if (variants.has(key)) return family;
+
+    let load: Promise<void>;
+    if (typeof document === 'undefined' || !document.fonts || typeof FontFace === 'undefined') {
+        // node-canvas has no FontFaceSet. Keep the alias/fallback behaviour deterministic there.
+        load = Promise.resolve();
+    } else {
+        // Copy the exact view: a WireBuffer may be backed by a larger allocation than this font.
+        const bytes = data.slice().buffer;
+        const face = new FontFace(family, bytes);
+        embeddedFaces.set(key, face);
+        document.fonts.add(face);
+        load = face.load().then(() => undefined).catch((e) => {
+            console.warn(`WebFonts: embedded font ${fontId} could not be loaded`, e);
+        });
+    }
+    const promise = load.then(() => notify(key));
+    variants.set(key, promise);
+    return family;
+}
+
 /**
  * Resolves when every family requested so far has settled.
  *
@@ -408,6 +463,10 @@ export async function webFontsReady(): Promise<void> {
 
 /** Drop all registration state. Tests only. */
 export function resetWebFonts(): void {
+    if (typeof document !== 'undefined' && document.fonts) {
+        embeddedFaces.forEach((face) => document.fonts.delete(face));
+    }
+    embeddedFaces.clear();
     stylesheets.clear();
     axisSpans.clear();
     variants.clear();

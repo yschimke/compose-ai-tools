@@ -34,6 +34,7 @@ var RC = (() => {
     googleFontsUrl: () => googleFontsUrl,
     namedFontStack: () => namedFontStack,
     parseFamily: () => parseFamily,
+    registerEmbeddedFont: () => registerEmbeddedFont,
     resetWebFonts: () => resetWebFonts,
     webFontsReady: () => webFontsReady
   });
@@ -15666,6 +15667,32 @@ ${inner}`;
   _Custom.OP_CODE = 93;
   var Custom = _Custom;
 
+  // src/core/operations/FontData.ts
+  var _FontData = class _FontData extends Operation {
+    constructor(mFontId, mType, mFontData) {
+      super();
+      this.mFontId = mFontId;
+      this.mType = mType;
+      this.mFontData = mFontData;
+    }
+    write(_buffer) {
+    }
+    apply(context) {
+      context.loadFont(this.mFontId, this.mFontData);
+    }
+    deepToString(indent) {
+      return `${indent}FontData(${this.mFontId}, ${this.mFontData.length} bytes)`;
+    }
+    static read(buffer, operations) {
+      const fontId = buffer.readId();
+      const type = buffer.readInt();
+      const fontData = buffer.readBuffer();
+      operations.push(new _FontData(fontId, type, fontData));
+    }
+  };
+  _FontData.OP_CODE = 189;
+  var FontData = _FontData;
+
   // src/core/Operations.ts
   var _Operations = class _Operations {
     static init() {
@@ -15701,6 +15728,7 @@ ${inner}`;
       m.set(ClipPath.OP_CODE, ClipPath.read);
       m.set(TextData.OP_CODE, TextData.read);
       m.set(BitmapData.OP_CODE, BitmapData.read);
+      m.set(FontData.OP_CODE, FontData.read);
       m.set(PaintData.OP_CODE, PaintData.read);
       m.set(PathData.OP_CODE, PathData.read);
       m.set(FloatConstant.OP_CODE, FloatConstant.read);
@@ -17769,6 +17797,7 @@ void main() {
   }
   var stylesheets = /* @__PURE__ */ new Map();
   var variants = /* @__PURE__ */ new Map();
+  var embeddedFaces = /* @__PURE__ */ new Map();
   var done = /* @__PURE__ */ new Set();
   var waiting = /* @__PURE__ */ new Map();
   function variantKey(family, weight, italic, axes = []) {
@@ -17877,6 +17906,39 @@ void main() {
     variants.set(key, p);
     return p;
   }
+  function embeddedFamily(fontId, data) {
+    let hash = 2166136261;
+    for (const byte of data) {
+      hash ^= byte;
+      hash = Math.imul(hash, 16777619);
+    }
+    return `__rc_font_${fontId}_${data.length}_${(hash >>> 0).toString(16)}`;
+  }
+  function registerEmbeddedFont(fontId, data, onLoaded) {
+    const family = embeddedFamily(fontId, data);
+    const key = `embedded|${family}`;
+    if (onLoaded && !done.has(key)) {
+      const set = waiting.get(key) ?? /* @__PURE__ */ new Set();
+      set.add(onLoaded);
+      waiting.set(key, set);
+    }
+    if (variants.has(key)) return family;
+    let load;
+    if (typeof document === "undefined" || !document.fonts || typeof FontFace === "undefined") {
+      load = Promise.resolve();
+    } else {
+      const bytes = data.slice().buffer;
+      const face = new FontFace(family, bytes);
+      embeddedFaces.set(key, face);
+      document.fonts.add(face);
+      load = face.load().then(() => void 0).catch((e) => {
+        console.warn(`WebFonts: embedded font ${fontId} could not be loaded`, e);
+      });
+    }
+    const promise = load.then(() => notify(key));
+    variants.set(key, promise);
+    return family;
+  }
   async function webFontsReady() {
     let pending = [...variants.values()];
     while (pending.length > 0) {
@@ -17887,6 +17949,10 @@ void main() {
     }
   }
   function resetWebFonts() {
+    if (typeof document !== "undefined" && document.fonts) {
+      embeddedFaces.forEach((face) => document.fonts.delete(face));
+    }
+    embeddedFaces.clear();
     stylesheets.clear();
     axisSpans.clear();
     variants.clear();
@@ -18012,6 +18078,8 @@ void main() {
         }
         throw new Error("No canvas factory available for graphics layers");
       };
+      /** Embedded FontData families, keyed by the same document id used by TYPEFACE/CoreText. */
+      this.embeddedFontFamilies = /* @__PURE__ */ new Map();
       // --- Typeface resolution ---
       /**
        * Called when a named family finishes loading, so a player that already painted a frame in the
@@ -18043,6 +18111,14 @@ void main() {
     getText(id) {
       return this.textCache.get(id) ?? null;
     }
+    loadFont(fontId, data) {
+      const current = this.embeddedFontFamilies.get(fontId);
+      if (current?.data === data) return;
+      this.embeddedFontFamilies.set(fontId, {
+        data,
+        family: registerEmbeddedFont(fontId, data, this.onFontLoaded ?? void 0)
+      });
+    }
     /**
      * CSS stack for a `PaintBundle.TYPEFACE` operand.
      *
@@ -18060,6 +18136,11 @@ void main() {
      */
     fontStackForTypeface(fontType) {
       if (fontType < RemoteComposeState.START_ID) return cssFontStackFor(fontType);
+      const embedded = this.embeddedFontFamilies.get(fontType);
+      if (embedded) {
+        this.googleFamily = null;
+        return namedFontStack(embedded.family);
+      }
       const family = this.getText(fontType);
       if (!family) return cssFontStackFor(0);
       const { source, name } = parseFamily(family);
@@ -19887,6 +19968,11 @@ void main() {
     // --- Bitmap ---
     loadBitmap(imageId, encoding, type, width, height, bitmap) {
       this.canvasPaintContext.loadBitmap(imageId, encoding, type, width, height, bitmap);
+    }
+    // --- Font ---
+    loadFont(fontId, fontData) {
+      super.loadFont(fontId, fontData);
+      this.canvasPaintContext.loadFont(fontId, fontData);
     }
     // --- Text ---
     loadText(id, text) {

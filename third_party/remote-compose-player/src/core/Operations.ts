@@ -118,6 +118,7 @@ import {
     PatternArgument, PatternDefine
 } from './operations/loom/PatternOperations';
 import { Custom } from './operations/layout/managers/Custom';
+import { FontData } from './operations/FontData';
 
 export class Operations {
     private static readonly sMap = new Map<number, CompanionOperationFn>();
@@ -165,6 +166,7 @@ export class Operations {
         // Data operations
         m.set(TextData.OP_CODE, TextData.read);
         m.set(BitmapData.OP_CODE, BitmapData.read);
+        m.set(FontData.OP_CODE, FontData.read);
         m.set(PaintData.OP_CODE, PaintData.read);
         m.set(PathData.OP_CODE, PathData.read);
         m.set(FloatConstant.OP_CODE, FloatConstant.read);
