@@ -1171,6 +1171,10 @@ jobs:
       # fail silently in production (a delivery branch just stops regenerating).
       - name: Run design-artifacts scope-step tests
         run: scripts/design-artifacts/test-scope-step.sh
+      # The reusable catalog workflow and preview-host images share this installer. It must keep
+      # the pre-Noto generic families while supplying broad missing-glyph coverage.
+      - name: Run Linux font-fallback installer tests
+        run: scripts/test-install-linux-font-fallbacks.sh
       # Guards the preview-host image's baked font cache. Its failure mode is silent: a wrong
       # cache filename or a skipped stage-2 range query leaves faces the renderer never finds, so
       # the live daemon quietly falls back to Roboto and drifts from the baked catalog PNGs again.

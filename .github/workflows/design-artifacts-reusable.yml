@@ -486,9 +486,8 @@ jobs:
       - name: Install desktop (Skiko) render deps
         if: ${{ inputs.desktop-render }}
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends \
-            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig
+          compose-ai-tools/scripts/install-linux-font-fallbacks.sh \
+            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1
 
       # Same font cache as the single-job pipeline. The save key carries the shard index because
       # Actions caches are immutable: N shards saving one `…-<run_id>` key would have the first win
@@ -800,9 +799,8 @@ jobs:
       - name: Install desktop (Skiko) render deps
         if: ${{ inputs.desktop-render }}
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends \
-            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig
+          compose-ai-tools/scripts/install-linux-font-fallbacks.sh \
+            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1
 
       # Restore the downloadable-font cache (the matching save runs after the render,
       # below). The Android renderer's GoogleFont shadow and the figma-svg export fetch

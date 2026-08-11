@@ -29,13 +29,10 @@ ARG CP_VERSION=0.19.59
 # and binds it correctly. See deploy/image/README.md § "Containment".
 # ---------------------------------------------------------------------------
 FROM eclipse-temurin:21.0.11_10-jdk AS base
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \
-      libgl1 libglx-mesa0 libgl1-mesa-dri \
-      curl ca-certificates git \
-      bubblewrap \
- && rm -rf /var/lib/apt/lists/*
+COPY scripts/install-linux-font-fallbacks.sh /usr/local/bin/install-linux-font-fallbacks
+RUN COMPOSEAI_CLEAN_APT=1 /usr/local/bin/install-linux-font-fallbacks \
+      libfreetype6 libfontconfig1 libgl1 libglx-mesa0 libgl1-mesa-dri \
+      curl ca-certificates git bubblewrap
 ENV LIBGL_ALWAYS_SOFTWARE=1 \
     GRADLE_USER_HOME=/root/.gradle
 

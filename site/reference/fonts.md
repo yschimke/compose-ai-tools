@@ -35,6 +35,18 @@ the resolved fallback chain Compose actually picked.
 - It does not measure font file size, CFF subsetting, or runtime download cost — that is a build-tools / Play asset delivery question.
 - It does not validate whether a glyph is *visually* correct (Han ideograph variants, complex script shaping) — that requires designer review against the rendered PNG.
 
+## Hosted Linux fallback coverage
+
+The GitHub preview actions, reusable design-catalog workflow, and official preview-server images
+install Noto's core, CJK, and color-emoji families as system fallbacks. Skiko therefore fills glyphs
+that an app's selected family does not contain—Arabic, Indic, Thai, CJK, and emoji—without requiring
+the app to rewrite its `MaterialTheme` for previews. The installer preserves the host's existing
+generic sans, serif, and monospace choices, and an app's explicitly bundled family still wins.
+
+Direct local CLI renders continue to use the operating system's installed fallback fonts, just as
+the application does at runtime. Install equivalent Noto packages on a minimal Linux workstation if
+it does not already provide those scripts.
+
 ## Use cases
 
 - Catch accidental fallback to `sans-serif` after a `FontFamily.Resolver` refactor.
