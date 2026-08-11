@@ -684,6 +684,13 @@ html.cp-js .cp-section-head { display: none; }
 .cp-parity-targets { margin-top: 5px; font-size: 0.76rem; }
 .cp-parity-chips { list-style: none; margin: 0 0 8px; padding: 0;
   display: flex; flex-wrap: wrap; gap: 6px; }
+.cp-parity-comparisons { max-width: 860px; margin-top: 30px; padding-top: 18px;
+  border-top: 1px solid var(--md-sys-color-outline-variant); }
+.cp-parity-comparisons-title { font-size: var(--md-sys-typescale-title-medium-size);
+  line-height: var(--md-sys-typescale-title-medium-line); font-weight: 500;
+  color: var(--cp-fg); }
+.cp-parity-comparisons .cp-table { min-width: 620px; }
+.cp-parity-missing { color: var(--md-sys-color-error); font-weight: 500; }
 @media (max-width: 640px) {
   .cp-parity-entry { flex-direction: column; gap: 4px; }
   .cp-parity-when { flex: none; }

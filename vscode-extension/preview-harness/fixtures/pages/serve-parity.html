@@ -77,19 +77,7 @@
 </div>
         <p class="cp-muted">33% of 3 component(s) carry a
           design reference.</p>
-                <h2 class="cp-status-sec">Needs a look</h2>
-        <p class="cp-muted">Components that moved on one side only inside this window — where the
-          render and its reference are most likely to have drifted apart.</p>
-        <div class="cp-status-scroll">
-          <table class="cp-table">
-            <thead><tr><th>Component</th><th>Moved</th><th>Why it's here</th><th>Last change</th></tr></thead>
-            <tbody>
-            <tr><td><a href="/compose-m3/p/switch-on__ideal__default__light">Switch on</a></td><td><span class="cp-parity-lane cp-parity-lane--figma">design only</span></td><td class="cp-muted">the design moved; the code did not</td><td class="cp-muted">2026-07-16 09:02 UTC</td></tr>
-<tr><td><a href="/compose-m3/p/badge">Badge</a></td><td><span class="cp-parity-lane cp-parity-lane--code">code only</span></td><td class="cp-muted">the render moved; its reference did not</td><td class="cp-muted">2026-07-14 08:05 UTC</td></tr>
-            </tbody>
-          </table>
-        </div>
-                <h2 class="cp-status-sec">Recent activity</h2>
+                <h2 class="cp-status-sec">Activity</h2>
         <div class="cp-states" role="group" aria-label="Filter activity by lane">
         <button type="button" class="cp-state-btn" data-parity-lane="all" aria-current="page">All</button>
 <button type="button" class="cp-state-btn" data-parity-lane="code">Code</button>
@@ -154,9 +142,20 @@
 </li>
         </ul>
         <p class="cp-muted" id="cp-parity-feed-empty" hidden>No activity in this lane.</p>
-        <script src="/assets/serve/fixture/parity.js"></script>
-                <h2 class="cp-status-sec">Mapping</h2>
-                    <h3 class="cp-parity-sub">No design reference (2)</h3>
+                <h2 class="cp-status-sec">Issues</h2>
+                <h3 class="cp-parity-sub">Out-of-sync activity</h3>
+        <p class="cp-muted">Components that moved on one side only inside this window — where the
+          render and its reference are most likely to have drifted apart.</p>
+        <div class="cp-status-scroll">
+          <table class="cp-table">
+            <thead><tr><th>Component</th><th>Moved</th><th>Why it's here</th><th>Last change</th></tr></thead>
+            <tbody>
+            <tr><td><a href="/compose-m3/p/switch-on__ideal__default__light">Switch on</a></td><td><span class="cp-parity-lane cp-parity-lane--figma">design only</span></td><td class="cp-muted">the design moved; the code did not</td><td class="cp-muted">2026-07-16 09:02 UTC</td></tr>
+<tr><td><a href="/compose-m3/p/badge">Badge</a></td><td><span class="cp-parity-lane cp-parity-lane--code">code only</span></td><td class="cp-muted">the render moved; its reference did not</td><td class="cp-muted">2026-07-14 08:05 UTC</td></tr>
+            </tbody>
+          </table>
+        </div>
+                            <h3 class="cp-parity-sub">No design reference (2)</h3>
             <p class="cp-muted">These render, but nothing in the design file is mapped to them — so
               nothing can score them against a spec.</p>
             <ul class="cp-parity-chips">
@@ -176,6 +175,33 @@
                 </tbody>
               </table>
             </div>
+        <section class="cp-parity-visual-issues" id="cp-parity-visual-issues">
+  <h3 class="cp-parity-sub">Visual differences</h3>
+  <p class="cp-muted" id="cp-parity-score-status">Checking 1 mapped comparison(s)…</p>
+  <div class="cp-status-scroll" id="cp-parity-score-results" hidden>
+    <table class="cp-table">
+      <thead><tr><th>Component</th><th>Structural match</th><th>Review</th></tr></thead>
+      <tbody id="cp-parity-score-issues"></tbody>
+    </table>
+  </div>
+</section>
+                <details class="cp-parity-comparisons cp-disclosure">
+          <summary>
+            <span class="cp-parity-comparisons-title">All comparisons (3)</span>
+            <span class="cp-disclosure-hint">Browse every code component and its design mapping</span>
+          </summary>
+          <div class="cp-disclosure-body cp-status-scroll">
+            <table class="cp-table">
+              <thead><tr><th>Component</th><th>Code</th><th>Design reference</th><th>Structural match</th><th>Review</th></tr></thead>
+              <tbody>
+              <tr><td>Badge</td><td><a href="/compose-m3/p/badge">Open render</a></td><td><span class="cp-parity-missing">Missing</span></td><td>—</td><td>—</td></tr>
+<tr data-parity-comparison data-reference="/compose-m3/reference/design-button-filled-light.png" data-actual="/compose-m3/render/button-filled__ideal__default__light.png" data-name="Button filled" data-review="/compose-m3/compare/button-filled__ideal__default__light"><td>Button filled</td><td><a href="/compose-m3/compare/button-filled__ideal__default__light">Open render</a></td><td><span class="cp-ok">Mapped</span></td><td><span class="cp-parity-score cp-muted">Checking…</span></td><td><a href="/compose-m3/compare/button-filled__ideal__default__light">Compare</a></td></tr>
+<tr><td>Switch on</td><td><a href="/compose-m3/p/switch-on__ideal__default__light">Open render</a></td><td><span class="cp-parity-missing">Missing</span></td><td>—</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+        <script src="/assets/serve/fixture/format-compare.js"></script><script src="/assets/serve/fixture/parity.js"></script>
         </main>
         <footer class="cp-site-footer">
           <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·

@@ -29,6 +29,9 @@ class ServeParityDashboardTest {
         previews = previews,
         hasReference = { it == "button-filled__ideal__default__light" },
         activity = null,
+        referenceIdFor = {
+          if (it == "button-filled__ideal__default__light") "figma-button-filled" else null
+        },
       )
 
     assertEquals(2, dashboard.coverage.components, "light+dark are one component, not two")
@@ -37,6 +40,8 @@ class ServeParityDashboardTest {
     assertEquals(listOf("Navigation/Rail"), dashboard.coverage.unmapped.map { it.name })
     // The unmapped chip must open the LIGHT default render — the card the grid shows.
     assertEquals("nav-rail__ideal__default__light", dashboard.coverage.unmapped.single().previewId)
+    assertEquals(listOf("Button/Filled", "Navigation/Rail"), dashboard.comparisons.map { it.name })
+    assertEquals("figma-button-filled", dashboard.comparisons.first().referenceId)
   }
 
   @Test

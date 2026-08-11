@@ -4937,19 +4937,18 @@ $rows
    * The catalog's **Design parity** view: recent movement on both sides of the code ↔ design pair,
    * how far apart they are, and what isn't mapped yet.
    *
-   * The page is three bands, in the order a reader actually needs them:
+   * The page defaults to the two bands a reader can act on:
    *
    * 1. **Where we stand** — coverage (how many components carry a design reference), open Figma
    *    comments, and how recently each side moved. Computed live for the coverage half, so it is
    *    right even for a catalog that publishes no feed at all.
-   * 2. **Needs a look** — components whose two sides moved *unevenly* inside the window. This is
-   *    the band that justifies putting the feeds together: a component with a commit and no design
-   *    change (or the reverse) is where the render and its reference are drifting apart, and every
-   *    row links straight to that component's reference-vs-render comparison.
-   * 3. **Recent activity** — the merged, reverse-chronological feed itself, filterable by lane.
-   *
-   * Then the gaps: components with no reference (derived here) plus the producer-declared gaps only
-   * the publish job can see.
+   * 2. **Activity and issues** — the merged feed plus components whose two sides moved *unevenly*
+   *    inside the window. This is the band that justifies putting the feeds together: a component
+   *    with a commit and no design change (or the reverse) is where the render and its reference
+   *    are drifting apart, and every row links straight to that component's reference-vs-render
+   *    comparison. The complete component inventory remains available in a collapsed comparison
+   *    table. This keeps the default view useful without turning 78 healthy mappings into the
+   *    page's main subject.
    *
    * Everything textual in [dashboard] is third-party — commit subjects and Figma comment bodies
    * written by other people — so every interpolation goes through [WebEscaping.htmlEscape], and
@@ -5059,7 +5058,7 @@ $rows
               "<td class=\"cp-muted\">${esc(prettyDate(component.lastAt))}</td></tr>"
           }
         """
-        <h2 class="cp-status-sec">Needs a look</h2>
+        <h3 class="cp-parity-sub">Out-of-sync activity</h3>
         <p class="cp-muted">Components that moved on one side only inside this window — where the
           render and its reference are most likely to have drifted apart.</p>
         <div class="cp-status-scroll">
@@ -5077,7 +5076,7 @@ $rows
     val feedBand =
       if (dashboard.feed.isEmpty()) {
         """
-        <h2 class="cp-status-sec">Recent activity</h2>
+          <h2 class="cp-status-sec">Activity</h2>
         <p class="cp-muted">This catalog publishes no activity feed yet. A producer adds one by
           emitting <code>parity/activity.json</code> beside its catalog — see the
           <a href="https://github.com/$SOURCE_REPO/blob/main/docs/public-preview-server.md">server
@@ -5138,7 +5137,7 @@ $rows
                 "${esc(label)}</button>"
             }
         """
-        <h2 class="cp-status-sec">Recent activity</h2>
+        <h2 class="cp-status-sec">Activity</h2>
         <div class="cp-states" role="group" aria-label="Filter activity by lane">
         $filters
         </div>
@@ -5146,7 +5145,6 @@ $rows
         $items
         </ul>
         <p class="cp-muted" id="cp-parity-feed-empty" hidden>No activity in this lane.</p>
-        ${scriptTag("parity.js")}
         """
           .trimIndent()
       }
@@ -5156,7 +5154,6 @@ $rows
         if (coverage.components == 0) ""
         else
           """
-          <h2 class="cp-status-sec">Mapping</h2>
           <p class="cp-muted">Every component in this catalog carries a design reference.</p>
           """
             .trimIndent()
@@ -5216,12 +5213,102 @@ $rows
               .trimIndent()
           }
         """
-        <h2 class="cp-status-sec">Mapping</h2>
         $unmappedList
         $gapRows
         """
           .trimIndent()
       }
+
+    val issueBand =
+      if (driftBand.isEmpty() && coverage.unmapped.isEmpty() && dashboard.gaps.isEmpty()) {
+        """
+        <h2 class="cp-status-sec">Issues</h2>
+        <p class="cp-muted">No mapping gaps or one-sided changes were detected.</p>
+        """
+          .trimIndent()
+      } else {
+        """
+        <h2 class="cp-status-sec">Issues</h2>
+        $driftBand
+        $unmappedBand
+        """
+          .trimIndent()
+      }
+
+    val visualIssues =
+      if (dashboard.comparisons.none { it.referenceId != null }) ""
+      else {
+        val count = dashboard.comparisons.count { it.referenceId != null }
+        """
+        <section class="cp-parity-visual-issues" id="cp-parity-visual-issues">
+          <h3 class="cp-parity-sub">Visual differences</h3>
+          <p class="cp-muted" id="cp-parity-score-status">Checking $count mapped comparison(s)…</p>
+          <div class="cp-status-scroll" id="cp-parity-score-results" hidden>
+            <table class="cp-table">
+              <thead><tr><th>Component</th><th>Structural match</th><th>Review</th></tr></thead>
+              <tbody id="cp-parity-score-issues"></tbody>
+            </table>
+          </div>
+        </section>
+        """
+          .trimIndent()
+      }
+
+    val comparisonBand =
+      if (dashboard.comparisons.isEmpty()) ""
+      else {
+        val rows =
+          dashboard.comparisons.joinToString("\n") { component ->
+            val render = previewLink(component.previewId, "Open render")
+            val design =
+              if (component.hasReference) "<span class=\"cp-ok\">Mapped</span>"
+              else "<span class=\"cp-parity-missing\">Missing</span>"
+            val review =
+              if (component.hasReference) previewLink(component.previewId, "Compare") else "—"
+            val scoring =
+              component.referenceId
+                ?.let { referenceId ->
+                  val actualUrl =
+                    "$basePath/render/${WebEscaping.urlEncodeSegment(component.previewId)}.png$q"
+                  val referenceUrl =
+                    "$basePath/reference/${WebEscaping.urlEncodeSegment(referenceId)}.png$q"
+                  " data-parity-comparison data-reference=\"${esc(referenceUrl)}\"" +
+                    " data-actual=\"${esc(actualUrl)}\" data-name=\"${esc(component.name)}\"" +
+                    " data-review=\"${esc(previewHref(component.previewId))}\""
+                }
+                .orEmpty()
+            val score =
+              if (component.referenceId != null)
+                "<span class=\"cp-parity-score cp-muted\">Checking…</span>"
+              else "—"
+            "<tr$scoring><td>${esc(component.name)}</td><td>$render</td><td>$design</td>" +
+              "<td>$score</td><td>$review</td></tr>"
+          }
+        """
+        <details class="cp-parity-comparisons cp-disclosure">
+          <summary>
+            <span class="cp-parity-comparisons-title">All comparisons (${dashboard.comparisons.size})</span>
+            <span class="cp-disclosure-hint">Browse every code component and its design mapping</span>
+          </summary>
+          <div class="cp-disclosure-body cp-status-scroll">
+            <table class="cp-table">
+              <thead><tr><th>Component</th><th>Code</th><th>Design reference</th><th>Structural match</th><th>Review</th></tr></thead>
+              <tbody>
+              $rows
+              </tbody>
+            </table>
+          </div>
+        </details>
+        """
+          .trimIndent()
+      }
+
+    val parityScripts = buildString {
+      if (dashboard.comparisons.any { it.referenceId != null })
+        append(scriptTag("format-compare.js"))
+      if (dashboard.feed.isNotEmpty() || dashboard.comparisons.any { it.referenceId != null })
+        append(scriptTag("parity.js"))
+    }
 
     // Provenance for the page itself: this is snapshotted data, and saying so is the difference
     // between "nothing changed in Figma" and "we last looked a week ago".
@@ -5291,9 +5378,11 @@ $rows
         $coverageMeter
         <p class="cp-muted">${coverage.percent}% of ${coverage.components} component(s) carry a
           design reference.</p>
-        $driftBand
         $feedBand
-        $unmappedBand
+        $issueBand
+        $visualIssues
+        $comparisonBand
+        $parityScripts
         """
           .trimIndent(),
     )
