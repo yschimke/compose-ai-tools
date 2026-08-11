@@ -506,6 +506,14 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
       previewId = info.id,
       className = info.className,
       functionName = info.methodName,
+      // A discovered preview id is the concrete artifact identity, not merely a lookup key.
+      // `@OverrideVariant` previews deliberately share their base's function, so leaving the
+      // RenderSpec default (`<class>-<function>`) here makes the base and every synthetic state
+      // overwrite one `data/<outputBaseName>/compose-figma.svg`. The PNG bake is unaffected (it
+      // runs through the standalone renderer), which is why catalogs could show the right state
+      // beside a base-state SVG. Keep each preview's post-capture products isolated exactly like
+      // PreviewManifestRouter does.
+      outputBaseName = info.id,
       overrides = bakedOverrides,
     )
   // A *missing* params block means "params unknown", NOT "params empty" — the incremental

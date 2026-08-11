@@ -49,8 +49,26 @@ class RenderSpecFromInfoTest {
     assertNull(spec.fontScale)
     assertNull(spec.device)
     assertEquals("Foo", spec.previewId)
+    assertEquals("Foo", spec.outputBaseName)
     assertEquals("com.example.FooKt", spec.className)
     assertEquals("Foo", spec.functionName)
+  }
+
+  @Test
+  fun `override variants sharing a function keep distinct artifact identities`() {
+    val base = renderSpecFromInfo(info(params = PreviewParamsDto()))
+    val variant =
+      renderSpecFromInfo(
+        PreviewInfoDto(
+          id = "Foo_VARIANT_disabled",
+          className = "com.example.FooKt",
+          methodName = "Foo",
+          params = PreviewParamsDto(),
+        )
+      )
+
+    assertEquals("Foo", base.outputBaseName)
+    assertEquals("Foo_VARIANT_disabled", variant.outputBaseName)
   }
 
   @Test

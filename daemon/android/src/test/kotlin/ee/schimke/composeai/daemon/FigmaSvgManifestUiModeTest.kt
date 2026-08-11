@@ -1,5 +1,8 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.data.overrides.OverrideSeed
+import ee.schimke.composeai.data.overrides.OverrideSeedKind
+import ee.schimke.composeai.data.overrides.OverrideVariantSpec
 import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -24,6 +27,61 @@ import org.junit.rules.TemporaryFolder
 class FigmaSvgManifestUiModeTest {
 
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
+
+  @Test
+  fun `manifest override variant changes the exported figma svg`() {
+    val outputDir = tempFolder.newFolder("renders-manifest-override-variant")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val baseId = "CheckboxButtonChecked"
+    val variantId = "CheckboxButtonChecked_VARIANT_unchecked"
+    fun entry(id: String, overrides: OverrideVariantSpec? = null) =
+      PreviewManifestEntry(
+        id = id,
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "OverridableSquare",
+        widthPx = 32,
+        heightPx = 32,
+        density = 1.0f,
+        overrides = overrides,
+      )
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            entry(baseId),
+            entry(
+              variantId,
+              OverrideVariantSpec(
+                name = "unchecked",
+                seeds =
+                  listOf(
+                    OverrideSeed(
+                      key = "fill",
+                      kind = OverrideSeedKind.COLOR,
+                      raw = "#FF42A5F5",
+                    )
+                  ),
+              ),
+            ),
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      host.submit(RenderRequest.Render(payload = "previewId=$baseId"), timeoutMs = 120_000)
+      host.submit(RenderRequest.Render(payload = "previewId=$variantId"), timeoutMs = 120_000)
+
+      val dataDir = outputDir.parentFile!!.resolve("data")
+      val baseSvg = dataDir.resolve(baseId).resolve("compose-figma.svg").readText()
+      val variantSvg = dataDir.resolve(variantId).resolve("compose-figma.svg").readText()
+      assertTrue("base SVG must retain the author-default red fill", baseSvg.contains("#EF5350"))
+      assertTrue("variant SVG must carry its baked blue fill", variantSvg.contains("#42A5F5"))
+      assertTrue("base and variant SVGs must differ", baseSvg != variantSvg)
+    } finally {
+      host.shutdown()
+    }
+  }
 
   @Test
   fun `manifest uiMode renders the light id light and the dark id dark`() {

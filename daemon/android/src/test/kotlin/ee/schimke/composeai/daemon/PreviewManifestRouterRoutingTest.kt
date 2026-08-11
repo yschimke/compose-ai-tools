@@ -1,5 +1,12 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.overrides.OverrideSeed
+import ee.schimke.composeai.data.overrides.OverrideSeedKind
+import ee.schimke.composeai.data.overrides.OverrideVariantSpec
+import ee.schimke.composeai.data.overrides.PreviewOverrideValue
+import java.util.Base64
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -24,6 +31,63 @@ import org.junit.Test
  * `InvokeComposable`.
  */
 class PreviewManifestRouterRoutingTest {
+
+  private val json = Json { ignoreUnknownKeys = true }
+
+  @Test
+  fun `routePayload applies manifest variant seed and lets a live override win`() {
+    val previewId = "CheckboxButtonChecked_VARIANT_unchecked"
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = previewId,
+              className = "com.example.WearPreviewsKt",
+              functionName = "CheckboxButtonChecked",
+              overrides =
+                OverrideVariantSpec(
+                  name = "unchecked",
+                  seeds =
+                    listOf(
+                      OverrideSeed(
+                        key = "checked",
+                        kind = OverrideSeedKind.BOOLEAN,
+                        raw = "false",
+                      )
+                    ),
+                ),
+            )
+          )
+      )
+    val router = PreviewManifestRouter(manifest = manifest)
+
+    val baked =
+      RenderSpec.parseFromPayloadOrNull(router.routePayload("previewId=$previewId"))
+    assertEquals(
+      PreviewOverrideValue.BooleanValue(false),
+      baked!!.overrides!!.namedOverrides!!["checked"],
+    )
+
+    val live =
+      PreviewOverrides(
+        namedOverrides = mapOf("checked" to PreviewOverrideValue.BooleanValue(true))
+      )
+    val liveToken =
+      Base64.getUrlEncoder()
+        .withoutPadding()
+        .encodeToString(
+          json.encodeToString(PreviewOverrides.serializer(), live).toByteArray(Charsets.UTF_8)
+        )
+    val layered =
+      RenderSpec.parseFromPayloadOrNull(
+        router.routePayload("previewId=$previewId;overrides=$liveToken")
+      )
+    assertEquals(
+      PreviewOverrideValue.BooleanValue(true),
+      layered!!.overrides!!.namedOverrides!!["checked"],
+    )
+  }
 
   @Test
   fun `routePayload forwards wrapperClassName from nested params`() {

@@ -2,6 +2,9 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
+import ee.schimke.composeai.data.overrides.OverrideSeed
+import ee.schimke.composeai.data.overrides.OverrideSeedKind
+import ee.schimke.composeai.data.overrides.OverrideVariantSpec
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -31,6 +34,58 @@ import org.junit.rules.TemporaryFolder
 class OverrideIntegrationTest {
 
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
+
+  @Test
+  fun discoveredOverrideVariantKeepsItsOwnFigmaSvgAndState() {
+    val outputDir = tempFolder.newFolder("renders-discovered-override-variant")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val baseId = "FilledButton_Light"
+    val variantId = "FilledButton_Light_VARIANT_disabled"
+    fun info(id: String, overrides: OverrideVariantSpec? = null) =
+      PreviewInfoDto(
+        id = id,
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        methodName = "OverridableSquare",
+        params = PreviewParamsDto(widthDp = 32, heightDp = 32, density = 1.0f),
+        overrides = overrides,
+      )
+    val byId =
+      listOf(
+          info(baseId),
+          info(
+            variantId,
+            OverrideVariantSpec(
+              name = "disabled",
+              seeds =
+                listOf(OverrideSeed(key = "fill", kind = OverrideSeedKind.COLOR, raw = "#FF42A5F5")),
+            ),
+          ),
+        )
+        .associate { it.id to renderSpecFromInfo(it) }
+    val host =
+      DesktopHost(
+        engine =
+          RenderEngine(
+            previewOverrideExtensions =
+              PreviewOverrideExtensions(listOf(PreviewOverridesPreviewOverrideExtension()))
+          ),
+        previewSpecResolver = byId::get,
+      )
+    host.start()
+    try {
+      host.submit(RenderRequest.Render(payload = "previewId=$baseId"), timeoutMs = 30_000)
+      host.submit(RenderRequest.Render(payload = "previewId=$variantId"), timeoutMs = 30_000)
+
+      val dataDir = outputDir.parentFile!!.resolve("data")
+      val baseSvg = dataDir.resolve(baseId).resolve("compose-figma.svg").readText()
+      val variantSvg = dataDir.resolve(variantId).resolve("compose-figma.svg").readText()
+      assertTrue("base SVG must retain the author-default red fill", baseSvg.contains("#EF5350"))
+      assertTrue("variant SVG must carry its baked blue fill", variantSvg.contains("#42A5F5"))
+      assertNotEquals("base and variant SVGs must not collide", baseSvg, variantSvg)
+    } finally {
+      host.shutdown()
+    }
+  }
 
   @Test
   fun widthPxOverrideChangesRenderedDimensions() {

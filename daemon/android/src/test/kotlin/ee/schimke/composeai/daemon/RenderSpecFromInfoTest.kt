@@ -18,6 +18,7 @@ class RenderSpecFromInfoTest {
       )
 
     assertEquals("preview-id", spec.previewId)
+    assertEquals("preview-id", spec.outputBaseName)
   }
 
   @Test
@@ -33,7 +34,33 @@ class RenderSpecFromInfoTest {
       )
 
     assertEquals("preview-id", spec.previewId)
+    assertEquals("preview-id", spec.outputBaseName)
     assertEquals(300, spec.widthPx)
+  }
+
+  @Test
+  fun `override variants sharing a function keep distinct artifact identities`() {
+    val base =
+      renderSpecFromInfo(
+        PreviewInfoDto(
+          id = "CheckboxButtonChecked",
+          className = "com.example.CatalogPreviewsKt",
+          methodName = "CheckboxButtonChecked",
+          params = PreviewParamsDto(),
+        )
+      )
+    val variant =
+      renderSpecFromInfo(
+        PreviewInfoDto(
+          id = "CheckboxButtonChecked_VARIANT_unchecked",
+          className = "com.example.CatalogPreviewsKt",
+          methodName = "CheckboxButtonChecked",
+          params = PreviewParamsDto(),
+        )
+      )
+
+    assertEquals("CheckboxButtonChecked", base.outputBaseName)
+    assertEquals("CheckboxButtonChecked_VARIANT_unchecked", variant.outputBaseName)
   }
 
   @Test

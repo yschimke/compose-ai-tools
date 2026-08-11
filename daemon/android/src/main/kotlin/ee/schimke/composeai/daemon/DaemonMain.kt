@@ -791,6 +791,12 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
       previewId = info.id,
       className = info.className,
       functionName = info.methodName,
+      // Preserve the concrete preview identity for every file-backed post-capture product.
+      // Synthetic `@OverrideVariant` previews share class + function with their base; the generic
+      // RenderSpec default would otherwise make their figma-svg outputs overwrite one another.
+      // The one-shot payload reshape also stamps this today, but keeping it on the resolved spec
+      // covers held/render paths and keeps both daemon backends symmetric.
+      outputBaseName = info.id,
       overrides = bakedOverrides,
       // Explicit LIGHT, not null. A null uiMode emits no `uiMode=` token in the routed payload,
       // and Robolectric qualifiers apply incrementally (`setQualifiers("+…")`), so a token-less
