@@ -81,6 +81,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![inspection-tree/dark](renders/inspection-tree.dark.png) |
 | `light` | ![inspection-tree/light](renders/inspection-tree.light.png) |
 
+## menu-dropdown-annotations.recorded
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![menu-dropdown-annotations.recorded/dark](renders/menu-dropdown-annotations.recorded.dark.png) |
+| `light` | ![menu-dropdown-annotations.recorded/light](renders/menu-dropdown-annotations.recorded.light.png) |
+
 ## notifications
 
 | Theme | Capture |
