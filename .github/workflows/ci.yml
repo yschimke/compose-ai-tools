@@ -473,25 +473,25 @@ jobs:
   # reports pixels, and the blocking question is asked here instead.
   #
   # The corpus is the published `design-artifacts/remote-m3` bundle — 27 real documents plus the
-  # baked Android references — and the baseline is the `rc-compare-summary.json` published beside
-  # it. Fixed documents are what isolate the player: nothing here re-renders the catalog (no Android
-  # toolchain, no ~6 minutes), so a moved number can only be the diff under test.
+  # baked Android references. Both the comparison base and the proposed player render those exact
+  # same fixed documents. That isolates the player without trusting the summary published beside
+  # the corpus: that summary can legitimately lag `main` after an accepted player change, which
+  # would make every following PR inherit somebody else's pixel movement.
   #
   # Measured, because "is this too slow to be worth it" deserves a number rather than a guess: the
-  # render is 41 s for 24 documents (~1.7 s each, including the JS-player lane and the pixel diffs)
-  # and a warm `wasmPlayerDist` is 7 s. The job's cost is almost entirely the cold Gradle build and
-  # the Chromium download, so `buildfetch-cache` (read-only, same as the other PR jobs) is where the
-  # caching that matters happens — the Kotlin/Wasm compiles come back FROM-CACHE.
+  # render is about a minute for 27 documents, including the JS-player lane and the pixel diffs.
+  # The job builds both player revisions, but the base revision is normally already in the shared
+  # Gradle cache. `buildfetch-cache` is therefore where the caching that matters happens — unchanged
+  # Kotlin/Wasm compilations come back FROM-CACHE.
   #
-  # `continue-on-error` on the job: this reports rather than blocks. It is new, it depends on a
-  # delivery branch it does not control, and a parity delta is a judgement call a human should make
-  # on a red-but-passable check — so it posts its report as a sticky PR comment and lets the merge
-  # proceed. The step still fails visibly, so the signal is not lost; promote it to blocking once it
-  # has a track record of only going red for real regressions.
+  # `continue-on-error` on the job: this reports rather than blocks. A parity delta is a judgement
+  # call a human should make on a red-but-passable check, so it posts its report as a sticky PR
+  # comment and lets the merge proceed. The step still fails visibly, so the signal is not lost;
+  # promote it to blocking once it has a track record of only going red for real regressions.
   rc-cmp-wasm-parity:
     name: CMP/Wasm Parity
     needs: changes
-    if: ${{ needs.changes.outputs.rc_player_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ github.event_name != 'schedule' && needs.changes.outputs.rc_player_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
@@ -508,7 +508,7 @@ jobs:
           # reasoning). Reading is what turns the Kotlin/Wasm compile from minutes into seconds.
           rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      - name: Build the Wasm player distribution
+      - name: Build the proposed Wasm player distribution
         run: ./gradlew :rc-player-wasm:wasmPlayerDist
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -519,12 +519,13 @@ jobs:
       - name: Install Chromium
         working-directory: scripts/design-artifacts
         run: npx playwright install --with-deps chromium
-      # Anonymous fetch of a branch in this public repo, so `persist-credentials: false` above costs
-      # nothing. A delivery branch that has never published the lane (no summary, or one whose
-      # cmp-wasm rows never rendered) still works: every row then reads as "not in the baseline" or
-      # "now renders", which reports and does not judge.
-      - name: Fetch the published parity corpus and baseline
+      # Anonymous fetches in this public repo, so `persist-credentials: false` above costs nothing.
+      # A pull request compares with its base SHA; a push to main compares with the commit before
+      # the push. Scheduled runs have no meaningful diff and are excluded at the job level.
+      - name: Fetch the published parity corpus and comparison base
         id: corpus
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/corpus"
@@ -534,12 +535,32 @@ jobs:
             exit 0
           fi
           git show FETCH_HEAD:bundle/bundle.png > "$RUNNER_TEMP/corpus/bundle.png"
-          if git show FETCH_HEAD:rc-compare-summary.json > "$RUNNER_TEMP/corpus/baseline.json"; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::the delivery branch carries no rc-compare-summary.json; skipping"
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "::warning::no comparison base SHA is available; skipping the parity comparison"
             echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git worktree add --detach "$RUNNER_TEMP/parity-base-source" "$BASE_SHA"
+          echo "available=true" >> "$GITHUB_OUTPUT"
+      - name: Build the base Wasm player distribution
+        if: ${{ steps.corpus.outputs.available == 'true' }}
+        run: >-
+          "$RUNNER_TEMP/parity-base-source/gradlew"
+          -p "$RUNNER_TEMP/parity-base-source"
+          :rc-player-wasm:wasmPlayerDist
+      - name: Render the corpus through the base player
+        if: ${{ steps.corpus.outputs.available == 'true' }}
+        working-directory: scripts/design-artifacts
+        run: |
+          set -euo pipefail
+          node rc-compare.mjs \
+            --bundle "$RUNNER_TEMP/corpus/bundle.png" \
+            --player "$GITHUB_WORKSPACE/cli/src/main/resources/rc-player/bundle.js" \
+            --out "$RUNNER_TEMP/parity-base" \
+            --system remote-m3 \
+            --cmp-wasm "$RUNNER_TEMP/parity-base-source/rc-player/wasm/build/wasmDist" \
+            --require-cmp-wasm
       - name: Render the corpus through this PR's player
         if: ${{ steps.corpus.outputs.available == 'true' }}
         working-directory: scripts/design-artifacts
@@ -554,14 +575,14 @@ jobs:
             --require-cmp-wasm
       # `tee` so the same report reaches the log, the job summary (the script appends it itself) and
       # the PR comment below — one text, three places, no chance of them disagreeing.
-      - name: Compare against the published baseline
+      - name: Compare against the base player
         id: compare
         if: ${{ steps.corpus.outputs.available == 'true' }}
         working-directory: scripts/design-artifacts
         run: |
           set -o pipefail
           node rc-compare-regression.mjs \
-            --baseline "$RUNNER_TEMP/corpus/baseline.json" \
+            --baseline "$RUNNER_TEMP/parity-base/rc-compare-summary.json" \
             --current "$RUNNER_TEMP/parity-out/rc-compare-summary.json" \
             | tee "$RUNNER_TEMP/parity-report.txt"
       # Sticky comment, same shape as the vscode-preview-diff one: find our marker, PATCH it if it
@@ -582,9 +603,9 @@ jobs:
           set -euo pipefail
           MARKER="<!-- rc-cmp-wasm-parity -->"
           if [ "$OUTCOME" = "success" ]; then
-            HEADLINE="✅ No CMP/Wasm parity regression against \`design-artifacts/remote-m3\`."
+            HEADLINE="✅ No CMP/Wasm parity regression against the pull request base."
           else
-            HEADLINE="⚠️ CMP/Wasm parity moved against \`design-artifacts/remote-m3\`. This check does not block merging — read the rows below and decide."
+            HEADLINE="⚠️ CMP/Wasm parity moved against the pull request base. This check does not block merging — read the rows below and decide."
           fi
           {
             echo "$MARKER"
@@ -619,6 +640,8 @@ jobs:
             ${{ runner.temp }}/parity-out/rc-cmp-wasm
             ${{ runner.temp }}/parity-out/rc-cmp-wasm-diff
             ${{ runner.temp }}/parity-out/rc-cmp-wasm-errors
+            ${{ runner.temp }}/parity-base/rc-compare-summary.json
+            ${{ runner.temp }}/parity-base/rc-cmp-wasm
           if-no-files-found: warn
 
   functional-tests:
