@@ -72,6 +72,7 @@ const SPEC = arg("spec", "catalog.spec.json");
 const REFERENCE_IMAGES = arg("reference-images");
 const EXEC = arg("chromium", process.env.DESIGN_REFERENCES_CHROMIUM || undefined);
 const STRICT = process.argv.includes("--strict");
+const FIGMA_CONTENTS_ONLY = arg("figma-contents-only", "true") !== "false";
 
 const FIGMA_TOKEN =
   process.env.FIGMA_TOKEN || process.env.FIGMA_PAT || process.env.FIGMA_ACCESS_TOKEN || "";
@@ -192,7 +193,10 @@ async function rasterizeHtml(file, target) {
   }
 }
 
-const figmaRasterizer = new FigmaRestRasterizer({ token: FIGMA_TOKEN });
+const figmaRasterizer = new FigmaRestRasterizer({
+  token: FIGMA_TOKEN,
+  contentsOnly: FIGMA_CONTENTS_ONLY,
+});
 
 /** A pre-rendered PNG for this ref under `--reference-images`, or null. */
 function suppliedRaster(ref) {

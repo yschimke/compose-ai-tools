@@ -70,6 +70,36 @@ test("batches nodes and equal-scale image exports, then caches duplicate rasters
     calls.find((url) => url.includes("/images/")),
     /scale=2.625/,
   );
+  assert.equal(
+    new URL(calls.find((url) => url.includes("/images/"))).searchParams.get("contents_only"),
+    "true",
+  );
+});
+
+test("can include overlapping Figma layers such as component-sheet backgrounds", async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    if (url.includes("/nodes?")) {
+      return json({ nodes: { "1:1": { document: { absoluteBoundingBox: { width: 10 } } } } });
+    }
+    if (url.includes("/images/")) return json({ images: { "1:1": "https://cdn.test/1:1" } });
+    return new Response(onePixelPng(), { status: 200 });
+  };
+  const rasterizer = new FigmaRestRasterizer({
+    token: "token",
+    fetchImpl,
+    contentsOnly: false,
+  });
+
+  await rasterizer.rasterize("figma:file/1:1", {
+    width: 20,
+    height: 20,
+    density: 2.625,
+  });
+
+  const imageUrl = calls.find((url) => url.includes("/images/"));
+  assert.equal(new URL(imageUrl).searchParams.get("contents_only"), "false");
 });
 
 test("exports at renderer density instead of scaling a tight node to the padded canvas", async () => {
