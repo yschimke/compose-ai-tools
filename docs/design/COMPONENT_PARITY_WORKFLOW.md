@@ -300,25 +300,42 @@ sequenced as such (§6).
 
 1. **Decode** all four rasters — reference, current candidate, `mask.png`, `accepted-candidate.png`
    — under the declared pixel/colour semantics.
-2. **Separate** the candidate into masked and unmasked regions, **in candidate pixel space, before
-   any resample.** Separation must precede the candidate→canonical resample, not follow it: once a
-   kernel has averaged across a mask edge, the accepted and unaccepted contributions are mixed
-   irreversibly, and no later split can unmix them. This is why the mask is mapped into candidate
-   space first and each region resampled independently.
-3. **Resample** each region into the canonical plane (the reference's content box, at the reference
-   raster's own resolution) using the named portable kernel.
+2. **Separate** — map the mask onto **both** inputs and split each into masked and unmasked regions,
+   in that input's own pixel space, **before any resample.** Separation must precede the resample,
+   not follow it: once a kernel has averaged across a mask edge, the accepted and unaccepted
+   contributions are mixed irreversibly and no later split can unmix them.
+
+   **Both inputs, not just the candidate.** `scorePlanes` compares two planes bidirectionally, so a
+   reference sample contaminated by masked reference pixels can match an unrelated *candidate*
+   regression outside the mask and erase it — the same cancellation, arriving from the other side.
+   Separating only the candidate closes one direction of a two-directional search.
+3. **Resample** each region into the canonical plane using the named portable kernel. The canonical
+   plane is **whichever plane the acceptance recorded** — the reference's content box in the normal
+   case, or the full canvas when the pair fell back below `MIN_BOX_COVERAGE`. It is not
+   unconditionally the content box: the plane gate has already established that the recorded and
+   recomputed planes agree, and this step resamples into *that* plane, so a fallback comparison
+   sizes and positions its mask against the plane it was authored in.
 4. **Gate** — run every gate below. No scoring happens before this completes.
 5. **Score** the surviving picture, excluding still-valid masked coordinates in **both** roles
    (scored source and neighbourhood candidate) in **both** directed passes.
 6. **Report** raw, accepted and unaccepted separately.
 
-**Selector contract.** An acceptance's `element` carries an explicit `kind`:
+**Selector contract.** An acceptance's `element` carries an explicit `kind`. **`v1` defines exactly
+one identifying kind**, deliberately:
 
 | `kind` | Resolves by | Ambiguous when | Notes |
 | --- | --- | --- | --- |
 | `tag` | the `testTag`, matched anywhere in the tree | the tag is carried by more than one node | the ancestor path is irrelevant — the resolver never walks it |
-| `producer` | a producer-supplied stable id, matched by that id | the producer id is carried by more than one node | for producers with their own identity scheme; the tag rules do not apply |
 | *(absent)* | — | — | geometric acceptance: the mask alone, no element gate |
+
+An earlier draft also allowed a `producer` kind for a producer's own identity scheme. It is cut from
+`v1` because nothing can currently carry it: the annotation prerequisite in §5 adds `testTag` and
+the semantics `ref`, and `DesignAnnotation` has no producer-identity field — so an element selected
+in the comparison UI would have no way to persist the id such a resolver is meant to match. A
+selector kind with no authoring path is a capability on paper only, and worse than absent, because
+it reads as available. Adding it later is a `kind` enum addition plus a wire field on
+`compose-preview-annotations` and a projection path from the producer — do that work deliberately if
+a producer needs it, rather than reserving the slot now.
 
 **Uniqueness is evaluated against the full `ComposeSemanticsPayload`, never the annotation layer.**
 `ServeDesignAnnotations.annotations` emits nothing for a node that resolves neither typography nor
