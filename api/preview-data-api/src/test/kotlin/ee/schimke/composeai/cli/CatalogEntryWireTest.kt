@@ -20,7 +20,8 @@ class CatalogEntryWireTest {
             "catalog": {
               "role": "COMPONENT",
               "componentId": "Button/Filled",
-              "parallel": "FilledButton"
+              "parallel": "FilledButton",
+              "referenceContentsOnly": false
             }
           }]
         }
@@ -29,6 +30,7 @@ class CatalogEntryWireTest {
       )
 
     assertEquals("FilledButton", manifest.previews.single().catalog?.parallel)
+    assertEquals(false, manifest.previews.single().catalog?.referenceContentsOnly)
   }
 
   @Test
@@ -92,6 +94,7 @@ class CatalogEntryWireTest {
       )
 
     assertEquals(false, manifest.previews.single().catalog?.perBreakpoint)
+    assertEquals(true, manifest.previews.single().catalog?.referenceContentsOnly)
   }
 
   @Test

@@ -193,10 +193,20 @@ async function rasterizeHtml(file, target) {
   }
 }
 
-const figmaRasterizer = new FigmaRestRasterizer({
-  token: FIGMA_TOKEN,
-  contentsOnly: FIGMA_CONTENTS_ONLY,
-});
+const figmaRasterizers = new Map();
+
+function referenceContentsOnly(record) {
+  return record.origin?.referenceContentsOnly ?? FIGMA_CONTENTS_ONLY;
+}
+
+function figmaRasterizerFor(contentsOnly) {
+  let rasterizer = figmaRasterizers.get(contentsOnly);
+  if (!rasterizer) {
+    rasterizer = new FigmaRestRasterizer({ token: FIGMA_TOKEN, contentsOnly });
+    figmaRasterizers.set(contentsOnly, rasterizer);
+  }
+  return rasterizer;
+}
 
 /** A pre-rendered PNG for this ref under `--reference-images`, or null. */
 function suppliedRaster(ref) {
@@ -241,7 +251,7 @@ async function sourceRaster(record) {
       warn(`${record.id}: skipping figma reference ${ref} — no FIGMA_TOKEN in this run`);
       return null;
     }
-    return figmaRasterizer.rasterize(ref, target);
+    return figmaRasterizerFor(referenceContentsOnly(record)).rasterize(ref, target);
   }
 
   warn(`${record.id}: don't know how to rasterise a '${source}' reference from '${ref}'`);
@@ -289,14 +299,17 @@ let written = 0;
 /** Reference id -> a `{ layout }` shim; `referenceAnnotations` reads only that field. */
 const annotatedReferences = {};
 if (FIGMA_TOKEN) {
-  await figmaRasterizer.prepare(
-    records
-      .filter((record) => parseFigmaRef(record.origin.ref) && !suppliedRaster(record.origin.ref))
-      .map((record) => ({
-        ref: record.origin.ref,
-        target: targetFor(record),
-      })),
-  );
+  for (const contentsOnly of [true, false]) {
+    const requests = records
+      .filter(
+        (record) =>
+          referenceContentsOnly(record) === contentsOnly &&
+          parseFigmaRef(record.origin.ref) &&
+          !suppliedRaster(record.origin.ref),
+      )
+      .map((record) => ({ ref: record.origin.ref, target: targetFor(record) }));
+    if (requests.length > 0) await figmaRasterizerFor(contentsOnly).prepare(requests);
+  }
 }
 for (const record of records) {
   const target = targetFor(record);

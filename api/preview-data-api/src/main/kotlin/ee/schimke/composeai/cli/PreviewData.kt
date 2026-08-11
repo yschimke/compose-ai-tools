@@ -159,6 +159,8 @@ data class CatalogEntry(
    * consumer cannot tell apart from a null [reference] alone.
    */
   val noReference: String? = null,
+  /** COMPONENT: whether a Figma export contains only [reference]'s own content. */
+  val referenceContentsOnly: Boolean = true,
   val parallel: String? = null,
   val state: String? = null,
   val props: List<CatalogVariantProp> = emptyList(),

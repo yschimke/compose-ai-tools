@@ -463,6 +463,9 @@ export function planDesignReferences({ designMap, spec, catalog }) {
           ref: entry.ref,
           previewId: entry.previewId,
           density: entry.density,
+          ...(typeof entry.referenceContentsOnly === "boolean"
+            ? { referenceContentsOnly: entry.referenceContentsOnly }
+            : {}),
         },
       };
       if (entry.ref) record.source.uri = entry.ref;

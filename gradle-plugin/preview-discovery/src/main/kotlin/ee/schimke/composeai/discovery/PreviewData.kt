@@ -815,6 +815,11 @@ data class CatalogEntry(
    * kit retired this", which a consumer cannot infer from silence.
    */
   val noReference: String? = null,
+  /**
+   * COMPONENT only: whether a Figma export contains only [reference]'s own content. `false` opts
+   * this one reference into overlapping sheet layers without changing any other preview.
+   */
+  val referenceContentsOnly: Boolean = true,
   /** COMPONENT only: component id of the counterpart in the `compareWith` sibling system. */
   val parallel: String? = null,
   /** VARIANT only: the interaction/state this render shows (`pressed`, `disabled`, …). */
