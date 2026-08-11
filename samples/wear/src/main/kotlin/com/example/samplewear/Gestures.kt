@@ -54,6 +54,8 @@ import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.wear.compose.ui.tooling.preview.WearPreviewLargeRound
+import com.github.takahirom.roborazzi.annotations.ManualClockOptions
+import com.github.takahirom.roborazzi.annotations.RoboComposePreviewOptions
 import kotlinx.coroutines.launch
 
 /**
@@ -452,6 +454,9 @@ private fun GestureSticker(content: @Composable () -> Unit) {
 }
 
 @Preview(showBackground = false)
+@RoboComposePreviewOptions(
+  manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)]
+)
 @Composable
 fun PrimaryActionStickerPreview() {
   GestureSticker { PlayGestureButton(forceHint = true) }
@@ -502,12 +507,18 @@ fun GestureGalleryPreview() {
 }
 
 @WearPreviewLargeRound
+@RoboComposePreviewOptions(
+  manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)]
+)
 @Composable
 fun PrimaryActionScreenPreview() {
   MaterialTheme { PrimaryActionScreen(forceHint = true) }
 }
 
 @WearPreviewLargeRound
+@RoboComposePreviewOptions(
+  manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)]
+)
 @Composable
 fun DismissActionScreenPreview() {
   MaterialTheme { DismissActionScreen(forceHint = true) }
@@ -532,6 +543,9 @@ fun DisabledGestureScreenPreview() {
 }
 
 @WearPreviewLargeRound
+@RoboComposePreviewOptions(
+  manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)]
+)
 @Composable
 fun ButtonHintScreenPreview() {
   MaterialTheme { ButtonHintScreen(showHint = true) }
