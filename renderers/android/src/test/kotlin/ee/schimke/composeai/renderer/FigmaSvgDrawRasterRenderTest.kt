@@ -13,12 +13,18 @@ import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.CacheDrawModifierNode
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.node.DelegatingNode
+import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
@@ -175,6 +181,41 @@ class FigmaSvgDrawRasterRenderTest {
   }
 
   @Test
+  fun `a delegated cache draw node survives as a frame raster`() {
+    // Material 3's wavy indicators are custom NodeElements that delegate their drawing to a
+    // CacheDrawModifierNode. This fixture deliberately exposes no inspectable onDraw lambda, so
+    // only the live node-chain capability can prevent the otherwise-empty Box from disappearing.
+    val svg =
+      exportSvg("delegated-cache-draw", withFrame = true) {
+        Box(Modifier.size(width = 120.dp, height = 12.dp).delegatedCacheDraw())
+      }
+
+    assertTrue("the delegated draw must not export as an empty layer:\n$svg", svg.contains("<image "))
+    assertTrue(
+      "raster sidecar is written",
+      File(rootDir, "delegated-cache-draw/figma-raster").listFiles().orEmpty().isNotEmpty(),
+    )
+  }
+
+  @Test
+  fun `an axis-mirrored draw node keeps its negative scale`() {
+    // Material 3's reverse-direction VerticalSlider applies the same `scaleY = -1f` to its track.
+    val svg =
+      exportSvg("mirrored-draw", withFrame = true) {
+        Box(
+          Modifier.size(width = 44.dp, height = 120.dp)
+            .graphicsLayer(scaleY = -1f)
+            .drawBehind { drawRect(Color(0xFF6750A4)) }
+        )
+      }
+
+    assertTrue(
+      "the track vector must retain Material's vertical mirror:\n$svg",
+      Regex("""scale\([^)]* -1(?:\.0+)?\)""").containsMatchIn(svg),
+    )
+  }
+
+  @Test
   fun `a generic content clip is detected from behavior and uses a frame crop`() {
     val svg =
       exportSvg("content-clip", withFrame = true) {
@@ -252,4 +293,27 @@ private fun InspectableContent(
   currentComposer.collectParameterInformation()
   capture.add(currentComposer.compositionData)
   CompositionLocalProvider(LocalInspectionTables provides capture, content = content)
+}
+
+private fun Modifier.delegatedCacheDraw(): Modifier = this then DelegatedCacheDrawElement
+
+/** A custom node element with no draw lambda of its own, matching Material 3's wavy indicators. */
+private data object DelegatedCacheDrawElement : ModifierNodeElement<DelegatedCacheDrawNode>() {
+  override fun create(): DelegatedCacheDrawNode = DelegatedCacheDrawNode()
+
+  override fun update(node: DelegatedCacheDrawNode) = Unit
+
+  override fun InspectorInfo.inspectableProperties() {
+    name = "delegatedCacheDraw"
+  }
+}
+
+private class DelegatedCacheDrawNode : DelegatingNode() {
+  @Suppress("unused")
+  private val drawDelegate =
+    delegate(
+      CacheDrawModifierNode {
+        onDrawBehind { drawRect(Color(0xFF6750A4)) }
+      }
+    )
 }

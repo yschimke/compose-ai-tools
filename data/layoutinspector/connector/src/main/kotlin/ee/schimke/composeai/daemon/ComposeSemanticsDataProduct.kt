@@ -1285,6 +1285,10 @@ internal object ComposeLayoutInspector {
           density = density,
         ),
       drawRaster = drawRaster,
+      // Capability from the live modifier-node chain, not the serialized element name. A custom
+      // NodeElement may delegate its entire draw to a CacheDrawModifierNode while exposing no
+      // `onDraw` lambda for the vector/raster replay tiers (Material 3 wavy progress indicators).
+      drawsContent = drawsContent,
       modifiesDrawnContent =
         DrawContentEffectProbe.modifiesContent(modifiers, captureW, captureH, density),
       transform = coordinates.scaleIn(rootCoords),
@@ -1294,7 +1298,10 @@ internal object ComposeLayoutInspector {
 
   /**
    * The node's draw-time scale relative to the root — the product of every `graphicsLayer` scale
-   * between it and the root — or null for the identity (the overwhelmingly common case).
+   * between it and the root — or null for the identity (the overwhelmingly common case). The sign
+   * is retained for an axis-aligned mirror such as Material 3's vertical slider track (`scaleY =
+   * -1`); the previous distance-only measurement erased it and exported the active track at the
+   * opposite end.
    *
    * Measured, not reflected: two of the node's own corner offsets are mapped into root space and
    * compared against their un-transformed span. That reads the *composed* transform through the
@@ -1316,9 +1323,26 @@ internal object ComposeLayoutInspector {
         val origin = rootCoordinates.localPositionOf(this, Offset.Zero)
         val right = rootCoordinates.localPositionOf(this, Offset(w.toFloat(), 0f))
         val down = rootCoordinates.localPositionOf(this, Offset(0f, h.toFloat()))
+        val xAxis = right - origin
+        val yAxis = down - origin
+
+        fun signedAxisScale(delta: Offset, localExtent: Int, horizontal: Boolean): Float {
+          val magnitude = delta.getDistance() / localExtent
+          // A rotated axis cannot be represented by LayoutInspectorTransform's scale-only model;
+          // preserve its old positive magnitude. For an axis-aligned vector, however, the dominant
+          // component's sign is the mirror information SVG placement needs.
+          val along = if (horizontal) delta.x else delta.y
+          val across = if (horizontal) delta.y else delta.x
+          return if (kotlin.math.abs(along) >= kotlin.math.abs(across) && along < 0f) {
+            -magnitude
+          } else {
+            magnitude
+          }
+        }
+
         LayoutInspectorTransform(
-          scaleX = (right - origin).getDistance() / w,
-          scaleY = (down - origin).getDistance() / h,
+          scaleX = signedAxisScale(xAxis, w, horizontal = true),
+          scaleY = signedAxisScale(yAxis, h, horizontal = false),
         )
       } catch (_: Throwable) {
         return null
@@ -2182,6 +2206,9 @@ internal object ComposeLayoutInspector {
     val modifierInfo: List<ModifierInfo>
       get() = LayoutTreeAccess.modifierInfo(raw)
 
+    val drawsContent: Boolean
+      get() = LayoutTreeAccess.hasDrawModifierNode(raw)
+
     val children: List<LayoutNodeFacade>
       get() = LayoutTreeAccess.children(raw).map(::LayoutNodeFacade)
   }
@@ -2208,6 +2235,64 @@ internal object ComposeLayoutInspector {
     fun modifierInfo(node: Any): List<ModifierInfo> =
       (call(node, "getModifierInfo") as? Iterable<*>)?.filterIsInstance<ModifierInfo>()
         ?: emptyList()
+
+    /**
+     * Whether this layout node's live modifier-node chain draws content.
+     *
+     * Looking only at [ModifierInfo.modifier] misses modern custom `Modifier.NodeElement`s whose
+     * element is merely configuration while their node delegates to a `CacheDrawModifierNode`.
+     * Material 3's wavy progress indicators take exactly that path: the element exposes no
+     * replayable `onDraw`, but its immediate delegate implements `DrawModifierNode`. Walk both the
+     * ordinary node chain and each delegating node's delegate ring, using reflection so the capture
+     * remains compatible with Compose versions whose internal accessor suffix is `$ui` or
+     * `$ui_release`.
+     */
+    fun hasDrawModifierNode(node: Any): Boolean {
+      val nodes =
+        sequenceOf("getNodes\$ui_release", "getNodes\$ui", "getNodes")
+          .mapNotNull { call(node, it) }
+          .firstOrNull() ?: return false
+      val head =
+        sequenceOf("getHead\$ui_release", "getHead\$ui", "getHead")
+          .mapNotNull { call(nodes, it) }
+          .firstOrNull() ?: return false
+      val drawType =
+        runCatching {
+            Class.forName(
+              "androidx.compose.ui.node.DrawModifierNode",
+              false,
+              node.javaClass.classLoader,
+            )
+          }
+          .getOrNull() ?: return false
+      val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
+
+      fun visitsDraw(candidate: Any?): Boolean {
+        if (candidate == null || !seen.add(candidate)) return false
+        if (drawType.isInstance(candidate)) return true
+        val delegate =
+          sequenceOf("getDelegate\$ui_release", "getDelegate\$ui", "getDelegate")
+            .mapNotNull { call(candidate, it) }
+            .firstOrNull()
+        return visitsDraw(delegate)
+      }
+
+      var current: Any? = head
+      while (current != null && seen.add(current)) {
+        val chainNode = current
+        if (drawType.isInstance(chainNode)) return true
+        val delegate =
+          sequenceOf("getDelegate\$ui_release", "getDelegate\$ui", "getDelegate")
+            .mapNotNull { call(chainNode, it) }
+            .firstOrNull()
+        if (visitsDraw(delegate)) return true
+        current =
+          sequenceOf("getChild\$ui_release", "getChild\$ui", "getChild")
+            .mapNotNull { call(chainNode, it) }
+            .firstOrNull()
+      }
+      return false
+    }
 
     fun children(node: Any): List<Any> =
       // The child accessors carry an internal-visibility suffix that differs by build: Android
