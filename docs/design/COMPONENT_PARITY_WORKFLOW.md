@@ -231,6 +231,14 @@ configured source repo needs either a `repository_dispatch` into the catalog rep
 **Recommended: both** — dispatch for latency, a daily cron for the repos nobody remembered to wire
 up. A reconciliation pass is cheap here precisely because regenerating the index costs no render.
 
+**The dispatch leg needs a credential, and the default one won't do it.** A source repo's automatic
+`GITHUB_TOKEN` is scoped to that repo and cannot create a `repository_dispatch` event in the catalog
+repo, so the low-latency half fails closed unless something is provisioned: a GitHub App
+installation token (preferred — scoped, rotatable, no human owner) or a PAT with `repo` on the
+catalog repo, distributed to each source repo as a secret. That provisioning is per-source-repo
+setup work and is the reason the cron backstop is not optional — it is what a source repo falls back
+to when nobody has wired its credential yet, which will be the normal state for a while.
+
 Both the serve host and the design-parity CI run read the same file. Neither ever calls the GitHub
 API at page-render time — same rule that keeps the host away from Figma.
 
@@ -577,6 +585,16 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
    placeholders that `refreshReportLink()` substitutes from live viewer state, on the same "write an
    input value, never an href" rule the existing substitution already follows. The JS-off path keeps
    the server-rendered defaults, which are correct for a page nobody has touched.
+
+   **Substitute from the displayed frame, not from the controls.** `refreshLinks()` calls
+   `refreshReportLink()` as soon as a control moves, but the viewer deliberately records the frame's
+   real provenance later — in the replacement image's `onload`, once the render it asked for has
+   actually arrived. Between those two moments the visible pixels are still the *previous* frame. A
+   locator substituted from the controls during that window recreates exactly the identity/pixel
+   mismatch this step exists to prevent, and a render that fails outright leaves it wrong
+   indefinitely. Derive the locator from the successfully displayed frame's recorded state, or
+   disable the report affordance until the requested frame has loaded — the second is cruder but
+   cannot be got subtly wrong.
 
    **The raw score is a separate problem: the surface with the report form is not the surface that
    knows the score.** The form (`cp-report-body`) and `refreshReportLink()` live only on the viewer,
