@@ -40,16 +40,46 @@ assigned_profiles() {
     sed 's/^SERVE_PLAYGROUND_SANDBOX=//' | sort -u
 }
 
-# The apt package list the Dockerfile installs. The package may sit anywhere on a continued RUN
-# line — `install-linux-font-fallbacks` takes its extra packages as argv, so `bubblewrap` shares a
-# line with `curl ca-certificates git` rather than standing alone. Match it as a whole word, not as
-# the start of a line: anchoring to the line start made this detector go blind the moment the
-# package list was reflowed, and it reported a missing package the image was in fact installing.
-# Comment lines are stripped first so the rationale comment above the RUN — which names the package
-# it is explaining — cannot stand in for actually installing it.
+# Does the Dockerfile pass `pkg` to a package installer?
+#
+# The package may sit anywhere on a continued RUN line — `install-linux-font-fallbacks` takes its
+# extra packages as argv, so `bubblewrap` shares a line with `curl ca-certificates git` rather than
+# standing alone. Anchoring the match to the start of a line made this detector go blind the moment
+# that package list was reflowed, and it reported a missing package the image was in fact
+# installing. So: match the package as a whole word, but only inside an installer invocation, and
+# only in text the shell would actually treat as an argument. `RUN echo bubblewrap`, a rationale
+# comment naming the package it explains, and a trailing `# bubblewrap` all install nothing, and a
+# guard that accepts them for the real thing would fail open — silently, in the posture described at
+# the top of this file.
+#
+# One awk pass rather than a `grep | grep` pipeline: under `pipefail`, the downstream `grep -q`
+# exits at the first match while the upstream filter is still writing, so it takes a SIGPIPE and the
+# whole pipeline reports 141. That turns the answer into a function of how big the file is and how
+# early the match sits — verified: a 200k-line Dockerfile that installs bubblewrap on line 2 comes
+# back "missing".
 dockerfile_installs() {
   local dockerfile="$1" pkg="$2"
-  grep -vE '^[[:space:]]*#' "${dockerfile}" | grep -qE "(^|[[:space:]])${pkg}([[:space:]]|\\\\|$)"
+  awk -v pkg="${pkg}" '
+    # A Dockerfile `#` comment is whole-line only.
+    /^[[:space:]]*#/ { next }
+    {
+      line = $0
+      # Inside a RUN, a `#` after whitespace is a *shell* comment: the rest of the line is not an
+      # argument, whatever it names.
+      sub(/[[:space:]]+#.*$/, "", line)
+      if (line ~ /(apt-get[[:space:]]+install|apt[[:space:]]+install|apk[[:space:]]+add|dnf[[:space:]]+install|yum[[:space:]]+install|install-linux-font-fallbacks)/) {
+        in_install = 1
+      }
+      if (in_install && line ~ ("(^|[[:space:]])" pkg "([[:space:]]|\\\\|$)")) {
+        found = 1
+      }
+      # The invocation ends at the first line that is not continued onto the next.
+      if (line !~ /\\[[:space:]]*$/) {
+        in_install = 0
+      }
+    }
+    END { exit found ? 0 : 1 }
+  ' "${dockerfile}"
 }
 
 check() {
@@ -161,5 +191,27 @@ printf 'FROM x\n# bubblewrap belongs here, one day\nRUN apt-get install -y \\\n 
   >"${tmp}/commented-bwrap.Dockerfile"
 expect_fail "bubblewrap only mentioned in a comment" \
   "${tmp}/commented-bwrap.Dockerfile" "${tmp}/bwrap.md"
+
+# 7. A trailing shell comment on the install line itself — the argument list ends at the `#`.
+printf 'FROM x\nRUN apt-get install -y curl # bubblewrap\n' >"${tmp}/trailing-bwrap.Dockerfile"
+expect_fail "bubblewrap only in a trailing comment on the install line" \
+  "${tmp}/trailing-bwrap.Dockerfile" "${tmp}/bwrap.md"
+
+# 8. The word appearing in a command that installs nothing.
+printf 'FROM x\nRUN echo bubblewrap\nRUN apt-get install -y curl\n' >"${tmp}/echo-bwrap.Dockerfile"
+expect_fail "bubblewrap named outside any installer invocation" \
+  "${tmp}/echo-bwrap.Dockerfile" "${tmp}/bwrap.md"
+
+# 9. The pipefail trap: a package installed early in a long file must still be found. The old
+# `grep | grep -q` pipeline reported this one missing, because the upstream filter took a SIGPIPE
+# once the downstream matched and `pipefail` surfaced its 141 as the answer.
+{
+  printf 'FROM x\nRUN apt-get install -y bubblewrap curl\n'
+  for i in $(seq 1 200000); do
+    echo "RUN true padding line ${i} keeps the upstream writer busy past the pipe buffer"
+  done
+} >"${tmp}/early-match.Dockerfile"
+expect_pass "bubblewrap installed early in a very long Dockerfile" \
+  "${tmp}/early-match.Dockerfile" "${tmp}/bwrap.md"
 
 echo "PASS: all sandbox tooling checks"

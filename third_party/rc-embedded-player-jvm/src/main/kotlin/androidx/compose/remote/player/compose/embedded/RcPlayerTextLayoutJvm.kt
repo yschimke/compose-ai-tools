@@ -152,20 +152,26 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
                 TextUnit.Unspecified
             },
         textDecoration = textDecoration,
-        // Only the properties the document actually sets are overridden; everything else stays on
-        // the ambient style. Building a fresh `TextStyle` here instead — and in particular pinning
-        // `LineBreak.Simple` for the default strategy rather than leaving it unspecified —
-        // remeasured every text in every document, not just the ones using these properties: it
-        // grew the AppCard fixture's card by 3px and moved its clip rect (#3667).
+        // Only the properties the document actually sets are overridden. Building a fresh
+        // `TextStyle` here instead — and in particular pinning `LineBreak.Simple` for the default
+        // strategy rather than leaving it unspecified — remeasured every text in every document,
+        // not just the ones using these properties: it grew the AppCard fixture's card by 3px and
+        // moved its clip rect (#3667).
+        //
+        // Unset means `Unspecified`, not "inherit": a document that says nothing about line
+        // breaking must not pick up a host's `LineBreak.Heading` (Material3 sets one per type role)
+        // just because the player happens to be composed inside a slot that provides a text style.
+        // Every other property still rides on the ambient style.
         style =
             baseStyle.copy(
                 lineBreak =
                     when (data.lineBreakStrategy) {
                         1 -> LineBreak.Paragraph
                         2 -> LineBreak.Heading
-                        else -> baseStyle.lineBreak
+                        else -> LineBreak.Unspecified
                     },
-                hyphens = if (data.hyphenationFrequency > 0) Hyphens.Auto else baseStyle.hyphens,
+                hyphens =
+                    if (data.hyphenationFrequency > 0) Hyphens.Auto else Hyphens.Unspecified,
             ),
     )
 }
