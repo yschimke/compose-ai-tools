@@ -244,7 +244,20 @@ data class BundleManifest(
    * font-parity render needs the rehydration. See [BundleExternalResource].
    */
   val externalResources: List<BundleExternalResource> = emptyList(),
+  /**
+   * (v8, post-split, opt-in) Whole classpath entries omitted from this addressable bundle and
+   * published once in the sibling content-addressed pool. Unlike [externalResources], which are
+   * individual resources materialized onto an extra classpath directory, these bytes restore the
+   * exact zip entry named by [BundleExternalClasspath.path] (currently `classes/app.jar`). A normal
+   * pack and the existing `bundle split` full mode remain self-contained; only the explicit
+   * shared-classpath split mode populates this field.
+   */
+  val externalClasspath: List<BundleExternalClasspath> = emptyList(),
 )
+
+/** One whole bundle classpath entry stored at `bundle/res/<sha256>` instead of inline. */
+@Serializable
+data class BundleExternalClasspath(val path: String, val sha256: String, val size: Long)
 
 /**
  * One resource lifted out of `classes/app.jar` by `bundle externalize` and fetched on demand. See

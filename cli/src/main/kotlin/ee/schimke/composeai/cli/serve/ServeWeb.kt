@@ -461,14 +461,21 @@ object ServeWeb {
     report: ReportIssue?,
     figmaSpec: FigmaSpec?,
     playgroundHref: String?,
+    executableBundleHref: String?,
   ): String {
     val links =
       sourceLinkHtml(sourceHref, sourcePath) +
         playgroundLinkHtml(playgroundHref) +
+        executableBundleLinkHtml(executableBundleHref) +
         reportIssueHtml(report) +
         figmaSpecHtml(figmaSpec)
     if (links.isBlank()) return ""
     return "\n      <div class=\"cp-preview-links\">$links\n      </div>"
+  }
+
+  private fun executableBundleLinkHtml(href: String?): String {
+    val url = href?.takeIf { it.isNotBlank() } ?: return ""
+    return "\n        <a href=\"${WebEscaping.htmlEscape(url)}\" download>download executable bundle</a>"
   }
 
   /**
@@ -5339,6 +5346,8 @@ $rows
     hasSvgExport: Boolean = false,
     /** Whether the full-page raster/vector scroll export is available for this preview. */
     hasScrollExport: Boolean = false,
+    /** Hydrated self-contained per-preview bundle download, when the server can provide one. */
+    executableBundleHref: String? = null,
     /**
      * Whether this session can produce the accessibility data products the viewer's **Accessibility
      * inspection layer** draws from (`a11y/hierarchy`, plus ATF findings / touch targets where the
@@ -6398,7 +6407,14 @@ $rows
     // visitor and the render. It now rides directly above the export bar, where the other
     // "take this away with you" affordances (the PNG and SVG links) already live.
     val previewLinks =
-      previewLinksHtml(sourceHref, preview.sourceFile, reportIssue, figmaSpec, playgroundHref)
+      previewLinksHtml(
+        sourceHref,
+        preview.sourceFile,
+        reportIssue,
+        figmaSpec,
+        playgroundHref,
+        executableBundleHref,
+      )
     // Title, trust badge, id and the view tally on ONE baseline-aligned row. They are all
     // *identity* — three separate blocks said so three times, at the cost of ~90px above the fold.
     val body =

@@ -103,7 +103,7 @@ on:
         type: boolean
         default: false
       split-mode:
-        description: "Per-preview split mode when split-per-preview is set: 'full' (each bundle carries its re-render classpath from the externalised liveBundle — a desktop/live tier; requires publish-live-bundle) or 'view-only' (baked, no classpath, split from the raw render — an Android/baked tier)."
+        description: "Per-preview split mode when split-per-preview is set: 'full' (self-contained), 'full-shared-classpath' (opt-in: app.jar once in bundle/res and server-hydrated), or 'view-only' (baked, no classpath). Live modes require publish-live-bundle."
         required: false
         type: string
         default: 'full'
@@ -994,6 +994,10 @@ jobs:
           set -euo pipefail
           if [ "${{ inputs.split-mode }}" = "view-only" ]; then
             compose-preview bundle split "$GITHUB_WORKSPACE/bundle.png" --view-only \
+              -o "$GITHUB_WORKSPACE/out/bundle/previews"
+          elif [ "${{ inputs.split-mode }}" = "full-shared-classpath" ]; then
+            compose-preview bundle split "$GITHUB_WORKSPACE/bundle.png" \
+              --shared-classpath-out "$GITHUB_WORKSPACE/out/bundle/res" \
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
           else
             compose-preview bundle split "$GITHUB_WORKSPACE/out/bundle/bundle.png" \

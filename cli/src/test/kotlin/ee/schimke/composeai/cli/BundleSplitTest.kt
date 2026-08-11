@@ -136,6 +136,35 @@ class BundleSplitTest {
   }
 
   @Test
+  fun `shared classpath split publishes app jar once and records its digest`() {
+    val pooled = LinkedHashMap<SharedClasspathEntry, ByteArray>()
+    val split = ArrayList<SplitPreview>()
+    forEachSplitPreview(
+      sheetZip(),
+      SplitMode.FULL_SHARED_CLASSPATH,
+      onSharedClasspath = { entry, bytes -> pooled[entry] = bytes },
+    ) {
+      split += it
+    }
+
+    assertEquals(1, pooled.size)
+    val record = pooled.keys.single()
+    assertEquals("classes/app.jar", record.path)
+    assertEquals(2048L, record.size)
+    assertContentEquals(ByteArray(2048) { 1 }, pooled.values.single())
+
+    val entries = readEntries(split.first { it.id == "A" }.zipBytes)
+    assertFalse("classes/app.jar" in entries)
+    assertTrue("libs/dep.jar" in entries)
+    val manifest =
+      json.parseToJsonElement(entries.getValue("bundle.json").decodeToString()).jsonObject
+    val external = manifest["externalClasspath"]!!.jsonArray.single().jsonObject
+    assertEquals("classes/app.jar", external["path"]!!.jsonPrimitive.content)
+    assertEquals(record.sha256, external["sha256"]!!.jsonPrimitive.content)
+    assertEquals("2048", external["size"]!!.jsonPrimitive.content)
+  }
+
+  @Test
   fun `split is deterministic`() {
     val a1 = splitBundleZip(sheetZip(), SplitMode.VIEW_ONLY).first { it.id == "A" }
     val a2 = splitBundleZip(sheetZip(), SplitMode.VIEW_ONLY).first { it.id == "A" }

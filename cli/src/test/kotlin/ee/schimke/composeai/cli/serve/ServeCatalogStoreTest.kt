@@ -1179,7 +1179,10 @@ class ServeCatalogStoreTest {
          {"path":"images/button-filled/ideal__default__dark.png","theme":"dark","previewId":"FilledButton_Dark"}]}]}
       """
         .trimIndent()
-    val perPreviewBytes = byteArrayOf(9, 8, 7)
+    val perPreviewBytes =
+      polyglotBundle(
+        """{"schemaVersion":8,"backend":"desktop","previewIds":["a"],"coverPreviewId":"a","classpath":[{"kind":"module","path":"classes/app.jar"}],"modulePath":":app","producedBy":"test"}"""
+      )
     // Thread-safe: a catalog load also kicks off background fetch lanes (vectors, the published
     // rc-compare), so this recorder is written from those threads while the assertions below read
     // it. A plain ArrayList fails the reads with a ConcurrentModificationException.

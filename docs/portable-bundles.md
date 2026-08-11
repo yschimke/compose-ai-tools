@@ -168,6 +168,30 @@ self-contained (`externalResources` empty), the step doesn't bump
 `schemaVersion`, and a pre-externalize reader just finds fewer resources in the
 jar. Idempotent — re-running finds the fonts already gone and changes nothing.
 
+### Shared per-preview classpath (opt-in)
+
+The ordinary `bundle split` full mode remains self-contained: every per-preview
+bundle carries `classes/app.jar`. For delivery trees where that repetition is
+too expensive, the explicitly opt-in form
+
+```
+compose-preview bundle split sheet.png -o bundle/previews \
+  --shared-classpath-out bundle/res
+```
+
+publishes the sheet's complete `classes/app.jar` once as
+`bundle/res/<sha256>` and records it in each split manifest as
+`externalClasspath: [{path, sha256, size}]`. The split artifacts remain valid
+PNG+ZIP previews, but need their sibling pool to re-render; direct branch
+downloads are therefore not offline-executable.
+
+A trusted preview server fetches and verifies the hash-keyed JAR once, restores
+it into a cached copy of each requested bundle, and uses that self-contained
+copy for both daemon startup and the viewer's “download executable bundle”
+action. Hydration removes `externalClasspath`. It also removes
+`signatures.json`, because adding the restored JAR changes the canonical digest;
+the derivative must be unsigned or signed anew by the hydrating server.
+
 ### Proposed additive schema (v3) for cross-build-system portability
 
 Today `ClasspathEntry` (in both `PreviewBundleFormat.kt` and the viewer's mirror

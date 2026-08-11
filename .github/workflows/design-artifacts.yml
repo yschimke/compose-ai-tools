@@ -514,16 +514,21 @@ jobs:
         env:
           SYSTEM: ${{ matrix.system }}
           EXTRA_RENDERS: ${{ matrix.androidExtraModule }}
-          # FULL for any live-bundle tier (the CMP wasm row + an androidLiveBundle row),
-          # so each per-preview bundle carries its re-render classpath; --view-only for
-          # baked-only tiers.
-          SPLIT_MODE: ${{ (matrix.wasmModule != '' || matrix.androidLiveBundle == '1') && 'full' || 'view-only' }}
+          # The shared-classpath live tier publishes app.jar once under bundle/res/ and lets serve
+          # hydrate executable downloads. Baked-only tiers remain view-only.
+          SPLIT_MODE: ${{ (matrix.wasmModule != '' || matrix.androidLiveBundle == '1') && 'full-shared-classpath' || 'view-only' }}
         run: |
           set -euo pipefail
           view_only_flag=""
           split_source="$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
           if [ "$SPLIT_MODE" = "view-only" ]; then
             view_only_flag="--view-only"
+          elif [ "$SPLIT_MODE" = "full-shared-classpath" ]; then
+            compose-preview bundle split "$GITHUB_WORKSPACE/$SYSTEM-bundle.png" \
+              --shared-classpath-out "$GITHUB_WORKSPACE/out/bundle/res" \
+              -o "$GITHUB_WORKSPACE/out/bundle/previews"
+            # The shared mode is complete; skip the legacy full-mode command below.
+            split_source=""
           else
             # FULL: split the EXTERNALISED live bundle the generate step already produced under
             # out/bundle/ (fonts lifted to bundle/res/<sha>), not the raw sheet. Splitting the raw
@@ -533,8 +538,10 @@ jobs:
             # the shared-pool font references, so `serve` rehydrates fonts from bundle/res once.
             split_source="$GITHUB_WORKSPACE/out/bundle/$SYSTEM-bundle.png"
           fi
-          compose-preview bundle split "$split_source" $view_only_flag \
-            -o "$GITHUB_WORKSPACE/out/bundle/previews"
+          if [ -n "$split_source" ]; then
+            compose-preview bundle split "$split_source" $view_only_flag \
+              -o "$GITHUB_WORKSPACE/out/bundle/previews"
+          fi
           # For compose-m3 the catalog also folds an Android-only supplement (the material3 inset
           # focus ring CMP can't draw), whose renders/semantics override same-named CMP functions in
           # the published catalog. Split it into the same dir so those override renders are published

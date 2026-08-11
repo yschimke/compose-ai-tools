@@ -56,6 +56,8 @@ data class ServeSessionState(
    * plain sessions and for a branch that ships only the monolithic bundle.
    */
   val perPreviewResolve: ((daemonId: String) -> ServeHost?)? = null,
+  /** Resolve a hydrated, self-contained per-preview bundle for download. */
+  val executableBundleProvider: ((daemonId: String) -> ByteArray?)? = null,
   /** Live upstream stream count across the pooled per-preview daemons (see [perPreviewResolve]). */
   val perPreviewStreamCount: () -> Int = { 0 },
   /**

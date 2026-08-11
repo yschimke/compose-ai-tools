@@ -9,6 +9,7 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -44,8 +45,12 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 internal enum class SplitMode {
   FULL,
+  FULL_SHARED_CLASSPATH,
   VIEW_ONLY,
 }
+
+/** One whole bundle entry published once into the split output's content-addressed pool. */
+internal data class SharedClasspathEntry(val path: String, val sha256: String, val size: Long)
 
 /**
  * One split output: the preview id, its cover PNG (polyglot leading bytes), and the appended zip.
@@ -112,6 +117,7 @@ internal fun forEachSplitPreview(
   sheetZip: ByteArray,
   mode: SplitMode,
   crop: Boolean = true,
+  onSharedClasspath: (SharedClasspathEntry, ByteArray) -> Unit = { _, _ -> },
   onPreview: (SplitPreview) -> Unit,
 ): Int {
   val entries = readZipEntries(sheetZip)
@@ -141,13 +147,34 @@ internal fun forEachSplitPreview(
   // renders the `⟦res 0x7f…⟧` placeholder — which only surfaces once an override forces a live
   // per-preview re-render (a plain browse serves the baked PNG/SVG), so a per-variant knob edit
   // on a Wear/Android sticker showed the placeholder instead of the real label.
-  val shared = entries.filterKeys {
-    it == "classes/app.jar" ||
-      it.startsWith("libs/") ||
-      it == "report.json" ||
-      it.startsWith("android/")
-  }
-  val fullMode = mode == SplitMode.FULL
+  val sharedClasspath =
+    if (mode == SplitMode.FULL_SHARED_CLASSPATH) {
+      entries["classes/app.jar"]?.let { bytes ->
+        SharedClasspathEntry(
+            path = "classes/app.jar",
+            sha256 =
+              MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
+                "%02x".format(it)
+              },
+            size = bytes.size.toLong(),
+          )
+          .also { onSharedClasspath(it, bytes) }
+      }
+    } else {
+      null
+    }
+  val shared =
+    entries
+      .filterKeys {
+        it == "classes/app.jar" ||
+          it.startsWith("libs/") ||
+          it == "report.json" ||
+          it.startsWith("android/")
+      }
+      .let { carriage ->
+        if (mode == SplitMode.FULL_SHARED_CLASSPATH) carriage - "classes/app.jar" else carriage
+      }
+  val fullMode = mode != SplitMode.VIEW_ONLY
 
   var emitted = 0
   for (id in ids) {
@@ -196,7 +223,10 @@ internal fun forEachSplitPreview(
     }
 
     out["bundle.json"] =
-      SPLIT_JSON.encodeToString(JsonObject.serializer(), perPreviewManifest(manifest, id, fullMode))
+      SPLIT_JSON.encodeToString(
+          JsonObject.serializer(),
+          perPreviewManifest(manifest, id, fullMode, sharedClasspath),
+        )
         .encodeToByteArray()
     out["previews.json"] =
       SPLIT_JSON.encodeToString(
@@ -212,55 +242,73 @@ internal fun forEachSplitPreview(
 }
 
 /** Rewrite the sheet manifest for a single preview: cover + previewIds = [id], IR filtered, etc. */
-private fun perPreviewManifest(manifest: JsonObject, id: String, fullMode: Boolean): JsonObject =
-  buildJsonObject {
-    for ((key, value) in manifest) {
-      when (key) {
-        "previewIds" -> put(key, buildJsonArray { add(JsonPrimitive(id)) })
-        // Keep the raw-id list parallel to previewIds: subset to this preview's raw id (same
-        // index in the source lists), falling back to the bundle id when the source bundle
-        // predates the field or the lists disagree.
-        "rawPreviewIds" -> {
-          val bundleIds =
-            manifest["previewIds"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
-          val raws = value.jsonArray.map { it.jsonPrimitive.content }
-          val raw = bundleIds.indexOf(id).takeIf { it in raws.indices }?.let { raws[it] } ?: id
-          put(key, buildJsonArray { add(JsonPrimitive(raw)) })
-        }
-        "coverPreviewId" -> put(key, JsonPrimitive(id))
-        // View-only carries no re-render classpath, so record that honestly.
-        "classpath" -> put(key, if (fullMode) value else JsonArray(emptyList()))
-        "resolution" -> put(key, if (fullMode) value else JsonPrimitive("view-only"))
-        // The Android app-resource carriage rides the FULL re-render set (the `android/` entries
-        // copied above); a VIEW_ONLY bundle ships none of it, so drop the manifest pointer too
-        // rather than advertise a `resources.ap_` table the zip doesn't carry (mirrors emptying
-        // `classpath`). A FULL bundle keeps the pointer, now backed by the carried `android/`
-        // files.
-        "androidResources" -> if (fullMode) put(key, value)
-        // Keep only this preview's intermediate representation (empty for classpath-backed
-        // previews).
-        "intermediateRepresentations" ->
-          put(
-            key,
-            buildJsonArray {
-              value.jsonArray
-                .filter { it.jsonObject["previewId"]?.jsonPrimitive?.content == id }
-                .forEach { add(it) }
-            },
-          )
-        // Data-extension reports in a sheet are sliced to the sheet's cover, not this preview —
-        // drop
-        // them rather than carry another preview's data.
-        "dataExtensions" -> {}
-        else -> put(key, value)
+private fun perPreviewManifest(
+  manifest: JsonObject,
+  id: String,
+  fullMode: Boolean,
+  sharedClasspath: SharedClasspathEntry? = null,
+): JsonObject = buildJsonObject {
+  for ((key, value) in manifest) {
+    when (key) {
+      "previewIds" -> put(key, buildJsonArray { add(JsonPrimitive(id)) })
+      // Keep the raw-id list parallel to previewIds: subset to this preview's raw id (same
+      // index in the source lists), falling back to the bundle id when the source bundle
+      // predates the field or the lists disagree.
+      "rawPreviewIds" -> {
+        val bundleIds =
+          manifest["previewIds"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
+        val raws = value.jsonArray.map { it.jsonPrimitive.content }
+        val raw = bundleIds.indexOf(id).takeIf { it in raws.indices }?.let { raws[it] } ?: id
+        put(key, buildJsonArray { add(JsonPrimitive(raw)) })
       }
-    }
-    // Ensure view-only fields exist even if the sheet manifest omitted them.
-    if (!fullMode) {
-      if ("classpath" !in manifest) put("classpath", JsonArray(emptyList()))
-      if ("resolution" !in manifest) put("resolution", JsonPrimitive("view-only"))
+      "coverPreviewId" -> put(key, JsonPrimitive(id))
+      // View-only carries no re-render classpath, so record that honestly.
+      "classpath" -> put(key, if (fullMode) value else JsonArray(emptyList()))
+      "resolution" -> put(key, if (fullMode) value else JsonPrimitive("view-only"))
+      // The Android app-resource carriage rides the FULL re-render set (the `android/` entries
+      // copied above); a VIEW_ONLY bundle ships none of it, so drop the manifest pointer too
+      // rather than advertise a `resources.ap_` table the zip doesn't carry (mirrors emptying
+      // `classpath`). A FULL bundle keeps the pointer, now backed by the carried `android/`
+      // files.
+      "androidResources" -> if (fullMode) put(key, value)
+      // Keep only this preview's intermediate representation (empty for classpath-backed
+      // previews).
+      "intermediateRepresentations" ->
+        put(
+          key,
+          buildJsonArray {
+            value.jsonArray
+              .filter { it.jsonObject["previewId"]?.jsonPrimitive?.content == id }
+              .forEach { add(it) }
+          },
+        )
+      // Data-extension reports in a sheet are sliced to the sheet's cover, not this preview —
+      // drop
+      // them rather than carry another preview's data.
+      "dataExtensions" -> {}
+      else -> put(key, value)
     }
   }
+  // Ensure view-only fields exist even if the sheet manifest omitted them.
+  if (!fullMode) {
+    if ("classpath" !in manifest) put("classpath", JsonArray(emptyList()))
+    if ("resolution" !in manifest) put("resolution", JsonPrimitive("view-only"))
+  }
+  if (sharedClasspath != null) {
+    put(
+      "externalClasspath",
+      buildJsonArray {
+        add(
+          buildJsonObject {
+            put("path", JsonPrimitive(sharedClasspath.path))
+            put("sha256", JsonPrimitive(sharedClasspath.sha256))
+            put("size", JsonPrimitive(sharedClasspath.size))
+          }
+        )
+      },
+    )
+  }
+}
 
 /** Filter `previews.json` down to the single preview [id]. */
 private fun perPreviewPreviews(
@@ -434,13 +482,24 @@ internal class SplitSubcommand(private val args: List<String>) {
   fun run() {
     val path = args.firstOrNull { !it.startsWith("-") }
     val outDirArg = args.flagValue("--output") ?: args.flagValue("-o")
-    val mode = if ("--view-only" in args) SplitMode.VIEW_ONLY else SplitMode.FULL
+    val sharedClasspathOut = args.flagValue("--shared-classpath-out")
+    if ("--view-only" in args && sharedClasspathOut != null) {
+      System.err.println("bundle split: --view-only cannot be combined with --shared-classpath-out")
+      exitProcess(64)
+    }
+    val mode =
+      when {
+        "--view-only" in args -> SplitMode.VIEW_ONLY
+        sharedClasspathOut != null -> SplitMode.FULL_SHARED_CLASSPATH
+        else -> SplitMode.FULL
+      }
     // Content-crop each sticker's PNG to its component box by default (tight importable stickers);
     // `--no-crop` keeps the full render canvas.
     val crop = "--no-crop" !in args
     if (path == null) {
       System.err.println(
-        "Usage: compose-preview bundle split <bundle.png | URL> -o <dir> [--view-only] [--no-crop]"
+        "Usage: compose-preview bundle split <bundle.png | URL> -o <dir> " +
+          "[--view-only | --shared-classpath-out <pool-dir>] [--no-crop]"
       )
       exitProcess(64)
     }
@@ -464,13 +523,30 @@ internal class SplitSubcommand(private val args: List<String>) {
     // collision append -2/-3/… so every preview keeps its own file instead of silently overwriting.
     val usedStems = HashSet<String>()
     val written = ArrayList<File>()
+    val sharedPool = sharedClasspathOut?.let(::File)?.absoluteFile
     // Write each bundle as it is produced and let it go. Collecting them first meant holding every
     // per-preview bundle — each carrying the shared classpath + Android resource table — in memory
     // simultaneously, which OOM'd on a 181-preview catalog. Only the File handles are kept, for the
     // size summary below.
     val emitted =
       try {
-        forEachSplitPreview(zipBytes, mode, crop = crop) { preview ->
+        forEachSplitPreview(
+          zipBytes,
+          mode,
+          crop = crop,
+          onSharedClasspath = { entry, bytes ->
+            val pool = checkNotNull(sharedPool)
+            pool.mkdirs()
+            val target = File(pool, entry.sha256)
+            if (target.isFile) {
+              check(target.length() == entry.size && target.readBytes().contentEquals(bytes)) {
+                "content-addressed pool collision at ${target.path}"
+              }
+            } else {
+              target.writeBytes(bytes)
+            }
+          },
+        ) { preview ->
           val base = sanitizeSplitFileName(preview.id)
           var stem = base
           var n = 1
@@ -497,7 +573,11 @@ internal class SplitSubcommand(private val args: List<String>) {
     val total = sizes.sum()
     println(
       "bundle split — wrote ${written.size} bundle(s) to ${outDir.path} " +
-        "(${if (mode == SplitMode.VIEW_ONLY) "view-only" else "full"})\n" +
+        "(${when (mode) {
+          SplitMode.VIEW_ONLY -> "view-only"
+          SplitMode.FULL -> "full"
+          SplitMode.FULL_SHARED_CLASSPATH -> "full-shared-classpath"
+        }})\n" +
         "  total:   $total bytes\n" +
         "  size:    min ${sizes.minOrNull() ?: 0} / avg ${if (written.isNotEmpty()) total / written.size else 0} / max ${sizes.maxOrNull() ?: 0} bytes"
     )
