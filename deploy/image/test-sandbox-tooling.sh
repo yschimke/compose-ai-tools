@@ -60,6 +60,24 @@ assigned_profiles() {
 dockerfile_installs() {
   local dockerfile="$1" pkg="$2"
   awk -v pkg="${pkg}" '
+    # Is this shell segment an installer *invocation*? The installer has to be the command being
+    # run, not a word that happens to appear in one: `RUN echo apt-get install bubblewrap` installs
+    # nothing. So strip what precedes the command — the RUN keyword and its flags, environment
+    # assignments, sudo — and match on what is left.
+    function invokes_installer(seg,   s) {
+      s = seg
+      sub(/^[[:space:]]*RUN[[:space:]]+/, "", s)
+      while (sub(/^[[:space:]]*--[^[:space:]]+[[:space:]]+/, "", s)) { }
+      while (sub(/^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+/, "", s) ||
+             sub(/^[[:space:]]*sudo[[:space:]]+/, "", s)) { }
+      sub(/^[[:space:]]+/, "", s)
+      # An absolute or relative path to the installer counts as invoking it.
+      sub(/^[^[:space:]]*\//, "", s)
+      return s ~ /^(apt-get|apt|dnf|yum)[[:space:]]+install([[:space:]]|$)/ ||
+             s ~ /^apk[[:space:]]+add([[:space:]]|$)/ ||
+             s ~ /^install-linux-font-fallbacks([[:space:]]|$)/
+    }
+
     # A Dockerfile `#` comment is whole-line only.
     /^[[:space:]]*#/ { next }
     {
@@ -77,7 +95,7 @@ dockerfile_installs() {
         if (i > 1) {
           in_install = 0
         }
-        if (segment[i] ~ /(apt-get[[:space:]]+install|apt[[:space:]]+install|apk[[:space:]]+add|dnf[[:space:]]+install|yum[[:space:]]+install|install-linux-font-fallbacks)/) {
+        if (invokes_installer(segment[i])) {
           in_install = 1
         }
         if (in_install && segment[i] ~ ("(^|[[:space:]])" pkg "([[:space:]]|$)")) {
@@ -221,7 +239,13 @@ printf 'FROM x\nRUN apt-get install -y curl \\\n      && echo bubblewrap\n' \
 expect_fail "bubblewrap argument of a command chained after the installer" \
   "${tmp}/chained-bwrap.Dockerfile" "${tmp}/bwrap.md"
 
-# 10. The pipefail trap: a package installed early in a long file must still be found. The old
+# 10. The installer named as an argument rather than invoked. `echo` is the command here.
+printf 'FROM x\nRUN echo apt-get install bubblewrap\nRUN apt-get install -y curl\n' \
+  >"${tmp}/echoed-install.Dockerfile"
+expect_fail "an installer command line quoted as text, not run" \
+  "${tmp}/echoed-install.Dockerfile" "${tmp}/bwrap.md"
+
+# 11. The pipefail trap: a package installed early in a long file must still be found. The old
 # `grep | grep -q` pipeline reported this one missing, because the upstream filter took a SIGPIPE
 # once the downstream matched and `pipefail` surfaced its 141 as the answer.
 {
