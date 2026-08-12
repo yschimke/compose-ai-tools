@@ -126,8 +126,12 @@ data class DriverOptions(
   val verbose: Boolean = false,
   /** Emit per-task heartbeat lines on stderr every 15s, plus OSC progress for TTYs. */
   val progress: Boolean = false,
-  /** Gradle build timeout. Default 300s matches the CLI. */
-  val timeoutSeconds: Long = 300,
+  /**
+   * Gradle build timeout. Shares [GradleConnection.DEFAULT_TIMEOUT_SECONDS] with the CLI — `render`
+   * always passes this value explicitly, so a literal here would silently override the connection's
+   * own default and leave the published driver on a budget a cold render does not fit in.
+   */
+  val timeoutSeconds: Long = GradleConnection.DEFAULT_TIMEOUT_SECONDS,
   /**
    * Extra Tooling-API arguments prepended to every build / model query — primarily for
    * `--init-script <path>` injection. The CLI uses this to auto-apply its plugin to projects that

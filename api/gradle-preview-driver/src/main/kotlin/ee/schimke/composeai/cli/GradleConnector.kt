@@ -456,7 +456,13 @@ class GradleConnection(
    * empty result can be explained (issue #3).
    */
   fun findPreviewModules(): List<PreviewModule> {
-    val result = runBuildAction(DiscoverPreviewModulesAction(), timeoutSeconds = 300)
+    // Same budget as a build, and for the same reason: configuring every project on a cold daemon
+    // is exactly where this overruns. The friction log's "doctor reports the project unusable when
+    // it is usable" was this timeout firing — the model query cancelled, and doctor reported
+    // "could not query Gradle project model … cancel requested but timed out" for a project whose
+    // `list` and `render` then both worked.
+    val result =
+      runBuildAction(DiscoverPreviewModulesAction(), timeoutSeconds = DEFAULT_TIMEOUT_SECONDS)
     discoveryFailures = result?.failures ?: emptyList()
     return result?.modules ?: emptyList()
   }
