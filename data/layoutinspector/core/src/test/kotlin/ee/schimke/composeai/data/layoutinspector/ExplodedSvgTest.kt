@@ -135,6 +135,48 @@ class ExplodedSvgTest {
     assertEquals(1, parse(ExplodedSvg.render(elevated)).descendants("filter").size)
   }
 
+  /**
+   * The other half of the filter rule. An elevated layer that paints nothing itself — a wrapper
+   * whose whole job is the shadow, drawing only through a nested named child — is retained on no
+   * plane at its own nominal depth. Keying the filter on that depth would strip it from every
+   * fragment and lose the shadow entirely, which is worse than the duplication it replaced. It
+   * rides the shallowest plane the group survives on instead, which for such a wrapper is its
+   * child's.
+   */
+  @Test
+  fun `an elevated wrapper that paints only through a child keeps its shadow`() {
+    val wrapper =
+      """
+      <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+      <filter id="shadow-3"><feDropShadow dx="0" dy="2" stdDeviation="2"/></filter>
+      <g transform="translate(0, 0)">
+        <g id="Elevated" filter="url(#shadow-3)">
+          <g id="Surface"><rect x="10" y="10" width="80" height="60" rx="8" fill="#FFFFFF"/></g>
+        </g>
+      </g>
+      </svg>
+      """
+        .trimIndent()
+    val out = ExplodedSvg.render(wrapper)
+    val filters =
+      parse(out).descendants("g").map { it.getAttribute("filter") }.filter { it.isNotBlank() }
+    assertEquals("kept exactly once, not lost and not duplicated", 1, filters.size)
+    assertEquals("url(#shadow-3)", filters.single())
+    // It rides the plane the wrapper first appears on — the one holding the drawing it elevates.
+    val planes = planes(out)
+    assertTrue(
+      "the shadow is on the plane that draws the surface",
+      planes.last().descendants("g").any { it.getAttribute("filter") == "url(#shadow-3)" },
+    )
+    // The wrapper is still named at its own nesting level; only the shadow moved.
+    assertEquals("Surface", planes.last().getAttribute("data-layers"))
+    assertEquals(
+      "the wrapper is still named at its own nesting level",
+      "Elevated",
+      planes[1].getAttribute("data-layers"),
+    )
+  }
+
   @Test
   fun `resources are carried over exactly once`() {
     val root = parse(ExplodedSvg.render(layered))

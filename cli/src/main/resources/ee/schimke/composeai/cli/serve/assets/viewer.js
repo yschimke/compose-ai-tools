@@ -458,22 +458,30 @@
     if (raw === "") return true; // a bare `?exploded`
     return ["1", "true", "on", "yes"].indexOf(String(raw).toLowerCase()) >= 0;
   }
+  // A server-side Remote Compose player pick cannot survive the exploded view, so entering it
+  // releases the pick rather than hiding it. `rcPlayer=cmp-jvm` is a renderer choice, not a mode,
+  // so it outlives a return to the static lane — and the server routes it to the desktop player's
+  // own subprocess *before* it ever looks at `exploded=`, leaving the chip pressed over an
+  // untouched flat SVG. There is nothing to explode there either way: that lane renders a Remote
+  // Compose document, which carries none of the `<g id="…">` composable nesting this view splits
+  // on.
+  //
+  // Resetting the STATE rather than filtering `rcPlayer` out of the request string is the whole
+  // point: the string is copied into the page URL by syncUrl() and read back by the lane picker's
+  // label, so a filtered request left the address bar and the "current renderer" chip both naming
+  // a player that is no longer drawing anything.
+  function dropRcPlayerPick() {
+    if (!rcPlayerPicked) return;
+    rcPlayerPicked = false;
+    rcPlayerBackend = rcDefaultBackend;
+    if (typeof syncLaneSelect === "function") syncLaneSelect();
+  }
   // Whether pressing 3D is what turned the vector lane on. Leaving 3D then hands the lane back
   // rather than stranding the visitor on a flat SVG they never asked for — but only in that case:
   // someone who was already reading the SVG and exploded it should get their SVG back, not a PNG.
   var explodeEnabledSvg = false;
   function withExplode(ext, qs) {
     if (ext !== ".svg" || !explodeOn()) return qs;
-    // Drop any Remote Compose player pick. `rcPlayer=cmp-jvm` survives a return to the static lane
-    // (it is a renderer choice, not a mode), and the server routes it to the desktop player's own
-    // subprocess *before* it ever looks at `exploded=` — so the chip would sit pressed over an
-    // untouched flat SVG. There is nothing to explode there either way: that lane renders a Remote
-    // Compose document, which carries none of the `<g id="…">` composable nesting this view splits
-    // on. The exploded view is of the LAYERED export, so it asks for the layered export.
-    qs = (qs || "")
-      .split("&")
-      .filter(function (p) { return p && p.indexOf("rcPlayer=") !== 0; })
-      .join("&");
     var parts = ["exploded=1"];
     EXPLODE_KNOBS.forEach(function (pair) {
       var el = document.getElementById(pair[0]);
@@ -1738,6 +1746,7 @@
       if (root) root.setAttribute("data-exploded", turnOn ? "1" : "0");
       syncExplodeControls();
       urlPush = true;
+      if (turnOn) dropRcPlayerPick();
       if (turnOn && svgToggle && !svgOn()) {
         // Turning SVG on is itself a lane change; let its handler drive the render so there is
         // exactly one request, with `exploded=1` already folded in by withSnapshotFormat.
@@ -2399,13 +2408,23 @@
         // authored default. The next refresh would then render a camera nobody asked for and
         // rewrite the shared URL to match it, which is the opposite of the documented fallback.
         var raw = q.get(pair[1]);
-        var num = raw === null ? NaN : Number(raw);
-        var min = parseFloat(el.getAttribute("min"));
-        var max = parseFloat(el.getAttribute("max"));
-        var usable =
-          raw !== null && raw !== "" && isFinite(num) &&
-          (isNaN(min) || num >= min) && (isNaN(max) || num <= max);
-        el.value = usable ? raw : (el.getAttribute("data-cp-default") || el.value);
+        var num = raw === null || raw === "" ? NaN : Number(raw);
+        if (isFinite(num)) {
+          // Finite but out of range is CLAMPED, not rejected — `ExplodedSvg` clamps the angles and
+          // the separation it is handed, so `?explodeTilt=76` renders at 75° from the endpoint and
+          // must open at 75° here too rather than snapping to the default and rewriting the URL
+          // out from under whoever shared it.
+          var min = parseFloat(el.getAttribute("min"));
+          var max = parseFloat(el.getAttribute("max"));
+          if (!isNaN(min) && num < min) num = min;
+          if (!isNaN(max) && num > max) num = max;
+          el.value = String(num);
+        } else {
+          // Only a value the browser cannot parse falls back. Assigning it raw would be worse than
+          // useless: `<input type="range">` sanitizes an unparseable value to its MIDPOINT, so a
+          // stale `?explodeTilt=nope` rendered a camera nobody asked for.
+          el.value = el.getAttribute("data-cp-default") || el.value;
+        }
         updateExplodeReadout(el);
       });
       syncExplodeControls();

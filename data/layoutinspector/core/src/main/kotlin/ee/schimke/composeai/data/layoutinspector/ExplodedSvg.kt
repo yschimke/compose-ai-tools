@@ -134,18 +134,6 @@ object ExplodedSvg {
    */
   private val UNINFORMATIVE_LAYER_NAMES = setOf("ReusableComposeNode", "Layer", "Root")
 
-  /**
-   * Group attributes that describe the group *as a whole*, and so may ride only the plane holding
-   * that group's own drawing.
-   * - `id` names the composable. Repeated across every plane that carries a transform-only copy of
-   *   the group, one composable would import into Figma as N same-named layers.
-   * - `filter` is the elevation drop shadow. A filter is recomputed from whatever its element
-   *   actually renders, so copying it onto the fragments would give a `Card`'s shadow to its own
-   *   surface (right) *and* mint a second, text-shaped shadow on the plane holding its `Text`
-   *   (wrong — nothing casts that in the flat export).
-   */
-  private val OWNING_PLANE_ONLY_ATTRS = setOf("id", "filter")
-
   /** Elements that paint. Assigned to a plane; never descended into. */
   private val DRAWING_TAGS =
     setOf(
@@ -388,26 +376,51 @@ object ExplodedSvg {
 
     fun resources(): List<Element> = resourceElements
 
-    fun walk(el: Element, depth: Int) {
+    /**
+     * Named group → the shallowest plane any drawing in its subtree lands on. Equals the group's
+     * own plane whenever it paints anything itself; for an elevated wrapper that paints only
+     * through a nested child, it is that child's plane. Keyed by identity, since layer ids repeat.
+     */
+    private val firstPlane = java.util.IdentityHashMap<Element, Int>()
+
+    /**
+     * The one plane a group's rendered whole-group effects (its `filter`) belong on — the
+     * shallowest plane it is retained on, which is where it first appears in the stack. Equal to
+     * its nesting level whenever the group paints anything itself.
+     */
+    fun owningPlane(group: Element): Int = firstPlane[group] ?: -1
+
+    /** Shallowest plane any drawing under [el] occupies, or null when it paints nothing at all. */
+    fun walk(el: Element, depth: Int): Int? {
       val tag = el.localNameOf()
       // Recorded, then never descended into: a `<g id="material-icon-…">` inside `<defs>` is a
       // drawing to `<use>`, not a level of composable nesting.
       if (tag in RESOURCE_TAGS) {
         resourceElements.add(el)
-        return
+        return null
       }
       if (tag in DRAWING_TAGS) {
         occupied[planeOf(depth)] = true
-        return
+        return planeOf(depth)
       }
-      if (tag !in GROUP_TAGS) return
+      if (tag !in GROUP_TAGS) return null
       val id = el.getAttribute("id").takeIf { it.isNotBlank() }
       val childDepth = if (id != null) depth + 1 else depth
+      var first: Int? = null
+      for (child in el.childElements()) {
+        val childPlane = walk(child, childDepth) ?: continue
+        if (first == null || childPlane < first) first = childPlane
+      }
       if (id != null) {
+        firstPlane[el] = first ?: planeOf(childDepth)
+        // The LABEL stays on the nesting level, not on `first`. The label column's whole claim is
+        // "this sheet is depth N of the composable tree", so a non-painting wrapper belongs at its
+        // own level — moving its name down to wherever its child happens to draw would leave a
+        // nameless sheet above it and misreport the structure.
         val label = displayName(el, id)
         if (label != null) names[planeOf(childDepth)].add(label)
       }
-      for (child in el.childElements()) walk(child, childDepth)
+      return first
     }
 
     /**
@@ -454,10 +467,9 @@ object ExplodedSvg {
    * nothing on this plane survives, so empty scaffolding is never emitted.
    *
    * Groups are copied for their `transform` / `clip-path` / `opacity`, which is what keeps a
-   * plane's elements in the position and shape they had in the flat drawing.
-   * [OWNING_PLANE_ONLY_ATTRS] are the exception — they ride only the plane the group's own drawing
-   * belongs to, because every other plane holds a *fragment* of that group, and an attribute that
-   * described the whole would silently describe the fragment instead.
+   * plane's elements in the position and shape they had in the flat drawing. Two attributes
+   * describe the group *as a whole* and so must not be repeated onto every fragment; they answer
+   * different questions, so they get different rules (see the call site).
    */
   private fun copyForPlane(
     out: Document,
@@ -477,11 +489,14 @@ object ExplodedSvg {
     val kept = src.childElements().mapNotNull { copyForPlane(out, it, childDepth, plane, scan) }
     if (kept.isEmpty()) return null
     val copy = out.createElementNS(SVG_NS, tag)
-    copyAttributesExcept(
-      src,
-      copy,
-      if (scan.planeOf(childDepth) == plane) emptySet() else OWNING_PLANE_ONLY_ATTRS,
-    )
+    // Two different "once" rules, because the two attributes answer different questions.
+    val skip = HashSet<String>(2)
+    // `id` names the composable at its nesting level, exactly where the label column puts it.
+    if (scan.planeOf(childDepth) != plane) skip.add("id")
+    // `filter` is a rendered effect and must survive: it rides the shallowest plane the group is
+    // retained on, which is the nesting level whenever the group paints anything itself.
+    if (id != null && scan.owningPlane(src) != plane) skip.add("filter")
+    copyAttributesExcept(src, copy, skip)
     for (child in kept) copy.appendChild(child)
     return copy
   }
