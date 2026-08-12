@@ -598,11 +598,15 @@
   function withMode(url, mode) {
     return url + (url.indexOf("?") >= 0 ? "&" : "?") + "mode=" + mode;
   }
-  function refreshLinks() {
+  // [skipUrlSync] refreshes the copyable links WITHOUT touching history. Only one caller wants it:
+  // a path that is about to hand the URL to a lane transition, where syncing first would replace
+  // the entry the visitor came from moments before that transition pushes a new one — spending the
+  // previous state to write an intermediate nobody asked for. See `onKnobEdited`.
+  function refreshLinks(skipUrlSync) {
     // The page's own URL is kept in step with the controls for the same reason the direct links
     // are: what's on screen should be something you can bookmark or hand to someone. Every path
     // that changes viewer state already refreshes the links, so this one call covers all of them.
-    syncUrl();
+    if (!skipUrlSync) syncUrl();
     [["png", ".png"], ["svg", ".svg"]].forEach(function (pair) {
       var field = document.getElementById("cp-url-" + pair[0]);
       if (!field) return;
@@ -2274,14 +2278,16 @@
   // [discrete] marks an edit that earns its own history entry (a value picked from a closed set),
   // as opposed to a continuous one (typing a label) that replaces.
   //
-  // It pushes here for every route BUT `enable-wasm`: that path ends in `setMode("wasm")`, and
-  // `enterMode` already pushes for the lane change. Pushing in both places would leave an
-  // intermediate `choice + png` entry between the two — a state that cannot apply the choice it
-  // names — so Back would land there instead of on the previous choice.
+  // The `enable-wasm` route writes no history here at all — not a push, and not the replace a
+  // non-discrete edit would otherwise do. That path ends in `setMode("wasm")`, and `enterMode`
+  // syncs with a push of its own for the lane change. Doing anything here first spends the entry
+  // the visitor came from on an intermediate `choice + png` state — one that cannot apply the
+  // choice it names — and Back then lands on that instead of on the previous choice. Suppressing
+  // only the push is not enough: the replace clobbers the same entry just as thoroughly.
   function onKnobEdited(discrete) {
     var route = knobRoute();
     if (discrete && route !== "enable-wasm") urlPush = true;
-    refreshLinks();
+    refreshLinks(route === "enable-wasm");
     if (route === "wasm") {
       if (wasmReady && wasmFrame.contentWindow) {
         wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
