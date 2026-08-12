@@ -50,11 +50,11 @@ The annotation library and per-data-product schemas are intentionally narrow. Th
 
 **Versioning:** intended to be a top-level `schemaVersion: int`, but **the field is not written today** — neither the daemon's nor the viewer's `PreviewManifest` carries one, so a reader cannot tell which shape it has. What is real is tolerant reading: unknown fields ignored, missing optional fields defaulted.
 
-**Negotiation:** none in-band. The plugin and daemon ship in lockstep; the CLI / VS Code extension treat `previews.json` as opaque except for fields they explicitly model. Any reader that crosses the process boundary keys off `schemaVersion` and ignores fields it doesn't understand.
+**Negotiation:** none in-band, and — with no `schemaVersion` written — **none possible**. The plugin and daemon ship in lockstep, which is what makes this work today; the CLI / VS Code extension treat `previews.json` as opaque except for fields they explicitly model and ignore what they don't understand. A reader cannot detect a shape change, so lockstep is load-bearing rather than belt-and-braces.
 
 **Additive change is free:** new optional fields, new optional metadata blocks.
 
-**Breaking change:** bump `schemaVersion` and bump the daemon `protocolVersion` in the same release — clients should never see the new shape against an old daemon.
+**Breaking change:** until the `schemaVersion` field exists there is nothing to bump, so a shape change relies entirely on plugin and daemon shipping together — bump the daemon `protocolVersion` in the same release so a stale client fails the handshake instead of misreading the manifest. Add the carrier first if you need a change readers can actually detect.
 
 ### 2.3 Data products (surface 3)
 
@@ -84,7 +84,7 @@ The `@Stable` / `@Incubating` split, with `@Incubating` opt-in via `composePrevi
 
 **Documented:** [docs/RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md) collects the known-good combinations and skew notes. Nothing generates a table from it, and `apply()` does not consult it; `compose-preview doctor` is the closest thing, and it reports rather than gates.
 
-**Tested:** an `integration` workflow runs the sample renders against the matrix corners (current, current-1, next-RC) on every plugin release.
+**Tested:** the `integration` workflow runs sample renders on every PR — against fixtures (including an `agp8-min` floor) and moving external `main` refs, **not** pinned current / current-1 / next-RC corners. It catches real breakage; it does not prove matrix coverage.
 
 **Evolution rule:** the matrix is allowed to slide. A plugin minor may drop support for an AGP version older than 18 months. A plugin major may drop two AGP majors at once. Any drop is documented in CHANGELOG with the exact "from X.Y you must be on AGP ≥ A.B".
 
@@ -141,7 +141,7 @@ The VS Code N..N-1 window is the only place we would decode two protocol version
 - **No multiplexing.** One daemon, one client, one stdio pair.
 - **No on-the-wire schema migration.** Old client + new daemon → daemon serves the old protocol if it's in range; otherwise fail closed.
 - **No silent flag renames in CLI or DSL.** Every rename is a deprecation cycle.
-- **No automatic enum-value conversion.** Tolerant decode maps unknown to `UNKNOWN`; clients decide what to do.
+- **No automatic enum-value conversion.** Where tolerant decode exists, unknown maps to `UNKNOWN` and the client decides what to do. Most wire enums don't have it yet (§ 2.1), so today an unknown value throws instead.
 
 ## 5. Stability tags in code
 
@@ -151,7 +151,7 @@ The intended scheme — each public type carrying one of these tags — is **not
 - `// API: incubating` — opt-in, may change.
 - No tag — internal; do not depend on.
 
-Kotlin BCV runs on the plugin module and the annotations module. The daemon protocol is governed by the fixture corpus, not BCV (because internal types may move freely as long as the wire shape is stable).
+Kotlin BCV is intended to run on the plugin module and the annotations module. **It is not configured on either** ([VERSIONING.md § 10](VERSIONING.md#10-what-is-and-is-not-enforced)), so no tooling currently catches an API break. The daemon protocol would be governed by the fixture corpus rather than BCV in any case, since internal types may move freely as long as the wire shape is stable.
 
 ## 6. References
 

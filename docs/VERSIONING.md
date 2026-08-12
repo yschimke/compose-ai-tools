@@ -17,6 +17,8 @@ Different surfaces use different schemes — pick the right one for the contract
 | `previews.json` | Integer | `schemaVersion` field |
 | Per-data-product payload | Integer | `schemaVersion` per `DataProductCapability` |
 | `HistoryEntry` sidecar JSON | Integer | `schemaVersion` field |
+| `bundle.json` in a packed preview bundle | Integer | `schemaVersion` field (`BUNDLE_SCHEMA_VERSION`) |
+| `daemon-launch.json` from `daemon-launch-builder` | Integer | `schemaVersion` field |
 | GH composite actions | Semver via tag/SHA | Consumer `uses:` ref |
 
 Plugin / CLI / extension share one release-please-driven semver chain (see [RELEASING.md](RELEASING.md)). Protocol and schema integers are independent.
@@ -43,6 +45,7 @@ By surface:
 - **Annotation library** — removing a parameter, renaming a parameter, retyping a parameter, reordering an annotation array literal default.
 - **Daemon protocol** — anything outside the additive list in [API_STABILITY.md § 2.1](API_STABILITY.md#21-daemon-json-rpc-surface-1).
 - **`previews.json` / `HistoryEntry` schemas** — same as the protocol: removed/renamed fields, semantic changes.
+- **`bundle.json` / `daemon-launch.json`** — same again, and these two matter more than their absence from [API_STABILITY.md § 1](API_STABILITY.md#1-the-contracts) suggests: a packed bundle outlives the CLI that wrote it, and `daemon-launch.json` is read by VS Code and by non-Gradle producers. Bump the format's `schemaVersion` and keep readers tolerant of the older value.
 - **GH actions** — removing an input, changing a default that would change observed behavior for a workflow that didn't override it, renaming a default branch convention.
 
 Anything else is additive.
@@ -84,7 +87,7 @@ Bumping `protocolVersion` requires:
 - Daemon support for the previous version for one minor cycle (clients may take longer to ship).
 - Updated fixture corpus.
 
-Range negotiation — the daemon advertising a `{min, max}` and serving both — is **not in 1.0.0** and is deferred to a later `1.x` (§ 10). `initialize` carries a single `protocolVersion: Int` today, and [`JsonRpcServer`](../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/JsonRpcServer.kt) fails the handshake on any mismatch. Until it lands, the VS Code extension's `current..current-1` support window is a client-side concern, not something the daemon negotiates.
+Range negotiation — the daemon advertising a `{min, max}` and serving both — is **not in 1.0.0** and is deferred to a later `1.x` (§ 10). `initialize` carries a single `protocolVersion: Int` today, and [`JsonRpcServer`](../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/JsonRpcServer.kt) fails the handshake on any mismatch. Until it lands, the VS Code extension's `current..current-1` support window does not exist in any form: the extension sends one hard-coded version and the daemon rejects anything else, so "a coordinated daemon + every-client release" is the only way a bump works, and "daemon support for the previous version for one minor cycle" above is an aspiration rather than something the code can currently do.
 
 ## 5. Deprecation policy
 
@@ -109,7 +112,7 @@ The plugin declares a **supported matrix** in [RENDERER_COMPATIBILITY.md](RENDER
 - Dropping a corner older than 18 months is permitted at any **minor** with one release of warning (`apply()` prints "AGP X.Y is deprecated; will be unsupported in compose-preview Z.0").
 - Dropping multiple majors at once requires a plugin **major**.
 
-**What `apply()` actually gates today is the Gradle version** ([`GradleVersionCheck.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/GradleVersionCheck.kt)); there is no AGP / Kotlin / Compose comparison at configuration time, so an out-of-matrix consumer gets whatever failure the toolchain produces rather than a named supported range. `compose-preview doctor` diagnoses skew after the fact ([`CompatRules.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/tooling/CompatRules.kt)), which is a report, not a gate.
+**What `apply()` actually gates today is the Gradle version** ([`GradleVersionCheck.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/GradleVersionCheck.kt)); there is no AGP / Kotlin / Compose comparison at configuration time, so an out-of-matrix consumer gets whatever failure the toolchain produces rather than a named supported range. `compose-preview doctor` is not a substitute: it prints the resolved AGP and Kotlin versions as an informational check and flags known dependency mismatches ([`CompatRules.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/tooling/CompatRules.kt) is given dependency maps and the Gradle version, not the AGP/Kotlin versions), so it evaluates no matrix predicate at all.
 
 The CI integration suite runs sample renders against several toolchain points, but they are not maintained as explicit current / current-1 / next-RC cells.
 
