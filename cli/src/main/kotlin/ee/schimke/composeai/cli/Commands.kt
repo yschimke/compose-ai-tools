@@ -126,7 +126,8 @@ abstract class Command(
   protected val exactId: String? = args.flagValue("--id")
   protected val verbose: Boolean = "--verbose" in args || "-v" in args
   protected val progress: Boolean = verbose || "--progress" in args
-  protected val timeoutSeconds: Long = args.flagValue("--timeout")?.toLongOrNull() ?: 300
+  protected val timeoutSeconds: Long =
+    args.flagValue("--timeout")?.toLongOrNull() ?: GradleConnection.DEFAULT_TIMEOUT_SECONDS
   /** When true, drop previews with no `changed=true` capture from JSON output. */
   protected val changedOnly: Boolean = "--changed-only" in args
   /**

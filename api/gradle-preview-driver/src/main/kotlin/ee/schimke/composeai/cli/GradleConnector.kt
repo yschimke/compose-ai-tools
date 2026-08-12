@@ -62,6 +62,21 @@ class GradleConnection(
    */
   private val extraArguments: List<String> = emptyList(),
 ) : AutoCloseable {
+  companion object {
+    /**
+     * Wall-clock budget a Gradle invocation gets before it is cancelled.
+     *
+     * Was 300s, which a real cold render did not fit in: a single-preview render on a cold daemon
+     * measured 309s, and two of two runs at the old default timed out at ~320s while the same
+     * render with a longer budget finished. A timeout that the documented default cannot survive
+     * teaches callers to distrust the tool rather than to pass `--timeout`.
+     *
+     * Not a diagnosis of *why* a warm single-preview render can take five minutes — that is worth
+     * its own investigation, and a bigger constant is not the answer to it.
+     */
+    const val DEFAULT_TIMEOUT_SECONDS: Long = 600
+  }
+
   private val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
   private val connection = connector.connect()
   private var modelAccessFailure: GradleAccessFailure? = null
@@ -99,7 +114,7 @@ class GradleConnection(
 
   fun runTasks(
     vararg tasks: String,
-    timeoutSeconds: Long = 300,
+    timeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS,
     arguments: List<String> = emptyList(),
   ): Boolean {
     val tokenSource: CancellationTokenSource = GradleConnector.newCancellationTokenSource()
@@ -125,7 +140,13 @@ class GradleConnection(
         schedule(
           object : java.util.TimerTask() {
             override fun run() {
-              System.err.println("Build timed out after ${timeoutSeconds}s, cancelling...")
+              // Names the flag: this reads as a hung build otherwise, and the fix — "ask for more
+              // time" — is not something a caller can guess from "cancelling...".
+              System.err.println(
+                "Build timed out after ${timeoutSeconds}s, cancelling. " +
+                  "If the build was still making progress, rerun with a longer budget: " +
+                  "--timeout ${timeoutSeconds * 2}"
+              )
               TerminalProgress.error()
               tokenSource.cancel()
             }
