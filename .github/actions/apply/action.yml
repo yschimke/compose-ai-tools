@@ -409,7 +409,25 @@ runs:
         # every nested gradle module path has — see the staging step. A
         # handoff without one predates that change and is used as-is.
         if [ -f "$HANDOFF_DIR/handoff.tar" ]; then
-          tar -xf "$HANDOFF_DIR/handoff.tar" -C "$HANDOFF_DIR"
+          # The archive's *members* are hostile input too, not just its bytes.
+          # tar faithfully recreates symlinks, so a `_pr_renders` entry that is
+          # a symlink to somewhere else on the runner would survive extraction
+          # and the `cp -a` below, and the push step would then `git init` in
+          # the link target and push that directory's contents with a
+          # write-scoped token. Reject anything that is not a plain file or
+          # directory, and any absolute or traversing path, before a single
+          # byte is written.
+          if tar -tvf "$HANDOFF_DIR/handoff.tar" | grep -qv '^[-d]'; then
+            echo "::error::Handoff tarball contains a non-regular member (symlink, hardlink or device node). Refusing to extract."
+            tar -tvf "$HANDOFF_DIR/handoff.tar" | grep -v '^[-d]' | head -5
+            exit 1
+          fi
+          if tar -tf "$HANDOFF_DIR/handoff.tar" | grep -qE '^/|(^|/)\.\.(/|$)'; then
+            echo "::error::Handoff tarball contains an absolute or traversing path. Refusing to extract."
+            tar -tf "$HANDOFF_DIR/handoff.tar" | grep -E '^/|(^|/)\.\.(/|$)' | head -5
+            exit 1
+          fi
+          tar -xf "$HANDOFF_DIR/handoff.tar" -C "$HANDOFF_DIR" --no-same-owner
           rm -f "$HANDOFF_DIR/handoff.tar"
           echo "compose-preview: unpacked handoff.tar."
         fi
@@ -1138,12 +1156,31 @@ runs:
         #
         # `_pr_number` stays outside the tarball: the caller reads it to pass
         # `pr-number` back in, and it never contains a colon.
-        tar -cf "$HANDOFF_DIR.tar" -C "$HANDOFF_DIR" .
+        # Strip trailing slashes first. A caller spelling this as
+        # `handoff-dir: _compose_preview_handoff/` is perfectly valid, but
+        # "$HANDOFF_DIR.tar" would then resolve to `_compose_preview_handoff/.tar`
+        # — inside the directory being archived, which tar skips and the `rm -rf`
+        # below deletes, so the `mv` fails and every render aborts. Build the
+        # archive somewhere unrelated to the tree either way.
+        while [ "${HANDOFF_DIR%/}" != "$HANDOFF_DIR" ]; do HANDOFF_DIR="${HANDOFF_DIR%/}"; done
+        tar_tmp="$(mktemp -d)/handoff.tar"
+        tar -cf "$tar_tmp" -C "$HANDOFF_DIR" .
+
+        # `_pr_number` and `_pipelines` stay OUTSIDE the tarball, because both
+        # are read before anything unpacks it: `_pr_number` by the caller, to
+        # pass back as `pr-number`, and `_pipelines` by this action's very first
+        # step, which resolves the active pipeline set long before the restore
+        # step runs. Tarring `_pipelines` would leave that step seeing nothing,
+        # silently defaulting all four pipelines back on — and a publisher would
+        # then rewrite sticky comments for pipelines that never rendered.
+        # Neither file can contain a colon.
         pr_number=$(cat "$HANDOFF_DIR/_pr_number")
+        pipelines=$(cat "$HANDOFF_DIR/_pipelines")
         rm -rf "$HANDOFF_DIR"
         mkdir -p "$HANDOFF_DIR"
-        mv "$HANDOFF_DIR.tar" "$HANDOFF_DIR/handoff.tar"
+        mv "$tar_tmp" "$HANDOFF_DIR/handoff.tar"
         printf '%s' "$pr_number" > "$HANDOFF_DIR/_pr_number"
+        printf '%s' "$pipelines" > "$HANDOFF_DIR/_pipelines"
 
         echo "compose-preview: staged fork-safe handoff in $HANDOFF_DIR ($(du -sh "$HANDOFF_DIR" | cut -f1))."
         echo "::notice::compose-preview/apply: render phase complete — upload '$HANDOFF_DIR' and run the publish phase to push renders and post the comment."
