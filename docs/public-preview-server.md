@@ -731,6 +731,8 @@ implement, where, and do our renders sit right on top of the design?*
 The landing links `N screens` beside "design parity" when the catalog publishes any; a catalog that
 publishes none is unchanged and the route 404s rather than serving an empty stage.
 
+![A design screen with a rectangle over every component instance, coloured by how it was linked](design/evidence/serve-page-backdrop/serve-page-backdrop.light.png)
+
 Each screen is the design's own exported pixels, with one rectangle per component instance on it,
 coloured by **how** it was linked: green Code Connect, blue `design-map.json`, amber name match, and
 a dashed red outline for **unlinked** — a part of the screen with no code behind it, which is
@@ -751,6 +753,13 @@ A render is pinned to its placement's top-left and scaled to the placement's **w
 own aspect ratio. It deliberately does not stretch to fill the box: a component that renders taller
 than its design slot is a real finding, and stretching would hide exactly that. Switch the blend to
 `difference` and matching pixels go black, so only the drift lights up.
+
+![The same screen with the catalog's renders laid over it at the difference blend](design/evidence/serve-page-backdrop/serve-page-backdrop-overlay.light.png)
+
+"Only what we don't implement" is the coverage read — everything mapped is muted, and the dashed-red
+rectangles are what is left:
+
+![Only the unlinked rectangles, with everything this catalog implements muted](design/evidence/serve-page-backdrop/serve-page-backdrop-unlinked-only.light.png)
 
 The overlay images carry `data-src` until the toggle is first switched on. A screen can hold a
 couple of dozen placements and on a live catalog each one is a daemon render, so a visitor who never
