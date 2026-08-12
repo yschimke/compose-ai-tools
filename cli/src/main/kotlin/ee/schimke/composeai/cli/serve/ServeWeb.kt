@@ -1313,7 +1313,12 @@ object ServeWeb {
       // section whose `aria-expanded` governs it, so a screen reader could not report the group
       // rows as that section's children.
       if (named.isNotEmpty()) append(" aria-expanded=\"$selected\" aria-owns=\"$childrenId\"")
-      append(" tabindex=\"${if (i == 0) "0" else "-1"}\">")
+      // No `tabindex` in the served markup, deliberately. The roving tab stop is a tree-widget
+      // behaviour and the tree is only a widget once its script runs — baking `-1` into every row
+      // but the first would leave a no-JS client (where the arrow keys never bind) unable to reach
+      // any section past the first by keyboard, in the very mode where the rows are its only
+      // navigation. `reflectTabs()` applies the indices on init instead.
+      append(">")
       append(WebEscaping.htmlEscape(sec.name))
       append("<span class=\"cp-tab-count\">${sec.count}</span></a>\n")
       if (named.isNotEmpty()) {
@@ -1321,8 +1326,7 @@ object ServeWeb {
         named.forEach { g ->
           val anchor = groupAnchorId(sec.slug, g.slug)
           append("    <li role=\"none\"><a class=\"cp-tree-group\" role=\"treeitem\"")
-          append(" href=\"#$anchor\" data-tab=\"${sec.slug}\" data-group=\"$anchor\"")
-          append(" tabindex=\"-1\">")
+          append(" href=\"#$anchor\" data-tab=\"${sec.slug}\" data-group=\"$anchor\">")
           append(WebEscaping.htmlEscape(g.name!!))
           append("<span class=\"cp-tree-count\">${g.cards.size}</span></a></li>\n")
         }
@@ -2115,7 +2119,9 @@ object ServeWeb {
       else ""
     // The tree's own behaviour: its group rows, its keyboard, and the scroll-spy that keeps the
     // row you are looking at marked. Spliced in at the same indent as the rest, and empty for a
-    // flat catalog — which has no tree.
+    // flat catalog — which has no tree. Emitted AFTER [popWiring] on purpose: `onPop` is a plain
+    // `popstate` listener, so the tree's fragment-precedence handler has to register second to get
+    // the last word over the shared `?tab=` restore.
     val treeWiring =
       if (!hasTabs) ""
       else
@@ -2185,7 +2191,7 @@ object ServeWeb {
         replaceUrl({ q: input.value.trim() });
         apply();
       });
-      $themeWiring$tabWiring$treeWiring$popWiring
+      $themeWiring$tabWiring$popWiring$treeWiring
       apply();$presenceWiring
     })();
     """
@@ -2276,8 +2282,24 @@ object ServeWeb {
       // Choosing a whole section retires any group fragment for the same reason: the row you
       // clicked is the statement of where you are, and a leftover `#cp-group-…` from another
       // section would outrank it on the next load.
+      //
+      // It also has to honour the promise its own `href="#cp-panel-…"` makes. The shared section
+      // handler prevents the anchor's default navigation and only swaps which panel is hidden, so
+      // from halfway down a long section the scroll position simply stays where it was — and the
+      // section you asked for opens above the viewport. Runs after that handler (registered
+      // earlier), so the panel is already showing by the time this measures it. Only scrolls when
+      // the panel is actually out of reach behind the sticky toolbar: clicking a row while at the
+      // top of the page must not yank the catalog's own heading off screen.
       tabBtns.forEach(function (t) {
-        t.addEventListener("click", function () { setFragment(""); });
+        t.addEventListener("click", function () {
+          setFragment("");
+          var panel = document.getElementById(t.getAttribute("aria-controls"));
+          if (!panel) return;
+          var clearance = tools ? tools.getBoundingClientRect().height : 0;
+          if (panel.getBoundingClientRect().top < clearance) {
+            panel.scrollIntoView({ block: "start" });
+          }
+        });
       });
       // Only the rows a visitor can actually reach: a collapsed section contributes its own row and
       // none of its children, and a row the filter hid contributes nothing.
@@ -2312,11 +2334,17 @@ object ServeWeb {
         else if (key === "Home") next = items[0];
         else if (key === "End") next = items[items.length - 1];
         else if (key === "ArrowRight") {
-          if (items[at].getAttribute("aria-expanded") === "false") {
+          // Right opens a collapsed parent, steps into an expanded one's first child, and does
+          // NOTHING on an end node. Falling through to "next visible row" on a leaf made Right a
+          // second Arrow Down, walking the visitor across siblings when they asked to expand
+          // something that cannot expand.
+          var expanded = items[at].getAttribute("aria-expanded");
+          if (expanded === "false") {
             e.preventDefault();
             selectTab(items[at].getAttribute("data-tab"));
             return;
           }
+          if (expanded !== "true") return;
           next = items[Math.min(at + 1, items.length - 1)];
         } else if (key === "ArrowLeft") {
           var node = items[at].closest(".cp-tree-node");
@@ -2334,39 +2362,59 @@ object ServeWeb {
       // as explicit a request as `?tab=` is, so it selects that section, outranking the remembered
       // one. Runs before the trailing `apply()`, which is what actually reveals the panel — hence
       // the deferred scroll rather than an immediate one.
+      // What the URL's fragment names, or null when it names nothing this page has.
+      //
       // Percent-DECODED before comparing: a section or group name keeps its non-ASCII letters
       // through `sectionSlug` (Kotlin's `isLetterOrDigit` is Unicode-aware), so the id in the DOM
       // is the raw text while browsers hand back `location.hash` encoded. Undecoded, a shared link
       // to an accented or CJK group would match no row at all and silently do nothing. A malformed
       // escape sequence throws, and is simply not a fragment this page knows.
-      var hash = location.hash ? location.hash.slice(1) : "";
-      try { hash = decodeURIComponent(hash); } catch (e) {}
-      if (hash) {
-        var wanted = null;
-        var target = null;
+      function hashTarget() {
+        var id = location.hash ? location.hash.slice(1) : "";
+        try { id = decodeURIComponent(id); } catch (e) { return null; }
+        if (!id) return null;
+        var tab = null;
+        var row = null;
         treeGroups.forEach(function (g) {
-          if (g.getAttribute("data-group") === hash) {
-            wanted = g.getAttribute("data-tab");
-            target = g;
+          if (g.getAttribute("data-group") === id) {
+            tab = g.getAttribute("data-tab");
+            row = g;
           }
         });
-        if (!wanted) {
+        if (!tab) {
           tabBtns.forEach(function (t) {
-            if (t.getAttribute("aria-controls") === hash) wanted = t.getAttribute("data-tab");
+            if (t.getAttribute("aria-controls") === id) tab = t.getAttribute("data-tab");
           });
         }
-        if (wanted && wanted !== current) {
-          current = wanted;
+        return tab ? { tab: tab, row: row, id: id } : null;
+      }
+      var landing = hashTarget();
+      if (landing) {
+        if (landing.tab !== current) {
+          current = landing.tab;
           initialTab = current;
           reflectTabs();
         }
-        if (wanted) {
-          var landing = document.getElementById(hash);
-          setTimeout(function () {
-            if (landing) landing.scrollIntoView({ block: "start" });
-            if (target) markGroup(target);
-          }, 0);
-        }
+        setTimeout(function () {
+          var el = document.getElementById(landing.id);
+          if (el) el.scrollIntoView({ block: "start" });
+          if (landing.row) markGroup(landing.row);
+        }, 0);
+      }
+      // Back / Forward has to resolve an entry the same way loading it fresh would. The shared pop
+      // handler reads `?tab=` only, so returning to an entry whose fragment and query disagree —
+      // `?tab=components#cp-group-themes-foundation`, which a fresh load resolves to Themes —
+      // would land on Components with the fragment's target hidden. This runs after that handler
+      // (registered later, and `onPop` is a plain listener) and re-applies the precedence.
+      if (window.cpUrlState) {
+        window.cpUrlState.onPop(function () {
+          var popped = hashTarget();
+          if (!popped || popped.tab === current) return;
+          current = popped.tab;
+          reflectTabs();
+          apply();
+          if (popped.row) markGroup(popped.row);
+        });
       }
       if (window.IntersectionObserver) {
         var onScreen = [];

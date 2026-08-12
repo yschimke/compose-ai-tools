@@ -2717,10 +2717,33 @@ class ServeWebFixtureTest {
       "a filter that hides the selected section moves the tree's tab stop to a visible branch",
     )
     assertTrue(
-      landingSections.contains("var hash = location.hash") &&
-        landingSections.contains("decodeURIComponent(hash)") &&
+      landingSections.contains("function hashTarget()") &&
+        landingSections.contains("decodeURIComponent(id)") &&
         landingSections.contains("initialTab = current;"),
       "a shared #cp-group-… link selects the section that holds it, non-ASCII slugs included",
+    )
+    // Back must resolve an entry the way loading it fresh would, so the same resolver runs on pop —
+    // and it has to be registered AFTER the shared `?tab=` restore to get the last word.
+    assertTrue(
+      landingSections.contains("var popped = hashTarget();") &&
+        landingSections.indexOf("var popped = hashTarget();") >
+          landingSections.indexOf("var poppedTab = urlParam(\"tab\")"),
+      "Back/Forward re-applies the fragment's precedence over ?tab=",
+    )
+    // No roving `tabindex` in the served markup: with no JS the arrow keys never bind, so baking
+    // `-1` into every row but the first would strand the rest of the navigation for a keyboard.
+    assertFalse(
+      Regex("<a class=\"cp-tab\"[^>]*tabindex").containsMatchIn(landingSections) ||
+        Regex("<a class=\"cp-tree-group\"[^>]*tabindex").containsMatchIn(landingSections),
+      "the tree's tab stops are applied by script, not baked into the markup",
+    )
+    assertTrue(
+      landingSections.contains("panel.scrollIntoView({ block: \"start\" })"),
+      "selecting a section scrolls to its panel when the toolbar would hide it",
+    )
+    assertTrue(
+      landingSections.contains("if (expanded !== \"true\") return;"),
+      "Right does nothing on a tree leaf rather than acting as a second Down",
     )
     // The fragment has to travel with the selection: `cpUrlState` preserves whatever hash is
     // already on the URL, and the hash outranks `?tab=` on load, so a stale one silently sends the
@@ -2728,9 +2751,7 @@ class ServeWebFixtureTest {
     assertTrue(
       landingSections.contains("function setFragment(id)") &&
         landingSections.contains("setFragment(g.getAttribute(\"data-group\"))") &&
-        landingSections.contains(
-          "t.addEventListener(\"click\", function () { setFragment(\"\"); })"
-        ),
+        landingSections.contains("setFragment(\"\");"),
       "navigating replaces the fragment, and choosing a section clears it",
     )
     // A `role="group"` has to hang off the treeitem whose `aria-expanded` governs it. The row is an
