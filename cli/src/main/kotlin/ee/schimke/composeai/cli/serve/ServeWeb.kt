@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.designparity.BackdropPage
+import ee.schimke.composeai.designparity.Placement
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -5165,8 +5167,8 @@ $rows
       String.format(java.util.Locale.ROOT, "%.4f", value / span * 100.0)
 
     /** The preview this placement can be drawn with on this session, or null. */
-    fun renderable(placement: BackdropPlacement): String? =
-      placement.previewId?.takeIf { it in renderablePreviewIds }
+    fun renderable(placement: Placement): String? =
+      placement.renderablePreviewId?.takeIf { it in renderablePreviewIds }
 
     val hotspots =
       page.placements.joinToString("\n") { placement ->
@@ -5178,13 +5180,18 @@ $rows
         val previewId = renderable(placement)
         val href =
           previewId?.let { "$basePath/p/${WebEscaping.urlEncodeSegment(it)}$q" }
-            ?: ServeFigmaSpec.nodeOfHandle(placement.ref)?.let { ServeFigmaSpec.url(fileKey, it) }
+            // Built from the placement's own node id rather than parsed out of its `ref`. The two
+            // are the same thing by definition (`ref` IS `figma:<fileKey>/<nodeId>`), but `ref` is
+            // newer than the contract and absent from a manifest an older producer wrote — and an
+            // unlinked hotspot's deep link is the only link it has, so it must not depend on an
+            // optional field.
+            ?: ServeFigmaSpec.url(fileKey, placement.nodeId)
         val label =
           if (placement.isUnlinked) "${placement.name} — no code behind this"
           else "${placement.name} — ${placement.code.orEmpty()}"
         val tag = if (href == null) "span" else "a"
         val hrefAttr = href?.let { " href=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
-        "<$tag class=\"cp-backdrop-hotspot\" data-link=\"${WebEscaping.htmlEscape(placement.link)}\" " +
+        "<$tag class=\"cp-backdrop-hotspot\" data-link=\"${WebEscaping.htmlEscape(placement.link.wire)}\" " +
           "data-cp-placement=\"${WebEscaping.htmlEscape(placement.nodeId)}\" style=\"$style\"" +
           "$hrefAttr title=\"${WebEscaping.htmlEscape(label)}\"><span class=\"cp-visually-hidden\">" +
           "${WebEscaping.htmlEscape(label)}</span></$tag>"
@@ -5209,12 +5216,9 @@ $rows
         val href = previewId?.let { "$basePath/p/${WebEscaping.urlEncodeSegment(it)}$q" }
         val tag = if (href == null) "div" else "a"
         val hrefAttr = href?.let { " href=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
-        val detail =
-          when {
-            placement.code != null -> WebEscaping.htmlEscape(placement.code)
-            else -> "no code behind this"
-          }
-        "<$tag class=\"cp-backdrop-row\" data-link=\"${WebEscaping.htmlEscape(placement.link)}\" " +
+        val code = placement.code
+        val detail = if (code != null) WebEscaping.htmlEscape(code) else "no code behind this"
+        "<$tag class=\"cp-backdrop-row\" data-link=\"${WebEscaping.htmlEscape(placement.link.wire)}\" " +
           "data-cp-placement=\"${WebEscaping.htmlEscape(placement.nodeId)}\"$hrefAttr>" +
           "<span class=\"cp-backdrop-dot\" aria-hidden=\"true\"></span>" +
           "<span class=\"cp-backdrop-row-name\">${WebEscaping.htmlEscape(placement.name)}</span>" +

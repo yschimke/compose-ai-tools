@@ -26,9 +26,9 @@ class ServePageBackdropStoreTest {
     images: Map<String, ByteArray> = mapOf("upcoming.png" to pngHeader),
   ): ServePageBackdropStore {
     val root = Files.createTempDirectory("backdrops").toFile().also { it.deleteOnExit() }
-    val dir = File(root, PageBackdropManifest.DIRECTORY)
+    val dir = File(root, ServePageBackdropStore.DIRECTORY)
     dir.mkdirs()
-    if (json != null) File(dir, PageBackdropManifest.INDEX_FILE).writeText(json)
+    if (json != null) File(dir, ServePageBackdropStore.INDEX_FILE).writeText(json)
     images.forEach { (name, bytes) -> File(dir, name).writeBytes(bytes) }
     return ServePageBackdropStore.load(root, FileSystem.SYSTEM)
   }
@@ -158,12 +158,24 @@ class ServePageBackdropStoreTest {
   }
 
   @Test
-  fun `an unknown link method reads as unlinked`() {
+  fun `an unknown link method drops the manifest rather than mis-colouring a placement`() {
+    // The four methods are a typed enum in the shared contract mirror, so an unrecognised one is a
+    // parse failure for the whole document rather than a per-placement degrade. That is the harsher
+    // outcome and the right one: the alternative is guessing what an unknown method means while
+    // drawing it in a colour that claims coverage. The producer emits the enum, so this is a
+    // corrupt-file path, not a compatibility one — an *additive* producer change carries new
+    // fields, which PageBackdropJson ignores.
     val odd = upcoming.replace("\"link\":\"manifest\"", "\"link\":\"vibes\"")
-    // The four methods are the contract. A fifth must not be drawn in the "linked" colour or
-    // counted as coverage — so it degrades to unlinked, the safe reading.
-    val placement = store(manifest(odd)).pages.single().placements.first()
-    assertEquals(BackdropPlacement.LINK_UNLINKED, placement.link)
-    assertTrue(placement.isUnlinked)
+    assertTrue(store(manifest(odd)).pages.isEmpty())
+  }
+
+  @Test
+  fun `a placement with no ref still deep-links, rebuilt from the file key and node id`() {
+    // `ref` postdates the contract, so a manifest from an older producer carries none — and for an
+    // unlinked hotspot that link is the only one it has.
+    val noRef = upcoming.replace("\"ref\":\"figma:ocdacdEsnHipMJD3egzxKb/1:2\",", "")
+    val loaded = store(manifest(noRef))
+    val statusBar = loaded.pages.single().placements.last()
+    assertEquals("figma:ocdacdEsnHipMJD3egzxKb/1:2", loaded.refFor(statusBar))
   }
 }

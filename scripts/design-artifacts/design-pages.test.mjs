@@ -215,3 +215,48 @@ test("an annotation-led catalog with no spec still matches on the preview id", (
     "top-app-bar-medium__ideal__default__light",
   );
 });
+
+test("a structurally malformed manifest is refused, not thrown out of", () => {
+  // `{"pages":{}}` is valid JSON, so it survives the parse — and `for (const p of {})` would throw
+  // "object is not iterable" straight into the workflow's `set -e`, taking the catalog publish
+  // with it. Same for a placements object.
+  const plan = planPageBackdrops({ manifest: { version: 1, pages: {} }, spec, catalog });
+  assert.equal(plan.manifest, null);
+  assert.match(plan.warnings.join("\n"), /no usable pages array/);
+
+  const oddPlacements = planPageBackdrops({
+    manifest: manifest([page([], { placements: {} })]),
+    spec,
+    catalog,
+  });
+  assert.deepEqual(oddPlacements.manifest.pages[0].placements, []);
+});
+
+test("an ambiguous function-name fallback is declined rather than guessed", () => {
+  // Two components whose preview functions share a member name land in the same `byFunction`
+  // bucket. Taking the first would overlay component A inside component B's rectangle.
+  const ambiguous = {
+    components: [
+      { componentId: "A", images: [{ path: "images/a/ideal__default__light.png", previewId: "a" }] },
+      { componentId: "B", images: [{ path: "images/b/ideal__default__light.png", previewId: "b" }] },
+    ],
+  };
+  const sharedNameSpec = {
+    groups: [
+      {
+        components: [
+          { componentId: "A", preview: "DefaultPreview" },
+          { componentId: "B", preview: "DefaultPreview" },
+        ],
+      },
+    ],
+  };
+  const { previewId, ...noPreviewId } = appBar;
+  const plan = planPageBackdrops({
+    manifest: manifest([page([{ ...noPreviewId, code: "ui/A.kt#DefaultPreview" }])]),
+    spec: sharedNameSpec,
+    catalog: ambiguous,
+  });
+  assert.equal(plan.manifest.pages[0].placements[0].previewId, undefined);
+  assert.equal(plan.manifest.pages[0].placements[0].link, "manifest");
+});

@@ -76,10 +76,6 @@ internal object ServeFigmaSpec {
     return "https://www.figma.com/design/$key?node-id=${node.replace(':', '-')}"
   }
 
-  /** The node id of a `figma:<fileKey>/<nodeId>` handle, or null when it doesn't parse. */
-  fun nodeOfHandle(handle: String): String? =
-    HANDLE.find(handle.trim())?.groupValues?.get(2)?.takeIf { NODE_ID.matches(it) }
-
   /**
    * The `(fileKey, nodeId)` pair a Figma-backed reference carries. Two shapes are accepted, both of
    * which real producers emit: the `figma:<key>/<node>` handle, and a figma.com URL paired with a

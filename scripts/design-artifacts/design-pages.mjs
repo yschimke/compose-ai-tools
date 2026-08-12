@@ -104,7 +104,15 @@ function resolveServePreviewId(placement, { byPreviewId, byFunction }) {
   const fn = functionNameOf(placement?.code);
   if (fn) {
     const matches = byFunction.get(fn) ?? [];
-    if (matches.length > 0) return servePreviewId(matches[0].image?.path);
+    // Refuse an AMBIGUOUS fallback. `byFunction` is keyed by the bare member name, so two
+    // components whose previews are both called `DefaultPreview` share a bucket — and taking the
+    // first would overlay component A inside component B's rectangle, which is worse than showing
+    // no render at all. Same posture as `matchesForPreviewId`'s collision guard: decline, warn, and
+    // leave the hotspot with its mapping.
+    const componentIds = new Set(matches.map((m) => m.componentId));
+    if (matches.length > 0 && componentIds.size === 1) {
+      return servePreviewId(matches[0].image?.path);
+    }
   }
   return null;
 }
@@ -148,7 +156,15 @@ export function planPageBackdrops({ manifest, spec, catalog }) {
   const images = [];
   const seen = new Set();
   const pages = [];
-  for (const page of manifest.pages ?? []) {
+  // `Array.isArray`, not `?? []`: a structurally malformed manifest — `"pages": {}` from a bad
+  // edit — is syntactically valid JSON, so it survives the parse and would throw "object is not
+  // iterable" here, out of the emitter and into the workflow's `set -e`. The whole point of this
+  // lane is that it cannot cost a catalog its publish.
+  if (!Array.isArray(manifest.pages)) {
+    warnings.push("page-backdrop manifest declares no usable pages array");
+    return { manifest: null, images: [], warnings };
+  }
+  for (const page of manifest.pages) {
     const id = typeof page?.id === "string" ? page.id : "";
     if (!SAFE_ID.test(id) || RESERVED_ID_SUFFIX.test(id)) {
       warnings.push(`page ${JSON.stringify(page?.id ?? null)} has no route-safe id; skipped`);
@@ -171,7 +187,7 @@ export function planPageBackdrops({ manifest, spec, catalog }) {
 
     let unresolved = 0;
     const placements = [];
-    for (const placement of page.placements ?? []) {
+    for (const placement of Array.isArray(page.placements) ? page.placements : []) {
       if (!isDrawablePlacement(placement)) continue;
       const link = LINK_METHODS.has(placement?.link) ? placement.link : "unlinked";
       const previewId =

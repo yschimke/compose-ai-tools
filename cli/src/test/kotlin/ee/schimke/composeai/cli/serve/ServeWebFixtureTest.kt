@@ -5,6 +5,13 @@ import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
+import ee.schimke.composeai.designparity.BackdropImage
+import ee.schimke.composeai.designparity.BackdropPage
+import ee.schimke.composeai.designparity.FrameSize
+import ee.schimke.composeai.designparity.PageRect
+import ee.schimke.composeai.designparity.Placement
+import ee.schimke.composeai.designparity.PlacementConfidence
+import ee.schimke.composeai.designparity.PlacementLink
 import java.awt.Color
 import java.awt.GradientPaint
 import java.awt.RenderingHints
@@ -65,13 +72,13 @@ class ServeWebFixtureTest {
     height: Double,
     code: String? = null,
     previewId: String? = null,
-    link: String = "manifest",
-    confidence: String? = if (code == null) null else "high",
+    link: PlacementLink = PlacementLink.MANIFEST,
+    confidence: PlacementConfidence? = if (code == null) null else PlacementConfidence.HIGH,
   ) =
-    BackdropPlacement(
+    Placement(
       nodeId = nodeId,
       name = name,
-      bounds = BackdropRect(x = x, y = y, width = width, height = height),
+      bounds = PageRect(x = x, y = y, width = width, height = height),
       ref = "figma:ocdacdEsnHipMJD3egzxKb/$nodeId",
       code = code,
       previewId = previewId,
@@ -1368,11 +1375,19 @@ class ServeWebFixtureTest {
         id = "upcoming-mobile",
         name = "Upcoming-Mobile",
         nodeId = "56615:48121",
-        frame = BackdropFrame(width = 412.0, height = 954.0),
+        frame = FrameSize(width = 412.0, height = 954.0),
         image = BackdropImage(uri = "upcoming-mobile.png", scale = 2.0),
         placements =
           listOf(
-            backdropPlacement("1:2", "Status bar", 0.0, 0.0, 412.0, 48.0, link = "unlinked"),
+            backdropPlacement(
+              "1:2",
+              "Status bar",
+              0.0,
+              0.0,
+              412.0,
+              48.0,
+              link = PlacementLink.UNLINKED,
+            ),
             backdropPlacement(
               "1:1",
               "App bar",
@@ -1401,8 +1416,8 @@ class ServeWebFixtureTest {
               120.0,
               24.0,
               code = "ui/Buttons.kt#TextButton",
-              link = "convention",
-              confidence = "low",
+              link = PlacementLink.CONVENTION,
+              confidence = PlacementConfidence.LOW,
               previewId = "com.example.ProfileCardPreview",
             ),
             backdropPlacement(
@@ -1429,7 +1444,15 @@ class ServeWebFixtureTest {
               )
             } +
             listOf(
-              backdropPlacement("1:9", "Gesture bar", 0.0, 920.0, 412.0, 34.0, link = "unlinked")
+              backdropPlacement(
+                "1:9",
+                "Gesture bar",
+                0.0,
+                920.0,
+                412.0,
+                34.0,
+                link = PlacementLink.UNLINKED,
+              )
             ),
       )
 

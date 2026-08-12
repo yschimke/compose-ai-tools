@@ -57,12 +57,22 @@
   // on. A screen can carry a couple of dozen placements, and a visitor who never opens the overlay
   // should not cost the server a render request per placement — on a live catalog each of those is
   // a daemon render, not a static file.
+  // Only a same-origin, relative path is ever promoted to a live `src`. The value is written by the
+  // server from a URL-encoded preview id, so in practice it is always one — but it reaches this
+  // code as DOM text, and DOM text is not a trust boundary. Anything carrying a scheme or a
+  // protocol-relative prefix is dropped rather than fetched, which keeps a `javascript:` or
+  // off-origin URL out of the sink even if a future producer or a mangled page put one there.
+  function isSameOriginPath(value) {
+    return typeof value === "string" && value.charAt(0) === "/" && value.charAt(1) !== "/";
+  }
+
   function armRenders() {
     var pending = stage.querySelectorAll(".cp-backdrop-render[data-src]");
     for (var i = 0; i < pending.length; i++) {
       var img = pending[i];
-      img.src = img.getAttribute("data-src");
+      var src = img.getAttribute("data-src");
       img.removeAttribute("data-src");
+      if (isSameOriginPath(src)) img.src = src;
     }
   }
 
@@ -93,11 +103,16 @@
 
   // Hovering a row in the placement list highlights its rectangle on the screen, and vice versa —
   // the cheapest way to answer "which one is that?" on a screen with five identical list items.
+  // Compares attribute values rather than building a selector string out of one. A node id is text
+  // from the design file, and interpolating it into a selector would be an injection with the same
+  // shape as an HTML one — `CSS.escape` is the usual patch, but not constructing the selector at
+  // all is simpler and has no browser-support caveat.
   function pair(nodeId, on) {
-    var selector = '[data-cp-placement="' + (window.CSS && CSS.escape ? CSS.escape(nodeId) : nodeId) + '"]';
-    var matches = root.querySelectorAll(selector);
-    for (var i = 0; i < matches.length; i++) {
-      matches[i].classList.toggle("cp-backdrop-active", on);
+    var all = root.querySelectorAll("[data-cp-placement]");
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].getAttribute("data-cp-placement") === nodeId) {
+        all[i].classList.toggle("cp-backdrop-active", on);
+      }
     }
   }
 

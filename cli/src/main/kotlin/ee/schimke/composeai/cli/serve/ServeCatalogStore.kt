@@ -4,6 +4,8 @@ import ee.schimke.composeai.cli.BundleClasspathHydration
 import ee.schimke.composeai.cli.BundleReader
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
+import ee.schimke.composeai.designparity.PageBackdropJson
+import ee.schimke.composeai.designparity.PageBackdropManifest
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -1529,24 +1531,27 @@ class ServeCatalogStore(
    * Shaped like [writeDesignReferences] rather than [writeParityActivity] because it has assets:
    * the manifest alone is useless without its images, so a page whose PNG can't be fetched is
    * dropped from the staged manifest instead of being advertised and 404ing on open. Validation
-   * runs *before* the write ([ServePageBackdropStore.sanitize]) so nothing malformed reaches the
-   * staging tree, and each image is re-pathed to a server-owned location (`pages/<id>.png`) so a
-   * manifest cannot dictate where bytes land.
+   * runs *before* the write ([ServePageBackdropStore.drawablePages]) so nothing malformed reaches
+   * the staging tree, and each image is re-pathed to a server-owned location (`pages/<id>.png`) so
+   * a manifest cannot dictate where bytes land.
    *
    * Fail-soft like the rest of the staging path: no manifest, an unfetchable one, or one that
    * doesn't survive validation simply serves the catalog with no backdrop surface.
    */
   private fun writePageBackdrops(base: String, staging: File) {
-    val dirName = PageBackdropManifest.DIRECTORY
+    val dirName = ServePageBackdropStore.DIRECTORY
     val manifestBytes =
-      runCatching { fetchCatalogAsset("$base$dirName/${PageBackdropManifest.INDEX_FILE}") }
+      runCatching { fetchCatalogAsset("$base$dirName/${ServePageBackdropStore.INDEX_FILE}") }
         .getOrNull() ?: return
     val manifest =
       runCatching {
-          json.decodeFromString(PageBackdropManifest.serializer(), manifestBytes.decodeToString())
+          PageBackdropJson.decodeFromString(
+            PageBackdropManifest.serializer(),
+            manifestBytes.decodeToString(),
+          )
         }
         .getOrNull() ?: return
-    val pages = ServePageBackdropStore.sanitize(manifest)
+    val pages = ServePageBackdropStore.drawablePages(manifest)
     if (pages.isEmpty()) return
 
     // One bounded wave, like the reference rasters: a catalog publishes a handful of key screens,
@@ -1565,9 +1570,12 @@ class ServeCatalogStore(
       }
     if (accepted.isEmpty()) return
     File(staging, dirName).mkdirs()
-    File(staging, "$dirName/${PageBackdropManifest.INDEX_FILE}")
+    File(staging, "$dirName/${ServePageBackdropStore.INDEX_FILE}")
       .writeText(
-        json.encodeToString(PageBackdropManifest.serializer(), manifest.copy(pages = accepted))
+        PageBackdropJson.encodeToString(
+          PageBackdropManifest.serializer(),
+          manifest.copy(pages = accepted),
+        )
       )
   }
 

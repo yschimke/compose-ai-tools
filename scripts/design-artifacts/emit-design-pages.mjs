@@ -118,7 +118,16 @@ try {
   process.exit(STRICT ? 1 : 0);
 }
 
-const plan = planPageBackdrops({ manifest, spec, catalog });
+// Planning is inside the guard too. The parse above catches a *syntax* error, but a structurally
+// odd manifest can still surprise the planner, and any throw here reaches the workflow's `set -e`
+// and takes the catalog's publish with it — the one outcome this lane must never cause.
+let plan;
+try {
+  plan = planPageBackdrops({ manifest, spec, catalog });
+} catch (error) {
+  warn(`could not plan the page backdrops (${error.message}); publishing without screens`);
+  process.exit(STRICT ? 1 : 0);
+}
 for (const message of plan.warnings) warn(message);
 
 if (!plan.manifest) {

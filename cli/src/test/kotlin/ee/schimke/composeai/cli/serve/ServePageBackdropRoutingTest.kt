@@ -1,5 +1,11 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.designparity.BackdropImage
+import ee.schimke.composeai.designparity.BackdropPage
+import ee.schimke.composeai.designparity.FrameSize
+import ee.schimke.composeai.designparity.PageRect
+import ee.schimke.composeai.designparity.Placement
+import ee.schimke.composeai.designparity.PlacementLink
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -38,10 +44,10 @@ class ServePageBackdropRoutingTest {
     File(dir, "previews/com.example.AppBar.png").writeBytes(png())
     File(dir, "previews/com.example.ListItem.png").writeBytes(png())
     if (pages != null) {
-      File(dir, PageBackdropManifest.DIRECTORY).mkdirs()
-      File(dir, "${PageBackdropManifest.DIRECTORY}/${PageBackdropManifest.INDEX_FILE}")
+      File(dir, ServePageBackdropStore.DIRECTORY).mkdirs()
+      File(dir, "${ServePageBackdropStore.DIRECTORY}/${ServePageBackdropStore.INDEX_FILE}")
         .writeText(pages)
-      File(dir, "${PageBackdropManifest.DIRECTORY}/upcoming.png").writeBytes(png(412, 954))
+      File(dir, "${ServePageBackdropStore.DIRECTORY}/upcoming.png").writeBytes(png(412, 954))
     }
     return ServeBundleHost(dir, label = label)
   }
@@ -169,15 +175,16 @@ class ServePageBackdropRoutingTest {
             BackdropPage(
               id = "upcoming",
               name = "Upcoming-Mobile",
-              frame = BackdropFrame(412.0, 954.0),
+              nodeId = "56615:48121",
+              frame = FrameSize(412.0, 954.0),
               image = BackdropImage("upcoming.png", 2.0),
               placements =
                 listOf(
-                  BackdropPlacement(
+                  Placement(
                     nodeId = "1:1",
                     name = "App bar",
-                    bounds = BackdropRect(0.0, 48.0, 412.0, 64.0),
-                    link = "manifest",
+                    bounds = PageRect(0.0, 48.0, 412.0, 64.0),
+                    link = PlacementLink.MANIFEST,
                   )
                 ),
             ),
