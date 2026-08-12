@@ -498,7 +498,8 @@ broken artifact rather than a stale one.
 
 **The score plane's dimensions come from the candidate box** —
 `scale = min(1, MAX_SIDE / max(candidateBox.width, candidateBox.height))`, applied to
-`candidateBox`, exactly as `scoreImages` does today. This is normative rather than an open choice, and the two facts are linked: I10 promises
+`candidateBox`, exactly as `scoreImages` does today. This is normative rather than an open choice,
+and the two facts are linked: I10 promises
 the raw number does not move, and picking the reference box instead would move it for every pair
 whose boxes differ in aspect. An earlier revision left this to Phase 3 and separately claimed the
 canonical plane governed; both are wrong for the same reason.
@@ -642,6 +643,40 @@ by the next render, and the comparison page today embeds static annotation lists
 panel requests `/render` independently. So the index must be produced by the same override-keyed
 render transaction (or cache entry) that produced the PNG the page scores, and Phase 2's transport
 work has to carry that coupling rather than just the data.
+
+**The result's wire shape, spelled out.** `invalidated: [causes]` above is table notation, not JSON,
+and leaving the map value unspecified means two engines can agree on every verdict and still
+serialise different results — which is the one thing a cross-engine contract exists to prevent:
+
+```json
+{
+  "raw": 90.2,
+  "unaccepted": 95.1,
+  "accepted": 4.9,
+  "statuses": {
+    "m3-iconbutton-tonal-glyph": { "status": "valid" },
+    "m3-fab-shadow":             { "status": "resolved" },
+    "m3-switch-track":           { "status": "invalidated",
+                                   "causes": ["reference-changed", "element-ambiguous"] },
+    "m3-chip-border":            { "status": "refused",
+                                   "reason": "mask-hash-mismatch" }
+  },
+  "validationFailures": []
+}
+```
+
+Every value is an object, never a bare string, so a consumer never has to branch on type. `status`
+is one of `valid` / `resolved` / `invalidated` / `refused`. `causes` is present **only** for
+`invalidated`, always an array even for one cause, ordered as the gate table lists them — that fixed
+order is what makes the multi-cause fixture comparable. `reason` is present **only** for `refused`,
+a single token from: `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`,
+`reference-hash-missing`, `decode-failed`, `degenerate-dimensions`, `mask-encoding-invalid`,
+`dimension-mismatch`.
+
+`validationFailures` is a list of `{ "id": …, "reason": … }`, and is the *only* populated field when
+the document itself is rejected — `duplicate-id` — in which case `statuses` is absent entirely
+rather than empty, since "no acceptance was evaluated" and "every acceptance was valid" must not
+serialise the same way.
 
 Status is **per acceptance**, not per comparison — a set with one invalidated and one surviving
 member has two statuses, and the fixture result carries them as a map keyed by acceptance id. The
