@@ -386,7 +386,7 @@ by the conformance fixtures. Stated as invariants:
 | I4 | Separation applies to **both** inputs | `scorePlanes` is bidirectional: a contaminated *reference* sample can erase a *candidate* regression |
 | I5 | Gates run per acceptance; scoring runs against the union of **survivors** | Separating against the union up front lets an invalidated mask keep suppressing; combining per-acceptance planes is not equivalent to filtering against the union at their boundaries |
 | I6 | Raw and unaccepted traverse **identical** resampling stages | Filtering is not associative, so a shortcut path makes raw ≠ unaccepted even with no surviving mask, manufacturing a delta out of nothing |
-| I10 | Scoring resamples **once, source → score plane**, for both passes; the canonical plane is for the **gates**, not the score | `scoreImages` draws each original straight into the score plane and its own comment pins this — "one resample exactly as before and the numbers are unchanged". Routing the score through canonical would change every catalog's displayed number the day acceptance support ships, with no acceptance involved |
+| I10 | Scoring resamples **once, source → score plane**, for both passes, at the **candidate box's** dimensions scaled to `MAX_SIDE`; the canonical plane is for the **gates**, not the score | `scoreImages` draws each original straight into the score plane and its own comment pins this — "one resample exactly as before and the numbers are unchanged". Routing the score through canonical would change every catalog's displayed number the day acceptance support ships, with no acceptance involved |
 | I7 | Both artifact hashes are verified before their bytes are used | The mask decides which pixels are suppressed; the accepted candidate decides what they may look like. Either one edited silently redefines "accepted" |
 | I8 | Every coordinate transform is stated, in both directions | Baselines are canonical-plane; `boundsInRoot` is render pixels; a drag is display pixels — mixing them invalidates unchanged elements or passes moved ones |
 | I9 | The **recorded** plane discriminant and box define the canonical destination, for masks, transforms and resampling alike | `normalisedBoxes` falls back to the full canvas below `MIN_BOX_COVERAGE`, so a full-canvas acceptance resampled against a content box suppresses the wrong pixels and invalidates as `candidate-changed` for no real reason |
@@ -398,24 +398,22 @@ be worse than leaving them open:
 1. **The portable pixel path** — kernel, rounding, edge handling, channel/alpha/premultiplication
    and gray-projection semantics, and content-box sampling, which currently reaches its verdict
    through a host `drawImage` downscale and so can differ per engine.
-2. **Score-plane geometry** — `MAX_SIDE` caps the longest side but does not determine width and
-   height when the two boxes differ in aspect; which box governs must be fixed.
-3. **Mask participation in `edgeMask`** — the scorer classifies edges from raw neighbour values with
+2. **Mask participation in `edgeMask`** — the scorer classifies edges from raw neighbour values with
    no notion of validity, so whatever fills a separated region can manufacture or suppress an edge
    at the boundary, which decides whether a neighbouring pixel gets the displaced search at all.
    Excluding masked coordinates as *sources and search candidates* is not sufficient.
-4. **The masked pass's denominator** — dividing by the full plane versus by remaining scorable
+3. **The masked pass's denominator** — dividing by the full plane versus by remaining scorable
    coordinates gives different numbers, and the all-masked case needs a defined result.
-5. **What "accepted contribution" means** — it is *not* a simple difference of the two scores. Under
+4. **What "accepted contribution" means** — it is *not* a simple difference of the two scores. Under
    a scorable-coordinate denominator the unaccepted mismatch can legitimately exceed raw (a small
    accepted delta removed from a badly-regressed image raises the average), so the subtraction goes
    negative while the acceptance is perfectly valid. Either define it as a signed score *effect*, or
    report the accepted region's own regional mismatch instead of presenting a difference as an
    additive contribution. The current text's claim that a valid acceptance necessarily raises
    similarity is false.
-6. **Sub-pixel geometry** — element-bounds tolerance and mask-edge alignment both need defined
+5. **Sub-pixel geometry** — element-bounds tolerance and mask-edge alignment both need defined
    rounding, at each transform.
-7. **The match metric**, shared by the candidate gate and the resolution test — which channels,
+6. **The match metric**, shared by the candidate gate and the resolution test — which channels,
    compared how, against what threshold, and what happens at the mask edge. The two must use the
    same one (see the status table) or they can disagree about whether two images match, but *which*
    one is a Phase 3 choice for the same reason the kernel is.
@@ -498,6 +496,13 @@ A mask whose bytes do not match `maskSha256` is not an invalidation at all — i
 validation failure**: the acceptance is refused and reported, because a mask we cannot trust is a
 broken artifact rather than a stale one.
 
+**The score plane's dimensions come from the candidate box** —
+`scale = min(1, MAX_SIDE / max(candidateBox.width, candidateBox.height))`, applied to
+`candidateBox`, exactly as `scoreImages` does today. This is normative rather than an open choice, and the two facts are linked: I10 promises
+the raw number does not move, and picking the reference box instead would move it for every pair
+whose boxes differ in aspect. An earlier revision left this to Phase 3 and separately claimed the
+canonical plane governed; both are wrong for the same reason.
+
 **The gate path and the score path are separate, and only the gates use the canonical plane.** Gates
 compare at canonical resolution because that is where a glyph is still a glyph and where the mask
 and accepted candidate are stored. Scoring does not: it draws each region straight from the source
@@ -514,6 +519,22 @@ it contributes no mismatch to suppress, and keeping it in the union would active
 as neighbourhood candidates for the pixels around it — which can hide a regression sitting next to
 the thing that was just fixed. The required fixed-candidate fixture therefore carries an **adjacent
 regression** as well, since that is the case the wrong reading gets wrong.
+
+**The mask's encoding is part of the contract, not a producer's choice.** "A PNG" leaves at least
+three readings — alpha-vs-luminance coverage, which polarity means masked, and what an intermediate
+value means — and two consumers can read the same hash-valid bytes as different suppression unions
+while satisfying every invariant below. So: **8-bit greyscale, no alpha, `0` = unmasked, `255` =
+masked, and any other value is `refused`.** A strictly binary mask rather than a threshold, because
+a threshold is one more constant two engines could pick differently, and an anti-aliased mask edge
+is exactly the boundary case the separation rules already work hardest to keep unambiguous. A
+producer that has a soft-edged selection must decide where the edge falls before committing it,
+which is the right place for that decision to be made.
+
+**Artifact dimensions are checked against the recorded plane.** `mask.png` must match the recorded
+canonical plane's `width × height` exactly, and `accepted-candidate.png` must match the mask's
+bounding box exactly. Otherwise one consumer rescales, another rejects, a third compares only the
+overlap — same acceptance, three different suppression unions. Mismatches are `refused`, with
+conformance cases for both.
 
 **A correct hash does not make an artifact usable.** Bytes can be committed with a correctly
 computed `sha256` and still be corrupt, non-PNG, or decode to zero dimensions — the hash proves
@@ -550,7 +571,7 @@ Evaluated strictly in this order — the first row whose condition holds wins:
 
 | # | Status | Condition |
 | --- | --- | --- |
-| 1 | `refused` | either artifact's bytes fail their recorded hash; **or an artifact is hash-valid but fails to decode, or decodes to zero/negative dimensions**; **or the targeted reference publishes no `sha256`**; **or the acceptance's `id` is not unique in the set** — the acceptance is never evaluated |
+| 1 | `refused` | either artifact's bytes fail their recorded hash; **or an artifact is hash-valid but fails to decode, decodes to zero/negative dimensions, carries a non-binary mask encoding, or does not match its required dimensions**; **or the targeted reference publishes no `sha256`**; **or the acceptance's `id` is not unique in the set** — the acceptance is never evaluated |
 | 2 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
 | 3 | `resolved` | the candidate gate **fired** *and* the masked region now agrees with the **reference** (see below) |
 | 4 | `invalidated: [candidate-changed]` | the candidate gate fired and the region did not converge |
@@ -1122,6 +1143,17 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
 11. **Surface** the statuses Phase 3 already computes — `resolved`, `invalidated`, `refused` — plus
     **stale** (issue closed, acceptance remains), which is the one lifecycle state that needs the
     issue index rather than the comparison: on the dashboard, and as a gate in the offline run.
+
+    **Stale requires positive evidence of closure — never inference from absence.** An issue missing
+    from `parity/issues.json` means almost nothing: the index is fail-soft (a malformed file drops
+    wholesale), it is capped, it can be stale between regenerations, and it does not cover source
+    repos whose dispatch credential nobody has wired yet. Treating absence as closed would mark live
+    acceptances stale across an entire catalog the first time the file failed to parse. So the index
+    **publishes closed rows** — an issue referenced by any acceptance stays in the index with
+    `state: "closed"` rather than being dropped — and a consumer that cannot find a row reports
+    *unknown*, not stale. That is one more reason the emitter must be told which repos to scan: an
+    unscanned repo's issues are permanently unknown, which is honest, where inferred-closed would be
+    confidently wrong.
 
     The `resolved` / `invalidated` / `valid` statuses and their precedence are defined once in §4's
     [normative contract](#the-normative-contract) — including why the success path trips a gate and
