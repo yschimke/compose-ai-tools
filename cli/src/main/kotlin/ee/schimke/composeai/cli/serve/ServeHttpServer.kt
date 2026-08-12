@@ -71,6 +71,10 @@ import kotlinx.serialization.json.Json
  * - `GET /` landing page, `GET /p/{id}` viewer page,
  * - `GET /render/{id}.png` PNG bytes, `GET /api/previews` JSON, `GET /healthz` liveness,
  * - `GET /hero/{system}/{hash}.png` a prebaked, immutable front-door thumbnail ([ServeHeroImages]),
+ * - `GET /social/{hash}.png` the drawn link-unfurl card a page advertises ([ServeSocialCard]), and
+ *   `GET /favicon.svg` / `/favicon.ico` / `/apple-touch-icon.png` the site icon ([ServeSiteIcon]) —
+ *   all ungated, because a link unfurler presents no token when it fetches what a page pointed it
+ *   at, and an icon fetcher never presents one at all,
  * - `GET /readyz` readiness (green only after a representative preview actually renders — the
  *   rolling-update gate),
  * - `GET /index.json` Storybook stories index, `GET /iframe.html?id=` isolated story render
@@ -368,6 +372,13 @@ class ServeHttpServer(
   private val heroImages = ServeHeroImages()
 
   /**
+   * Drawn link-unfurl cards, served by the `/social/` route. Composed from the hero thumbnails
+   * above — so a card costs no render and no extra decode of a full-resolution PNG — and memoised
+   * by its inputs. See [ServeSocialCard].
+   */
+  private val socialCards = ServeSocialCard()
+
+  /**
    * Whether the `/admin/catalogs` routes exist on this server: both an administrator
    * ([catalogAdmin]) and an [adminToken] are required. Fail-closed by construction — an operator
    * who never set a token gets no admin surface, not an open one.
@@ -581,6 +592,24 @@ class ServeHttpServer(
         // repeat visitor's browser serves the whole front door's imagery from cache without asking.
         // A constant first segment, so it outscores the `/{system}` catch-all in Ktor routing.
         get("/hero/{system}/{name}") { handleHeroImage() }
+
+        // The drawn link-unfurl card a page advertises as its `og:image` ([ServeSocialCard]).
+        // Cached exactly like `/hero/` and for the same reason — the name is the content hash — but
+        // the immutability matters more here: unfurlers key their caches by URL and several never
+        // revalidate, so a card URL whose pixels could change would pin a stale picture in Slack
+        // indefinitely. A constant first segment, so it outscores the `/{system}` catch-all.
+        get("/social/{name}") { handleSocialCard() }
+
+        // The site icon, in the three forms the web asks for ([ServeSiteIcon]). These are what an
+        // unfurl card shows *beside* the picture — Slack, iMessage, Discord and Google all resolve
+        // a site icon from the page's `<link rel="icon">` tags or by probing `/favicon.ico`, and
+        // before these routes existed every one of them fell back to a generic globe. Ungated even
+        // on a token-gated server: an icon carries no session data, and a favicon fetch never
+        // carries the token anyway (the browser requests it outside the page's query string), so
+        // gating it would only guarantee the blank tab it is here to fix.
+        get(ServeSiteIcon.SVG_PATH) { respondSiteIcon(ServeSiteIcon.svg) }
+        get(ServeSiteIcon.ICO_PATH) { respondSiteIcon(ServeSiteIcon.ico) }
+        get(ServeSiteIcon.APPLE_TOUCH_PATH) { respondSiteIcon(ServeSiteIcon.appleTouchIcon) }
 
         // The in-browser Remote Compose player: a single shared IIFE bundle (global `RC`), baked
         // into the CLI jar as a classpath resource and served here so the viewer's client-side
@@ -1541,6 +1570,54 @@ class ServeHttpServer(
       // the bake doesn't describe (same reasoning as the viewer's `imageSize`).
       val heroSize =
         if (requestCarriesOverrides()) null else heroId?.let { renderHost.bakedRenderSize(it) }
+      // …and, like the front door, prefer a **drawn** card over the render itself: this catalog's
+      // hero thumbnail set into a 1200×630 layout with the catalog's name and preview count, rather
+      // than a bare phone screenshot an unfurler has to crop to a band. Same reasoning and the same
+      // baked pixels as [handleHomeIndex]; see [ServeSocialCard].
+      //
+      // Skipped when the request carries overrides, for the reason `heroSize` is: the page then
+      // describes a re-render, and a card built from the baked hero would advertise the wrong
+      // picture for that URL.
+      //
+      // The hero is baked here rather than read out of `catalogMetaSeen`, so a visitor who lands
+      // straight on `/<system>/` — the shape of URL people actually share — gets a card without
+      // having gone through the front door first. It is the same memoised call the front door makes
+      // ([ServeHeroImages.heroFor] is per host instance), so this costs one decode per catalog for
+      // the whole life of that host, not one per request.
+      val bundle = catalogBundleHost(renderHost)
+      val heading = ServeWeb.catalogHeading(bundle?.title, renderHost.label)
+      val card =
+        if (requestCarriesOverrides() || bundle == null || heroId == null) null
+        else
+          withContext(Dispatchers.IO) {
+            heroImages.heroFor(bundle, heroId, bundle.contentCrop(heroId))?.let { hero ->
+              socialCards.cardFor(
+                ServeSocialCard.Spec(
+                  title = heading,
+                  subtitle = ServeWeb.catalogCardSubtitle(renderHost.previews.size),
+                  heroes = listOf(hero),
+                )
+              )
+            }
+          }
+      val unfurl =
+        if (card != null)
+          ServeWeb.UnfurlMetadata(
+            pageUrl = externalPageUrl(),
+            imageUrl = externalOrigin() + ServeSocialCard.PATH_PREFIX + "/" + card.fileName,
+            imageWidth = card.width,
+            imageHeight = card.height,
+          )
+        else
+        // No baked hero for this catalog yet, or the request carries overrides. The render is a
+        // worse picture but a real one, and `twitterCard` demotes it to the small card its shape
+        // can fill rather than claiming a banner it cannot.
+        ServeWeb.UnfurlMetadata(
+            pageUrl = externalPageUrl(),
+            imageUrl = heroUrl,
+            imageWidth = heroSize?.first,
+            imageHeight = heroSize?.second,
+          )
       markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.landingPage(
@@ -1648,14 +1725,8 @@ class ServeHttpServer(
           themeRenderBurstCapacity = renderHost.themeRenderBurstCapacity,
           engagement = previewEngagement(selectedSessionId, renderHost.previews),
           systemViews = systemViews,
-          unfurl =
-            ServeWeb.UnfurlMetadata(
-              pageUrl = externalPageUrl(),
-              imageUrl = heroUrl,
-              imageWidth = heroSize?.first,
-              imageHeight = heroSize?.second,
-            ),
-          displayTitle = catalogBundleHost(renderHost)?.title,
+          unfurl = unfurl,
+          displayTitle = bundle?.title,
         ),
         ContentType.Text.Html,
       )
@@ -2327,11 +2398,11 @@ class ServeHttpServer(
             "${WebEscaping.urlEncodeSegment(it)}.png"
         }
     val featuredUrl = featuredPath?.let { externalOrigin() + it + requestQuerySuffix() }
-    // The unfurl image is the FULL render, not the `/hero/` thumbnail the card lays out — those are
-    // downscaled to card size (the front door's is 216×480), which is under every unfurler's floor
-    // for a large-image card and under Google's 512² guidance for using the image at all. The page
-    // wants a small file; a link preview wants a big picture. Falls back to whatever the card uses
-    // when the catalog has no readable full render.
+    // The FULL render behind the featured card, kept only as the fallback unfurl image for when no
+    // card can be drawn (see below). The full render rather than the `/hero/` thumbnail the page
+    // lays out, because those are downscaled to card size (the front door's is 216×480) — under
+    // every unfurler's floor for a large-image card and under Google's 512² guidance for using the
+    // image at all. The page wants a small file; a link preview wants a big picture.
     // Read from the remembered metadata, not from a live host: `peekHost` is null for a suspended
     // catalog, and falling back would quietly re-advertise the undersized thumbnail exactly when
     // the
@@ -2347,6 +2418,50 @@ class ServeHttpServer(
             "${WebEscaping.urlEncodeSegment(id)}.png"
         (externalOrigin() + path + requestQuerySuffix()) to size
       }
+    // …but what the front door actually advertises is a **drawn** card ([ServeSocialCard]): a
+    // 1200×630 picture of the site, at the aspect every unfurler lays a large card out at. It has
+    // to be drawn rather than picked, because no catalog render is that shape — the featured hero
+    // is a 1078×2399 phone screenshot, so pointing at it meant the card showed a horizontal band
+    // through the middle of one app scaffold and nothing that identified this site at all.
+    //
+    // Composed from the hero thumbnails the front door already baked, in the order a visitor meets
+    // them, so it costs no render and no second decode of a full-resolution PNG. On
+    // `Dispatchers.IO`
+    // beside `homeSystemsFor` for the same reason that call is: the first visit after a catalog
+    // changes pays a rasterize, and that is not work for the request thread.
+    val card =
+      withContext(Dispatchers.IO) {
+        socialCards.cardFor(
+          ServeSocialCard.Spec(
+            title = ServeWeb.HOME_TITLE,
+            subtitle = ServeWeb.homeCardSubtitle(systems),
+            heroes =
+              ServeWeb.homeSections(systems)
+                .asSequence()
+                .flatMap { it.systems.asSequence() }
+                .mapNotNull { catalogMetaSeen[it.system]?.heroImage }
+                .take(ServeSocialCard.MAX_HEROES)
+                .toList(),
+          )
+        )
+      }
+    val unfurl =
+      if (card != null)
+        ServeWeb.UnfurlMetadata(
+          pageUrl = externalPageUrl(),
+          imageUrl = externalOrigin() + ServeSocialCard.PATH_PREFIX + "/" + card.fileName,
+          imageWidth = card.width,
+          imageHeight = card.height,
+        )
+      else
+      // Only when the card couldn't be encoded at all. The featured render is a worse picture but
+      // a real one, and `twitterCard` now demotes it to the small card its shape can fill.
+      ServeWeb.UnfurlMetadata(
+          pageUrl = externalPageUrl(),
+          imageUrl = featuredRender?.first ?: featuredUrl,
+          imageWidth = featuredRender?.second?.first,
+          imageHeight = featuredRender?.second?.second,
+        )
     markGeneration("static-page", pageCacheControl())
     call.respondText(
       ServeWeb.homeIndexPage(
@@ -2354,13 +2469,7 @@ class ServeHttpServer(
         token,
         isPublic = isPublic,
         version = BUNDLE_VERSION,
-        unfurl =
-          ServeWeb.UnfurlMetadata(
-            pageUrl = externalPageUrl(),
-            imageUrl = featuredRender?.first ?: featuredUrl,
-            imageWidth = featuredRender?.second?.first,
-            imageHeight = featuredRender?.second?.second,
-          ),
+        unfurl = unfurl,
         githubAuth =
           githubAuth?.let { auth ->
             ServeWeb.GitHubAuthStatus(
@@ -2464,6 +2573,52 @@ class ServeHttpServer(
       return
     }
     call.respondBytes(hero.bytes, ContentType.Image.PNG)
+  }
+
+  /**
+   * `GET /social/{name}`: a drawn link-unfurl card ([ServeSocialCard]).
+   *
+   * Ungated, unlike `/hero/`. The card is only ever *named* by an `og:image` on a page the fetcher
+   * has already been given, it is drawn from the site's own chrome plus thumbnails that are public
+   * on the front door, and — decisively — a link unfurler does not replay a page's token when it
+   * fetches the image it was pointed at. Gating this would leave a token-gated server advertising
+   * an image every consumer 403s on, which is the failure this whole lane exists to remove.
+   */
+  private suspend fun RoutingContext.handleSocialCard() {
+    val card = call.parameters["name"]?.let { socialCards.byFileName(it) }
+    if (card == null) {
+      call.respondText("no such card", status = HttpStatusCode.NotFound)
+      return
+    }
+    call.response.headers.append(HttpHeaders.CacheControl, prebakedImageCacheControl())
+    call.response.headers.append(HttpHeaders.ETag, card.etag)
+    if (call.request.headers[HttpHeaders.IfNoneMatch] == card.etag) {
+      call.respond(HttpStatusCode.NotModified)
+      return
+    }
+    call.respondBytes(card.bytes, ContentType.Image.PNG)
+  }
+
+  /**
+   * Respond one of the site icons ([ServeSiteIcon]).
+   *
+   * Not `immutable` like the hashed lanes: these live at well-known paths that an icon fetcher
+   * guesses rather than reads, so the bytes behind them *do* change across a deploy. A day of
+   * caching plus the ETag is the trade — an icon is a few hundred bytes, and pinning a stale one
+   * for a year in every visitor's browser would be the worse mistake.
+   */
+  private suspend fun RoutingContext.respondSiteIcon(icon: ServeSiteIcon.Icon) {
+    if (icon.bytes.isEmpty()) {
+      call.respondText("icon unavailable", status = HttpStatusCode.NotFound)
+      return
+    }
+    call.response.headers.append(HttpHeaders.CacheControl, SITE_ICON_CACHE_CONTROL)
+    call.response.headers.append(HttpHeaders.ETag, icon.etag)
+    if (call.request.headers[HttpHeaders.IfNoneMatch] == icon.etag) {
+      call.respond(HttpStatusCode.NotModified)
+      return
+    }
+    call.respondBytes(icon.bytes, ContentType.parse(icon.contentType))
   }
 
   /**
@@ -5008,6 +5163,14 @@ class ServeHttpServer(
      * catalog changes the hash, hence the URL, so there is nothing to invalidate.
      */
     private const val HERO_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+    /**
+     * Caching for the site icons ([ServeSiteIcon]). Public on every server, token-gated or not:
+     * these are drawn from the build's own chrome and carry nothing a token protects — and a
+     * favicon request doesn't present the token anyway. A day rather than `immutable`, because
+     * unlike the hashed lanes these live at well-known paths whose bytes change across a deploy.
+     */
+    private const val SITE_ICON_CACHE_CONTROL = "public, max-age=86400"
 
     /**
      * Caching for the prebaked image lanes: `/hero/` and `?thumb=` on the render lane.

@@ -23,6 +23,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -392,6 +393,84 @@ class ServeHttpRoutingTest {
     val (code, body) = get("/version")
     assertEquals(200, code)
     assertTrue(body.contains("compose-preview-serve/version/v1"), "version json: $body")
+  }
+
+  /**
+   * The site icons, at the three well-known paths. `/favicon.ico` in particular is what a link
+   * unfurler probes when a page declares no icon it understands — it answered 404 with an HTML body
+   * before these routes existed, which is why an unfurled link showed a generic globe.
+   *
+   * Constant first segments, so like `/healthz` they have to outscore the `/{system}` catch-all:
+   * without that, `/favicon.ico` resolves as a request for a design system of that name.
+   */
+  @Test
+  fun `the site icon routes are served and outscore the system catch-all`() {
+    listOf(
+        ServeSiteIcon.SVG_PATH to "image/svg+xml",
+        ServeSiteIcon.ICO_PATH to "image/vnd.microsoft.icon",
+        ServeSiteIcon.APPLE_TOUCH_PATH to "image/png",
+      )
+      .forEach { (path, contentType) ->
+        val (code, _, headers) = getFull(path)
+        assertEquals(200, code, "$path should be served")
+        assertTrue(
+          headers["Content-Type"].orEmpty().startsWith(contentType),
+          "$path content type: ${headers["Content-Type"]}",
+        )
+        assertTrue(headers["ETag"].orEmpty().isNotEmpty(), "$path carries an ETag")
+      }
+  }
+
+  /**
+   * The unfurl card lane. A card is resolved purely by the content hash in its name, so a name this
+   * server never drew is a 404 rather than a lookup against anything a caller controls.
+   */
+  @Test
+  fun `the social card lane serves a drawn card and refuses an unknown one`() {
+    val home = get("/")
+    assertEquals(200, home.first)
+    val cardPath =
+      Regex("<meta property=\"og:image\" content=\"[^\"]*(/social/[0-9a-f]+\\.png)\">")
+        .find(home.second)
+        ?.groupValues
+        ?.get(1)
+    assertTrue(
+      cardPath != null,
+      "the front door advertises a drawn card: ${home.second.take(2000)}",
+    )
+
+    val (code, _, headers) = getFull(cardPath!!)
+    assertEquals(200, code)
+    assertTrue(
+      headers["Content-Type"].orEmpty().startsWith("image/png"),
+      "${headers["Content-Type"]}",
+    )
+
+    assertEquals(404, get("/social/0000000000000000.png").first)
+  }
+
+  /**
+   * …and the front door declares that card's real size, at the aspect a large-image unfurl is laid
+   * out at. Before this it advertised the featured catalog's own 1078×2399 phone render, which
+   * every consumer cropped to a horizontal band.
+   */
+  @Test
+  fun `the front door declares a card shaped like a large-image unfurl`() {
+    val (code, body) = get("/")
+
+    assertEquals(200, code)
+    assertTrue(
+      body.contains("<meta property=\"og:image:width\" content=\"1200\">"),
+      body.take(2000),
+    )
+    assertTrue(
+      body.contains("<meta property=\"og:image:height\" content=\"630\">"),
+      body.take(2000),
+    )
+    assertTrue(
+      body.contains("<meta name=\"twitter:card\" content=\"summary_large_image\">"),
+      body.take(2000),
+    )
   }
 
   @Test
@@ -963,25 +1042,28 @@ class ServeHttpRoutingTest {
       }
     }
 
+    // Both the index and a catalog landing advertise a DRAWN card ([ServeSocialCard]) on the
+    // `/social/` lane, at the origin the proxy presents. Neither points at a render any more: those
+    // are portrait phone screenshots, and a large-image card crops one to a horizontal band.
+    val cardImage =
+      Regex(
+        """<meta property="og:image" content="(https://preview\.coo\.ee/social/[a-f0-9]+\.png)">"""
+      )
+
     val (homeCode, home) = proxied("/")
     assertEquals(200, homeCode)
-    assertTrue(
-      Regex(
-          """<meta property="og:image" content="https://preview\.coo\.ee/""" +
-            """(?:hero/compose-m3/[a-f0-9]+\.png|compose-m3/render/[^"]+\.png)">"""
-        )
-        .containsMatchIn(home),
-      "the server index uses its first published catalog hero: $home",
-    )
+    assertTrue(cardImage.containsMatchIn(home), "the server index advertises a drawn card: $home")
 
     val (catalogCode, catalog) = proxied("/compose-m3/")
     assertEquals(200, catalogCode)
     assertTrue(
-      catalog.contains(
-        "<meta property=\"og:image\" content=\"https://preview.coo.ee/compose-m3/render/" +
-          "$previewId.png\">"
-      ),
-      "a catalog landing uses its representative preview: $catalog",
+      cardImage.containsMatchIn(catalog),
+      "a catalog landing advertises its own drawn card: $catalog",
+    )
+    assertNotEquals(
+      cardImage.find(home)!!.groupValues[1],
+      cardImage.find(catalog)!!.groupValues[1],
+      "…and it is a different card from the index's — different heading, different picture",
     )
 
     val (statusCode, status) = proxied("/status")
@@ -1322,19 +1404,26 @@ class ServeHttpRoutingTest {
       !Regex("""(src|href)="[^"]*/compose-m3/render/""").containsMatchIn(body),
       "the front door does not put a render request on the server: $body",
     )
-    // The unfurl image IS the full render, not the downscaled `/hero/` thumbnail the card lays out:
-    // that thumbnail is card-sized and too small for a link-preview card to use.
+    // The unfurl image is a DRAWN card off the `/social/` lane — neither the downscaled `/hero/`
+    // thumbnail the page lays out (too small for a link-preview card) nor the full render behind it
+    // (a portrait phone screenshot, which every consumer crops to a horizontal band). See
+    // [ServeSocialCard].
     assertTrue(
       body.contains("""<meta property="og:image" content="http://"""),
       "the front door advertises an unfurl image: $body",
     )
     assertTrue(
-      Regex("""<meta property="og:image" content="[^"]*/compose-m3/render/""")
+      Regex("""<meta property="og:image" content="[^"]*/social/[0-9a-f]+\.png"""")
         .containsMatchIn(body),
-      "the unfurl image is the full render, not the hero thumbnail: $body",
+      "the unfurl image is a drawn card: $body",
     )
-    // …and it carries the render's measured size, so a fetcher lays the card out without
-    // downloading the image first.
+    assertTrue(
+      !Regex("""<meta property="og:image" content="[^"]*/compose-m3/render/""")
+        .containsMatchIn(body),
+      "…and no longer a catalog render: $body",
+    )
+    // …and it carries the card's size, so a fetcher lays the card out without downloading the
+    // image first.
     assertTrue(body.contains("<meta property=\"og:image:width\""), "declares its width: $body")
     assertTrue(body.contains("<meta property=\"og:image:height\""), "declares its height: $body")
     // It is NOT the default module's own preview grid.

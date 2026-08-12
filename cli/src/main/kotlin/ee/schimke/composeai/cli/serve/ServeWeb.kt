@@ -63,16 +63,50 @@ object ServeWeb {
   private const val LARGE_CARD_MIN_EDGE = 320
 
   /**
+   * The narrowest and widest **aspect** (width ÷ height) worth claiming a `summary_large_image`
+   * for.
+   *
+   * Size was never the whole story. Every consumer lays the large card out in a slot of roughly
+   * 1.91:1 and fits the image to it by cropping, so what the card actually shows is a 1.91:1 window
+   * onto the picture — and the further the picture's own aspect is from that, the less of it
+   * survives. A catalog hero is the worst case in this codebase and it is not a near miss:
+   * `compose-m3`'s is 1078×2399, an aspect of **0.45**, so the window keeps a horizontal band
+   * through the middle of a phone screenshot and throws away 78% of the image. On that particular
+   * render the surviving band was the empty half of an app scaffold — the front door unfurled as a
+   * strip of blank dark pixels, at full card size, having passed the min-edge test comfortably.
+   *
+   * The band is the set of shapes whose crop still leaves roughly two thirds of the picture.
+   * Cropping an image of aspect `a` into a 1.91 slot keeps `a / 1.91` of its height when it is
+   * taller than the slot, and `1.91 / a` of its width when it is wider — so 1.25 and 2.4 are the
+   * points either side where a third of the image starts to disappear. A 4:3 screenshot (1.33)
+   * survives that comfortably; a square watch face (1.0, barely half kept) and a portrait phone
+   * screenshot (0.45, a quarter kept) do not, and both are genuinely better served by `summary`,
+   * which shows the whole image beside the text instead of a slice of it.
+   *
+   * This is a floor for *raw artwork*. The pages that matter most — the front door and each catalog
+   * landing — don't rely on it, because they advertise a drawn [ServeSocialCard] at exactly
+   * 1200×630 (1.90) rather than a render, and so are inside the band by construction.
+   */
+  private const val LARGE_CARD_MIN_ASPECT = 1.25
+
+  private const val LARGE_CARD_MAX_ASPECT = 2.4
+
+  /**
    * `twitter:card` for an unfurl — the large-image card only when there is an image *and* we know
-   * it is big enough to fill one. An image whose dimensions we couldn't read keeps the large card:
-   * unknown size is not evidence of a small image, and the fetcher measures it itself in that case.
+   * it can fill one: big enough on both edges ([LARGE_CARD_MIN_EDGE]) and close enough in shape to
+   * the slot it will be cropped into ([LARGE_CARD_MIN_ASPECT]..[LARGE_CARD_MAX_ASPECT]).
+   *
+   * An image whose dimensions we couldn't read keeps the large card: unknown size is not evidence
+   * of a small or badly-shaped image, and the fetcher measures it itself in that case.
    */
   private fun twitterCard(unfurl: UnfurlMetadata): String {
     if (unfurl.imageUrl == null) return "summary"
     val w = unfurl.imageWidth
     val h = unfurl.imageHeight
     if (w == null || h == null) return "summary_large_image"
-    return if (w >= LARGE_CARD_MIN_EDGE && h >= LARGE_CARD_MIN_EDGE) "summary_large_image"
+    if (w < LARGE_CARD_MIN_EDGE || h < LARGE_CARD_MIN_EDGE) return "summary"
+    val aspect = w.toDouble() / h
+    return if (aspect in LARGE_CARD_MIN_ASPECT..LARGE_CARD_MAX_ASPECT) "summary_large_image"
     else "summary"
   }
 
@@ -2437,10 +2471,9 @@ object ServeWeb {
           .joinToString("\n")
       }
     return document(
-      title = "Design systems — compose-preview",
-      unfurlTitle = "Compose previews",
-      unfurlDescription =
-        "Browse ${systems.size} published Compose design system and app catalogs.",
+      title = "$HOME_TITLE — compose-preview",
+      unfurlTitle = HOME_TITLE,
+      unfurlDescription = homeUnfurlDescription(systems.size),
       unfurl = unfurl,
       navSuffix = suffix,
       headerAction = headerAction,
@@ -2448,6 +2481,57 @@ object ServeWeb {
       body = body + about,
     )
   }
+
+  /**
+   * What the front door calls itself, in its `<title>`, its `og:title` and the headline of its
+   * unfurl card ([ServeSocialCard]).
+   *
+   * One constant because the three used to disagree: the tab said "Design systems" while the card
+   * said "Compose previews", so a link's name changed depending on which of the two an unfurler
+   * happened to prefer — and several fall back to `<title>` when they distrust the Open Graph
+   * block. The product name is not lost by naming the *page* here: it is in `og:site_name`, in the
+   * `<title>` suffix, and drawn on the card itself as the wordmark.
+   */
+  const val HOME_TITLE = "Design systems"
+
+  /** The front door's `og:description`. */
+  fun homeUnfurlDescription(systemCount: Int): String =
+    "Browse $systemCount published Compose design system and app catalogs."
+
+  /**
+   * The line under the headline on the front door's unfurl card.
+   *
+   * Deliberately *not* [homeUnfurlDescription]: every client that shows the card also shows the
+   * description beside it, so repeating the sentence in the picture wastes the only line the card
+   * has. A stat line is the thing a reader can't get from the text around it.
+   *
+   * Both counts change only when a catalog is published or republished, which is what
+   * [ServeSocialCard.Spec] requires of anything that reaches its cache key — a per-request value
+   * here (a view tally, a timestamp) would mint an uncacheable card on every visit.
+   */
+  fun homeCardSubtitle(systems: List<HomeSystem>): String {
+    val previews = systems.sumOf { it.previewCount }
+    return "${systems.size} ${if (systems.size == 1) "catalog" else "catalogs"} · " +
+      "$previews ${if (previews == 1) "preview" else "previews"}"
+  }
+
+  /**
+   * The line under the headline on a catalog's unfurl card; the heading is already the headline.
+   */
+  fun catalogCardSubtitle(previewCount: Int): String =
+    "$previewCount Compose ${if (previewCount == 1) "preview" else "previews"}"
+
+  /**
+   * A catalog's display name: what it calls itself, falling back to the module label. Shared by
+   * [landingPage] and by the caller that builds that page's unfurl card, so the headline drawn on
+   * the card cannot drift from the heading on the page it advertises.
+   */
+  fun catalogHeading(displayTitle: String?, moduleLabel: String): String =
+    displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+
+  /** A catalog page's `og:description`, and the text under its card's headline. */
+  fun catalogUnfurlDescription(previewCount: Int, heading: String): String =
+    "$previewCount Compose previews in $heading"
 
   /**
    * One publisher-grouped section of the front page: its heading, its cards, and its count noun.
@@ -4191,7 +4275,7 @@ object ServeWeb {
       if (themeRenderBurstCapacity > 1) "$basePath/api/theme-render-lease$q" else ""
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val heading = catalogHeading(displayTitle, moduleLabel)
     val catalogId =
       if (heading == moduleLabel) ""
       else "<p class=\"cp-catalog-id\">${WebEscaping.htmlEscape(moduleLabel)}</p>"
@@ -4588,7 +4672,7 @@ object ServeWeb {
     return document(
       title = "$heading — compose-preview",
       unfurlTitle = heading,
-      unfurlDescription = "${previews.size} Compose previews in $heading",
+      unfurlDescription = catalogUnfurlDescription(previews.size, heading),
       unfurl = unfurl,
       navSuffix = navSuffix,
       headerBreadcrumb = back,
@@ -4664,7 +4748,7 @@ object ServeWeb {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val heading = catalogHeading(displayTitle, moduleLabel)
     // Native-format rows retain the catalog's one-default-card presentation. A design reference,
     // however, names one exact preview state/props mapping, so that referenced variant must remain
     // independently visible instead of being folded out with the landing-page variants.
@@ -5051,7 +5135,7 @@ $rows
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val heading = catalogHeading(displayTitle, moduleLabel)
     val actual = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$q"
     val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$q"
     // One toggle per kind, offered only when some panel actually carries that kind — a control that
@@ -5172,7 +5256,7 @@ $rows
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val heading = catalogHeading(displayTitle, moduleLabel)
     val cards =
       pages.joinToString("\n") { page ->
         val id = WebEscaping.urlEncodeSegment(page.id)
@@ -5260,7 +5344,7 @@ $rows
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val heading = catalogHeading(displayTitle, moduleLabel)
     val backdrop = "$basePath/pages/${WebEscaping.urlEncodeSegment(page.id)}.png$q"
 
     // Locale.ROOT, not `"%.4f".format(…)`: under a comma-decimal default locale the latter emits
@@ -5437,7 +5521,7 @@ $rows
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
-    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val heading = catalogHeading(displayTitle, moduleLabel)
     val coverage = dashboard.coverage
 
     /**
@@ -7334,6 +7418,7 @@ $rows
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
         <title>${WebEscaping.htmlEscape(title)}</title>
+${ServeSiteIcon.linkTags().prependIndent("        ")}
         <link rel="stylesheet" href="${assetHref("serve.css")}">$rcFontsBlock$themeBlock
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->

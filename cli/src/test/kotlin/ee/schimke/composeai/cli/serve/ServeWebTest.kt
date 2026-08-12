@@ -513,6 +513,84 @@ class ServeWebTest {
     assertFalse(partial.contains("og:image:width"), partial)
   }
 
+  /**
+   * Being big enough was never sufficient. A large-image card is laid out at ~1.91:1 and the image
+   * is cropped to fill it, so what a portrait render actually shows is a horizontal band through
+   * its middle. The front door's own hero — 1078×2399 — cleared the min-edge test comfortably and
+   * unfurled as a strip of the empty half of an app scaffold.
+   */
+  @Test
+  fun `a large card is claimed only for a shape that can fill one`() {
+    fun cardFor(w: Int, h: Int): String {
+      val html =
+        ServeWeb.viewerPage(
+          preview = ServePreview("red", "Red"),
+          token = "unused",
+          unfurl =
+            ServeWeb.UnfurlMetadata(
+              pageUrl = "https://preview.example/p/red",
+              imageUrl = "https://preview.example/render/red.png",
+              imageWidth = w,
+              imageHeight = h,
+            ),
+        )
+      return Regex("<meta name=\"twitter:card\" content=\"([a-z_]+)\">").find(html)!!.groupValues[1]
+    }
+
+    // The drawn unfurl card, and ordinary landscape renders down to 4:3 — the crop still leaves
+    // about two thirds of those.
+    assertEquals("summary_large_image", cardFor(1200, 630), "the card's own 1.90 aspect")
+    assertEquals("summary_large_image", cardFor(1024, 640))
+    assertEquals("summary_large_image", cardFor(1024, 768), "4:3 survives the crop")
+
+    // The regression this exists for: a phone screenshot, and the front door's real hero.
+    assertEquals("summary", cardFor(1078, 2399), "a portrait render can't fill a banner")
+    assertEquals("summary", cardFor(945, 1376))
+    // A square watch face is closer to the slot than a phone is, and still loses a third of itself.
+    assertEquals("summary", cardFor(454, 454))
+    // Too wide is only trimmed at the sides, so the band is generous — but not unbounded.
+    assertEquals("summary_large_image", cardFor(1200, 520))
+    assertEquals("summary", cardFor(3000, 600), "a panorama is not a card either")
+  }
+
+  /**
+   * Every page carries the site icon links. Without them an unfurl card shows a generic globe
+   * beside itself, whatever the picture on it is.
+   */
+  @Test
+  fun `every page advertises the site icon`() {
+    val html = ServeWeb.viewerPage(preview = ServePreview("red", "Red"), token = "unused")
+
+    assertTrue(
+      html.contains("<link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\">"),
+      html,
+    )
+    assertTrue(
+      html.contains("<link rel=\"apple-touch-icon\" href=\"/apple-touch-icon.png\">"),
+      html,
+    )
+  }
+
+  /**
+   * The front door used to call itself two different things — "Design systems" in the tab and
+   * "Compose previews" in the Open Graph block — so a link's name depended on which one the
+   * consumer preferred.
+   */
+  @Test
+  fun `the front door's tab and card agree on its name`() {
+    val html =
+      ServeWeb.homeIndexPage(
+        systems = emptyList(),
+        token = "unused",
+        isPublic = true,
+        unfurl = ServeWeb.UnfurlMetadata(pageUrl = "https://preview.example/"),
+      )
+
+    assertTrue(html.contains("<title>Design systems — compose-preview</title>"), html)
+    assertTrue(html.contains("<meta property=\"og:title\" content=\"Design systems\">"), html)
+    assertTrue(html.contains("<meta name=\"twitter:title\" content=\"Design systems\">"), html)
+  }
+
   @Test
   fun `the renderer combo lists every player with the unavailable ones disabled`() {
     // A Remote Compose preview on an Android daemon: js (client canvas) + java + cmp-android are
