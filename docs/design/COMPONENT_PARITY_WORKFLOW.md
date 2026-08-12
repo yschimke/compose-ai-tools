@@ -616,7 +616,13 @@ browser tab or an offline run long before any per-record refusal has a chance to
 catalog fetch limits are per asset and do not see the aggregate. So the document declares out of
 budget and is rejected **before** the per-acceptance decode loop begins: a cap on the number of
 acceptances, and a cap on total decoded pixels across their rasters, both fixed constants rather
-than per-catalog settings.
+than per-catalog settings — and **named**, because "a fixed constant" that each engine picks for
+itself is not fixed. `v1` sets them at **256 acceptances** and **128 megapixels** of declared raster
+across the set; both are versioned with the schema, and the fixtures pin a document at each exact
+boundary and one past it, since an off-by-one here means one engine evaluates what the other
+rejects. The numbers are generous against real use — a catalog with hundreds of deliberate,
+reviewed, issue-linked acceptances has a different problem — and deliberately not per-catalog
+settings, since a hostile document must not be able to raise its own ceiling.
 
 The count cap is free, but the **pixel** cap needs dimensions the JSON does not record — and reading
 them with the ordinary decoder would allocate the oversized raster to measure it, defeating the
@@ -708,9 +714,12 @@ run opened — so an acceptance naming a preview or reference the catalog has si
 is never scoped into any evaluation at all. It produces no status, appears in no dashboard, and
 survives every cleanup pass by being invisible to all of them: the failure mode is an acceptance
 that quietly outlives the thing it was about. `reference-hash-missing` does not cover it, because
-there is no served reference to compare a hash against. So the offline run additionally walks the
-whole `acceptances[]` against the catalog's published previews and references, independent of any
-comparison, and reports the unmatched ones. With a conformance case, since this is the one status
+there is no served reference to compare a hash against. So **both** engines additionally walk the whole
+`acceptances[]` against the catalog's published previews and references, independent of any
+comparison, and report the unmatched ones. Assigning that walk to the offline run alone — as an
+earlier revision did — leaves the served dashboard blind to exactly the records it most needs to
+show, and makes the two engines disagree about a status the contract says they share: the offline
+gate refuses a record the browser never mentions. With a conformance case, since this is the one status
 no comparison-driven fixture can produce.
 
 **A record that violates the schema is refused — and where the failure lands depends on whether it
@@ -927,6 +936,11 @@ field would leave two engines free to pick different ones. Same fixed ordering r
 `degenerate-dimensions`, `dimension-mismatch`, `mask-encoding-invalid`, `mask-empty`,
 `artifact-unreadable`, `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`,
 `reference-hash-missing`, `tolerance-out-of-range`, `acceptance-is-noop`.
+
+**Within one reason, order by the record's index in `acceptances[]`** — the ordering above is
+between *tokens*, and two records failing the same way (two `mask-hash-mismatch` acceptances) would
+otherwise come out in map order in one engine and input order in another. The input index is the
+only ordering both engines can see.
 
 Document-wide tokens lead, then identity, then structure, then artifacts — so a combined failure
 serialises the same way in both engines, and a reader sees the widest problem first. A combined
@@ -1375,25 +1389,21 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
    stale bystander" in exactly these lanes and falls back to asking the server. An `onload` hook on
    the replacement `<img>` therefore fires for a frame nobody is looking at. Either each lane grows
    its own frame-arrival/provenance signal, or — simpler, and consistent with §1's finding 1 — **the
-   report affordance is disabled throughout the interactive lanes and points at the focused
-   comparison instead**, which has a defined pair and a defined frame. Recommend the latter until a
-   lane demonstrably needs its own reporting.
+   report affordance is disabled throughout the interactive lanes**, full stop — not redirected to
+   the focused comparison. An earlier revision recommended that redirect and the delivery step now
+   rules it out for the reason below; leaving the recommendation here would be the version an
+   implementer read first.
 
-   **That makes the focused-comparison report form a prerequisite, not a preference.** Phase 1
-   step 1 offers two surfaces and marks the comparison one "preferred"; if the viewer-only option is
-   taken instead, this redirect sends interactive-lane visitors to a page with no reporting
-   affordance at all — reporting becomes impossible rather than merely awkward. So either the
-   comparison form lands, or the interactive lanes keep an explicit handoff back to the viewer's
-   form; what they must not do is point at a page that cannot file anything.
-
-   **That redirect only works if it carries the overrides.** Today it would not:
-   `handleReferenceComparison` reads `name` and `reference` and nothing else, and
-   `referenceComparisonPage` builds its Actual `/render` URL from `linkQuery`'s auth/session
-   parameters alone — no theme, locale, font scale, device or Remote Compose state. So a reporter
-   sent there from an overridden interactive lane lands on the *default* snapshot and files against
-   pixels they never saw, which is the same identity/pixel mismatch one indirection further out. The
-   comparison route therefore has to accept and apply the supported override params before it can be
-   the reporting destination for those lanes — a prerequisite of this remedy, not a follow-up to it.
+   **The focused comparison still has to be able to file, and to carry overrides — for the lanes
+   that *do* redirect there.** Phase 1 offers two surfaces and marks the comparison one "preferred";
+   if the viewer-only option is taken, a redirect from any lane points at a page with no reporting
+   affordance at all. And `handleReferenceComparison` reads `name` and `reference` and nothing else,
+   while `referenceComparisonPage` builds its Actual `/render` URL from `linkQuery`'s auth/session
+   parameters alone — no theme, locale, font scale, device or Remote Compose state — so a reporter
+   arriving from an overridden *static* frame still lands on the default snapshot and files against
+   pixels they never saw. Both are prerequisites of using that page as a reporting destination at
+   all; neither rehabilitates the interactive lanes, which is a separate problem with a separate
+   cause.
 
    **And override support is necessary without being sufficient.** Overrides are query parameters;
    *interaction* is not. Once a visitor has clicked, scrolled, or let animation advance in a Live,
@@ -1495,7 +1505,20 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
     must still classify as resolved. This step is the surfacing of those statuses, not a second
     definition of them.
 
-12. **Document** the reporting → triage → acceptance → verification → closure loop in
+12. **Close the loop — deletion and issue closure need an owner.** Nothing so far actually *removes*
+    anything: §4 says `resolved` means deleting the acceptance and that an issue closes once every
+    linked acceptance has resolved, but surfacing a status is not doing either. Both are committed-
+    file operations, so both belong in a PR, and the ordering matters — delete the acceptance first
+    and the issue loses the only record of what it was about; close the issue first and the surviving
+    siblings are briefly `stale` against a closed issue.
+
+    So they happen **in one change**: a PR that deletes the resolved acceptances' records and
+    directories, and closes the issue via a closing keyword in its description, so the merge does
+    both atomically and the PR itself preserves the association. Opening it can be automated later
+    (the offline run already knows the full set of resolved ids and their canonical issue identity);
+    doing it by hand is fine to start with, but it has to be someone's documented step rather than
+    an implication of the status.
+13. **Document** the reporting → triage → acceptance → verification → closure loop in
     `docs/public-preview-server.md`, beside the existing parity view section.
 
 ---
