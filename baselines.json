@@ -376,14 +376,14 @@
     "serve-landing-grouped.dark.png": {
       "fixture": "serve-landing-grouped",
       "theme": "dark",
-      "sha256": "e5f540d71d0fa6f5a5fe1133fe49e3a13709ab04893ec1d78129c16b7b99541b",
-      "size": 95595
+      "sha256": "0d790cd61ea862ad4d906cd1fdd576a90bb4d7d2102c2f79f322d8dec5f83c67",
+      "size": 99545
     },
     "serve-landing-grouped.light.png": {
       "fixture": "serve-landing-grouped",
       "theme": "light",
-      "sha256": "584136ec0b7b949110d91ee3e5f34f1b23cc403e89ae2d8c5fca2b174e7a63b1",
-      "size": 93482
+      "sha256": "927b45f51356410b1e4043ed231c9272ef66cb41037d0942be940c374d4cbc2c",
+      "size": 98524
     },
     "serve-landing-ir-replay-themes.dark.png": {
       "fixture": "serve-landing-ir-replay-themes",
@@ -472,38 +472,38 @@
     "serve-landing-sections-filtered.dark.png": {
       "fixture": "serve-landing-sections-filtered",
       "theme": "dark",
-      "sha256": "d52842f2c481bd6453c581889958df2f586fe911f2fbe13b17bb383477a4d041",
-      "size": 73646
+      "sha256": "ad04bf39a625e41b0f26b02199f9ca6991bec0dbf313be05a12cedaff4724479",
+      "size": 73733
     },
     "serve-landing-sections-filtered.light.png": {
       "fixture": "serve-landing-sections-filtered",
       "theme": "light",
-      "sha256": "6c724e2fa57ca2d28605d92f871b3dc1f4e0df03798c4952a3ddab17dba8d4b7",
-      "size": 72304
+      "sha256": "3746fb1bf9cbb993b3c19a7f20b88f3255f2c96a0a4028f1f28add3ab9207d07",
+      "size": 72397
     },
     "serve-landing-sections-section-open.dark.png": {
       "fixture": "serve-landing-sections-section-open",
       "theme": "dark",
-      "sha256": "281913a82231d2daf8ae798b57ebb697d2584f127b977ff0692999da94548baa",
-      "size": 78374
+      "sha256": "c0a72f1fe263d1b5df5f4097a70900a5c42c170a7d4010b9392d7c72bf9fce92",
+      "size": 78237
     },
     "serve-landing-sections-section-open.light.png": {
       "fixture": "serve-landing-sections-section-open",
       "theme": "light",
-      "sha256": "c553ce5a81c692d9903da6156b6d53f861252ff7c080e08c6b74bfb06f39a6ea",
-      "size": 76863
+      "sha256": "b95f32467e337d397531c1c91d77b4854c9512c0b4d960cc909f8ffc381629b9",
+      "size": 76766
     },
     "serve-landing-sections.dark.png": {
       "fixture": "serve-landing-sections",
       "theme": "dark",
-      "sha256": "aa29b91bf54c5e099c1bacd27810fa32639cd1ce73c920f281183afe45064e02",
-      "size": 63072
+      "sha256": "15d16164adffd432ec050210d9c441d3c838dceb5473b5a8a2fb4caf4405c626",
+      "size": 67351
     },
     "serve-landing-sections.light.png": {
       "fixture": "serve-landing-sections",
       "theme": "light",
-      "sha256": "b19d2dd94a127308bcdea75a7cd507fe9f6fa7091866572a2da174897050344c",
-      "size": 61662
+      "sha256": "ed318975e12d1bb49b0779355fba2fa51c1f7ee04030c8035a9c10a981b2c306",
+      "size": 66009
     },
     "serve-landing-states.dark.png": {
       "fixture": "serve-landing-states",
@@ -528,6 +528,30 @@
       "theme": "light",
       "sha256": "bea8b2d28cffe90c0d52e82c95eebaf8c2ed550279a968f1cd42d858aaa97c4a",
       "size": 59908
+    },
+    "serve-landing-tree-depth-component-open.dark.png": {
+      "fixture": "serve-landing-tree-depth-component-open",
+      "theme": "dark",
+      "sha256": "12582e1023cd64b7bbfdedc5e242b5bef9c1629e2d371bf28db46e29ad3a7172",
+      "size": 91495
+    },
+    "serve-landing-tree-depth-component-open.light.png": {
+      "fixture": "serve-landing-tree-depth-component-open",
+      "theme": "light",
+      "sha256": "1cfaa09b875c2da8583cfdeecb4fb409e9f5e0a383dcdb48fbb669288288b421",
+      "size": 90525
+    },
+    "serve-landing-tree-depth.dark.png": {
+      "fixture": "serve-landing-tree-depth",
+      "theme": "dark",
+      "sha256": "09e026bec954f56f30de2d33782faac57fda79bf3998af449d9813b86955d346",
+      "size": 88910
+    },
+    "serve-landing-tree-depth.light.png": {
+      "fixture": "serve-landing-tree-depth",
+      "theme": "light",
+      "sha256": "315f22e74546edc570691a8534f6e34084270fc98f4ade3ff8cd883493c74682",
+      "size": 87976
     },
     "serve-landing-variants.dark.png": {
       "fixture": "serve-landing-variants",
