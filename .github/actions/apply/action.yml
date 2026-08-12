@@ -231,6 +231,7 @@ runs:
         DEV_BRANCH: ${{ inputs.development-branch }}
         MODE_OVERRIDE: ${{ inputs.mode }}
         PHASE: ${{ inputs.phase }}
+        HANDOFF_DIR: ${{ inputs.handoff-dir }}
         ONLY: ${{ inputs.only }}
         SKIP: ${{ inputs.skip }}
       run: |
@@ -239,6 +240,35 @@ runs:
           all|render|publish) ;;
           *) echo "::error::phase must be one of all|render|publish (got '$PHASE')."; exit 1 ;;
         esac
+
+        # A publish job that re-resolved the pipeline set from its own inputs
+        # would default all four on. A render invoked with `only: compose`
+        # would then reach the notification upsert with no notification data,
+        # and it would patch any existing sticky comment to "no changes" for a
+        # pipeline that never ran. So the render job's resolution travels with
+        # the handoff, and `only` / `skip` need not be repeated on the publish
+        # call. Parsed strictly: this file crosses a trust boundary, so each
+        # field must be exactly 0 or 1 and anything else fails the run rather
+        # than being coerced into an enabled pipeline.
+        if [ "$PHASE" = "publish" ] && [ -f "$HANDOFF_DIR/_pipelines" ]; then
+          staged=$(tr -d '[:space:]' < "$HANDOFF_DIR/_pipelines")
+          if [[ "$staged" =~ ^[01],[01],[01],[01]$ ]]; then
+            IFS=',' read -r compose resources a11y notifications <<< "$staged"
+            echo "compose-preview: publishing the render job's pipeline set ($staged)."
+          else
+            echo "::error::Malformed _pipelines in the handoff ('$staged'); expected four 0/1 fields."
+            exit 1
+          fi
+          publish_mode="$MODE_OVERRIDE"
+          [ "$publish_mode" = "auto" ] && publish_mode=comment
+          echo "mode=$publish_mode" >> "$GITHUB_OUTPUT"
+          echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
+          echo "compose=$compose" >> "$GITHUB_OUTPUT"
+          echo "resources=$resources" >> "$GITHUB_OUTPUT"
+          echo "a11y=$a11y" >> "$GITHUB_OUTPUT"
+          echo "notifications=$notifications" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
         # All four pipelines start ON, then `only` filters down, then `skip`
         # removes any pipelines explicitly turned off.
         compose=1; resources=1; a11y=1; notifications=1
@@ -321,6 +351,7 @@ runs:
       shell: bash
       env:
         HANDOFF_DIR: ${{ inputs.handoff-dir }}
+        AB_CONFIG: ${{ inputs.ab-config }}
       run: |
         set -euo pipefail
         if [ ! -d "$HANDOFF_DIR" ]; then
@@ -334,13 +365,63 @@ runs:
           base=$(basename "$entry")
           # The staged current renders are addressed in place; everything else
           # is read from the workspace root.
-          [ "$base" = "current" ] && continue
+          case "$base" in current|current-resources) continue ;; esac
           # Replace rather than merge: `cp -a dir existing-dir` would nest the
           # staged tree one level deeper instead of overwriting it.
           rm -rf "${GITHUB_WORKSPACE:?}/$base"
           cp -a "$entry" "$GITHUB_WORKSPACE/$base"
           restored=$((restored + 1))
         done
+
+        # --- Everything below treats the handoff as hostile input. ---
+        #
+        # This job holds a write-scoped token; the artifact was produced by a
+        # job that ran the PR's own Gradle build. The pipelines write their
+        # push metadata as each surface finishes, but later pipelines — still
+        # executing fork code — run before the handoff is staged, so any file
+        # in here is reachable by an attacker, including one written earlier.
+        #
+        # Push *control* therefore never comes from the artifact. The staging
+        # dirs supply pixels and nothing else: the destination branch, the
+        # commit message and the skip flag are all rebuilt here from the same
+        # literals the single-job path uses. Without this, `_pr_renders/
+        # _push_branch` rewritten to `main` would aim a write token at the
+        # default branch.
+        reset_push_meta() {
+          stage="$1"; branch="$2"; label="$3"
+          [ -d "$stage" ] || return 0
+          # `git add -A` in push-branch.sh commits whatever is in the stage
+          # dir. A workflow file pushed onto a render branch would run on its
+          # own `push` trigger, so drop `.github/` outright — no render
+          # pipeline legitimately writes one. GITHUB_TOKEN is refused workflow
+          # writes unless the caller granted `workflows: write`; this makes the
+          # render branches safe even when they did.
+          if [ -d "$stage/.github" ]; then
+            echo "::warning::Dropped an unexpected .github/ tree from $stage before pushing."
+            rm -rf "$stage/.github"
+          fi
+          printf '%s' "$branch" > "$stage/_push_branch"
+          printf '%s' "$label"  > "$stage/_push_msg"
+          printf '0'            > "$stage/_skip_if_unchanged"
+        }
+        # Comment mode is the only mode the split supports, so these are the
+        # PR-render branches — never a baseline branch, never `main`.
+        reset_push_meta _pr_renders          'compose-preview/pr'               'compose-preview: PR renders'
+        reset_push_meta _pr_resource_renders 'compose-preview/resources/pr'     'compose-preview: PR resource renders'
+        reset_push_meta _a11y_renders        'compose-preview/a11y/pr'          'compose-preview: PR a11y renders'
+        reset_push_meta _notification_renders 'compose-preview/notifications/pr' 'compose-preview: PR notification renders'
+
+        # The A/B config is read from the checkout, which here is the base
+        # branch — so a PR that adds or edits one would otherwise be graded
+        # against the old grouping, unlike the single-job path. Restore the
+        # render job's copy at the configured path. It is parsed as data
+        # (ABTestConfig.load) and only ever groups rows in the comment.
+        if [ -n "${AB_CONFIG:-}" ] && [ -f "$HANDOFF_DIR/_ab_config" ]; then
+          mkdir -p "$(dirname "$AB_CONFIG")"
+          cp "$HANDOFF_DIR/_ab_config" "$AB_CONFIG"
+          echo "compose-preview: restored the PR's A/B config to $AB_CONFIG."
+        fi
+
         echo "compose-preview: restored $restored handoff entr(ies) from $HANDOFF_DIR."
 
     # Change-scoped rendering (see compute-scope.py). Always runs so its
@@ -861,6 +942,11 @@ runs:
         SCOPE_MODULES: ${{ steps.scope.outputs.modules }}
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        AB_CONFIG: ${{ inputs.ab-config }}
+        WANT_COMPOSE: ${{ steps.resolve.outputs.compose }}
+        WANT_RESOURCES: ${{ steps.resolve.outputs.resources }}
+        WANT_A11Y: ${{ steps.resolve.outputs.a11y }}
+        WANT_NOTIFICATIONS: ${{ steps.resolve.outputs.notifications }}
       run: |
         set -euo pipefail
         rm -rf "$HANDOFF_DIR"
@@ -871,13 +957,30 @@ runs:
         # and a no-change run stages no `_pr_renders` at all — the publish job
         # then finds nothing staged and skips its push, same as a single-job
         # run would.
+        # Both sides of every comparison have to travel, not just the renders.
+        # The comparators fail closed on a missing baseline — an absent
+        # `_resource_baselines/renders` turns renderer/AA noise into a false
+        # resource diff, and notification-previews.py reads a missing
+        # `_notification_baseline_findings.json` as empty, which reports every
+        # surviving preview as Added and loses removals entirely.
         for f in _baselines _base_sha _pr_renders \
-                 _resources.json _resource_base_sha _pr_resource_renders \
+                 _resources.json _resource_baselines _resource_base_sha _pr_resource_renders \
                  _a11y_renders _a11y_comment.md \
-                 _notification_renders _notification_comment.md; do
+                 _notification_renders _notification_comment.md \
+                 _notification_baseline_findings.json; do
           [ -e "$f" ] || continue
           cp -a "$f" "$HANDOFF_DIR/$f"
         done
+
+        # `only` / `skip` resolution, so the publish call needs neither.
+        printf '%s,%s,%s,%s' "$WANT_COMPOSE" "$WANT_RESOURCES" "$WANT_A11Y" "$WANT_NOTIFICATIONS" \
+          > "$HANDOFF_DIR/_pipelines"
+
+        # The publish job checks out the base branch, so a PR that adds or
+        # edits the A/B config would otherwise be graded against the old one.
+        if [ -n "${AB_CONFIG:-}" ] && [ -f "$AB_CONFIG" ]; then
+          cp "$AB_CONFIG" "$HANDOFF_DIR/_ab_config"
+        fi
 
         # The publish job can't classify the PR diff itself (it never checks
         # the PR out), so the resolved scope travels with the renders.
@@ -896,6 +999,23 @@ runs:
             --output-dir "$HANDOFF_DIR/current" \
             --path-prefix "$HANDOFF_DIR/current" \
             --rewrite-json "$HANDOFF_DIR/_previews.json"
+        fi
+
+        # Resource captures carry absolute pngPaths too, and
+        # `compare-resources` runs them through the same `_is_changed`
+        # perceptual filter, so they need the same rebasing.
+        if [ -s _resources.json ]; then
+          # The resource baselines JSON is fetched into `_baselines/` while its
+          # renders land in `_resource_baselines/renders` — mirror the paths
+          # the comment step itself uses rather than guessing a matched pair.
+          RES_BASELINES_ARG=()
+          [ -f _baselines/resource-baselines.json ] && \
+            RES_BASELINES_ARG=(--baselines _baselines/resource-baselines.json)
+          python3 "$ACTION_PATH/../lib/compare-previews.py" stage-handoff-resources _resources.json \
+            "${RES_BASELINES_ARG[@]}" \
+            --output-dir "$HANDOFF_DIR/current-resources" \
+            --path-prefix "$HANDOFF_DIR/current-resources" \
+            --rewrite-json "$HANDOFF_DIR/_resources.json"
         fi
 
         echo "compose-preview: staged fork-safe handoff in $HANDOFF_DIR ($(du -sh "$HANDOFF_DIR" | cut -f1))."

@@ -1952,6 +1952,70 @@ def cmd_stage_handoff(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stage_handoff_resources(args: argparse.Namespace) -> int:
+    """`stage-handoff` for the Android-resource envelope.
+
+    Resource captures carry absolute `pngPath` values just like composables,
+    and `compare-resources` runs them through the same `_is_changed`
+    perceptual filter (with `size_aware=True`), so they need the same
+    treatment or a fork PR's resource diff is decided against paths that don't
+    exist on the publish runner — which fails closed, reporting renderer noise
+    as a real change.
+
+    Layout mirrors `copy-changed-resources`: `<module>/<destRelative>`, where
+    `destRelative` has already had its leading `renders/` stripped and the
+    module's gradle path has been translated to a filesystem one.
+    """
+    cli_json = Path(args.cli_json)
+    out_dir = Path(args.output_dir)
+    prefix = args.path_prefix.rstrip("/")
+    rewrite_json = Path(args.rewrite_json)
+
+    baselines: dict[str, dict] = {}
+    if getattr(args, "baselines", None):
+        baselines = _load_baselines(Path(args.baselines))
+
+    raw_bytes = cli_json.read_bytes()
+    if raw_bytes.startswith(b"\xef\xbb\xbf"):
+        raw_bytes = raw_bytes[3:]
+    raw = json.loads(raw_bytes.decode("utf-8"))
+
+    staged = 0
+    rewritten = 0
+    for resource in raw.get("resources", []) or []:
+        module = (resource.get("module") or "").lstrip(":").replace(":", "/")
+        resource_id = resource.get("id")
+        if not resource_id:
+            continue
+        for capture in resource.get("captures", []) or []:
+            render_output = capture.get("renderOutput") or ""
+            png_path = capture.get("pngPath")
+            if not render_output or not png_path:
+                continue
+            dest_rel = _resource_render_dest(render_output)
+            key = f"{module}::{resource_id}::{render_output}"
+            sha = capture.get("sha256") or ""
+            bl = baselines.get(key)
+            if sha and bl is not None and bl.get("sha256") != sha:
+                src = Path(png_path)
+                if src.exists():
+                    dest = out_dir / module / dest_rel
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dest)
+                    staged += 1
+            capture["pngPath"] = f"{prefix}/{module}/{dest_rel}"
+            rewritten += 1
+
+    rewrite_json.parent.mkdir(parents=True, exist_ok=True)
+    rewrite_json.write_text(json.dumps(raw))
+    print(
+        f"Staged {staged} current resource render(s) and rebased {rewritten} "
+        f"pngPath(s) onto {prefix}/",
+        file=sys.stderr,
+    )
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -2052,6 +2116,16 @@ def main() -> int:
     sh.add_argument("--rewrite-json", required=True,
                     help="Path to write the rebased envelope to")
 
+    shr = sub.add_parser(
+        "stage-handoff-resources",
+        help="stage-handoff for the `show-resources` envelope",
+    )
+    shr.add_argument("cli_json", help="Path to compose-preview show-resources --json output")
+    shr.add_argument("--baselines", help="resource-baselines.json for the baseline branch")
+    shr.add_argument("--output-dir", required=True)
+    shr.add_argument("--path-prefix", required=True)
+    shr.add_argument("--rewrite-json", required=True)
+
     gen_res = sub.add_parser(
         "generate-resources",
         help="Stage the rendered PNGs / GIFs from `compose-preview show-resources --json` "
@@ -2117,6 +2191,7 @@ def main() -> int:
         "compare": cmd_compare,
         "copy-changed": cmd_copy_changed,
         "stage-handoff": cmd_stage_handoff,
+        "stage-handoff-resources": cmd_stage_handoff_resources,
         "generate-resources": cmd_generate_resources,
         "copy-changed-resources": cmd_copy_changed_resources,
         "compare-resources": cmd_compare_resources,

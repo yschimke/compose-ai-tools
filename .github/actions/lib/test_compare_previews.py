@@ -2604,5 +2604,88 @@ class StageHandoffTest(unittest.TestCase):
                          "change it.")
 
 
+class StageHandoffResourcesTest(unittest.TestCase):
+    """`stage-handoff-resources` — the resource half of the same bridge."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.renders = self.tmp / "build" / "res"
+        self.renders.mkdir(parents=True)
+
+    def _run(self, envelope, baselines=None):
+        from types import SimpleNamespace
+        cli_json = self.tmp / "_resources.json"
+        cli_json.write_text(json.dumps(envelope))
+        bl_path = None
+        if baselines is not None:
+            bl_path = self.tmp / "resource-baselines.json"
+            bl_path.write_text(json.dumps(baselines))
+        out_dir = self.tmp / "_handoff" / "current-resources"
+        rewrite = self.tmp / "_handoff" / "_resources.json"
+        rc = cp.cmd_stage_handoff_resources(SimpleNamespace(
+            cli_json=str(cli_json),
+            baselines=str(bl_path) if bl_path else None,
+            output_dir=str(out_dir),
+            path_prefix="_handoff/current-resources",
+            rewrite_json=str(rewrite),
+        ))
+        self.assertEqual(rc, 0)
+        return out_dir, json.loads(rewrite.read_text())
+
+    def _envelope(self, png, sha):
+        return {"resources": [{
+            "module": ":samples:android", "id": "drawable/foo", "type": "drawable",
+            "captures": [{"renderOutput": "renders/resources/drawable/foo.png",
+                          "pngPath": png, "sha256": sha, "variant": {}}],
+        }]}
+
+    def test_changed_resource_is_staged_and_rebased(self):
+        png = self.renders / "foo.png"
+        png.write_bytes(b"new")
+        out_dir, rewritten = self._run(
+            self._envelope(str(png), "new"),
+            baselines={"samples/android::drawable/foo::renders/resources/drawable/foo.png":
+                       {"sha256": "old"}},
+        )
+        self.assertTrue((out_dir / "samples/android" / "resources/drawable/foo.png").exists(),
+                        "compare-resources runs the same _is_changed perceptual filter, "
+                        "so a sha-differing resource's bytes are read on the publish side.")
+        self.assertEqual(rewritten["resources"][0]["captures"][0]["pngPath"],
+                         "_handoff/current-resources/samples/android/resources/drawable/foo.png")
+
+    def test_unchanged_resource_is_not_staged(self):
+        png = self.renders / "foo.png"
+        png.write_bytes(b"same")
+        out_dir, _ = self._run(
+            self._envelope(str(png), "same"),
+            baselines={"samples/android::drawable/foo::renders/resources/drawable/foo.png":
+                       {"sha256": "same"}},
+        )
+        self.assertFalse((out_dir / "samples/android" / "resources/drawable/foo.png").exists())
+
+    def test_rebased_resource_envelope_round_trips(self):
+        png = self.renders / "foo.png"
+        png.write_bytes(b"new")
+        out_dir, rewritten = self._run(
+            self._envelope(str(png), "new"),
+            baselines={"samples/android::drawable/foo::renders/resources/drawable/foo.png":
+                       {"sha256": "old"}},
+        )
+        workspace = self.tmp / "publish-workspace"
+        (workspace / "_handoff").mkdir(parents=True)
+        shutil.copytree(out_dir, workspace / "_handoff" / "current-resources")
+        restored = workspace / "_resources.json"
+        restored.write_text(json.dumps(rewritten))
+
+        rows = cp.load_resource_results(restored)
+        key = "samples/android::drawable/foo::renders/resources/drawable/foo.png"
+        self.assertIn(key, rows, "The staged key must match load_resource_results' "
+                                 "gradle-path translation or the row reads as new.")
+        rel = rows[key]["pngPath"]
+        self.assertFalse(rel.is_absolute())
+        self.assertTrue((workspace / rel).exists())
+
+
 if __name__ == "__main__":
     unittest.main()
