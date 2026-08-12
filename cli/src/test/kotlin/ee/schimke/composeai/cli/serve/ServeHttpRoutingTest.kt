@@ -22,6 +22,7 @@ import javax.imageio.ImageIO
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -261,8 +262,22 @@ class ServeHttpRoutingTest {
     File(dir, "previews").apply { mkdirs() }
     File(dir, "previews/$previewId.png").writeBytes(png())
     val figma = File(dir, "figma").apply { mkdirs() }
+    // Layered the way a real `compose/figma-svg` export is — a `<g id="…">` per composable, nested
+    // as the composables nest — because that structure is what the `?exploded=1` lane splits on.
     File(figma, "$previewId.svg")
-      .writeText("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"2\" height=\"2\"></svg>")
+      .writeText(
+        """
+        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="60" viewBox="0 0 40 60">
+        <g transform="translate(0, 0)">
+          <g id="Card">
+            <rect x="0" y="0" width="40" height="60" fill="#FFFFFF"/>
+            <g id="Text"><text x="4" y="20">hi</text></g>
+          </g>
+        </g>
+        </svg>
+        """
+          .trimIndent()
+      )
     return ServeBundleHost(dir, label = label, figmaDir = figma)
   }
 
@@ -458,6 +473,59 @@ class ServeHttpRoutingTest {
       "the fallback vector says it is one",
     )
     assertEquals("fontScale", okHeaders[ServeHttpServer.DROPPED_OVERRIDES_HEADER])
+  }
+
+  /**
+   * `?exploded=1` is a *presentation* of the vector export, not a render override — so it must work
+   * on a fully static catalog serving a baked `figma/<slug>.svg` (no daemon anywhere), and it must
+   * not be reported as a dropped override the way `fontScale` above is.
+   */
+  @Test
+  fun `the svg lane serves an exploded view of the baked vector`() {
+    val (flatCode, flat, _) = getFull("/svg-catalog/render/$previewId.svg")
+    assertEquals(200, flatCode)
+    assertFalse(flat.contains("cp-exploded-plane"), "the default lane is unchanged")
+
+    val (code, body, headers) = getFull("/svg-catalog/render/$previewId.svg?exploded=1")
+    assertEquals(200, code)
+    assertEquals(
+      null,
+      headers[ServeHttpServer.DROPPED_OVERRIDES_HEADER],
+      "a view axis is not an override the baked lane has to refuse",
+    )
+    assertTrue(body.contains("data-exploded=\"true\""), "served exploded: $body")
+    // Frame, Card, Text — one plane per level of composable nesting in the baked export.
+    assertEquals(3, Regex("class=\"cp-exploded-plane\"").findAll(body).count())
+    assertTrue(body.contains("data-layers=\"Card\""))
+
+    // The knobs reshape the same bytes without a re-render. `explodeDepth=1` folds everything below
+    // the first level together, so the stack loses a plane.
+    val (_, shallow, _) = getFull("/svg-catalog/render/$previewId.svg?exploded=1&explodeDepth=1")
+    assertEquals(2, Regex("class=\"cp-exploded-plane\"").findAll(shallow).count())
+    // An out-of-range or unparseable knob falls back to the default rather than 400ing a link.
+    val (bogusCode, bogus, _) =
+      getFull("/svg-catalog/render/$previewId.svg?exploded=1&explodeTilt=nope&explodeDepth=999")
+    assertEquals(200, bogusCode)
+    assertEquals(3, Regex("class=\"cp-exploded-plane\"").findAll(bogus).count())
+
+    // A hand-typed separation far past anything the slider offers is bounded, not obeyed: past
+    // ~2.1e6 the canvas numbers stop surviving formatting and the picture collapses instead of
+    // merely spreading out.
+    val (hugeCode, huge, _) =
+      getFull("/svg-catalog/render/$previewId.svg?exploded=1&explodeGap=3000000")
+    assertEquals(200, hugeCode)
+    assertEquals(3, Regex("class=\"cp-exploded-plane\"").findAll(huge).count())
+    val height = Regex("<svg[^>]*\\bheight=\"([\\d.]+)\"").find(huge)!!.groupValues[1].toDouble()
+    assertTrue(height < 10_000, "the stack is bounded, not 3 million units tall: $height")
+  }
+
+  /** `?exploded=0` is the explicit off state a bookmarked URL can carry; it changes nothing. */
+  @Test
+  fun `the svg lane leaves an explicitly disabled exploded view flat`() {
+    val (_, flat, _) = getFull("/svg-catalog/render/$previewId.svg")
+    val (code, body, _) = getFull("/svg-catalog/render/$previewId.svg?exploded=0")
+    assertEquals(200, code)
+    assertEquals(flat, body)
   }
 
   /**

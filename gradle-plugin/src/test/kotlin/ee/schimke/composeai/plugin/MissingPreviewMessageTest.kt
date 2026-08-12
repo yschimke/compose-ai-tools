@@ -203,6 +203,45 @@ class MissingPreviewMessageTest {
   }
 
   @Test
+  fun `formatMissingPreviewsMessage keeps distinct source frames apart`() {
+    // Same exception and message, different composables: three separate bugs. Collapsing them
+    // under the first one's frame would blame `A.kt:10` for failures in files it never touched.
+    val manifest =
+      PreviewManifest(
+        module = "app",
+        variant = "debug",
+        previews = listOf("A", "B").map { previewWithCapture(it, "renders/$it.png") },
+      )
+    val sidecars =
+      mapOf(
+        "A" to
+          ComposePreviewTasks.ErrorSidecar(
+            exception = "java.lang.IllegalStateException",
+            message = "missing state",
+            topAppFrame = ComposePreviewTasks.ErrorSidecar.TopAppFrame("A.kt", 10, "APreview"),
+          ),
+        "B" to
+          ComposePreviewTasks.ErrorSidecar(
+            exception = "java.lang.IllegalStateException",
+            message = "missing state",
+            topAppFrame = ComposePreviewTasks.ErrorSidecar.TopAppFrame("B.kt", 20, "BPreview"),
+          ),
+      )
+
+    val msg =
+      ComposePreviewTasks.formatMissingPreviewsMessage(
+        manifest = manifest,
+        missingIds = listOf("A", "B"),
+        sidecars = sidecars,
+      )
+
+    assertThat(msg).contains("A.kt:10")
+    assertThat(msg).contains("B.kt:20")
+    // Two lines, each naming its own preview — not one line claiming "2 previews".
+    assertThat(msg).doesNotContain("2 previews")
+  }
+
+  @Test
   fun `formatMissingPreviewsMessage leads with the real cause, not the cascade`() {
     val manifest =
       PreviewManifest(

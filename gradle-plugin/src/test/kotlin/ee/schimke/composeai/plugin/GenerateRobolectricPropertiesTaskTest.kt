@@ -74,6 +74,25 @@ class GenerateRobolectricPropertiesTaskTest {
   }
 
   @Test
+  fun `the permission-query tracker shadow is deliberately absent from the static lane`() {
+    // Issue #3698: `ShadowContextWrapperPermissionTracker` is daemon-only by decision, not by
+    // oversight. `@PermissionPreview` still flips the rendered branch here — `PermissionsController
+    // .set` mirrors grants into `ShadowApplication`, which `ContextCompat.checkSelfPermission`
+    // reads, pinned end-to-end by `:samples:android`'s `PermissionPreviewPixelTest`. The tracker's
+    // only other job is recording queried permissions for the `compose/permissions` payload, and
+    // that payload is served exclusively over the daemon's `data/fetch`, which this Test task has
+    // no protocol to answer. Adding it here would collect a list nothing in this lane reads while
+    // routing every `ContextWrapper.checkPermission` through the connector's grant map — including
+    // previews carrying no annotation, whose controller state is empty. This assertion is the net:
+    // see `docs/DATA_PRODUCTS.md` before deleting it, because reversing the decision needs a
+    // sidecar-writing path, not just the extra entry.
+    listOf(false, true).forEach { useConsumerApplication ->
+      val body = generate(useConsumerApplication, override = null, compileSdk = 36)
+      assertThat(body).doesNotContain("ShadowContextWrapperPermissionTracker")
+    }
+  }
+
+  @Test
   fun `useConsumerApplication drops application line but keeps sdk graphicsMode shadows`() {
     val body = generate(useConsumerApplication = true, override = null, compileSdk = 36)
     assertThat(body).contains("sdk=36")

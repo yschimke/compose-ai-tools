@@ -1922,12 +1922,16 @@ internal object ComposePreviewTasks {
 
       if (withSidecar.isNotEmpty()) {
         sb.append("\n\nPer-preview render errors (from .error.json sidecars):")
-        // Grouped by exception + message: one broken dependency reports itself once with a count
-        // instead of a thousand identical lines, and genuinely distinct failures still each get a
-        // line. Preview order is preserved, so the first failure stays at the top.
+        // Grouped by exception + message + source frame: one broken dependency reports itself once
+        // with a count instead of a thousand identical lines, and genuinely distinct failures still
+        // each get a line. The frame belongs in the key — two previews throwing
+        // `IllegalStateException("missing state")` from different composables are different bugs,
+        // and printing the first one's `at Foo.kt:12` beside a count would blame a file that has
+        // nothing to do with the others. Preview order is preserved, so the first failure stays at
+        // the top.
         val groups = withSidecar.groupBy { id ->
           val s = sidecars.getValue(id)
-          s.exception to s.message
+          Triple(s.exception, s.message, s.topAppFrame)
         }
         var shown = 0
         for ((_, ids) in groups.entries.take(5)) {

@@ -1026,6 +1026,15 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-overlays { border-top: 1px solid var(--cp-border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cp-overlays-head { font-size: 0.72rem; color: var(--cp-fg-muted); }
 .cp-knobs input:disabled { opacity: 0.7; }
+/* The Exploded 3D group's camera axes. A range + a live readout on one row: the drawer column is
+   240px, and the stacked `label { flex-direction: column }` default would give each of four
+   sliders three lines. `font-variant-numeric: tabular-nums` on the readout stops the row twitching
+   sideways as the value crosses a digit boundary mid-drag. */
+.cp-explode-row { flex-direction: row !important; align-items: center; gap: 8px !important;
+  justify-content: space-between; }
+.cp-explode-row input[type="range"] { flex: 1 1 90px; min-width: 0; padding: 0; }
+.cp-explode-value { flex: 0 0 auto; min-width: 3.2em; text-align: right; font-size: 0.75rem;
+  font-variant-numeric: tabular-nums; color: var(--cp-fg-muted); }
 .cp-links { border-top: 1px solid var(--cp-border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
 /* The under-stage column: the static-snapshot note and the export bar. Page-level, not part of
    the collapsible overrides drawer, so grabbing the /render URLs stays visible with the drawer

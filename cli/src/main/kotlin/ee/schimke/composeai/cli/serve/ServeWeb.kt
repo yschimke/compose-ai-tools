@@ -798,30 +798,91 @@ object ServeWeb {
   private fun stateInvariantKey(p: ServePreview): String = stateInvariantKey(p.id, p.state)
 
   /**
+   * The switcher's grouping key: [stateInvariantKey] with the theme segment dropped too
+   * ([baseKey]), so a component's renders group by *what they are* and the theme is left to
+   * [themeLane] alone.
+   *
+   * Dropping the theme from the key rather than relying on it is what makes an **untagged** render
+   * group with its themed siblings. A catalog does not necessarily tag both modes: a component
+   * whose non-default states come from `@OverrideVariant` publishes its dark cells as `…__xs__dark`
+   * (the `uiMode` is a `@Preview` param the synthetic capture inherits) but its light cells as a
+   * bare `…__xs`, while the default render still carries the full `…__default__light`. Keyed on the
+   * id including the theme, those two never met: the light default keyed
+   * `button-filled__ideal__light` and the light `xs` cell keyed `button-filled__ideal`, so the
+   * viewer offered no state switcher at all on the light lane — the lane the grid links to — and
+   * the whole size/shape matrix was reachable only by hand-typing an id. Both now key
+   * `button-filled__ideal` and [themeLane] keeps light and dark apart.
+   */
+  private fun switcherStateKey(p: ServePreview): String =
+    themeStrippedKey(stateInvariantKey(p), p.theme)
+
+  /**
+   * The props-family counterpart of [switcherStateKey], normalised the same way and for the same
+   * reason: a themed default (`button__ideal__default__light`) and an untagged props sibling
+   * (`button__ideal__default__content-icon-label`) resolve to one lane but would otherwise key
+   * apart, and the family check runs first — so the lane agreeing would never get to matter and the
+   * folded variant would stay unreachable.
+   */
+  private fun switcherPropsKey(p: ServePreview): String =
+    themeStrippedKey(propsFamilyKey(p), p.theme)
+
+  /**
+   * [id] with its theme segment dropped ([baseKey]) — but **only when the render declares a
+   * theme**.
+   *
+   * The guard is what keeps a state from being read as a theme. `baseKey` finds the last
+   * `light`/`dark` token positionally, and a component may legitimately name a *state* `dark`
+   * (`toggle__ideal__dark` with `state = "dark"`, no theme at all). Stripping that would key the
+   * state apart from its own siblings; asking only renders that actually carry a theme to give it
+   * up cannot.
+   */
+  private fun themeStrippedKey(id: String, theme: String?): String =
+    if (theme == null) id else baseKey(id)
+
+  /**
+   * The light/dark **lane** a render belongs to for switcher grouping — its declared
+   * [ServePreview.theme], else the `__light`/`__dark` token in its id ([cardTheme]), else the
+   * system's primary lane (dark for a dark-first system, light otherwise).
+   *
+   * The fallback is the point: an untagged render is not theme-*less* in any way a visitor
+   * experiences, it is simply the mode the catalog draws by default, and the switcher has to put it
+   * in that lane or it strands there alone. Compared as a resolved string rather than a nullable so
+   * the relation is symmetric — an untagged sibling reaches the primary-lane default and the
+   * primary-lane default reaches it back.
+   *
+   * The id is read **state-stripped**, so the token scan cannot pick up a state named `light` or
+   * `dark` and lane an unthemed render away from its own siblings.
+   */
+  private fun themeLane(p: ServePreview, darkFirst: Boolean): String =
+    p.theme ?: cardTheme(stateInvariantKey(p)) ?: if (darkFirst) "dark" else "light"
+
+  /**
    * The viewer's **state switcher**: a `<nav>` of plain links from [current] to each of its
    * component's baked states *in the same theme* (one link per distinct state, the default state
    * first, the current one marked `aria-current="page"`). No daemon, no JS state machine — each
    * link is a normal navigation to a sibling `/p/<id>` page, so it works with scripting off.
    *
    * Siblings are drawn from [all] (the host's whole preview list, which still carries the
-   * non-default states the grid folds out) by [stateInvariantKey] + [ServePreview.theme]: renders
-   * that differ *only* in state, holding the theme and any other variant axis (content / size /
-   * props) fixed, so a component that also varies on a non-state axis doesn't cross-link its axes.
-   * Returns the empty string when fewer than two states share this key — nothing to toggle.
+   * non-default states the grid folds out) by [switcherStateKey] + [themeLane]: renders that differ
+   * *only* in state, holding the theme and any other variant axis (content / size / props) fixed,
+   * so a component that also varies on a non-state axis doesn't cross-link its axes. Returns the
+   * empty string when fewer than two states share this key — nothing to toggle.
    */
   private fun stateSwitcherHtml(
     current: ServePreview,
     all: List<ServePreview>,
     basePath: String,
     q: String,
+    darkFirst: Boolean,
   ): String {
-    val key = stateInvariantKey(current)
+    val key = switcherStateKey(current)
+    val lane = themeLane(current, darkFirst)
     // One preview per distinct state, first appearance wins, restricted to the current variant
     // (same
     // key) and theme so the switcher never jumps the visitor across a non-state axis or light/dark.
     val byState = LinkedHashMap<String, ServePreview>()
     for (p in all) {
-      if (stateInvariantKey(p) != key || p.theme != current.theme) continue
+      if (switcherStateKey(p) != key || themeLane(p, darkFirst) != lane) continue
       byState.putIfAbsent(p.state ?: "default", p)
     }
     if (byState.size < 2) return ""
@@ -923,24 +984,29 @@ object ServeWeb {
    * render) in the SAME theme and state, the default first, the current one marked
    * `aria-current="page"`. The props analogue of [stateSwitcherHtml]: the grid folds these variants
    * out ([hasNonDefaultProps]) so a component shows one card, and this keeps them reachable. Drawn
-   * from [all] (the host's whole preview list) by [propsFamilyKey] + theme + state so a component
-   * that also varies on state or theme doesn't cross those axes. Empty when fewer than two variants
-   * share the family — nothing to switch.
+   * from [all] (the host's whole preview list) by [propsFamilyKey] + [themeLane] + state so a
+   * component that also varies on state or theme doesn't cross those axes. Empty when fewer than
+   * two variants share the family — nothing to switch.
    */
   private fun variantSwitcherHtml(
     current: ServePreview,
     all: List<ServePreview>,
     basePath: String,
     q: String,
+    darkFirst: Boolean,
   ): String {
-    val key = propsFamilyKey(current)
+    val key = switcherPropsKey(current)
     val curState = current.state ?: "default"
+    val lane = themeLane(current, darkFirst)
     // One preview per distinct props signature, first appearance wins, restricted to the current
     // family + theme + state so the switcher never jumps the visitor across a non-props axis.
+    // Theme is compared as a resolved lane for the same reason the state switcher does it: a
+    // catalog that leaves its primary-mode renders untagged must not strand them in a lane of
+    // their own.
     val byVariant = LinkedHashMap<String, ServePreview>()
     for (p in all) {
-      if (propsFamilyKey(p) != key) continue
-      if (p.theme != current.theme) continue
+      if (switcherPropsKey(p) != key) continue
+      if (themeLane(p, darkFirst) != lane) continue
       if ((p.state ?: "default") != curState) continue
       byVariant.putIfAbsent(propsSignature(p.props), p)
     }
@@ -5960,7 +6026,8 @@ $rows
     val replayThemesAttr = if (replayThemes) " data-replay-themes=\"1\"" else ""
     // The baked fallback shown before any override is chosen. The unified Theme selector displays
     // this choice without sending a redundant uiMode override on first load.
-    val viewerTheme = previewTheme(preview, isDarkFirstSystem(basePath, sessionId, declaredSurface))
+    val viewerDarkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
+    val viewerTheme = previewTheme(preview, viewerDarkFirst)
     // The Wasm tier is opt-in via a toggle (like "Live (stream)"), so the always-works PNG snapshot
     // stays the default. Both the iframe and the toggle are omitted entirely when no Wasm app backs
     // this session.
@@ -5998,6 +6065,17 @@ $rows
       if (hasSvgExport)
         "<button type=\"button\" id=\"cp-svg-toggle\" class=\"cp-fmt-toggle\" " +
           "aria-pressed=\"false\" title=\"Show the vector (SVG) render\">SVG</button>"
+      else ""
+    // The exploded 3D toggle — the layered figma-svg tilted back and pulled apart into one sheet
+    // per level of composable nesting ([ExplodedSvg]). It sits beside the SVG toggle because it is
+    // a view *of* that export rather than a separate renderer lane, and is gated on the same
+    // per-preview [hasSvgExport]: with no layered export there is nothing to pull apart, so the
+    // control is omitted rather than offered dead.
+    val explodeToggle =
+      if (hasSvgExport)
+        "<button type=\"button\" id=\"cp-explode-toggle\" class=\"cp-fmt-toggle\" " +
+          "aria-pressed=\"false\" title=\"Explode the vector render into one layer per " +
+          "composable\">3D</button>"
       else ""
     val svgMatch =
       if (hasSvgExport) {
@@ -6695,12 +6773,12 @@ $rows
     // The component-state switcher: plain links to this component's other baked states (same
     // theme).
     // Empty for a single-state component / a stateless preview, so nothing renders there.
-    val stateSwitcher = stateSwitcherHtml(preview, siblings, basePath, q)
+    val stateSwitcher = stateSwitcherHtml(preview, siblings, basePath, q, viewerDarkFirst)
     // The variant switcher: links to this component's props-axis variants (RTL / locale / fontScale
     // / content) folded out of the grid, in the same theme + state. Empty when the component has no
     // such variants, so a plain / state-only catalog is unchanged. Concatenated after the state
     // switcher (both empty ⇒ the interpolation stays "", preserving the section-less golden).
-    val variantSwitcher = variantSwitcherHtml(preview, siblings, basePath, q)
+    val variantSwitcher = variantSwitcherHtml(preview, siblings, basePath, q, viewerDarkFirst)
     val switchers =
       listOf(stateSwitcher, variantSwitcher).filter { it.isNotBlank() }.joinToString("\n")
     // Left to right: the chip that names the current renderer and toggles it live, the combo box of
@@ -6713,6 +6791,7 @@ $rows
           comparePlayersLink,
           specSelector,
           svgFmtToggle,
+          explodeToggle,
           svgMatch,
         )
         .filter { it.isNotBlank() }
@@ -6829,7 +6908,7 @@ $rows
                the DOM. The visible Theme control is the chip row on the viewer bar. -->
           $themeSelectorHtml
           $sizeControlsHtml
-          ${scrollGroupHtml(hasScrollExport, hasSvgExport)}
+          ${exportShapeGroupsHtml(hasScrollExport, hasSvgExport)}
           <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
@@ -7201,6 +7280,69 @@ $rows
         <span class="cp-export-head" id="cp-export-head">Export</span>
         ${group("PNG", "png")}$svgGroup
       </div>
+      """
+      .trimIndent()
+  }
+
+  /**
+   * The drawer groups that shape the *export* rather than the render — Scroll and Exploded 3D —
+   * joined into one slot so a session that offers neither contributes nothing at all. (Interpolated
+   * separately, an absent group left a blank line in every viewer that can't export SVG, which is
+   * most of them.)
+   */
+  private fun exportShapeGroupsHtml(hasScrollExport: Boolean, hasSvgExport: Boolean): String =
+    listOf(scrollGroupHtml(hasScrollExport, hasSvgExport), explodeGroupHtml(hasSvgExport))
+      .filter { it.isNotBlank() }
+      .joinToString("\n          ")
+
+  /**
+   * The overrides drawer's "Exploded 3D" group: the camera and separation knobs behind the viewer
+   * bar's **3D** toggle.
+   *
+   * The toggle alone is the whole feature for most visitors — the defaults are the readable preset
+   * — so the axes live in the drawer rather than on the bar, next to the other things that shape an
+   * export. They are `<input type="range">` rather than numbers because nobody knows what tilt they
+   * want in degrees; they know it when they see it, and the SVG re-projects per drag.
+   *
+   * Every knob carries `data-cp-default`, which is what lets the viewer JS omit an untouched axis
+   * from the URL (so the common link stays `?exploded=1`) and reset it on a Back that drops the
+   * param. The values must therefore stay equal to `ExplodedSvg.Options`' own defaults; the fixture
+   * test is what notices when they drift apart.
+   *
+   * Empty when the session can't export SVG at all — there is no layered vector to pull apart.
+   */
+  private fun explodeGroupHtml(hasSvgExport: Boolean): String {
+    if (!hasSvgExport) return ""
+    fun slider(
+      id: String,
+      label: String,
+      min: String,
+      max: String,
+      step: String,
+      default: String,
+      unit: String,
+      hint: String,
+    ): String =
+      """
+      <label class="cp-explode-row" title="$hint">$label
+        <input id="cp-explode-$id" class="cp-explode-knob" type="range" min="$min" max="$max"
+          step="$step" value="$default" data-cp-default="$default" data-cp-unit="$unit" disabled>
+        <output id="cp-explode-$id-value" class="cp-explode-value">$default$unit</output>
+      </label>
+      """
+        .trimIndent()
+    return """
+      <details class="cp-group" data-cp-group="explode">
+        <summary>Exploded 3D</summary>
+        <div class="cp-group-body">
+          ${slider("tilt", "Lean", "0", "75", "1", "28", "°", "How far the layers lean away from you; 0 is face-on").prependIndent("          ").trimStart()}
+          ${slider("spin", "Spin", "-80", "80", "1", "-16", "°", "How far the layers are turned in their own plane").prependIndent("          ").trimStart()}
+          ${slider("gap", "Separation", "0", "600", "5", "0", "", "Distance between layers; 0 derives one from the preview's size").prependIndent("          ").trimStart()}
+          ${slider("depth", "Layers", "1", "16", "1", "6", "", "Composables nested deeper than this fold into the last layer").prependIndent("          ").trimStart()}
+          <div class="cp-knobs-head">One layer per level of composable nesting, from the
+            <code>compose/figma-svg</code> export. Rides the SVG link and download.</div>
+        </div>
+      </details>
       """
       .trimIndent()
   }

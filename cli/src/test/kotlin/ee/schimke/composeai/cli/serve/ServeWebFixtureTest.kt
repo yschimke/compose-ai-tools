@@ -988,6 +988,21 @@ class ServeWebFixtureTest {
         hasA11yOverlay = true,
         hasDesignAnnotations = true,
       )
+    // An SVG-exporting viewer opened straight into the **exploded 3D** view: the `3D` chip pressed
+    // beside the SVG one, and the Exploded 3D group in the overrides drawer holding the camera
+    // axes. Its stage is stubbed by the harness with the committed
+    // `_render-placeholder-exploded.svg` — which `ExplodedSvgFixtureTest` generates from the
+    // layered placeholder through the production renderer — so the PNG the visual-diff bot posts
+    // shows the real projection, not a stand-in drawing.
+    val viewerExploded =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.ProfileCardPreview", "Profile card"),
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = true,
+        hasSvgExport = true,
+        hasScrollExport = true,
+      )
     // A daemon-backed viewer for a preview detected to support one-handed gesture hints
     // (`@GestureHintPreview`) on an Android-backed session (`gesturesRenderable = true`): the
     // "Detected features" group shows the "Show gesture hints" control. Captured so the visual-diff
@@ -1928,6 +1943,7 @@ class ServeWebFixtureTest {
         "serve-viewer-theme-overflow.html" to viewerThemeOverflow,
         "serve-viewer-focus.html" to viewerFocus,
         "serve-viewer-inspect.html" to viewerInspect,
+        "serve-viewer-exploded.html" to viewerExploded,
         "serve-viewer-gestures.html" to viewerGestures,
         "serve-landing-path.html" to landingPath,
         "serve-viewer-path.html" to viewerPath,

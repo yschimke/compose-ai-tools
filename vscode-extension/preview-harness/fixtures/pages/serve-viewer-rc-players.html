@@ -65,6 +65,7 @@
 <select id="cp-lane-select" class="cp-lane-select" aria-label="Switch renderer" title="Draw this preview with a different renderer" data-default="rc:java" data-rc-default="java"><option value="" selected>Switch renderer…</option><option value="rc:js">JS</option><option value="rc:cmp-wasm">CMP Wasm</option><option value="rc:java">Java</option><option value="rc:cmp-android">CMP Android</option><option value="rc:cmp-jvm" disabled>CMP JVM (unavailable)</option></select>
 <a class="cp-format-link cp-compare-players" href="/remote-m3/compare?format=rc&preview=appcard__ideal__default__compact&token=demo-token-fixture" title="See every Remote Compose player's render of this screen side by side">compare players →</a>
 <button type="button" id="cp-svg-toggle" class="cp-fmt-toggle" aria-pressed="false" title="Show the vector (SVG) render">SVG</button>
+<button type="button" id="cp-explode-toggle" class="cp-fmt-toggle" aria-pressed="false" title="Explode the vector render into one layer per composable">3D</button>
 <span id="cp-svg-match" class="cp-match" role="status" aria-live="polite" hidden></span><a id="cp-svg-diff" class="cp-format-link" href="/remote-m3/compare?format=svg&preview=appcard__ideal__default__compact&token=demo-token-fixture" hidden>view diff →</a>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">
@@ -140,7 +141,33 @@
               </div>
             </div>
           </details>
-
+          <details class="cp-group" data-cp-group="explode">
+  <summary>Exploded 3D</summary>
+  <div class="cp-group-body">
+    <label class="cp-explode-row" title="How far the layers lean away from you; 0 is face-on">Lean
+      <input id="cp-explode-tilt" class="cp-explode-knob" type="range" min="0" max="75"
+        step="1" value="28" data-cp-default="28" data-cp-unit="°" disabled>
+      <output id="cp-explode-tilt-value" class="cp-explode-value">28°</output>
+    </label>
+    <label class="cp-explode-row" title="How far the layers are turned in their own plane">Spin
+      <input id="cp-explode-spin" class="cp-explode-knob" type="range" min="-80" max="80"
+        step="1" value="-16" data-cp-default="-16" data-cp-unit="°" disabled>
+      <output id="cp-explode-spin-value" class="cp-explode-value">-16°</output>
+    </label>
+    <label class="cp-explode-row" title="Distance between layers; 0 derives one from the preview's size">Separation
+      <input id="cp-explode-gap" class="cp-explode-knob" type="range" min="0" max="600"
+        step="5" value="0" data-cp-default="0" data-cp-unit="" disabled>
+      <output id="cp-explode-gap-value" class="cp-explode-value">0</output>
+    </label>
+    <label class="cp-explode-row" title="Composables nested deeper than this fold into the last layer">Layers
+      <input id="cp-explode-depth" class="cp-explode-knob" type="range" min="1" max="16"
+        step="1" value="6" data-cp-default="6" data-cp-unit="" disabled>
+      <output id="cp-explode-depth-value" class="cp-explode-value">6</output>
+    </label>
+    <div class="cp-knobs-head">One layer per level of composable nesting, from the
+      <code>compose/figma-svg</code> export. Rides the SVG link and download.</div>
+  </div>
+</details>
           <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">

@@ -4,6 +4,7 @@ import ee.schimke.composeai.cli.BUNDLE_VERSION
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
+import ee.schimke.composeai.data.layoutinspector.ExplodedSvg
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import io.ktor.http.ContentType
@@ -2324,7 +2325,11 @@ class ServeHttpServer(
    */
   private fun RoutingContext.plainThumbRequest(): Boolean =
     call.request.queryParameters.entries().none { (key, _) ->
-      ServeOverrides.isOverrideParam(key) || key == "scroll" || key == "rcPlayer" || key == "mode"
+      ServeOverrides.isOverrideParam(key) ||
+        key == "scroll" ||
+        key == "rcPlayer" ||
+        key == "mode" ||
+        key in ServeExplodedSvg.PARAMS
     }
 
   /**
@@ -3658,8 +3663,19 @@ class ServeHttpServer(
             // `mode`,
             // or `mode=figma`) stays fully self-contained — right for `<img>`/Figma import, where
             // external references don't load.
+            // `?exploded=1` (plus its tilt / spin / gap / depth knobs) is a second rewrite of the
+            // same bytes: the layered export pulled apart into one sheet per composable nesting
+            // level. It composes with `mode=web` and `scroll=long` because all three are
+            // post-processing steps over one render.
             val webMode = call.request.queryParameters["mode"]?.lowercase() == "web"
-            renderSvgResponse(renderHost, previewId, overrides, scroll = scroll, webMode = webMode)
+            renderSvgResponse(
+              renderHost,
+              previewId,
+              overrides,
+              scroll = scroll,
+              webMode = webMode,
+              exploded = explodedOptions(),
+            )
             return@withLeasedSession
           }
           if (wantSlots) {
@@ -4088,12 +4104,24 @@ class ServeHttpServer(
    * [scroll] is set, serves the full-page (`compose/figma-svg-long`) export of a scrolling preview
    * instead of the viewport-sized one.
    */
+  /**
+   * The exploded-view options this request asks for, or null when it didn't ask. Reading them off
+   * the raw query (rather than through `ServeOverrides`) is deliberate: like `mode=web`, these
+   * describe how the produced SVG is *presented*, not what gets rendered, so they must not join the
+   * override set that decides cache identity or gets reported as "dropped".
+   */
+  private fun RoutingContext.explodedOptions(): ExplodedSvg.Options? {
+    val params = { key: String -> call.request.queryParameters[key] }
+    return if (ServeExplodedSvg.enabled(params)) ServeExplodedSvg.optionsFrom(params) else null
+  }
+
   private suspend fun RoutingContext.renderSvgResponse(
     renderHost: ServeHost,
     previewId: String,
     overrides: PreviewOverrides,
     scroll: Boolean = false,
     webMode: Boolean = false,
+    exploded: ExplodedSvg.Options? = null,
   ) {
     val outcome =
       withContext(Dispatchers.IO) {
@@ -4101,15 +4129,29 @@ class ServeHttpServer(
           null
         } else {
           try {
-            when {
-              scroll -> renderHost.renderScrollSvg(previewId, overrides)
-              // Web mode routes through the host's web variant: a catalog-backed host links its
-              // raster crops to their published branch files instead of embedding them (the
-              // default host keeps the self-contained bytes). The font-`@import` rewrite below
-              // applies either way.
-              webMode -> renderHost.renderSvgForWeb(previewId, overrides)
-              else -> renderHost.renderSvg(previewId, overrides)
-            }
+            val produced =
+              when {
+                scroll -> renderHost.renderScrollSvg(previewId, overrides)
+                // Web mode routes through the host's web variant: a catalog-backed host links its
+                // raster crops to their published branch files instead of embedding them (the
+                // default host keeps the self-contained bytes). The font-`@import` rewrite below
+                // applies either way.
+                webMode -> renderHost.renderSvgForWeb(previewId, overrides)
+                else -> renderHost.renderSvg(previewId, overrides)
+              }
+            // Both post-render rewrites run with the permit still held. The `mode=web` one is a
+            // regex pass over a string, but the exploded projection parses the whole SVG into a
+            // DOM, structurally copies it once per sheet and re-serializes — comparable to a
+            // render on a large catalog export. Outside the semaphore, a public host could be
+            // asked for a hundred different `explodeTilt=` values at once and would run all of
+            // them in parallel, which is precisely what this route's load shedding exists to
+            // prevent. Inside it, the burst queues like any other render and sheds with a 503.
+            if (produced is SvgOutcome.Ok && (webMode || exploded != null)) {
+              var text = produced.svg.toString(Charsets.UTF_8)
+              if (webMode) text = webModeSvg(text)
+              if (exploded != null) text = ExplodedSvg.render(text, exploded)
+              produced.copy(svg = text.toByteArray(Charsets.UTF_8))
+            } else produced
           } finally {
             renderSemaphore.release()
           }
@@ -4124,11 +4166,13 @@ class ServeHttpServer(
         )
       }
       is SvgOutcome.Ok -> {
-        // The render host produces the self-contained (embedded) SVG and caches it; the web variant
-        // is a cheap per-response rewrite of those bytes, so both modes share one render + cache.
-        val svg =
-          if (webMode) webModeSvg(outcome.svg.toString(Charsets.UTF_8)).toByteArray(Charsets.UTF_8)
-          else outcome.svg
+        // The render host produces the self-contained (embedded) SVG and caches it; the web and
+        // exploded variants are per-response rewrites of those bytes, so every mode shares one
+        // render + cache. Both were already applied above, inside the semaphore — web mode first,
+        // since it rewrites the `@font-face` block the exploded view then carries through
+        // untouched, whereas the reverse order would have it hunting for that block inside a
+        // reserialized document.
+        val svg = outcome.svg
         val contentType = ContentType.parse(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG)
         // The vector lane drops overrides exactly like the PNG one: a `figma/<slug>.svg` read off
         // the delivery branch was drawn at the preview's discovery-time axes, so serving it for a

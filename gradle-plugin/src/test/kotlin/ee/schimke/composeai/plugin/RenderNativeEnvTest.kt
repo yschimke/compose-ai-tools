@@ -65,6 +65,21 @@ class RenderNativeEnvTest {
   }
 
   @Test
+  fun `an empty entry is a search location too, and survives pruning`() {
+    // glibc reads an empty LD_LIBRARY_PATH element as the current directory. It is not a store
+    // path, so "everything else exactly as inherited" has to include it — position and all.
+    val decision =
+      decide(
+        renderJavaExecutable = "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
+        ldLibraryPath = ":/root/.cache/coo-ee/desktop-gl/lib:/opt/lib",
+      )
+
+    val sanitized = decision as RenderNativeEnv.Decision.Sanitized
+    assertThat(sanitized.value).isEqualTo(":/opt/lib")
+    assertThat(sanitized.dropped).containsExactly("/root/.cache/coo-ee/desktop-gl/lib")
+  }
+
+  @Test
   fun `a store render JVM keeps everything it inherited`() {
     // LD_LIBRARY_PATH is the *only* channel a patchelf'd store loader reads, and the doctor's own
     // remediation is to point it at /usr/lib/x86_64-linux-gnu. Pruning here would break that.
