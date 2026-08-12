@@ -497,6 +497,22 @@ A mask whose bytes do not match `maskSha256` is not an invalidation at all — i
 validation failure**: the acceptance is refused and reported, because a mask we cannot trust is a
 broken artifact rather than a stale one.
 
+**Only `valid` acceptances contribute a mask to the scoring union.** `resolved`, `invalidated` and
+`refused` all suppress **nothing** — "survivor" means status `valid`, not "reached the end of the
+gates". `resolved` is the case worth spelling out, because its candidate gate *did* fire and the
+precedence table merely re-labelled the outcome: a resolved region now agrees with the reference, so
+it contributes no mismatch to suppress, and keeping it in the union would actively remove its pixels
+as neighbourhood candidates for the pixels around it — which can hide a regression sitting next to
+the thing that was just fixed. The required fixed-candidate fixture therefore carries an **adjacent
+regression** as well, since that is the case the wrong reading gets wrong.
+
+**A correct hash does not make an artifact usable.** Bytes can be committed with a correctly
+computed `sha256` and still be corrupt, non-PNG, or decode to zero dimensions — the hash proves
+nobody edited the file, not that the file was ever valid. Left undefined, one engine aborts the
+whole comparison and another silently drops the acceptance, and neither produces the per-acceptance
+status the contract promises. Decode failure and degenerate geometry are therefore `refused` like a
+hash mismatch, and a *correctly hashed malformed artifact* is its own fixture.
+
 **Acceptance ids must be unique within the set, and a duplicate is a hard validation failure.**
 `statuses` is keyed by id, so two records sharing one id have a single slot between them — one
 consumer would overwrite, another merge, a third reject, and no fixture could express which record's
@@ -525,7 +541,7 @@ Evaluated strictly in this order — the first row whose condition holds wins:
 
 | # | Status | Condition |
 | --- | --- | --- |
-| 1 | `refused` | either artifact's bytes fail their recorded hash, **or the targeted reference publishes no `sha256`**, **or the acceptance's `id` is not unique in the set** — the acceptance is never evaluated |
+| 1 | `refused` | either artifact's bytes fail their recorded hash; **or an artifact is hash-valid but fails to decode, or decodes to zero/negative dimensions**; **or the targeted reference publishes no `sha256`**; **or the acceptance's `id` is not unique in the set** — the acceptance is never evaluated |
 | 2 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
 | 3 | `resolved` | the masked region now agrees with the **reference** (see below) |
 | 4 | `invalidated: [candidate-changed]` | the candidate gate fired and the region did not converge |
@@ -677,7 +693,8 @@ referenceId, variant)`:
 
    This gate is what catches "the glyph disappeared" as distinct from "the glyph is still the wrong
    colour", which a rectangular ignore region fundamentally cannot.
-5. **Only now, score** — everything outside the union of the **still-valid** masks, where "outside"
+5. **Only now, score** — everything outside the union of the masks of acceptances whose status
+   is `valid`, where "outside"
    means excluded in **both** roles (see below). An invalidated acceptance suppresses nothing.
 6. **Report raw, accepted and unaccepted separately.** The raw finding is never destroyed. The
    comparison shows all three numbers and the delta map gains an "accepted" tint distinct from the
@@ -811,10 +828,11 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | --- | --- |
 | decode (validated inputs only) | **every** *hash-valid* raster input decoded — the two shared ones (reference, current candidate) plus `mask.png` and `accepted-candidate.png` **for each member of `acceptances[]`**, so a two-acceptance case pins six, not four. The candidate gate reads each accepted-candidate decode and coverage reads each mask decode, so an alpha or colour divergence in any of them would otherwise first surface as a wrong verdict rather than a decoder bug. **A hash-mismatch fixture pins no decode for the failing artifact** — I7 refuses it before its bytes are used, and a tampered file may not be decodable at all, so requiring a decoded plane for it would contradict the contract it exists to test |
 | content boxes | each input's measured content box and the resolved `plane` discriminant, since content-box detection is itself part of the portable path and two engines can otherwise measure differently near a sampled edge or the `MIN_BOX_COVERAGE` threshold |
-| selector | the resolved element — which node the selector matched, its bounds in canonical coordinates, and the tag-uniqueness verdict. Ahead of the union stages, because which acceptances survive decides which masks the union contains (I5) |
+| tag index | the `{tag: {count, bounds}}` projection the server computes from `semanticsPayload`. Pinned as its own stage because **production does not ship the tree to the browser** — feeding the full payload to both conformance consumers would leave the projection itself untested, so the server could count tags or transform bounds differently from the offline resolver while every fixture still passed |
+| selector | the resolved element — which node the selector matched, its bounds in canonical coordinates, and the tag-uniqueness verdict, resolved **from the index** as the browser does. Ahead of the union stages, because which acceptances survive decides which masks the union contains (I5) |
 | separation (per acceptance) | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite), for **each** acceptance independently |
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
-| separation + canonical (surviving union) | the same split redone against the union of **gate survivors** only, **and resampled into the canonical plane again** — separation still precedes its resample (I3). A distinct, later stage on purpose: the union cannot be formed until the candidate and element gates have run, and those gates need the canonical pixels the row above produces (I5) |
+| separation + canonical (surviving union) | the same split redone against the union of **`valid`-status acceptances** only — resolved, invalidated and refused ones suppress nothing — **and resampled into the canonical plane again** — separation still precedes its resample (I3). A distinct, later stage on purpose: the union cannot be formed until the candidate and element gates have run, and those gates need the canonical pixels the row above produces (I5) |
 | score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, still separated, downsampled per-region rather than whole-image |
 | canonical (whole) | each **unseparated** input resampled into the canonical plane, so the raw pass traverses source→canonical→score exactly as the unaccepted pass does (I6). Without this row an engine could take source→score for raw, and ordinary fixtures where those filters happen to coincide would not catch it |
 | score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, so a divergence between the two downsample paths is caught here rather than as a raw/unaccepted mismatch |
