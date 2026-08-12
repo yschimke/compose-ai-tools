@@ -103,7 +103,7 @@ part of it is already computable on the serve host:
 | `componentId` | `ServePreview.componentId` from `catalog.json`; falls back to `ServeParityDashboard.componentKey`'s derivation when the catalog names none |
 | `previewId` | the route-safe served id (`iconbutton-tonal__ideal__default__light`) — **not** the daemon discovery id |
 | `referenceId` | `DesignReference.id` |
-| `variant` | the axis segments already inside the preview id, plus any live overrides in force |
+| `variant` | the axis segments already inside the preview id — **axes only**. Live overrides are *not* folded in here; they travel in their own `overrides` field (§4), because two representations of one fact means two ways to spell it and no rule for which wins |
 | `revision` | `repo@branch` provenance + the compose-ai-tools version that rendered it |
 
 Two rules worth writing into the schema doc so they survive contact with a second implementer:
@@ -234,6 +234,18 @@ Two alternatives, if that turns out to be more surgery on a shared helper than i
 "written by a different job" shape rather than only this one. Settle it before Phase 1 step 3 ships —
 the failure is silent and looks like "the index is just a bit behind", or worse, like renders
 mysteriously reverting.
+
+**The dispatch solves the inbound half; the catalog still has to read those issues.** Installing the
+App on the catalog repo lets a source repo *wake* the regeneration, but the regeneration then queries
+that source repo's issues — and the catalog workflow's own `GITHUB_TOKEN` is catalog-scoped by the
+same rule that started this, while the source's installation token does not travel with a
+`repository_dispatch`. A private or permission-restricted source repo therefore contributes no rows,
+on the dispatch path *and* on the daily reconciliation, and the index quietly under-reports rather
+than failing. Two ways to close it, and they are not equivalent: give the catalog side a credential
+with **Issues: read** on every scanned repo (works for both paths, and is more provisioning), or
+have the dispatch **carry the changed issue in its payload** so the low-latency path needs no
+cross-repo read at all (cheaper, but the cron backstop still needs the credential, so it only
+narrows the window rather than removing the requirement).
 
 **Cross-repository triggers.** One delivery branch can carry issues from several repositories (a
 catalog whose components are implemented elsewhere). `repository` is per-issue in the schema, so the
@@ -564,6 +576,12 @@ encode them, so a record must carry them explicitly: an `overrides` object of no
 over the whole set: an acceptance authored at `fontScale=1.5` does not apply at `1.0`, and one
 authored with no overrides does not apply to an overridden frame.
 
+**`variant` carries axes only; overrides live here and nowhere else.** §2 originally folded active
+overrides into `variant`, which would now give the same state two representations with no defined
+serialisation between them — a publisher, the browser and the offline consumer could each render a
+different `variant` string while their normalised `overrides` objects agreed perfectly, and the
+acceptance would miss the frame it was authored for. One fact, one field.
+
 That direction is the safe one. Overrides change layout, and a mask is geometry — an acceptance for
 a glyph at one font scale covers different pixels at another, so applying it across scales suppresses
 a region nobody looked at. The cost of being strict is a duplicated acceptance per override
@@ -669,6 +687,13 @@ canonical plane's `width × height` exactly, and `accepted-candidate.png` must m
 bounding box exactly. Otherwise one consumer rescales, another rejects, a third compares only the
 overlap — same acceptance, three different suppression unions. Mismatches are `refused`, with
 conformance cases for both.
+
+**A path that resolves is not a file that opens.** A `mask` or `acceptedCandidate` path can be
+contained and syntactically perfect while the file is missing, unreadable, or truncated to nothing —
+at which point there are no bytes to hash, no header to parse and no decode to attempt, so none of
+the other tokens apply. Left unnamed, the browser turns a failed fetch into a local refusal while the
+offline reader throws or silently drops the record. `artifact-unreadable`, refused, covering every
+file-open failure.
 
 **A correct hash does not make an artifact usable.** Bytes can be committed with a correctly
 computed `sha256` and still be corrupt, non-PNG, or decode to zero dimensions — the hash proves
@@ -900,8 +925,8 @@ field would leave two engines free to pick different ones. Same fixed ordering r
 `document-unreadable`, `document-too-large`, `duplicate-id`, `id-missing`, `id-not-safe`,
 `schema-invalid`, `orphaned-target`, `path-not-contained`, `header-invalid`, `decode-failed`,
 `degenerate-dimensions`, `dimension-mismatch`, `mask-encoding-invalid`, `mask-empty`,
-`mask-hash-mismatch`, `accepted-candidate-hash-mismatch`, `reference-hash-missing`,
-`tolerance-out-of-range`, `acceptance-is-noop`.
+`artifact-unreadable`, `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`,
+`reference-hash-missing`, `tolerance-out-of-range`, `acceptance-is-noop`.
 
 Document-wide tokens lead, then identity, then structure, then artifacts — so a combined failure
 serialises the same way in both engines, and a reader sees the widest problem first. A combined
@@ -1171,7 +1196,7 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | decode (validated inputs only) | **every** *hash-valid* raster input decoded — the two shared ones (reference, current candidate) plus `mask.png` and `accepted-candidate.png` **for each member of `acceptances[]`**, so a two-acceptance case pins six, not four. The candidate gate reads each accepted-candidate decode and coverage reads each mask decode, so an alpha or colour divergence in any of them would otherwise first surface as a wrong verdict rather than a decoder bug. **A hash-mismatch fixture pins no decode for the failing artifact** — I7 refuses it before its bytes are used, and a tampered file may not be decodable at all, so requiring a decoded plane for it would contradict the contract it exists to test |
 | content boxes | each input's measured content box and the resolved `plane` discriminant, since content-box detection is itself part of the portable path and two engines can otherwise measure differently near a sampled edge or the `MIN_BOX_COVERAGE` threshold |
 | tag index | the `{tag: {count, bounds}}` projection the server computes from `semanticsPayload`. Pinned as its own stage because **production does not ship the tree to the browser** — feeding the full payload to both conformance consumers would leave the projection itself untested, so the server could count tags or transform bounds differently from the offline resolver while every fixture still passed. **A third runner is required for this stage**: the server projector's own Kotlin tests must consume these same payload fixtures and produce this expected index. The two named runners cannot cover it — production JavaScript consumes an already-built index, so the JS suite never exercises the projector, and design-parity has its own resolver rather than this one. Pinning the artifact without running the code that produces it proves nothing about the code that produces it |
-| selector | the resolved element — which node the selector matched, its bounds in canonical coordinates, and the tag-uniqueness verdict, resolved **from the index** as the browser does. Ahead of the union stages, because which acceptances survive decides which masks the union contains (I5) |
+| selector | the resolved element — which node the selector matched, its bounds in canonical coordinates, and the tag-uniqueness verdict. Resolved **from the index** as the browser does — **and, separately, from the raw payload through design-parity's own production resolver**, since that is what the offline verdict actually comes from. Pinning only the index path lets the browser tests, the projector test and this row all pass while the offline resolver disagrees about the same tree; the alternative is to make production design-parity consume the index too, which is the better end state and a larger change. Ahead of the union stages, because which acceptances survive decides which masks the union contains (I5) |
 | separation (per acceptance) | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite), for **each** acceptance independently |
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
 | separation + canonical (surviving union) | the same split redone against the union of **`valid`-status acceptances** only — resolved, invalidated and refused ones suppress nothing — **and resampled into the canonical plane again** — separation still precedes its resample (I3). A distinct, later stage on purpose: the union cannot be formed until the candidate and element gates have run, and those gates need the canonical pixels the row above produces (I5) |
