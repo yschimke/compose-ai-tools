@@ -126,7 +126,8 @@ abstract class Command(
   protected val exactId: String? = args.flagValue("--id")
   protected val verbose: Boolean = "--verbose" in args || "-v" in args
   protected val progress: Boolean = verbose || "--progress" in args
-  protected val timeoutSeconds: Long = args.flagValue("--timeout")?.toLongOrNull() ?: 300
+  protected val timeoutSeconds: Long =
+    args.flagValue("--timeout")?.toLongOrNull() ?: GradleConnection.DEFAULT_TIMEOUT_SECONDS
   /** When true, drop previews with no `changed=true` capture from JSON output. */
   protected val changedOnly: Boolean = "--changed-only" in args
   /**
@@ -307,7 +308,7 @@ abstract class Command(
       // Resolve via the Tooling API so --module works with nested
       // Gradle paths (e.g. `--module auth:composables`) and reflects
       // any custom `project.projectDir` override.
-      val one = gradle.findPreviewModule(explicitModule)
+      val one = gradle.findPreviewModule(explicitModule, timeoutSeconds)
       if (one == null) {
         gradle.lastModelAccessFailure?.let {
           System.err.println(
@@ -329,7 +330,7 @@ abstract class Command(
       return listOf(one)
     }
 
-    val modules = gradle.findPreviewModules()
+    val modules = gradle.findPreviewModules(timeoutSeconds)
     if (modules.isEmpty()) {
       gradle.lastModelAccessFailure?.let {
         System.err.println("Could not query Gradle project model.")
