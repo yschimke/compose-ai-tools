@@ -548,6 +548,15 @@ and both passes stay on identical stages, which is what I6 actually requires. Th
 shifts once when the portable kernel replaces `drawImage` — see the rebaseline note above; these two
 statements are only compatible if this one is read as being about geometry alone.
 
+**Scope matching uses every recorded field.** A comparison page is keyed by `(previewId,
+referenceId)` and it is tempting to scope acceptances the same way, but the record stores the full
+§2 locator for a reason: one source repo can publish several systems, and served preview and
+reference ids are only unique *within* a system. Matching on the page's key alone lets an acceptance
+authored against `wear-m3` suppress pixels in `m3` because both happen to publish
+`iconbutton-tonal__ideal__default__light` — a mask applied to a component nobody accepted anything
+for. Every recorded field must match, and `system`/`component` are the two that a
+comparison-shaped mental model quietly drops.
+
 **Only `valid` acceptances contribute a mask to the scoring union.** `resolved`, `invalidated` and
 `refused` all suppress **nothing** — "survivor" means status `valid`, not "reached the end of the
 gates". `resolved` is the case worth spelling out, because its candidate gate *did* fire and the
@@ -574,9 +583,17 @@ browser tab or an offline run long before any per-record refusal has a chance to
 catalog fetch limits are per asset and do not see the aggregate. So the document declares out of
 budget and is rejected **before** the per-acceptance decode loop begins: a cap on the number of
 acceptances, and a cap on total decoded pixels across their rasters, both fixed constants rather
-than per-catalog settings. `document-too-large`, checked at the same point as the duplicate-id scan
-— the two are the only whole-document verdicts, and both are cheap enough to reach without touching
-a single PNG.
+than per-catalog settings.
+
+The count cap is free, but the **pixel** cap needs dimensions the JSON does not record — and reading
+them with the ordinary decoder would allocate the oversized raster to measure it, defeating the
+protection at the moment it fires. So the budget is enforced after a **bounded header preflight**:
+read each PNG's `IHDR` (the first handful of bytes after the signature), take `width × height` from
+it, sum across the set, and only then decide. A file whose header is unreadable, or whose declared
+dimensions disagree with what the full decode later produces, is `header-invalid` — the second half
+matters because a lying header is otherwise a way to walk straight past the cap. `document-too-large`
+is then checked alongside the duplicate-id scan, both whole-document verdicts reached before any
+pixel buffer is allocated.
 
 **The `id` must also be safe as a map key, which is not the same constraint.** `__proto__` is a
 perfectly good path segment and a catastrophic object key: `statuses[id] = value` in the browser
@@ -714,7 +731,12 @@ with the reference whenever the accepted delta was itself within that tolerance.
 such an acceptance is `resolved` the moment it is authored, and the workflow closes the issue before
 anyone has fixed anything. The guard also names the real defect in that case — an acceptance whose
 stored candidate already agrees with the reference is accepting a difference that does not exist, so
-**authoring must reject it** rather than leaving evaluation to paper over it.
+**authoring must reject it** — *and so must the evaluator*, because §7 records that mask authoring
+is currently manual, so "authoring rejects it" describes a step that does not yet exist. Left to
+authoring alone, such a record is simply `valid` and its mask joins the suppression union, hiding
+whatever later appears in that region on the strength of an acceptance that never accepted anything.
+The evaluator therefore checks it directly: a stored candidate that already agrees with the
+reference under the match metric is `refused` with `acceptance-is-noop`, with its own fixture.
 
 **Ambiguity short-circuits the *bounds* check, not the whole gate.** With several matches there is no
 single node whose bounds the index can publish, so `element-moved`'s missing-bounds condition would
@@ -816,7 +838,7 @@ field would leave two engines free to pick different ones. Same fixed ordering r
 `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`, `reference-hash-missing`, `decode-failed`,
 `degenerate-dimensions`, `mask-encoding-invalid`, `mask-empty`, `dimension-mismatch`,
 `tolerance-out-of-range`, `path-not-contained`, `id-not-safe`, `schema-invalid`, `id-missing`,
-`orphaned-target`, `document-too-large`.
+`orphaned-target`, `document-too-large`, `header-invalid`, `acceptance-is-noop`.
 
 **A per-acceptance refusal populates `validationFailures` as well**, one entry per reason. The two
 fields are not alternatives: `statuses` answers "what happened to this acceptance", and
@@ -910,8 +932,9 @@ wrong space.
 
 ### Evaluation order (the safety requirements, as an algorithm)
 
-Given the raw normalised pair and the acceptances whose scope matches this `(previewId,
-referenceId, variant)`:
+Given the raw normalised pair and the acceptances whose **entire recorded scope** matches this
+comparison — `system`, `component`, `previewId`, `referenceId` **and** `variant`, every field, not
+the subset a page happens to key by:
 
 1. **Fingerprint gate.** If the served reference's `sha256` ≠ the acceptance's `referenceSha256`,
    the acceptance is `invalidated: reference-changed`. It contributes no suppression, and the page
@@ -1071,7 +1094,7 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | --- | --- |
 | decode (validated inputs only) | **every** *hash-valid* raster input decoded — the two shared ones (reference, current candidate) plus `mask.png` and `accepted-candidate.png` **for each member of `acceptances[]`**, so a two-acceptance case pins six, not four. The candidate gate reads each accepted-candidate decode and coverage reads each mask decode, so an alpha or colour divergence in any of them would otherwise first surface as a wrong verdict rather than a decoder bug. **A hash-mismatch fixture pins no decode for the failing artifact** — I7 refuses it before its bytes are used, and a tampered file may not be decodable at all, so requiring a decoded plane for it would contradict the contract it exists to test |
 | content boxes | each input's measured content box and the resolved `plane` discriminant, since content-box detection is itself part of the portable path and two engines can otherwise measure differently near a sampled edge or the `MIN_BOX_COVERAGE` threshold |
-| tag index | the `{tag: {count, bounds}}` projection the server computes from `semanticsPayload`. Pinned as its own stage because **production does not ship the tree to the browser** — feeding the full payload to both conformance consumers would leave the projection itself untested, so the server could count tags or transform bounds differently from the offline resolver while every fixture still passed |
+| tag index | the `{tag: {count, bounds}}` projection the server computes from `semanticsPayload`. Pinned as its own stage because **production does not ship the tree to the browser** — feeding the full payload to both conformance consumers would leave the projection itself untested, so the server could count tags or transform bounds differently from the offline resolver while every fixture still passed. **A third runner is required for this stage**: the server projector's own Kotlin tests must consume these same payload fixtures and produce this expected index. The two named runners cannot cover it — production JavaScript consumes an already-built index, so the JS suite never exercises the projector, and design-parity has its own resolver rather than this one. Pinning the artifact without running the code that produces it proves nothing about the code that produces it |
 | selector | the resolved element — which node the selector matched, its bounds in canonical coordinates, and the tag-uniqueness verdict, resolved **from the index** as the browser does. Ahead of the union stages, because which acceptances survive decides which masks the union contains (I5) |
 | separation (per acceptance) | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite), for **each** acceptance independently |
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
