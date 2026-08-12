@@ -1296,7 +1296,10 @@ object ServeWeb {
    *
    * Sections whose groups are all unnamed render as leaves — there is nothing to list under them.
    */
-  private fun catalogTreeHtml(sections: List<LandingSection>): String = buildString {
+  private fun catalogTreeHtml(
+    sections: List<LandingSection>,
+    components: (GridCard) -> TreeComponent,
+  ): String = buildString {
     append("<nav class=\"cp-tree\" id=\"cp-tabs\" aria-label=\"Catalog sections\">\n")
     append("<ul class=\"cp-tree-list\" role=\"tree\" aria-label=\"Catalog sections\">\n")
     sections.forEachIndexed { i, sec ->
@@ -1313,18 +1316,27 @@ object ServeWeb {
       // section whose `aria-expanded` governs it, so a screen reader could not report the group
       // rows as that section's children.
       if (named.isNotEmpty()) append(" aria-expanded=\"$selected\" aria-owns=\"$childrenId\"")
-      append(" tabindex=\"${if (i == 0) "0" else "-1"}\">")
+      // No `tabindex` in the served markup, deliberately. The roving tab stop is a tree-widget
+      // behaviour and the tree is only a widget once its script runs — baking `-1` into every row
+      // but the first would leave a no-JS client (where the arrow keys never bind) unable to reach
+      // any section past the first by keyboard, in the very mode where the rows are its only
+      // navigation. `reflectTabs()` applies the indices on init instead.
+      append(">")
       append(WebEscaping.htmlEscape(sec.name))
       append("<span class=\"cp-tab-count\">${sec.count}</span></a>\n")
       if (named.isNotEmpty()) {
         append("  <ul class=\"cp-tree-children\" id=\"$childrenId\" role=\"group\">\n")
-        named.forEach { g ->
-          val anchor = groupAnchorId(sec.slug, g.slug)
-          append("    <li role=\"none\"><a class=\"cp-tree-group\" role=\"treeitem\"")
-          append(" href=\"#$anchor\" data-tab=\"${sec.slug}\" data-group=\"$anchor\"")
-          append(" tabindex=\"-1\">")
-          append(WebEscaping.htmlEscape(g.name!!))
-          append("<span class=\"cp-tree-count\">${g.cards.size}</span></a></li>\n")
+        named.forEachIndexed { gi, g ->
+          // The first group of the first section opens with the page, so a visitor lands on a tree
+          // that is already showing components rather than one that has to be prised open before
+          // it says anything a tab bar didn't.
+          appendGroupRow(
+            g,
+            sec.slug,
+            groupAnchorId(sec.slug, g.slug),
+            i == 0 && gi == 0,
+            components,
+          )
         }
         append("  </ul>\n")
       }
@@ -1333,9 +1345,183 @@ object ServeWeb {
     append("</ul>\n</nav>\n")
   }
 
+  /**
+   * The **outline** tree, for a catalog whose previews declare no `section` — the shape most
+   * published design systems are in, m3-catalog included, where the inventory comes from
+   * `@CatalogComponent(group = …)` and nothing ever names a section.
+   *
+   * Until now those catalogs got no tree at all: [buildSections] returned empty, the landing fell
+   * back to a flat grid, and the two levels of structure the catalog *did* have (family group, then
+   * component) stayed invisible. Here the groups ARE the top level. There are no panels to switch —
+   * the flat grid shows everything at once — so every row is purely a jump, which is also why these
+   * rows carry no `data-tab`.
+   */
+  private fun catalogOutlineTreeHtml(
+    groups: List<LandingGroup>,
+    components: (GridCard) -> TreeComponent,
+  ): String = buildString {
+    append("<nav class=\"cp-tree\" id=\"cp-tabs\" aria-label=\"Catalog contents\">\n")
+    append("<ul class=\"cp-tree-list\" role=\"tree\" aria-label=\"Catalog contents\">\n")
+    groups.forEachIndexed { i, g ->
+      // The group row IS the top-level node here, so it carries `cp-tree-node` itself rather than
+      // being wrapped in one — the wrapper is what the filter hides, and a second <li> around an
+      // <li> is not a list.
+      appendGroupRow(g, null, flatGroupAnchorId(g.slug), i == 0, components, "cp-tree-node")
+    }
+    append("</ul>\n</nav>\n")
+  }
+
+  /**
+   * The anchor on a synthesized flat sub-group divider — no section owns it, so it stands alone.
+   */
+  private fun flatGroupAnchorId(groupSlug: String) = "cp-group-$groupSlug"
+
+  /** A component row and the primary-axis variants beneath it. */
+  private class TreeComponent(
+    val label: String,
+    val anchorId: String,
+    val variants: List<TreeVariant>,
+    val href: String,
+  )
+
+  /**
+   * One group row plus its component rows (and each component's variants).
+   *
+   * Expansion follows the same discipline as a section: **a group is open exactly when it is the
+   * current one**, and a component likewise. That is what keeps the tree a navigation aid rather
+   * than a wall — compose-m3's 84 components across twenty families would otherwise all be rows at
+   * once — and it matches what the grid beside it is doing, which shows one section at a time.
+   */
+  private fun StringBuilder.appendGroupRow(
+    group: LandingGroup,
+    tabSlug: String?,
+    anchor: String,
+    open: Boolean,
+    components: (GridCard) -> TreeComponent,
+    /** Extra class for the row's `<li>` — the outline tree's groups are its top-level nodes. */
+    liClass: String = "",
+  ) {
+    val childrenId = "cp-tree-of-$anchor"
+    val tabAttr = tabSlug?.let { " data-tab=\"$it\"" } ?: ""
+    val expanded = if (open) "true" else "false"
+    val li =
+      if (liClass.isEmpty()) "<li role=\"none\">" else "<li class=\"$liClass\" role=\"none\">"
+    append("    $li<a class=\"cp-tree-group cp-tree-link\" role=\"treeitem\"")
+    append(" href=\"#$anchor\"$tabAttr data-group=\"$anchor\"")
+    if (group.cards.isNotEmpty()) {
+      append(" aria-expanded=\"$expanded\" aria-owns=\"$childrenId\"")
+    }
+    append(">")
+    append(WebEscaping.htmlEscape(group.name ?: "Ungrouped"))
+    append("<span class=\"cp-tree-count\">${group.cards.size}</span></a>\n")
+    if (group.cards.isEmpty()) {
+      append("</li>\n")
+      return
+    }
+    append("      <ul class=\"cp-tree-children cp-tree-components\" id=\"$childrenId\"")
+    append(" role=\"group\">\n")
+    group.cards.forEach { card ->
+      val c = components(card)
+      val varsId = "cp-tree-of-${c.anchorId}"
+      append("        <li role=\"none\"><a class=\"cp-tree-component cp-tree-link\"")
+      append(" role=\"treeitem\" href=\"#${c.anchorId}\"$tabAttr data-group=\"${c.anchorId}\"")
+      if (c.variants.isNotEmpty()) append(" aria-expanded=\"false\" aria-owns=\"$varsId\"")
+      append(">")
+      append(WebEscaping.htmlEscape(c.label))
+      if (c.variants.isNotEmpty()) {
+        append("<span class=\"cp-tree-count\">${c.variants.size + 1}</span>")
+      }
+      append("</a>\n")
+      if (c.variants.isNotEmpty()) {
+        append("          <ul class=\"cp-tree-children cp-tree-variants\" id=\"$varsId\"")
+        append(" role=\"group\">\n")
+        // The default render leads, so the list reads as "the component, then how else it renders"
+        // rather than starting at an exceptional state. It points at the same card the component
+        // row does, which is what the grid is already showing.
+        append("            <li role=\"none\"><a class=\"cp-tree-variant cp-tree-link\"")
+        append(" role=\"treeitem\" href=\"#${c.anchorId}\"$tabAttr")
+        append(" data-group=\"${c.anchorId}\">Default</a></li>\n")
+        c.variants.forEach { v ->
+          // A variant is folded out of the grid, so unlike every other row it has nowhere on this
+          // page to jump to — its href is a real navigation to the viewer, left to the browser.
+          append("            <li role=\"none\"><a class=\"cp-tree-variant cp-tree-link\"")
+          append(" role=\"treeitem\" href=\"${WebEscaping.htmlEscape(v.href)}\">")
+          append(WebEscaping.htmlEscape(v.label))
+          append("</a></li>\n")
+        }
+        append("          </ul>\n")
+      }
+      append("        </li>\n")
+    }
+    append("      </ul>\n    </li>\n")
+  }
+
   /** The id of the sub-group divider a tree row jumps to — its section's slug, then its own. */
   private fun groupAnchorId(sectionSlug: String, groupSlug: String) =
     "cp-group-$sectionSlug-$groupSlug"
+
+  /**
+   * The id of the grid card a component row jumps to. Preview ids are already slug-shaped
+   * (`button-filled__ideal__default__light`), but they are catalog data rather than something this
+   * page mints, so anything outside the HTML-id alphabet is folded to `-`.
+   */
+  private fun cardAnchorId(previewId: String) =
+    "cp-card-" +
+      previewId
+        .map { if (it.isLetterOrDigit() || it == '_' || it == '-') it else '-' }
+        .joinToString("")
+
+  /** One **primary-axis** variant of a component: a distinct state or props render. */
+  private class TreeVariant(val label: String, val href: String)
+
+  /**
+   * A component's primary-axis variants — the renders the grid folds out so a component shows one
+   * card, listed here so the tree can offer them without a visit to the viewer to discover they
+   * exist.
+   *
+   * **Primary** is `state` (disabled, pressed, checked) and `props` (with icon, RTL, large font):
+   * axes where the variant is a different *thing to look at*. Theme, breakpoint, fontScale and
+   * locale are **secondary** — a different rendering of the same thing — and stay out of the tree,
+   * theme because the card already swaps it in place, the rest because they multiply every row by a
+   * matrix nobody navigates by.
+   *
+   * Keyed exactly as the viewer's own [state][stateSwitcherHtml] and [variant][variantSwitcherHtml]
+   * switchers key: same family, same theme lane, and for props the same state — so a row offers the
+   * same set the viewer would, rather than a second opinion about what belongs together.
+   */
+  private fun primaryVariants(
+    card: GridCard,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+    href: (ServePreview) -> String,
+  ): List<TreeVariant> {
+    val default = card.default
+    val lane = themeLane(default, darkFirst)
+    val defaultState = default.state ?: "default"
+    val rows = mutableListOf<TreeVariant>()
+    // States first: the axis a component varies on most, and the one a reviewer looks for.
+    val stateKey = switcherStateKey(default)
+    val seenStates = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (switcherStateKey(p) != stateKey) continue
+      if (themeLane(p, darkFirst) != lane) continue
+      if (!hasNonDefaultProps(p) && isNonDefaultState(p)) {
+        seenStates.putIfAbsent(p.state!!, p)
+      }
+    }
+    seenStates.forEach { (state, p) -> rows.add(TreeVariant(stateLabel(state), href(p))) }
+    // Then the props axis, held at the component's default state so a row never crosses two axes.
+    val propsKey = switcherPropsKey(default)
+    val seenProps = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (switcherPropsKey(p) != propsKey) continue
+      if (themeLane(p, darkFirst) != lane) continue
+      if ((p.state ?: "default") != defaultState) continue
+      if (hasNonDefaultProps(p)) seenProps.putIfAbsent(propsSignature(p.props), p)
+    }
+    seenProps.forEach { (_, p) -> rows.add(TreeVariant(propsLabel(p.props), href(p))) }
+    return rows
+  }
 
   /** Prettier display names for a few component families whose bare title-case reads badly. */
   private val FAMILY_DISPLAY_NAMES =
@@ -1553,6 +1739,8 @@ object ServeWeb {
     hasThemes: Boolean,
     hasTabs: Boolean,
     hasGroups: Boolean,
+    /** Whether a navigation tree is rendered at all — sectioned catalogs AND outline ones. */
+    hasTree: Boolean,
     themeStorageKey: String,
     tabStorageKey: String,
     /**
@@ -2015,6 +2203,14 @@ object ServeWeb {
     // the tab-only machinery below.
     val groupDecls =
       if (hasGroups) "\n      var navGroups = document.querySelectorAll(\".cp-subgroup\");" else ""
+    // Declared HERE rather than in the tree script, which is spliced in further down: `reflectTabs`
+    // runs the moment it is defined and touches `treeGroups`, and a `var` assigned later would only
+    // be hoisted, not set.
+    val treeDecls =
+      if (!hasTree) ""
+      else
+        "\n      var treeGroups = document.querySelectorAll(\".cp-tree-group\");" +
+          "\n      var treeLinks = document.querySelectorAll(\".cp-tree-link\");"
     val tabDecls =
       if (hasTabs)
         "\n      var tabBtns = document.querySelectorAll(\".cp-tab\");" +
@@ -2115,11 +2311,13 @@ object ServeWeb {
       else ""
     // The tree's own behaviour: its group rows, its keyboard, and the scroll-spy that keeps the
     // row you are looking at marked. Spliced in at the same indent as the rest, and empty for a
-    // flat catalog — which has no tree.
+    // flat catalog — which has no tree. Emitted AFTER [popWiring] on purpose: `onPop` is a plain
+    // `popstate` listener, so the tree's fragment-precedence handler has to register second to get
+    // the last word over the shared `?tab=` restore.
     val treeWiring =
-      if (!hasTabs) ""
+      if (!hasTree) ""
       else
-        catalogTreeScript(tabStorageKey).lines().joinToString("") {
+        catalogTreeScript(tabStorageKey, hasTabs).lines().joinToString("") {
           if (it.isEmpty()) "\n" else "\n      $it"
         }
     // Back / Forward: re-read the whole selection off the URL and re-apply it in place — no
@@ -2161,7 +2359,7 @@ object ServeWeb {
       function urlParam(n) { return urlState ? urlState.get(n) : ""; }
       function pushUrl(v) { if (urlState) urlState.push(v); }
       function replaceUrl(v) { if (urlState) urlState.replace(v); }
-      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }$groupDecls$tabDecls
+      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }$groupDecls$treeDecls$tabDecls
       ${listOf(themeInit, themeRenderInit).filter { it.isNotEmpty() }.joinToString("\n")}
       function apply() {
         $applyTheme
@@ -2185,7 +2383,7 @@ object ServeWeb {
         replaceUrl({ q: input.value.trim() });
         apply();
       });
-      $themeWiring$tabWiring$treeWiring$popWiring
+      $themeWiring$tabWiring$popWiring$treeWiring
       apply();$presenceWiring
     })();
     """
@@ -2210,8 +2408,106 @@ object ServeWeb {
    *   says where you *are* and not merely where you last clicked. Additive: with no
    *   `IntersectionObserver` the marking simply follows clicks.
    */
-  private fun catalogTreeScript(tabStorageKey: String): String =
-    """
+  private fun catalogTreeScript(tabStorageKey: String, hasTabs: Boolean): String {
+    // Section switching only exists for a catalog that HAS sections. An outline tree (a
+    // section-less catalog) hides nothing and remembers nothing — every row is purely a jump — so
+    // the pieces that talk to `current` / `selectTab` are spliced out rather than guarded at
+    // runtime, and its script never mentions a tab.
+    val selectOwningTab =
+      if (hasTabs) "\n        selectTab(row.getAttribute(\"data-tab\"));" else ""
+    val tabRows = if (hasTabs) ".cp-tab, " else ""
+    // The rows a `#cp-panel-<slug>` fragment could name, and the three operations that only mean
+    // something when sections exist. An outline tree gets inert stand-ins rather than `if
+    // (hasTabs)`
+    // scattered through the body.
+    val tabHelpers =
+      if (hasTabs)
+        """
+        var tabBtnsForHash = tabBtns;
+        function selectTab(slug) {
+          if (!slug || slug === current) return;
+          current = slug;
+          try { localStorage.setItem("$tabStorageKey", current); } catch (e) {}
+          reflectTabs();
+          pushUrl({ tab: current });
+          apply();
+        }
+        function selectCollapsedTab(row) { selectTab(row.getAttribute("data-tab")); }
+        function applyLandingTab(landing) {
+          if (!landing.tab || landing.tab === current) return;
+          current = landing.tab;
+          initialTab = current;
+          reflectTabs();
+        }
+        """
+          .trimIndent()
+          .lines()
+          .joinToString("\n") { if (it.isEmpty()) "" else "      $it" }
+          .trimStart()
+      else
+        """
+        var tabBtnsForHash = [];
+        function selectCollapsedTab() {}
+        function applyLandingTab() {}
+        """
+          .trimIndent()
+          .lines()
+          .joinToString("\n") { if (it.isEmpty()) "" else "      $it" }
+          .trimStart()
+    val popPrecedence =
+      if (!hasTabs) ""
+      else
+        """
+
+        // Back / Forward has to resolve an entry the same way loading it fresh would. The shared pop
+        // handler reads `?tab=` only, so returning to an entry whose fragment and query disagree —
+        // `?tab=components#cp-group-themes-foundation`, which a fresh load resolves to Themes —
+        // would land on Components with the fragment's target hidden. This runs after that handler
+        // (registered later, and `onPop` is a plain listener) and re-applies the precedence.
+        if (window.cpUrlState) {
+          window.cpUrlState.onPop(function () {
+            var popped = hashTarget();
+            if (!popped || popped.tab === current) return;
+            current = popped.tab;
+            reflectTabs();
+            apply();
+            if (popped.row) markGroup(popped.row);
+          });
+        }
+        """
+          .trimIndent()
+          .lines()
+          .joinToString("\n") { if (it.isEmpty()) "" else "      $it" }
+          .trimStart()
+    val sectionClicks =
+      if (!hasTabs) ""
+      else
+        """
+
+        // Choosing a whole section retires any group fragment: the row you clicked is the statement
+        // of where you are, and a leftover `#cp-group-…` from another section would outrank it on
+        // the next load. It also has to honour the promise its own `href="#cp-panel-…"` makes — the
+        // shared handler prevents the default navigation and only swaps which panel is hidden, so
+        // from halfway down a long section the scroll simply stayed where it was. Registered after
+        // that handler, so the panel is already showing when this measures it, and it only scrolls
+        // when the panel is actually behind the sticky toolbar.
+        tabBtns.forEach(function (t) {
+          t.addEventListener("click", function () {
+            setFragment("");
+            var panel = document.getElementById(t.getAttribute("aria-controls"));
+            if (!panel) return;
+            var clearance = tools ? tools.getBoundingClientRect().height : 0;
+            if (panel.getBoundingClientRect().top < clearance) {
+              panel.scrollIntoView({ block: "start" });
+            }
+          });
+        });
+        """
+          .trimIndent()
+          .lines()
+          .joinToString("\n") { if (it.isEmpty()) "" else "      $it" }
+          .trimStart()
+    return """
     (function () {
       var tree = document.getElementById("cp-tabs");
       if (!tree) return;
@@ -2219,6 +2515,9 @@ object ServeWeb {
       // sticky tree's offset and for every scroll target's `scroll-margin-top`. Measured rather
       // than assumed: it wraps on a narrow viewport and grows a row with the declared-theme chips,
       // and the static fallback in the stylesheet only covers the unwrapped case.
+      // `cp-js` gates every collapse rule in the stylesheet. It used to be set by the section
+      // machinery alone, which would have left an outline tree permanently expanded.
+      document.documentElement.classList.add("cp-js");
       var tools = document.querySelector(".cp-catalog-tools");
       if (tools) {
         var syncTools = function () {
@@ -2229,9 +2528,10 @@ object ServeWeb {
         if (window.ResizeObserver) new ResizeObserver(syncTools).observe(tools);
         else window.addEventListener("resize", syncTools);
       }
-      // The row pointing at a sub-group id, found by COMPARING attribute values rather than by
-      // building a selector out of DOM text (CodeQL `js/xss-through-dom`, and the rule the backdrop
-      // viewer already follows).
+      $tabHelpers
+      // The row pointing at an id, found by COMPARING attribute values rather than by building a
+      // selector out of DOM text (CodeQL `js/xss-through-dom`, and the rule the backdrop viewer
+      // already follows).
       function rowFor(id) {
         var found = null;
         treeGroups.forEach(function (g) { if (g.getAttribute("data-group") === id) found = g; });
@@ -2243,63 +2543,78 @@ object ServeWeb {
           else g.removeAttribute("aria-current");
         });
       }
-      function selectTab(slug) {
-        if (!slug || slug === current) return;
-        current = slug;
-        try { localStorage.setItem("$tabStorageKey", current); } catch (e) {}
-        reflectTabs();
-        pushUrl({ tab: current });
-        apply();
+      // Which group and which component are open. One of each: a tree that opened every branch it
+      // was ever asked about would end up listing every component in the catalog, which is the
+      // wall the grid already is. The server marks the first group open, so the page arrives
+      // showing components rather than needing to be prised open first.
+      var openGroup = null;
+      var openCard = null;
+      treeLinks.forEach(function (r) {
+        if (r.classList.contains("cp-tree-group") && r.getAttribute("aria-expanded") === "true") {
+          openGroup = r.getAttribute("data-group");
+        }
+      });
+      function reflectTree() {
+        treeLinks.forEach(function (r) {
+          if (!r.hasAttribute("aria-expanded")) return;
+          var id = r.getAttribute("data-group");
+          var on = r.classList.contains("cp-tree-group") ? id === openGroup : id === openCard;
+          r.setAttribute("aria-expanded", on ? "true" : "false");
+        });
+      }
+      function openRow(row) {
+        var id = row.getAttribute("data-group");
+        if (row.classList.contains("cp-tree-group")) {
+          openGroup = id;
+          openCard = null;
+        } else if (row.classList.contains("cp-tree-component")) {
+          openCard = id;
+        }
+        reflectTree();
       }
       // The fragment is part of the address this page describes, and `cpUrlState` deliberately
       // preserves whatever hash is already there when it rewrites the query. So a click that moves
       // you somewhere else has to move the fragment too, or the URL keeps pointing at where you
-      // WERE — `?tab=components#cp-group-themes-foundation` reads as Components in the query and
-      // Themes in the hash, and since the hash outranks `?tab=` on load, reloading or sharing it
-      // lands on Themes. `replaceState`, not push: the entry itself was just pushed by
-      // [selectTab], and a jump inside a section is a scroll, not a place to come Back to.
+      // WERE. `replaceState`, not push: a jump inside the page is a scroll, not a place to come
+      // Back to.
       function setFragment(id) {
         var url = location.pathname + location.search + (id ? "#" + id : "");
         try { history.replaceState(history.state, "", url); } catch (e) {}
       }
-      treeGroups.forEach(function (g) {
-        g.addEventListener("click", function (e) {
-          var target = document.getElementById(g.getAttribute("data-group"));
+      // Every row that names an in-page destination. A VARIANT row is the exception: the grid
+      // folds those renders out, so it has nowhere here to jump to — it carries a plain `/p/<id>`
+      // href and is left to the browser.
+      treeLinks.forEach(function (row) {
+        row.addEventListener("click", function (e) {
+          var id = row.getAttribute("data-group");
+          if (!id) return;
+          var target = document.getElementById(id);
           if (!target) return;
           e.preventDefault();
-          selectTab(g.getAttribute("data-tab"));
-          setFragment(g.getAttribute("data-group"));
+          openRow(row);$selectOwningTab
+          setFragment(id);
           target.scrollIntoView({ behavior: "smooth", block: "start" });
-          markGroup(g);
+          if (row.classList.contains("cp-tree-group")) markGroup(row);
         });
       });
-      // Choosing a whole section retires any group fragment for the same reason: the row you
-      // clicked is the statement of where you are, and a leftover `#cp-group-…` from another
-      // section would outrank it on the next load.
-      tabBtns.forEach(function (t) {
-        t.addEventListener("click", function () { setFragment(""); });
-      });
-      // Only the rows a visitor can actually reach: a collapsed section contributes its own row and
-      // none of its children, and a row the filter hid contributes nothing.
+      // Keyboard: the tree pattern's roving focus. Visibility is read off layout rather than walked
+      // by hand — a collapsed branch is `display: none`, so `offsetParent` already answers "can the
+      // visitor reach this row", across all four levels and the filter's hiding at once.
       function visibleRows() {
-        var items = [];
-        tabBtns.forEach(function (t) {
-          var node = t.closest(".cp-tree-node");
-          if (node && node.hidden) return;
-          items.push(t);
-          if (t.getAttribute("aria-expanded") === "false") return;
-          var kids = t.nextElementSibling;
-          if (!kids) return;
-          kids.querySelectorAll(".cp-tree-group").forEach(function (g) {
-            if (!g.parentElement || !g.parentElement.hidden) items.push(g);
-          });
+        var rows = [];
+        tree.querySelectorAll("$tabRows.cp-tree-link").forEach(function (r) {
+          if (r.offsetParent !== null) rows.push(r);
         });
-        return items;
+        return rows;
       }
       function focusRow(el) {
         if (!el) return;
         visibleRows().forEach(function (i) { i.tabIndex = i === el ? 0 : -1; });
         el.focus();
+      }
+      function parentRow(row) {
+        var list = row.closest("ul.cp-tree-children");
+        return list ? list.previousElementSibling : null;
       }
       tree.addEventListener("keydown", function (e) {
         var items = visibleRows();
@@ -2312,62 +2627,74 @@ object ServeWeb {
         else if (key === "Home") next = items[0];
         else if (key === "End") next = items[items.length - 1];
         else if (key === "ArrowRight") {
-          if (items[at].getAttribute("aria-expanded") === "false") {
+          // Right opens a collapsed parent, steps into an expanded one's first child, and does
+          // NOTHING on an end node. Falling through to "next visible row" on a leaf made Right a
+          // second Arrow Down, walking the visitor across siblings when they asked to expand
+          // something that cannot expand.
+          var expanded = items[at].getAttribute("aria-expanded");
+          if (expanded === "false") {
             e.preventDefault();
-            selectTab(items[at].getAttribute("data-tab"));
+            if (items[at].classList.contains("cp-tree-link")) openRow(items[at]);
+            else selectCollapsedTab(items[at]);
             return;
           }
+          if (expanded !== "true") return;
           next = items[Math.min(at + 1, items.length - 1)];
         } else if (key === "ArrowLeft") {
-          var node = items[at].closest(".cp-tree-node");
-          if (items[at].classList.contains("cp-tree-group") && node)
-            next = node.querySelector(".cp-tab");
+          // Left closes an open branch, else climbs to the parent — the tree pattern's own rule,
+          // and the only way back up once the levels are four deep.
+          if (items[at].getAttribute("aria-expanded") === "true") {
+            e.preventDefault();
+            if (items[at].classList.contains("cp-tree-group")) openGroup = null;
+            else openCard = null;
+            reflectTree();
+            return;
+          }
+          next = parentRow(items[at]);
         } else return;
         if (!next) return;
         e.preventDefault();
         focusRow(next);
       });
-      // A group row's href is a real link, so it gets copied and shared — and arriving on
-      // `#cp-group-components-device` in a fresh session used to land nowhere: initialisation reads
-      // `?tab=` and the remembered section only, so the section holding the target stayed hidden
-      // and the browser had nothing to scroll to. A fragment naming a group (or a section panel) is
-      // as explicit a request as `?tab=` is, so it selects that section, outranking the remembered
-      // one. Runs before the trailing `apply()`, which is what actually reveals the panel — hence
-      // the deferred scroll rather than an immediate one.
+      // What the URL's fragment names, or null when it names nothing this page has.
+      //
       // Percent-DECODED before comparing: a section or group name keeps its non-ASCII letters
       // through `sectionSlug` (Kotlin's `isLetterOrDigit` is Unicode-aware), so the id in the DOM
       // is the raw text while browsers hand back `location.hash` encoded. Undecoded, a shared link
       // to an accented or CJK group would match no row at all and silently do nothing. A malformed
       // escape sequence throws, and is simply not a fragment this page knows.
-      var hash = location.hash ? location.hash.slice(1) : "";
-      try { hash = decodeURIComponent(hash); } catch (e) {}
-      if (hash) {
-        var wanted = null;
-        var target = null;
-        treeGroups.forEach(function (g) {
-          if (g.getAttribute("data-group") === hash) {
-            wanted = g.getAttribute("data-tab");
-            target = g;
+      function hashTarget() {
+        var id = location.hash ? location.hash.slice(1) : "";
+        try { id = decodeURIComponent(id); } catch (e) { return null; }
+        if (!id) return null;
+        var tab = null;
+        var row = null;
+        treeLinks.forEach(function (g) {
+          if (!row && g.getAttribute("data-group") === id) {
+            tab = g.getAttribute("data-tab");
+            row = g;
           }
         });
-        if (!wanted) {
-          tabBtns.forEach(function (t) {
-            if (t.getAttribute("aria-controls") === hash) wanted = t.getAttribute("data-tab");
+        if (!row) {
+          tabBtnsForHash.forEach(function (t) {
+            if (t.getAttribute("aria-controls") === id) tab = t.getAttribute("data-tab");
           });
         }
-        if (wanted && wanted !== current) {
-          current = wanted;
-          initialTab = current;
-          reflectTabs();
-        }
-        if (wanted) {
-          var landing = document.getElementById(hash);
-          setTimeout(function () {
-            if (landing) landing.scrollIntoView({ block: "start" });
-            if (target) markGroup(target);
-          }, 0);
-        }
+        return row || tab ? { tab: tab, row: row, id: id } : null;
       }
+      var landing = hashTarget();
+      if (landing) {
+        if (landing.row) openRow(landing.row);
+        applyLandingTab(landing);
+        setTimeout(function () {
+          var el = document.getElementById(landing.id);
+          if (el) el.scrollIntoView({ block: "start" });
+          if (landing.row && landing.row.classList.contains("cp-tree-group")) markGroup(landing.row);
+        }, 0);
+      }$sectionClicks$popPrecedence
+      // Scroll-spy: mark the group whose cards are on screen, so the tree says where you are rather
+      // than only where you last clicked. Additive — with no `IntersectionObserver` the marking
+      // simply follows clicks.
       if (window.IntersectionObserver) {
         var onScreen = [];
         var spy = new IntersectionObserver(function (entries) {
@@ -2394,6 +2721,7 @@ object ServeWeb {
     })();
     """
       .trimIndent()
+  }
 
   /**
    * A heartbeat telling the server that a visitor is still on this catalog's pages.
@@ -4707,7 +5035,7 @@ object ServeWeb {
       renderedVariant(card).let { if (themeOverridable(it)) renderSrc(it) else "" }
     fun cardViews(card: GridCard): Long =
       listOfNotNull(card.light, card.dark, card.neutral).sumOf { engagement[it.id]?.views ?: 0L }
-    fun swapCard(card: GridCard): String {
+    fun swapCard(card: GridCard, anchor: String): String {
       val l = card.light!!
       val d = card.dark!!
       // Default to the light render (dark-first systems open dark); the JS re-swaps to the sticky
@@ -4722,7 +5050,7 @@ object ServeWeb {
       // `data-def` is the variant a DECLARED theme re-renders (the server-side default), so picking
       // one doesn't also flip the card's light/dark base.
       return """
-        <a class="cp-card" data-swap="1" data-bg-theme="$defTheme" data-def="${if (darkFirst) "d" else "l"}"
+        <a class="cp-card"$anchor data-swap="1" data-bg-theme="$defTheme" data-def="${if (darkFirst) "d" else "l"}"
           data-l-src="${renderSrc(l)}" data-l-href="${viewerHref(l)}"
           data-l-id="${WebEscaping.htmlEscape(l.id)}" data-l-label="${WebEscaping.htmlEscape(lightLabel)}"
           data-d-src="${renderSrc(d)}" data-d-href="${viewerHref(d)}"
@@ -4740,7 +5068,7 @@ object ServeWeb {
         """
         .trimIndent()
     }
-    fun singleCard(p: ServePreview): String {
+    fun singleCard(p: ServePreview, anchor: String): String {
       val idSeg = WebEscaping.urlEncodeSegment(p.id)
       val label = WebEscaping.htmlEscape(gridDisplayName(p))
       val src = renderSrc(p)
@@ -4762,7 +5090,7 @@ object ServeWeb {
                 "</pre></details>"
             } ?: ""
         return """
-          <details class="cp-card cp-card--render-failed">
+          <details class="cp-card cp-card--render-failed"$anchor>
             <summary>
               <div class="cp-imgwrap cp-render-failure">
                 <span class="cp-render-failure-mark">!</span>
@@ -4787,7 +5115,7 @@ object ServeWeb {
       // data-bg-theme is the thumbnail's background (explicit token, else the dark-first default).
       val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
       return """
-          <a class="cp-card"$bgAttr href="$basePath/p/$idSeg$q">
+          <a class="cp-card"$anchor$bgAttr href="$basePath/p/$idSeg$q">
             <div class="cp-imgwrap">
               ${thumbImg(src, label, " loading=\"lazy\"", thumbCrop(p.id))}
             </div>
@@ -4800,8 +5128,13 @@ object ServeWeb {
           """
         .trimIndent()
     }
-    fun cardHtml(card: GridCard): String =
-      if (card.swappable) swapCard(card) else singleCard(card.default)
+    // Every card carries the anchor its tree row jumps to. Derived from the default render's id
+    // rather than from position, so a row keeps pointing at the same component as the catalog
+    // grows.
+    fun cardHtml(card: GridCard): String {
+      val anchor = " id=\"${cardAnchorId(card.default.id)}\""
+      return if (card.swappable) swapCard(card, anchor) else singleCard(card.default, anchor)
+    }
     val cards =
       if (groups.isEmpty()) {
         "<p class=\"cp-sub\">No previews discovered in this module.</p>"
@@ -4819,7 +5152,36 @@ object ServeWeb {
     // Any `.cp-subgroup` dividers present (authored tabs OR synthesized flat groups) → the filter
     // script must collapse an emptied sub-group on search, independent of the tab machinery.
     val hasGroups = hasTabs || synthGroups != null
-    val tabBar = if (!hasTabs) "" else catalogTreeHtml(sections)
+    // Slugs for the synthesized families, so an outline row has an anchor to jump to. Assigned
+    // here rather than in [synthesizeGroups] because only the tree needs them.
+    if (synthGroups != null) {
+      val used = HashSet<String>()
+      synthGroups.forEach { g ->
+        var slug = g.name?.let { sectionSlug(it) } ?: "ungrouped"
+        var n = 2
+        val base = slug
+        while (!used.add(slug)) {
+          slug = "$base-$n"
+          n++
+        }
+        g.slug = slug
+      }
+    }
+    // The component row for a card: its grid label, the card's own anchor, and the primary-axis
+    // variants the grid folded out from under it.
+    fun treeComponent(card: GridCard): TreeComponent =
+      TreeComponent(
+        label = gridDisplayName(card.default),
+        anchorId = cardAnchorId(card.default.id),
+        variants = primaryVariants(card, previews, darkFirst) { viewerHref(it) },
+        href = viewerHref(card.default),
+      )
+    val tabBar =
+      when {
+        hasTabs -> catalogTreeHtml(sections, ::treeComponent)
+        synthGroups != null -> catalogOutlineTreeHtml(synthGroups, ::treeComponent)
+        else -> ""
+      }
     // The grid body: either the tabbed section panels (id=cp-grid, so the search box's
     // aria-controls
     // + the filter script still target it) or the plain flat grid. The flat form reproduces the
@@ -4833,7 +5195,7 @@ object ServeWeb {
         buildString {
           append("<div class=\"cp-grid-groups\" id=\"cp-grid\">\n")
           synthGroups.forEach { g ->
-            append("<div class=\"cp-subgroup\">\n")
+            append("<div class=\"cp-subgroup\" id=\"${flatGroupAnchorId(g.slug)}\">\n")
             if (g.name != null)
               append("<h2 class=\"cp-group-head\">${WebEscaping.htmlEscape(g.name)}</h2>\n")
             append("<div class=\"cp-cards\">\n")
@@ -4874,7 +5236,7 @@ object ServeWeb {
     // flat catalog has no nav to stand beside anything and keeps the bare grid — which is also why
     // its committed golden is untouched by this.
     val navAndGrid =
-      if (!hasTabs) "$tabBar$gridBlock"
+      if (tabBar.isEmpty()) "$tabBar$gridBlock"
       else "<div class=\"cp-catalog-body\">\n$tabBar$gridBlock\n</div>"
     // The "about" intro now sits at the BOTTOM of a catalog page (below the grid) so the catalog's
     // own content leads; it still appears only for the public server.
@@ -4922,6 +5284,7 @@ object ServeWeb {
           hasThemes,
           hasTabs,
           hasGroups,
+          tabBar.isNotEmpty(),
           themeStorageKey(sessionId, basePath),
           tabStorageKey(sessionId, basePath),
           themeBaseJs,

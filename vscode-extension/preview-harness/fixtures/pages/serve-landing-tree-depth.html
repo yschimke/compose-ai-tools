@@ -1,5 +1,5 @@
     <!doctype html>
-    <html lang="en" data-cp-theme-key="cp-theme:default">
+    <html lang="en" data-cp-theme-key="cp-theme:compose-m3">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,7 +11,7 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:default"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
@@ -53,9 +53,9 @@
 </header>
         <main class="cp-main">
                 <h1 class="cp-head cp-catalog-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
-        <p class="cp-sub">14 preview(s)</p>
+        <p class="cp-sub">18 preview(s)</p>
         <div class="cp-catalog-actions">
-          <a class="cp-action-chip" href="/bundle.zip">download all (.zip)</a>
+          <a class="cp-action-chip" href="/bundle.zip?session=compose-m3">download all (.zip)</a>
         </div>
         <div class="cp-catalog-tools">
         <div class="cp-toolbar">
@@ -67,40 +67,44 @@
 <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
-  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="14"></span>
+  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="18"></span>
   <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind each preview">Transparent</button>
 </div>
 </div>
         <div class="cp-catalog-body">
 <nav class="cp-tree" id="cp-tabs" aria-label="Catalog contents">
 <ul class="cp-tree-list" role="tree" aria-label="Catalog contents">
-    <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-button" data-group="cp-group-button" aria-expanded="true" aria-owns="cp-tree-of-cp-group-button">Button<span class="cp-tree-count">3</span></a>
+    <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-button" data-group="cp-group-button" aria-expanded="true" aria-owns="cp-tree-of-cp-group-button">Button<span class="cp-tree-count">2</span></a>
       <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-button" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-button-filled__ideal__default__light" data-group="cp-card-button-filled__ideal__default__light">Button filled (light)</a>
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-button-filled__ideal__default__light" data-group="cp-card-button-filled__ideal__default__light" aria-expanded="false" aria-owns="cp-tree-of-cp-card-button-filled__ideal__default__light">Button · Filled (light)<span class="cp-tree-count">4</span></a>
+          <ul class="cp-tree-children cp-tree-variants" id="cp-tree-of-cp-card-button-filled__ideal__default__light" role="group">
+            <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="#cp-card-button-filled__ideal__default__light" data-group="cp-card-button-filled__ideal__default__light">Default</a></li>
+            <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/button-filled__ideal__default__light__direction-rtl?session=compose-m3">RTL</a></li>
+            <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/button-filled__ideal__default__light__locale-ar-xb?session=compose-m3">Locale ar-XB</a></li>
+            <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/button-filled__ideal__default__light__fontscale-2.0?session=compose-m3">Font 2.0×</a></li>
+          </ul>
         </li>
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-button-outlined__ideal__default__light" data-group="cp-card-button-outlined__ideal__default__light">Button outlined (light)</a>
-        </li>
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-button-tonal__ideal__default__light" data-group="cp-card-button-tonal__ideal__default__light">Button tonal (light)</a>
-        </li>
-      </ul>
-    </li>
-    <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-card" data-group="cp-group-card" aria-expanded="false" aria-owns="cp-tree-of-cp-group-card">Card<span class="cp-tree-count">2</span></a>
-      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-card" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-card-elevated__ideal__default__light" data-group="cp-card-card-elevated__ideal__default__light">Card elevated (light)</a>
-        </li>
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-card-filled__ideal__default__light" data-group="cp-card-card-filled__ideal__default__light">Card filled (light)</a>
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-button-outlined__ideal__default__light" data-group="cp-card-button-outlined__ideal__default__light">Button · Outlined (light)</a>
         </li>
       </ul>
     </li>
-    <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-fab" data-group="cp-group-fab" aria-expanded="false" aria-owns="cp-tree-of-cp-group-fab">FAB<span class="cp-tree-count">1</span></a>
-      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-fab" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-fab__ideal__default__light" data-group="cp-card-fab__ideal__default__light">FAB (light)</a>
+    <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-checkbox" data-group="cp-group-checkbox" aria-expanded="false" aria-owns="cp-tree-of-cp-group-checkbox">Checkbox<span class="cp-tree-count">1</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-checkbox" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-checkbox__ideal__default__light" data-group="cp-card-checkbox__ideal__default__light" aria-expanded="false" aria-owns="cp-tree-of-cp-card-checkbox__ideal__default__light">Checkbox · Checked (light)<span class="cp-tree-count">2</span></a>
+          <ul class="cp-tree-children cp-tree-variants" id="cp-tree-of-cp-card-checkbox__ideal__default__light" role="group">
+            <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="#cp-card-checkbox__ideal__default__light" data-group="cp-card-checkbox__ideal__default__light">Default</a></li>
+            <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/checkbox__ideal__unchecked__light?session=compose-m3">Unchecked</a></li>
+          </ul>
         </li>
       </ul>
     </li>
-    <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-badge" data-group="cp-group-badge" aria-expanded="false" aria-owns="cp-tree-of-cp-group-badge">Badge<span class="cp-tree-count">1</span></a>
-      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-badge" role="group">
-        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-badge__ideal__default__light" data-group="cp-card-badge__ideal__default__light">Badge (light)</a>
+    <li class="cp-tree-node" role="none"><a class="cp-tree-group cp-tree-link" role="treeitem" href="#cp-group-radio-buttons" data-group="cp-group-radio-buttons" aria-expanded="false" aria-owns="cp-tree-of-cp-group-radio-buttons">Radio buttons<span class="cp-tree-count">1</span></a>
+      <ul class="cp-tree-children cp-tree-components" id="cp-tree-of-cp-group-radio-buttons" role="group">
+        <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="#cp-card-radiobutton__ideal__default__light" data-group="cp-card-radiobutton__ideal__default__light" aria-expanded="false" aria-owns="cp-tree-of-cp-card-radiobutton__ideal__default__light">Radio · Selected (light)<span class="cp-tree-count">2</span></a>
+          <ul class="cp-tree-children cp-tree-variants" id="cp-tree-of-cp-card-radiobutton__ideal__default__light" role="group">
+            <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="#cp-card-radiobutton__ideal__default__light" data-group="cp-card-radiobutton__ideal__default__light">Default</a></li>
+            <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/radiobutton__ideal__unselected__light?session=compose-m3">Unselected</a></li>
+          </ul>
         </li>
       </ul>
     </li>
@@ -111,122 +115,72 @@
 <h2 class="cp-group-head">Button</h2>
 <div class="cp-cards">
 <a class="cp-card" id="cp-card-button-filled__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/button-filled__ideal__default__light.png" data-l-href="/p/button-filled__ideal__default__light"
-  data-l-id="button-filled__ideal__default__light" data-l-label="Button filled (light)"
-  data-d-src="/render/button-filled__ideal__default__dark.png" data-d-href="/p/button-filled__ideal__default__dark"
-  data-d-id="button-filled__ideal__default__dark" data-d-label="Button filled (dark)"
-  href="/p/button-filled__ideal__default__light">
+  data-l-src="/render/button-filled__ideal__default__light.png?session=compose-m3" data-l-href="/p/button-filled__ideal__default__light?session=compose-m3"
+  data-l-id="button-filled__ideal__default__light" data-l-label="Button · Filled (light)"
+  data-d-src="/render/button-filled__ideal__default__dark.png?session=compose-m3" data-d-href="/p/button-filled__ideal__default__dark?session=compose-m3"
+  data-d-id="button-filled__ideal__default__dark" data-d-label="Button · Filled (dark)"
+  href="/p/button-filled__ideal__default__light?session=compose-m3">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button filled (light)" src="/render/button-filled__ideal__default__light.png">
+    <img loading="lazy" alt="Button · Filled (light)" src="/render/button-filled__ideal__default__light.png?session=compose-m3">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="button-filled__ideal__default__light">Button filled (light)</div>
+    <div class="cp-label" title="button-filled__ideal__default__light">Button · Filled (light)</div>
     <div class="cp-id">button-filled__ideal__default__light</div>
     
   </div>
 </a>
 <a class="cp-card" id="cp-card-button-outlined__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/button-outlined__ideal__default__light.png" data-l-href="/p/button-outlined__ideal__default__light"
-  data-l-id="button-outlined__ideal__default__light" data-l-label="Button outlined (light)"
-  data-d-src="/render/button-outlined__ideal__default__dark.png" data-d-href="/p/button-outlined__ideal__default__dark"
-  data-d-id="button-outlined__ideal__default__dark" data-d-label="Button outlined (dark)"
-  href="/p/button-outlined__ideal__default__light">
+  data-l-src="/render/button-outlined__ideal__default__light.png?session=compose-m3" data-l-href="/p/button-outlined__ideal__default__light?session=compose-m3"
+  data-l-id="button-outlined__ideal__default__light" data-l-label="Button · Outlined (light)"
+  data-d-src="/render/button-outlined__ideal__default__dark.png?session=compose-m3" data-d-href="/p/button-outlined__ideal__default__dark?session=compose-m3"
+  data-d-id="button-outlined__ideal__default__dark" data-d-label="Button · Outlined (dark)"
+  href="/p/button-outlined__ideal__default__light?session=compose-m3">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button outlined (light)" src="/render/button-outlined__ideal__default__light.png">
+    <img loading="lazy" alt="Button · Outlined (light)" src="/render/button-outlined__ideal__default__light.png?session=compose-m3">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="button-outlined__ideal__default__light">Button outlined (light)</div>
+    <div class="cp-label" title="button-outlined__ideal__default__light">Button · Outlined (light)</div>
     <div class="cp-id">button-outlined__ideal__default__light</div>
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-button-tonal__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/button-tonal__ideal__default__light.png" data-l-href="/p/button-tonal__ideal__default__light"
-  data-l-id="button-tonal__ideal__default__light" data-l-label="Button tonal (light)"
-  data-d-src="/render/button-tonal__ideal__default__dark.png" data-d-href="/p/button-tonal__ideal__default__dark"
-  data-d-id="button-tonal__ideal__default__dark" data-d-label="Button tonal (dark)"
-  href="/p/button-tonal__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button tonal (light)" src="/render/button-tonal__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="button-tonal__ideal__default__light">Button tonal (light)</div>
-    <div class="cp-id">button-tonal__ideal__default__light</div>
-    
-  </div>
-</a>
 </div>
 </div>
-<div class="cp-subgroup" id="cp-group-card">
-<h2 class="cp-group-head">Card</h2>
+<div class="cp-subgroup" id="cp-group-checkbox">
+<h2 class="cp-group-head">Checkbox</h2>
 <div class="cp-cards">
-<a class="cp-card" id="cp-card-card-elevated__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/card-elevated__ideal__default__light.png" data-l-href="/p/card-elevated__ideal__default__light"
-  data-l-id="card-elevated__ideal__default__light" data-l-label="Card elevated (light)"
-  data-d-src="/render/card-elevated__ideal__default__dark.png" data-d-href="/p/card-elevated__ideal__default__dark"
-  data-d-id="card-elevated__ideal__default__dark" data-d-label="Card elevated (dark)"
-  href="/p/card-elevated__ideal__default__light">
+<a class="cp-card" id="cp-card-checkbox__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
+  data-l-src="/render/checkbox__ideal__default__light.png?session=compose-m3" data-l-href="/p/checkbox__ideal__default__light?session=compose-m3"
+  data-l-id="checkbox__ideal__default__light" data-l-label="Checkbox · Checked (light)"
+  data-d-src="/render/checkbox__ideal__default__dark.png?session=compose-m3" data-d-href="/p/checkbox__ideal__default__dark?session=compose-m3"
+  data-d-id="checkbox__ideal__default__dark" data-d-label="Checkbox · Checked (dark)"
+  href="/p/checkbox__ideal__default__light?session=compose-m3">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Card elevated (light)" src="/render/card-elevated__ideal__default__light.png">
+    <img loading="lazy" alt="Checkbox · Checked (light)" src="/render/checkbox__ideal__default__light.png?session=compose-m3">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="card-elevated__ideal__default__light">Card elevated (light)</div>
-    <div class="cp-id">card-elevated__ideal__default__light</div>
-    
-  </div>
-</a>
-<a class="cp-card" id="cp-card-card-filled__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/card-filled__ideal__default__light.png" data-l-href="/p/card-filled__ideal__default__light"
-  data-l-id="card-filled__ideal__default__light" data-l-label="Card filled (light)"
-  data-d-src="/render/card-filled__ideal__default__dark.png" data-d-href="/p/card-filled__ideal__default__dark"
-  data-d-id="card-filled__ideal__default__dark" data-d-label="Card filled (dark)"
-  href="/p/card-filled__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Card filled (light)" src="/render/card-filled__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="card-filled__ideal__default__light">Card filled (light)</div>
-    <div class="cp-id">card-filled__ideal__default__light</div>
+    <div class="cp-label" title="checkbox__ideal__default__light">Checkbox · Checked (light)</div>
+    <div class="cp-id">checkbox__ideal__default__light</div>
     
   </div>
 </a>
 </div>
 </div>
-<div class="cp-subgroup" id="cp-group-fab">
-<h2 class="cp-group-head">FAB</h2>
+<div class="cp-subgroup" id="cp-group-radio-buttons">
+<h2 class="cp-group-head">Radio buttons</h2>
 <div class="cp-cards">
-<a class="cp-card" id="cp-card-fab__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/fab__ideal__default__light.png" data-l-href="/p/fab__ideal__default__light"
-  data-l-id="fab__ideal__default__light" data-l-label="FAB (light)"
-  data-d-src="/render/fab__ideal__default__dark.png" data-d-href="/p/fab__ideal__default__dark"
-  data-d-id="fab__ideal__default__dark" data-d-label="FAB (dark)"
-  href="/p/fab__ideal__default__light">
+<a class="cp-card" id="cp-card-radiobutton__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
+  data-l-src="/render/radiobutton__ideal__default__light.png?session=compose-m3" data-l-href="/p/radiobutton__ideal__default__light?session=compose-m3"
+  data-l-id="radiobutton__ideal__default__light" data-l-label="Radio · Selected (light)"
+  data-d-src="/render/radiobutton__ideal__default__dark.png?session=compose-m3" data-d-href="/p/radiobutton__ideal__default__dark?session=compose-m3"
+  data-d-id="radiobutton__ideal__default__dark" data-d-label="Radio · Selected (dark)"
+  href="/p/radiobutton__ideal__default__light?session=compose-m3">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="FAB (light)" src="/render/fab__ideal__default__light.png">
+    <img loading="lazy" alt="Radio · Selected (light)" src="/render/radiobutton__ideal__default__light.png?session=compose-m3">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="fab__ideal__default__light">FAB (light)</div>
-    <div class="cp-id">fab__ideal__default__light</div>
-    
-  </div>
-</a>
-</div>
-</div>
-<div class="cp-subgroup" id="cp-group-badge">
-<h2 class="cp-group-head">Badge</h2>
-<div class="cp-cards">
-<a class="cp-card" id="cp-card-badge__ideal__default__light" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/badge__ideal__default__light.png" data-l-href="/p/badge__ideal__default__light"
-  data-l-id="badge__ideal__default__light" data-l-label="Badge (light)"
-  data-d-src="/render/badge__ideal__default__dark.png" data-d-href="/p/badge__ideal__default__dark"
-  data-d-id="badge__ideal__default__dark" data-d-label="Badge (dark)"
-  href="/p/badge__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Badge (light)" src="/render/badge__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="badge__ideal__default__light">Badge (light)</div>
-    <div class="cp-id">badge__ideal__default__light</div>
+    <div class="cp-label" title="radiobutton__ideal__default__light">Radio · Selected (light)</div>
+    <div class="cp-id">radiobutton__ideal__default__light</div>
     
   </div>
 </a>
@@ -255,7 +209,7 @@
       var treeGroups = document.querySelectorAll(".cp-tree-group");
       var treeLinks = document.querySelectorAll(".cp-tree-link");
       var stored = null;
-try { stored = localStorage.getItem("cp-theme:default"); } catch (e) {}
+try { stored = localStorage.getItem("cp-theme:compose-m3"); } catch (e) {}
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
 function chipOffered(t) {
   var offered = false;
@@ -372,7 +326,7 @@ applyThemeChoice();
       themeBtns.forEach(function (b) {
         b.addEventListener("click", function () {
           theme = b.getAttribute("data-theme-choice");
-          try { localStorage.setItem("cp-theme:default", theme); } catch (e) {}
+          try { localStorage.setItem("cp-theme:compose-m3", theme); } catch (e) {}
           // A discrete pick gets its own history entry, so Back returns to the previous theme
           // rather than leaving the catalog. No navigation: the grid re-points its own images.
           pushUrl({ theme: theme });
