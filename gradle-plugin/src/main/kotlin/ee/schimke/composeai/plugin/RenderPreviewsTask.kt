@@ -248,7 +248,30 @@ abstract class RenderPreviewsTask : DefaultTask() {
    */
   @get:org.gradle.api.tasks.Optional @get:Input abstract val renderJavaExecutable: Property<String>
 
+  /**
+   * The `composeai.render.nativeEnv` mode ([RenderNativeEnv.SYS_PROP_MODE]) this execution renders
+   * under, as a declared input.
+   *
+   * A task input rather than a bare `System.getProperty` read inside the action, because the task
+   * is `@CacheableTask` and a failed render still writes outputs (the `.error.json` sidecars). A
+   * run with `-Dcomposeai.render.nativeEnv=inherit` that failed every preview would otherwise stay
+   * UP-TO-DATE — or be restored from the cache — after the override was dropped, so the fix would
+   * never get a chance to run.
+   *
+   * `LD_LIBRARY_PATH` itself is deliberately *not* declared: it differs between every developer
+   * machine and CI, so keying outputs on it would cost build-cache sharing to catch a case the
+   * `--rerun` guidance in `docs/DESKTOP_NATIVE_DEPS.md` already covers (a failed render is an
+   * up-to-date output whatever the environment reason).
+   */
+  @get:org.gradle.api.tasks.Optional @get:Input abstract val nativeEnvMode: Property<String>
+
+  @get:Inject protected abstract val providerFactory: org.gradle.api.provider.ProviderFactory
+
   init {
+    // Conventioned here rather than at each registration site: three tasks register this type
+    // (desktop render, Lottie, SVG) and a site that forgot it would silently go back to reading
+    // the property at execution time, i.e. back to the staleness this input exists to prevent.
+    nativeEnvMode.convention(providerFactory.systemProperty(RenderNativeEnv.SYS_PROP_MODE))
     // Explicit empty default so the desktop `composePreviewRender` registration (which never sets
     // `includeKinds`) has a configured value for this non-optional `@Input` rather than relying on
     // the managed-`SetProperty` implicit empty convention — keeps "render every kind" the default
@@ -692,6 +715,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         renderJavaExecutable = renderJavaExecutable.orNull,
         daemonJavaHome = System.getProperty("java.home"),
         ldLibraryPath = System.getenv(RenderNativeEnv.VAR),
+        mode = nativeEnvMode.orNull,
       )
     if (decision is RenderNativeEnv.Decision.Sanitized) {
       logger.info("composePreviewRender: ${decision.explanation}")

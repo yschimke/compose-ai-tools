@@ -659,22 +659,51 @@ class DoctorCommand(
   private fun checkDesktopNatives(modules: Map<String, ModuleInfo>) {
     val desktopModules = modules.filterValues { rendersThroughSkiko(it) }
     if (desktopModules.isEmpty()) return
-    val result =
+
+    // Evaluate against every JVM a render could actually fork into, not just the daemon's. A module
+    // whose render task carries its own launcher (a raised render JDK, or an explicit
+    // `composePreview.renderJavaVersion`) is the case that matters most here: store libraries on
+    // the path of a *system* JDK is the mixed-glibc trap, and reading the daemon's `java.home`
+    // instead would report a Nix daemon as healthy while the render dies (issue #3690).
+    val candidates =
+      (desktopModules.values.mapNotNull { it.renderPreviewsTask?.javaLauncherPath } +
+          listOfNotNull(daemonJavaHome))
+        .distinct()
+        .ifEmpty { listOf(null) }
+    val canonicalize = { path: String ->
+      runCatching { File(path).canonicalPath }.getOrDefault(path)
+    }
+    val results = candidates.map { javaHome ->
       DesktopNativesCheck.evaluateDesktopNatives(
         osName = System.getProperty("os.name") ?: "",
-        renderJavaHome = daemonJavaHome,
+        renderJavaHome = javaHome,
         ldLibraryPath = System.getenv("LD_LIBRARY_PATH"),
         exists = { path -> File(path).exists() },
         // Resolved through symlinks so a store lib dir reached via a link farm
         // (`~/.cache/coo-ee/desktop-gl/lib`, `~/.nix-profile/lib`) is still recognised as one.
-        canonicalize = { path -> runCatching { File(path).canonicalPath }.getOrDefault(path) },
+        canonicalize = canonicalize,
       )
+    }
+    // The worst verdict wins: one render JVM that cannot load skiko breaks that module's previews
+    // regardless of how healthy the others look.
+    val result = results.firstOrNull { !it.ok } ?: results.first()
+
     val check = DesktopNativesCheck.interpret(result, inClaudeCloud = inClaudeCloud)
     addCheck(
       check.copy(
         detail =
           listOfNotNull(
               check.detail,
+              "evaluated against ${result.renderJavaHome ?: "an unknown JVM"}" +
+                if (candidates.size > 1) " (of ${candidates.size} candidate render JVMs)" else "",
+              // The desktop render task is not a `Test`, so the Tooling model does not report its
+              // launcher: a CMP module that pins `composePreview.renderJavaVersion` is invisible
+              // here. Only worth saying where it could change the answer — a store daemon with
+              // store libraries on the path, which is exactly the healthy-looking configuration
+              // that a pinned system render JDK turns into the #3690 failure.
+              "a CMP module pinning composePreview.renderJavaVersion is not visible to this check; " +
+                "the render task prunes store dirs for such a JVM itself"
+                  .takeIf { !result.loaderReadsSystemCache && result.storeDirsOnPath.isNotEmpty() },
               "affects ${desktopModules.size} CMP/Desktop module(s): ${desktopModules.keys.joinToString(", ")}",
             )
             .joinToString(". ")

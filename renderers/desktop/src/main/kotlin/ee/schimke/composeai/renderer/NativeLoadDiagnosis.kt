@@ -62,7 +62,13 @@ internal object NativeLoadDiagnosis {
     val informative =
       natives.firstOrNull { namesTheReason(it.message.orEmpty()) } ?: natives.lastOrNull()
     informative?.let { native ->
-      val explanation = explain(native)
+      // Is this skiko's library, or a preview's own JNI dependency? A preview that calls
+      // System.loadLibrary("foo") on a host without libfoo throws the same UnsatisfiedLinkError,
+      // and answering it with skiko advice would be wrong twice over — misattributing the failure,
+      // and latching it so a later *real* skiko failure is dismissed as a cascade of it.
+      val skiko = chain.any(::mentionsSkiko)
+      val explanation = explain(native, skiko)
+      if (!skiko) return Diagnosis(explanation, cascade = false)
       // First one wins: later previews in this JVM see the cascade, not another copy of the cause.
       val alreadySeen = !firstFailure.compareAndSet(null, explanation)
       return Diagnosis(explanation, cascade = alreadySeen)
@@ -115,13 +121,34 @@ internal object NativeLoadDiagnosis {
       // depend on skiko's API surface for this — match by name.
       t.javaClass.name == "org.jetbrains.skiko.LibraryLoadException"
 
+  /**
+   * Whether [t] identifies Skia/skiko — by exception type, message (the `libskiko-…so` path the
+   * loader reports), or a frame in skiko's own loader. Checked across the whole cause chain, since
+   * the innermost `UnsatisfiedLinkError` names the file while the frames naming skiko sit above it.
+   */
+  private fun mentionsSkiko(t: Throwable): Boolean {
+    val message = t.message.orEmpty()
+    if (message.contains("libskiko") || message.contains("skiko-linux")) return true
+    if (t.javaClass.name.startsWith("org.jetbrains.skiko")) return true
+    return t.stackTrace.any {
+      it.className.startsWith("org.jetbrains.skiko") ||
+        it.className.startsWith("org.jetbrains.skia")
+    }
+  }
+
   private fun isSkiaInitCascade(t: Throwable): Boolean {
     if (t !is NoClassDefFoundError && t !is ExceptionInInitializerError) return false
     val message = t.message.orEmpty()
     return message.contains("org.jetbrains.skia") || message.contains("org.jetbrains.skiko")
   }
 
-  private fun explain(native: Throwable): String {
+  /**
+   * @param skiko whether the failure is skiko's own library load. When false this is a preview's
+   *   (or a dependency's) JNI library, so the explanation stays about *that* library — the glibc
+   *   and missing-soname reasoning is identical, the attribution is not.
+   */
+  private fun explain(native: Throwable, skiko: Boolean): String {
+    val subject = if (skiko) "skiko's native library" else "A native library this preview loads"
     val message = native.message.orEmpty()
     val javaHome = System.getProperty("java.home").orEmpty()
     val ldPath = System.getenv("LD_LIBRARY_PATH").orEmpty()
@@ -131,7 +158,8 @@ internal object NativeLoadDiagnosis {
       val requiredBy = REQUIRED_BY.find(message)?.groupValues?.get(1)
       val fromStore = requiredBy != null && STORE_PREFIXES.any { requiredBy.startsWith(it) }
       return buildString {
-        append("skiko's native library could not be loaded because this process mixed two glibc ")
+        append(subject)
+        append(" could not be loaded because this process mixed two glibc ")
         append("builds: the loader wanted `")
         append(glibcVersion)
         append("`")
@@ -161,15 +189,21 @@ internal object NativeLoadDiagnosis {
 
     val missing = MISSING_SONAME.find(message)?.groupValues?.get(1)
     if (missing != null) {
-      return "skiko's native library could not be loaded: `$missing` was not found by the render " +
-        "JVM's loader (java.home=${javaHome.ifEmpty { "unknown" }}, " +
-        "LD_LIBRARY_PATH=`${ldPath.ifEmpty { "(unset)" }}`). It is a direct DT_NEEDED dependency " +
-        "of libskiko — install it (Debian/Ubuntu: libgl1, libx11-6, libfontconfig1, libstdc++6) " +
-        "or put its directory on the render JVM's LD_LIBRARY_PATH. `compose-preview doctor` " +
-        "reports this as env.desktop-natives."
+      val where =
+        "was not found by the render JVM's loader (java.home=${javaHome.ifEmpty { "unknown" }}, " +
+          "LD_LIBRARY_PATH=`${ldPath.ifEmpty { "(unset)" }}`)"
+      return if (skiko) {
+        "$subject could not be loaded: `$missing` $where. It is a direct DT_NEEDED dependency of " +
+          "libskiko — install it (Debian/Ubuntu: libgl1, libx11-6, libfontconfig1, libstdc++6) or " +
+          "put its directory on the render JVM's LD_LIBRARY_PATH. `compose-preview doctor` " +
+          "reports this as env.desktop-natives."
+      } else {
+        "$subject could not be loaded: `$missing` $where. Install it, or put its directory on the " +
+          "render JVM's LD_LIBRARY_PATH."
+      }
     }
 
-    return "skiko's native library could not be loaded (java.home=" +
+    return "$subject could not be loaded (java.home=" +
       "${javaHome.ifEmpty { "unknown" }}, LD_LIBRARY_PATH=`${ldPath.ifEmpty { "(unset)" }}`): " +
       message.ifEmpty { native.javaClass.name }
   }
