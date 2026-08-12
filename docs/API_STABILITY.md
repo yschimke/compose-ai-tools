@@ -6,7 +6,7 @@ Cross-cutting design doc for what counts as a public contract in this repo, how 
 
 Nine externally-observable surfaces, each with its own evolution story. Anything **not** in this list is internal and may move without notice — with the caveat below, and read alongside [VERSIONING.md § 10](VERSIONING.md#10-what-is-and-is-not-enforced), which records how much of the machinery described here is actually implemented.
 
-> **The list is not exhaustive.** At least two versioned formats are exchanged with detached consumers without appearing above: `bundle.json` inside a packed preview bundle (read by the CLI and the bundle viewer, carrying `BUNDLE_SCHEMA_VERSION`) and `daemon-launch.json` from the published `daemon-launch-builder` (read by VS Code's `daemonProcess.ts`, which gates on its `schemaVersion`, and by the non-Gradle integrations in [NON_GRADLE_INTEGRATION.md](NON_GRADLE_INTEGRATION.md)). Both carry their own schema version and both would strand existing artifacts or producers if changed carelessly. Treat "not in this list" as "not yet classified", not as licence to break them.
+> **The list is not exhaustive.** At least two versioned formats are exchanged with detached consumers without appearing above: `bundle.json` inside a packed preview bundle (read by the CLI and the bundle viewer, carrying `BUNDLE_SCHEMA_VERSION`) and `daemon-launch.json` from the published `daemon-launch-builder` (read by VS Code's `daemonProcess.ts`, which requires `schemaVersion` to equal its own exactly and otherwise discards the descriptor and forces a re-run, and by the non-Gradle integrations in [NON_GRADLE_INTEGRATION.md](NON_GRADLE_INTEGRATION.md)). Both carry their own schema version and both would strand existing artifacts or producers if changed carelessly. Treat "not in this list" as "not yet classified", not as licence to break them.
 
 | # | Surface | Lives in | Consumed by | Stability tier |
 |---|---|---|---|---|
@@ -44,7 +44,7 @@ The annotation library and per-data-product schemas are intentionally narrow. Th
 
 **Enums.** Wire enums *should* decode tolerantly — unknown values mapping to an `UNKNOWN` sentinel rather than throwing — because without it every new enum value is a silent break for old clients. **Most existing enums in `Messages.kt` do not do this yet** (`FileKind` and `ChangeType` among them), so treat it as the rule for enums you add, not as a property of the current corpus. See [VERSIONING.md § 4.1](VERSIONING.md#41-enum-discipline).
 
-**Test:** the JSON fixture corpus under [docs/daemon/protocol-fixtures/](daemon/protocol-fixtures/) round-trips on both Kotlin and TypeScript sides. Adding a message ⇒ add the fixture in the same PR. Renaming a field ⇒ either bump `protocolVersion` or revert.
+**Test:** the JSON fixture corpus under [docs/daemon/protocol-fixtures/](daemon/protocol-fixtures/). Kotlin round-trips it; **TypeScript does not** — `daemonProtocol.test.ts` parses with `JSON.parse(...) as T` and asserts selected properties on a subset of the files, so an unasserted field can drift. Adding a message ⇒ add the fixture in the same PR (nothing enforces this — see [VERSIONING.md § 9](VERSIONING.md#9-compatibility-testing)). Renaming a field ⇒ either bump `protocolVersion` or revert.
 
 ### 2.2 `previews.json` (surface 2)
 
@@ -82,7 +82,7 @@ The `@Stable` / `@Incubating` split, with `@Incubating` opt-in via `composePrevi
 
 **Negotiation:** intended to be `apply()` reading the resolved AGP version (and, where it can, Kotlin and Compose) and failing out-of-range consumers with "compose-preview X.Y supports AGP A.B–C.D; found E.F". **Not implemented** — `apply()` gates the Gradle version and nothing else, so an unsupported toolchain surfaces as whatever error it happens to produce.
 
-**Documented:** [docs/RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md) collects the known-good combinations and skew notes. Nothing generates a table from it, and `apply()` does not consult it; `compose-preview doctor` is the closest thing, and it reports rather than gates.
+**Documented:** nowhere, as a matrix. [docs/RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md) is titled "Renderer compatibility notes" and is exactly that — skew failure modes, mitigations, and desktop Compose/Skiko floors — not a table of supported AGP × Kotlin × Compose × Robolectric combinations. Nothing generates one, and `apply()` consults nothing; `compose-preview doctor` is the closest thing and it reports rather than gates.
 
 **Tested:** the `integration` workflow runs sample renders on every PR — against fixtures (including an `agp8-min` floor) and moving external `main` refs, **not** pinned current / current-1 / next-RC corners. It catches real breakage; it does not prove matrix coverage.
 

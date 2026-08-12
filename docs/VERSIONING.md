@@ -114,7 +114,7 @@ The plugin declares a **supported matrix** in [RENDERER_COMPATIBILITY.md](RENDER
 
 **What `apply()` actually gates today is the Gradle version** ([`GradleVersionCheck.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/GradleVersionCheck.kt)); there is no AGP / Kotlin / Compose comparison at configuration time, so an out-of-matrix consumer gets whatever failure the toolchain produces rather than a named supported range. `compose-preview doctor` is not a substitute: it prints the resolved AGP and Kotlin versions as an informational check and flags known dependency mismatches ([`CompatRules.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/tooling/CompatRules.kt) is given dependency maps and the Gradle version, not the AGP/Kotlin versions), so it evaluates no matrix predicate at all.
 
-The CI integration suite runs sample renders against several toolchain points, but they are not maintained as explicit current / current-1 / next-RC cells.
+The CI integration suite renders against several toolchain points, but not as explicit current / current-1 / next-RC cells — and only one cell runs per PR, with the full matrix reserved for `main` and the nightly cron (§ 9).
 
 ## 7. Branch conventions (GH actions)
 
@@ -140,9 +140,9 @@ Three layers were designed; this is what each one actually does today.
 
 | Layer | Intended gate | Reality |
 |---|---|---|
-| **Fixture corpus** — `docs/daemon/protocol-fixtures/` | Adding a wire message without a fixture fails CI | Round-trips on Kotlin and TypeScript for the messages it covers, but `MessagesTest.fixtureInventoryMatchesExpected` compares against a **hand-maintained** set. A new message type adds no entry, so it lands green with no fixture; history, interactive, stream, XR, recording, and extension methods are already uncovered |
+| **Fixture corpus** — `docs/daemon/protocol-fixtures/` | Adding a wire message without a fixture fails CI | Kotlin round-trips the fixtures it covers. **TypeScript does not round-trip** — `daemonProtocol.test.ts` does `JSON.parse(...) as T` and asserts selected properties on 16 of the 28 fixtures, so a renamed field nobody asserts passes. And the inventory (`MessagesTest.fixtureInventoryMatchesExpected`) is a **hand-maintained** set: a new message adds no entry and lands green. History, interactive, stream, XR, recording and extension methods are already uncovered |
 | **Kotlin BCV** — `:gradle-plugin`, `:preview-annotations` | Changing a public API without updating the golden file fails CI | **Not wired.** No `binary-compatibility-validator` plugin, no `.api` golden files, no `apiCheck` in any workflow. Nothing catches a breaking API change |
-| **Toolchain integration matrix** — `.github/workflows/integration.yml` | Bumping a matrix corner without a green run fails CI | Runs sample renders, and does gate merges — but against fixtures and moving external repositories rather than pinned current / current-1 / next-RC cells |
+| **Toolchain integration matrix** — `.github/workflows/integration.yml` | Bumping a matrix corner without a green run fails CI | Two different things. **On a PR:** one cell (`wear-os-samples (ComposeStarter)`); `agp8-min` is skipped, and a diff touching only safe paths skips the matrix entirely with the required legs re-emitted green. **On `main` + the nightly cron:** the full matrix, so AGP-floor drift surfaces within a day rather than on the PR. Either way the cells are external repositories and fixtures, not pinned current / current-1 / next-RC |
 
 The fixture corpus and the integration suite are real tests that catch real regressions. What none of the three currently provides is the *exhaustive* coverage the rules above assume.
 
