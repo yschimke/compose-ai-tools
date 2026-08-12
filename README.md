@@ -431,6 +431,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-connecting/dark](renders/serve-viewer-connecting.dark.png) |
 | `light` | ![serve-viewer-connecting/light](renders/serve-viewer-connecting.light.png) |
 
+## serve-viewer-exploded
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-exploded/dark](renders/serve-viewer-exploded.dark.png) |
+| `light` | ![serve-viewer-exploded/light](renders/serve-viewer-exploded.light.png) |
+
+## serve-viewer-exploded-controls
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-exploded-controls/dark](renders/serve-viewer-exploded-controls.dark.png) |
+| `light` | ![serve-viewer-exploded-controls/light](renders/serve-viewer-exploded-controls.light.png) |
+
 ## serve-viewer-focus
 
 | Theme | Capture |
