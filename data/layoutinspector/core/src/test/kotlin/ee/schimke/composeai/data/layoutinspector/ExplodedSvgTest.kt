@@ -102,10 +102,157 @@ class ExplodedSvgTest {
     assertEquals(listOf("Text"), ids(planes[2]))
   }
 
+  /**
+   * An elevation shadow is a `filter` on the named group that wraps a composable's surface *and*
+   * its descendants. A filter renders from whatever its element actually draws, so copying it onto
+   * every plane's fragment of that group gives the `Card` its intended silhouette shadow **and**
+   * mints a second, text-shaped shadow on the plane holding its `Text` — something nothing casts in
+   * the flat export.
+   */
+  @Test
+  fun `an elevation filter rides only the plane holding the elevated surface`() {
+    val elevated =
+      """
+      <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+      <filter id="shadow-2"><feDropShadow dx="0" dy="2" stdDeviation="2"/></filter>
+      <g transform="translate(0, 0)">
+        <g id="Card" filter="url(#shadow-2)">
+          <rect x="10" y="10" width="80" height="60" rx="8" fill="#FFFFFF"/>
+          <g id="Text"><text x="20" y="40">Hello</text></g>
+        </g>
+      </g>
+      </svg>
+      """
+        .trimIndent()
+    val planes = planes(ExplodedSvg.render(elevated))
+    fun filters(plane: Element) =
+      plane.descendants("g").map { it.getAttribute("filter") }.filter { it.isNotBlank() }
+    // Plane 1 owns the Card's own surface, so the shadow belongs there…
+    assertEquals(listOf("url(#shadow-2)"), filters(planes[1]))
+    // …and nowhere else: plane 2 holds only a transform-carrying fragment of the same group.
+    assertEquals(emptyList<String>(), filters(planes[2]))
+    // The def still rides along for the plane that does reference it.
+    assertEquals(1, parse(ExplodedSvg.render(elevated)).descendants("filter").size)
+  }
+
+  /**
+   * The other half of the filter rule. An elevated layer that paints nothing itself — a wrapper
+   * whose whole job is the shadow, drawing only through a nested named child — is retained on no
+   * plane at its own nominal depth. Keying the filter on that depth would strip it from every
+   * fragment and lose the shadow entirely, which is worse than the duplication it replaced. It
+   * rides the shallowest plane the group survives on instead, which for such a wrapper is its
+   * child's.
+   */
+  @Test
+  fun `an elevated wrapper that paints only through a child keeps its shadow`() {
+    val wrapper =
+      """
+      <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+      <filter id="shadow-3"><feDropShadow dx="0" dy="2" stdDeviation="2"/></filter>
+      <g transform="translate(0, 0)">
+        <g id="Elevated" filter="url(#shadow-3)">
+          <g id="Surface"><rect x="10" y="10" width="80" height="60" rx="8" fill="#FFFFFF"/></g>
+        </g>
+      </g>
+      </svg>
+      """
+        .trimIndent()
+    val out = ExplodedSvg.render(wrapper)
+    val filters =
+      parse(out).descendants("g").map { it.getAttribute("filter") }.filter { it.isNotBlank() }
+    assertEquals("kept exactly once, not lost and not duplicated", 1, filters.size)
+    assertEquals("url(#shadow-3)", filters.single())
+    // It rides the plane the wrapper first appears on — the one holding the drawing it elevates.
+    val planes = planes(out)
+    assertTrue(
+      "the shadow is on the plane that draws the surface",
+      planes.last().descendants("g").any { it.getAttribute("filter") == "url(#shadow-3)" },
+    )
+    // The wrapper is still named at its own nesting level; only the shadow moved.
+    assertEquals("Surface", planes.last().getAttribute("data-layers"))
+    assertEquals(
+      "the wrapper is still named at its own nesting level",
+      "Elevated",
+      planes[1].getAttribute("data-layers"),
+    )
+  }
+
   @Test
   fun `resources are carried over exactly once`() {
     val root = parse(ExplodedSvg.render(layered))
     assertEquals(1, root.descendants("clipPath").size)
+  }
+
+  /**
+   * `FigmaLayeredSvg` emits a `Modifier.clip` mask *inline* — as a sibling of the named layer it
+   * masks, deep in the content tree — not as a child of the SVG root. Collecting only the root's
+   * resources dropped every one of them while the copied `<g clip-path="url(#clip-0)">` wrapper
+   * kept referencing the missing id, so a rounded image spilled out of its mask (or vanished,
+   * depending on how the renderer treats a dangling reference). Every plane that carries the
+   * reference must therefore find the def.
+   */
+  @Test
+  fun `a clip mask nested in the content tree is hoisted, not dropped`() {
+    val nestedClip =
+      """
+      <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+      <g transform="translate(0, 0)">
+        <g id="Card">
+          <rect x="0" y="0" width="100" height="100" fill="#FFFFFF"/>
+          <clipPath id="clip-0"><rect x="10" y="10" width="80" height="80" rx="12"/></clipPath>
+          <g clip-path="url(#clip-0)">
+            <g id="Image"><rect x="0" y="0" width="100" height="100" fill="#E8DEF8"/></g>
+          </g>
+        </g>
+      </g>
+      </svg>
+      """
+        .trimIndent()
+    val out = ExplodedSvg.render(nestedClip)
+    val root = parse(out)
+    val defs = root.descendants("clipPath")
+    assertEquals("hoisted exactly once", 1, defs.size)
+    assertEquals("clip-0", defs.single().getAttribute("id"))
+    // …and hoisted to the root, so it is not carried inside (or dropped with) any one sheet.
+    assertEquals("svg", (defs.single().parentNode as Element).localName)
+    // The plane that holds the masked drawing still references it.
+    val masked = planes(out).last().descendants("g").filter { it.hasAttribute("clip-path") }
+    assertEquals(listOf("url(#clip-0)"), masked.map { it.getAttribute("clip-path") })
+  }
+
+  /**
+   * Labels are nudged apart to keep a readable line spacing, which at a small separation carries
+   * the column past the lowest sheet corner. An SVG has no overflow to scroll into, so a canvas
+   * measured from the sheets alone would simply crop them.
+   */
+  @Test
+  fun `a label pushed clear of its sheet still fits the canvas`() {
+    val out = ExplodedSvg.render(layered, ExplodedSvg.Options(gap = 1.0))
+    val root = parse(out)
+    val viewBox = root.getAttribute("viewBox").split(" ").map { it.toDouble() }
+    val bottom = viewBox[1] + viewBox[3]
+    val labels = root.descendants("text").filter { it.getAttribute("class") == "cp-exploded-label" }
+    assertEquals(3, labels.size)
+    // The nudges are what makes this a real test: with a 1-unit gap the sheets are effectively
+    // stacked, so the labels can only be told apart by having been pushed down.
+    val ys = labels.map { it.getAttribute("y").toDouble() }
+    assertTrue("labels were spread: $ys", ys.max() - ys.min() > 10.0)
+    for (y in ys) assertTrue("label at $y is inside the canvas (bottom $bottom)", y < bottom)
+  }
+
+  /**
+   * A hand-typed or stale `?explodeGap=3000000` must produce a picture, not a canvas whose numbers
+   * no longer survive formatting — `(v * 1000).roundToInt()` saturates past ~2.1e6 and would
+   * collapse every dimension onto the same value.
+   */
+  @Test
+  fun `an absurd separation is bounded rather than overflowing the canvas`() {
+    val root = parse(ExplodedSvg.render(layered, ExplodedSvg.Options(gap = 3_000_000.0)))
+    val viewBox = root.getAttribute("viewBox").split(" ").map { it.toDouble() }
+    assertTrue("height is finite and sane: ${viewBox[3]}", viewBox[3] in 100.0..20_000.0)
+    // Still genuinely exploded — the bound loosens the stack, it doesn't collapse it.
+    val planes = planes(ExplodedSvg.render(layered, ExplodedSvg.Options(gap = 3_000_000.0)))
+    assertEquals(3, planes.size)
   }
 
   @Test

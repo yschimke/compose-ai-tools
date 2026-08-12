@@ -449,6 +449,37 @@
   function explodeOn() {
     return !!(explodeToggle && explodeToggle.getAttribute("aria-pressed") === "true");
   }
+  // The same boolean forms `ServeExplodedSvg.enabled` accepts, so a hand-typed or bookmarked
+  // `?exploded=on` opens the view the render endpoint would serve for that URL — rather than
+  // showing the flat PNG and then dropping the parameter on the next sync, which is what a
+  // stricter reading here produced.
+  function explodeParamOn(raw) {
+    if (raw === null || raw === undefined) return false;
+    if (raw === "") return true; // a bare `?exploded`
+    return ["1", "true", "on", "yes"].indexOf(String(raw).toLowerCase()) >= 0;
+  }
+  // A server-side Remote Compose player pick cannot survive the exploded view, so entering it
+  // releases the pick rather than hiding it. `rcPlayer=cmp-jvm` is a renderer choice, not a mode,
+  // so it outlives a return to the static lane — and the server routes it to the desktop player's
+  // own subprocess *before* it ever looks at `exploded=`, leaving the chip pressed over an
+  // untouched flat SVG. There is nothing to explode there either way: that lane renders a Remote
+  // Compose document, which carries none of the `<g id="…">` composable nesting this view splits
+  // on.
+  //
+  // Resetting the STATE rather than filtering `rcPlayer` out of the request string is the whole
+  // point: the string is copied into the page URL by syncUrl() and read back by the lane picker's
+  // label, so a filtered request left the address bar and the "current renderer" chip both naming
+  // a player that is no longer drawing anything.
+  function dropRcPlayerPick() {
+    if (!rcPlayerPicked) return;
+    rcPlayerPicked = false;
+    rcPlayerBackend = rcDefaultBackend;
+    if (typeof syncLaneSelect === "function") syncLaneSelect();
+  }
+  // Whether pressing 3D is what turned the vector lane on. Leaving 3D then hands the lane back
+  // rather than stranding the visitor on a flat SVG they never asked for — but only in that case:
+  // someone who was already reading the SVG and exploded it should get their SVG back, not a PNG.
+  var explodeEnabledSvg = false;
   function withExplode(ext, qs) {
     if (ext !== ".svg" || !explodeOn()) return qs;
     var parts = ["exploded=1"];
@@ -1574,11 +1605,17 @@
   // SVG chip and forget this one.
   function dropVectorModes() {
     if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
-    if (explodeToggle && explodeOn()) {
-      explodeToggle.setAttribute("aria-pressed", "false");
-      if (root) root.setAttribute("data-exploded", "0");
-      syncExplodeControls();
-    }
+    clearExploded();
+  }
+  // Un-press the 3D chip and re-sync its controls. Shared by every path that leaves the vector
+  // lane — the interactive lanes above, and the SVG chip being switched off — so a future lane
+  // can't drop one and forget the other.
+  function clearExploded() {
+    if (!explodeToggle || !explodeOn()) return;
+    explodeToggle.setAttribute("aria-pressed", "false");
+    if (root) root.setAttribute("data-exploded", "0");
+    syncExplodeControls();
+    explodeEnabledSvg = false;
   }
   // The stage lane the current transition is leaving, latched by enterMode before it tears that
   // lane down. Read by specActualUrl, which cannot otherwise tell whether the snapshot <img> holds
@@ -1684,6 +1721,11 @@
       // iframe / spec image that is still on screen, with its chip still pressed. The daemon and
       // Wasm lanes were already routed this way; the RC canvas, the RC/Wasm frame and the spec
       // lane are the same case.
+      // The exploded view is a view OF the vector export, so leaving the vector lane leaves it
+      // too. Without this the 3D chip stayed pressed over a flat PNG, its sliders stayed live, and
+      // the copied/downloaded SVG stayed exploded while the stage showed something else — three
+      // controls describing a frame that is no longer on screen.
+      if (!turnOn) clearExploded();
       if (turnOn && (live.checked || wasmActive() || rcActive() || rcWasmActive() || specActive())) {
         setMode("png"); // enterMode("png") reads svgOn() → renders the .svg
       } else {
@@ -1704,12 +1746,16 @@
       if (root) root.setAttribute("data-exploded", turnOn ? "1" : "0");
       syncExplodeControls();
       urlPush = true;
+      if (turnOn) dropRcPlayerPick();
       if (turnOn && svgToggle && !svgOn()) {
         // Turning SVG on is itself a lane change; let its handler drive the render so there is
         // exactly one request, with `exploded=1` already folded in by withSnapshotFormat.
+        // Remembered so leaving 3D can hand the lane back (see explodeEnabledSvg).
+        explodeEnabledSvg = true;
         svgToggle.click();
         return;
       }
+      if (!turnOn) explodeEnabledSvg = false;
       refreshSnapshot();
     });
   }
@@ -2350,13 +2396,35 @@
     // angles someone tried. A knob the entry doesn't carry resets to its authored default rather
     // than keeping the live value, which would leave the page disagreeing with its own address.
     if (explodeToggle) {
-      var explodeWanted = q.get("exploded") === "1" || q.get("exploded") === "true";
+      var explodeWanted = explodeParamOn(q.get("exploded"));
       explodeToggle.setAttribute("aria-pressed", explodeWanted ? "true" : "false");
       if (root) root.setAttribute("data-exploded", explodeWanted ? "1" : "0");
       EXPLODE_KNOBS.forEach(function (pair) {
         var el = document.getElementById(pair[0]);
         if (!el) return;
-        el.value = q.get(pair[1]) || el.getAttribute("data-cp-default") || el.value;
+        // Validate before assigning. `<input type="range">` runs the browser's value-sanitization
+        // algorithm on whatever it is given, and a value it can't parse — a stale
+        // `?explodeTilt=nope`, or one outside min..max — lands on the range's MIDPOINT, not on the
+        // authored default. The next refresh would then render a camera nobody asked for and
+        // rewrite the shared URL to match it, which is the opposite of the documented fallback.
+        var raw = q.get(pair[1]);
+        var num = raw === null || raw === "" ? NaN : Number(raw);
+        if (isFinite(num)) {
+          // Finite but out of range is CLAMPED, not rejected — `ExplodedSvg` clamps the angles and
+          // the separation it is handed, so `?explodeTilt=76` renders at 75° from the endpoint and
+          // must open at 75° here too rather than snapping to the default and rewriting the URL
+          // out from under whoever shared it.
+          var min = parseFloat(el.getAttribute("min"));
+          var max = parseFloat(el.getAttribute("max"));
+          if (!isNaN(min) && num < min) num = min;
+          if (!isNaN(max) && num > max) num = max;
+          el.value = String(num);
+        } else {
+          // Only a value the browser cannot parse falls back. Assigning it raw would be worse than
+          // useless: `<input type="range">` sanitizes an unparseable value to its MIDPOINT, so a
+          // stale `?explodeTilt=nope` rendered a camera nobody asked for.
+          el.value = el.getAttribute("data-cp-default") || el.value;
+        }
         updateExplodeReadout(el);
       });
       syncExplodeControls();
@@ -2368,9 +2436,18 @@
       // vector lane back off: the visitor may have been reading the plain SVG before they exploded
       // it, and that is the state Back should return them to.
       if (explodeWanted && svgToggle && !svgOn()) {
+        explodeEnabledSvg = true;
         svgToggle.setAttribute("aria-pressed", "true");
         snapshotExt = ".svg";
         root.setAttribute("data-mode", "svg");
+      } else if (!explodeWanted && explodeEnabledSvg && svgToggle) {
+        // Back out of an entry that 3D created: the vector lane has no URL parameter of its own,
+        // so without this the restored page keeps the SVG that 3D switched it to and shows a flat
+        // vector render the visitor never chose. Only when 3D is what turned it on.
+        explodeEnabledSvg = false;
+        svgToggle.setAttribute("aria-pressed", "false");
+        snapshotExt = ".png";
+        root.setAttribute("data-mode", "snapshot");
       }
     }
     ["focus", "gestures"].forEach(function (f) {

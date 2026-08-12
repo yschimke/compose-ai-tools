@@ -13,7 +13,6 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.math.sin
 import org.w3c.dom.Document
 import org.w3c.dom.Element
@@ -193,16 +192,19 @@ object ExplodedSvg {
     // walk skips <defs>/<clipPath>/… so a hoisted Material-icon `<g id="material-icon-…">` inside
     // <defs> never counts as a nesting level.
     val scan = Scan(options.maxDepth)
-    for (child in root.childElements()) {
-      if (child.localNameOf() in RESOURCE_TAGS) continue
-      scan.walk(child, 0)
-    }
+    for (child in root.childElements()) scan.walk(child, 0)
     val planeCount = scan.planeCount()
     if (planeCount == 0) return svg
 
     val spin = options.spinDeg.coerceIn(SPIN_RANGE) * PI / 180.0
     val tilt = options.tiltDeg.coerceIn(TILT_RANGE) * PI / 180.0
-    val gap = options.gap?.takeIf { it.isFinite() && it > 0.0 } ?: autoGap(box, planeCount)
+    // The separation is bounded relative to the drawing rather than by an absolute number, because
+    // "how far apart is too far" only means anything next to the sheet's own size. Past this the
+    // sheets are specks at the ends of a ribbon of whitespace — and far enough past it, the canvas
+    // dimensions stop being representable at all (see [fmt]).
+    val gap =
+      options.gap?.takeIf { it.isFinite() && it > 0.0 }?.coerceAtMost(maxGap(box))
+        ?: autoGap(box, planeCount)
 
     val a = cos(spin)
     val b = cos(tilt) * sin(spin)
@@ -245,18 +247,41 @@ object ExplodedSvg {
       }
     }
 
-    // The label column: a leader line out to a fixed x, then the names. Sized from the longest
-    // label so nothing is clipped by the viewBox (an SVG has no overflow to scroll into).
-    val labelPlanes =
-      if (options.labels) (0 until planeCount).map { it to scan.labelFor(it) } else emptyList()
+    // The label column: a leader line out to a fixed x, then the names. Laid out BEFORE the canvas
+    // is sized, because collision avoidance moves labels off their sheet's own y — at a small
+    // separation on a deep stack the run of nudges carries the last label well past the lowest
+    // sheet corner, and an SVG has no overflow to scroll into, so a canvas measured from the sheets
+    // alone would simply crop them.
     val leaderLength = fontSize * 3.5
     val labelX = maxX + leaderLength
-    val labelWidth = labelPlanes.maxOfOrNull { estimateTextWidth(it.second, fontSize) } ?: 0.0
+    val labels =
+      if (!options.labels) emptyList()
+      else
+        layoutLabels(
+          planeCount = planeCount,
+          label = scan::labelFor,
+          box = box,
+          a = a,
+          b = b,
+          c = c,
+          d = d,
+          baseE = baseE,
+          baseF = baseF,
+          planeOffsetY = ::planeOffsetY,
+          fontSize = fontSize,
+        )
+    val labelWidth = labels.maxOfOrNull { estimateTextWidth(it.text, fontSize) } ?: 0.0
+    for (placement in labels) {
+      // Half a line either side of the baseline: the text is centred on `labelY`
+      // (`dominant-baseline: middle`).
+      minY = min(minY, placement.labelY - fontSize)
+      maxY = max(maxY, placement.labelY + fontSize)
+    }
     val pad = max(16.0, fontSize)
     val canvasMinX = minX - pad
     val canvasMinY = minY - pad
     val canvasWidth =
-      (maxX - minX) + 2 * pad + if (labelPlanes.isEmpty()) 0.0 else leaderLength + labelWidth
+      (maxX - minX) + 2 * pad + if (labels.isEmpty()) 0.0 else leaderLength + labelWidth
     val canvasHeight = (maxY - minY) + 2 * pad
 
     val out = newDocument()
@@ -274,11 +299,17 @@ object ExplodedSvg {
     outSvg.setAttribute("data-exploded", "true")
     outSvg.setAttribute("data-exploded-planes", planeCount.toString())
 
-    // Resources first, verbatim and exactly once. Duplicating them per plane would multiply the
-    // embedded WOFF2 payloads by the plane count for no benefit.
-    for (child in root.childElements()) {
-      if (child.localNameOf() in RESOURCE_TAGS) outSvg.appendChild(out.importNode(child, true))
-    }
+    // Resources, verbatim and exactly once. Duplicating them per plane would multiply the embedded
+    // WOFF2 payloads by the plane count for no benefit.
+    //
+    // **Hoisted from wherever they sit, not just the root.** A `Modifier.clip` layer's `<clipPath>`
+    // is emitted by `FigmaLayeredSvg` *inline*, as a sibling of the named group it masks, deep in
+    // the content tree — so collecting only the root's resource children would drop every one of
+    // them while the copied `<g clip-path="url(#clip-N)">` wrapper kept pointing at the missing id,
+    // and a rounded image would spill out of its mask (or vanish outright, depending on how the
+    // renderer treats a dangling reference). Hoisting is safe because a `clipPath`'s contents
+    // resolve in the user space of the element that *references* it, not the one it is nested in.
+    for (resource in scan.resources()) outSvg.appendChild(out.importNode(resource, true))
     outSvg.appendChild(chromeStyle(out))
     outSvg.appendChild(canvasRect(out, canvasMinX, canvasMinY, canvasWidth, canvasHeight))
 
@@ -315,24 +346,7 @@ object ExplodedSvg {
       planesGroup.appendChild(g)
     }
 
-    if (labelPlanes.isNotEmpty()) {
-      outSvg.appendChild(
-        labelsGroup(
-          out,
-          labelPlanes,
-          box,
-          a,
-          b,
-          c,
-          d,
-          baseE,
-          baseF,
-          ::planeOffsetY,
-          labelX,
-          fontSize,
-        )
-      )
-    }
+    if (labels.isNotEmpty()) outSvg.appendChild(labelsGroup(out, labels, labelX, fontSize))
 
     return serialize(out)
   }
@@ -351,24 +365,62 @@ object ExplodedSvg {
     private val occupied = BooleanArray(MAX_PLANES + 1)
     /** Plane index → composable names owning that plane's drawing, in document order. */
     private val names = Array(MAX_PLANES + 1) { LinkedHashSet<String>() }
+    /**
+     * Every resource element in the source, at whatever depth it sits, in document order — the
+     * `<defs>`/`<style>` at the root *and* the `<clipPath>`s `FigmaLayeredSvg` emits inline beside
+     * the layers they mask. Collected here so they can be hoisted once into the output.
+     */
+    private val resourceElements = ArrayList<Element>()
 
     fun planeOf(depth: Int): Int = min(depth, maxDepth)
 
-    fun walk(el: Element, depth: Int) {
+    fun resources(): List<Element> = resourceElements
+
+    /**
+     * Named group → the shallowest plane any drawing in its subtree lands on. Equals the group's
+     * own plane whenever it paints anything itself; for an elevated wrapper that paints only
+     * through a nested child, it is that child's plane. Keyed by identity, since layer ids repeat.
+     */
+    private val firstPlane = java.util.IdentityHashMap<Element, Int>()
+
+    /**
+     * The one plane a group's rendered whole-group effects (its `filter`) belong on — the
+     * shallowest plane it is retained on, which is where it first appears in the stack. Equal to
+     * its nesting level whenever the group paints anything itself.
+     */
+    fun owningPlane(group: Element): Int = firstPlane[group] ?: -1
+
+    /** Shallowest plane any drawing under [el] occupies, or null when it paints nothing at all. */
+    fun walk(el: Element, depth: Int): Int? {
       val tag = el.localNameOf()
-      if (tag in RESOURCE_TAGS) return
+      // Recorded, then never descended into: a `<g id="material-icon-…">` inside `<defs>` is a
+      // drawing to `<use>`, not a level of composable nesting.
+      if (tag in RESOURCE_TAGS) {
+        resourceElements.add(el)
+        return null
+      }
       if (tag in DRAWING_TAGS) {
         occupied[planeOf(depth)] = true
-        return
+        return planeOf(depth)
       }
-      if (tag !in GROUP_TAGS) return
+      if (tag !in GROUP_TAGS) return null
       val id = el.getAttribute("id").takeIf { it.isNotBlank() }
       val childDepth = if (id != null) depth + 1 else depth
+      var first: Int? = null
+      for (child in el.childElements()) {
+        val childPlane = walk(child, childDepth) ?: continue
+        if (first == null || childPlane < first) first = childPlane
+      }
       if (id != null) {
+        firstPlane[el] = first ?: planeOf(childDepth)
+        // The LABEL stays on the nesting level, not on `first`. The label column's whole claim is
+        // "this sheet is depth N of the composable tree", so a non-painting wrapper belongs at its
+        // own level — moving its name down to wherever its child happens to draw would leave a
+        // nameless sheet above it and misreport the structure.
         val label = displayName(el, id)
         if (label != null) names[planeOf(childDepth)].add(label)
       }
-      for (child in el.childElements()) walk(child, childDepth)
+      return first
     }
 
     /**
@@ -415,10 +467,9 @@ object ExplodedSvg {
    * nothing on this plane survives, so empty scaffolding is never emitted.
    *
    * Groups are copied for their `transform` / `clip-path` / `opacity`, which is what keeps a
-   * plane's elements in the position and shape they had in the flat drawing. A retained group keeps
-   * its `id` only on the plane its own drawing belongs to — every other plane holds a
-   * transform-carrying copy of the same group, and repeating the id across all of them would turn
-   * one composable into N same-named layers on a Figma import.
+   * plane's elements in the position and shape they had in the flat drawing. Two attributes
+   * describe the group *as a whole* and so must not be repeated onto every fragment; they answer
+   * different questions, so they get different rules (see the call site).
    */
   private fun copyForPlane(
     out: Document,
@@ -438,11 +489,14 @@ object ExplodedSvg {
     val kept = src.childElements().mapNotNull { copyForPlane(out, it, childDepth, plane, scan) }
     if (kept.isEmpty()) return null
     val copy = out.createElementNS(SVG_NS, tag)
-    copyAttributesExcept(
-      src,
-      copy,
-      if (scan.planeOf(childDepth) == plane) emptySet() else setOf("id"),
-    )
+    // Two different "once" rules, because the two attributes answer different questions.
+    val skip = HashSet<String>(2)
+    // `id` names the composable at its nesting level, exactly where the label column puts it.
+    if (scan.planeOf(childDepth) != plane) skip.add("id")
+    // `filter` is a rendered effect and must survive: it rides the shallowest plane the group is
+    // retained on, which is the nesting level whenever the group paints anything itself.
+    if (id != null && scan.owningPlane(src) != plane) skip.add("filter")
+    copyAttributesExcept(src, copy, skip)
     for (child in kept) copy.appendChild(child)
     return copy
   }
@@ -458,9 +512,29 @@ object ExplodedSvg {
    * leader gains a bend rather than overlapping.
    */
   @Suppress("LongParameterList")
-  private fun labelsGroup(
-    out: Document,
-    planes: List<Pair<Int, String>>,
+  /** One label's resolved geometry: where its leader starts, and where its text ends up. */
+  private data class LabelPlacement(
+    val plane: Int,
+    val text: String,
+    val anchorX: Double,
+    val anchorY: Double,
+    val labelY: Double,
+  )
+
+  /**
+   * Resolve every label's position without emitting anything, so the caller can size the canvas
+   * around the result.
+   *
+   * A label starts level with the projected midpoint of its sheet's right edge. Sheets are emitted
+   * bottom-up but read top-down, so the pass runs from the topmost and pushes each subsequent label
+   * down to keep a minimum line spacing — which means the column can extend past the lowest sheet
+   * corner whenever the separation is smaller than a line of text. That overflow is exactly what
+   * the caller has to include in the viewBox.
+   */
+  @Suppress("LongParameterList")
+  private fun layoutLabels(
+    planeCount: Int,
+    label: (Int) -> String,
     box: ViewBox,
     a: Double,
     b: Double,
@@ -469,6 +543,26 @@ object ExplodedSvg {
     baseE: Double,
     baseF: Double,
     planeOffsetY: (Int) -> Double,
+    fontSize: Double,
+  ): List<LabelPlacement> {
+    val edgeX = box.minX + box.width
+    val edgeY = box.minY + box.height / 2.0
+    val anchorX = a * edgeX + c * edgeY + baseE
+    val minSpacing = fontSize * 1.6
+    val out = ArrayList<LabelPlacement>(planeCount)
+    var previousY: Double? = null
+    for (plane in (planeCount - 1) downTo 0) {
+      val anchorY = b * edgeX + d * edgeY + baseF + planeOffsetY(plane)
+      val labelY = previousY?.let { max(anchorY, it + minSpacing) } ?: anchorY
+      previousY = labelY
+      out.add(LabelPlacement(plane, label(plane), anchorX, anchorY, labelY))
+    }
+    return out
+  }
+
+  private fun labelsGroup(
+    out: Document,
+    placements: List<LabelPlacement>,
     labelX: Double,
     fontSize: Double,
   ): Element {
@@ -476,18 +570,7 @@ object ExplodedSvg {
     group.setAttribute("class", "cp-exploded-labels")
     group.setAttribute("font-size", fmt(fontSize))
 
-    val edgeX = box.minX + box.width
-    val edgeY = box.minY + box.height / 2.0
-    val anchorX = a * edgeX + c * edgeY + baseE
-    // Sheets are emitted bottom-up but read top-down, so lay the labels out from the topmost.
-    val ordered = planes.sortedByDescending { it.first }
-    val minSpacing = fontSize * 1.6
-    var previousY: Double? = null
-    for ((plane, text) in ordered) {
-      val anchorY = b * edgeX + d * edgeY + baseF + planeOffsetY(plane)
-      val labelY = previousY?.let { max(anchorY, it + minSpacing) } ?: anchorY
-      previousY = labelY
-
+    for ((plane, text, anchorX, anchorY, labelY) in placements) {
       val dot = out.createElementNS(SVG_NS, "circle")
       dot.setAttribute("class", "cp-exploded-leader-dot")
       dot.setAttribute("cx", fmt(anchorX))
@@ -602,6 +685,14 @@ object ExplodedSvg {
   /** Total sheet separation, in long-edges of the source drawing, that [autoGap] will spend. */
   private const val STACK_BUDGET = 1.6
 
+  /**
+   * Ceiling for a caller-supplied [Options.gap], in long-edges of the source drawing. Generous —
+   * four sheet-heights apart is already far looser than anything the viewer's slider offers — but
+   * finite, so a hand-typed or stale `?explodeGap=3000000` produces a very spread-out picture
+   * instead of a canvas whose numbers no longer fit the format.
+   */
+  private fun maxGap(box: ViewBox): Double = max(box.width, box.height) * 4.0
+
   private fun viewBoxOf(root: Element): ViewBox? {
     val raw = root.getAttribute("viewBox").trim()
     if (raw.isNotEmpty()) {
@@ -686,10 +777,18 @@ object ExplodedSvg {
     return out
   }
 
-  /** Compact number formatting — SVG attributes carry a lot of these and trailing zeros add up. */
+  /**
+   * Compact number formatting — SVG attributes carry a lot of these and trailing zeros add up.
+   *
+   * Rounds through `Long`, not `Int`: `(value * 1000).roundToInt()` saturates at `Int.MAX_VALUE`
+   * for anything past ~2.1e6, so a single absurd coordinate would not merely be ugly but would
+   * *silently collapse* every dimension it touched onto 2147483.647 — a cropped or empty picture
+   * rather than a large one. [Options.gap] is clamped upstream so this is defence in depth, but the
+   * formatter is the last place a bad number can still turn into a wrong drawing.
+   */
   private fun fmt(value: Double): String {
     if (!value.isFinite()) return "0"
-    val rounded = (value * 1000.0).roundToInt() / 1000.0
+    val rounded = Math.round(value * 1000.0) / 1000.0
     return if (rounded == rounded.toLong().toDouble()) rounded.toLong().toString()
     else rounded.toString()
   }
