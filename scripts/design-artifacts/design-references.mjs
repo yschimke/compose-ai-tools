@@ -349,7 +349,7 @@ function narrowToMappedPreviewId(matches, mappedPreviewId, fn, warnings) {
  * so m3-catalog's 446 variant renders — the entire size x shape matrix — had nothing to diff
  * against even though `design-map.json` had bound every one of them to its kit node.
  */
-function designBindings(entry, warnings) {
+function designBindings(entry, warnings, notes) {
   const tagOf = (item) =>
     item && typeof item === "object"
       ? Object.fromEntries(
@@ -373,18 +373,44 @@ function designBindings(entry, warnings) {
 
   const refs = Array.isArray(entry.ref) ? entry.ref : [];
   const previewIds = Array.isArray(entry.previewId) ? entry.previewId : [];
+  const label = functionNameOf(entry?.code) ?? entry?.code ?? "?";
+  const matchedSlots = [];
   for (const ref of refs) {
     if (isUntagged(ref)) continue;
     const slot = tagOf(ref);
     // Pair by slot, not by position: the two arrays are written independently and design-parity
     // does not promise they are ordered alike.
     const mate = previewIds.find((p) => sameSlot(tagOf(p), slot));
+    matchedSlots.push(slot);
     const refUri = typeof ref === "string" ? ref : ref?.ref;
     const previewId = typeof mate === "string" ? mate : mate?.previewId;
-    if (typeof refUri !== "string" || !refUri || typeof previewId !== "string" || !previewId) {
+    // A binding that cannot be paired is DROPPED — and a drop has to be said out loud. The tally
+    // downstream counts emitted records, so a silent skip would report complete secondary coverage
+    // while quietly omitting a cell the author wrote down. Silent truncation reading as full
+    // coverage is the failure this lane is meant to end, not one to reintroduce a level down.
+    if (typeof refUri !== "string" || !refUri) {
+      notes.push(`${label} [${describeSlot(slot)}]: tagged ref is not a usable reference handle`);
+      continue;
+    }
+    if (typeof previewId !== "string" || !previewId) {
+      notes.push(
+        `${label} [${describeSlot(slot)}]: tagged ref has no previewId binding in the same slot, ` +
+          `so there is no sticker to compare it against`,
+      );
       continue;
     }
     bindings.push({ entry: { ...entry, ref: refUri, previewId }, tier: "secondary", slot });
+  }
+  // …and the mirror case: a tagged previewId whose slot no ref claims. The arrays are authored
+  // independently, so drift shows up from either side.
+  for (const mate of previewIds) {
+    const slot = tagOf(mate);
+    if (Object.keys(slot).length === 0) continue;
+    if (matchedSlots.some((claimed) => sameSlot(claimed, slot))) continue;
+    notes.push(
+      `${label} [${describeSlot(slot)}]: previewId binding has no ref in the same slot, ` +
+        `so there is no design node to compare against`,
+    );
   }
   return bindings;
 }
@@ -469,7 +495,7 @@ export function planDesignReferences({ designMap, spec, catalog }) {
   const ordinals = new Map();
 
   for (const rawEntry of designMap?.components ?? []) {
-    for (const binding of designBindings(rawEntry, warnings)) {
+    for (const binding of designBindings(rawEntry, warnings, notes)) {
     const { entry, tier, slot } = binding;
     // A secondary never fails the run; its misses are coverage notes.
     const report = tier === "primary" ? warnings : notes;

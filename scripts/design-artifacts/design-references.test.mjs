@@ -359,6 +359,43 @@ test("planDesignReferences publishes each tagged binding as a secondary against 
   assert.equal(secondary[0].previewId, "button-filled__ideal__xs");
 });
 
+test("a tagged binding that cannot be paired is reported, not silently dropped", () => {
+  const designMap = {
+    components: [
+      {
+        code: "catalog/src/main/kotlin/sections/Buttons.kt#FilledButton",
+        source: "figma",
+        ref: [
+          { ref: "figma:abc/1:1" },
+          { ref: "figma:abc/1:2", size: "xs" },
+          // Authored, but the previewId array never names this slot.
+          { ref: "figma:abc/1:3", size: "xl" },
+        ],
+        previewId: [
+          { previewId: "ee.m3.ButtonsKt.FilledButton_Light" },
+          { previewId: "ee.m3.ButtonsKt.FilledButton_Light_VARIANT_xs", size: "xs" },
+          // …and the mirror: a previewId slot no ref claims.
+          { previewId: "ee.m3.ButtonsKt.FilledButton_Light_VARIANT_l", size: "l" },
+        ],
+      },
+    ],
+  };
+
+  const { records, warnings, notes } = planDesignReferences({
+    designMap,
+    spec: {},
+    catalog: MATRIX_CATALOG,
+  });
+
+  assert.deepEqual(warnings, []);
+  // Both directions of drift are named. Without this the run would report "1/1 secondary, 0 notes"
+  // — complete coverage — while having dropped two authored bindings on the floor.
+  assert.equal(notes.length, 2);
+  assert.ok(notes.some((n) => n.includes("size=xl") && n.includes("no previewId binding")));
+  assert.ok(notes.some((n) => n.includes("size=l") && n.includes("no ref in the same slot")));
+  assert.equal(records.filter((r) => r.tier === "secondary").length, 1);
+});
+
 test("a secondary that maps to no sticker is a note, never a warning", () => {
   const designMap = {
     components: [

@@ -824,8 +824,16 @@ which via `tier`:
   gates on.
 - A **secondary** is a tagged binding (`{"size": "l"}`), carrying its `slot` so a report can name
   the cell. It documents one square of the variant matrix. Worth *checking* and worth *reporting*,
-  but a size cell that drifts is not the component being wrong, so a secondary that resolves to
-  nothing is a **coverage note** rather than a warning and never fails the export.
+  but a size cell that drifts is not the component being wrong — so **everything a secondary has to
+  say is a coverage note**, never a warning: whether it maps to no sticker, cannot be paired to a
+  `previewId`, or fails to rasterize (a Figma node the run's token can't reach). One unrenderable
+  size cell must not cost the catalog every reference it did resolve.
+
+A binding that is dropped is always *named*. The two arrays are authored independently, so drift is
+reported from both sides — a tagged `ref` with no `previewId` in the same slot, and a tagged
+`previewId` no `ref` claims. Skipping one silently would let the run report complete secondary
+coverage while omitting cells the author wrote down, which is the failure the per-lane tally exists
+to prevent.
 
 A secondary joins on its own `previewId`, not on the function name the primary uses — an
 `@OverrideVariant` cell shares its base's `@Preview` function, so the function index cannot tell
