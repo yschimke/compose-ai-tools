@@ -1,8 +1,10 @@
 package com.example.designcatalogwearm3
 
-import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,11 +25,8 @@ import androidx.wear.compose.material3.IconButton
 import androidx.wear.compose.material3.LocalContentColor
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -61,6 +60,7 @@ import ee.schimke.composeai.overrides.previewOverrideString
 import ee.schimke.composeai.preview.AnimatedPreview
 import ee.schimke.composeai.preview.CatalogComponent
 import ee.schimke.composeai.preview.CatalogVariant
+import ee.schimke.composeai.preview.FocusedPreview
 import ee.schimke.composeai.preview.OverrideVariant
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
@@ -72,9 +72,11 @@ import ee.schimke.composeai.preview.slots.PreviewSlot
 
 // The `disabled` state rides this same function via `@OverrideVariant` (seeding the `enabled` knob)
 // instead of a duplicated `ButtonDisabled` wrapper — the render emits a `_VARIANT_disabled` capture
-// that folds under this sticker. `pressed` / `focused` stay separate functions below: they need a
-// seeded `InteractionSource`, which isn't a `previewOverride*` knob.
-// The button family carries no state of its own, so on the interactive lane each click is made
+// that folds under this sticker. `pressed` / `focused` stay separate functions below: they are
+// driven by `@FocusedPreview`, a per-function capture annotation rather than a `previewOverride*`
+// knob — `focused` through real focus traversal, `pressed` still through a held interaction source
+// (see the stopgap note on `ButtonPressed`).
+// The button family carries no state of its own, so each click is made
 // visible by [wearCounted] tallying into the label; the baked capture is unchanged. The `disabled`
 // variant is the deliberate exception — it stays inert, because that's the state it documents, and
 // `enabled = false` means the counter could never move anyway.
@@ -641,24 +643,45 @@ fun TextMaxLinesTruncated() =
 
 // ---------------------------------------------------------------------------
 // States — interaction (pressed / focused; focus matters on Wear for rotary /
-// D-pad), disabled, and toggle off↔on. A held interaction is seeded into the
-// InteractionSource so the static capture shows that state's resting state-layer.
+// D-pad), disabled, and toggle off↔on.
+//
+// Both stickers are driven by REAL input, not by a forged interaction (issue
+// #3672). They used to seed a held Press / Focus interaction onto a
+// `MutableInteractionSource` from a `LaunchedEffect`, which paints a state layer
+// without anything actually being focused or pressed: the focus system doesn't
+// own the node, no `Unfocus` / `Release` ever pairs the emission, and any
+// component whose indication reads the focus system rather than the interaction
+// source captures identically to an untouched one.
+//
+// `@FocusedPreview` is the repo's mechanism for this and it works here because
+// this catalog renders on Robolectric: it runs a real `FocusManager.moveFocus`
+// traversal and flips `LocalInputModeManager` to Keyboard mode — which Robolectric
+// needs, since its host environment is permanently Touch and `Modifier.clickable`
+// registers its focusable as `Focusability.SystemDefined` (refused while in touch
+// mode). `pressed = true` additionally dispatches a real indirect-pointer Press
+// onto whatever the focus walk landed on, so the pressed state layer is raised by
+// the component's own interaction source. `indices = [0]` is the single Button in
+// the sticker; a single-capture `@FocusedPreview` keeps the plain
+// `renders/<id>.png` filename (see `emitStaticCross` in PreviewDiscovery.kt), so
+// the design-artifacts fold by function name is untouched.
+//
+// The function names `ButtonPressed` / `ButtonFocused` and the `@CatalogVariant`
+// ids are the join into `catalog.spec.json` — do not rename either.
 // ---------------------------------------------------------------------------
 
-@Composable
-private fun pressedSource(): MutableInteractionSource {
-  val source = remember { MutableInteractionSource() }
-  LaunchedEffect(source) { source.emit(PressInteraction.Press(Offset.Zero)) }
-  return source
-}
-
-@Composable
-private fun focusedSource(): MutableInteractionSource {
-  val source = remember { MutableInteractionSource() }
-  LaunchedEffect(source) { source.emit(FocusInteraction.Focus()) }
-  return source
-}
-
+// STOPGAP — `pressed` is NOT yet driven by real input on this sheet, unlike `focused` below.
+//
+// `@FocusedPreview(indices = [0], pressed = true)` was tried and measured: the resulting capture
+// is pixel-identical to the focus-only one on the button container (both `#D4C8EC`), differing
+// only in the label glyphs. The indirect-pointer Press does not reach Wear M3's `Button`
+// interaction source, so the capture documents *focus*, not press — and a sticker published under
+// `state = "pressed"` that shows the focused visual is precisely the mislabelled-artifact problem
+// issue #3676 exists to stamp out. Better an honest forged state layer than a confidently wrong
+// label.
+//
+// So this one keeps the held `MutableInteractionSource`, on the same terms as the CMP/desktop
+// sheet: a stopgap, marked as such, to be deleted the moment indirect-pointer press dispatch is
+// shown to land on Wear M3 components (issue #3672).
 @CatalogVariant(
   of = "Button/Filled",
   state = "pressed",
@@ -673,18 +696,34 @@ fun ButtonPressed() =
     Button(onClick = onClick, interactionSource = pressedSource()) { Text(label) }
   }
 
+/**
+ * Seeds a held [PressInteraction.Press] so the resting capture shows the pressed state layer.
+ *
+ * Deliberately kept, and deliberately the *only* forged interaction left on this sheet — see the
+ * stopgap note on [ButtonPressed]. [ButtonFocused] no longer needs a sibling `focusedSource()`
+ * because real focus traversal works here; this one survives only until an indirect-pointer press
+ * is shown to reach Wear M3's `Button` (issue #3672).
+ */
+@Composable
+private fun pressedSource(): MutableInteractionSource {
+  val source = remember { MutableInteractionSource() }
+  LaunchedEffect(source) { source.emit(PressInteraction.Press(Offset.Zero)) }
+  return source
+}
+
 @CatalogVariant(
   of = "Button/Filled",
   state = "focused",
-  caption = "Held FocusInteraction → focus indicator (rotary / D-pad).",
+  caption = "Real focus traversal → focus indicator (rotary / D-pad).",
 )
 @CatalogWearModes
+@FocusedPreview(indices = [0])
 @Composable
 fun ButtonFocused() =
   WearSticker {
     val (label, onClick) =
       wearCounted(previewOverrideString("label", stringResource(R.string.label_focused)))
-    Button(onClick = onClick, interactionSource = focusedSource()) { Text(label) }
+    Button(onClick = onClick) { Text(label) }
   }
 
 // (`ButtonDisabled`, `SwitchButtonOff`, `CheckboxButtonUnchecked` removed — those states now ride
@@ -731,8 +770,8 @@ private val catalogIcon: ImageVector =
 fun IconButtonSticker() =
   WearSticker {
     // No label to tally into, so the icon button's click toggles a "favourited" reading instead:
-    // the star fills with the theme's primary on the interactive lane. Off it, the icon renders in
-    // the stock content colour exactly as before.
+    // the star fills with the theme's primary. Untapped — every baked capture — it renders in the
+    // stock content colour exactly as before.
     val (favourite, onFavouriteChange) = wearChecked(false)
     IconButton(onClick = { onFavouriteChange(!favourite) }) {
       Icon(

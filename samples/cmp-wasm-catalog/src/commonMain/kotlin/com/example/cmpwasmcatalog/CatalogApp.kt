@@ -59,8 +59,10 @@ import com.example.designcatalogm3.shared.parseCatalogFontFamilies
  * in-browser render too. An unknown id renders a visible diagnostic rather than a blank canvas.
  *
  * The component body itself is [CatalogComponent] from `:samples:design-catalog-m3-shared` — the
- * exact same composables the desktop `:samples:design-catalog-m3` sticker sheet bakes — with
- * `interactive = true` so a visitor can toggle switches, drag sliders and watch progress animate.
+ * exact same composables the desktop `:samples:design-catalog-m3` sticker sheet bakes. Its controls
+ * are unconditionally stateful (they used to be selected by an `interactive` flag this tier passed
+ * as `true`, see issue #3674), so a visitor can toggle switches, drag sliders and type into the
+ * text fields, and the sticker this tier draws is exactly the one the catalog published.
  *
  * **Snapshot parity is the contract.** The baked catalog PNG is `CatalogSticker` — a wrap-content
  * **transparent** `Surface` holding the component behind 16dp padding — cropped to its bounds. This
@@ -192,7 +194,7 @@ fun CatalogApp(
             // the viewer's backing, and painting a surface fill here put a solid `#FFFBFF` panel
             // behind the component the moment the viewer handed the render to this tier.
             Surface(color = Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface) {
-              Box(Modifier.padding(16.dp)) { CatalogComponent(id, interactive = true) }
+              Box(Modifier.padding(16.dp)) { CatalogComponent(id) }
             }
           }
         }

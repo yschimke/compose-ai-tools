@@ -356,7 +356,9 @@ class ServeCatalogStoreTest {
   fun `catalog imports the published reference manifest and keeps source URLs inert`() {
     val root = tempRoot()
     val referencePng = png()
-    val requested = mutableListOf<String>()
+    // Assets are fetched on a pool (ASSET_FETCH_CONCURRENCY), so this capture is written from
+    // several threads at once — a plain ArrayList throws ConcurrentModificationException here.
+    val requested = Collections.synchronizedList(mutableListOf<String>())
     val catalog =
       """
       {"schema":"design-parity-catalog/v1","system":"compose-m3",
@@ -414,7 +416,9 @@ class ServeCatalogStoreTest {
   @Test
   fun `catalog stages the published parity activity feed`() {
     val root = tempRoot()
-    val requested = mutableListOf<String>()
+    // Assets are fetched on a pool (ASSET_FETCH_CONCURRENCY), so this capture is written from
+    // several threads at once — a plain ArrayList throws ConcurrentModificationException here.
+    val requested = Collections.synchronizedList(mutableListOf<String>())
     val catalog =
       """
       {"schema":"design-parity-catalog/v1","system":"compose-m3",

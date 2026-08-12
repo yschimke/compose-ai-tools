@@ -17,17 +17,25 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import ee.schimke.composeai.preview.PermissionPreview
 
 /**
  * Demo of the `data/permissions` data extension. The screen uses the standard Android
  * `ContextCompat.checkSelfPermission(...)` API — there is no connector-specific Compose API to
- * learn. Under the daemon the connector seeds Robolectric's `ShadowApplication` from
- * `renderNow.overrides.permissions`, so the same `checkSelfPermission` call returns the value the
- * agent picked. The connector's `ShadowContextWrapperPermissionTracker` also records each query
- * into the `compose/permissions` payload, so the panel can list what the screen asked about.
+ * learn, and deliberately no `granted: Boolean` parameter: the previewed code is the code the app
+ * ships, and the grant state is supplied by the environment behind the platform call.
  *
- * Flip the chip in Controls to render under a different grant state — the next composition's
- * `checkSelfPermission` read picks up the change through the platform path.
+ * Both branches are captured statically. The denied preview is the resting off-device state (no
+ * permission is granted to a Robolectric application that never asked for one); the granted preview
+ * carries `@PermissionPreview`, which the Gradle render lane turns into a
+ * `PermissionsOverrideExtension` that seeds Robolectric's `ShadowApplication` grant set before the
+ * first composition, so the same `checkSelfPermission` call returns `PERMISSION_GRANTED`.
+ *
+ * The daemon reaches that identical seam from the other direction:
+ * `renderNow.overrides.permissions` plans the same extension, so flipping the chip in Controls
+ * re-renders a held preview under a different grant state without the annotation. The connector's
+ * `ShadowContextWrapperPermissionTracker` also records each query into the `compose/permissions`
+ * payload, so the panel can list what the screen asked about.
  */
 @Preview(name = "Camera permission — denied", showBackground = true)
 @Composable
@@ -35,13 +43,20 @@ fun CameraPermissionDeniedPreview() {
   PermissionGatedCameraScreen()
 }
 
+/**
+ * The granted branch, captured by the static build (issue #3676). `@PermissionPreview` names the
+ * full Android constant string — `Manifest.permission.CAMERA` resolves to
+ * `"android.permission.CAMERA"`, which is the key `checkSelfPermission` is queried with — and the
+ * grant map is exhaustive, so nothing else is granted for this capture.
+ *
+ * Its render is the fixture that keeps the two branches honest: `PermissionPreviewPixelTest`
+ * asserts this PNG differs from the denied one, so a regression that drops the grant seeding shows
+ * up as a failing test rather than as two identical images, one of them mislabelled.
+ */
 @Preview(name = "Camera permission — granted", showBackground = true)
+@PermissionPreview(grants = ["android.permission.CAMERA=granted"])
 @Composable
 fun CameraPermissionGrantedPreview() {
-  // The granted variant relies on the agent pushing `renderNow.overrides.permissions` with
-  // `CAMERA = GRANTED`; without that, both previews render the "needs permission" branch (which
-  // is the right shape for a static `@Preview` capture in the build). The variant exists so the
-  // panel can pin a label to the granted-state capture once an override is applied.
   PermissionGatedCameraScreen()
 }
 
