@@ -846,11 +846,19 @@ fields are not alternatives: `statuses` answers "what happened to this acceptanc
 An earlier revision showed a `refused` status beside an empty `validationFailures`, which left both
 readings implementable and would have produced different fixture results.
 
-`validationFailures` is a list of `{ "id": …, "reason": … }` — or `{ "index": …, "reason": … }` when
-the record has no usable id, since a missing or malformed `id` is precisely the case that cannot be
-named by one. The array index in `acceptances[]` is always available and always deterministic, so
-that is the fallback identifier, and the reason is `id-missing`. Without this, the document-level
-rejection the schema rules require had no serialisable form at all.
+`validationFailures` is a list whose entries take one of **three** shapes, chosen by how precisely
+the failure can be attributed:
+
+| Shape | When | Example reason |
+| --- | --- | --- |
+| `{ "id": …, "reason": … }` | the failing record can be named | `mask-hash-mismatch` |
+| `{ "index": …, "reason": … }` | the record has no usable `id`, so it is identified by its position in `acceptances[]` — always available, always deterministic | `id-missing` |
+| `{ "reason": … }` | the failure is a property of the **document**, attributable to no single record | `document-too-large` |
+
+The third shape is not a convenience: a budget overrun is caused by the set, not by any member of
+it, and forcing an identifier onto it would mean inventing one — picking an arbitrary record to
+blame, which is both false and unstable across engines. Each of the three exists because there is a
+failure that fits nothing else.
 
 That list is the *only* populated field when the document itself is rejected — `duplicate-id`,
 `id-missing`, `document-too-large` — in which case `statuses` is absent entirely
