@@ -157,7 +157,15 @@ script already drives it by.
 
 A value the control is *currently* showing but the author never declared — a hand-written
 `knob.size=xxl`, a link from before a value was renamed — is added to the picker rather than
-dropped, so the control cannot quietly disagree with the pixels beside it.
+dropped, so the control cannot quietly disagree with the pixels beside it. That holds for a value
+baked into the sidecar and for one that only ever existed in the page URL, which is where a stale
+link actually arrives.
+
+> **Consumer docs live elsewhere.** The above is the contributor view — how the server renders a
+> declared value set. `previewOverrideChoice` is part of the *published* authoring surface, so the
+> guidance for someone applying the plugin to their own project belongs in the
+> [`compose-preview` skill](https://github.com/yschimke/skills/tree/main/skills/compose-preview),
+> not here. See [AGENTS.md](AGENTS.md) on the two doc trees.
 
 ## Every selection is in the URL
 
