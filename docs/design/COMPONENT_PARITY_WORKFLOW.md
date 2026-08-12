@@ -700,6 +700,15 @@ as picking a resampling kernel blind. It joins the pixel-semantics **open proble
 constraint from this contract: whatever the resolution test uses, it must be the *same* metric the
 candidate gate uses, so the two cannot disagree about whether two images match.
 
+**The index publishes bounds in canonical coordinates, already transformed.** `boundsInRoot` is
+render-pixel space (I8), the fixtures expect canonical, and nothing said who converts — so one
+implementation would compare raw bounds against a canonical baseline, another transform once, and a
+third double-transform bounds the server had already converted, each giving different `element-moved`
+verdicts on the same tree. The **server transforms once**, using the render→canonical row of the
+table above, and consumers use the values as-is; a consumer that transforms again is wrong. That
+placement follows the same logic as the index itself — the authoritative work stays where the whole
+tree and the resolved plane already are.
+
 **The tag index and the scored PNG must come from one render.** Semantics move with overrides,
 conditional composition and animation, so an index computed by a different render than the frame
 being scored can pass a uniqueness or movement gate that the actual pixels would fail — and let the
@@ -809,7 +818,7 @@ plane:
 | --- | --- | --- |
 | Reference annotation `bounds` | the **full reference raster** (`DesignAnnotation` KDoc: "the annotated image's own pixel space") | subtract `(referenceBox.x, referenceBox.y)`; scale 1; clip |
 | Drag rectangle on the reference panel | CSS/display pixels of the `<img>` | scale by `rasterWidth / displayWidth` and `rasterHeight / displayHeight`, then subtract the box origin; clip |
-| Render-side annotation `bounds` | **render** pixel space | subtract `(candidateBox.x, candidateBox.y)`, then scale **x and y independently** — `referenceBox.width / candidateBox.width` for x, `referenceBox.height / candidateBox.height` for y; clip |
+| Render-side annotation `bounds`, and the **tag index** | **render** pixel space (`boundsInRoot`) | subtract `(candidateBox.x, candidateBox.y)`, then scale **x and y independently** — `plane.width / candidateBox.width` for x, `plane.height / candidateBox.height` for y, where `plane` is the acceptance's **recorded** canonical plane (I9), not `referenceBox`, which is only the same thing outside the `full-canvas` fallback; clip |
 
 **The two axes scale independently, and that is not a rounding detail.** `boxCanvas` stretches each
 source box onto the target width and height separately, and the comparison explicitly *supports*
