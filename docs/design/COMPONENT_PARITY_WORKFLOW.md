@@ -349,42 +349,56 @@ Each gate sits at the earliest point where its inputs actually exist — which i
    recomputed planes are known to agree, and a pair that has crossed `MIN_BOX_COVERAGE` since
    authoring must return `plane-changed` cleanly here rather than resampling against a stale plane
    or colliding with incompatible dimensions.
-4. **Separate** — map the mask onto **both** inputs and split each into masked and unmasked regions,
-   in that input's own pixel space, **before any resample.** Separation must precede the resample,
-   not follow it: once a kernel has averaged across a mask edge, the accepted and unaccepted
-   contributions are mixed irreversibly and no later split can unmix them.
 
-   **Both inputs, not just the candidate.** `scorePlanes` compares two planes bidirectionally, so a
+   **Content-box detection is part of the portable path.** `contentBox` reaches its verdict through
+   a host `drawImage` downscale, so two engines can measure different boxes — and therefore
+   different `plane` discriminants — from identical bytes, near a sampled edge or the
+   `MIN_BOX_COVERAGE` threshold. The portable kernel requirement covers this sampling too, not only
+   the canonical and score resamples, and the fixtures pin the measured boxes.
+4. **Per-acceptance separate + resample, then gate.** For *each* acceptance independently: map its
+   mask onto **both** inputs, split each into masked and unmasked regions in that input's own pixel
+   space, and resample those regions into the plane gate's resolved plane with the portable kernel.
+   Then run its **comparison gates** — `candidate-changed`, then `element-ambiguous` /
+   `element-moved` — at canonical resolution, where a glyph is still a glyph.
+
+   Separation must precede the resample, not follow it: once a kernel has averaged across a mask
+   edge the accepted and unaccepted contributions are mixed irreversibly, and no later split can
+   unmix them. And it covers **both inputs**, because `scorePlanes` compares bidirectionally — a
    reference sample contaminated by masked reference pixels can match an unrelated *candidate*
-   regression outside the mask and erase it — the same cancellation, arriving from the other side.
-   Separating only the candidate closes one direction of a two-directional search.
-5. **Resample** each region into the canonical plane using the named portable kernel. The
-   destination is **the plane gate's resolved plane** — the reference's content box in the normal
-   case, the full canvas in the `MIN_BOX_COVERAGE` fallback — never unconditionally the content box,
-   so a fallback comparison sizes and positions its mask against the plane it was authored in.
-6. **Comparison gates** — `candidate-changed`, then `element-ambiguous` / `element-moved`. Both run
-   at **canonical** resolution, where a glyph is still a glyph. No scoring happens until every gate
-   has run.
-7. **Downsample to the score plane** — to the `MAX_SIDE = 192` cap `scorePlanes` consumes, with the
-   same portable kernel, producing **two independent sets of planes**:
+   regression outside the mask and erase it, the same cancellation arriving from the other side.
+5. **Rebuild against the surviving union.** Only now is it known which acceptances survived, so only
+   now can the plane the unaccepted pass scores be built: separate and resample **once more**,
+   against the union of the **still-valid** masks alone.
 
-   - **Separated**, each region downsampled on its own, for the unaccepted pass. The cap and the
-     5 px `EDGE_SEARCH_RADIUS` are load-bearing to the number that comes out, so scoring the
-     canonical plane directly would produce a different verdict — while reusing a whole-image
-     downsample here would re-mix accepted and unaccepted signal across the mask edge and undo
-     step 4. Separation survives *every* resample, including this one.
-   - **Whole**, each input downsampled unseparated, for the raw pass. The raw score is by
-     definition the one that masks nothing, so it needs genuinely untouched planes at score
-     resolution — and those cannot be recovered from the separated set, because recombining two
-     independently filtered regions is not equivalent to filtering the whole at the boundary. Using
-     the canonical or decoded planes instead would change the scorer's resolution and therefore its
-     verdict.
+   This second pass is not redundant, and skipping it breaks mixed-validity sets in one of two
+   ways. Separating against the union *up front* would let a mask that later invalidates keep
+   suppressing pixels it is no longer entitled to. Reusing step 4's per-acceptance planes instead
+   would mean combining independently filtered planes, which is not equivalent to filtering against
+   the union at their boundaries — the same non-composability that forces every other separate-then-
+   resample rule here. So: per-acceptance data for the gates, union-based data for the score.
+6. **Downsample to the score plane** — to the `MAX_SIDE = 192` cap, with the same portable kernel,
+   producing **two independent sets**:
 
-   Two resamples of the same inputs is the honest cost of reporting both numbers truthfully.
-8. **Score twice.** Once over the **untouched** planes, masking nothing — that is the **raw**
-   result. Once over the surviving picture, excluding still-valid masked coordinates in **both**
-   roles (scored source and neighbourhood candidate) in **both** directed passes — that is the
-   **unaccepted** result.
+   - **Union-separated**, each region of step 5's planes downsampled on its own, for the unaccepted
+     pass. The cap and the 5 px `EDGE_SEARCH_RADIUS` are load-bearing to the number that comes out,
+     so scoring the canonical plane directly would produce a different verdict — while a
+     whole-image downsample here would re-mix accepted and unaccepted signal across the mask edge.
+     Separation survives *every* resample, including this one.
+   - **Whole**, each input downsampled unseparated, for the raw pass. Raw is by definition the pass
+     that masks nothing, so it needs genuinely untouched planes at score resolution; those cannot
+     be recovered from the separated set, and the canonical or decoded planes would change the
+     scorer's resolution and therefore its verdict.
+
+   **The plane's dimensions come from the canonical plane, not from either content box.**
+   `MAX_SIDE` caps the longest side but does not by itself determine width and height, and the two
+   boxes may differ in size and aspect. Today's scorer derives them from the *candidate* box; by
+   this point in the pipeline everything already lives in the canonical plane, so that is what
+   scales — `scale = min(1, MAX_SIDE / max(canonical.width, canonical.height))`, applied to both
+   axes. Deriving from the reference or candidate box instead changes the pixel grid *and* the
+   effective reach of the 5 px search radius, so it must not be left to the implementer.
+7. **Score twice.** Once over the **whole** planes, masking nothing — the **raw** result. Once over
+   the union-separated planes, excluding surviving-masked coordinates in **both** roles (scored
+   source and neighbourhood candidate) in **both** directed passes — the **unaccepted** result.
 
    Two passes, not one, and this is forced rather than wasteful. The masked pass yields only the
    unaccepted number; raw cannot be recovered from it, for exactly the reason the gate ordering
@@ -392,7 +406,16 @@ Each gate sits at the earliest point where its inputs actually exist — which i
    contribution of every pixel near them and no arithmetic afterwards reconstructs what the score
    would have been unmasked. Since "raw findings remain visible after acceptance" is a requirement
    rather than a nicety, the raw pass has to actually be run.
-9. **Report** raw, unaccepted, and the accepted contribution — **as mismatch, not similarity.**
+
+   **The denominator is the scorable coordinates, not the whole plane.** `scorePlanes` divides each
+   directed pass's accumulated mismatch by `width × height`; with coordinates excluded, "excluding"
+   admits two readings that give different numbers. Divide by **the count of source coordinates
+   that remain scorable**, so the unaccepted score answers "how different is the part still being
+   judged?" rather than being mechanically inflated in proportion to how much was suppressed —
+   which would let a larger mask improve the score without anything improving. When *every*
+   coordinate is excluded the pass has nothing to judge: define it as mismatch 0 / similarity 100,
+   and surface it as fully-accepted rather than as a perfect match.
+8. **Report** raw, unaccepted, and the accepted contribution — **as mismatch, not similarity.**
 
    `scorePlanes` returns a *similarity*: `(1 − mismatch) × 100`, higher is better. So a valid
    acceptance that suppresses a known difference makes the unaccepted score **higher** than raw
@@ -672,15 +695,23 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | Stage | Pinned artifact |
 | --- | --- |
 | decode | **all four** raster inputs decoded — reference, current candidate, `mask.png`, `accepted-candidate.png` — in the declared pixel/colour semantics. The candidate gate reads the accepted-candidate decode and mask coverage reads the mask decode, so an alpha or colour divergence in either would otherwise first surface as a wrong verdict rather than as a decoder bug |
-| separation | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite) |
+| content boxes | each input's measured content box and the resolved `plane` discriminant, since content-box detection is itself part of the portable path and two engines can otherwise measure differently near a sampled edge or the `MIN_BOX_COVERAGE` threshold |
+| separation | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite) — per-acceptance, and again for the surviving union |
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
 | score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, still separated, downsampled per-region rather than whole-image |
 | score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, so a divergence between the two downsample paths is caught here rather than as a raw/unaccepted mismatch |
 | selector | the resolved element — which node the selector matched, its bounds, and the tag-uniqueness verdict |
-| result | `{raw, accepted, unaccepted, invalidations}` |
+| result | `{raw, accepted, unaccepted, invalidations, validationFailures}` |
 
 The stage order mirrors the normative pipeline exactly, and deliberately so: a fixture suite that
 resampled before separating would enshrine the bug the pipeline order exists to prevent.
+
+**Hard validation failures need an expected value too.** A mask or accepted candidate whose bytes
+don't match its recorded hash is a *refusal*, not an invalidation — a distinct branch of the
+contract with no home in `{raw, accepted, unaccepted, invalidations}`. Without a
+`validationFailures` field and hash-mismatch cases, one engine could refuse, the other could
+silently drop the acceptance, and both would pass the suite while disagreeing about whether a
+tampered artifact is an error or a no-op.
 
 **Both sides, at every stage.** The pipeline separates and resamples the reference as well as the
 candidate, so pinning only the candidate's intermediates leaves reference-side mask coverage and
