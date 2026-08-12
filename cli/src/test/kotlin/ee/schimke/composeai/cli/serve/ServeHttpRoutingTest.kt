@@ -507,6 +507,16 @@ class ServeHttpRoutingTest {
       getFull("/svg-catalog/render/$previewId.svg?exploded=1&explodeTilt=nope&explodeDepth=999")
     assertEquals(200, bogusCode)
     assertEquals(3, Regex("class=\"cp-exploded-plane\"").findAll(bogus).count())
+
+    // A hand-typed separation far past anything the slider offers is bounded, not obeyed: past
+    // ~2.1e6 the canvas numbers stop surviving formatting and the picture collapses instead of
+    // merely spreading out.
+    val (hugeCode, huge, _) =
+      getFull("/svg-catalog/render/$previewId.svg?exploded=1&explodeGap=3000000")
+    assertEquals(200, hugeCode)
+    assertEquals(3, Regex("class=\"cp-exploded-plane\"").findAll(huge).count())
+    val height = Regex("<svg[^>]*\\bheight=\"([\\d.]+)\"").find(huge)!!.groupValues[1].toDouble()
+    assertTrue(height < 10_000, "the stack is bounded, not 3 million units tall: $height")
   }
 
   /** `?exploded=0` is the explicit off state a bookmarked URL can carry; it changes nothing. */

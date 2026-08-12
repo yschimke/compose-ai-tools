@@ -45,12 +45,16 @@ internal object ServeExplodedSvg {
   /**
    * The exploded-view options a request asks for.
    *
-   * Out-of-range and unparseable values fall back to the default rather than 400ing: this is a
-   * *view* axis on an export URL, not a render override, so a stale bookmark or a slider that
-   * over-shoots should still produce a picture. ([ExplodedSvg] clamps the angles it is handed for
-   * the same reason.) Depth is the exception that needs clamping here rather than there — its
-   * constructor rejects an out-of-range value outright, since a caller passing 40 planes is asking
-   * for 40 copies of the drawing.
+   * Unparseable values fall back to the default and out-of-range ones are clamped, rather than
+   * 400ing: this is a *view* axis on an export URL, not a render override, so a stale bookmark or a
+   * hand-typed angle should still produce a picture. Which side does the clamping differs by knob,
+   * and deliberately:
+   * - **Angles and separation** are clamped by [ExplodedSvg] itself, because the bound is a
+   *   property of the projection (and, for separation, is relative to the drawing's own size —
+   *   something only the renderer knows).
+   * - **Depth** is clamped here, because `Options`' constructor *rejects* an out-of-range value
+   *   outright: a caller asking for 40 planes is asking for 40 structural copies of the drawing,
+   *   which is a request to refuse rather than a picture to draw.
    */
   fun optionsFrom(params: (String) -> String?): ExplodedSvg.Options {
     val defaults = ExplodedSvg.Options()

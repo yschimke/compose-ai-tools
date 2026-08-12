@@ -4025,15 +4025,29 @@ class ServeHttpServer(
           null
         } else {
           try {
-            when {
-              scroll -> renderHost.renderScrollSvg(previewId, overrides)
-              // Web mode routes through the host's web variant: a catalog-backed host links its
-              // raster crops to their published branch files instead of embedding them (the
-              // default host keeps the self-contained bytes). The font-`@import` rewrite below
-              // applies either way.
-              webMode -> renderHost.renderSvgForWeb(previewId, overrides)
-              else -> renderHost.renderSvg(previewId, overrides)
-            }
+            val produced =
+              when {
+                scroll -> renderHost.renderScrollSvg(previewId, overrides)
+                // Web mode routes through the host's web variant: a catalog-backed host links its
+                // raster crops to their published branch files instead of embedding them (the
+                // default host keeps the self-contained bytes). The font-`@import` rewrite below
+                // applies either way.
+                webMode -> renderHost.renderSvgForWeb(previewId, overrides)
+                else -> renderHost.renderSvg(previewId, overrides)
+              }
+            // Both post-render rewrites run with the permit still held. The `mode=web` one is a
+            // regex pass over a string, but the exploded projection parses the whole SVG into a
+            // DOM, structurally copies it once per sheet and re-serializes — comparable to a
+            // render on a large catalog export. Outside the semaphore, a public host could be
+            // asked for a hundred different `explodeTilt=` values at once and would run all of
+            // them in parallel, which is precisely what this route's load shedding exists to
+            // prevent. Inside it, the burst queues like any other render and sheds with a 503.
+            if (produced is SvgOutcome.Ok && (webMode || exploded != null)) {
+              var text = produced.svg.toString(Charsets.UTF_8)
+              if (webMode) text = webModeSvg(text)
+              if (exploded != null) text = ExplodedSvg.render(text, exploded)
+              produced.copy(svg = text.toByteArray(Charsets.UTF_8))
+            } else produced
           } finally {
             renderSemaphore.release()
           }
@@ -4049,17 +4063,12 @@ class ServeHttpServer(
       }
       is SvgOutcome.Ok -> {
         // The render host produces the self-contained (embedded) SVG and caches it; the web and
-        // exploded variants are cheap per-response rewrites of those bytes, so every mode shares
-        // one render + cache. Web mode runs first: it rewrites the `@font-face` block the exploded
-        // view then carries through untouched, whereas the reverse order would have it hunting for
-        // that block inside a reserialized document.
-        val svg =
-          if (webMode || exploded != null) {
-            var text = outcome.svg.toString(Charsets.UTF_8)
-            if (webMode) text = webModeSvg(text)
-            if (exploded != null) text = ExplodedSvg.render(text, exploded)
-            text.toByteArray(Charsets.UTF_8)
-          } else outcome.svg
+        // exploded variants are per-response rewrites of those bytes, so every mode shares one
+        // render + cache. Both were already applied above, inside the semaphore — web mode first,
+        // since it rewrites the `@font-face` block the exploded view then carries through
+        // untouched, whereas the reverse order would have it hunting for that block inside a
+        // reserialized document.
+        val svg = outcome.svg
         val contentType = ContentType.parse(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG)
         // The vector lane drops overrides exactly like the PNG one: a `figma/<slug>.svg` read off
         // the delivery branch was drawn at the preview's discovery-time axes, so serving it for a
