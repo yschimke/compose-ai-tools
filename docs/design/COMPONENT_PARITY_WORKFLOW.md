@@ -639,7 +639,9 @@ reject the moment **any single dimension**, **any single `width × height`**, or
 *exceeds* the cap, and stop reading. **Exceeds, not reaches**: a document exactly at 256 acceptances
 or exactly 128 megapixels is legal, which is what makes the boundary fixtures meaningful — one case
 sitting on the limit and passing, one a single unit past it and refused. A `>=` check would reject
-both and leave the two engines free to disagree about the case in between. Nothing ever holds a value larger than the cap plus one raster, so
+both and leave the two engines free to disagree about the case in between.
+
+Nothing ever holds a value larger than the cap plus one raster, so
 there is nothing to overflow, and the two engines cannot disagree about arithmetic they never do.
 
 A file whose header is unreadable, or whose declared
