@@ -516,60 +516,61 @@ fun HighDensityClickTargetSquare() {
  */
 object LocaleLocalProbe {
   /**
-   * The paragraph direction Compose actually resolved for neutral text — the **consumer** reading,
-   * and the one that decides whether this canary means anything.
+   * `TextLayoutResult.layoutInput.style.localeList` — the field an upstream fix has to populate.
    *
-   * Asserting on locale *accessors* would be vacuous: `Locale.current` is a plain getter with no
-   * `Composer`, so it can never read a composition local no matter what upstream does. The change
-   * worth detecting is a **consumer** switching from the static delegate to `LocalLocaleList` — so
-   * a consumer is what has to be measured.
+   * This is the **consumer** reading. Asserting on locale accessors would be vacuous
+   * (`Locale.current` is a plain getter with no `Composer`, so it can never read a composition
+   * local), and paragraph *direction* is the wrong signal too — it is driven by
+   * `LocalLayoutDirection`, not by the locale, as pinning the layout direction to LTR under an `ar`
+   * locale demonstrates. What is left, and what actually matters, is whether the text layer plumbs
+   * the ambient locale into the style it lays out with.
    */
-  @Volatile var paragraphDirection: String? = null
-
-  /** `androidx.compose.ui.text.intl.Locale.current` — recorded for diagnostics, not asserted on. */
-  @Volatile var staticCurrent: String? = null
+  @Volatile var resolvedStyleLocale: String? = null
 
   /** `LocalLocaleList.current` — proves the provider applied at all. */
   @Volatile var compositionLocal: String? = null
 
   fun reset() {
-    paragraphDirection = null
-    staticCurrent = null
+    resolvedStyleLocale = null
     compositionLocal = null
   }
 }
 
-/**
- * Lays out **direction-neutral** text and reports the paragraph direction Compose resolved for it.
- *
- * Digits are neutral, so nothing in the string itself picks a side: skiko's paragraph intrinsics
- * fall back to the ambient locale (`localeList ?: Locale.current`, then `isRtl`) to choose a base
- * direction. That makes the resolved direction a direct, non-pixel readout of *which* locale the
- * text pipeline consulted.
- */
+/** Records the locale [BasicText] laid out with, for [style]. */
 @Composable
-fun LocaleTextDirectionProbeSquare() {
-  LocaleLocalProbe.staticCurrent = androidx.compose.ui.text.intl.Locale.current.toLanguageTag()
+private fun LocaleStyleProbe(style: TextStyle) {
   LocaleLocalProbe.compositionLocal =
     LocalLocaleList.current.localeList.firstOrNull()?.toLanguageTag()
   Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350))) {
     BasicText(
       text = "123",
+      style = style,
       onTextLayout = {
-        LocaleLocalProbe.paragraphDirection = it.getParagraphDirection(0).toString()
+        LocaleLocalProbe.resolvedStyleLocale =
+          it.layoutInput.style.localeList?.localeList?.firstOrNull()?.toLanguageTag()
       },
     )
   }
 }
 
 /**
- * [LocaleTextDirectionProbeSquare] under `LocalProvidableLocaleList = ar`, with the JVM default
- * left alone — the composition-local-only lever, on its own.
+ * Control: a `TextStyle` that names its locale explicitly. Proves the probe reads a field that a
+ * locale can actually reach, so the canary below is not asserting against a permanently-null value.
+ */
+@Composable
+fun ExplicitLocaleStyleProbeSquare() {
+  LocaleStyleProbe(TextStyle(localeList = LocaleList("ar")))
+}
+
+/**
+ * The canary: `LocalProvidableLocaleList` provided as `ar`, and no explicit locale on the style. If
+ * the text layer ever starts plumbing the ambient composition local into the style it lays out with
+ * — the shape any usable per-composition locale would take — this reports `ar`.
  */
 @Composable
 fun LocaleLocalProbeSquare() {
   CompositionLocalProvider(LocalProvidableLocaleList provides LocaleList("ar")) {
-    LocaleTextDirectionProbeSquare()
+    LocaleStyleProbe(TextStyle.Default)
   }
 }
 

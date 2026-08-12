@@ -13,50 +13,56 @@ import org.junit.rules.TemporaryFolder
  * sessions have to be serialised behind `RenderEngine.withPreviewLocale` (issues #3718 / #3721).
  * That apparatus rests on one upstream fact: on desktop there is no way to scope a locale to a
  * composition. `androidx.compose.ui.platform.LocalProvidableLocaleList` looks like the way — it is
- * a real `ProvidableCompositionLocal<LocaleList>`, and `LocalLocaleList` reads it back — but the
- * text pipeline does not consult it. Skiko's paragraph intrinsics resolve a base direction from
- * `localeList ?: Locale.current`, and `Locale.current` goes through the desktop platform delegate,
- * which is hardwired to `java.util.Locale.getDefault()`.
+ * a real `ProvidableCompositionLocal<LocaleList>`, and `LocalLocaleList` reads it back — but
+ * nothing consumes it.
  *
- * **This measures a consumer, not an accessor, and that distinction is the test.** Asserting that
- * `Locale.current` ignores the composition local would be vacuous: it is a plain getter with no
- * `Composer`, so it can never read one, no matter what upstream does. The change actually worth
- * detecting is a *consumer* — paragraph layout, `stringResource` — switching from the static
- * delegate to `LocalLocaleList`. So the readout here is the paragraph direction Compose resolved
- * for direction-neutral text, which is exactly one such consumer.
+ * **Picking the right readout took two wrong ones, and both are worth recording so nobody repeats
+ * them:**
+ * - Asserting that `Locale.current` ignores the composition local is *vacuous*. It is a plain
+ *   getter with no `Composer`, so it can never read a composition local whatever upstream does —
+ *   such a test is green forever, including on the day the gap closes.
+ * - Asserting on the **paragraph direction** of neutral text is *measuring the wrong mechanism*.
+ *   Direction comes from `LocalLayoutDirection`, not from the locale: pin the layout direction to
+ *   LTR and an `ar` locale still lays out `Ltr`. `RenderEngine.localeProviders` happens to provide
+ *   `LocalLayoutDirection.Rtl` alongside an RTL `localeTag`, which makes a naive control look like
+ *   it passes for the right reason when it does not.
  *
- * [jvmDefaultDrivesParagraphDirection] is the positive control and it is not optional: without it,
- * a green `Ltr` in [compositionLocalDoesNotDriveParagraphDirection] could just as well mean the
- * probe never measured anything. Together they say "this signal is locale-driven, and the
- * composition local is not the locale that drives it".
+ * What is left is the field an upstream fix would actually have to populate:
+ * `TextLayoutResult.layoutInput.style.localeList` — the locale the text layer chose to lay out
+ * with. Any usable per-composition locale has to arrive there.
  *
- * When the second test fails because the local *did* steer the paragraph, upstream has closed the
- * gap: the process-global switch — and the gate serialising every composition in the daemon behind
- * it — can be reconsidered. See yschimke/m3-catalog#54 for the upstream report.
+ * [anExplicitLocaleReachesTheLaidOutStyle] is the positive control and it is not optional: without
+ * it, a green `null` in [compositionLocalDoesNotReachTheLaidOutStyle] could just as well mean the
+ * probe reads a field nothing ever fills. Together they say "a locale can reach this field, and the
+ * composition local is not a locale that does".
+ *
+ * When the second test fails because the local *did* reach the style, upstream has closed the gap:
+ * the process-global switch — and the gate serialising every composition in the daemon behind it —
+ * can be reconsidered. See yschimke/m3-catalog#54 for the upstream report.
  */
 class LocaleCompositionLocalCanaryTest {
 
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
 
   /**
-   * Control: the JVM default *does* reach paragraph layout. Establishes that the probe measures
-   * something locale-driven at all.
+   * Control: an explicitly-named locale *does* reach the style the text lays out with. Establishes
+   * that the probe reads a field a locale can populate at all.
    */
   @Test
-  fun jvmDefaultDrivesParagraphDirection() {
-    val observed = renderProbe(fixture = "LocaleTextDirectionProbeSquare", localeTag = "ar")
+  fun anExplicitLocaleReachesTheLaidOutStyle() {
+    val observed = renderProbe(fixture = "ExplicitLocaleStyleProbeSquare", localeTag = null)
 
     assertEquals(
-      "an RTL localeTag must reach paragraph layout — if this is Ltr the probe is measuring " +
-        "nothing and the canary below proves nothing either",
-      "Rtl",
+      "an explicit TextStyle.localeList must show up in the laid-out style — if it does not, the " +
+        "probe is reading nothing and the canary below proves nothing either",
+      "ar",
       observed,
     )
   }
 
-  /** The gap: the composition local alone steers nothing. */
+  /** The gap: the composition local reaches nothing. */
   @Test
-  fun compositionLocalDoesNotDriveParagraphDirection() {
+  fun compositionLocalDoesNotReachTheLaidOutStyle() {
     // `LocaleLocalProbeSquare` provides LocalProvidableLocaleList = ar around the same probe, and
     // the spec carries no localeTag, so the JVM default stays where the host left it.
     val observed = renderProbe(fixture = "LocaleLocalProbeSquare", localeTag = null)
@@ -67,17 +73,17 @@ class LocaleCompositionLocalCanaryTest {
       LocaleLocalProbe.compositionLocal,
     )
     assertEquals(
-      "UPSTREAM CANARY: paragraph layout still ignores LocalProvidableLocaleList and resolves its " +
-        "base direction from java.util.Locale.getDefault() (saw Locale.current = " +
-        "${LocaleLocalProbe.staticCurrent}). If this is now Rtl, upstream wired the composition " +
-        "local into the text pipeline — revisit the process-global localeTag switch and the gate " +
-        "around it (#3721), and close yschimke/m3-catalog#54.",
-      "Ltr",
+      "UPSTREAM CANARY: the text layer still does not plumb LocalProvidableLocaleList into the " +
+        "style it lays out with, so a composition-scoped locale reaches nothing and the " +
+        "process-global java.util.Locale.setDefault stays the only lever. If this now reports " +
+        "\"ar\", upstream wired the composition local through — revisit the localeTag switch and " +
+        "the gate around it (#3721), and close yschimke/m3-catalog#54.",
+      null,
       observed,
     )
   }
 
-  /** Render [fixture] once and return the paragraph direction it resolved. */
+  /** Render [fixture] once and return the locale of the style it laid out with. */
   private fun renderProbe(fixture: String, localeTag: String?): String? {
     val hostDefault = Locale.getDefault()
     val outputDir = tempFolder.newFolder("locale-canary-$fixture")
@@ -99,7 +105,7 @@ class LocaleCompositionLocalCanaryTest {
       )
     host.start()
     try {
-      // Emphatically LTR, so an `Rtl` reading can only have come from the locale under test.
+      // Nothing here should matter to the readings; pinned so a machine default cannot.
       Locale.setDefault(Locale.forLanguageTag("en-US"))
       LocaleLocalProbe.reset()
       val session =
@@ -109,7 +115,7 @@ class LocaleCompositionLocalCanaryTest {
         )
       try {
         session.render(requestId = RenderHost.nextRequestId())
-        return LocaleLocalProbe.paragraphDirection
+        return LocaleLocalProbe.resolvedStyleLocale
       } finally {
         session.close()
       }
