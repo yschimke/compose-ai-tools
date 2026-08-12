@@ -2700,7 +2700,7 @@
     "functionName": "FilledButtonFocused",
     "module": "samples:design-catalog-m3",
     "renderBasename": "FilledButtonFocused_Dark.png",
-    "sha256": "1aa1dcd72421a927b47d410913eb45db4ffb3924fb24c6f46d004346f1785abf",
+    "sha256": "e0768d57b19f4cc4925a815cd91ef6efe7a1e23362454ea19293c37848cd1a89",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogStatesKt.FilledButtonFocused_Light": {
@@ -2708,7 +2708,7 @@
     "functionName": "FilledButtonFocused",
     "module": "samples:design-catalog-m3",
     "renderBasename": "FilledButtonFocused_Light.png",
-    "sha256": "b29f2744bcef4d0cad8cfac4c5e8fe903dd33b290b04870eeb280c9b38a46b67",
+    "sha256": "956d93ad01f3838c42527e197c460eadb9eb7b2c66966ca6e960f85bf7fb6a00",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogStatesKt.FilledButtonIconLabel_Dark": {
@@ -2732,7 +2732,7 @@
     "functionName": "FilledButtonPressed",
     "module": "samples:design-catalog-m3",
     "renderBasename": "FilledButtonPressed_Dark.png",
-    "sha256": "2eea563f08af59972b92708ed4b918fd52d8f9705d3724836ad13b566b8775bf",
+    "sha256": "534efad7d480308dc9d64df8ebf51c8609a49cf2f1ba3eba16d40ddeb42d26e8",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogStatesKt.FilledButtonPressed_Light": {
@@ -2740,7 +2740,7 @@
     "functionName": "FilledButtonPressed",
     "module": "samples:design-catalog-m3",
     "renderBasename": "FilledButtonPressed_Light.png",
-    "sha256": "cea3cc96b1ea02e6792a8662c10e624642ab772010f62e19b8e4714312b94f21",
+    "sha256": "3d469fcc906ddad62e76919a9003580953c3fa4b8236b3bbcb6f200a6e20284a",
     "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt"
   },
   "samples:design-catalog-m3/com.example.designcatalogm3.CatalogStatesKt.SegmentedToggle_Dark": {
