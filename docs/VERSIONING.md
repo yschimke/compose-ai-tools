@@ -172,6 +172,8 @@ What is described but **not implemented**:
 | `// API: stable` / `// API: incubating` source tags | [API_STABILITY.md § 5](API_STABILITY.md#5-stability-tags-in-code) | Not applied |
 | `@Stable` / `@Incubating` DSL tiers | [API_STABILITY.md § 2.4](API_STABILITY.md#24-gradle-plugin-dsl-surface-4) | Not implemented — no opt-in tier exists |
 
-Each is additive and can land in any `1.x`. Until one does, do not cite it as a guarantee — in a PR description, in docs, or to a consumer.
+Most are additive and can land in any `1.x`. Until one does, do not cite it as a guarantee — in a PR description, in docs, or to a consumer.
+
+**Range negotiation is the exception: it cannot be done additively in the shape described.** `protocolVersion` is typed as a number on both sides (`InitializeParams.protocolVersion: Int` in `Messages.kt`, `protocolVersion: number` in the TypeScript interface and [PROTOCOL.md § 3](daemon/PROTOCOL.md)), so sending `{min, max}` in that field makes either peer fail to decode the handshake before any negotiation could happen — the one message where failing closed is guaranteed. It needs either a coordinated `protocolVersion` bump, or a staged rollout that adds the range as a **new optional field** an existing peer ignores while the numeric field keeps working, then retires the numeric one a cycle later. Chicken-and-egg worth noting: the staged path is the only one that doesn't require the coordinated release that range negotiation exists to avoid.
 
 The earlier 1.0 readiness punch list was [issue #798](https://github.com/yschimke/compose-ai-tools/issues/798); it covered feature completeness, not the enforcement above.
