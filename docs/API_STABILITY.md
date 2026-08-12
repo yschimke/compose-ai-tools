@@ -13,7 +13,7 @@ Nine externally-observable surfaces, each with its own evolution story. Anything
 | 1 | Daemon JSON-RPC over stdio | `daemon/core/.../protocol/Messages.kt`, [docs/daemon/PROTOCOL.md](daemon/PROTOCOL.md) | VS Code extension, MCP supervisor, any future client | Stable |
 | 2 | `previews.json` on disk | `gradle-plugin/.../DiscoverPreviewsTask.kt` | Daemon, CLI, CI workflows | Stable |
 | 3 | Per-data-product payload schemas | `data/<feature>/connector/`, [docs/daemon/DATA-PRODUCTS.md](daemon/DATA-PRODUCTS.md) | Daemon clients (versioned per-kind) | Stable per-kind |
-| 4 | Gradle plugin DSL (`composePreview { … }`) | `gradle-plugin/.../PreviewExtension.kt` | Consumer `build.gradle.kts` | Stable |
+| 4 | Gradle plugin DSL (`composePreview { … }`) | `gradle-plugin/gradle-plugin-config/.../PreviewExtension.kt` — published as `ee.schimke.composeai:compose-preview-config` | Consumer `build.gradle.kts` | Stable |
 | 5 | AGP × Kotlin × Compose × Robolectric matrix | [docs/RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md), [docs/AGENTS.md](AGENTS.md) | Consumers' transitive resolution | Documented, gated |
 | 6 | Preview annotations (`@ScrollingPreview`, `@AnimatedPreview`) | `api/preview-annotations/` | Consumer source code | Stable |
 | 7 | CLI argv (`compose-preview …`) | `cli/.../Args.kt`, `cli/.../Main.kt` | CI scripts, agents, GH actions | Stable |
@@ -64,8 +64,10 @@ Each kind owns its own `schemaVersion: Int`. Producers evolve independently of t
 
 ### 2.4 Gradle plugin DSL (surface 4)
 
+**Where the DSL lives.** Not in `:gradle-plugin`. `PreviewExtension` / `DaemonExtension` are in the separately published `:gradle-plugin-config` (`ee.schimke.composeai:compose-preview-config`, plugin id `…preview.config`), which the runtime plugin `api`-depends on. That artifact is the **load-bearing** one for compatibility: a consumer pins the config plugin while the CLI injects the runtime plugin at its own version, and Gradle conflict-resolves the two to a single version on the buildscript classpath. It is the artifact any binary-compatibility gate should target first — see [AGENTS.md](AGENTS.md) on the config-only plugin.
+
 **Stability tiers.** As of 1.0.0 there are two, not three — the DSL has no opt-in tier, which makes the surface *stricter* than the scheme below, not looser:
-- Public — semver-governed. Property type changes, removals, and renames are breaking changes that bump the plugin major. **Enforced by review, not by tooling** — Kotlin BCV is not wired up on this module ([VERSIONING.md § 10](VERSIONING.md#10-what-is-and-is-not-enforced)).
+- Public — semver-governed. Property type changes, removals, and renames are breaking changes that bump the plugin major. **Enforced by review, not by tooling** — Kotlin BCV is not wired up on `:gradle-plugin-config` or anywhere else ([VERSIONING.md § 10](VERSIONING.md#10-what-is-and-is-not-enforced)).
 - Internal — `internal` Kotlin visibility. No contract.
 
 The `@Stable` / `@Incubating` split, with `@Incubating` opt-in via `composePreview { incubating = true }` and a warning at apply time, is **not in 1.0.0** — it lands in a later `1.x` (see [VERSIONING.md § 10](VERSIONING.md#10-what-is-and-is-not-enforced)). Until it does, a new DSL property is public and semver-governed the moment it ships, so add one only when you're willing to keep it.

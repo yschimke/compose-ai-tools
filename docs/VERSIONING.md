@@ -82,12 +82,13 @@ Clients gate features on `ServerCapabilities` entries, not on `daemonVersion` se
 
 Bumping `protocolVersion` requires:
 
-- A coordinated daemon + every-client release.
+- A coordinated daemon + every-client release. **This is the only mechanism that works today** — see below.
 - A migration note in [docs/daemon/PROTOCOL.md](daemon/PROTOCOL.md).
-- Daemon support for the previous version for one minor cycle (clients may take longer to ship).
 - Updated fixture corpus.
 
-Range negotiation — the daemon advertising a `{min, max}` and serving both — is **not in 1.0.0** and is deferred to a later `1.x` (§ 10). `initialize` carries a single `protocolVersion: Int` today, and [`JsonRpcServer`](../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/JsonRpcServer.kt) fails the handshake on any mismatch. Until it lands, the VS Code extension's `current..current-1` support window does not exist in any form: the extension sends one hard-coded version and the daemon rejects anything else, so "a coordinated daemon + every-client release" is the only way a bump works, and "daemon support for the previous version for one minor cycle" above is an aspiration rather than something the code can currently do.
+Serving the previous version for one minor cycle, so clients can ship on their own schedule, is what this list *should* require. It is left out because the daemon cannot do it: there is no way to satisfy it, and a requirement no one can meet is worse than an acknowledged gap. Restore it here in the same change that implements range negotiation.
+
+Range negotiation — the daemon advertising a `{min, max}` and serving both — is **not in 1.0.0** and is deferred to a later `1.x` (§ 10). `initialize` carries a single `protocolVersion: Int` today, and [`JsonRpcServer`](../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/JsonRpcServer.kt) fails the handshake on any mismatch. Until it lands, the VS Code extension's `current..current-1` support window does not exist in any form: the extension sends one hard-coded version and the daemon rejects anything else, which is why a coordinated release is the only way a bump works and why the previous-version requirement is held back rather than listed.
 
 ## 5. Deprecation policy
 
@@ -109,7 +110,7 @@ Exceptions are permitted only for security fixes, documented in CHANGELOG.
 The plugin declares a **supported matrix** in [RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md). The matrix slides on its own cadence:
 
 - Adding a newer corner is **additive** (any minor).
-- Dropping a corner older than 18 months is permitted at any **minor** with one release of warning (`apply()` prints "AGP X.Y is deprecated; will be unsupported in compose-preview Z.0").
+- Dropping a corner older than 18 months is permitted at any **minor** with one release of warning. That warning has to go in the CHANGELOG and release notes: `apply()` never sees an AGP, Kotlin, or Compose version, so it cannot print the "AGP X.Y is deprecated; will be unsupported in compose-preview Z.0" message this rule used to promise, and a consumer gets no in-build notice at all.
 - Dropping multiple majors at once requires a plugin **major**.
 
 **What `apply()` actually gates today is the Gradle version** ([`GradleVersionCheck.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/GradleVersionCheck.kt)); there is no AGP / Kotlin / Compose comparison at configuration time, so an out-of-matrix consumer gets whatever failure the toolchain produces rather than a named supported range. `compose-preview doctor` is not a substitute: it prints the resolved AGP and Kotlin versions as an informational check and flags known dependency mismatches ([`CompatRules.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/tooling/CompatRules.kt) is given dependency maps and the Gradle version, not the AGP/Kotlin versions), so it evaluates no matrix predicate at all.
@@ -141,7 +142,7 @@ Three layers were designed; this is what each one actually does today.
 | Layer | Intended gate | Reality |
 |---|---|---|
 | **Fixture corpus** — `docs/daemon/protocol-fixtures/` | Adding a wire message without a fixture fails CI | Kotlin round-trips the fixtures it covers. **TypeScript does not round-trip** — `daemonProtocol.test.ts` does `JSON.parse(...) as T` and asserts selected properties on 16 of the 28 fixtures, so a renamed field nobody asserts passes. And the inventory (`MessagesTest.fixtureInventoryMatchesExpected`) is a **hand-maintained** set: a new message adds no entry and lands green. History, interactive, stream, XR, recording and extension methods are already uncovered |
-| **Kotlin BCV** — `:gradle-plugin`, `:preview-annotations` | Changing a public API without updating the golden file fails CI | **Not wired.** No `binary-compatibility-validator` plugin, no `.api` golden files, no `apiCheck` in any workflow. Nothing catches a breaking API change |
+| **Kotlin BCV** — named for `:gradle-plugin` and `:preview-annotations` | Changing a public API without updating the golden file fails CI | **Not wired.** No `binary-compatibility-validator` plugin, no `.api` golden files, no `apiCheck` in any workflow. Nothing catches a breaking API change. Note the named modules are also the wrong target: the DSL consumers compile against is `:gradle-plugin-config`, the artifact that gets conflict-resolved between a pinned config plugin and a CLI-injected runtime |
 | **Toolchain integration matrix** — `.github/workflows/integration.yml` | Bumping a matrix corner without a green run fails CI | Two different things. **On a PR:** one cell (`wear-os-samples (ComposeStarter)`); `agp8-min` is skipped, and a diff touching only safe paths skips the matrix entirely with the required legs re-emitted green. **On `main` + the nightly cron:** the full matrix, so AGP-floor drift surfaces within a day rather than on the PR. Either way the cells are external repositories and fixtures, not pinned current / current-1 / next-RC |
 
 The fixture corpus and the integration suite are real tests that catch real regressions. What none of the three currently provides is the *exhaustive* coverage the rules above assume.
