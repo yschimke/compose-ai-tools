@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.data.overrides.PreviewOverrideOption
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -6599,26 +6600,11 @@ $rows
                 <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off"$wasmDis>
                 <!-- A datalist, not a fixed <select>: the presets (pseudolocales, RTL, common
                      tags) drop down for quick picking, but any valid BCP-47 tag the server
-                     accepts can still be typed in. -->
+                     accepts can still be typed in — so this is the OPEN form of the same value
+                     set an author declares with `previewOverrideChoice`, rendered through the
+                     same helper rather than hand-written twice. -->
                 <datalist id="cp-localeTag-list">
-                  <option value="en-XA" label="Accented (pseudo)"></option>
-                  <option value="ar-XB" label="Bidi / RTL (pseudo)"></option>
-                  <option value="ar" label="Arabic (RTL)"></option>
-                  <option value="he" label="Hebrew (RTL)"></option>
-                  <option value="fa" label="Persian (RTL)"></option>
-                  <option value="en-US"></option>
-                  <option value="en-GB"></option>
-                  <option value="de-DE"></option>
-                  <option value="fr-FR"></option>
-                  <option value="es-ES"></option>
-                  <option value="pt-BR"></option>
-                  <option value="ru-RU"></option>
-                  <option value="ja-JP"></option>
-                  <option value="ko-KR"></option>
-                  <option value="zh-CN"></option>
-                  <option value="zh-Hant-TW"></option>
-                  <option value="hi-IN"></option>
-                  <option value="th-TH"></option>
+                  ${datalistOptionsHtml(LOCALE_PRESETS, indent = "                  ")}
                 </datalist>
               </label>
               <label>Font scale: <span id="cp-fontScale-val">default</span>
@@ -7068,6 +7054,42 @@ $rows
    * skipped. Empty if the resource is somehow absent — a font knob's datalist then carries only its
    * declared [PreviewOverrideDeclaration.suggestions].
    */
+  /**
+   * The locale field's **value set** — the tags worth offering, each with the name the picker
+   * shows.
+   *
+   * Open rather than exhaustive: these drop down for quick picking, and any valid BCP-47 tag the
+   * server accepts stays typeable, which is why the control remains an `<input list>` rather than
+   * becoming a `<select>`. Declared here as data so it renders through the same
+   * [datalistOptionsHtml] an author-declared value set does instead of being hand-written HTML —
+   * the labels are the whole reason a bare tag list is a poor control, and they were previously
+   * spelled out inline where nothing could reuse them.
+   *
+   * Pseudolocales lead (they are the reason to reach for this control at all), then the real RTL
+   * languages, then common tags.
+   */
+  private val LOCALE_PRESETS: List<PreviewOverrideOption> =
+    listOf(
+      PreviewOverrideOption("en-XA", "Accented (pseudo)"),
+      PreviewOverrideOption("ar-XB", "Bidi / RTL (pseudo)"),
+      PreviewOverrideOption("ar", "Arabic (RTL)"),
+      PreviewOverrideOption("he", "Hebrew (RTL)"),
+      PreviewOverrideOption("fa", "Persian (RTL)"),
+      PreviewOverrideOption("en-US"),
+      PreviewOverrideOption("en-GB"),
+      PreviewOverrideOption("de-DE"),
+      PreviewOverrideOption("fr-FR"),
+      PreviewOverrideOption("es-ES"),
+      PreviewOverrideOption("pt-BR"),
+      PreviewOverrideOption("ru-RU"),
+      PreviewOverrideOption("ja-JP"),
+      PreviewOverrideOption("ko-KR"),
+      PreviewOverrideOption("zh-CN"),
+      PreviewOverrideOption("zh-Hant-TW"),
+      PreviewOverrideOption("hi-IN"),
+      PreviewOverrideOption("th-TH"),
+    )
+
   private val googleFontFamilies: List<String> by lazy {
     ServeWeb::class
       .java
@@ -7090,7 +7112,49 @@ $rows
     val seen = LinkedHashSet<String>()
     suggestions.forEach { if (it.isNotBlank()) seen.add(it) }
     if (googleFonts) seen.addAll(googleFontFamilies)
-    return seen.joinToString("\n") { "<option value=\"${WebEscaping.htmlEscape(it)}\"></option>" }
+    return datalistOptionsHtml(seen.map { PreviewOverrideOption(it) })
+  }
+
+  /**
+   * `<option>`s for a **`<datalist>`** — the open form of a value set, where the field stays
+   * free-text and the options are a shortlist.
+   *
+   * A value whose label differs from it carries `label=`, which is what lets the locale presets
+   * read "Accented (pseudo)" while seeding `en-XA`; a self-labelling value emits the bare `value=`
+   * a font family always did, so a font knob's markup is unchanged.
+   */
+  private fun datalistOptionsHtml(
+    options: List<PreviewOverrideOption>,
+    /**
+     * Leading whitespace for each line after the first. A template interpolation only indents where
+     * the `$…` sits, so a multi-line block otherwise lands flush against the margin — invisible in
+     * a browser, but the viewer pages are checked in as golden fixtures and read by humans there.
+     */
+    indent: String = "",
+  ): String =
+    options.joinToString("\n$indent") { o ->
+      val value = WebEscaping.htmlEscape(o.value)
+      if (o.label == o.value) "<option value=\"$value\"></option>"
+      else "<option value=\"$value\" label=\"${WebEscaping.htmlEscape(o.label)}\"></option>"
+    }
+
+  /**
+   * `<option>`s for a **`<select>`** — the closed form, where [selected] is the value the control
+   * opens on.
+   *
+   * A [selected] outside the set is emitted as an extra leading option rather than dropped. The set
+   * is what the *author* declared, and a render can still be reached carrying something else (a
+   * hand-written `knob.size=xxl`, a link from before a value was renamed); showing it keeps the
+   * control honest about what is on screen, where silently snapping to the first option would lie.
+   */
+  private fun selectOptionsHtml(options: List<PreviewOverrideOption>, selected: String): String {
+    val known = options.any { it.value == selected }
+    val all = if (known) options else listOf(PreviewOverrideOption(selected)) + options
+    return all.joinToString("\n") { o ->
+      val active = if (o.value == selected) " selected" else ""
+      "<option value=\"${WebEscaping.htmlEscape(o.value)}\"$active>" +
+        "${WebEscaping.htmlEscape(o.label)}</option>"
+    }
   }
 
   private fun overrideKnobsHtml(
@@ -7138,19 +7202,37 @@ $rows
         if (bool) {
           val checked = if (value == "true" || value == "1") " checked" else ""
           "<label class=\"cp-live-row\"><input type=\"checkbox\" $attrs$checked$dis> $label</label>"
+        } else if (d.optionsExhaustive && d.options.isNotEmpty()) {
+          // A CLOSED value set (`previewOverrideChoice`): every value is on screen and nothing else
+          // is expressible, so this is a `<select>` rather than a field the visitor has to already
+          // know the vocabulary for. `xs`/`s`/`m`/`l`/`xl` was previously a text box showing `s` —
+          // the current value was visible, the alternatives were not.
+          //
+          // The viewer JS needs no branch for it: it reads `.value` / `.disabled` off the control
+          // and only special-cases `type === "checkbox"`, which a `<select>` (`select-one`) is not.
+          """
+          <label>${label}
+            <select $attrs$dis>
+          ${selectOptionsHtml(d.options, overrideValueText(d.current ?: d.default))}
+            </select>
+          </label>
+          """
+            .trimIndent()
         } else {
           val inputType = if (d.type == "int" || d.type == "float") "number" else "text"
           // Any knob that carries discovered options — a font knob (declared via
           // `previewOverrideFont` / `catalogOverrideFont`, with autocomplete suggestions and/or the
-          // Google Fonts flag) or any other knob with declared `suggestions` (e.g. `theme.colors`)
-          // —
-          // renders as a combobox "like Locale": a free-text `<input list>` bound to a `<datalist>`
-          // (declared names first, then, for a font knob, the full fonts.google.com list). Any knob
-          // with no options stays a plain text/number input.
-          val hasOptions = d.googleFonts || d.suggestions.isNotEmpty()
+          // Google Fonts flag), a non-exhaustive value set, or any other knob with declared
+          // `suggestions` (e.g. `theme.colors`) — renders as a combobox "like Locale": a free-text
+          // `<input list>` bound to a `<datalist>` (declared names first, then, for a font knob,
+          // the
+          // full fonts.google.com list). Any knob with no options stays a plain text/number input.
+          val hasOptions = d.googleFonts || d.suggestions.isNotEmpty() || d.options.isNotEmpty()
           if (hasOptions) {
             val listId = "cp-dl-" + wireKey.replace(Regex("[^A-Za-z0-9_-]"), "-")
-            val options = fontDatalistOptions(d.suggestions, d.googleFonts)
+            val options =
+              if (d.options.isNotEmpty()) datalistOptionsHtml(d.options)
+              else fontDatalistOptions(d.suggestions, d.googleFonts)
             """
             <label>${label}
               <input type="$inputType" $attrs value="$value" list="$listId"$dis>
