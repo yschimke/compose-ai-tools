@@ -685,10 +685,11 @@ class DoctorCommand(
       )
     }
     // The worst verdict wins: one render JVM that cannot load skiko breaks that module's previews
-    // regardless of how healthy the others look. Ranked, not just "first not-ok" — a missing
-    // native dep is an `error` and a glibc skew only a `warning`, and the candidates are ordered by
-    // where they came from, not by severity. Taking the first not-ok would let an earlier
-    // candidate's warning hide a later one whose renders cannot work at all.
+    // regardless of how healthy the others look. Ranked by severity rather than by "first not-ok",
+    // because the candidates are ordered by where they came from — so an earlier candidate's
+    // warning would otherwise hide a later one whose renders cannot work at all, and warnings exit
+    // 0. Same order [DesktopNativesCheck.interpret] uses, so the selected result and the status it
+    // is reported under agree.
     val result =
       results.firstOrNull { it.missing.isNotEmpty() }
         ?: results.firstOrNull { !it.ok }
