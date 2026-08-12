@@ -343,6 +343,12 @@ exactly at tolerance passes. Those are the parts two implementations would other
 differently. `0.1` is a sensible value to author with, and Phase 3 should tune it against the
 fixtures rather than treat it as settled here.
 
+It is **bounded and non-negative**, for exactly the reason `candidateTolerance` is: a large enough
+fraction disables the movement gate, letting a uniquely tagged element drift far from its authoring
+bounds while the acceptance keeps suppressing the old region's pixels. Both tolerances are
+author-controlled numbers that quietly widen what an acceptance covers, so both are range-checked
+and both refuse with `tolerance-out-of-range`.
+
 A fraction rather than an absolute pixel count because an absolute tolerance means
 something different for a 16 px icon than for a 300 px card.
 
@@ -499,7 +505,7 @@ suppresses nothing and is surfaced as needing review:
 | `plane-changed` | recomputed plane discriminant or resolved box ≠ recorded |
 | `candidate-changed` | canonical candidate inside the mask ≠ `accepted-candidate.png` within tolerance |
 | `element-ambiguous` | selector resolves to more than one node (per the kind's rule above) |
-| `element-moved` | selector resolves to nothing; or its indexed bounds are missing, malformed or zero-area; or its displacement exceeds tolerance. **Evaluated only when the selector matched exactly one node** — see below |
+| `element-moved` | selector resolves to **nothing** (always evaluated); or — **when exactly one node matched** — its indexed bounds are missing, malformed or zero-area, or its displacement exceeds tolerance |
 
 A mask whose bytes do not match `maskSha256` is not an invalidation at all — it is a **hard
 validation failure**: the acceptance is refused and reported, because a mask we cannot trust is a
@@ -553,6 +559,16 @@ a threshold is one more constant two engines could pick differently, and an anti
 is exactly the boundary case the separation rules already work hardest to keep unambiguous. A
 producer that has a soft-edged selection must decide where the edge falls before committing it,
 which is the right place for that decision to be made.
+
+**Artifact paths resolve against the known-difference directory, and may not leave it.** `mask` and
+`acceptedCandidate` are relative to the acceptance's own directory under `.design-parity/
+known-differences/<id>/` — not the repo root, not the JSON file's location, not an implicit
+`.design-parity/` — because "an ordinary relative path" resolves to three different files under
+those three readings and nothing in the artifact says which was meant. Absolute paths, `..`
+segments, and anything resolving outside that directory are `path-not-contained`, refused. This is
+not a new rule so much as the one `ServeDesignReferenceStore.isSafeRelativePath` already applies to
+reference rasters, for the same reason: these paths are read during staging on a host that fetches
+third-party catalogs, so a traversal is an escape from the artifact tree rather than a typo.
 
 **A mask must select something.** An all-zero mask satisfies the encoding and dimension rules and
 still has no bounding box, which leaves `accepted-candidate.png`'s required dimensions undefined —
@@ -638,11 +654,17 @@ anyone has fixed anything. The guard also names the real defect in that case —
 stored candidate already agrees with the reference is accepting a difference that does not exist, so
 **authoring must reject it** rather than leaving evaluation to paper over it.
 
-**Ambiguity short-circuits movement.** With several matches there is no single node whose bounds the
-index can publish, so `element-moved`'s missing-bounds condition would fire too — and one engine
-would report both causes while another stopped at the first. Movement is therefore evaluated **only
-when exactly one node matched**, which makes a duplicate tag produce exactly `["element-ambiguous"]`
-and nothing else. Pinned as the duplicate-tag fixture's expected cause list.
+**Ambiguity short-circuits the *bounds* check, not the whole gate.** With several matches there is no
+single node whose bounds the index can publish, so `element-moved`'s missing-bounds condition would
+fire alongside `element-ambiguous` — and one engine would report both causes while another stopped
+at the first. So the bounds and displacement checks run **only when exactly one node matched**, and
+a duplicate tag produces exactly `["element-ambiguous"]`.
+
+**The zero-match case is not part of that restriction.** A tag that has disappeared entirely must
+still be `element-moved` — that is "the glyph vanished", the case the element gate exists for, and
+reading the exactly-one rule as covering it would leave the acceptance `valid` and still suppressing
+the pixels of an element that is no longer there. Zero matches is always evaluated; one match gets
+the full check; more than one is ambiguous and stops. All three are fixtures.
 
 **Causes are a list, not a single value.** Several gates can fire at once — a changed reference
 alongside a tag that became ambiguous — and with a singular `invalidated: <cause>` two engines
@@ -711,7 +733,7 @@ order is what makes the multi-cause fixture comparable. `reasons` is present **o
 field would leave two engines free to pick different ones. Same fixed ordering rule, drawn from:
 `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`, `reference-hash-missing`, `decode-failed`,
 `degenerate-dimensions`, `mask-encoding-invalid`, `mask-empty`, `dimension-mismatch`,
-`tolerance-out-of-range`.
+`tolerance-out-of-range`, `path-not-contained`.
 
 **A per-acceptance refusal populates `validationFailures` as well**, one entry per reason. The two
 fields are not alternatives: `statuses` answers "what happened to this acceptance", and
