@@ -85,12 +85,36 @@ internal object DesktopNativesCheck {
     val loaderReadsSystemCache: Boolean,
     /** `java.home` of the JVM the render forks into, as reported by Gradle. */
     val renderJavaHome: String?,
+    /**
+     * `LD_LIBRARY_PATH` entries that resolve into a Nix/Guix store. Only interesting alongside a
+     * *non*-store render JVM — see [glibcSkew].
+     */
+    val storeDirsOnPath: List<String> = emptyList(),
   ) {
     val missing: List<LibStatus>
       get() = libs.filter { it.resolvedAt == null }
 
+    /**
+     * The hybrid-userland trap of issue #3690: store libraries on the search path of a render JVM
+     * that is linked against the *system* glibc.
+     *
+     * Every lib below resolves, so [missing] is empty and this check used to report `ok` — while
+     * every preview in the module died at `dlopen`, because a store `libGL.so.1` drags the store's
+     * own (newer) glibc into a process that already holds the system one:
+     * ```
+     * /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_ABI_DT_X86_64_PLT' not found
+     *   (required by /nix/store/…-glibc-2.42-67/lib/libpthread.so.0)
+     * ```
+     *
+     * The reverse pairing (system dirs on a store JVM's path) is not flagged: that is the
+     * documented remediation below, and the store loader needs `LD_LIBRARY_PATH` to find anything
+     * at all.
+     */
+    val glibcSkew: Boolean
+      get() = applicable && loaderReadsSystemCache && storeDirsOnPath.isNotEmpty()
+
     val ok: Boolean
-      get() = !applicable || missing.isEmpty()
+      get() = !applicable || (missing.isEmpty() && !glibcSkew)
   }
 
   /**
@@ -110,10 +134,17 @@ internal object DesktopNativesCheck {
     renderJavaHome: String?,
     ldLibraryPath: String?,
     exists: (String) -> Boolean,
+    canonicalize: (String) -> String = { it },
   ): Result {
     val linux = osName.lowercase().contains("linux")
     val searchDirs = ldLibraryPath.orEmpty().split(':').map { it.trim() }.filter { it.isNotEmpty() }
     val readsCache = loaderReadsSystemCache(renderJavaHome)
+    // Resolved, not as written: a store lib dir is routinely reached through a symlink farm
+    // (`~/.cache/coo-ee/desktop-gl/lib`, `~/.nix-profile/lib`), and only the resolved path admits
+    // where it came from.
+    val storeDirs = searchDirs.filter { dir ->
+      STORE_PREFIXES.any { canonicalize(dir).startsWith(it) }
+    }
     if (!linux) {
       return Result(
         applicable = false,
@@ -121,6 +152,7 @@ internal object DesktopNativesCheck {
         ldLibraryPath = searchDirs,
         loaderReadsSystemCache = readsCache,
         renderJavaHome = renderJavaHome,
+        storeDirsOnPath = storeDirs,
       )
     }
 
@@ -145,6 +177,7 @@ internal object DesktopNativesCheck {
       ldLibraryPath = searchDirs,
       loaderReadsSystemCache = readsCache,
       renderJavaHome = renderJavaHome,
+      storeDirsOnPath = storeDirs,
     )
   }
 
@@ -183,6 +216,58 @@ internal object DesktopNativesCheck {
           "ignores /etc/ld.so.cache and /usr/lib — only LD_LIBRARY_PATH counts. `ldd` and " +
           "`ldconfig -p` use the *system* loader and will look fine even when the render fails."
       } else null
+
+    if (result.glibcSkew) {
+      // Deliberately a warning rather than an error: the Gradle plugin prunes these directories
+      // from the render JVM's own environment (`RenderNativeEnv`), so a render driven through it
+      // works on this box as it stands. Anything else that starts a JVM from this environment — a
+      // bare `java -jar`, an IDE, another Gradle plugin — still gets the mixed process image, so
+      // the state is worth reporting rather than hiding.
+      return DoctorCheck(
+        id = id,
+        category = "env",
+        status = "warning",
+        message =
+          "LD_LIBRARY_PATH mixes package-store libraries into a system render JVM " +
+            "(${result.storeDirsOnPath.size} store dir(s))",
+        detail =
+          buildString {
+            append("Store dirs on LD_LIBRARY_PATH: ")
+            append(result.storeDirsOnPath.joinToString(", "))
+            append(". The render JVM (")
+            append(result.renderJavaHome ?: "unknown")
+            append(") is not from the store, so it starts with the system glibc; a store libGL ")
+            append("pulls the store's own (newer) glibc into the same process and the loader ")
+            append("refuses it: `libc.so.6: version GLIBC_… not found (required by ")
+            append("/nix/store/…/libpthread.so.0)`. Every preview in the module then fails — the ")
+            append("first with ExceptionInInitializerError, the rest with `Could not initialize ")
+            append("class org.jetbrains.skia.Surface`. The compose-preview Gradle plugin drops ")
+            append("these directories for its own render JVM, so renders driven through it are ")
+            append("unaffected.")
+          },
+        remediation =
+          DoctorRemediation(
+            summary =
+              "Give the store libraries to a store JDK, or keep them off a system JDK's " +
+                "LD_LIBRARY_PATH — don't mix the two in one process.",
+            commands =
+              buildList {
+                add("# Either: render on the JDK that matches the libraries (a store JDK),")
+                add("#   e.g. pin it for Gradle:")
+                add("#   org.gradle.java.home=/nix/store/…-temurin-bin-17…")
+                add("# Or: keep the store dirs off the render JVM's environment and let the")
+                add("#   system loader supply the libs:")
+                add("apt-get install -y libgl1 libx11-6 libfontconfig1 libstdc++6")
+                add("unset LD_LIBRARY_PATH")
+                add("# The Gradle daemon caches its environment — restart it after changing it:")
+                add("./gradlew --stop")
+                add("# Failed renders are up-to-date task outputs; force the retry:")
+                add("./gradlew :<module>:composePreviewRender --rerun")
+              },
+            docs = "https://github.com/$REPO/blob/main/docs/DESKTOP_NATIVE_DEPS.md",
+          ),
+      )
+    }
 
     if (result.ok) {
       val viaEnv = result.libs.count { it.viaLdLibraryPath }
