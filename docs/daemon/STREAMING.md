@@ -1,6 +1,6 @@
 # Live frame streaming (`composestream/1`)
 
-**Status: pre-1.0, additive on top of the existing `interactive/*` surface.**
+**Status: unstable, additive on top of the existing `interactive/*` surface.**
 A daemon that hasn't grown the new methods rejects `stream/start` with
 `MethodNotFound (-32601)`; the panel falls back to the existing
 `<img src=…>` swap path. No `protocolVersion` bump.

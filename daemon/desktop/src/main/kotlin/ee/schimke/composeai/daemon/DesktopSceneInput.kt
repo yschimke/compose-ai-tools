@@ -50,10 +50,14 @@ internal data class ScenePointer(val offset: Offset, val type: PointerType)
  *   this class holding the session's `RenderEngine.SceneState`.
  * @param defaultTimeMillis event timestamp used when a call site passes `timeMillis = null` — the
  *   interactive lane's wall-clock frame time. Scripted playback always passes its virtual `tMs`.
+ * @param defaultFrameNanos frame clock used for the settling render [press] runs when a call site
+ *   passes `frameNanos = null`. Same contract as [defaultTimeMillis]: wall clock live, virtual
+ *   `tNanos` under scripted playback.
  */
 internal class ScenePointerDispatch(
   private val scene: () -> ImageComposeScene,
   private val defaultTimeMillis: () -> Long,
+  private val defaultFrameNanos: () -> Long,
 ) {
 
   /**
@@ -70,9 +74,32 @@ internal class ScenePointerDispatch(
    */
   fun heldTypeOr(id: Int, fallback: PointerType): PointerType = active[id]?.type ?: fallback
 
-  fun press(id: Int, offset: Offset, type: PointerType, timeMillis: Long? = null) {
+  /**
+   * Press pointer [id] at [offset] and **settle the press with one render** before returning.
+   *
+   * The settling frame is load-bearing, not a nicety. Compose's gesture detectors are coroutines
+   * suspended in `awaitPointerEventScope`; the press only *becomes* the anchor of a gesture once
+   * that coroutine has run. Dispatching a Move into the same scene touch — which is exactly what a
+   * browser drag does, since the viewer defers the press until the first move and then sends both
+   * in one tick — hands Compose a moving pointer whose down it has not processed yet. For a text
+   * field that means the mouse-selection observer never gets `onStart(pressPosition)`, so the drag
+   * extends from whatever the caret happened to be on instead of from where the user pressed
+   * (issue #3697): a drag that ends past the end of the text then paints no selection at all.
+   *
+   * The click fast-paths already did this by hand between their press and release, for the same
+   * reason `Modifier.clickable {}` needs it; doing it inside [press] makes every press — click,
+   * live drag, scripted drag — carry the guarantee.
+   */
+  fun press(
+    id: Int,
+    offset: Offset,
+    type: PointerType,
+    timeMillis: Long? = null,
+    frameNanos: Long? = null,
+  ) {
     active[id] = ScenePointer(offset, type)
     send(PointerEventType.Press, timeMillis)
+    scene().render(nanoTime = frameNanos ?: defaultFrameNanos())
   }
 
   fun move(id: Int, offset: Offset, type: PointerType, timeMillis: Long? = null) {

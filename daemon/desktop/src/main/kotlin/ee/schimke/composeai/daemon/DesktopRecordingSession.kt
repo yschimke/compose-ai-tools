@@ -428,10 +428,15 @@ class DesktopRecordingSession(
    *
    * The same [ScenePointerDispatch] [DesktopInteractiveSession] uses, so a recording synthesises
    * mouse / pen / touch pointers exactly like the interactive lane does (issue #3545). Every
-   * dispatch passes the event's virtual `tMs` explicitly, so the wall-clock default is never used.
+   * dispatch passes the event's virtual `tMs` / `tNanos` explicitly, so neither wall-clock default
+   * is ever used.
    */
   private val pointers: ScenePointerDispatch =
-    ScenePointerDispatch(scene = { state.scene }, defaultTimeMillis = { 0L })
+    ScenePointerDispatch(
+      scene = { state.scene },
+      defaultTimeMillis = { 0L },
+      defaultFrameNanos = { 0L },
+    )
 
   private fun pointerIdOrDefault(event: RecordingScriptEvent): Int = event.pointerId ?: 0
 
@@ -645,8 +650,9 @@ class DesktopRecordingSession(
       val id = pointerIdOrDefault(event)
       val offset = sceneOffset(px, py)
       val type = composePointerType(event.pointerType)
-      pointers.press(id, offset, type, timeMillis = ctx.tMs)
-      state.scene.render(nanoTime = ctx.tNanos)
+      // [ScenePointerDispatch.press] renders between the press and the release, so the tap detector
+      // sees the down before the up.
+      pointers.press(id, offset, type, timeMillis = ctx.tMs, frameNanos = ctx.tNanos)
       pointers.release(id, offset, type, timeMillis = ctx.tMs)
       appliedEvidence(event)
     }
@@ -684,7 +690,8 @@ class DesktopRecordingSession(
       val offset = sceneOffset(px, py)
       val type = composePointerType(event.pointerType)
       when (eventType) {
-        PointerEventType.Press -> pointers.press(id, offset, type, timeMillis = ctx.tMs)
+        PointerEventType.Press ->
+          pointers.press(id, offset, type, timeMillis = ctx.tMs, frameNanos = ctx.tNanos)
         PointerEventType.Move -> pointers.move(id, offset, type, timeMillis = ctx.tMs)
         PointerEventType.Release -> pointers.release(id, offset, type, timeMillis = ctx.tMs)
         else -> Unit
