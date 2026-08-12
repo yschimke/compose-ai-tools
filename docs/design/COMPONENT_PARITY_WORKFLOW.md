@@ -415,6 +415,25 @@ one identifying kind**, deliberately:
 | `tag` | the `testTag`, matched anywhere in the tree | the tag is carried by more than one node | the ancestor path is irrelevant — the resolver never walks it |
 | *(absent)* | — | — | geometric acceptance: the mask alone, no element gate |
 
+**The wire shape, spelled out**, because "resolves by the `testTag`" says how to match without
+saying where the value lives — and a producer emitting `element.testTag` against a consumer reading
+`element.value` fails in a way no amount of resolver agreement fixes:
+
+```json
+"element": {
+  "kind": "tag",
+  "tag": "iconbutton-tonal-glyph",
+  "bounds": { "x": 24, "y": 24, "width": 24, "height": 24 },
+  "tolerance": 0.1
+}
+```
+
+`kind` is the discriminant; `tag` carries the value and is required when `kind` is `tag`; `bounds`
+are the authoring-time baseline in canonical-plane coordinates; `tolerance` is the
+`elementTolerance` described above. An acceptance with no `element` key at all is the geometric
+case. The fixtures pin this exact shape, not just the resolution behaviour — a schema two producers
+serialise differently is not a schema.
+
 An earlier draft also allowed a `producer` kind for a producer's own identity scheme. It is cut from
 `v1` because nothing can currently carry it: the annotation prerequisite in §5 adds `testTag` and
 the semantics `ref`, and `DesignAnnotation` has no producer-identity field — so an element selected
@@ -427,9 +446,26 @@ a producer needs it, rather than reserving the slot now.
 **Uniqueness is evaluated against the full `ComposeSemanticsPayload`, never the annotation layer.**
 `ServeDesignAnnotations.annotations` emits nothing for a node that resolves neither typography nor
 container tokens, so a duplicate-tagged node with neither is *invisible* there — the uniqueness
-re-check would pass on a tree that is genuinely ambiguous. Either count tags on the payload, or
-carry a tree-wide uniqueness verdict into the projected annotations; do not count what the overlay
-happens to show.
+re-check would pass on a tree that is genuinely ambiguous. Do not count what the overlay happens to
+show.
+
+**Which means the browser cannot run the element gates today, and that is a hard prerequisite.**
+`handleReferenceComparison` hands the page `referenceAnnotations` and `actualAnnotations` and
+nothing else, so `format-compare.js` has no tree to count tags in — and §5's prerequisite adds
+semantics-*derived annotations*, which is the very projection that drops the nodes the check needs.
+Enabling element gates in the browser therefore requires transporting something more, **before**
+Phase 3 turns them on.
+
+The full `ComposeSemanticsPayload` is the obvious candidate and probably the wrong one: it is large,
+it is mostly irrelevant to this check, and it would ride on every comparison page load. The gate
+needs exactly two things — whether a tag is unique tree-wide, and the current bounds of the node
+carrying it. So the leaner contract is a **tag index**: `{ tag: { count, bounds } }` computed
+server-side from the payload and embedded alongside the annotation payload. It answers
+`element-ambiguous` from `count > 1` and `element-moved` from `bounds`, is a few hundred bytes, and
+keeps the authoritative counting on the side that already holds the whole tree. Either way the
+decision has to be made and the transport built before the gates can be trusted; an element gate
+that silently cannot see duplicates is worse than no element gate, because it reports confidence it
+does not have.
 
 **Gates.** All five run before scoring. Any one of them invalidates the acceptance, which then
 suppresses nothing and is surfaced as needing review:
@@ -445,6 +481,27 @@ suppresses nothing and is surfaced as needing review:
 A mask whose bytes do not match `maskSha256` is not an invalidation at all — it is a **hard
 validation failure**: the acceptance is refused and reported, because a mask we cannot trust is a
 broken artifact rather than a stale one.
+
+**`resolved` outranks `candidate-changed`, and that belongs here rather than in the lifecycle
+section.** Every acceptance evaluates to exactly one **status**, and the resolution predicate is
+part of this contract because §6 cannot override it:
+
+| Status | Condition | Precedence |
+| --- | --- | --- |
+| `resolved` | the **raw** difference inside the mask is gone | **wins over `candidate-changed`** |
+| `invalidated: <cause>` | any gate above fires | applies otherwise |
+| `valid` | no gate fires | — |
+
+The precedence exists because the workflow's success path trips a gate. When someone actually fixes
+the accepted difference, the raw difference in the masked region disappears **and** the candidate
+stops matching `accepted-candidate.png` — so "it was fixed" and "it changed into something else"
+are the same pixels, and only the raw-difference test distinguishes them. Without this rule a
+dashboard could report a win while the offline gate failed the same commit as stale. `resolved`
+means delete the acceptance and close the issue; the other four causes are unaffected, since
+nothing about a changed reference or an ambiguous tag is resolved by agreement.
+
+`status` is part of the fixture result, and the fixed-candidate case is a required fixture — it is
+both the happy path and the case two implementations are most likely to classify differently.
 
 ### Coordinate space — the real problem
 
@@ -680,7 +737,7 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
 | score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, still separated, downsampled per-region rather than whole-image |
 | score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, so a divergence between the two downsample paths is caught here rather than as a raw/unaccepted mismatch |
-| result | `{raw, accepted, unaccepted, invalidations, validationFailures}` |
+| result | `{raw, accepted, unaccepted, status, invalidations, validationFailures}` — `status` per the contract's precedence table, so the fixed-candidate case has an expected value to pin |
 
 The stages exist to localise a divergence, so they must follow whatever order the Phase 3 algorithm
 settles on — and must satisfy the invariants above regardless. Two orderings are already known to be
@@ -907,7 +964,10 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
 
 ### Phase 2 — Triage
 
-5. **Semantics annotations on the focused comparison** (the prerequisite from §5).
+5. **Semantics annotations on the focused comparison** (the prerequisite from §5), **plus the
+   tag index** the element gates need — the comparison page currently receives only the two
+   annotation lists, and the derived annotations drop exactly the untagged nodes a uniqueness check
+   must count. Both halves land here; Phase 3 step 9 must not enable element gates without them.
 6. **Element selection** — click an annotated element, or drag a region; the selection rides into
    the prefilled report.
 7. **Dashboard views** — new-vs-known split, components with open issues, area classification.
@@ -927,20 +987,11 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
     since every previous restatement of that list drifted), and **stale** (issue closed, acceptance
     remains) — surfaced on the dashboard and as a gate in the offline run.
 
-    **Resolved outranks invalidated, and that precedence is not a detail.** When someone actually
-    *fixes* the accepted difference — the whole point of the workflow — two things happen at once:
-    the raw difference in the masked region disappears, **and** the candidate stops matching
-    `accepted-candidate.png`, which is `candidate-changed`. The success path therefore satisfies
-    "resolved" and "invalidated" simultaneously, and with no precedence rule the dashboard could
-    report a win while the offline gate fails the build for a stale acceptance — on the same commit.
+    The `resolved` / `invalidated` / `valid` statuses and their precedence are defined once in §4's
+    [normative contract](#the-normative-contract) — including why the success path trips a gate and
+    must still classify as resolved. This step is the surfacing of those statuses, not a second
+    definition of them.
 
-    So: if the raw difference inside the mask is gone, classify as **resolved** regardless of
-    `candidate-changed`, and prompt to delete the acceptance and close the issue. `candidate-changed`
-    means "the accepted region changed into something else"; resolved means "it changed into
-    agreement", which is the strictly more informative reading of the same pixels. The other
-    invalidation causes are unaffected — a `reference-changed` or `element-ambiguous` acceptance is
-    not resolved by anything. Pin the fixed-candidate case in the shared fixtures, since it is both
-    the happy path and the one two implementations are most likely to classify differently.
 12. **Document** the reporting → triage → acceptance → verification → closure loop in
     `docs/public-preview-server.md`, beside the existing parity view section.
 
