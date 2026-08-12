@@ -101,6 +101,7 @@ class DesktopInteractiveSession(
       scene = { state.scene },
       defaultTimeMillis = { engine.currentFrameNanoTime() / 1_000_000L },
       defaultFrameNanos = { engine.currentFrameNanoTime() },
+      settleFrame = { nanoTime -> engine.renderSettlingFrame(state, nanoTime) },
     )
 
   override val isClosed: Boolean

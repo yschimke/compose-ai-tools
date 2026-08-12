@@ -53,11 +53,16 @@ internal data class ScenePointer(val offset: Offset, val type: PointerType)
  * @param defaultFrameNanos frame clock used for the settling render [press] runs when a call site
  *   passes `frameNanos = null`. Same contract as [defaultTimeMillis]: wall clock live, virtual
  *   `tNanos` under scripted playback.
+ * @param settleFrame renders the throwaway frame that settles a [press]. A lambda rather than a
+ *   `scene().render()` here because that frame has to carry the session's whole render discipline —
+ *   the `localeTag` JVM-default-`Locale` scope, and closing the snapshot it allocates. See
+ *   [RenderEngine.renderSettlingFrame].
  */
 internal class ScenePointerDispatch(
   private val scene: () -> ImageComposeScene,
   private val defaultTimeMillis: () -> Long,
   private val defaultFrameNanos: () -> Long,
+  private val settleFrame: (nanoTime: Long) -> Unit,
 ) {
 
   /**
@@ -99,7 +104,7 @@ internal class ScenePointerDispatch(
   ) {
     active[id] = ScenePointer(offset, type)
     send(PointerEventType.Press, timeMillis)
-    scene().render(nanoTime = frameNanos ?: defaultFrameNanos())
+    settleFrame(frameNanos ?: defaultFrameNanos())
   }
 
   fun move(id: Int, offset: Offset, type: PointerType, timeMillis: Long? = null) {
