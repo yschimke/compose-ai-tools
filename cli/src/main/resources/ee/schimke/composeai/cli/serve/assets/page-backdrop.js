@@ -53,26 +53,35 @@
     syncFocusability();
   }
 
-  // The renders are `loading="lazy"` and only get their real `src` when the overlay is first turned
-  // on. A screen can carry a couple of dozen placements, and a visitor who never opens the overlay
-  // should not cost the server a render request per placement — on a live catalog each of those is
-  // a daemon render, not a static file.
-  // Only a same-origin, relative path is ever promoted to a live `src`. The value is written by the
-  // server from a URL-encoded preview id, so in practice it is always one — but it reaches this
-  // code as DOM text, and DOM text is not a trust boundary. Anything carrying a scheme or a
-  // protocol-relative prefix is dropped rather than fetched, which keeps a `javascript:` or
-  // off-origin URL out of the sink even if a future producer or a mangled page put one there.
-  function isSameOriginPath(value) {
-    return typeof value === "string" && value.charAt(0) === "/" && value.charAt(1) !== "/";
+  // The path this render may be fetched from, or null.
+  //
+  // The value is written by the server from a URL-encoded preview id, so in practice it is always
+  // a same-origin path — but it reaches this code as DOM text, and DOM text is not a trust
+  // boundary. Parsed against the document rather than prefix-tested: `new URL` normalises first, so
+  // this rejects the cases a `startsWith("/")` check waves through — `\\evil.com`, a tab or
+  // newline inside the scheme, an encoded `javascript:` — and what gets assigned is the *parsed*
+  // path rather than the original text.
+  function sameOriginPath(value) {
+    if (typeof value !== "string" || value === "") return null;
+    try {
+      var url = new URL(value, window.location.href);
+      return url.origin === window.location.origin ? url.pathname + url.search : null;
+    } catch (e) {
+      return null;
+    }
   }
 
+  // The renders only get their real `src` when the overlay is first turned on. A screen can carry a
+  // couple of dozen placements, and a visitor who never opens the overlay should not cost the
+  // server a render request per placement — on a live catalog each of those is a daemon render,
+  // not a static file.
   function armRenders() {
     var pending = stage.querySelectorAll(".cp-backdrop-render[data-src]");
     for (var i = 0; i < pending.length; i++) {
       var img = pending[i];
-      var src = img.getAttribute("data-src");
+      var path = sameOriginPath(img.getAttribute("data-src"));
       img.removeAttribute("data-src");
-      if (isSameOriginPath(src)) img.src = src;
+      if (path) img.src = path;
     }
   }
 
@@ -103,10 +112,11 @@
 
   // Hovering a row in the placement list highlights its rectangle on the screen, and vice versa —
   // the cheapest way to answer "which one is that?" on a screen with five identical list items.
-  // Compares attribute values rather than building a selector string out of one. A node id is text
+  //
+  // Compares attribute values rather than building a selector string out of one: a node id is text
   // from the design file, and interpolating it into a selector would be an injection with the same
-  // shape as an HTML one — `CSS.escape` is the usual patch, but not constructing the selector at
-  // all is simpler and has no browser-support caveat.
+  // shape as an HTML one. `CSS.escape` is the usual patch, but not constructing the selector at all
+  // is simpler and has no browser-support caveat.
   function pair(nodeId, on) {
     var all = root.querySelectorAll("[data-cp-placement]");
     for (var i = 0; i < all.length; i++) {
