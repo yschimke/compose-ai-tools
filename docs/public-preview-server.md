@@ -218,12 +218,12 @@ and its safety model, with a link to the machine-readable [`/version`](#endpoint
 ## Pasting a link into Slack or Google Chat
 
 Every browser-facing page carries an Open Graph / Twitter card block — title, description, canonical
-`og:url`, and the image the page is *about* (the featured hero on the front door, the catalog's hero
-on a landing, the exact render on a viewer). Utility and error pages advertise no image and get an
-honest text-only card.
+`og:url`, and the image the page is *about* (a drawn card on the front door and on each catalog
+landing, the exact render on a viewer). Utility and error pages advertise no image and get an honest
+text-only card.
 
-Three things beyond the meta tags decide whether the card actually appears, and all three used to be
-missing:
+Five things beyond the meta tags decide whether the card actually appears — and whether what appears
+is worth looking at. All five used to be missing:
 
 - **HEAD answers GET, everywhere.** An unfurler probes a URL and its `og:image` with `HEAD` before
   committing to a download. Every route here is registered with Ktor's `get`, so before
@@ -236,8 +236,27 @@ missing:
   lay the card out without downloading the image to measure it. That measurement is the step Slack
   and Google skip — dropping the image — when it is slow. The size also picks the card honestly: a
   300×210 component render asks for `summary`, not the `summary_large_image` it could never fill.
-  The front door's unfurl image is deliberately the **full render**, not the downscaled `/hero/`
-  thumbnail the card lays out — that one is card-sized (216×480) and below every unfurler's floor.
+- **…and its shape, not just its size.** A large card is laid out at roughly 1.91:1 and the image is
+  *cropped* to fill it, so a picture far from that aspect is mostly thrown away. `ServeWeb` claims a
+  large card only inside 1.25–2.4 (the band where the crop still leaves about two thirds of the
+  image); a portrait phone render and a square watch face both fall outside it and get `summary`,
+  which shows the whole picture beside the text instead of a slice through its middle.
+- **The front door and each catalog advertise a *drawn* card** (`ServeSocialCard`, served immutable
+  off `/social/<hash>.png`), not one of their own renders. No render is the right shape: the front
+  door used to point at whichever hero sat in its first card — `compose-m3`'s 1078×2399 phone
+  screenshot — so a shared link unfurled as a horizontal band through the empty half of an app
+  scaffold, carrying no product name and nothing about the other twenty catalogs. The card is
+  1200×630 with the mark, the page's heading, a count, and the catalogs' own hero thumbnails set
+  into it. It is composed from the thumbnails `/hero/` already baked, so it costs no render, and it
+  is memoised by its inputs and content-addressed like they are — which matters more here, because
+  unfurlers cache by URL and several never revalidate.
+- **The site has an icon.** `/favicon.svg`, `/favicon.ico` and `/apple-touch-icon.png`
+  (`ServeSiteIcon`, drawn from the same mark and palette) plus the `<link rel="icon">` tags that
+  name them. Every surface that shows a card puts the site's icon beside it, resolved from those
+  tags or by probing `/favicon.ico` — which answered `404` with an HTML body before these existed,
+  so an unfurled link showed a generic globe. Three forms because no single one is accepted
+  everywhere: SVG for browser tabs, a PNG for the chat clients that read `apple-touch-icon`, and a
+  real ICO for the fetchers that only ever guess the well-known path.
 - **An anonymous page is storable.** On a server with `--github-auth-*`, every page used to be
   `private, no-store` because it renders the visitor's sign-in chip. An *anonymous* request gets the
   signed-out rendering everyone else gets, so it is now `public, max-age=0, s-maxage=300,

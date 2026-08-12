@@ -1962,6 +1962,9 @@ class ServeWebFixtureTest {
     // The page goldens, named once: the same list backs both the `UPDATE_SERVE_WEB_FIXTURES=true`
     // regeneration below and the sync assertion further down, so a fixture can never be written
     // by one and forgotten by the other.
+    // The card rasters the fixture page below frames. Drawn once and reused by both the golden and
+    // the committed PNGs, so the two can't end up describing different pictures.
+    val unfurlCards = socialCardFixtures()
     val renderedGoldens =
       listOf(
         "serve-landing.html" to landing,
@@ -2010,6 +2013,9 @@ class ServeWebFixtureTest {
         "serve-playground-uncompilable.html" to playgroundUncompilable,
         "serve-doc-lottie.html" to docLottie,
         "serve-doc-remotecompose.html" to docRemoteCompose,
+        // Not a served page: a frame around the drawn link-unfurl cards, so that raster surface is
+        // screenshotted and diffed on every PR like the pages are. See [socialCardPage].
+        "serve-social-card.html" to socialCardPage(unfurlCards),
       )
 
     // Normalise once, here, so the regeneration below and the sync assertion further down cannot
@@ -2021,10 +2027,12 @@ class ServeWebFixtureTest {
       goldens.forEach { (name, html) -> File(pagesDir, name).writeText(html) }
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       File(pagesDir, "_render-placeholder.svg").writeText(renderPlaceholderSvg())
+      unfurlCards.forEach { (name, card) -> File(pagesDir, name).writeBytes(card.bytes) }
       return
     }
 
     assertGoldensInSync(pagesDir, goldens)
+    assertUnfurlCardsInSync(pagesDir, unfurlCards)
     // The parity page's load-bearing claims, asserted rather than left to the pixel diff. A
     // comment on Switch (whose code never moved in this window) is one-sided design movement, so
     // it must reach the "needs a look" band; Button moved on both sides and must NOT, because that
@@ -4840,13 +4848,47 @@ class ServeWebFixtureTest {
    * regenerated on a branch *before* merging `main`, where `main` then changed the markup for
    * everything (drift across unrelated pages, on a line nobody on the branch edited).
    */
+  /**
+   * The committed unfurl-card rasters still match what [ServeSocialCard] draws today.
+   *
+   * Compared with a tolerance rather than by bytes — see [meanPixelDifference] for why an exact
+   * comparison would fail across JDK builds for a reason nobody could act on. The threshold is
+   * generous against antialiasing noise and nowhere near what a real change costs: moving the
+   * headline, changing a colour, or dropping a thumbnail all shift whole regions.
+   */
+  private fun assertUnfurlCardsInSync(
+    pagesDir: File,
+    cards: List<Pair<String, ServeSocialCard.Card>>,
+  ) {
+    val problems = cards.mapNotNull { (name, card) ->
+      val file = File(pagesDir, name)
+      if (!file.isFile) return@mapNotNull "$name: missing"
+      val committed = ImageIO.read(file) ?: return@mapNotNull "$name: not a readable PNG"
+      val drawn = ImageIO.read(java.io.ByteArrayInputStream(card.bytes))!!
+      val difference = meanPixelDifference(committed, drawn)
+      if (difference <= UNFURL_CARD_TOLERANCE) null
+      else
+        "$name: differs from the drawn card (mean channel difference " +
+          "${"%.2f".format(difference)} > $UNFURL_CARD_TOLERANCE)"
+    }
+    if (problems.isEmpty()) return
+    fail(
+      "the committed link-unfurl cards are out of sync with ServeSocialCard:\n  " +
+        problems.joinToString("\n  ") +
+        "\n\nRegenerate with UPDATE_SERVE_WEB_FIXTURES=true — and look at the result, because " +
+        "these are what a shared link shows in Slack, iMessage and search results."
+    )
+  }
+
   private fun assertGoldensInSync(pagesDir: File, goldens: List<Pair<String, String>>) {
     // Every page loads at least one hashed asset, so a golden without the placeholder means
     // `stableAssetHrefs` stopped matching what `ServeWeb` emits — the URL shape changed, or the
     // digest format did. Say so directly instead of letting it surface as 36 files of "drift",
     // which is the failure this normalisation exists to stop being noise.
     val unnormalised =
-      goldens.filterNot { (_, html) -> STABLE_ASSET_PREFIX in html }.map { it.first }
+      goldens
+        .filterNot { (name, html) -> name in ASSETLESS_GOLDENS || STABLE_ASSET_PREFIX in html }
+        .map { it.first }
     if (unnormalised.isNotEmpty()) {
       fail(
         "no `$STABLE_ASSET_PREFIX` href in: ${unnormalised.joinToString(", ")}.\n" +
@@ -4942,6 +4984,167 @@ class ServeWebFixtureTest {
    * [renderPlaceholderSvg] uses for its vector counterpart — making the bytes a pure function of
    * this code.
    */
+  // --- The link-unfurl card as a captured visual surface ----------------------------------------
+
+  /**
+   * The two shapes of unfurl card ([ServeSocialCard]) this server draws, named for their fixture
+   * files: the front door's (a shelf of catalogs) and a single catalog landing's.
+   *
+   * Composed from the harness's own committed placeholder artwork rather than a real render, for
+   * the same reason every other fixture is: the picture has to be identical on every machine that
+   * regenerates it. [placeholderWatchPng] exists so the front door's card exercises the *two*-hero
+   * shelf with artwork of differing aspect — a phone beside a square face — which is the layout
+   * rule most likely to break silently.
+   */
+  private fun socialCardFixtures(): List<Pair<String, ServeSocialCard.Card>> {
+    val cards = ServeSocialCard()
+    val phone = ServeHeroImages.Hero(placeholderPng(), "phone.png", "\"phone\"", 200, 420)
+    val watch = ServeHeroImages.Hero(placeholderWatchPng(), "watch.png", "\"watch\"", 240, 240)
+    val systems =
+      listOf(
+        ServeWeb.HomeSystem(
+          system = "compose-m3",
+          title = "Compose Material 3",
+          subtitle = null,
+          previewCount = 42,
+          trust = null,
+          heroPreviewId = null,
+        ),
+        ServeWeb.HomeSystem(
+          system = "wear-m3",
+          title = "Wear Compose Material 3",
+          subtitle = null,
+          previewCount = 18,
+          trust = null,
+          heroPreviewId = null,
+        ),
+      )
+    return listOfNotNull(
+      cards
+        .cardFor(
+          ServeSocialCard.Spec(
+            title = ServeWeb.HOME_TITLE,
+            subtitle = ServeWeb.homeCardSubtitle(systems),
+            heroes = listOf(phone, watch),
+          )
+        )
+        ?.let { "_social-card-home.png" to it },
+      cards
+        .cardFor(
+          ServeSocialCard.Spec(
+            title = "Wear Compose Material 3",
+            subtitle = ServeWeb.catalogCardSubtitle(18),
+            heroes = listOf(watch),
+          )
+        )
+        ?.let { "_social-card-catalog.png" to it },
+    )
+  }
+
+  /**
+   * A page whose whole content is those cards at 1:1, so the harness screenshots them and the
+   * visual-diff bot comments on any change to the card's layout, palette or type — the same
+   * automatic coverage every other serve surface gets.
+   *
+   * Hand-written rather than rendered by [ServeWeb], because the card is not a page: it is a raster
+   * served off `/social/`, and the only way to put a raster in front of a DOM screenshotter is to
+   * frame it in one. The frame is deliberately plain and identical in both themes — the card itself
+   * is always dark (an unfurl raster has no `prefers-color-scheme`), so a themed frame would imply
+   * a variation that does not exist.
+   */
+  private fun socialCardPage(cards: List<Pair<String, ServeSocialCard.Card>>): String {
+    val figures =
+      cards.joinToString("\n") { (file, card) ->
+        """
+        <figure>
+          <img src="$file" width="${card.width}" height="${card.height}" alt="Unfurl card">
+          <figcaption>$file — ${card.width}×${card.height}</figcaption>
+        </figure>
+        """
+          .trimIndent()
+          .prependIndent("    ")
+      }
+    return """
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Link unfurl cards — compose-preview</title>
+        <style>
+          body { margin: 0; padding: 32px; background: #6e6a75; color: #ffffff;
+            font: 14px/1.4 system-ui, sans-serif; display: grid; gap: 32px; justify-items: start; }
+          figure { margin: 0; display: grid; gap: 8px; }
+          img { display: block; max-width: 100%; height: auto; border-radius: 12px; }
+          figcaption { font-variant-numeric: tabular-nums; opacity: 0.85; }
+        </style>
+      </head>
+      <body>
+$figures
+      </body>
+    </html>
+    """
+      .trimIndent()
+  }
+
+  /**
+   * Mean absolute per-channel difference between two images, or [Double.MAX_VALUE] when they aren't
+   * even the same size.
+   *
+   * The card goldens are compared with a tolerance rather than byte-for-byte, unlike the HTML ones.
+   * They are *rasterized text*, and font hinting and antialiasing differ slightly between JDK
+   * builds — an exact comparison would fail on a contributor's machine for a reason no one could
+   * act on. A layout, palette or copy change moves whole regions and clears this threshold by
+   * orders of magnitude, so the drift guard still does its job.
+   */
+  private fun meanPixelDifference(a: BufferedImage, b: BufferedImage): Double {
+    if (a.width != b.width || a.height != b.height) return Double.MAX_VALUE
+    var total = 0L
+    for (y in 0 until a.height) {
+      for (x in 0 until a.width) {
+        val p = a.getRGB(x, y)
+        val q = b.getRGB(x, y)
+        for (shift in intArrayOf(16, 8, 0)) {
+          total += Math.abs(((p shr shift) and 0xff) - ((q shr shift) and 0xff)).toLong()
+        }
+      }
+    }
+    return total.toDouble() / (a.width.toLong() * a.height * 3)
+  }
+
+  private fun placeholderPng(): ByteArray {
+    val file = File.createTempFile("placeholder", ".png")
+    try {
+      writePlaceholderPng(file)
+      return file.readBytes()
+    } finally {
+      file.delete()
+    }
+  }
+
+  /** A square, watch-shaped companion to [writePlaceholderPng], in the same flat M3 style. */
+  private fun placeholderWatchPng(): ByteArray {
+    val size = 240
+    val img = BufferedImage(size, size, BufferedImage.TYPE_INT_RGB)
+    val g = img.createGraphics()
+    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+    g.color = Color(0x14, 0x12, 0x18)
+    g.fillRect(0, 0, size, size)
+    g.color = Color(0x21, 0x1F, 0x26)
+    g.fill(Ellipse2D.Float(8f, 8f, 224f, 224f))
+    g.color = Color(0xD0, 0xBC, 0xFF)
+    g.fill(RoundRectangle2D.Float(70f, 60f, 100f, 18f, 18f, 18f))
+    g.color = Color(0xCA, 0xC4, 0xD0)
+    g.fill(RoundRectangle2D.Float(56f, 96f, 128f, 14f, 14f, 14f))
+    g.fill(RoundRectangle2D.Float(66f, 122f, 108f, 14f, 14f, 14f))
+    g.color = Color(0x4F, 0x37, 0x8B)
+    g.fill(RoundRectangle2D.Float(78f, 154f, 84f, 32f, 32f, 32f))
+    g.dispose()
+    val out = java.io.ByteArrayOutputStream()
+    ImageIO.write(img, "png", out)
+    return out.toByteArray()
+  }
+
   private fun writePlaceholderPng(file: File) {
     val w = 200
     val h = 420
@@ -4986,6 +5189,25 @@ class ServeWebFixtureTest {
   private companion object {
     /** What the goldens carry in place of a real content hash. See [stableAssetHrefs]. */
     const val STABLE_ASSET_PREFIX = "/assets/serve/fixture/"
+
+    /**
+     * Goldens that legitimately load none of the server's hashed assets, and so are exempt from the
+     * normalisation check above. An explicit list rather than a "no assets ⇒ fine" rule, because
+     * the whole point of that check is to notice when a *page* stops matching the URL shape
+     * [stableAssetHrefs] rewrites.
+     *
+     * Only the unfurl-card frame is here: it is not a served page at all, just a `<figure>` around
+     * the committed card rasters so the harness screenshots them (see [socialCardPage]).
+     */
+    val ASSETLESS_GOLDENS = setOf("serve-social-card.html")
+
+    /**
+     * Mean per-channel difference (0..255) tolerated between a committed unfurl card and a freshly
+     * drawn one. Sized to absorb font-rasterization differences between JDK builds — those move a
+     * fraction of a level averaged over 756,000 pixels — while a layout or palette change moves
+     * whole regions and lands orders of magnitude above it.
+     */
+    const val UNFURL_CARD_TOLERANCE = 1.5
 
     /**
      * `/assets/serve/<size-hex>-<16 hex digits>/` — the exact shape [ServeWebAssets.href] builds
