@@ -2243,9 +2243,46 @@
   // from the `knob.<key>` patch), so a knob edit drives whichever transport is live: the Wasm
   // iframe when it's active (or auto-enable it on a static published catalog), the daemon stream
   // when Live is up, or a `/render` snapshot when the session can re-render.
-  function onKnobEdited() {
+  // A closed value-set knob (`previewOverrideChoice`) renders as a <select>, and a <select> silently
+  // drops an assignment it has no option for — `.value` becomes "". That matters because "" is a
+  // REAL value for a string knob (a cleared label, a variant seeded empty), so it would be sent as
+  // `knob.<key>=` rather than ignored: opening `?knob.size=xxl` would render the wrong override
+  // instead of the stale one it names. The server already keeps an unknown *baked* value by adding
+  // it as an option; this is the same courtesy for a value that only ever existed in the URL — a
+  // hand-written link, or one from before a value was renamed.
+  function adoptChoiceValue(el, value) {
+    if (el.tagName !== "SELECT" || value === "") return;
+    for (var i = 0; i < el.options.length; i++) if (el.options[i].value === value) return;
+    var option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    el.insertBefore(option, el.firstChild);
+  }
+  // Which transport will carry a knob edit. Resolved BEFORE the URL sync rather than inline in the
+  // dispatch below, because the answer decides who owns the history entry — see [discrete] in
+  // onKnobEdited.
+  function knobRoute() {
+    if (wasmActive()) return "wasm";
+    if (live.checked && ws && ws.readyState === 1) return "live";
+    if (canRenderOverrides) return "snapshot";
+    // A published catalog can't re-render on the server, but its in-browser app can apply the
+    // knob — auto-enable the Wasm tier and let its load carry the edit (wasmInitialSrc bakes the
+    // patch into the fragment), mirroring the display-axis auto-enable in onControlsChanged.
+    if (staticSnapshot && wasmToggle) return "enable-wasm";
+    return "none";
+  }
+  // [discrete] marks an edit that earns its own history entry (a value picked from a closed set),
+  // as opposed to a continuous one (typing a label) that replaces.
+  //
+  // It pushes here for every route BUT `enable-wasm`: that path ends in `setMode("wasm")`, and
+  // `enterMode` already pushes for the lane change. Pushing in both places would leave an
+  // intermediate `choice + png` entry between the two — a state that cannot apply the choice it
+  // names — so Back would land there instead of on the previous choice.
+  function onKnobEdited(discrete) {
+    var route = knobRoute();
+    if (discrete && route !== "enable-wasm") urlPush = true;
     refreshLinks();
-    if (wasmActive()) {
+    if (route === "wasm") {
       if (wasmReady && wasmFrame.contentWindow) {
         wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
       } else {
@@ -2253,19 +2290,22 @@
       }
       return;
     }
-    if (live.checked && ws && ws.readyState === 1) {
+    if (route === "live") {
       ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
-    } else if (canRenderOverrides) {
+    } else if (route === "snapshot") {
       refreshSnapshot();
-    } else if (staticSnapshot && wasmToggle) {
-      // A published catalog can't re-render on the server, but its in-browser app can apply the
-      // knob — auto-enable the Wasm tier and let its load carry the edit (wasmInitialSrc bakes
-      // the patch into the fragment), mirroring the display-axis auto-enable in onControlsChanged.
+    } else if (route === "enable-wasm") {
       setMode("wasm");
     }
   }
   document.querySelectorAll(".cp-knob").forEach(function (el) {
-    el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobEdited);
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", function () {
+      // A closed value-set knob renders as a <select>, and picking from it is a DISCRETE choice —
+      // like a lane switch or a theme pick — so it earns a history entry and Back returns to the
+      // previously chosen value. A typed knob stays continuous and replaces instead, or one edit
+      // of a label would bury the page under an entry per keystroke. See `urlPush`.
+      onKnobEdited(el.tagName === "SELECT");
+    });
   });
   // The app-theme selector and detected-feature toggles route ONLY through the server daemon —
   // an app-declared theme provider is a server-side wrapper, and focus/gesture overlays are
@@ -2477,7 +2517,7 @@
       var value = q.get("knob." + key);
       if (value === null) value = el.getAttribute("data-knob-initial") || "";
       if (el.type === "checkbox") el.checked = (value === "true" || value === "1");
-      else el.value = value;
+      else { adoptChoiceValue(el, value); el.value = value; }
     });
     document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
       var name = el.getAttribute("data-rc-name");

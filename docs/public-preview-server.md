@@ -118,6 +118,55 @@ The dark lane is unchanged, and an untagged render now links back to the primary
 well as forward to its siblings — the relation is symmetric because both sides resolve to a lane
 string rather than one of them being `null`.
 
+## Value sets: a knob that says what it may be
+
+A `previewOverride*` knob publishes its current value, and until it also publishes its **value set**
+that is all a visitor gets. A size axis rendered as a text field reading `s`: correct, and useless
+for finding out that `xs` / `m` / `l` / `xl` are the alternatives — you had to read the source, or
+guess the spelling and watch the render refuse to move.
+
+[`previewOverrideChoice`](../data/preview-overrides/runtime/src/main/kotlin/ee/schimke/composeai/overrides/PreviewOverrideHost.kt)
+declares the set alongside the value. Each entry may carry a label, so the picker can read
+"Extra small" while the wire value stays the `xs` the composable reads — seeding and
+`@OverrideVariant` are untouched:
+
+```kotlin
+val size = previewOverrideChoice(
+  "size",
+  default = "s",
+  options = listOf(PreviewOverrideOption("xs", "Extra small"), PreviewOverrideOption("s", "Small")),
+)
+```
+
+| Before — the value, not the alternatives | After — the set is the control |
+| --- | --- |
+| ![A density knob as a text field reading cosy](images/serve-knob-value-set-before.png) | ![The same knob as a picker reading Cosy](images/serve-knob-value-set-after.png) |
+
+The set travels in the declaration (`options`, plus `optionsExhaustive` for whether it is the
+complete list), so it reaches the viewer through the same `previews/<id>.overrides.json` sidecar the
+rest of the knob does — no new lane, and an older reader that doesn't know the fields renders the
+input it always did.
+
+**Two forms, one helper.** An *exhaustive* set becomes a `<select>`: nothing outside it is
+expressible, and every value is on screen without interacting. A *non-exhaustive* one stays a
+free-text `<input list>` over a `<datalist>` — the options are worth offering but must not be the
+only thing accepted. The **locale field is the standing instance of the second form**: its presets
+(pseudolocales first, then RTL languages, then common tags) render through the same helper, while
+any valid BCP-47 tag stays typeable and the control keeps the id and raw-value contract the viewer
+script already drives it by.
+
+A value the control is *currently* showing but the author never declared — a hand-written
+`knob.size=xxl`, a link from before a value was renamed — is added to the picker rather than
+dropped, so the control cannot quietly disagree with the pixels beside it. That holds for a value
+baked into the sidecar and for one that only ever existed in the page URL, which is where a stale
+link actually arrives.
+
+> **Consumer docs live elsewhere.** The above is the contributor view — how the server renders a
+> declared value set. `previewOverrideChoice` is part of the *published* authoring surface, so the
+> guidance for someone applying the plugin to their own project belongs in the
+> [`compose-preview` skill](https://github.com/yschimke/skills/tree/main/skills/compose-preview),
+> not here. See [AGENTS.md](AGENTS.md) on the two doc trees.
+
 ## Every selection is in the URL
 
 What a visitor picks is reflected into the page URL, so the page on screen is the page its URL
