@@ -560,6 +560,16 @@ is exactly the boundary case the separation rules already work hardest to keep u
 producer that has a soft-edged selection must decide where the edge falls before committing it,
 which is the right place for that decision to be made.
 
+**The `id` must be a safe single path segment, because the artifact directory is derived from it.**
+Checking a child path against `.design-parity/known-differences/<id>/` is worthless if `<id>` can
+move that directory: an `id` containing `/` or `..` relocates the base, after which `mask.png` is
+perfectly "contained" within the escaped location and passes. So `id` is constrained first — a
+single segment of `[A-Za-z0-9._-]`, no separators, no `..` — and the final resolved artifact paths
+are additionally verified against the **fixed** `known-differences` root rather than only against
+the derived directory. Two checks because the id is doing double duty as an identifier and a
+filesystem path, and the second is what holds if the first is ever loosened. `id-not-safe` is its
+own refusal reason.
+
 **Artifact paths resolve against the known-difference directory, and may not leave it.** `mask` and
 `acceptedCandidate` are relative to the acceptance's own directory under `.design-parity/
 known-differences/<id>/` — not the repo root, not the JSON file's location, not an implicit
@@ -618,7 +628,7 @@ Evaluated strictly in this order — the first row whose condition holds wins:
 
 | # | Status | Condition |
 | --- | --- | --- |
-| 1 | `refused` | either artifact's bytes fail their recorded hash; **or an artifact is hash-valid but fails to decode, decodes to zero/negative dimensions, carries a non-binary mask encoding, or does not match its required dimensions**; **or the targeted reference publishes no `sha256`**; — the acceptance is never evaluated |
+| 1 | `refused` | **any** validation condition holds — either artifact's bytes fail their recorded hash; an artifact is hash-valid but fails to decode, decodes to zero/negative dimensions, carries a non-binary mask encoding, selects no pixels, or does not match its required dimensions; the targeted reference publishes no `sha256`; either tolerance is out of range; the `id` is not a safe single path segment; or an artifact path does not resolve inside the known-differences root. The acceptance is never evaluated, and the `reasons` token set below is the complete list |
 | 2 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
 | 3 | `resolved` | the candidate gate **fired** *and* the masked region now agrees with the **reference** (see below) |
 | 4 | `invalidated: [candidate-changed]` | the candidate gate fired and the region did not converge |
@@ -733,7 +743,7 @@ order is what makes the multi-cause fixture comparable. `reasons` is present **o
 field would leave two engines free to pick different ones. Same fixed ordering rule, drawn from:
 `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`, `reference-hash-missing`, `decode-failed`,
 `degenerate-dimensions`, `mask-encoding-invalid`, `mask-empty`, `dimension-mismatch`,
-`tolerance-out-of-range`, `path-not-contained`.
+`tolerance-out-of-range`, `path-not-contained`, `id-not-safe`.
 
 **A per-acceptance refusal populates `validationFailures` as well**, one entry per reason. The two
 fields are not alternatives: `statuses` answers "what happened to this acceptance", and
