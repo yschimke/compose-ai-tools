@@ -1512,16 +1512,26 @@ class ServeHttpServer(
           // app-only server's landings still link home.
           hasHomeIndex = listedCatalogs().isNotEmpty() || unlistedCatalogs().isNotEmpty(),
           basePath = basePath,
-          hasFormatComparison =
-            renderHost.previews.any { preview ->
-              renderHost.hasSvgExportFor(preview.id) ||
-                renderHost.hasRemoteComposeDoc(preview.id) ||
-                renderHost.designReferencesFor(preview.id).isNotEmpty()
-            },
+          // One action per comparable format, each gated on the same condition `comparisonPage`
+          // turns that format on with — so "compare SVG" and "compare RC players" only appear when
+          // there is something behind them.
+          hasSvgComparison = renderHost.previews.any { renderHost.hasSvgExportFor(it.id) },
+          hasRcComparison =
+            renderHost.rcCompare() != null ||
+              renderHost.previews.any { renderHost.hasRemoteComposeDoc(it.id) },
           // Same condition `handleParity` serves on, so the link never leads to that route's 404.
           hasParityView =
             renderHost.parityActivity() != null ||
               renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
+          // …and name that action after the design tool the catalog is specified by, read from the
+          // references it published (or from the parity feed's Figma lane when the references are
+          // rasters with no provider). Null ⇒ the generic "design parity" label.
+          designToolLabel =
+            renderHost.previews.firstNotNullOfOrNull { preview ->
+              renderHost.designReferencesFor(preview.id).firstNotNullOfOrNull {
+                ServeWeb.designToolLabel(it.source.provider)
+              }
+            } ?: renderHost.parityActivity()?.figma?.let { "Figma" },
           version = BUNDLE_VERSION,
           // Catalog provenance (delivery branch, generation date, tool versions) for the strip
           // under the header; null for a plain (non-catalog) module session.
@@ -1796,6 +1806,14 @@ class ServeHttpServer(
           version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
           hasReferenceFor = hasReference,
+          // Same derivation the landing uses to label its "compare to Figma" action, so the page a
+          // visitor arrives on names the tool the same way the link that brought them here did.
+          designToolLabel =
+            renderHost.previews.firstNotNullOfOrNull { preview ->
+              renderHost.designReferencesFor(preview.id).firstNotNullOfOrNull {
+                ServeWeb.designToolLabel(it.source.provider)
+              }
+            } ?: activity?.figma?.let { "Figma" },
         ),
         ContentType.Text.Html,
       )

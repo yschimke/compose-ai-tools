@@ -432,6 +432,24 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-searchbar { margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1 1 440px; }
 .cp-catalog-tools { position: sticky; top: 0; z-index: 18; margin: 0 0 20px; padding: 10px 0;
   display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; background: var(--cp-bg); }
+/* The catalog's own actions — download, the comparison views, the parity view, the playground.
+   M3 *assist chips*: outlined, 32dp, label-large, one per destination. They used to be a run of
+   0.75rem grey text links inside the summary sentence, which is where they went unnoticed; a chip
+   row states plainly that these are the places you can go from here, and matches the toggle chips
+   in `.cp-catalog-tools` directly beneath. */
+.cp-catalog-actions { margin: 0 0 18px; display: flex; align-items: center; flex-wrap: wrap;
+  gap: 8px; }
+.cp-action-chip { display: inline-flex; align-items: center; min-height: 32px; padding: 6px 16px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: transparent; color: var(--md-sys-color-on-surface-variant);
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  text-decoration: none; white-space: nowrap;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-action-chip:hover, .cp-action-chip:focus-visible { text-decoration: none;
+  color: var(--md-sys-color-on-surface);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
 /* M3 search bar: a filled `surface-container-high` pill with NO outline — the fill is the
    affordance. Focus is the shared 3dp `secondary` ring rather than a border colour change. */
 .cp-search { flex: 1 1 260px; max-width: 420px; min-height: 44px; padding: 10px 18px; font: inherit;
@@ -1250,16 +1268,24 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
    It swaps the static snapshot between the raster PNG and the resolution-independent vector
    render; pressing it while Live is on drops back to the static SVG. */
-.cp-fmt-toggle { display: inline-flex; align-items: center; font: inherit; min-height: 40px;
+/* `.cp-spec-chip` shares this shape on purpose: the design-spec lane is now a top-level toggle on
+   the viewer bar (not an <option> buried in the renderer combo), and it is the same *kind* of
+   control as the SVG format toggle — "swap what is on the stage" — so it reads as one family with
+   it and with the Live chip. */
+.cp-fmt-toggle, .cp-spec-chip { display: inline-flex; align-items: center; font: inherit;
+  min-height: 40px;
   font-size: var(--md-sys-typescale-label-large-size);
   letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
   padding: 8px 20px; border-radius: var(--md-sys-shape-corner-full);
   border: 1px solid var(--md-sys-color-outline); background: transparent;
   color: var(--md-sys-color-on-surface-variant); cursor: pointer;
   transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
-.cp-fmt-toggle:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
-.cp-fmt-toggle[aria-pressed="true"] { background: var(--md-sys-color-secondary-container);
+.cp-fmt-toggle:hover, .cp-spec-chip:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-fmt-toggle[aria-pressed="true"], .cp-spec-chip[aria-pressed="true"] {
+  background: var(--md-sys-color-secondary-container);
   border-color: transparent; color: var(--md-sys-color-on-secondary-container); }
+.cp-spec-chip:disabled { opacity: 0.38; cursor: default; }
 .cp-format-link { color: var(--cp-fg-muted); font-size: 0.75rem; white-space: nowrap; }
 .cp-format-link:hover { color: var(--cp-accent-strong); }
 /* Score chips: M3 assist-chip shape, literal semantic colours. */

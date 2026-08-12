@@ -3923,8 +3923,16 @@ object ServeWeb {
      * `&session=` param (the path carries the session). Empty ⇒ links are exactly as before.
      */
     basePath: String = "",
-    /** Whether this session has at least one SVG or Remote Compose format to compare. */
-    hasFormatComparison: Boolean = false,
+    /**
+     * Whether this session can compare a render against its SVG export — gates the "compare SVG"
+     * action, which deep-links the comparison page's `svg` format.
+     */
+    hasSvgComparison: Boolean = false,
+    /**
+     * Whether this session can compare a render against Remote Compose output — gates the "compare
+     * RC players" action, which deep-links the comparison page's `rc` format.
+     */
+    hasRcComparison: Boolean = false,
     /**
      * Whether this catalog has a design-parity view to link to — it maps at least one preview to a
      * design reference, or it publishes a `parity/activity.json` feed. False (the default) omits
@@ -3932,6 +3940,13 @@ object ServeWeb {
      * catalog's landing is unchanged.
      */
     hasParityView: Boolean = false,
+    /**
+     * The design tool this catalog is specified by ("Figma", …), from its references' provider or
+     * its parity feed — names the parity action after the thing it compares against ("compare to
+     * Figma") rather than after the internal feature. Null (no identifiable tool) keeps the generic
+     * "design parity" label. See [designToolLabel].
+     */
+    designToolLabel: String? = null,
     /**
      * Per-preview thumbnail content-crop lookup — frames a card's render to its component box (a
      * Wear sticker on a 454² watch canvas shows just the component). Returns null for a card that
@@ -4407,26 +4422,50 @@ object ServeWeb {
     val liveNote =
       if (liveScript.isEmpty()) ""
       else " · <span class=\"cp-live-note\">hold a card for a live session</span>"
-    val formatLink =
-      if (hasFormatComparison)
-        " · <a class=\"cp-format-link\" href=\"$basePath/compare$q\">compare formats</a>"
-      else ""
-    // Joins the same run of catalog-level actions as "compare formats" rather than becoming a tab:
-    // parity is a property OF this catalog, and the grid stays the page's subject.
-    val parityLink =
-      if (hasParityView)
-        " · <a class=\"cp-format-link\" href=\"$basePath/parity$q\">design parity</a>"
-      else ""
-    // Subtle by placement, not by styling: it joins the summary line's existing run of
-    // catalog-level actions rather than becoming a button competing with the grid. Absent on a host
-    // with no playground lane, so it never reads as an offer this server cannot keep.
-    val playgroundLink =
-      playgroundHref
-        ?.takeIf { it.isNotBlank() }
-        ?.let {
-          " · <a class=\"cp-format-link\" href=\"${WebEscaping.htmlEscape(it)}\">" +
-            "try in playground</a>"
-        } ?: ""
+    // ---- The catalog's actions
+    // -------------------------------------------------------------------
+    //
+    // A row of M3 assist chips under the summary line, in place of the run of 0.75rem muted text
+    // links this line used to end with (`… · compare formats · design parity · try in playground`).
+    // Those were the page's only routes to the comparison and parity views, and they were styled to
+    // disappear: smaller than the body copy, grey until hovered, and separated by interpuncts that
+    // read as one sentence rather than as several destinations. A chip is the M3 vocabulary this
+    // page already speaks (the theme toggle right below it is the same shape), and it makes each
+    // route a thing you can see and hit.
+    fun actionChip(href: String, label: String): String =
+      "<a class=\"cp-action-chip\" href=\"${WebEscaping.htmlEscape(href)}\">" +
+        "${WebEscaping.htmlEscape(label)}</a>"
+
+    // One action per comparison a visitor might actually want, rather than a single "compare
+    // formats" that made them discover the format switcher to find out what this catalog can even
+    // compare. Each deep-links the comparison page's own `?format=` so the landing already answers
+    // "compare *what*", and a catalog carrying only one of them shows only that one.
+    fun compareChip(format: String, label: String): String {
+      val query =
+        listOf("format=$format", linkQuery(token, sessionId, basePath, isPublic))
+          .filter { it.isNotEmpty() }
+          .joinToString("&")
+      return actionChip("$basePath/compare?$query", label)
+    }
+    val actionChips =
+      listOfNotNull(
+          actionChip("$basePath/bundle.zip$q", "download all (.zip)"),
+          compareChip("svg", "compare SVG").takeIf { hasSvgComparison },
+          compareChip("rc", "compare RC players").takeIf { hasRcComparison },
+          // Named after the design tool it compares against when the catalog identifies one —
+          // "compare to Figma" says what the page is for, where "design parity" only named the
+          // feature.
+          hasParityView
+            .takeIf { it }
+            ?.let {
+              actionChip(
+                "$basePath/parity$q",
+                designToolLabel?.let { tool -> "compare to $tool" } ?: "design parity",
+              )
+            },
+          playgroundHref?.takeIf { it.isNotBlank() }?.let { actionChip(it, "try in playground") },
+        )
+        .joinToString("\n          ")
     return document(
       title = "$heading — compose-preview",
       unfurlTitle = heading,
@@ -4441,8 +4480,10 @@ object ServeWeb {
       body =
         """
         <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
-        $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} ·
-          <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink$parityLink$playgroundLink$liveNote</p>
+        $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""}$liveNote</p>
+        <div class="cp-catalog-actions">
+          $actionChips
+        </div>
         $renderFailureSummary<div class="cp-catalog-tools">
         $themeToggle$searchBox</div>
         $tabBar$gridBlock$emptyState$filterScript$liveScript$about
@@ -4450,6 +4491,23 @@ object ServeWeb {
           .trimIndent(),
     )
   }
+
+  /**
+   * Display name for a design reference's `source.provider` token — `figma` → `Figma`.
+   *
+   * Null for a provider that names no design tool (a checked-in `png`, an `svg`, an `html` mock, or
+   * the default `file`), so a caller falls back to neutral wording instead of inventing a vendor
+   * the catalog never claimed. Only tokens we can name are mapped: an unknown provider is not
+   * title-cased into a plausible-looking product name.
+   */
+  fun designToolLabel(provider: String?): String? =
+    when (provider?.trim()?.lowercase()) {
+      "figma" -> "Figma"
+      "sketch" -> "Sketch"
+      "penpot" -> "Penpot"
+      "framer" -> "Framer"
+      else -> null
+    }
 
   /** PNG↔native-format and PNG↔design-reference comparison page for one served session. */
   fun comparisonPage(
@@ -4501,6 +4559,13 @@ object ServeWeb {
     // whose `.rc` sidecar never reached this box, so it turns the format on by itself.
     val hasRc = comparablePreviews.any { hasRemoteComposeFor(it.id) } || rcCompare != null
     val hasReference = comparablePreviews.any { referencesFor(it.id).isNotEmpty() }
+    // Name the design lane after the tool the references actually came from ("PNG ↔ Figma"), the
+    // same wording the catalog's own action uses, so the two read as one route rather than two
+    // features. A catalog whose references are plain PNGs/mocks keeps the neutral label.
+    val referenceToolLabel =
+      comparablePreviews.firstNotNullOfOrNull { preview ->
+        referencesFor(preview.id).firstNotNullOfOrNull { designToolLabel(it.source.provider) }
+      } ?: "Design reference"
     val defaultFormat = if (hasSvg) "svg" else if (hasRc) "rc" else "reference"
     val darkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
     // A viewer deep-link may name a non-default state/props variant that is intentionally folded
@@ -4595,7 +4660,8 @@ object ServeWeb {
       if (hasReference)
         append(
           "<button type=\"button\" class=\"cp-theme-btn\" data-compare-format=\"reference\" " +
-            "aria-pressed=\"${defaultFormat == "reference"}\">PNG ↔ Design reference</button>"
+            "aria-pressed=\"${defaultFormat == "reference"}\">PNG ↔ " +
+            "${WebEscaping.htmlEscape(referenceToolLabel)}</button>"
         )
     }
     val themeControls =
@@ -5004,6 +5070,11 @@ $rows
     displayTitle: String? = null,
     /** Whether a preview carries a design reference — decides "compare" vs "open" on a link. */
     hasReferenceFor: (String) -> Boolean = { false },
+    /**
+     * The design tool this catalog is specified by ("Figma", …) — names the whole-catalog compare
+     * link. Null keeps the neutral "design references" wording. See [designToolLabel].
+     */
+    designToolLabel: String? = null,
   ): String {
     fun esc(s: String) = WebEscaping.htmlEscape(s)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -5334,6 +5405,26 @@ $rows
           .trimIndent()
       }
 
+    // The catalog landing sends every design-tool question here ("compare to Figma"), so this page
+    // owes a way back out to the side-by-side table of ALL mapped components — the comparison
+    // page's `reference` format. Offered only when something is mapped; a feed-only catalog (no
+    // references) would land on an empty table.
+    val compareAllLink =
+      if (coverage.mapped == 0) ""
+      else {
+        val query =
+          listOf("format=reference", linkQuery(token, sessionId, basePath, isPublic))
+            .filter { it.isNotEmpty() }
+            .joinToString("&")
+        val against = designToolLabel?.let(::esc) ?: "the design references"
+        // The same assist chip the catalog landing uses for its actions, so the route on and the
+        // route back are the same affordance rather than a chip in one direction and a grey text
+        // link in the other.
+        "\n        <div class=\"cp-catalog-actions\">" +
+          "<a class=\"cp-action-chip\" href=\"$basePath/compare?$query\">" +
+          "compare every mapped component against $against</a></div>"
+      }
+
     val parityScripts = buildString {
       if (dashboard.comparisons.any { it.referenceId != null })
         append(scriptTag("format-compare.js"))
@@ -5401,7 +5492,7 @@ $rows
         """
         <h1 class="cp-head cp-catalog-head">Design parity${compactTrustBadge(trust)}</h1>
         <p class="cp-sub">How this catalog's code and its design file have moved, and how far apart
-          they are.</p>
+          they are.</p>$compareAllLink
         $sourcesStrip
         <div class="cp-status-grid">
         $stats
@@ -5842,9 +5933,10 @@ $rows
         "slider" to ("Slider" to "One frame, wiped between the spec and the render"),
       )
     // The spec lane's *carrier*, not a control: `data-spec-src` is the raster viewer.js paints onto
-    // the stage when the picker selects `spec`, the comparison group beside it chooses how that
-    // pair is drawn, and the trailing link is the step out to the focused comparison page. The lane
-    // has no chip of its own — it is one `<option>` in [laneSelectHtml] like every other renderer.
+    // the stage when the lane is entered, the comparison group beside it chooses how that pair is
+    // drawn, and the trailing link is the step out to the focused comparison page. Entering the
+    // lane is [specChipHtml]'s job — a chip of its own on the bar, not an `<option>` inside the
+    // renderer combo.
     val specSelector =
       if (specRasterUrl == null || specProviderLabel == null || specLabel == null) ""
       else {
@@ -5904,15 +5996,29 @@ $rows
           add(ViewerLane("rc:${backend.wire}", backend.label, backend.wire in rcEnabled))
         }
       if (wasmSrc != null) add(ViewerLane("wasm", "In browser (Wasm)", true))
-      if (specRasterUrl != null && specProviderLabel != null)
-        add(
-          ViewerLane(
-            "spec",
-            if (specProviderLabel == "Figma") "Figma spec" else "Design spec",
-            true,
-          )
-        )
     }
+    // The **design-spec chip** — the imported reference, promoted OUT of the renderer combo and
+    // onto
+    // the row as a control of its own.
+    //
+    // It used to be one `<option>` among the players ("Figma spec", after five Remote Compose
+    // backends and the Wasm app), which put the one lane that answers a different *question* behind
+    // the same menu as the ones that answer "which engine drew this?". Very few catalogs publish
+    // references at all, so on the ones that do it is the most interesting thing on the page and it
+    // was the least visible. As a chip it is one click from rest, it says which tool the spec came
+    // from ("Figma") instead of a generic label, and — like the Live chip beside it — its
+    // `aria-pressed` reports whether the spec is currently on the stage. viewer.js drives both from
+    // the same lane state, so the chip and the combo cannot disagree.
+    val specChipHtml =
+      if (specRasterUrl == null || specProviderLabel == null) ""
+      else {
+        val label = if (specProviderLabel == "Figma") "Figma" else "Design spec"
+        val tip = "Put the imported $specProviderLabel spec on the stage instead of the render"
+        "<button type=\"button\" id=\"cp-spec-chip\" class=\"cp-spec-chip\" " +
+          "aria-pressed=\"false\" data-spec-chip-label=\"${WebEscaping.htmlEscape(label)}\" " +
+          "data-spec-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
+          "title=\"${WebEscaping.htmlEscape(tip)}\">${WebEscaping.htmlEscape(label)}</button>"
+      }
     val defaultLane = if (enabledRcPlayers.isEmpty()) "png" else "rc:$defaultRcBackend"
     // Rendered only when there is genuinely something to switch *to*: a single-lane preview keeps
     // the chip on its own rather than growing a combo box with one entry in it.
@@ -5942,10 +6048,12 @@ $rows
           "<option value=\"${lane.value}\"$disabledAttr>" +
             "${WebEscaping.htmlEscape(text)}</option>"
         }
-    // The chip's opening label: the lane it opens on when a combo box is there to disambiguate, and
-    // the plain "Live preview" invitation when the chip is the only control on the row.
+    // The chip's opening label: the lane it opens on whenever something else on the row can put a
+    // different lane on the stage (the renderer combo, or the design-spec chip), and the plain
+    // "Live preview" invitation when this chip is the only lane control there is — with nothing to
+    // disambiguate against, the invitation reads better than "Snapshot".
     val primaryLaneLabel =
-      if (laneSelectHtml.isEmpty()) "Live preview"
+      if (laneSelectHtml.isEmpty() && specChipHtml.isEmpty()) "Live preview"
       else lanes.firstOrNull { it.value == defaultLane }?.label ?: "Live preview"
     // The step from "look at one player" to "look at them all": the format-comparison page, focused
     // on this preview and opened on its Remote Compose lane. A subtle text link rather than another
@@ -6070,7 +6178,13 @@ $rows
         "\""
     val liveToggleButton =
       "<button type=\"button\" id=\"cp-live-toggle\" class=\"cp-live-toggle\" " +
-        "aria-pressed=\"false\"$liveToggleTitleAttr$liveToggleDis>\n" +
+        "aria-pressed=\"false\" " +
+        // What the chip goes back to naming when it leaves the design-spec lane on a preview with
+        // no renderer combo. `laneLabelText()` reads the combo's options for this everywhere else;
+        // with no combo there is nothing to read, and without this the chip would come back from
+        // the spec lane calling a static snapshot "Live preview".
+        "data-default-lane-label=\"${WebEscaping.htmlEscape(primaryLaneLabel)}\"" +
+        "$liveToggleTitleAttr$liveToggleDis>\n" +
         "            <span class=\"cp-live-dot\" aria-hidden=\"true\"></span>\n" +
         "            <span id=\"cp-live-toggle-label\">" +
         "${WebEscaping.htmlEscape(primaryLaneLabel)}</span>\n" +
@@ -6465,12 +6579,15 @@ $rows
     val switchers =
       listOf(stateSwitcher, variantSwitcher).filter { it.isNotBlank() }.joinToString("\n")
     // Left to right: the chip that names the current renderer and toggles it live, the combo box of
-    // alternatives, the two subtle "go compare this elsewhere" links, then the SVG format toggle
-    // for whatever the chip is currently showing.
+    // alternatives, the design-spec chip (top level, not an option inside the combo), the two
+    // subtle
+    // "go compare this elsewhere" links, then the SVG format toggle for whatever the chip is
+    // currently showing.
     val primaryControls =
       listOf(
           liveToggleHtml,
           laneSelectHtml,
+          specChipHtml,
           comparePlayersLink,
           specSelector,
           svgFmtToggle,

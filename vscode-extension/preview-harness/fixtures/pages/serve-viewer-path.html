@@ -57,11 +57,11 @@
 
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
-      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" title="Static snapshot — this session has no live lane to switch to" disabled>
+      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Snapshot" title="Static snapshot — this session has no live lane to switch to" disabled>
             <span class="cp-live-dot" aria-hidden="true"></span>
             <span id="cp-live-toggle-label">Snapshot</span>
           </button>
-<select id="cp-lane-select" class="cp-lane-select" aria-label="Switch renderer" title="Draw this preview with a different renderer" data-default="png" data-rc-default=""><option value="" selected>Switch renderer…</option><option value="png">Snapshot</option><option value="spec">Figma spec</option></select>
+<button type="button" id="cp-spec-chip" class="cp-spec-chip" aria-pressed="false" data-spec-chip-label="Figma" data-spec-chip-tip="Put the imported Figma spec on the stage instead of the render" title="Put the imported Figma spec on the stage instead of the render">Figma</button>
 <span class="cp-spec-lane" id="cp-spec-lane" data-spec-src="/meshcore-mobile/reference/contact-chat-figma.png?token=demo-token-fixture" data-spec-label="Figma"><span class="cp-spec-views" id="cp-spec-views" role="group" aria-label="Design comparison" hidden><button type="button" class="cp-spec-view" data-cp-spec-view="spec" aria-pressed="true" title="The imported design reference on its own">Spec</button><button type="button" class="cp-spec-view" data-cp-spec-view="diff" aria-pressed="false" title="Highlight every pixel where the render and the spec disagree">Diff</button><button type="button" class="cp-spec-view" data-cp-spec-view="triptych" aria-pressed="false" title="Spec, diff and render side by side">Triptych</button><button type="button" class="cp-spec-view" data-cp-spec-view="slider" aria-pressed="false" title="One frame, wiped between the spec and the render">Slider</button></span><span class="cp-spec-score" id="cp-spec-score" role="status" aria-live="polite" hidden></span><a class="cp-format-link cp-spec-diff" href="/meshcore-mobile/compare/com.example.ProfileScreenPreview?token=demo-token-fixture&amp;reference=contact-chat-figma" title="Compare this render against the imported design spec — Contact chat">spec diff →</a></span>
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
         <span class="cp-modes-inputs" aria-hidden="true">

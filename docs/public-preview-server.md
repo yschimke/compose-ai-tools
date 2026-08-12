@@ -511,9 +511,11 @@ no equivalent there.
 ### Putting the spec on the stage beside the players
 
 The link above sends you to Figma. The **Spec lane** keeps you here: when the catalog publishes a
-design reference for a preview, the viewer's renderer row grows a `SPEC:` group beside the
-Remote Compose player chips, so the same control strip that chooses *which player draws the code*
-also offers *what the design says*.
+design reference for a preview, the viewer's renderer row grows a chip named after the design tool
+("Figma"), beside the renderer combo rather than inside it — the combo chooses *which player draws
+the code*, and this chip offers *what the design says*, which is a different question and gets its
+own top-level control. It is a toggle like the Live chip: pressed while the spec is on the stage,
+one click back to the render.
 
 | Before | After |
 | --- | --- |
@@ -587,9 +589,10 @@ opacity overlay are what you want.
 ## Design references and UI mocks
 
 A bundle or published catalog can map independently-authored UI mocks to exact preview ids. The
-landing links to **compare formats**; its **PNG ↔ Design reference** lane scores the canonical mock
-against Compose, and the focused comparison shows **Reference / Diff / Actual** plus an opacity
-overlay and source provenance.
+landing links to **compare to Figma** (named after the tool the references came from — see
+[the design-parity view](#the-design-parity-view-systemparity)); the comparison page's **PNG ↔
+Figma** lane scores the canonical mock against Compose, and the focused comparison shows
+**Reference / Diff / Actual** plus an opacity overlay and source provenance.
 
 References use a provider-neutral `compose-preview-references/v1` manifest at
 `references/index.json`. Published catalogs fetch this manifest from their delivery branch;
@@ -772,8 +775,12 @@ keeps the older in-browser lane (baked PNG ↔ the JS player, rendered live), an
 
 ## The design-parity view (`/<system>/parity`)
 
-A catalog landing links **design parity** beside "compare formats". That page answers one question
-the grid can't: *has this catalog's code drifted from the design file it is specified by?*
+A catalog landing links this page beside its comparison actions, named after the design tool the
+catalog is specified by — **compare to Figma** when its references carry `source.provider: figma`
+(or its parity feed names a Figma file), falling back to **design parity** when no tool can be
+named. That page answers one question the grid can't: *has this catalog's code drifted from the
+design file it is specified by?* Its subheading links back out to the whole-catalog **PNG ↔ Figma**
+table (`/<system>/compare?format=reference`) for every mapped component at once.
 
 ![The design-parity view](images/serve-parity-light.png)
 
