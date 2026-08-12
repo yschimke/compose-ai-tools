@@ -543,12 +543,14 @@ whole comparison and another silently drops the acceptance, and neither produces
 status the contract promises. Decode failure and degenerate geometry are therefore `refused` like a
 hash mismatch, and a *correctly hashed malformed artifact* is its own fixture.
 
-**Acceptance ids must be unique within the set, and a duplicate is a hard validation failure.**
-`statuses` is keyed by id, so two records sharing one id have a single slot between them — one
-consumer would overwrite, another merge, a third reject, and no fixture could express which record's
-verdict survived. Both records are still evaluated as separate acceptances with separate masks, so
-this is not a case where picking one is harmless. Reject at validation time, before any of it
-matters.
+**Duplicate acceptance ids fail the whole document, not one record.** `statuses` is keyed by id, so
+two records sharing one have a single slot between them — and making the duplicate a *per-acceptance*
+`refused` status does not help, because that status would need the same colliding key to live in. A
+result structure keyed by a non-unique key cannot represent the input at all, which makes this a
+property of the **file** rather than of either record: `known-differences.json` is rejected wholesale,
+no `statuses` entries are produced, and the failure is reported in `validationFailures` with the
+offending id. That is also the honest signal — nobody meant to write two acceptances with one id, so
+the artifact is malformed rather than partially applicable.
 
 **A reference with no `sha256` is refused for the same reason**, not invalidated as
 `reference-changed`. The fingerprint gate compares a recorded hash against a served one; with
@@ -571,7 +573,7 @@ Evaluated strictly in this order — the first row whose condition holds wins:
 
 | # | Status | Condition |
 | --- | --- | --- |
-| 1 | `refused` | either artifact's bytes fail their recorded hash; **or an artifact is hash-valid but fails to decode, decodes to zero/negative dimensions, carries a non-binary mask encoding, or does not match its required dimensions**; **or the targeted reference publishes no `sha256`**; **or the acceptance's `id` is not unique in the set** — the acceptance is never evaluated |
+| 1 | `refused` | either artifact's bytes fail their recorded hash; **or an artifact is hash-valid but fails to decode, decodes to zero/negative dimensions, carries a non-binary mask encoding, or does not match its required dimensions**; **or the targeted reference publishes no `sha256`**; — the acceptance is never evaluated |
 | 2 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
 | 3 | `resolved` | the candidate gate **fired** *and* the masked region now agrees with the **reference** (see below) |
 | 4 | `invalidated: [candidate-changed]` | the candidate gate fired and the region did not converge |
@@ -884,7 +886,7 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | separation + canonical (surviving union) | the same split redone against the union of **`valid`-status acceptances** only — resolved, invalidated and refused ones suppress nothing — **and resampled into the canonical plane again** — separation still precedes its resample (I3). A distinct, later stage on purpose: the union cannot be formed until the candidate and element gates have run, and those gates need the canonical pixels the row above produces (I5) |
 | score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, each region drawn **straight from the source image** (I10), per-region rather than whole-image |
 | score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, drawn straight from the source by the same single resample, so raw stays byte-identical to today's number when nothing is accepted |
-| result | `{raw, accepted, unaccepted, statuses, validationFailures}` — `statuses` is a **map keyed by acceptance id**, one entry per member of `acceptances[]`, each per the contract's precedence table. A single aggregate status cannot express a mixed-validity case, so both engines could emit the same summary while disagreeing about which mask survived; the mixed-validity fixtures pin the per-id identities |
+| result | `{raw, accepted, unaccepted, statuses, validationFailures}` — `statuses` is a **map keyed by acceptance id**, absent entirely for a document-level rejection (duplicate ids), where `validationFailures` carries the reason alone, one entry per member of `acceptances[]`, each per the contract's precedence table. A single aggregate status cannot express a mixed-validity case, so both engines could emit the same summary while disagreeing about which mask survived; the mixed-validity fixtures pin the per-id identities |
 
 The stages exist to localise a divergence, so they must follow whatever order the Phase 3 algorithm
 settles on — and must satisfy the invariants above regardless. Two orderings are already known to be
