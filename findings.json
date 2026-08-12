@@ -548,12 +548,12 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "GlanceWeatherWidgetPreview_Glance_widget_4_2.a11y.png",
-      "cleanBasename": "GlanceWeatherWidgetPreview_Glance_widget_4_2.png",
+      "annotatedBasename": "GlanceWeatherWidgetPreview_Glance_widget_via_helper_API_4_2.a11y.png",
+      "cleanBasename": "GlanceWeatherWidgetPreview_Glance_widget_via_helper_API_4_2.png",
       "findings": [],
       "functionName": "GlanceWeatherWidgetPreview",
       "module": "android",
-      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.GlanceWeatherWidgetPreview_Glance widget \u2014 4\u00d72",
+      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.GlanceWeatherWidgetPreview_Glance widget via helper API \u2014 4\u00d72",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
       "variant": ""
     },
@@ -3579,6 +3579,16 @@
       "functionName": "PlaceholderCardLoading",
       "module": "wear",
       "previewId": "com.example.samplewear.PlaceholderPreviewsKt.PlaceholderCardLoading_wearos_small_round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/PlaceholderPreviews.kt",
+      "variant": "wearos_small_round"
+    },
+    {
+      "annotatedBasename": "PlaceholderCardOverrideDriven_wearos_small_round.a11y.png",
+      "cleanBasename": "PlaceholderCardOverrideDriven_wearos_small_round.png",
+      "findings": [],
+      "functionName": "PlaceholderCardOverrideDriven",
+      "module": "wear",
+      "previewId": "com.example.samplewear.PlaceholderPreviewsKt.PlaceholderCardOverrideDriven_wearos_small_round",
       "sourceFile": "src/main/kotlin/com/example/samplewear/PlaceholderPreviews.kt",
       "variant": "wearos_small_round"
     },
