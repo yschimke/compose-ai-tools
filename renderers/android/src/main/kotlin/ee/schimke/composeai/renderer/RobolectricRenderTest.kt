@@ -38,6 +38,7 @@ import ee.schimke.composeai.daemon.GestureOverrideExtension
 import ee.schimke.composeai.daemon.KeyboardController
 import ee.schimke.composeai.daemon.KeyboardOverrideExtension
 import ee.schimke.composeai.daemon.LauncherWidgetExtension
+import ee.schimke.composeai.daemon.PermissionsOverrideExtension
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
 import ee.schimke.composeai.daemon.protocol.GestureOverride
@@ -46,9 +47,12 @@ import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.LauncherResizeOrder
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetSize
+import ee.schimke.composeai.daemon.protocol.PermissionGrantStateOverride
+import ee.schimke.composeai.daemon.protocol.PermissionsOverride
 import ee.schimke.composeai.data.render.PreviewAnimationContext
 import ee.schimke.composeai.data.render.PreviewFilter
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeContext
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionFrameContext
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.render.extensions.provides
@@ -1124,6 +1128,26 @@ abstract class RobolectricRenderTestBase(
             preview.captures
               .firstNotNullOfOrNull { it.gestureHint }
               ?.let { GestureOverrideExtension(it.toGestureOverride()) }
+          // `@PermissionPreview` discovery stamps the same `PermissionsCapture` onto every capture
+          // of an annotated function. Constructing `PermissionsOverrideExtension` is what applies
+          // the grants: its `init` calls `PermissionsController.set(...)`, which reflectively
+          // seeds Robolectric's `ShadowApplication.grantPermissions/denyPermissions`. That has to
+          // happen HERE — before `rule.setContent` below — and not from inside the composition,
+          // because a permission-gated screen reads
+          // `ContextCompat.checkSelfPermission(...)` on its FIRST composition; a seed applied from
+          // an effect would leave the screen on the pre-seed branch for the whole capture, which is
+          // exactly the regression `PermissionsOverrideIntegrationTest` in `:daemon:android` pins
+          // for the daemon lane. Daemon-driven `renderNow.overrides.permissions` reaches the same
+          // controller via the `PermissionsPreviewOverrideExtension` planner registered in
+          // `RobolectricHost`, so both lanes agree by construction.
+          //
+          // Built only when the preview actually carries the annotation: the extension's contract
+          // is "the grant map is exhaustive", so constructing it unconditionally would deny every
+          // permission on every render and change captures that never asked for an override.
+          val permissionsExtension =
+            preview.captures
+              .firstNotNullOfOrNull { it.permissions }
+              ?.let { PermissionsOverrideExtension(seed = it.toPermissionsOverride()) }
           // `@LauncherWidgetPreview` discovery stamps the same `LauncherWidgetCapture` onto
           // every capture of an annotated function. Wrap the composition with
           // `LauncherWidgetExtension` from `:data-launcher-widget-connector` so the rendered
@@ -1261,11 +1285,35 @@ abstract class RobolectricRenderTestBase(
                   ambientOrPlain()
                 }
               }
-              val pseudoOrPlain: @Composable () -> Unit = {
-                if (pseudolocaleExtension != null) {
-                  pseudolocaleExtension.AroundComposable { launcherWidgetOrPlain() }
+              // `@PermissionPreview` — the grants were already seeded into Robolectric when the
+              // extension was constructed above; this wrap is what scopes the connector's
+              // query tracking to this preview (`PermissionsController.beginRender`) and clears
+              // the override on dispose so the next preview in the sandbox starts clean. Same
+              // `DataExtensionPhase.OuterEnvironment` seam as ambient / gestures.
+              val permissionsOrPlain: @Composable () -> Unit = {
+                if (permissionsExtension != null) {
+                  // `Around` (not `AroundComposable`): the permissions extension implements the
+                  // raw `AroundComposableHook`, because it needs the context's `previewId` to
+                  // scope query tracking — the convenience `AroundComposableExtension` base the
+                  // gesture / launcher-widget extensions use drops the context.
+                  permissionsExtension.Around(
+                    ExtensionComposeContext(
+                      extensionId = PermissionsOverrideExtension.ID,
+                      previewId = preview.id,
+                      renderMode = null,
+                    )
+                  ) {
+                    launcherWidgetOrPlain()
+                  }
                 } else {
                   launcherWidgetOrPlain()
+                }
+              }
+              val pseudoOrPlain: @Composable () -> Unit = {
+                if (pseudolocaleExtension != null) {
+                  pseudolocaleExtension.AroundComposable { permissionsOrPlain() }
+                } else {
+                  permissionsOrPlain()
                 }
               }
               keyboardExtension.AroundComposable { pseudoOrPlain() }
@@ -2900,6 +2948,28 @@ private fun overrideSeedMap(
  */
 private fun GestureHintCapture.toGestureOverride(): GestureOverride =
   GestureOverride(showHints = showHints)
+
+/**
+ * Maps the renderer-side [PermissionsCapture] (read from `previews.json`) onto the connector's
+ * `protocol.PermissionsOverride` wire shape — the exact type daemon-driven
+ * `renderNow.overrides.permissions` carries, so `@PermissionPreview` and a live panel chip flip
+ * feed one code path instead of two grant-seeding implementations that could drift.
+ *
+ * The two enums are separate on purpose: discovery cannot depend on `:daemon:core`, so the plugin
+ * mirrors the state as [PermissionGrantCaptureState] and this is where the two meet. Both are
+ * closed two-value sets, so the `when` is exhaustive and a future third state fails to compile here
+ * rather than silently mapping to "denied".
+ */
+private fun PermissionsCapture.toPermissionsOverride(): PermissionsOverride =
+  PermissionsOverride(
+    grants =
+      grants.mapValues { (_, state) ->
+        when (state) {
+          PermissionGrantCaptureState.GRANTED -> PermissionGrantStateOverride.GRANTED
+          PermissionGrantCaptureState.DENIED -> PermissionGrantStateOverride.DENIED
+        }
+      }
+  )
 
 /**
  * Maps the renderer-side [LauncherWidgetCapture] (read from `previews.json`) onto the connector's

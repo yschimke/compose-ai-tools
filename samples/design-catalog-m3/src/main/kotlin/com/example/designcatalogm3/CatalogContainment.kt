@@ -44,9 +44,7 @@ fun SlottedCardSticker() = Sticker("card-slots")
 @CatalogModes
 @Composable
 fun SlottedCardSlotsSticker() = CatalogSticker {
-  CompositionLocalProvider(LocalSlotMode provides true) {
-    CatalogComponent("card-slots", interactive = false)
-  }
+  CompositionLocalProvider(LocalSlotMode provides true) { CatalogComponent("card-slots") }
 }
 
 @CatalogComponent(id = "FAB", group = "Containment")

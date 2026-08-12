@@ -147,6 +147,40 @@ class PreviewDataTest {
   }
 
   @Test
+  fun `permissions capture round-trips and defaults to null`() {
+    // The renderer's `RenderPreviewCapture.permissions` mirror reads this shape out of
+    // `previews.json` and hands it to `PermissionsOverrideExtension`. A rename on either side
+    // would silently drop the `@PermissionPreview` grant, and the symptom is a preview labelled
+    // "granted" that captures the denied branch — issue #3676's original defect, restored.
+    assertThat(Capture(renderOutput = "x.png").permissions).isNull()
+    val capture =
+      PermissionsCapture(
+        grants =
+          mapOf(
+            "android.permission.CAMERA" to PermissionGrantCaptureState.GRANTED,
+            "android.permission.RECORD_AUDIO" to PermissionGrantCaptureState.DENIED,
+          )
+      )
+    val manifest =
+      PreviewManifest(
+        module = "app",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "com.example.PermissionGatedPreviewKt.CameraPermissionGrantedPreview",
+              functionName = "CameraPermissionGrantedPreview",
+              className = "com.example.PermissionGatedPreviewKt",
+              captures = listOf(Capture(renderOutput = "renders/x.png", permissions = capture)),
+            )
+          ),
+      )
+    val deserialized = json.decodeFromString<PreviewManifest>(json.encodeToString(manifest))
+    assertThat(deserialized).isEqualTo(manifest)
+    assertThat(deserialized.previews.single().captures.single().permissions).isEqualTo(capture)
+  }
+
+  @Test
   fun `default params have sensible values`() {
     val params = PreviewParams()
     assertThat(params.widthDp).isNull()

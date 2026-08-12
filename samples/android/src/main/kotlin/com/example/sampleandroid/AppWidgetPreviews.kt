@@ -3,7 +3,6 @@
 package com.example.sampleandroid
 
 import android.content.Context
-import android.widget.RemoteViews
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.tooling.preview.Preview
@@ -31,7 +30,7 @@ import ee.schimke.composeai.preview.appwidget.AppWidgetContent
 import ee.schimke.composeai.preview.glance.GlanceAppWidgetContent
 
 /**
- * Sample @Preview that hand-builds a `RemoteViews` from `widget_weather.xml` and renders it via
+ * Sample @Preview that builds a `RemoteViews` from `widget_weather.xml` and renders it via
  * `AppWidgetContent` from `:appwidget-preview-runtime`. The runtime helper auto-discovers
  * `<appwidget-provider>` metadata for the inflated layout id (matched against
  * `AppWidgetManager.installedProviders`) and offers the resulting `supportedCells` / `resizeAxes`
@@ -46,83 +45,111 @@ import ee.schimke.composeai.preview.glance.GlanceAppWidgetContent
  * dimensions here let the preview render through the gradle plugin path; the
  * `@LauncherWidgetPreview`-annotated samples below drive the same cell footprint from discovery via
  * the annotation in `:preview-annotations`.
+ *
+ * The `RemoteViews` itself comes from [weatherRemoteViews], the same factory
+ * `WeatherAppWidgetReceiver.onUpdate` calls — so this preview renders the production widget rather
+ * than a look-alike that can drift away from it (issue #3671).
  */
 @Preview(name = "RemoteViews widget — 4×2", widthDp = 312, heightDp = 152, showBackground = true)
 @Composable
 fun RemoteViewsWeatherWidgetPreview() {
-  AppWidgetContent { context ->
-    RemoteViews(context.packageName, R.layout.widget_weather).apply {
-      setTextViewText(R.id.widget_title, "San Francisco")
-      setTextViewText(R.id.widget_temperature, "67°")
-      setTextViewText(R.id.widget_condition, "Partly cloudy · H 70° / L 55°")
-    }
-  }
+  AppWidgetContent { context -> weatherRemoteViews(context) }
 }
 
 // ---------------------------------------------------------------------------
-// Glance widget preview — Phase A integration
+// Glance widget content
 //
-// The renderer doesn't yet discover `@androidx.glance.preview.Preview` by FQN (that's the
-// follow-up "native Glance preview support" work), so the sample uses a standard
-// `@androidx.compose.ui.tooling.preview.Preview` + the `GlanceAppWidgetContent` helper from
-// `:glance-preview-runtime`. The helper drives `GlanceAppWidget.composeForPreview(...)` to
-// materialise the widget to `RemoteViews`, then inflates that into the Compose tree — same
-// translation Glance does on-device when the launcher binds the widget.
+// One composable, three consumers: the widget's production `provideGlance(...)` (what the launcher
+// binds), its `providePreview(...)` (what `composeForPreview(...)` reads), and the native
+// `@androidx.glance.preview.Preview` at the bottom of this file. Keeping the tree in a single
+// function is the whole lesson of the Glance samples here — a sample that previews one tree and
+// serves a different (or empty) one on-device teaches the defect (issue #3671).
 // ---------------------------------------------------------------------------
 
 /**
- * Minimal `GlanceAppWidget` exercising the Glance composable surface — `Column`, `Text`, padding,
- * background colour. Mirrors [RemoteViewsWeatherWidgetPreview]'s content so the side-by-side
- * comparison is honest about what each rendering path produces.
+ * The weather widget's Glance tree — `Column`, `Text`, padding, background colour. Mirrors what
+ * [weatherRemoteViews] paints through `widget_weather.xml`, so the side-by-side render comparison
+ * between the two authoring styles is honest about what each path produces.
  *
- * Overrides `providePreview(...)` rather than `provideGlance(...)`: `composeForPreview(...)` reads
- * from the former, the latter is the production runtime entry-point invoked when the launcher binds
- * the widget. Real consumers typically delegate `provideGlance` to a shared content composable so
- * the same tree runs in both surfaces; here we only need the preview.
+ * [title] and [condition] are parameters purely so the native-`@Preview` sample at the bottom of
+ * this file can label itself without cloning the tree; the defaults are the widget's real content.
+ */
+@Composable
+private fun WeatherGlanceContent(
+  title: String = "San Francisco",
+  temperature: String = "67°",
+  condition: String = "Partly cloudy · H 70° / L 55°",
+) {
+  Column(
+    modifier =
+      GlanceModifier.fillMaxSize()
+        .background(GlanceFixedColorProvider(ComposeColor(0xFF1A237E)))
+        .padding(12.dp)
+  ) {
+    Text(
+      text = title,
+      style =
+        TextStyle(
+          color = GlanceFixedColorProvider(ComposeColor.White),
+          fontWeight = FontWeight.Bold,
+        ),
+    )
+    Spacer(GlanceModifier.height(8.dp))
+    Text(
+      text = temperature,
+      style = TextStyle(color = GlanceFixedColorProvider(ComposeColor.White)),
+    )
+    Text(
+      text = condition,
+      style = TextStyle(color = GlanceFixedColorProvider(ComposeColor(0xB3FFFFFF))),
+    )
+  }
+}
+
+/**
+ * Minimal `GlanceAppWidget` exercising the Glance composable surface.
+ *
+ * Both entry points serve [WeatherGlanceContent]: `provideGlance(...)` is the production runtime
+ * one the launcher invokes when it binds the widget, `providePreview(...)` is what
+ * `composeForPreview(...)` reads. This used to override `providePreview` with the weather UI and
+ * leave `provideGlance` an empty no-op — which previews perfectly and renders a blank widget the
+ * moment it is installed on a launcher. Delegating both to one content composable is what real
+ * consumers do, and it is the only arrangement in which the preview is evidence about production
+ * (issue #3671).
  */
 private class WeatherGlanceAppWidget : GlanceAppWidget() {
   override suspend fun providePreview(context: Context, widgetCategory: Int) {
-    provideContent {
-      Column(
-        modifier =
-          GlanceModifier.fillMaxSize()
-            .background(GlanceFixedColorProvider(ComposeColor(0xFF1A237E)))
-            .padding(12.dp)
-      ) {
-        Text(
-          text = "San Francisco",
-          style =
-            TextStyle(
-              color = GlanceFixedColorProvider(ComposeColor.White),
-              fontWeight = FontWeight.Bold,
-            ),
-        )
-        Spacer(GlanceModifier.height(8.dp))
-        Text(text = "67°", style = TextStyle(color = GlanceFixedColorProvider(ComposeColor.White)))
-        Text(
-          text = "Partly cloudy · H 70° / L 55°",
-          style = TextStyle(color = GlanceFixedColorProvider(ComposeColor(0xB3FFFFFF))),
-        )
-      }
-
-      // `provideGlance` is abstract — keep it overridden as a no-op so the class compiles. Real
-      // consumers share content between `providePreview` and `provideGlance` via a helper.
-    }
+    provideContent { WeatherGlanceContent() }
   }
 
   override suspend fun provideGlance(context: Context, id: androidx.glance.GlanceId) {
-    // Production runtime not exercised by this preview-only sample.
+    provideContent { WeatherGlanceContent() }
   }
 }
 
 /**
- * Sample @Preview that materialises [WeatherGlanceAppWidget] via the `GlanceAppWidgetContent`
- * helper. Same `widthDp = 312 / heightDp = 152` (a `4×2` cell on the default launcher grid) as the
- * sibling RemoteViews preview so the two renders sit next to each other in the gallery and any
- * rendering differences between the legacy `RemoteViews(layoutId, ...)` path and the
- * Glance-compose-to-RemoteViews path are visually obvious.
+ * **Demonstration of the `GlanceAppWidgetContent` helper API — not the recommended way to preview a
+ * Glance widget.** Prefer [NativeGlanceWidgetPreview] at the bottom of this file: annotating with
+ * Glance's own `@androidx.glance.preview.Preview` is discovered by FQN and needs no helper, and is
+ * the canonical sample (issue #3671).
+ *
+ * This one is kept because it still earns its place: it materialises [WeatherGlanceAppWidget]
+ * through `GlanceAppWidgetContent` from `:glance-preview-runtime` (which drives
+ * `GlanceAppWidget.composeForPreview(...)` to `RemoteViews`, then inflates that into the Compose
+ * tree), so the helper path stays exercised by the sample renders and its output can be compared
+ * pixel-for-pixel against both the native-annotation path and the hand-built `RemoteViews` one.
+ * Reach for the helper only when you need a preview of a *`GlanceAppWidget` instance* — one
+ * configured a particular way, or fanned out across sizes — rather than of a bare composable.
+ *
+ * Same `widthDp = 312 / heightDp = 152` (a `4×2` cell on the default launcher grid) as the sibling
+ * RemoteViews preview so the renders sit next to each other in the gallery.
  */
-@Preview(name = "Glance widget — 4×2", widthDp = 312, heightDp = 152, showBackground = true)
+@Preview(
+  name = "Glance widget via helper API — 4×2",
+  widthDp = 312,
+  heightDp = 152,
+  showBackground = true,
+)
 @Composable
 fun GlanceWeatherWidgetPreview() {
   GlanceAppWidgetContent(
@@ -147,18 +174,18 @@ fun GlanceWeatherWidgetPreview() {
 /**
  * Smallest cell shape supported by the default `1×1`..`5×5` bounds. Same widget body as
  * [RemoteViewsWeatherWidgetPreview] but the cell footprint is annotation-driven.
+ *
+ * The two arguments to [weatherRemoteViews] are the deliberate part: a `1×1` cell is 96dp square,
+ * which fits neither the full city name nor the condition line, so this variant abbreviates the
+ * title and drops the condition entirely — the same content-shedding a real widget does at its
+ * `minResizeWidth`. Everything else (layout id, temperature, view ids) comes from the shared
+ * production factory.
  */
 @Preview(name = "Launcher widget — 1×1", widthDp = 96, heightDp = 96, showBackground = true)
 @LauncherWidgetPreview(width = 1, height = 1)
 @Composable
 fun LauncherWidget1x1Preview() {
-  AppWidgetContent { context ->
-    RemoteViews(context.packageName, R.layout.widget_weather).apply {
-      setTextViewText(R.id.widget_title, "SF")
-      setTextViewText(R.id.widget_temperature, "67°")
-      setTextViewText(R.id.widget_condition, "")
-    }
-  }
+  AppWidgetContent { context -> weatherRemoteViews(context, title = "SF", condition = "") }
 }
 
 /**
@@ -170,19 +197,18 @@ fun LauncherWidget1x1Preview() {
 @LauncherWidgetPreview(width = 4, height = 2)
 @Composable
 fun LauncherWidget4x2Preview() {
-  AppWidgetContent { context ->
-    RemoteViews(context.packageName, R.layout.widget_weather).apply {
-      setTextViewText(R.id.widget_title, "San Francisco")
-      setTextViewText(R.id.widget_temperature, "67°")
-      setTextViewText(R.id.widget_condition, "Partly cloudy · H 70° / L 55°")
-    }
-  }
+  AppWidgetContent { context -> weatherRemoteViews(context) }
 }
 
 /**
  * Demonstrates clamping: requested `7×7` is pegged into the configured `1×3`..`4×5` bounds, so the
  * rendered footprint is `4×5`. Mirrors a real Android launcher's `minResizeWidth` /
  * `minResizeHeight` behaviour.
+ *
+ * Only the title differs from production — it names the behaviour so the render is self-describing
+ * in the gallery. The condition line used to read a bare `"Partly cloudy"` here; that was drift
+ * from a copied `RemoteViews` block, not a variant, so it now comes from [weatherRemoteViews]'s
+ * default like every other `4×n` sample (issue #3671).
  */
 @Preview(
   name = "Launcher widget — clamped to 4×5",
@@ -200,13 +226,7 @@ fun LauncherWidget4x2Preview() {
 )
 @Composable
 fun LauncherWidgetClampedPreview() {
-  AppWidgetContent { context ->
-    RemoteViews(context.packageName, R.layout.widget_weather).apply {
-      setTextViewText(R.id.widget_title, "Clamped → 4×5")
-      setTextViewText(R.id.widget_temperature, "67°")
-      setTextViewText(R.id.widget_condition, "Partly cloudy")
-    }
-  }
+  AppWidgetContent { context -> weatherRemoteViews(context, title = "Clamped → 4×5") }
 }
 
 /**
@@ -214,6 +234,10 @@ fun LauncherWidgetClampedPreview() {
  * one capture per whole-cell stop (`1×1, 2×1, 3×1, 4×1, 4×2` under the default `WidthFirst` order);
  * PNGs land at `renders/<id>_RESIZE_<w>x<h>.png` and can be flipped through like a flipbook. A
  * future Phase-B stitch will encode them into an animated GIF.
+ *
+ * The `"Resize walk"` title is the only deliberate difference from production — it labels the
+ * flipbook. The content below it comes from [weatherRemoteViews] so the same body is walked
+ * through every stop, including at `1×1` where the text clips exactly as the real widget would.
  */
 @Preview(
   name = "Launcher widget — resize 1×1 → 4×2",
@@ -230,13 +254,7 @@ fun LauncherWidgetClampedPreview() {
 )
 @Composable
 fun LauncherWidgetResize1x1To4x2Preview() {
-  AppWidgetContent { context ->
-    RemoteViews(context.packageName, R.layout.widget_weather).apply {
-      setTextViewText(R.id.widget_title, "Resize walk")
-      setTextViewText(R.id.widget_temperature, "67°")
-      setTextViewText(R.id.widget_condition, "Partly cloudy")
-    }
-  }
+  AppWidgetContent { context -> weatherRemoteViews(context, title = "Resize walk") }
 }
 
 // ---------------------------------------------------------------------------
@@ -264,18 +282,16 @@ fun LauncherWidgetResize1x1To4x2Preview() {
 @LauncherWidgetPreview(width = 4, height = 2, launcherMode = true)
 @Composable
 fun LauncherModeHomeScreenPreview() {
-  AppWidgetContent { context ->
-    RemoteViews(context.packageName, R.layout.widget_weather).apply {
-      setTextViewText(R.id.widget_title, "San Francisco")
-      setTextViewText(R.id.widget_temperature, "67°")
-      setTextViewText(R.id.widget_condition, "Partly cloudy · H 70° / L 55°")
-    }
-  }
+  AppWidgetContent { context -> weatherRemoteViews(context) }
 }
 
 /**
  * The `1×1 → 4×2` resize walk, each stop rendered on the launcher home screen — a flipbook of the
  * widget being resized on a real-looking device. PNGs land at `renders/<id>_RESIZE_<w>x<h>.png`.
+ *
+ * Same body and same `"Resize walk"` label as [LauncherWidgetResize1x1To4x2Preview]; the only
+ * difference between the two is `launcherMode = true` on the annotation, which is the point the
+ * pair is making.
  */
 @Preview(
   name = "Launcher mode — resize on home screen",
@@ -293,25 +309,19 @@ fun LauncherModeHomeScreenPreview() {
 )
 @Composable
 fun LauncherModeResizePreview() {
-  AppWidgetContent { context ->
-    RemoteViews(context.packageName, R.layout.widget_weather).apply {
-      setTextViewText(R.id.widget_title, "Resize walk")
-      setTextViewText(R.id.widget_temperature, "67°")
-      setTextViewText(R.id.widget_condition, "Partly cloudy")
-    }
-  }
+  AppWidgetContent { context -> weatherRemoteViews(context, title = "Resize walk") }
 }
 
 // ---------------------------------------------------------------------------
-// Native `@androidx.glance.preview.Preview` discovery
+// Native `@androidx.glance.preview.Preview` discovery — the canonical Glance sample
 //
-// Same Glance composable body as the `GlanceWeatherWidgetPreview` above, but the function is
-// annotated with Glance's own `@Preview` instead of the standard
-// `@androidx.compose.ui.tooling.preview.Preview` + `GlanceAppWidgetContent` helper. The gradle
-// plugin's discovery picks the FQN up, marks the entry as `PreviewKind.GLANCE_APPWIDGET`, and
-// the renderer wraps the function in a synthetic `GlanceAppWidget.providePreview(...)` driven
-// by `composeForPreview(...)` — same end-state as the helper-based path, just authored from a
-// single annotation.
+// This is the way to preview a Glance surface: annotate the composable with Glance's own
+// `@Preview`, nothing else. The gradle plugin's discovery picks the FQN up, marks the entry as
+// `PreviewKind.GLANCE_APPWIDGET`, and the renderer wraps the function in a synthetic
+// `GlanceAppWidget.providePreview(...)` driven by `composeForPreview(...)` — same end-state as
+// the `GlanceAppWidgetContent` helper path above, with no helper call and no widget instance to
+// construct. `GlanceWeatherWidgetPreview` is retained above only as an explicitly-labelled
+// demonstration of that helper API and of the side-by-side render comparison; copy this one.
 // ---------------------------------------------------------------------------
 
 /**
@@ -319,30 +329,15 @@ fun LauncherModeResizePreview() {
  * recognises the FQN and treats the function as `PreviewKind.GLANCE_APPWIDGET`; the renderer
  * reflects the body into a synthetic `GlanceAppWidget` and materialises via
  * `composeForPreview(...)`.
+ *
+ * The body is [WeatherGlanceContent] — the same tree [WeatherGlanceAppWidget] serves from
+ * `provideGlance(...)`, so this preview is evidence about production rather than a look-alike. The
+ * two overridden strings are the deliberate difference: they name the path that rendered the PNG,
+ * which is what makes the three widget renders distinguishable in the gallery.
  */
 @OptIn(ExperimentalGlancePreviewApi::class)
 @GlancePreview(widthDp = 312, heightDp = 152)
 @Composable
 fun NativeGlanceWidgetPreview() {
-  Column(
-    modifier =
-      GlanceModifier.fillMaxSize()
-        .background(GlanceFixedColorProvider(ComposeColor(0xFF1A237E)))
-        .padding(12.dp)
-  ) {
-    Text(
-      text = "Native @glance.preview.Preview",
-      style =
-        TextStyle(
-          color = GlanceFixedColorProvider(ComposeColor.White),
-          fontWeight = FontWeight.Bold,
-        ),
-    )
-    Spacer(GlanceModifier.height(8.dp))
-    Text(text = "67°", style = TextStyle(color = GlanceFixedColorProvider(ComposeColor.White)))
-    Text(
-      text = "Discovered by FQN",
-      style = TextStyle(color = GlanceFixedColorProvider(ComposeColor(0xB3FFFFFF))),
-    )
-  }
+  WeatherGlanceContent(title = "Native @glance.preview.Preview", condition = "Discovered by FQN")
 }

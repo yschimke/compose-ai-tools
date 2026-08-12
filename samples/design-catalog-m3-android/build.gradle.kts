@@ -53,5 +53,10 @@ dependencies {
   implementation(libs.compose.material3.catalog)
   implementation(libs.compose.foundation)
   implementation(libs.compose.ui.tooling.preview)
+  // `@FocusedPreview` — the focus-ring sticker is captured by a real `FocusManager.moveFocus` walk
+  // under Keyboard input mode, not by forging a `FocusInteraction.Focus` onto a held interaction
+  // source (issue #3672). Robolectric-only, which is why this Android supplement can use it and the
+  // CMP catalog it folds into cannot.
+  implementation(project(":preview-annotations"))
   debugImplementation("androidx.compose.ui:ui-tooling")
 }
