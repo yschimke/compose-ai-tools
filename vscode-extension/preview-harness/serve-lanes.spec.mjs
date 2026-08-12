@@ -624,16 +624,22 @@ function frameDiffPct(a, b) {
  *
  * A bare "the frame changed at all" assertion would pass on nothing: a focused
  * field blinks its caret, and a click that only *moves* the caret redraws it
- * somewhere else. Measured against this lane, with a text field focused:
+ * somewhere else. Re-measured against this lane, with a text field focused:
  *
  *   caret blink alone .................. 0.07%
- *   caret moved, nothing typed ......... 0.13%
- *   two characters typed ............... 0.99%
- *   a drag-selection highlight ......... 0.67%
+ *   caret moved, nothing typed ......... 0.07%
+ *   two characters typed at the caret .. 0.82%
+ *   a drag-selection highlight ......... 1.49%
  *
  * 0.4% sits in the gap — comfortably above anything the caret can do by itself,
  * comfortably below the smallest real edit. Without it, the selection test in
  * particular would have gone green against the very bug it exists to catch.
+ *
+ * Both numbers on the "real edit" side are measured with the caret **inside the
+ * word** (see [TEXT_X_FRACTION]). Appending the same two characters past the end
+ * of the text instead scores 0.34% — a genuine edit that lands under this floor,
+ * because nothing already on screen has to move. That is not a reason to lower
+ * the floor; it is why these tests press on the glyphs.
  */
 const REACTED_DIFF_PCT = 0.4;
 
@@ -642,6 +648,19 @@ async function liveCanvasBox(page) {
   return await page.locator("#cp-canvas").boundingBox();
 }
 
+/**
+ * Horizontal fraction of the canvas that lands **on the field's glyphs**.
+ *
+ * A text-field sticker is mostly empty field: the control is 280dp wide and the
+ * seeded value only fills the first fifth of it, left-aligned. So the canvas
+ * centre is inside the field but *past the end of the text* — a click there
+ * focuses the field and parks the caret at the last offset, which is not a
+ * position either of these tests means to drive from. Pressing here instead puts
+ * the caret **inside** the word, so typing shifts the tail (rather than merely
+ * appending two glyphs off the end) and a drag has text to its right to select.
+ */
+const TEXT_X_FRACTION = 0.18;
+
 test("Live lane types the visitor's keystrokes into the field", async ({
   page,
 }) => {
@@ -649,8 +668,10 @@ test("Live lane types the visitor's keystrokes into the field", async ({
   await openLiveTextField(page);
 
   const box = await liveCanvasBox(page);
-  // Click into the field to place the caret and focus the canvas.
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  // Click into the field's text to place the caret and focus the canvas. On the
+  // glyphs, not at the canvas centre — see [TEXT_X_FRACTION].
+  const x = box.x + box.width * TEXT_X_FRACTION;
+  await page.mouse.click(x, box.y + box.height / 2);
   await page.waitForTimeout(2000);
   const before = await liveFrame(page);
 
@@ -671,18 +692,27 @@ test("Live lane selects text on a mouse drag", async ({ page }) => {
 
   const box = await liveCanvasBox(page);
   const y = box.y + box.height / 2;
+  // Deliberately the canvas centre — past the last glyph — so the field is
+  // focused with its caret parked at the end of the text before the drag starts.
+  // That is the decoy the drag below has to ignore.
   await page.mouse.click(box.x + box.width / 2, y);
   await page.waitForTimeout(2000);
   const before = await liveFrame(page);
 
-  // Press and drag across the field's text. The press is deliberately separate
-  // from the moves: the viewer defers the pointerDown until the first move so a
-  // plain tap stays a click, and it is the move that promotes the gesture to a
-  // drag.
-  await page.mouse.move(box.x + box.width * 0.18, y);
+  // Press on the glyphs and drag right, off the end of the text. The press is
+  // deliberately separate from the moves: the viewer defers the pointerDown until
+  // the first move so a plain tap stays a click, and it is the move that promotes
+  // the gesture to a drag — which also means the daemon is handed the press and
+  // the first move back to back, with nothing in between (issue #3697).
+  //
+  // Ending past the last glyph is what makes a press the selection *forgot* show
+  // up: a selection anchored on the pre-existing caret instead of on the press
+  // collapses to an empty range out here, so the frame carries no highlight at
+  // all rather than a wrong one.
+  await page.mouse.move(box.x + box.width * TEXT_X_FRACTION, y);
   await page.mouse.down();
   for (let i = 1; i <= 12; i++) {
-    await page.mouse.move(box.x + box.width * (0.18 + 0.02 * i), y);
+    await page.mouse.move(box.x + box.width * (TEXT_X_FRACTION + 0.02 * i), y);
     await page.waitForTimeout(80);
   }
   await page.mouse.up();
