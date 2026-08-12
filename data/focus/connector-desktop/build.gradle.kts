@@ -10,8 +10,9 @@
 // itself only depends on `androidx.compose.runtime` + `androidx.compose.ui` (`LocalFocusManager`,
 // `LocalInputModeManager`, `FocusManager.moveFocus`) — fully Compose Multiplatform portable. The
 // Android module additionally ships `FocusOverlay` (a `BufferedImage` overlay sourced from
-// `AndroidComposeView.focusOwner` via reflection); that's Android-only and stays on the Android
-// side.
+// `AndroidComposeView.focusOwner` via reflection); the *sourcing* is Android-only, so this module
+// ships `FocusOverlayDesktop`, which draws the identical marker over bounds the caller reads from
+// the semantics tree instead.
 //
 // Mirrors `:data-pseudolocale-connector-desktop`'s layout — see the comment header there for the
 // platform-split rationale.
@@ -25,6 +26,9 @@ plugins {
 }
 
 dependencies {
+  // Okio-backed `SystemFileSystem` — `FocusOverlayDesktop` re-reads and rewrites the captured PNG
+  // through it, the same seam `:data-focus-connector`'s Android overlay writes through.
+  implementation(project(":common-io"))
   // Wire-shape (`FocusOverride` / `FocusDirection`) — re-exported so consumers (`:daemon:desktop`)
   // can refer to the model types without a second project dep.
   api(project(":data-focus-core"))

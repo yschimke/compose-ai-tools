@@ -30,6 +30,12 @@ dependencies {
   // pulled in here — desktop drives scroll through `SemanticsActions.ScrollBy` against a
   // `ComposeUiTest`'s semantic owner directly.
   implementation(project(":data-scroll-core"))
+  // `@FocusedPreview` drive — `FocusController` (the per-capture state holder + settle window),
+  // the `FocusOverrideExtension` around-composable that installs keyboard input mode and walks
+  // `FocusManager.moveFocus(...)`, and `FocusOverlayDesktop` for `overlay = true`. Same seam the
+  // Android renderer consumes from `:data-focus-connector`: no focus logic is reimplemented in
+  // `DesktopFocusRenderer`, it only decides when to flip the controller and where to press.
+  implementation(project(":data-focus-connector-desktop"))
   implementation(project(":common-io"))
   // PreviewBackground — the shared showBackground/backgroundColor/uiMode resolution.
   implementation(project(":data-render-core"))
