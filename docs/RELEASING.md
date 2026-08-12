@@ -24,17 +24,21 @@ In **Settings → Actions → General → Workflow permissions**, tick **"Allow 
 
    > **The heavy CI suite is skipped on release PRs, so no admin bypass is needed to merge.** A release PR only bumps the version manifest / `CHANGELOG.md` / version strings in docs — no source or build inputs change. The build/test/security/preview workflows (`ci`, `codeql`, `compose-preview`, `daemon-harness`, `integration`, `report-schemas`, `format`) gate each job with `if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}`, so they report **skipped** only on a release PR — i.e. one whose head branch is `release-please--*` **and** whose author is the release bot. (The branch name alone is contributor-controlled, so the author check is what stops a human/fork PR from naming its branch `release-please--…` to skip CI and abuse "skipped == passing"; switch the login if you move release-please to a GitHub App token.) Branch protection treats a skipped required check as passing, so the required checks go green instantly. The cheap PR-hygiene checks (`pr-title`, `no-agent-attribution`) still run — a release PR passes both. The guard is at job level on purpose: a `branches` filter on the trigger would leave the required check stuck *pending* and block the merge instead.
 
-## The 1.0.0 override — delete it once v1.0.0 is published
+## Versioning after 1.0.0
 
-[`release-please-config.json`](../release-please-config.json) currently pins the root package with `"release-as": "1.0.0"`, so the next release cuts as **1.0.0** instead of the `0.19.x` patch the conventional-commit history would otherwise produce. Nothing else about the chain changes: the release PR is still titled `chore(main): release 1.0.0`, and merging it tags, drafts, builds, and finalizes exactly as described above.
+`v1.0.0` was cut by pinning `"release-as": "1.0.0"` in [`release-please-config.json`](../release-please-config.json). **That override has been removed, and it had to be** — `release-as` is sticky, not consumed by the release it forces, so left in place every subsequent release PR proposes 1.0.0 again, the tag already exists, and the release wedges. This repo had been bitten by it once before, by an override pinning 0.7.0 that outlived its release. If you ever force a version this way again, delete the key in the first PR after the release publishes.
 
-**`release-as` is sticky — it is not consumed by the release it forces.** Left in place, every subsequent release PR proposes 1.0.0 again, the tag already exists, and the release wedges. (This repo has been bitten by it: an override pinning 0.7.0 outlived its release and had to be dropped by hand.) So the moment `v1.0.0` is published:
+Removed alongside it: `bump-minor-pre-major` and `bump-patch-for-minor-pre-major`, which only ever applied while the major version was `0`.
 
-1. Delete the `"release-as": "1.0.0"` line from `release-please-config.json`.
-2. Delete `bump-minor-pre-major` / `bump-patch-for-minor-pre-major` in the same edit — both keys only ever apply while the major version is `0`, so they go inert at 1.0.0 and are then just misleading config.
-3. Land that as a `chore:` PR. The next `Release PR` run re-reads the config and proposes a normal semver bump.
+**Those two keys are what made `feat:` land as a *patch* bump for the whole `0.x` line**, which is how a repo with this much history spent so long on `0.19.x`. With them gone the usual semver mapping applies:
 
-**What versioning looks like after 1.0.0.** Those two pre-major keys are what made `feat:` land as a *patch* bump for the whole `0.x` line (which is how a repo with this much history is still on a `0.19.x` version). Once they're gone the usual semver mapping applies: `fix:` → patch, `feat:` → minor, `feat!:` / `BREAKING CHANGE` → **major**. Titling a PR `feat!:` after 1.0.0 therefore cuts 2.0.0, not 1.0.1 — worth a second look at PR titles for the first few releases.
+| Commit type | Bump |
+|---|---|
+| `fix:` | patch |
+| `feat:` | minor |
+| `feat!:` / `BREAKING CHANGE` | **major** |
+
+So a PR titled `feat!:` now cuts **2.0.0**, not 1.0.1. Watch PR titles accordingly — this is the single most likely way to cut an unintended major.
 
 ## Fallback paths
 

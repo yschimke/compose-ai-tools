@@ -3,15 +3,10 @@
   "release-type": "simple",
   "separate-pull-requests": true,
   "include-v-in-tag": true,
-  "bump-minor-pre-major": true,
-  "bump-patch-for-minor-pre-major": true,
   "packages": {
     ".": {
       "package-name": "compose-ai-tools",
       "include-component-in-tag": false,
-      "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true,
-      "release-as": "1.0.0",
       "draft": true,
       "extra-files": [
         ".github/actions/install/README.md",
