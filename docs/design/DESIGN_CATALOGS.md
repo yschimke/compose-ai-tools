@@ -359,37 +359,40 @@ rather than branching:
   sheet already does (`Progress/Circular` + `Progress/Circular/Indeterminate`),
   which is an inventory change rather than a lane check.
 
-**Focused stickers use real input, not forged interactions.** The Android sheets
-(`design-catalog-wear-m3`, `design-catalog-m3-android`) drive them with
-`@FocusedPreview(indices = [0])`, which performs a real `FocusManager.moveFocus`
-walk — flipping `LocalInputModeManager` to Keyboard mode, since Robolectric's
-host environment is permanently Touch. That proves the component can actually
-*receive* the state, which emitting a bare `FocusInteraction.Focus` into a
-hand-made `MutableInteractionSource` never did (issue #3672). The M3 inset focus
-ring is the visible proof: forged, it rendered as a hairline; driven, it draws
-the full ring.
+**Focused stickers use real input, not forged interactions — on every sheet.**
+All three drive them with `@FocusedPreview(indices = [0])`, which performs a real
+`FocusManager.moveFocus` walk with `LocalInputModeManager` flipped to Keyboard
+mode (both render hosts need that: Robolectric's environment is permanently
+Touch, and Compose Desktop's default host refuses focus to a
+`Focusability.SystemDefined` focusable for the same reason). That proves the
+component can actually *receive* the state, which emitting a bare
+`FocusInteraction.Focus` into a hand-made `MutableInteractionSource` never did
+(issue #3672). The M3 inset focus ring is the visible proof: forged, it rendered
+as a hairline; driven, it draws the full ring.
 
-**Pressed stickers are the unfinished half.** `@FocusedPreview(pressed = true)`
-additionally dispatches an indirect-pointer Press onto whatever the focus walk
-landed on, and it works on `design-catalog-m3-android`. It does **not** work on
-Wear: measured on `ButtonPressed`, the capture came out pixel-identical to the
-focus-only one across the whole button container, differing only in the label
-glyphs — the Press never reaches Wear M3's `Button` interaction source, so the
-capture documents *focus*, not press.
+**Pressed stickers dispatch a real press, by whichever channel the host has.**
+`@FocusedPreview(pressed = true)` presses whatever the focus walk landed on:
+- **Android** sends an *indirect* pointer event (`sendIndirectPointerEvent`) —
+  the XR-Glasses channel, which routes to the focused composable. Works on
+  `design-catalog-m3-android`.
+- **CMP/desktop** has no indirect-pointer channel, so the renderer dispatches an
+  ordinary pointer down onto the focused element's bounds. Hit-tested like a
+  real click, so the pressed state can only appear if the component itself
+  consumed it.
+- It does **not** work on Wear: measured on `ButtonPressed`, the capture came out
+  pixel-identical to the focus-only one across the whole button container,
+  differing only in the label glyphs — the Press never reaches Wear M3's
+  `Button` interaction source, so the capture documents *focus*, not press.
 
-So two sheets keep a held `MutableInteractionSource` on purpose, both marked
-in-source as stopgaps:
+So exactly one sticker still keeps a held `MutableInteractionSource`, marked
+in-source as a stopgap: **Wear's `ButtonPressed`**, until indirect-pointer press
+dispatch is shown to land on Wear M3 components. Publishing a focus-looking
+capture under `state = "pressed"` would be the same mislabelled-artifact defect
+issue #3676 exists to remove. Delete it the moment that blocker lifts.
 
-- **Wear's `ButtonPressed`** — until indirect-pointer press dispatch is shown to
-  land on Wear M3 components. Publishing a focus-looking capture under
-  `state = "pressed"` would be the same mislabelled-artifact defect issue #3676
-  exists to remove.
-- **The whole CMP/desktop sheet** — the desktop `ImageComposeScene` renderer has
-  no focus traversal or press dispatch at all.
-
-Delete each the moment its blocker lifts. And note `pressed = true` necessarily
-focuses *and* presses, so a working pressed capture may carry a focus indicator
-alongside the pressed state layer.
+Note `pressed = true` necessarily focuses *and* presses, so a pressed capture may
+carry a focus indicator alongside the pressed state layer; Material's state layer
+resolves to the topmost interaction, so the press is what dominates.
 
 **No sticker may ship a dead handler.** Components that carry state — switch,
 checkbox, radio, filter chip, slider, segmented button, text fields, Wear's

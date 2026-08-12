@@ -36,6 +36,25 @@ data class PreviewRenderError(
    * (very deep framework throw, native crash).
    */
   val topAppFrame: TopFrame? = null,
+  /**
+   * One actionable sentence when the render died loading a *native* library rather than running the
+   * preview — a missing `libGL.so.1`, or a package-store library dragged into a system-glibc JVM
+   * (issue #3690). Null for an ordinary preview throw, which is the overwhelming majority.
+   *
+   * Worth its own field because this failure class is not per-preview: it takes out every preview
+   * in the module with the same cause, and the exception on all but the first says only `Could not
+   * initialize class org.jetbrains.skia.Surface`. See `renderer-desktop/.../NativeLoadDiagnosis.kt`
+   * for the classifier.
+   */
+  val diagnosis: String? = null,
+  /**
+   * Which JVM drew this preview and what it would have searched for native libraries. Recorded on
+   * every sidecar: with several JDKs on a box, "which one did Gradle's toolchain resolution
+   * actually fork, and did my `LD_LIBRARY_PATH` reach it?" is otherwise unanswerable after the fact
+   * — and it was the first question issue #3690 could not answer. Null on sidecars written by a
+   * renderer older than this field.
+   */
+  val runtime: RenderRuntime? = null,
   /** Full stack trace as it would appear in `Throwable.printStackTrace()`. */
   val stackTrace: String,
 ) {
@@ -43,6 +62,18 @@ data class PreviewRenderError(
     const val SCHEMA_V1: String = "compose-preview-error/v1"
   }
 }
+
+/** The render JVM's identity and native-library search path, as the renderer saw them. */
+@Serializable
+data class RenderRuntime(
+  /** `java.home` of the JVM that ran the render. */
+  val javaHome: String = "",
+  val javaVersion: String = "",
+  val javaVendor: String = "",
+  val osArch: String = "",
+  /** `LD_LIBRARY_PATH` as *inherited by the render process*. Empty when it inherited none. */
+  val ldLibraryPath: String = "",
+)
 
 @Serializable
 data class TopFrame(

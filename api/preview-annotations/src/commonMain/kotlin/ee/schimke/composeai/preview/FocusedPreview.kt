@@ -28,6 +28,11 @@ package ee.schimke.composeai.preview
  * annotation also flips `LocalInputModeManager` to Keyboard mode for the duration of its captures —
  * matching the state a real device is in after the user Tabs to a component.
  *
+ * **Both backends drive this.** Android renders it under Robolectric; Compose Multiplatform Desktop
+ * renders it through the same connector-side walk under `runSkikoComposeUiTest` (issue #3672). The
+ * one exception is [gif], which is still Android-only: on desktop a `gif = true` preview writes an
+ * undriven single frame to its `.gif` output, so use the per-step PNG form there.
+ *
  * Example — indexed:
  * ```
  * @Preview
@@ -87,6 +92,10 @@ annotation class FocusedPreview(
    * that the per-PNG path uses — so consumer code stays plain `Row { Button(...) }` with no
    * hand-rolled `MutableInteractionSource` / `LaunchedEffect` focus emission. Ignored when the
    * annotation collapses to a single step (one `indices` entry, empty `traverse`). Off by default.
+   *
+   * **Android only.** The desktop renderer drives every other part of this annotation, but not the
+   * stitched GIF — a desktop `gif = true` preview writes an undriven single frame into its `.gif`
+   * output. Use the per-step PNG form on CMP modules.
    */
   val gif: Boolean = false,
   /**

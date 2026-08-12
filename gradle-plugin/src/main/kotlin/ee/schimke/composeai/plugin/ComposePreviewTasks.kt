@@ -1802,6 +1802,14 @@ internal object ComposePreviewTasks {
   private val PIXEL_TEST_UNIT_TEST_TASKS = setOf("testDebugUnitTest", "testReleaseUnitTest")
 
   /**
+   * How the renderer marks a diagnosis that only *points at* the first native failure in its JVM.
+   * Kept in sync with `renderer-desktop/.../NativeLoadDiagnosis.kt`; the plugin can't depend on the
+   * renderer module (it is resolved into the consumer's graph), and a drift here degrades to "leads
+   * with a cascade line", not to a wrong message.
+   */
+  internal const val CASCADE_DIAGNOSIS_PREFIX = "Cascade of the first native-load failure"
+
+  /**
    * Per-preview error-sidecar payload as the gradle plugin reads it. We mirror only the fields used
    * by [formatMissingPreviewsMessage]; the sidecar schema itself lives next to the renderer that
    * writes it (`renderer-android/.../RenderErrorSidecar.kt` and the desktop equivalent).
@@ -1812,6 +1820,12 @@ internal object ComposePreviewTasks {
     val exception: String = "",
     val message: String = "",
     val topAppFrame: TopAppFrame? = null,
+    /**
+     * The renderer's one-sentence explanation when the failure was a native-library load rather
+     * than the preview's own code (see `renderer-desktop/.../NativeLoadDiagnosis.kt`). Empty for an
+     * ordinary preview throw, and for sidecars written by an older renderer.
+     */
+    val diagnosis: String = "",
   ) {
     @kotlinx.serialization.Serializable
     internal data class TopAppFrame(
@@ -1896,11 +1910,32 @@ internal object ComposePreviewTasks {
         .append(" of ")
         .append(total)
         .append(" preview(s).")
+      // A native-library failure takes out every preview in the module with one root cause, so it
+      // leads — before the per-preview list it would otherwise be buried under (issue #3690). The
+      // renderer marks cascades ("Cascade of the first…"), so prefer a sidecar carrying the real
+      // first failure over one that only points at it.
+      val diagnoses = withSidecar.map { sidecars.getValue(it).diagnosis }.filter { it.isNotBlank() }
+      val rootCause =
+        diagnoses.firstOrNull { !it.startsWith(CASCADE_DIAGNOSIS_PREFIX) }
+          ?: diagnoses.firstOrNull()
+      rootCause?.let { sb.append("\n\n").append(it) }
+
       if (withSidecar.isNotEmpty()) {
         sb.append("\n\nPer-preview render errors (from .error.json sidecars):")
-        for (id in withSidecar.take(5)) {
+        // Grouped by exception + message: one broken dependency reports itself once with a count
+        // instead of a thousand identical lines, and genuinely distinct failures still each get a
+        // line. Preview order is preserved, so the first failure stays at the top.
+        val groups = withSidecar.groupBy { id ->
           val s = sidecars.getValue(id)
-          sb.append("\n  - ").append(id).append(": ").append(s.exception.substringAfterLast('.'))
+          s.exception to s.message
+        }
+        var shown = 0
+        for ((_, ids) in groups.entries.take(5)) {
+          val s = sidecars.getValue(ids.first())
+          shown += ids.size
+          sb.append("\n  - ")
+          if (ids.size == 1) sb.append(ids.first()).append(": ")
+          sb.append(s.exception.substringAfterLast('.'))
           if (s.message.isNotBlank()) sb.append(": ").append(s.message)
           s.topAppFrame?.let { f ->
             if (f.file.isNotBlank()) {
@@ -1909,9 +1944,13 @@ internal object ComposePreviewTasks {
               sb.append(')')
             }
           }
+          if (ids.size > 1) {
+            sb.append(" — ").append(ids.size).append(" previews, e.g. ")
+            sb.append(ids.take(3).joinToString(", "))
+          }
         }
-        if (withSidecar.size > 5) {
-          sb.append("\n  (+").append(withSidecar.size - 5).append(" more with sidecars)")
+        if (withSidecar.size > shown) {
+          sb.append("\n  (+").append(withSidecar.size - shown).append(" more with sidecars)")
         }
       }
       if (withoutSidecar.isNotEmpty()) {
