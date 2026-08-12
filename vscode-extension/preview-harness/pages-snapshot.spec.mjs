@@ -367,6 +367,19 @@ const FIXTURE_STATES = [
         fixture: "serve-landing-sections",
         suffix: "filtered",
         apply: async (page) => {
+            // States are applied cumulatively to the SAME loaded page, so this one inherits
+            // `section-open`'s Components selection. That matters: "device" matches inside
+            // Components, so the selected row would survive the filter and the tab-stop assertion
+            // below would hold whether or not the fallback it exists for is there at all. Put the
+            // page back on Themes first, which the query matches nothing in — the only arrangement
+            // in which the selected section is actually hidden.
+            await page.click('.cp-tab[data-tab="themes"]');
+            await page.waitForFunction(
+                () =>
+                    document
+                        .querySelector('.cp-tab[data-tab="themes"]')
+                        ?.getAttribute("aria-selected") === "true",
+            );
             await page.fill("#cp-search", "device");
             await page.waitForFunction(
                 () =>
@@ -374,15 +387,19 @@ const FIXTURE_STATES = [
                         .querySelector('.cp-tab[data-tab="screens"]')
                         ?.getAttribute("aria-expanded") === "true",
             );
-            // The filter hides the SELECTED section here — "device" matches only under Components
-            // and Screens, and the page opens on Themes. The tree's single roving tab stop must
-            // move to a branch that is still on screen, or Tab skips the whole navigation. Not a
-            // pixel claim, so it rides this capture as a wait rather than earning its own shot.
+            // The filter now hides the SELECTED section. The tree's single roving tab stop has to
+            // move to a branch still on screen, or Tab skips the whole navigation. Not a pixel
+            // claim, so it rides this capture as a wait rather than earning its own shot.
             await page.waitForFunction(() => {
-                const rows = Array.from(document.querySelectorAll(".cp-tab"));
-                const reachable = rows.filter(
-                    (r) => !r.closest(".cp-tree-node")?.hidden,
+                const themes = document.querySelector(
+                    '.cp-tab[data-tab="themes"]',
                 );
+                // Guards the guard: if the selected section were somehow still visible, this
+                // assertion would be trivially true and would pin nothing.
+                if (!themes?.closest(".cp-tree-node")?.hidden) return false;
+                const reachable = Array.from(
+                    document.querySelectorAll(".cp-tab"),
+                ).filter((r) => !r.closest(".cp-tree-node")?.hidden);
                 return (
                     reachable.length > 0 &&
                     reachable.some((r) => r.tabIndex === 0)

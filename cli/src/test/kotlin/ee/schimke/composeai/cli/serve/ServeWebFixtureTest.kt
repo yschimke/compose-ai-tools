@@ -2718,8 +2718,29 @@ class ServeWebFixtureTest {
     )
     assertTrue(
       landingSections.contains("var hash = location.hash") &&
+        landingSections.contains("decodeURIComponent(hash)") &&
         landingSections.contains("initialTab = current;"),
-      "a shared #cp-group-… link selects the section that holds it",
+      "a shared #cp-group-… link selects the section that holds it, non-ASCII slugs included",
+    )
+    // The fragment has to travel with the selection: `cpUrlState` preserves whatever hash is
+    // already on the URL, and the hash outranks `?tab=` on load, so a stale one silently sends the
+    // next visitor to the wrong section.
+    assertTrue(
+      landingSections.contains("function setFragment(id)") &&
+        landingSections.contains("setFragment(g.getAttribute(\"data-group\"))") &&
+        landingSections.contains(
+          "t.addEventListener(\"click\", function () { setFragment(\"\"); })"
+        ),
+      "navigating replaces the fragment, and choosing a section clears it",
+    )
+    // A `role="group"` has to hang off the treeitem whose `aria-expanded` governs it. The row is an
+    // <a> (so it stays a real link) inside a `role="none"` <li>, so the tie is `aria-owns`.
+    assertTrue(
+      landingSections.contains("aria-owns=\"cp-tree-children-components\"") &&
+        landingSections.contains(
+          "<ul class=\"cp-tree-children\" id=\"cp-tree-children-components\""
+        ),
+      "a section row owns its group of sub-group rows",
     )
     // `role="tree"` (the nav) and `classList.add("cp-js")` (the section script) appear ONLY when
     // sections are rendered — the shared stylesheet's `.cp-tree` / `html.cp-js` rules are on every

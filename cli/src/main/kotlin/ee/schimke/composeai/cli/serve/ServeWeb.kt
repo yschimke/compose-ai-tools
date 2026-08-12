@@ -1303,15 +1303,21 @@ object ServeWeb {
       val selected = if (i == 0) "true" else "false"
       val named = sec.groups.filter { it.name != null }
       append("<li class=\"cp-tree-node\" role=\"none\">\n")
+      val childrenId = "cp-tree-children-${sec.slug}"
       append("  <a class=\"cp-tab\" role=\"treeitem\" id=\"cp-tab-${sec.slug}\"")
       append(" href=\"#cp-panel-${sec.slug}\" data-tab=\"${sec.slug}\"")
       append(" aria-controls=\"cp-panel-${sec.slug}\" aria-selected=\"$selected\"")
-      if (named.isNotEmpty()) append(" aria-expanded=\"$selected\"")
+      // `aria-owns` because the markup cannot nest the group inside the treeitem: the row has to
+      // be an <a> to stay a real link (the no-JS path), and the <li> that does contain both is
+      // `role="none"`. Without this the `role="group"` would hang off the tree rather than off the
+      // section whose `aria-expanded` governs it, so a screen reader could not report the group
+      // rows as that section's children.
+      if (named.isNotEmpty()) append(" aria-expanded=\"$selected\" aria-owns=\"$childrenId\"")
       append(" tabindex=\"${if (i == 0) "0" else "-1"}\">")
       append(WebEscaping.htmlEscape(sec.name))
       append("<span class=\"cp-tab-count\">${sec.count}</span></a>\n")
       if (named.isNotEmpty()) {
-        append("  <ul class=\"cp-tree-children\" role=\"group\">\n")
+        append("  <ul class=\"cp-tree-children\" id=\"$childrenId\" role=\"group\">\n")
         named.forEach { g ->
           val anchor = groupAnchorId(sec.slug, g.slug)
           append("    <li role=\"none\"><a class=\"cp-tree-group\" role=\"treeitem\"")
@@ -2041,9 +2047,11 @@ object ServeWeb {
           "\n          t.setAttribute(\"aria-selected\", on ? \"true\" : \"false\");" +
           "\n          if (t.hasAttribute(\"aria-expanded\"))" +
           "\n            t.setAttribute(\"aria-expanded\", on || searching ? \"true\" : \"false\");" +
-          "\n          t.tabIndex = on ? 0 : -1;" +
           "\n          var node = t.closest(\".cp-tree-node\");" +
           "\n          var shown = !(node && node.hidden);" +
+          // The stop belongs to the selected row only while that row is on screen, so a filtered-
+          // out section does not keep a claim on it that the fallback below then duplicates.
+          "\n          t.tabIndex = on && shown ? 0 : -1;" +
           "\n          if (shown && !firstShown) firstShown = t;" +
           "\n          if (on && shown) stop = t;" +
           "\n        });" +
@@ -2243,15 +2251,33 @@ object ServeWeb {
         pushUrl({ tab: current });
         apply();
       }
+      // The fragment is part of the address this page describes, and `cpUrlState` deliberately
+      // preserves whatever hash is already there when it rewrites the query. So a click that moves
+      // you somewhere else has to move the fragment too, or the URL keeps pointing at where you
+      // WERE — `?tab=components#cp-group-themes-foundation` reads as Components in the query and
+      // Themes in the hash, and since the hash outranks `?tab=` on load, reloading or sharing it
+      // lands on Themes. `replaceState`, not push: the entry itself was just pushed by
+      // [selectTab], and a jump inside a section is a scroll, not a place to come Back to.
+      function setFragment(id) {
+        var url = location.pathname + location.search + (id ? "#" + id : "");
+        try { history.replaceState(history.state, "", url); } catch (e) {}
+      }
       treeGroups.forEach(function (g) {
         g.addEventListener("click", function (e) {
           var target = document.getElementById(g.getAttribute("data-group"));
           if (!target) return;
           e.preventDefault();
           selectTab(g.getAttribute("data-tab"));
+          setFragment(g.getAttribute("data-group"));
           target.scrollIntoView({ behavior: "smooth", block: "start" });
           markGroup(g);
         });
+      });
+      // Choosing a whole section retires any group fragment for the same reason: the row you
+      // clicked is the statement of where you are, and a leftover `#cp-group-…` from another
+      // section would outrank it on the next load.
+      tabBtns.forEach(function (t) {
+        t.addEventListener("click", function () { setFragment(""); });
       });
       // Only the rows a visitor can actually reach: a collapsed section contributes its own row and
       // none of its children, and a row the filter hid contributes nothing.
@@ -2308,7 +2334,13 @@ object ServeWeb {
       // as explicit a request as `?tab=` is, so it selects that section, outranking the remembered
       // one. Runs before the trailing `apply()`, which is what actually reveals the panel — hence
       // the deferred scroll rather than an immediate one.
+      // Percent-DECODED before comparing: a section or group name keeps its non-ASCII letters
+      // through `sectionSlug` (Kotlin's `isLetterOrDigit` is Unicode-aware), so the id in the DOM
+      // is the raw text while browsers hand back `location.hash` encoded. Undecoded, a shared link
+      // to an accented or CJK group would match no row at all and silently do nothing. A malformed
+      // escape sequence throws, and is simply not a fragment this page knows.
       var hash = location.hash ? location.hash.slice(1) : "";
+      try { hash = decodeURIComponent(hash); } catch (e) {}
       if (hash) {
         var wanted = null;
         var target = null;

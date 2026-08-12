@@ -69,21 +69,21 @@
 <nav class="cp-tree" id="cp-tabs" aria-label="Catalog sections">
 <ul class="cp-tree-list" role="tree" aria-label="Catalog sections">
 <li class="cp-tree-node" role="none">
-  <a class="cp-tab" role="treeitem" id="cp-tab-themes" href="#cp-panel-themes" data-tab="themes" aria-controls="cp-panel-themes" aria-selected="true" aria-expanded="true" tabindex="0">Themes<span class="cp-tab-count">2</span></a>
-  <ul class="cp-tree-children" role="group">
+  <a class="cp-tab" role="treeitem" id="cp-tab-themes" href="#cp-panel-themes" data-tab="themes" aria-controls="cp-panel-themes" aria-selected="true" aria-expanded="true" aria-owns="cp-tree-children-themes" tabindex="0">Themes<span class="cp-tab-count">2</span></a>
+  <ul class="cp-tree-children" id="cp-tree-children-themes" role="group">
     <li role="none"><a class="cp-tree-group" role="treeitem" href="#cp-group-themes-foundation" data-tab="themes" data-group="cp-group-themes-foundation" tabindex="-1">Foundation<span class="cp-tree-count">2</span></a></li>
   </ul>
 </li>
 <li class="cp-tree-node" role="none">
-  <a class="cp-tab" role="treeitem" id="cp-tab-components" href="#cp-panel-components" data-tab="components" aria-controls="cp-panel-components" aria-selected="false" aria-expanded="false" tabindex="-1">Components<span class="cp-tab-count">4</span></a>
-  <ul class="cp-tree-children" role="group">
+  <a class="cp-tab" role="treeitem" id="cp-tab-components" href="#cp-panel-components" data-tab="components" aria-controls="cp-panel-components" aria-selected="false" aria-expanded="false" aria-owns="cp-tree-children-components" tabindex="-1">Components<span class="cp-tab-count">4</span></a>
+  <ul class="cp-tree-children" id="cp-tree-children-components" role="group">
     <li role="none"><a class="cp-tree-group" role="treeitem" href="#cp-group-components-device" data-tab="components" data-group="cp-group-components-device" tabindex="-1">Device<span class="cp-tree-count">2</span></a></li>
     <li role="none"><a class="cp-tree-group" role="treeitem" href="#cp-group-components-contacts" data-tab="components" data-group="cp-group-components-contacts" tabindex="-1">Contacts<span class="cp-tree-count">2</span></a></li>
   </ul>
 </li>
 <li class="cp-tree-node" role="none">
-  <a class="cp-tab" role="treeitem" id="cp-tab-screens" href="#cp-panel-screens" data-tab="screens" aria-controls="cp-panel-screens" aria-selected="false" aria-expanded="false" tabindex="-1">Screens<span class="cp-tab-count">3</span></a>
-  <ul class="cp-tree-children" role="group">
+  <a class="cp-tab" role="treeitem" id="cp-tab-screens" href="#cp-panel-screens" data-tab="screens" aria-controls="cp-panel-screens" aria-selected="false" aria-expanded="false" aria-owns="cp-tree-children-screens" tabindex="-1">Screens<span class="cp-tab-count">3</span></a>
+  <ul class="cp-tree-children" id="cp-tree-children-screens" role="group">
     <li role="none"><a class="cp-tree-group" role="treeitem" href="#cp-group-screens-scanner" data-tab="screens" data-group="cp-group-screens-scanner" tabindex="-1">Scanner<span class="cp-tree-count">2</span></a></li>
     <li role="none"><a class="cp-tree-group" role="treeitem" href="#cp-group-screens-device" data-tab="screens" data-group="cp-group-screens-device" tabindex="-1">Device<span class="cp-tree-count">1</span></a></li>
   </ul>
@@ -259,9 +259,9 @@
       t.setAttribute("aria-selected", on ? "true" : "false");
       if (t.hasAttribute("aria-expanded"))
         t.setAttribute("aria-expanded", on || searching ? "true" : "false");
-      t.tabIndex = on ? 0 : -1;
       var node = t.closest(".cp-tree-node");
       var shown = !(node && node.hidden);
+      t.tabIndex = on && shown ? 0 : -1;
       if (shown && !firstShown) firstShown = t;
       if (on && shown) stop = t;
     });
@@ -357,15 +357,33 @@
       pushUrl({ tab: current });
       apply();
     }
+    // The fragment is part of the address this page describes, and `cpUrlState` deliberately
+    // preserves whatever hash is already there when it rewrites the query. So a click that moves
+    // you somewhere else has to move the fragment too, or the URL keeps pointing at where you
+    // WERE — `?tab=components#cp-group-themes-foundation` reads as Components in the query and
+    // Themes in the hash, and since the hash outranks `?tab=` on load, reloading or sharing it
+    // lands on Themes. `replaceState`, not push: the entry itself was just pushed by
+    // [selectTab], and a jump inside a section is a scroll, not a place to come Back to.
+    function setFragment(id) {
+      var url = location.pathname + location.search + (id ? "#" + id : "");
+      try { history.replaceState(history.state, "", url); } catch (e) {}
+    }
     treeGroups.forEach(function (g) {
       g.addEventListener("click", function (e) {
         var target = document.getElementById(g.getAttribute("data-group"));
         if (!target) return;
         e.preventDefault();
         selectTab(g.getAttribute("data-tab"));
+        setFragment(g.getAttribute("data-group"));
         target.scrollIntoView({ behavior: "smooth", block: "start" });
         markGroup(g);
       });
+    });
+    // Choosing a whole section retires any group fragment for the same reason: the row you
+    // clicked is the statement of where you are, and a leftover `#cp-group-…` from another
+    // section would outrank it on the next load.
+    tabBtns.forEach(function (t) {
+      t.addEventListener("click", function () { setFragment(""); });
     });
     // Only the rows a visitor can actually reach: a collapsed section contributes its own row and
     // none of its children, and a row the filter hid contributes nothing.
@@ -422,7 +440,13 @@
     // as explicit a request as `?tab=` is, so it selects that section, outranking the remembered
     // one. Runs before the trailing `apply()`, which is what actually reveals the panel — hence
     // the deferred scroll rather than an immediate one.
+    // Percent-DECODED before comparing: a section or group name keeps its non-ASCII letters
+    // through `sectionSlug` (Kotlin's `isLetterOrDigit` is Unicode-aware), so the id in the DOM
+    // is the raw text while browsers hand back `location.hash` encoded. Undecoded, a shared link
+    // to an accented or CJK group would match no row at all and silently do nothing. A malformed
+    // escape sequence throws, and is simply not a fragment this page knows.
     var hash = location.hash ? location.hash.slice(1) : "";
+    try { hash = decodeURIComponent(hash); } catch (e) {}
     if (hash) {
       var wanted = null;
       var target = null;
