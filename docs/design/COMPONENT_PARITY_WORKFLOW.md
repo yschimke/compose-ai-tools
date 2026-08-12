@@ -613,7 +613,9 @@ sits comfortably under the cap, while JavaScript keeps a large positive `Number`
 offline consumer then proceeds to allocate what the browser refused. So the check short-circuits:
 reject the moment **any single dimension**, **any single `width × height`**, or **the running total**
 reaches the cap, and stop reading. Nothing ever holds a value larger than the cap plus one raster, so
-there is nothing to overflow, and the two engines cannot disagree about arithmetic they never do. A file whose header is unreadable, or whose declared
+there is nothing to overflow, and the two engines cannot disagree about arithmetic they never do.
+
+A file whose header is unreadable, or whose declared
 dimensions disagree with what the full decode later produces, is `header-invalid` — the second half
 matters because a lying header is otherwise a way to walk straight past the cap. `document-too-large`
 is then checked alongside the duplicate-id scan, both whole-document verdicts reached before any
