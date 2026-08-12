@@ -665,9 +665,13 @@ class DoctorCommand(
     // `composePreview.renderJavaVersion`) is the case that matters most here: store libraries on
     // the path of a *system* JDK is the mixed-glibc trap, and reading the daemon's `java.home`
     // instead would report a Nix daemon as healthy while the render dies (issue #3690).
+    // Per module: its own launcher when the model reports one, the daemon only as *that module's*
+    // fallback. Adding the daemon unconditionally would judge a JVM nothing renders on — and since
+    // the worst verdict wins below, an unused daemon that cannot resolve a library would fail
+    // doctor for a project whose every render is fine.
     val candidates =
-      (desktopModules.values.mapNotNull { it.renderPreviewsTask?.javaLauncherPath } +
-          listOfNotNull(daemonJavaHome))
+      desktopModules.values
+        .map { it.renderPreviewsTask?.javaLauncherPath ?: daemonJavaHome }
         .distinct()
         .ifEmpty { listOf(null) }
     val canonicalize = { path: String ->
@@ -685,8 +689,15 @@ class DoctorCommand(
       )
     }
     // The worst verdict wins: one render JVM that cannot load skiko breaks that module's previews
-    // regardless of how healthy the others look.
-    val result = results.firstOrNull { !it.ok } ?: results.first()
+    // regardless of how healthy the others look. Ranked by severity rather than by "first not-ok",
+    // because the candidates are ordered by where they came from — so an earlier candidate's
+    // warning would otherwise hide a later one whose renders cannot work at all, and warnings exit
+    // 0. Same order [DesktopNativesCheck.interpret] uses, so the selected result and the status it
+    // is reported under agree.
+    val result =
+      results.firstOrNull { it.missing.isNotEmpty() }
+        ?: results.firstOrNull { !it.ok }
+        ?: results.first()
 
     val check = DesktopNativesCheck.interpret(result, inClaudeCloud = inClaudeCloud)
     addCheck(

@@ -7,6 +7,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.abs
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -172,6 +173,78 @@ class DesktopInteractiveSessionTest {
         session.close()
       }
     } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
+   * The press-settling render (#3697) is a real frame and composes whatever the press invalidated,
+   * so it has to run inside the `localeTag` JVM-default-`Locale` scope every other frame runs in —
+   * `rememberResourceEnvironment` caches what it resolves, and a `stringResource(...)` first
+   * resolved at the host default on a press is not re-resolved by the capture that follows.
+   */
+  @Test
+  fun press_settling_frame_composes_under_the_preview_locale() {
+    val outputDir = tempFolder.newFolder("interactive-press-locale-renders")
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = outputDir),
+        previewSpecResolver = { previewId ->
+          if (previewId == PRESS_LOCALE_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "PressLocaleProbeSquare",
+              widthPx = 64,
+              heightPx = 64,
+              localeTag = "de",
+              outputBaseName = "press-locale-probe-square",
+            )
+          } else null
+        },
+      )
+    val hostDefault = java.util.Locale.getDefault()
+    host.start()
+    try {
+      // A host default that is emphatically not the override, so "composed under de" can't be an
+      // accident of the machine the test runs on.
+      java.util.Locale.setDefault(java.util.Locale.forLanguageTag("en-US"))
+      val session =
+        host.acquireInteractiveSession(
+          previewId = PRESS_LOCALE_PREVIEW_ID,
+          classLoader = DesktopInteractiveSessionTest::class.java.classLoader!!,
+        )
+      try {
+        session.render(requestId = RenderHost.nextRequestId())
+
+        // Read the probe straight after the dispatch and *before* any capture render: what it holds
+        // is what the settling frame composed under, not what a later frame corrected it to.
+        PressLocaleProbe.reset()
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "test-press-locale",
+            kind = InteractiveInputKind.POINTER_DOWN,
+            pixelX = 32,
+            pixelY = 32,
+            pointerId = 0,
+          )
+        )
+
+        assertEquals(
+          "the press must have recomposed the fixture — without that there is no settling frame " +
+            "to make a claim about",
+          true,
+          PressLocaleProbe.composedUnder != null,
+        )
+        assertEquals(
+          "the settling frame must compose under the preview's localeTag, not the host default",
+          "de",
+          PressLocaleProbe.composedUnder,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      java.util.Locale.setDefault(hostDefault)
       host.shutdown()
     }
   }
@@ -576,6 +649,7 @@ class DesktopInteractiveSessionTest {
     private const val FRAME_CLOCK_PREVIEW_ID = "frame-clock-square"
     private const val HIGH_DENSITY_TARGET_PREVIEW_ID = "high-density-click-target-square"
     private const val KEY_PRESS_PREVIEW_ID = "key-press-color-square"
+    private const val PRESS_LOCALE_PREVIEW_ID = "press-locale-probe-square"
     private const val TAGGED_TARGET_PREVIEW_ID = "tagged-click-target-square"
   }
 }

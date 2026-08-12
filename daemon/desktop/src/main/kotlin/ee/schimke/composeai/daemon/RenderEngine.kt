@@ -628,6 +628,29 @@ class RenderEngine(
   internal fun currentFrameNanoTime(): Long = frameNanoTime()
 
   /**
+   * One frame whose *pixels are thrown away* — the settling render [ScenePointerDispatch.press]
+   * runs so Compose's gesture detectors observe a press before the next event can arrive.
+   *
+   * Under the same JVM-default-`Locale` override [renderOnce] wraps its frames in, and for the same
+   * reason: a press can compose new content, and `rememberResourceEnvironment` caches what it
+   * resolves — so a settling frame run at the host default would bake default-language
+   * `stringResource(...)` text into a `localeTag` preview that the localized capture afterwards
+   * cannot undo.
+   *
+   * The returned snapshot is closed rather than left to a cleaner: it owns native Skia memory, and
+   * a held session presses many times between captures.
+   */
+  @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+  internal fun renderSettlingFrame(state: SceneState, nanoTime: Long) {
+    val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(state.spec.localeTag))
+    try {
+      state.scene.render(nanoTime = nanoTime).close()
+    } finally {
+      restoreJvmDefaultLocale(previousDefaultLocale)
+    }
+  }
+
+  /**
    * v2 phase 2 — drive the held scene through enough frames to settle (two `scene.render()` calls,
    * same heuristic as the one-shot path) and encode the latest pixels to PNG. Reusable across
    * inputs in the interactive path; called exactly once by the [render] wrapper.

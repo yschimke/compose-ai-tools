@@ -1,6 +1,6 @@
 # Live frame streaming (`composestream/1`)
 
-**Status: pre-1.0, additive on top of the existing `interactive/*` surface.**
+**Status: unstable, additive on top of the existing `interactive/*` surface.**
 A daemon that hasn't grown the new methods rejects `stream/start` with
 `MethodNotFound (-32601)`; the panel falls back to the existing
 `<img src=…>` swap path. No `protocolVersion` bump.
@@ -142,9 +142,9 @@ binary header followed by the payload bytes:
 ```
 
 `StreamFrameHeader` in `:daemon:core` is the canonical pack/parse
-implementation; `StreamFrameHeaderTest` pins the round-trip. Pre-1.0
-binary clients are not supported on the wire today; the JSON envelope is
-the only sanctioned transport.
+implementation; `StreamFrameHeaderTest` pins the round-trip. Binary
+clients are not supported on the wire today; the JSON envelope is the
+only sanctioned transport.
 
 ## Client model — newest-wins queue + canvas paint
 

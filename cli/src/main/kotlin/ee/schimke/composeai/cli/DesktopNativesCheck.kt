@@ -217,12 +217,13 @@ internal object DesktopNativesCheck {
           "`ldconfig -p` use the *system* loader and will look fine even when the render fails."
       } else null
 
-    if (result.glibcSkew) {
-      // Deliberately a warning rather than an error: the Gradle plugin prunes these directories
-      // from the render JVM's own environment (`RenderNativeEnv`), so a render driven through it
-      // works on this box as it stands. Anything else that starts a JVM from this environment — a
-      // bare `java -jar`, an IDE, another Gradle plugin — still gets the mixed process image, so
-      // the state is worth reporting rather than hiding.
+    // Checked *after* the missing-library branch below would be wrong, and this ordering is the
+    // whole point: a glibc skew is a warning (the plugin prunes the store dirs for its own render
+    // JVM, so renders driven through it still work), while a library the loader cannot find at all
+    // is an error (nothing renders, by any route). Reporting the warning first on a box that has
+    // both would hide the fatal condition behind the survivable one — and warnings exit 0, so
+    // doctor would pass a project whose previews cannot render.
+    if (result.glibcSkew && result.missing.isEmpty()) {
       return DoctorCheck(
         id = id,
         category = "env",
@@ -303,6 +304,17 @@ internal object DesktopNativesCheck {
           append(". LD_LIBRARY_PATH as inherited by this process: ")
           append(if (result.ldLibraryPath.isEmpty()) "(unset)" else result.ldLibraryPath.toString())
           storeNote?.let { append(". $it") }
+          // Both conditions at once: the missing library is the fatal one and owns the status, but
+          // the skew is still on this box and still worth naming — otherwise fixing the missing lib
+          // leaves a second, differently-shaped failure waiting behind it.
+          if (result.glibcSkew) {
+            append(
+              ". Also on this box: LD_LIBRARY_PATH mixes ${result.storeDirsOnPath.size} " +
+                "package-store director(ies) into a system render JVM " +
+                "(${result.storeDirsOnPath.joinToString(", ")}), which is its own failure mode — " +
+                "see docs/DESKTOP_NATIVE_DEPS.md."
+            )
+          }
         },
       remediation =
         DoctorRemediation(

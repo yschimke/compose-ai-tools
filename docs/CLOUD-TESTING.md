@@ -79,7 +79,17 @@ export JAVA_HOME="$(scripts/setup-cloud-jdk.sh)"
 each fixing a distinct cloud-specific failure:
 
 - **Installs a set of Temurin JDKs** (default majors `17 21 25`, override
-  with `CLOUD_JDK_MAJORS`) from Adoptium's GitHub releases. JDK 17 is the
+  with `CLOUD_JDK_MAJORS`) from Adoptium's GitHub releases — but only the ones
+  the box does not already have. A major already present as `java` on `PATH`,
+  as `$JAVA_HOME`, or under the usual toolchain directories (`/usr/lib/jvm/*`,
+  `/opt/jdk*`, sdkman) is reused where it stands: its trust store is fixed and
+  it is symlinked into `/usr/lib/jvm`, and nothing is downloaded. That matters
+  most on a container provisioned by something else — a Nix-installed Temurin
+  symlinked to `/usr/lib/jvm/temurin-17` is a perfectly good JDK 17, and going
+  to Adoptium for a second copy *fails* where github.com is gated per
+  repository, taking the whole setup with it. Pin a specific build with
+  `JDK<major>_VERSION` (which also opts that major out of reuse), or force
+  downloads with `CLOUD_JDK_REUSE_EXISTING=0`. JDK 17 is the
   build's own pinned `toolchainVersion`
   ([`gradle/gradle-daemon-jvm.properties`](../gradle/gradle-daemon-jvm.properties));
   the newer majors are there so the render subprocess can fork on a JDK

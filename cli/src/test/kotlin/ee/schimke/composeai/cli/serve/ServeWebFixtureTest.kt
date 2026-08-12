@@ -4159,9 +4159,11 @@ class ServeWebFixtureTest {
     // A knob edit has a dedicated handler (onKnobEdited) that drives whichever transport is live —
     // here the carried daemon via /render (canRenderOverrides). The Wasm tier also honours named
     // knobs now, so the handler picks the iframe when Wasm is active (see the wasm-only case
-    // below).
+    // below). Matched without the parameter list: the handler's *existence* is the contract here,
+    // and pinning its arity broke this when it grew one.
     assertTrue(
-      assetText("viewer.js").contains("function onKnobEdited()"),
+      assetText("viewer.js").contains("function onKnobEdited(") &&
+        assetText("viewer.js").contains("function knobRoute()"),
       "knob edits have a dedicated, transport-aware handler",
     )
     assertTrue(
@@ -4267,7 +4269,7 @@ class ServeWebFixtureTest {
     // posts the override patch (with the knob) to the iframe, or auto-enables Wasm from the
     // snapshot.
     assertTrue(
-      assetText("viewer.js").contains("function onKnobEdited()") &&
+      assetText("viewer.js").contains("function onKnobEdited(") &&
         assetText("viewer.js").contains("wasmFrame.contentWindow.postMessage(wasmOverridePatch()"),
       "a knob edit routes to the Wasm iframe when that tier is active",
     )

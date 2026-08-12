@@ -158,7 +158,9 @@
                 <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off">
                 <!-- A datalist, not a fixed <select>: the presets (pseudolocales, RTL, common
                      tags) drop down for quick picking, but any valid BCP-47 tag the server
-                     accepts can still be typed in. -->
+                     accepts can still be typed in — so this is the OPEN form of the same value
+                     set an author declares with `previewOverrideChoice`, rendered through the
+                     same helper rather than hand-written twice. -->
                 <datalist id="cp-localeTag-list">
                   <option value="en-XA" label="Accented (pseudo)"></option>
                   <option value="ar-XB" label="Bidi / RTL (pseudo)"></option>

@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
+import ee.schimke.composeai.data.overrides.PreviewOverrideOption
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 
@@ -59,6 +60,20 @@ interface PreviewOverrideHost {
     index: Int?,
     suggestions: List<String>,
     googleFonts: Boolean,
+  ): String = string(key, default, index)
+
+  /**
+   * Declare and resolve a **closed-value-set** string knob — a [string] knob whose value must be
+   * one of [options], which a viewer renders as a picker rather than a text box. Like [font], the
+   * default body ignores the extra metadata and behaves exactly like [string], so existing
+   * [PreviewOverrideHost] implementations (test fakes) stay source-compatible.
+   */
+  @Composable
+  fun choice(
+    key: String,
+    default: String,
+    index: Int?,
+    options: List<PreviewOverrideOption>,
   ): String = string(key, default, index)
 }
 
@@ -185,6 +200,30 @@ object ControllerPreviewOverrideHost : PreviewOverrideHost {
   }
 
   @Composable
+  override fun choice(
+    key: String,
+    default: String,
+    index: Int?,
+    options: List<PreviewOverrideOption>,
+  ): String {
+    val seeded by PreviewOverrideController.seededValues
+    val effective =
+      (seeded[seedKey(key, index)] as? PreviewOverrideValue.StringValue)?.value ?: default
+    declare(
+      key,
+      index,
+      PreviewOverrideType.STRING,
+      PreviewOverrideValue.StringValue(default),
+      PreviewOverrideValue.StringValue(effective),
+      options = options,
+      // A choice knob's set is closed by construction — that is what distinguishes it from the
+      // `suggestions` a font knob offers over a field that stays free-text.
+      optionsExhaustive = true,
+    )
+    return effective
+  }
+
+  @Composable
   private fun declare(
     key: String,
     index: Int?,
@@ -193,6 +232,8 @@ object ControllerPreviewOverrideHost : PreviewOverrideHost {
     current: PreviewOverrideValue,
     suggestions: List<String> = emptyList(),
     googleFonts: Boolean = false,
+    options: List<PreviewOverrideOption> = emptyList(),
+    optionsExhaustive: Boolean = false,
   ) {
     val declaration =
       PreviewOverrideDeclaration(
@@ -204,6 +245,8 @@ object ControllerPreviewOverrideHost : PreviewOverrideHost {
         index = index,
         suggestions = suggestions,
         googleFonts = googleFonts,
+        options = options,
+        optionsExhaustive = optionsExhaustive,
       )
     // Record on commit, not mid-composition: keeps the controller mutation a side effect of a
     // successful composition (idempotent — the controller de-dupes by seedKey).
@@ -294,3 +337,48 @@ fun previewOverrideFont(
   googleFonts: Boolean = true,
   index: Int? = null,
 ): String = LocalPreviewOverrideHost.current.font(key, default, index, suggestions, googleFonts)
+
+/**
+ * Editable **choice** knob: a string knob whose value set is closed, so a viewer offers a picker
+ * over [options] instead of a text field the visitor has to already know the vocabulary for.
+ *
+ * This is the knob for an axis with a fixed alphabet — a size (`xs`/`s`/`m`/`l`/`xl`), a shape
+ * (`round`/`square`), a state (`enabled`/`disabled`). Declared as a plain [previewOverrideString]
+ * those render as an empty-looking text box: the value is visible but the *alternatives* are not,
+ * so `xl` is only reachable by someone who has read the source.
+ *
+ * Each option may carry a [PreviewOverrideOption.label], which is what the picker shows — the wire
+ * value stays the slug the preview reads, so seeding and `@OverrideVariant` are unaffected:
+ * ```
+ * val size = previewOverrideChoice(
+ *   "size",
+ *   default = "s",
+ *   options = listOf(PreviewOverrideOption("xs", "Extra small"), PreviewOverrideOption("s", "Small")),
+ * )
+ * ```
+ *
+ * Resolves exactly like [previewOverrideString] — the daemon-seeded value, or [default]. Nothing
+ * *enforces* the set at render time: a seed outside it still reaches the composable, which keeps a
+ * stale link or a hand-written URL rendering rather than failing. The set shapes the control, and
+ * the control is what makes the axis discoverable.
+ */
+@Composable
+fun previewOverrideChoice(
+  key: String,
+  default: String,
+  options: List<PreviewOverrideOption>,
+  index: Int? = null,
+): String = LocalPreviewOverrideHost.current.choice(key, default, index, options)
+
+/**
+ * [previewOverrideChoice] over values that are already their own labels — the common case for an
+ * axis whose slugs read as words (`round` / `square`, `enabled` / `disabled`).
+ */
+@JvmName("previewOverrideChoiceValues")
+@Composable
+fun previewOverrideChoice(
+  key: String,
+  default: String,
+  values: List<String>,
+  index: Int? = null,
+): String = previewOverrideChoice(key, default, values.map { PreviewOverrideOption(it) }, index)
