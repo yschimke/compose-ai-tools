@@ -129,6 +129,100 @@ class ServeWebTest {
     assertFalse(html.contains("class=\"cp-states\""), "no switcher for a one-state component")
   }
 
+  // A component whose non-default states are published UNTAGGED on the primary (light) lane while
+  // their dark twins carry the theme — the shape an `@OverrideVariant` matrix exports, because the
+  // synthetic capture inherits the base `@Preview`'s `uiMode` param (dark) but not its `name`
+  // ("Light"). m3-catalog publishes 446 renders like this; the whole size x shape matrix used to be
+  // unreachable from the light lane, which is the one the grid links to.
+  private val mixedTagging =
+    listOf(
+      ServePreview(
+        "button-filled__ideal__default__light",
+        "Filled",
+        state = "default",
+        theme = "light",
+      ),
+      ServePreview(
+        "button-filled__ideal__default__dark",
+        "Filled",
+        state = "default",
+        theme = "dark",
+      ),
+      ServePreview("button-filled__ideal__xs", "Filled", state = "xs"),
+      ServePreview("button-filled__ideal__xs__dark", "Filled", state = "xs", theme = "dark"),
+      ServePreview("button-filled__ideal__xl-square", "Filled", state = "xl-square"),
+      ServePreview(
+        "button-filled__ideal__xl-square__dark",
+        "Filled",
+        state = "xl-square",
+        theme = "dark",
+      ),
+    )
+
+  @Test
+  fun `the state switcher reaches untagged siblings from the primary-lane default`() {
+    val current = mixedTagging[0] // default, light
+    val html =
+      ServeWeb.viewerPage(current, token = "t", basePath = "/m3-catalog", siblings = mixedTagging)
+
+    assertTrue(html.contains("class=\"cp-states\""), "state switcher rendered on the light lane")
+    val nav = html.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    assertTrue(
+      nav.contains("/m3-catalog/p/button-filled__ideal__xs") &&
+        nav.contains("/m3-catalog/p/button-filled__ideal__xl-square"),
+      "an untagged sibling is reachable from the light default",
+    )
+    assertFalse(nav.contains("__xs__dark"), "the dark twin stays out of the light lane")
+  }
+
+  @Test
+  fun `an untagged render links back to the primary-lane default`() {
+    val current = mixedTagging[2] // xs, untagged
+    val html =
+      ServeWeb.viewerPage(current, token = "t", basePath = "/m3-catalog", siblings = mixedTagging)
+
+    val nav = html.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    assertTrue(
+      nav.contains("/m3-catalog/p/button-filled__ideal__default__light"),
+      "the light default is reachable back from an untagged state",
+    )
+    assertTrue(nav.contains("aria-current=\"page\">Xs</a>"), "the current state is marked active")
+    assertFalse(nav.contains("__dark"), "an untagged render stays on the primary lane")
+  }
+
+  @Test
+  fun `the dark lane of a mixed-tagging component keeps only its dark siblings`() {
+    val current = mixedTagging[1] // default, dark
+    val html =
+      ServeWeb.viewerPage(current, token = "t", basePath = "/m3-catalog", siblings = mixedTagging)
+
+    val nav = html.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    assertTrue(nav.contains("/m3-catalog/p/button-filled__ideal__xs__dark"), "dark siblings link")
+    assertFalse(
+      nav.contains("/m3-catalog/p/button-filled__ideal__xs\"") ||
+        nav.contains("/m3-catalog/p/button-filled__ideal__xs?"),
+      "the untagged (light) render does not leak into the dark lane",
+    )
+  }
+
+  @Test
+  fun `on a dark-first system an untagged render lanes with dark`() {
+    // Wear catalogs draw for a black watch face, so their untagged renders are the DARK lane — the
+    // same rule the stage backing already uses (`bgTheme`), applied to switcher grouping.
+    val wear =
+      listOf(
+        ServePreview("edgebutton__ideal__default__dark", "Edge", state = "default", theme = "dark"),
+        ServePreview("edgebutton__ideal__pressed", "Edge", state = "pressed"),
+      )
+    val html = ServeWeb.viewerPage(wear[0], token = "t", basePath = "/wear-m3", siblings = wear)
+
+    val nav = html.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    assertTrue(
+      nav.contains("/wear-m3/p/edgebutton__ideal__pressed"),
+      "an untagged Wear render joins the dark lane rather than stranding alone",
+    )
+  }
+
   @Test
   fun `the state switcher stays within the current variant axis, not just the slug`() {
     // Button/Filled varies on BOTH a state axis (default/pressed) and a content-props axis
