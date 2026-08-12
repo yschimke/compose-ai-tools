@@ -71,8 +71,11 @@ class GradleConnection(
      * render with a longer budget finished. A timeout that the documented default cannot survive
      * teaches callers to distrust the tool rather than to pass `--timeout`.
      *
-     * Not a diagnosis of *why* a warm single-preview render can take five minutes — that is worth
-     * its own investigation, and a bigger constant is not the answer to it.
+     * Those five minutes were never the *render*: the CLI drove `composePreviewRenderAll` at full
+     * width and filtered the rows client-side, so asking for one preview rendered all 64 in the
+     * module — 317s where 3s would do (issue #3730). The CLI now forwards the request as
+     * `-PcomposePreview.idFilter` (see `PreviewRenderScope`), so this budget is back to being what
+     * it was meant to be: headroom for a genuinely cold daemon, not cover for a 100× overshoot.
      */
     const val DEFAULT_TIMEOUT_SECONDS: Long = 600
   }
