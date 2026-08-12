@@ -403,6 +403,17 @@ runs:
                "render job's artifact into it before calling this action."
           exit 1
         fi
+
+        # Unpack what the render phase tarred up. The tarball exists because
+        # `actions/upload-artifact` refuses paths containing a colon, which
+        # every nested gradle module path has — see the staging step. A
+        # handoff without one predates that change and is used as-is.
+        if [ -f "$HANDOFF_DIR/handoff.tar" ]; then
+          tar -xf "$HANDOFF_DIR/handoff.tar" -C "$HANDOFF_DIR"
+          rm -f "$HANDOFF_DIR/handoff.tar"
+          echo "compose-preview: unpacked handoff.tar."
+        fi
+
         restored=0
         for entry in "$HANDOFF_DIR"/* "$HANDOFF_DIR"/.[!.]*; do
           [ -e "$entry" ] || continue
@@ -1111,6 +1122,28 @@ runs:
             --path-prefix "$HANDOFF_DIR/current-resources" \
             --rewrite-json "$HANDOFF_DIR/_resources.json"
         fi
+
+        # Pack into a tarball, because `actions/upload-artifact` rejects a
+        # colon anywhere in a path and a gradle module path is full of them:
+        # `_pr_renders/renders/ai:sample:wear-gemini/Foo.png` fails the upload
+        # outright ("Contains the following character: Colon"), taking every
+        # nested-module project with it.
+        #
+        # Renaming those directories is not an option. `_pr_renders` is pushed
+        # verbatim to the render branch, so its layout *is* the
+        # `raw.githubusercontent.com/…/renders/<module>/<basename>` URL in the
+        # comment, and it has to keep matching the baselines already on
+        # `compose-preview/main`. Tar preserves the tree exactly and the
+        # publish side unpacks it before anything reads it.
+        #
+        # `_pr_number` stays outside the tarball: the caller reads it to pass
+        # `pr-number` back in, and it never contains a colon.
+        tar -cf "$HANDOFF_DIR.tar" -C "$HANDOFF_DIR" .
+        pr_number=$(cat "$HANDOFF_DIR/_pr_number")
+        rm -rf "$HANDOFF_DIR"
+        mkdir -p "$HANDOFF_DIR"
+        mv "$HANDOFF_DIR.tar" "$HANDOFF_DIR/handoff.tar"
+        printf '%s' "$pr_number" > "$HANDOFF_DIR/_pr_number"
 
         echo "compose-preview: staged fork-safe handoff in $HANDOFF_DIR ($(du -sh "$HANDOFF_DIR" | cut -f1))."
         echo "::notice::compose-preview/apply: render phase complete — upload '$HANDOFF_DIR' and run the publish phase to push renders and post the comment."
