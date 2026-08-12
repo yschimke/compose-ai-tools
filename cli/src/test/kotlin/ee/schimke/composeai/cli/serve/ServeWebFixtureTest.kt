@@ -2621,66 +2621,96 @@ class ServeWebFixtureTest {
       variantNav.contains("__dark__direction-rtl"),
       "the variant switcher stays within the current theme",
     )
-    // A sectioned catalog renders a tab bar (role=tablist) with one tab per section, in authored
-    // order (Themes → Components → Screens), each carrying its card count; a flat catalog shows
-    // none.
+    // A sectioned catalog renders a navigation TREE (role=tree) with one row per section, in
+    // authored order (Themes → Components → Screens), each carrying its card count; a flat catalog
+    // shows none.
     assertTrue(
-      landingSections.contains("class=\"cp-tabs\"") && landingSections.contains("role=\"tablist\""),
-      "a sectioned catalog renders the tab bar",
+      landingSections.contains("class=\"cp-tree\"") && landingSections.contains("role=\"tree\""),
+      "a sectioned catalog renders the navigation tree",
     )
+    // Keyed on the row's OWN id rather than on `data-tab`, which the tree's group rows also carry
+    // (they name the section they jump into) — matching those would report each section once per
+    // group it holds.
     val tabOrder =
-      Regex("data-tab=\"([a-z0-9-]+)\"").findAll(landingSections).map { it.groupValues[1] }.toList()
+      Regex("id=\"cp-tab-([a-z0-9-]+)\"")
+        .findAll(landingSections)
+        .map { it.groupValues[1] }
+        .toList()
     assertEquals(
       listOf("themes", "components", "screens"),
       tabOrder,
-      "tabs are ordered by authored catalogOrder, not id-sorted",
+      "section rows are ordered by authored catalogOrder, not id-sorted",
     )
-    // Each section is a role=tabpanel keyed by its slug, and the first tab opens selected.
+    // Each section is a labelled region keyed by its slug, and the first row opens selected.
     assertTrue(
-      landingSections.contains("id=\"cp-panel-themes\" role=\"tabpanel\"") &&
-        landingSections.contains("id=\"cp-panel-components\" role=\"tabpanel\"") &&
-        landingSections.contains("id=\"cp-panel-screens\" role=\"tabpanel\""),
-      "each section renders a tabpanel",
+      landingSections.contains("id=\"cp-panel-themes\" role=\"region\"") &&
+        landingSections.contains("id=\"cp-panel-components\" role=\"region\"") &&
+        landingSections.contains("id=\"cp-panel-screens\" role=\"region\""),
+      "each section renders a labelled region",
     )
     assertTrue(
       landingSections.contains(
         "id=\"cp-tab-themes\" href=\"#cp-panel-themes\" data-tab=\"themes\"" +
           " aria-controls=\"cp-panel-themes\" aria-selected=\"true\""
       ),
-      "the first tab is selected and its anchor targets its panel",
+      "the first section row is selected and its anchor targets its panel",
     )
-    // The `group` renders as a sub-heading inside a tab — including the same "Device" group name
-    // reused across the Components and Screens sections (scoped per tab, not merged).
+    // Selected ⇒ expanded: one section's contents show at a time, which is the same statement its
+    // panel makes, rather than a second piece of state that could disagree with it.
+    assertTrue(
+      Regex("id=\"cp-tab-themes\"[^>]* aria-selected=\"true\" aria-expanded=\"true\"")
+        .containsMatchIn(landingSections) &&
+        Regex("id=\"cp-tab-components\"[^>]* aria-selected=\"false\" aria-expanded=\"false\"")
+          .containsMatchIn(landingSections),
+      "the selected section row is the expanded one and the rest are collapsed",
+    )
+    // The second level: each named group is a row under its section, pointing at the sub-group
+    // divider's anchor — including the same "Device" group name reused across the Components and
+    // Screens sections, which stays scoped per section (two distinct anchors, not one).
+    assertTrue(
+      landingSections.contains("data-group=\"cp-group-themes-foundation\"") &&
+        landingSections.contains("data-group=\"cp-group-components-contacts\"") &&
+        landingSections.contains("data-group=\"cp-group-screens-scanner\""),
+      "each named group is a tree row pointing at its sub-group anchor",
+    )
+    assertTrue(
+      landingSections.contains("<div class=\"cp-subgroup\" id=\"cp-group-components-device\">") &&
+        landingSections.contains("<div class=\"cp-subgroup\" id=\"cp-group-screens-device\">"),
+      "a group name reused across sections gets one anchor per section, not a shared one",
+    )
+    // The `group` still renders as a sub-heading inside its section — the tree navigates to those
+    // headings, it does not replace them.
     assertTrue(
       landingSections.contains("<h3 class=\"cp-group-head\">Foundation</h3>") &&
         landingSections.contains("<h3 class=\"cp-group-head\">Contacts</h3>") &&
         landingSections.contains("<h3 class=\"cp-group-head\">Scanner</h3>"),
-      "component groups render as sub-headings within their section tab",
+      "component groups render as sub-headings within their section",
     )
     assertEquals(
       2,
       Regex("<h3 class=\"cp-group-head\">Device</h3>").findAll(landingSections).count(),
-      "a group name reused across sections stays scoped per tab (one sub-heading each)",
+      "a group name reused across sections stays scoped per section (one sub-heading each)",
     )
-    // The tab JS is wired (adds cp-js, drives the tabs); a flat catalog's script omits all of it.
+    // The tree JS is wired (adds cp-js, drives the sections, wires the group rows and the
+    // scroll-spy); a flat catalog's script omits all of it.
     assertTrue(
       landingSections.contains("classList.add(\"cp-js\")") &&
-        landingSections.contains("querySelectorAll(\".cp-tab\")"),
-      "the sectioned landing wires the tab-switching script",
+        landingSections.contains("querySelectorAll(\".cp-tab\")") &&
+        landingSections.contains("querySelectorAll(\".cp-tree-group\")") &&
+        landingSections.contains("new IntersectionObserver"),
+      "the sectioned landing wires the tree script",
     )
     assertTrue(
       landingSections.contains("localStorage.getItem(\"cp-tab:meshcore-mobile\")") &&
         landingSections.contains("localStorage.setItem(\"cp-tab:meshcore-mobile\", current)"),
-      "the selected tab persists per catalog and is restored when returning from a preview",
+      "the selected section persists per catalog and is restored when returning from a preview",
     )
-    // `role="tablist"` (the tab bar) and `classList.add("cp-js")` (the tab script) appear ONLY when
-    // tabs are rendered — the shared stylesheet's `.cp-tabs` / `html.cp-js` rules are on every
-    // page,
-    // so this checks the markup/script, not the CSS.
+    // `role="tree"` (the nav) and `classList.add("cp-js")` (the section script) appear ONLY when
+    // sections are rendered — the shared stylesheet's `.cp-tree` / `html.cp-js` rules are on every
+    // page, so this checks the markup/script, not the CSS.
     assertFalse(
-      landingThemed.contains("role=\"tablist\"") ||
-        landingThemed.contains("classList.add(\"cp-js\")"),
-      "a flat (section-less) catalog renders no tab bar and no tab script",
+      landingThemed.contains("role=\"tree\"") || landingThemed.contains("classList.add(\"cp-js\")"),
+      "a flat (section-less) catalog renders no navigation tree and no section script",
     )
     // The state landing folds each component's non-default states out: checkbox + radio yield ONE
     // card each (two total), and no `unchecked`/`unselected` card is emitted.
@@ -2712,8 +2742,8 @@ class ServeWebFixtureTest {
       "a section-less catalog renders synthesized family sub-group dividers",
     )
     assertFalse(
-      landingGrouped.contains("role=\"tablist\""),
-      "synthesized family grouping renders no tab bar (it is a flat grouped grid, not tabs)",
+      landingGrouped.contains("role=\"tree\""),
+      "synthesized family grouping renders no navigation tree (it is a flat grouped grid)",
     )
     // The component nav collapses to ONE entry per component: button-filled's ~8 baked variants +
     // checkbox/radiobutton states yield exactly three nav items, button-filled listed once.

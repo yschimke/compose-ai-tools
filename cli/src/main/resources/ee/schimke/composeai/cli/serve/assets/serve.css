@@ -464,42 +464,80 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
 .cp-empty { margin: 12px 0 0; font-size: var(--md-sys-typescale-body-medium-size);
   color: var(--cp-fg-muted); }
 .cp-empty[hidden] { display: none; }
-/* Tabbed catalog: a tab bar (role=tablist) over per-section panels. Progressive enhancement —
-   with no JS every section shows under its own <h2> and the tabs act as in-page anchor links;
-   the filter script turns them into real tabs (one panel shown at a time) and adds `cp-js` to
-   <html>, which hides the then-redundant per-section <h2> (the tab already names the section). */
-/* M3 *primary tabs*. Not folder tabs: a 48dp row of label-large targets over one divider, where
-   the selected tab is marked by a 3dp `primary` active indicator with rounded top corners and a
-   `primary` label. Hover is a state layer over the tab's own footprint. */
-.cp-tabs { display: flex; flex-wrap: wrap; gap: 0; margin: 0 0 22px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant); }
-.cp-tab { position: relative; display: inline-flex; align-items: center; justify-content: center;
-  gap: 8px; min-height: 48px; padding: 14px 16px;
-  font-size: var(--md-sys-typescale-title-small-size);
-  line-height: var(--md-sys-typescale-title-small-line);
-  letter-spacing: var(--md-sys-typescale-title-small-tracking); font-weight: 500;
-  color: var(--md-sys-color-on-surface-variant); border: 0; border-radius: 0;
-  background: transparent; cursor: pointer;
+/* Sectioned catalog: a navigation TREE beside the grid (ServeWeb.catalogTreeHtml) rather than a
+   row of tabs above it — sections as rows, each opening onto its named sub-groups, so both levels
+   of a catalog's structure are visible at once instead of only its top one. Progressive
+   enhancement — with no JS every section shows under its own <h2>, nothing collapses, and every
+   row is a working in-page anchor; the filter script turns the rows into real section switching
+   and adds `cp-js` to <html>, which collapses the unselected branches and hides the then-redundant
+   per-section <h2> (the tree already names the section). */
+.cp-catalog-body { display: block; }
+/* The sidebar only appears where there is room for one beside a grid of 200px cards. Below that
+   the tree stays a full-width block above the panels — the same reading order, stacked. */
+@media (min-width: 960px) {
+  .cp-catalog-body { display: grid; grid-template-columns: minmax(168px, 216px) minmax(0, 1fr);
+    gap: 32px; align-items: start; }
+  .cp-tree { position: sticky; top: 16px; margin: 0; max-height: calc(100vh - 32px);
+    overflow-y: auto; overscroll-behavior: contain; }
+}
+.cp-tree { margin: 0 0 22px; }
+.cp-tree-list, .cp-tree-children { list-style: none; margin: 0; padding: 0; }
+.cp-tree-node[hidden], .cp-tree-children li[hidden] { display: none; }
+/* A section row. Still `.cp-tab` — the section-switching script and the e2e harness both key off
+   that class and its `data-tab` — but drawn as an M3 navigation item: a full-width 40dp row whose
+   selected state is a `secondary-container` pill rather than an underline. */
+.cp-tab { position: relative; display: flex; align-items: center; gap: 8px; width: 100%;
+  min-height: 40px; padding: 8px 14px;
+  font-size: var(--md-sys-typescale-label-large-size);
+  line-height: var(--md-sys-typescale-label-large-line);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking); font-weight: 500;
+  color: var(--md-sys-color-on-surface-variant); border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent; cursor: pointer; text-align: left;
   transition: color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard),
     background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
 .cp-tab:hover { color: var(--md-sys-color-on-surface); text-decoration: none;
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
-.cp-tab[aria-selected="true"] { color: var(--md-sys-color-primary); font-weight: 500;
-  background: transparent; }
-/* The active indicator. A 3dp bar pinned to the divider, full-round on its top corners, that
-   scales in from the tab's centre so switching tabs reads as one moving indicator. */
-.cp-tab::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 3px;
-  border-radius: 3px 3px 0 0; background: var(--md-sys-color-primary);
-  transform: scaleX(0);
+.cp-tab[aria-selected="true"] { color: var(--md-sys-color-on-secondary-container);
+  background: var(--md-sys-color-secondary-container); }
+/* The expand/collapse twisty, drawn only for a section that HAS sub-groups (the markup omits
+   `aria-expanded` on a leaf), so a leaf row's label lines up with the others' labels. */
+.cp-tab[aria-expanded]::before { content: ""; flex: none; width: 0; height: 0;
+  margin-left: -4px; border: 5px solid transparent;
+  border-left-color: currentColor; border-right-width: 0;
   transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized); }
-.cp-tab[aria-selected="true"]::after { transform: scaleX(1); }
-@media (prefers-reduced-motion: reduce) { .cp-tab::after { transition-duration: 0.01ms; } }
-/* A tab's count is an M3 badge — a small tonal pill riding beside the label. */
-.cp-tab-count { font-size: var(--md-sys-typescale-label-small-size);
+.cp-tab[aria-expanded="true"]::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .cp-tab[aria-expanded]::before { transition-duration: 0.01ms; } }
+/* Collapse is a JS-only state: a no-JS client shows every panel, so it must show every branch. */
+html.cp-js .cp-tab[aria-expanded="false"] + .cp-tree-children { display: none; }
+/* A section's sub-groups, indented under one guide line. */
+.cp-tree-children { margin: 2px 0 8px 22px;
+  border-left: 1px solid var(--md-sys-color-outline-variant); }
+.cp-tree-group { display: flex; align-items: center; gap: 8px; min-height: 32px;
+  padding: 5px 12px; border-radius: 0 var(--md-sys-shape-corner-full)
+    var(--md-sys-shape-corner-full) 0;
+  font-size: var(--md-sys-typescale-label-large-size);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking);
+  color: var(--cp-fg-muted); text-decoration: none;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-tree-group:hover { color: var(--md-sys-color-on-surface); text-decoration: none;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+/* Where you ARE — set by the scroll-spy as the grid moves under you, and on click. */
+.cp-tree-group[aria-current="true"] { color: var(--md-sys-color-primary); font-weight: 500;
+  box-shadow: inset 2px 0 0 var(--md-sys-color-primary); }
+.cp-tab:focus-visible, .cp-tree-group:focus-visible {
+  outline: 3px solid var(--md-sys-color-secondary); outline-offset: -2px; }
+/* A section row's count is an M3 badge — a small tonal pill riding at the end of the row. */
+.cp-tab-count { margin-left: auto; font-size: var(--md-sys-typescale-label-small-size);
   letter-spacing: var(--md-sys-typescale-label-small-tracking); font-weight: 500;
   padding: 2px 8px; border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container); }
+.cp-tab[aria-selected="true"] .cp-tab-count { background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary); }
+/* A group row's count is plain text: two badge styles down one column would compete. */
+.cp-tree-count { margin-left: auto; font-size: var(--md-sys-typescale-label-small-size);
+  font-weight: 400; font-variant-numeric: tabular-nums; color: var(--cp-fg-faint); }
 .cp-section { margin: 0; }
 .cp-section[hidden] { display: none; }
 .cp-section-head { margin: 0 0 16px; font-size: var(--md-sys-typescale-title-medium-size);
