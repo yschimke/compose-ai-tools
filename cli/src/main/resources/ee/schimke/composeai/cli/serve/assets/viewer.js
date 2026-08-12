@@ -2197,6 +2197,21 @@
   // from the `knob.<key>` patch), so a knob edit drives whichever transport is live: the Wasm
   // iframe when it's active (or auto-enable it on a static published catalog), the daemon stream
   // when Live is up, or a `/render` snapshot when the session can re-render.
+  // A closed value-set knob (`previewOverrideChoice`) renders as a <select>, and a <select> silently
+  // drops an assignment it has no option for — `.value` becomes "". That matters because "" is a
+  // REAL value for a string knob (a cleared label, a variant seeded empty), so it would be sent as
+  // `knob.<key>=` rather than ignored: opening `?knob.size=xxl` would render the wrong override
+  // instead of the stale one it names. The server already keeps an unknown *baked* value by adding
+  // it as an option; this is the same courtesy for a value that only ever existed in the URL — a
+  // hand-written link, or one from before a value was renamed.
+  function adoptChoiceValue(el, value) {
+    if (el.tagName !== "SELECT" || value === "") return;
+    for (var i = 0; i < el.options.length; i++) if (el.options[i].value === value) return;
+    var option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    el.insertBefore(option, el.firstChild);
+  }
   function onKnobEdited() {
     refreshLinks();
     if (wasmActive()) {
@@ -2219,7 +2234,14 @@
     }
   }
   document.querySelectorAll(".cp-knob").forEach(function (el) {
-    el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobEdited);
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", function () {
+      // A closed value-set knob is a DISCRETE choice, like a lane switch or a theme pick, so its
+      // URL sync pushes a history entry — picking `compact` then `comfortable` leaves Back able to
+      // return to `compact`. A typed knob stays continuous and replaces instead, or one edit of a
+      // label would bury the page under an entry per keystroke. See `urlPush`.
+      if (el.tagName === "SELECT") urlPush = true;
+      onKnobEdited();
+    });
   });
   // The app-theme selector and detected-feature toggles route ONLY through the server daemon —
   // an app-declared theme provider is a server-side wrapper, and focus/gesture overlays are
@@ -2400,7 +2422,7 @@
       var value = q.get("knob." + key);
       if (value === null) value = el.getAttribute("data-knob-initial") || "";
       if (el.type === "checkbox") el.checked = (value === "true" || value === "1");
-      else el.value = value;
+      else { adoptChoiceValue(el, value); el.value = value; }
     });
     document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
       var name = el.getAttribute("data-rc-name");
