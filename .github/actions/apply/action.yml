@@ -527,13 +527,21 @@ runs:
             # comma-separated list of gradle paths.
             MODULES=$(cat "$HANDOFF_DIR/_scope_modules")
             [ -z "$MODULES" ] && MODULES="full"
-            # Matched as one whole string, deliberately. `grep -E '^…$'` is
-            # the wrong tool here: it tests line by line, so the payload this
-            # guards against — `full\nmode=baseline` — matches on its first
-            # line and passes. A shell glob sees the newline for what it is,
-            # because \n is simply not in the permitted set.
+            # Rejects what is actually dangerous here rather than allowlisting
+            # a character set. The sink is a single-line `key=value` write, so
+            # the risk is a control character — a newline ends the `modules=`
+            # line and lets the rest of the value declare its own outputs.
+            # Everything else is just text: `$MODULES` reaches its consumer as
+            # a quoted argument, and `compute-scope.py` echoes gradle project
+            # paths verbatim, which may legitimately contain `@`, `+`, spaces
+            # or non-ASCII. An allowlist here would reject a scope the render
+            # phase staged happily and strand the publish.
+            #
+            # Matched as one whole string, deliberately: `grep -E '^…$'` is
+            # the wrong tool, because it tests line by line and the payload
+            # this guards against matches on its first line.
             case "$MODULES" in
-              *[!A-Za-z0-9_.:/,-]* | ,* | *, | *,,*)
+              *[[:cntrl:]]* | ,* | *, | *,,*)
                 echo "::error::Refusing a malformed _scope_modules from the handoff."
                 exit 1 ;;
             esac
