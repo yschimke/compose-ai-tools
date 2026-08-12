@@ -297,6 +297,15 @@ all; **the element's authoring-time bounds** in canonical-plane coordinates **an
 object — see its wire shape below, not as top-level fields); **`candidateTolerance`**, the
 per-pixel threshold the candidate gate compares against; and free-text `note` + `acceptedAt`.
 
+**`candidateTolerance` is bounded, and an out-of-range value is `refused`.** It is the one field an
+author can use to defeat the entire model: set it to the maximum channel distance and every future
+candidate matches `accepted-candidate.png`, so the mask suppresses a missing glyph or any other
+regression forever — precisely the ignore rectangle the non-goals rule out, reached through a
+number rather than a shape. So the schema constrains it to a small finite range (single digits of
+8-bit channel distance; Phase 3 picks the exact ceiling with the fixtures), and anything above that
+is `tolerance-out-of-range`, refused at validation. A tolerance that needs to be large is evidence
+the acceptance is wrong, not evidence the bound is.
+
 **`candidateTolerance` is a field for the same reason `element.tolerance` is.** The candidate gate
 needs *some* slack for PNG round-tripping and the resample, and two engines choosing their own
 constants would disagree at the boundary — the one thing that must not happen. Recording it means
@@ -386,7 +395,7 @@ by the conformance fixtures. Stated as invariants:
 | I4 | Separation applies to **both** inputs | `scorePlanes` is bidirectional: a contaminated *reference* sample can erase a *candidate* regression |
 | I5 | Gates run per acceptance; scoring runs against the union of **survivors** | Separating against the union up front lets an invalidated mask keep suppressing; combining per-acceptance planes is not equivalent to filtering against the union at their boundaries |
 | I6 | Raw and unaccepted traverse **identical** resampling stages | Filtering is not associative, so a shortcut path makes raw ≠ unaccepted even with no surviving mask, manufacturing a delta out of nothing |
-| I10 | Scoring resamples **once, source → score plane**, for both passes, at the **candidate box's** dimensions scaled to `MAX_SIDE`; the canonical plane is for the **gates**, not the score | `scoreImages` draws each original straight into the score plane and its own comment pins this — "one resample exactly as before and the numbers are unchanged". Routing the score through canonical would change every catalog's displayed number the day acceptance support ships, with no acceptance involved |
+| I10 | Scoring resamples **once, source → score plane**, for both passes, at the **candidate box's** dimensions scaled to `MAX_SIDE`; the canonical plane is for the **gates**, not the score | `scoreImages` draws each original straight into the score plane and its own comment pins the single-resample geometry. Routing the score through canonical would change every catalog's number *structurally*, on top of whatever the portable kernel already changes — see the rebaseline note below |
 | I7 | Both artifact hashes are verified before their bytes are used | The mask decides which pixels are suppressed; the accepted candidate decides what they may look like. Either one edited silently redefines "accepted" |
 | I8 | Every coordinate transform is stated, in both directions | Baselines are canonical-plane; `boundsInRoot` is render pixels; a drag is display pixels — mixing them invalidates unchanged elements or passes moved ones |
 | I9 | The **recorded** plane discriminant and box define the canonical destination, for masks, transforms and resampling alike | `normalisedBoxes` falls back to the full canvas below `MIN_BOX_COVERAGE`, so a full-canvas acceptance resampled against a content box suppresses the wrong pixels and invalidates as `candidate-changed` for no real reason |
@@ -490,7 +499,7 @@ suppresses nothing and is surfaced as needing review:
 | `plane-changed` | recomputed plane discriminant or resolved box ≠ recorded |
 | `candidate-changed` | canonical candidate inside the mask ≠ `accepted-candidate.png` within tolerance |
 | `element-ambiguous` | selector resolves to more than one node (per the kind's rule above) |
-| `element-moved` | selector resolves to nothing; or its indexed bounds are missing, malformed or zero-area; or its displacement exceeds tolerance |
+| `element-moved` | selector resolves to nothing; or its indexed bounds are missing, malformed or zero-area; or its displacement exceeds tolerance. **Evaluated only when the selector matched exactly one node** — see below |
 
 A mask whose bytes do not match `maskSha256` is not an invalidation at all — it is a **hard
 validation failure**: the acceptance is refused and reported, because a mask we cannot trust is a
@@ -503,6 +512,20 @@ and the two facts are linked: I10 promises
 the raw number does not move, and picking the reference box instead would move it for every pair
 whose boxes differ in aspect. An earlier revision left this to Phase 3 and separately claimed the
 canonical plane governed; both are wrong for the same reason.
+
+**The portable kernel and the legacy number cannot both survive — and the kernel wins, once,
+deliberately.** These two requirements are in genuine tension, and an earlier revision asserted both:
+the portable path replaces the host `drawImage` filter so two engines agree, while I10 was written
+as though the raw score would stay byte-identical to today's. It cannot. Any kernel that is not
+`drawImage` produces different pixels, so the number moves the moment the portable path ships,
+acceptance or no acceptance.
+
+What I10 actually buys, and all it buys, is that the **geometry** stays one resample from source to
+score plane at the candidate box's dimensions — so the number does not move *a second time*, and
+raw and unaccepted stay comparable to each other. The kernel change is a **one-off, versioned
+rebaseline**: bump the score's schema version, regenerate any committed baselines in the same
+change, and say so in the release notes. Pretending continuity here would be the worse outcome,
+because the drift would show up later as unexplained score movement that nobody could attribute.
 
 **The gate path and the score path are separate, and only the gates use the canonical plane.** Gates
 compare at canonical resolution because that is where a glyph is still a glyph and where the mask
@@ -530,6 +553,11 @@ a threshold is one more constant two engines could pick differently, and an anti
 is exactly the boundary case the separation rules already work hardest to keep unambiguous. A
 producer that has a soft-edged selection must decide where the edge falls before committing it,
 which is the right place for that decision to be made.
+
+**A mask must select something.** An all-zero mask satisfies the encoding and dimension rules and
+still has no bounding box, which leaves `accepted-candidate.png`'s required dimensions undefined —
+one engine treats it as a harmless no-op, another refuses, a third throws while cropping. At least
+one `255` pixel is required; otherwise `mask-empty`, refused, with its own fixture.
 
 **Artifact dimensions are checked against the recorded plane.** `mask.png` must match the recorded
 canonical plane's `width × height` exactly, and `accepted-candidate.png` must match the mask's
@@ -610,6 +638,12 @@ anyone has fixed anything. The guard also names the real defect in that case —
 stored candidate already agrees with the reference is accepting a difference that does not exist, so
 **authoring must reject it** rather than leaving evaluation to paper over it.
 
+**Ambiguity short-circuits movement.** With several matches there is no single node whose bounds the
+index can publish, so `element-moved`'s missing-bounds condition would fire too — and one engine
+would report both causes while another stopped at the first. Movement is therefore evaluated **only
+when exactly one node matched**, which makes a duplicate tag produce exactly `["element-ambiguous"]`
+and nothing else. Pinned as the duplicate-tag fixture's expected cause list.
+
 **Causes are a list, not a single value.** Several gates can fire at once — a changed reference
 alongside a tag that became ambiguous — and with a singular `invalidated: <cause>` two engines
 would each pick one and report different statuses while both obeyed every gate. So row 2 carries
@@ -659,19 +693,31 @@ serialise different results — which is the one thing a cross-engine contract e
     "m3-switch-track":           { "status": "invalidated",
                                    "causes": ["reference-changed", "element-ambiguous"] },
     "m3-chip-border":            { "status": "refused",
-                                   "reason": "mask-hash-mismatch" }
+                                   "reasons": ["mask-hash-mismatch",
+                                               "accepted-candidate-hash-mismatch"] }
   },
-  "validationFailures": []
+  "validationFailures": [
+    { "id": "m3-chip-border", "reason": "mask-hash-mismatch" },
+    { "id": "m3-chip-border", "reason": "accepted-candidate-hash-mismatch" }
+  ]
 }
 ```
 
 Every value is an object, never a bare string, so a consumer never has to branch on type. `status`
 is one of `valid` / `resolved` / `invalidated` / `refused`. `causes` is present **only** for
 `invalidated`, always an array even for one cause, ordered as the gate table lists them — that fixed
-order is what makes the multi-cause fixture comparable. `reason` is present **only** for `refused`,
-a single token from: `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`,
-`reference-hash-missing`, `decode-failed`, `degenerate-dimensions`, `mask-encoding-invalid`,
-`dimension-mismatch`.
+order is what makes the multi-cause fixture comparable. `reasons` is present **only** for `refused`, and is an
+**array** for the same reason `causes` is — both artifacts can fail at once, and a single-value
+field would leave two engines free to pick different ones. Same fixed ordering rule, drawn from:
+`mask-hash-mismatch`, `accepted-candidate-hash-mismatch`, `reference-hash-missing`, `decode-failed`,
+`degenerate-dimensions`, `mask-encoding-invalid`, `mask-empty`, `dimension-mismatch`,
+`tolerance-out-of-range`.
+
+**A per-acceptance refusal populates `validationFailures` as well**, one entry per reason. The two
+fields are not alternatives: `statuses` answers "what happened to this acceptance", and
+`validationFailures` is the flat list a build gate reports and fails on, without walking the map.
+An earlier revision showed a `refused` status beside an empty `validationFailures`, which left both
+readings implementable and would have produced different fixture results.
 
 `validationFailures` is a list of `{ "id": …, "reason": … }`, and is the *only* populated field when
 the document itself is rejected — `duplicate-id` — in which case `statuses` is absent entirely
@@ -1146,6 +1192,13 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
      otherwise. A missing field is honest; a wrong one is not. With multiple references the viewer
      also has no client-side notion of which one is selected, so the `referenceId` half of the
      locator is only reliable once the lane is up.
+
+   **Neither option redirects the interactive lanes.** Whichever surface takes the form, the Live,
+   Wasm and Remote Compose lanes keep reporting **disabled outright** — not pointed at the focused
+   comparison. That page issues a fresh `/render` from initial state, so a report filed from it
+   after the visitor has clicked, scrolled or let an animation run describes pixels nobody saw. §5
+   reaches the same conclusion; stating it here too because this is the step someone implements
+   from, and "redirect to the comparison" is the instruction they would otherwise follow.
 2. **`compose-preview-issues/v1` + reader + staging.** `ServeParityIssues.kt`, `ServeCatalogStore`
    staging, fixture-backed tests. Serves nothing yet.
 3. **Producer + regeneration workflow.** `parity-issues.mjs` / `emit-parity-issues.mjs` here; the
