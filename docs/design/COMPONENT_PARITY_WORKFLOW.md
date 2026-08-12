@@ -497,6 +497,13 @@ A mask whose bytes do not match `maskSha256` is not an invalidation at all — i
 validation failure**: the acceptance is refused and reported, because a mask we cannot trust is a
 broken artifact rather than a stale one.
 
+**Acceptance ids must be unique within the set, and a duplicate is a hard validation failure.**
+`statuses` is keyed by id, so two records sharing one id have a single slot between them — one
+consumer would overwrite, another merge, a third reject, and no fixture could express which record's
+verdict survived. Both records are still evaluated as separate acceptances with separate masks, so
+this is not a case where picking one is harmless. Reject at validation time, before any of it
+matters.
+
 **A reference with no `sha256` is refused for the same reason**, not invalidated as
 `reference-changed`. The fingerprint gate compares a recorded hash against a served one; with
 nothing to compare, the gate cannot run, and an acceptance whose primary safety check is
@@ -518,7 +525,7 @@ Evaluated strictly in this order — the first row whose condition holds wins:
 
 | # | Status | Condition |
 | --- | --- | --- |
-| 1 | `refused` | either artifact's bytes fail their recorded hash, **or the targeted reference publishes no `sha256`** — the acceptance is never evaluated |
+| 1 | `refused` | either artifact's bytes fail their recorded hash, **or the targeted reference publishes no `sha256`**, **or the acceptance's `id` is not unique in the set** — the acceptance is never evaluated |
 | 2 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
 | 3 | `resolved` | the masked region now agrees with the **reference** (see below) |
 | 4 | `invalidated: [candidate-changed]` | the candidate gate fired and the region did not converge |
@@ -535,7 +542,15 @@ That is the whole reason the precedence exists. When someone actually fixes the 
 the region stops matching `accepted-candidate.png` **and** starts agreeing with the reference — "it
 was fixed" and "it changed into something else" are the same pixels, and only the reference test
 tells them apart. Without this rule a dashboard could report a win while the offline gate failed the
-same commit as stale. `resolved` means delete the acceptance and close the issue.
+same commit as stale. `resolved` means delete **that** acceptance.
+
+**Closing the issue is an issue-level decision, not an acceptance-level one.** The tracking issue is
+mandatory per acceptance but not *unique* to one — the same glyph-colour delta legitimately spans a
+component's light and dark variants, or several previews, as separate acceptances pointing at one
+issue. So `resolved` on one of them does not mean the issue is fixed. Aggregate by issue: an issue
+is closable only once **every** acceptance linked to it has resolved. Closing on the first resolution
+would also be self-defeating, since Phase 4's stale detection (closed issue, live acceptance) would
+immediately flag the siblings the closure just orphaned.
 
 **Causes are a list, not a single value.** Several gates can fire at once — a changed reference
 alongside a tag that became ambiguous — and with a singular `invalidated: <cause>` two engines
