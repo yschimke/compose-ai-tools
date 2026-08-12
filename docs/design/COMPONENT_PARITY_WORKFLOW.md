@@ -386,6 +386,7 @@ by the conformance fixtures. Stated as invariants:
 | I4 | Separation applies to **both** inputs | `scorePlanes` is bidirectional: a contaminated *reference* sample can erase a *candidate* regression |
 | I5 | Gates run per acceptance; scoring runs against the union of **survivors** | Separating against the union up front lets an invalidated mask keep suppressing; combining per-acceptance planes is not equivalent to filtering against the union at their boundaries |
 | I6 | Raw and unaccepted traverse **identical** resampling stages | Filtering is not associative, so a shortcut path makes raw ≠ unaccepted even with no surviving mask, manufacturing a delta out of nothing |
+| I10 | Scoring resamples **once, source → score plane**, for both passes; the canonical plane is for the **gates**, not the score | `scoreImages` draws each original straight into the score plane and its own comment pins this — "one resample exactly as before and the numbers are unchanged". Routing the score through canonical would change every catalog's displayed number the day acceptance support ships, with no acceptance involved |
 | I7 | Both artifact hashes are verified before their bytes are used | The mask decides which pixels are suppressed; the accepted candidate decides what they may look like. Either one edited silently redefines "accepted" |
 | I8 | Every coordinate transform is stated, in both directions | Baselines are canonical-plane; `boundsInRoot` is render pixels; a drag is display pixels — mixing them invalidates unchanged elements or passes moved ones |
 | I9 | The **recorded** plane discriminant and box define the canonical destination, for masks, transforms and resampling alike | `normalisedBoxes` falls back to the full canvas below `MIN_BOX_COVERAGE`, so a full-canvas acceptance resampled against a content box suppresses the wrong pixels and invalidates as `candidate-changed` for no real reason |
@@ -497,6 +498,14 @@ A mask whose bytes do not match `maskSha256` is not an invalidation at all — i
 validation failure**: the acceptance is refused and reported, because a mask we cannot trust is a
 broken artifact rather than a stale one.
 
+**The gate path and the score path are separate, and only the gates use the canonical plane.** Gates
+compare at canonical resolution because that is where a glyph is still a glyph and where the mask
+and accepted candidate are stored. Scoring does not: it draws each region straight from the source
+image into the score plane, one resample, exactly as `scoreImages` does today (I10). That keeps the
+raw number a catalog already displays unchanged when no acceptance survives — enabling this feature
+must not silently move every score — and it keeps both passes on identical geometry, which is what
+I6 actually requires.
+
 **Only `valid` acceptances contribute a mask to the scoring union.** `resolved`, `invalidated` and
 `refused` all suppress **nothing** — "survivor" means status `valid`, not "reached the end of the
 gates". `resolved` is the case worth spelling out, because its candidate gate *did* fire and the
@@ -543,7 +552,7 @@ Evaluated strictly in this order — the first row whose condition holds wins:
 | --- | --- | --- |
 | 1 | `refused` | either artifact's bytes fail their recorded hash; **or an artifact is hash-valid but fails to decode, or decodes to zero/negative dimensions**; **or the targeted reference publishes no `sha256`**; **or the acceptance's `id` is not unique in the set** — the acceptance is never evaluated |
 | 2 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
-| 3 | `resolved` | the masked region now agrees with the **reference** (see below) |
+| 3 | `resolved` | the candidate gate **fired** *and* the masked region now agrees with the **reference** (see below) |
 | 4 | `invalidated: [candidate-changed]` | the candidate gate fired and the region did not converge |
 | 5 | `valid` | nothing fired |
 
@@ -568,6 +577,15 @@ is closable only once **every** acceptance linked to it has resolved. Closing on
 would also be self-defeating, since Phase 4's stale detection (closed issue, live acceptance) would
 immediately flag the siblings the closure just orphaned.
 
+**`resolved` requires the candidate to have actually changed.** Row 3 is guarded on
+`candidate-changed` having fired, which looks redundant and is not: the resolution metric is
+permitted to be tolerant, so an *unchanged* candidate can agree with `accepted-candidate.png` **and**
+with the reference whenever the accepted delta was itself within that tolerance. Without the guard
+such an acceptance is `resolved` the moment it is authored, and the workflow closes the issue before
+anyone has fixed anything. The guard also names the real defect in that case — an acceptance whose
+stored candidate already agrees with the reference is accepting a difference that does not exist, so
+**authoring must reject it** rather than leaving evaluation to paper over it.
+
 **Causes are a list, not a single value.** Several gates can fire at once — a changed reference
 alongside a tag that became ambiguous — and with a singular `invalidated: <cause>` two engines
 would each pick one and report different statuses while both obeyed every gate. So row 2 carries
@@ -591,6 +609,16 @@ regional score all classify a near-miss differently, and picking one blind would
 as picking a resampling kernel blind. It joins the pixel-semantics **open problems** above, with one
 constraint from this contract: whatever the resolution test uses, it must be the *same* metric the
 candidate gate uses, so the two cannot disagree about whether two images match.
+
+**The tag index and the scored PNG must come from one render.** Semantics move with overrides,
+conditional composition and animation, so an index computed by a different render than the frame
+being scored can pass a uniqueness or movement gate that the actual pixels would fail — and let the
+wrong mask suppress. This is not hypothetical plumbing: `ServeRenderHost.renderAnnotations` already
+renders under `renderLock` before reading semantics *because* the per-preview sidecar is overwritten
+by the next render, and the comparison page today embeds static annotation lists while its Actual
+panel requests `/render` independently. So the index must be produced by the same override-keyed
+render transaction (or cache entry) that produced the PNG the page scores, and Phase 2's transport
+work has to carry that coupling rather than just the data.
 
 Status is **per acceptance**, not per comparison — a set with one invalidated and one surviving
 member has two statuses, and the fixture result carries them as a map keyed by acceptance id. The
@@ -833,9 +861,8 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | separation (per acceptance) | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite), for **each** acceptance independently |
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
 | separation + canonical (surviving union) | the same split redone against the union of **`valid`-status acceptances** only — resolved, invalidated and refused ones suppress nothing — **and resampled into the canonical plane again** — separation still precedes its resample (I3). A distinct, later stage on purpose: the union cannot be formed until the candidate and element gates have run, and those gates need the canonical pixels the row above produces (I5) |
-| score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, still separated, downsampled per-region rather than whole-image |
-| canonical (whole) | each **unseparated** input resampled into the canonical plane, so the raw pass traverses source→canonical→score exactly as the unaccepted pass does (I6). Without this row an engine could take source→score for raw, and ordinary fixtures where those filters happen to coincide would not catch it |
-| score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, so a divergence between the two downsample paths is caught here rather than as a raw/unaccepted mismatch |
+| score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, each region drawn **straight from the source image** (I10), per-region rather than whole-image |
+| score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, drawn straight from the source by the same single resample, so raw stays byte-identical to today's number when nothing is accepted |
 | result | `{raw, accepted, unaccepted, statuses, validationFailures}` — `statuses` is a **map keyed by acceptance id**, one entry per member of `acceptances[]`, each per the contract's precedence table. A single aggregate status cannot express a mixed-validity case, so both engines could emit the same summary while disagreeing about which mask survived; the mixed-validity fixtures pin the per-id identities |
 
 The stages exist to localise a divergence, so they must follow whatever order the Phase 3 algorithm
