@@ -1551,7 +1551,19 @@ class ServeCatalogStore(
           )
         }
         .getOrNull() ?: return
-    val pages = ServePageBackdropStore.drawablePages(manifest)
+    // Capped before a single byte is fetched. A catalog branch is trusted-ish but not trusted to be
+    // sane: without a ceiling, a branch declaring thousands of screens would cost one refresh that
+    // many requests and fill the staging disk, since each backdrop may be as large as the per-file
+    // cap. The same reasoning as `maxImages` for previews, at a size that fits the feature — a
+    // catalog publishes a handful of key screens, not one per component.
+    val declared = ServePageBackdropStore.drawablePages(manifest)
+    val pages = declared.take(MAX_PAGE_BACKDROPS)
+    if (declared.size > pages.size) {
+      System.err.println(
+        "serve: catalog declares ${declared.size} page backdrops — staging the first " +
+          "$MAX_PAGE_BACKDROPS"
+      )
+    }
     if (pages.isEmpty()) return
 
     // One bounded wave, like the reference rasters: a catalog publishes a handful of key screens,
@@ -2001,6 +2013,13 @@ class ServeCatalogStore(
      * healthy catalog.
      */
     const val DEFAULT_MAX_IMAGES = 2000
+
+    /**
+     * How many whole-screen backdrops one catalog may stage. A screen is a page-sized PNG, so this
+     * is a disk and request ceiling rather than a display one; the feature is for a repo's few key
+     * screens, and a branch declaring more than this is malformed or hostile either way.
+     */
+    const val MAX_PAGE_BACKDROPS = 24
     private const val MAX_FETCH_BYTES = 25L * 1024 * 1024 // 25 MB per catalog asset
 
     /**

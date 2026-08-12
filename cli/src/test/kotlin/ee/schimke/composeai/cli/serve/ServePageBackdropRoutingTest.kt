@@ -125,8 +125,10 @@ class ServePageBackdropRoutingTest {
   @Test
   fun `only placements this catalog can render carry an overlay`() {
     val (_, _, body) = get("/m3-catalog/pages/upcoming")
-    // Published: gets a render to lay over the design.
-    assertTrue(body.contains("data-src=\"/m3-catalog/render/com.example.AppBar.png\""))
+    // Published: gets a render to lay over the design. The overlay images ride an inert
+    // `<template>`, so the browser parses them but fetches nothing until the toggle clones them in.
+    assertTrue(body.contains("<template data-cp-backdrop-render-source>"))
+    assertTrue(body.contains("src=\"/m3-catalog/render/com.example.AppBar.png\""))
     // Mapped by the producer, but absent from this catalog — hotspot yes, image never.
     assertFalse(body.contains("com.example.NotPublished"))
     assertTrue(body.contains("Carousel"))

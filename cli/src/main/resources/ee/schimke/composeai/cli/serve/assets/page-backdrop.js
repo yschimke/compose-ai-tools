@@ -53,36 +53,26 @@
     syncFocusability();
   }
 
-  // The path this render may be fetched from, or null.
+  // The overlay images are served inside an inert `<template>` and cloned into the stage the first
+  // time the toggle is switched on. A screen can carry a couple of dozen placements, and on a live
+  // catalog each one is a daemon render — a visitor who never opens the overlay should cost the
+  // server nothing.
   //
-  // The value is written by the server from a URL-encoded preview id, so in practice it is always
-  // a same-origin path — but it reaches this code as DOM text, and DOM text is not a trust
-  // boundary. Parsed against the document rather than prefix-tested: `new URL` normalises first, so
-  // this rejects the cases a `startsWith("/")` check waves through — `\\evil.com`, a tab or
-  // newline inside the scheme, an encoded `javascript:` — and what gets assigned is the *parsed*
-  // path rather than the original text.
-  function sameOriginPath(value) {
-    if (typeof value !== "string" || value === "") return null;
-    try {
-      var url = new URL(value, window.location.href);
-      return url.origin === window.location.origin ? url.pathname + url.search : null;
-    } catch (e) {
-      return null;
-    }
-  }
+  // A template rather than a `data-src` swap, deliberately. Template content is inert: the browser
+  // parses it but loads none of its resources until it is adopted into the document, which gives
+  // the same laziness with none of the client-side URL handling. That matters beyond tidiness — the
+  // swap made this file read a URL out of the DOM and assign it to `img.src`, which is a taint
+  // path (CodeQL flagged it), and no amount of client-side validation is as good as not having the
+  // sink. The URLs now stay where every other URL on the page is built and escaped: server-side.
+  var renderSource = stage.querySelector("[data-cp-backdrop-render-source]");
 
-  // The renders only get their real `src` when the overlay is first turned on. A screen can carry a
-  // couple of dozen placements, and a visitor who never opens the overlay should not cost the
-  // server a render request per placement — on a live catalog each of those is a daemon render,
-  // not a static file.
   function armRenders() {
-    var pending = stage.querySelectorAll(".cp-backdrop-render[data-src]");
-    for (var i = 0; i < pending.length; i++) {
-      var img = pending[i];
-      var path = sameOriginPath(img.getAttribute("data-src"));
-      img.removeAttribute("data-src");
-      if (path) img.src = path;
-    }
+    if (!renderSource) return;
+    // Before the first hotspot, so the rectangles keep painting over the renders rather than under
+    // them; the renders are `pointer-events: none`, so this is about paint order, not hit testing.
+    stage.insertBefore(renderSource.content.cloneNode(true), stage.querySelector(".cp-backdrop-hotspot"));
+    renderSource.remove();
+    renderSource = null;
   }
 
   function applyRenders() {

@@ -128,6 +128,22 @@ class ServePageBackdropStoreTest {
   }
 
   @Test
+  fun `a dot-segment page id is refused — a browser would normalise it away`() {
+    // `/{system}/pages/..` normalises to `/` before the request is sent, so the page could never
+    // be opened even though its image staged. Matches the id alphabet, so it needs its own guard.
+    for (id in listOf(".", "..")) {
+      val dotted =
+        upcoming
+          .replace("\"id\":\"upcoming\"", "\"id\":\"$id\"")
+          .replace("\"uri\":\"upcoming.png\"", "\"uri\":\"dot.png\"")
+      assertTrue(
+        store(manifest(dotted), images = mapOf("dot.png" to pngHeader)).pages.isEmpty(),
+        "page id '$id' must not be advertised",
+      )
+    }
+  }
+
+  @Test
   fun `a duplicate page id keeps the first declaration`() {
     val second = upcoming.replace("\"name\":\"Upcoming-Mobile\"", "\"name\":\"Impostor\"")
     val loaded = store(manifest("$upcoming,$second"))

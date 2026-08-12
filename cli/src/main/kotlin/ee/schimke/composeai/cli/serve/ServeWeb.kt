@@ -5205,8 +5205,8 @@ $rows
             "left:${pct(placement.bounds.x, page.frame.width)}%;" +
               "top:${pct(placement.bounds.y, page.frame.height)}%;" +
               "width:${pct(placement.bounds.width, page.frame.width)}%"
-          "<img class=\"cp-backdrop-render\" alt=\"\" loading=\"lazy\" style=\"$style\" " +
-            "data-src=\"$basePath/render/${WebEscaping.urlEncodeSegment(previewId)}.png$q\">"
+          "<img class=\"cp-backdrop-render\" alt=\"\" style=\"$style\" " +
+            "src=\"$basePath/render/${WebEscaping.urlEncodeSegment(previewId)}.png$q\">"
         }
         .joinToString("\n")
 
@@ -5270,7 +5270,7 @@ $rows
           <div class="cp-backdrop-layout">
             <div class="cp-backdrop-stage" style="--cp-backdrop-aspect:$aspect">
               <img class="cp-backdrop-image" src="$backdrop" alt="${WebEscaping.htmlEscape(page.name)}">
-              $renders
+              <template data-cp-backdrop-render-source>$renders</template>
               $hotspots
             </div>
             <div class="cp-backdrop-list">

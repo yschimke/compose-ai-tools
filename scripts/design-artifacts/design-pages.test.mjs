@@ -260,3 +260,33 @@ test("an ambiguous function-name fallback is declined rather than guessed", () =
   assert.equal(plan.manifest.pages[0].placements[0].previewId, undefined);
   assert.equal(plan.manifest.pages[0].placements[0].link, "manifest");
 });
+
+test("a dot-segment page id is refused — a browser would normalise it away", () => {
+  // `/pages/..` normalises to `/` before the request is sent, so such a page could never be
+  // opened even though its image published.
+  const plan = planPageBackdrops({
+    manifest: manifest([
+      page([appBar], { id: "." }),
+      page([appBar], { id: ".." }),
+      page([appBar], { id: "library" }),
+    ]),
+    spec,
+    catalog,
+  });
+  assert.deepEqual(
+    plan.manifest.pages.map((p) => p.id),
+    ["library"],
+  );
+});
+
+test("an unsupported confidence is dropped, not republished", () => {
+  // The consumer decodes this into a strict enum, so republishing an unknown value would fail the
+  // parse for the WHOLE manifest — one bad string hiding every screen the catalog publishes.
+  const odd = { ...appBar, confidence: "certain" };
+  const plan = planPageBackdrops({ manifest: manifest([page([odd])]), spec, catalog });
+  const placement = plan.manifest.pages[0].placements[0];
+  assert.equal(placement.confidence, undefined);
+  // The rest of the placement survives — only the styling hint is lost.
+  assert.equal(placement.link, "manifest");
+  assert.equal(placement.previewId, "top-app-bar-medium__ideal__default__light");
+});

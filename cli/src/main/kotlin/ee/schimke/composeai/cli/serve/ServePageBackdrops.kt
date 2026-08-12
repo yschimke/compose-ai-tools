@@ -177,6 +177,8 @@ private constructor(
     private fun isDrawable(page: BackdropPage): Boolean =
       SAFE_ID.matches(page.id) &&
         !page.id.endsWith(".png", ignoreCase = true) &&
+        page.id != "." &&
+        page.id != ".." &&
         page.frame.width.isPositiveFinite() &&
         page.frame.height.isPositiveFinite() &&
         page.image.scale.isPositiveFinite() &&

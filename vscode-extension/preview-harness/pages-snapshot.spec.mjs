@@ -309,12 +309,13 @@ const FIXTURE_STATES = [
         apply: async (page) => {
             await page.check("[data-cp-backdrop-renders]");
             await page.selectOption("[data-cp-backdrop-blend]", "difference");
-            await page.waitForFunction(
-                () =>
-                    Array.from(document.querySelectorAll(".cp-backdrop-render")).every(
-                        (img) => !img.hasAttribute("data-src") && img.complete,
-                    ),
-            );
+            // Requires at least one render, not just "all of them loaded" — `every()` over an
+            // empty list is true, so without the length check this shot would go green if the
+            // overlay never armed at all, which is exactly the regression it exists to catch.
+            await page.waitForFunction(() => {
+                var imgs = Array.from(document.querySelectorAll(".cp-backdrop-render"));
+                return imgs.length > 0 && imgs.every((img) => img.complete && img.naturalWidth > 0);
+            });
         },
     },
     {

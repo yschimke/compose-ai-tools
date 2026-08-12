@@ -58,6 +58,16 @@ const SAFE_ID = /^[A-Za-z0-9._-]{1,160}$/;
  */
 const RESERVED_ID_SUFFIX = /\.png$/i;
 
+/**
+ * `.` and `..` match the id alphabet but are **path segments**, not names: a browser normalises
+ * `/pages/..` to `/` before the request is even sent, so such a page could never be opened even
+ * though its image published. Refused alongside the reserved suffix.
+ */
+const DOT_SEGMENT = /^\.{1,2}$/;
+
+/** The contract's `confidence` values. Anything else is dropped rather than republished. */
+const CONFIDENCE_VALUES = new Set(["high", "low"]);
+
 const LINK_METHODS = new Set(["code-connect", "manifest", "convention", "unlinked"]);
 
 /** A finite number greater than zero — every dimension the server draws with. */
@@ -166,7 +176,7 @@ export function planPageBackdrops({ manifest, spec, catalog }) {
   }
   for (const page of manifest.pages) {
     const id = typeof page?.id === "string" ? page.id : "";
-    if (!SAFE_ID.test(id) || RESERVED_ID_SUFFIX.test(id)) {
+    if (!SAFE_ID.test(id) || RESERVED_ID_SUFFIX.test(id) || DOT_SEGMENT.test(id)) {
       warnings.push(`page ${JSON.stringify(page?.id ?? null)} has no route-safe id; skipped`);
       continue;
     }
@@ -207,7 +217,13 @@ export function planPageBackdrops({ manifest, spec, catalog }) {
         link,
         ...(placement?.code ? { code: String(placement.code) } : {}),
         ...(previewId ? { previewId } : {}),
-        ...(placement?.confidence ? { confidence: String(placement.confidence) } : {}),
+        // Validated, not passed through. The consumer decodes this into a strict enum, so an
+        // unrecognised value there is a parse failure for the WHOLE manifest — one bad string in
+        // one placement would hide every screen the catalog publishes. Dropping the field costs
+        // only a styling hint.
+        ...(CONFIDENCE_VALUES.has(placement?.confidence)
+          ? { confidence: placement.confidence }
+          : {}),
         ...(placement?.matchedRef ? { matchedRef: String(placement.matchedRef) } : {}),
       });
     }
