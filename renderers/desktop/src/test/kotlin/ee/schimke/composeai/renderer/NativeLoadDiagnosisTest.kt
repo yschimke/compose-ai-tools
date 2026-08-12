@@ -96,10 +96,58 @@ class NativeLoadDiagnosisTest {
     assertFalse(diagnosis.text.contains("skiko"))
     assertFalse(diagnosis.text.contains("libgl1"))
 
-    // And it did not take the latch: the next skiko failure is still reported as the first one.
+    // And it did not take the Skia latch: the next skiko failure is still reported as the first.
     val skiko = NativeLoadDiagnosis.diagnose(glibcSkewFailure())
     assertFalse(skiko!!.cascade)
     assertTrue(skiko.text.contains("skiko"))
+  }
+
+  @Test
+  fun `the same missing app library is reported once per JVM, not once per preview`() {
+    // Every preview touching the broken library raises the same error. Without its own
+    // bookkeeping, a warm worker would print a thousand identical lines — the flood the Skia
+    // latch exists to prevent, arriving through a different door.
+    fun failure() =
+      UnsatisfiedLinkError(
+        "/opt/app/libtokenizer.so: libtokenizer.so: cannot open shared object file"
+      )
+
+    assertFalse(NativeLoadDiagnosis.diagnose(failure())!!.cascade)
+    assertTrue(NativeLoadDiagnosis.diagnose(failure())!!.cascade)
+    assertTrue(NativeLoadDiagnosis.diagnose(failure())!!.cascade)
+
+    // Past the bound, both halves of the contract still hold. A never-seen library is news (a
+    // bound that refuses new entries would hide it forever)...
+    repeat(80) { i ->
+      NativeLoadDiagnosis.diagnose(
+        UnsatisfiedLinkError("/opt/app/lib$i.so: lib$i.so: cannot open shared object file")
+      )
+    }
+    val fresh =
+      NativeLoadDiagnosis.diagnose(
+        UnsatisfiedLinkError(
+          "/opt/app/libbrandnew.so: libbrandnew.so: cannot open shared object file"
+        )
+      )
+    assertFalse(fresh!!.cascade)
+
+    // ...and a *recent* repeat is still deduped, which a wholesale clear-on-full would have
+    // broken: the log would flood again every time the history refilled.
+    val repeatOfFresh =
+      NativeLoadDiagnosis.diagnose(
+        UnsatisfiedLinkError(
+          "/opt/app/libbrandnew.so: libbrandnew.so: cannot open shared object file"
+        )
+      )
+    assertTrue(repeatOfFresh!!.cascade)
+
+    // A *different* library is news again, and still not a Skia cascade.
+    val other =
+      NativeLoadDiagnosis.diagnose(
+        UnsatisfiedLinkError("/opt/app/libcodec.so: libcodec.so: cannot open shared object file")
+      )
+    assertFalse(other!!.cascade)
+    assertTrue(other.text.contains("libcodec.so"))
   }
 
   @Test

@@ -158,6 +158,34 @@ class DesktopNativesCheckTest {
   }
 
   @Test
+  fun `a missing lib outranks a glibc skew, so doctor still reports an error`() {
+    // Both conditions on one box. The skew is survivable — the plugin prunes the store dirs for
+    // its own render JVM — while a library the loader cannot find at all means nothing renders by
+    // any route. Reporting the warning would exit 0 on a project whose previews cannot render.
+    val result =
+      DesktopNativesCheck.evaluateDesktopNatives(
+        osName = "Linux",
+        renderJavaHome = "/usr/lib/jvm/java-21-openjdk-amd64",
+        ldLibraryPath = "/root/.cache/coo-ee/desktop-gl/lib",
+        // The store dir supplies everything except libGL, so the skew *and* a missing lib.
+        exists = {
+          it.startsWith("/root/.cache/coo-ee/desktop-gl/lib/") && !it.endsWith("libGL.so.1")
+        },
+        canonicalize = { "/nix/store/6ljs-cooee-desktop-gl/lib" },
+      )
+
+    assertTrue(result.glibcSkew)
+    assertEquals(listOf("libGL.so.1"), result.missing.map { it.soname })
+
+    val check = DesktopNativesCheck.interpret(result, inClaudeCloud = true)
+    assertEquals("error", check.status)
+    assertTrue(check.message.contains("libGL.so.1"))
+    // The skew is not dropped on the floor — fixing the missing lib would otherwise leave a
+    // second, differently-shaped failure waiting behind it.
+    assertTrue(check.detail!!.contains("package-store"))
+  }
+
+  @Test
   fun `store libs on a store JVM's path are the documented fix, not a warning`() {
     val result =
       DesktopNativesCheck.evaluateDesktopNatives(
