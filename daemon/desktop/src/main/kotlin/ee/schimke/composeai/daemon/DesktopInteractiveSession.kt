@@ -100,6 +100,7 @@ class DesktopInteractiveSession(
     ScenePointerDispatch(
       scene = { state.scene },
       defaultTimeMillis = { engine.currentFrameNanoTime() / 1_000_000L },
+      defaultFrameNanos = { engine.currentFrameNanoTime() },
     )
 
   override val isClosed: Boolean
@@ -123,17 +124,16 @@ class DesktopInteractiveSession(
         if (px == null || py == null) return
         val id = input.pointerId ?: 0
         val offset = sceneOffset(px, py)
-        // Press → render-tick → Release. The render tick between the two dispatches gives
-        // Compose's gesture-detector coroutine a chance to observe the down event before the up
-        // arrives — without it, `Modifier.clickable {}`'s `detectTapGestures` can race the two
-        // events and miss the tap. The pattern matches what the Compose UI test harness's
-        // `performClick` does internally.
+        // Press → render-tick → Release. [ScenePointerDispatch.press] runs the render tick between
+        // the two dispatches, which gives Compose's gesture-detector coroutine a chance to observe
+        // the down event before the up arrives — without it, `Modifier.clickable {}`'s
+        // `detectTapGestures` can race the two events and miss the tap. The pattern matches what
+        // the Compose UI test harness's `performClick` does internally.
         // Goes through the same multi-pointer path as POINTER_* so a click dispatched while
         // another pointer is already down still carries the other finger in its event.
         val nowNs = engine.currentFrameNanoTime()
         val nowMs = nowNs / 1_000_000L
-        pointers.press(id, offset, deviceType, timeMillis = nowMs)
-        state.scene.render(nanoTime = nowNs)
+        pointers.press(id, offset, deviceType, timeMillis = nowMs, frameNanos = nowNs)
         pointers.release(id, offset, deviceType, timeMillis = nowMs + CLICK_HOLD_MS)
       }
       InteractiveInputKind.POINTER_DOWN -> {

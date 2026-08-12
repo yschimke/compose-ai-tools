@@ -343,6 +343,29 @@ Hz on Skiko) without dropping events.
 `pointerMove` events specifically should also be coalesced
 intra-batch — keep only the most recent move at any pixel.
 
+## 9.7 A press is settled with a render before the next event
+
+Every `pointerDown` (and the press half of a `click`) is followed by one
+`scene.render()` **inside the dispatch**, before the call returns —
+`ScenePointerDispatch.press` owns this, so the live lane, the click
+fast-path and scripted recording playback all get it.
+
+Compose's gesture detectors are coroutines suspended in
+`awaitPointerEventScope`; a press only *becomes* the anchor of a gesture
+once that coroutine has run. Dispatching the next event into the same
+scene touch hands Compose a pointer whose down it has not processed yet.
+
+That is not a theoretical window — it is the normal shape of a browser
+drag. The viewer defers the press until the first `pointermove` (so a tap
+stays a click), then sends `pointerDown` and `pointerMove` back to back
+in the same tick. Without the settling render a text field's
+mouse-selection observer never receives `onStart(pressPosition)`, so the
+drag extends from wherever the caret already was instead of from the
+press — and when the drag ends past the end of the text, that range is
+empty and no selection is painted at all (issue #3697). Tap detection has
+the same exposure, which is why the click path already rendered between
+its press and release by hand.
+
 ## 9.10 v3 Android pointer
 
 Android click dispatch requires sandbox pinning: see
