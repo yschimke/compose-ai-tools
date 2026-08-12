@@ -108,7 +108,7 @@ and every part of it is already computable on the serve host:
 | `previewId` | the route-safe served id (`iconbutton-tonal__ideal__default__light`) — **not** the daemon discovery id |
 | `referenceId` | `DesignReference.id` |
 | `variant` | the axis segments already inside the preview id — **axes only**. Live overrides are *not* folded in here; they travel in their own `overrides` field, because two representations of one fact means two ways to spell it and no rule for which wins |
-| `overrides` | the render overrides active on the frame (`uiMode`, `fontScale`, device, locale) — the same normalised set §4 matches acceptances on |
+| `overrides` | the whole normalised override map the render lane received (display fields, size fields, overlay toggles, `knob.*`, `rc.*`) — the same set §4 matches acceptances on |
 | `revision` | `repo@branch` provenance + the compose-ai-tools version that rendered it |
 
 Two rules worth writing into the schema doc so they survive contact with a second implementer:
@@ -131,20 +131,26 @@ back out without GitHub Projects or per-component labels:
     preview: iconbutton-tonal__ideal__default__light
     reference: iconbutton-tonal-figma
     variant: ideal/default/light
-    overrides: fontScale=1.5;uiMode=dark
+    overrides: {"fontScale":"1.5","knob.label":"Send;now=x","uiMode":"dark"}
     revision: yschimke/m3-catalog@main
     ```
 
 **`overrides` is part of the block, not an optional extra.** §4 makes overrides part of the scope an
 acceptance matches on, so a locator that omits them describes two frames at once: an issue filed at
 `fontScale=1.5` and one filed at the default serialise identically, and the indexer associates the
-report with whichever it happens to resolve. The canonical form is `key=value` pairs joined by `;`,
-**keys sorted by Unicode code point**, and the line is **always present** — `overrides:` with nothing
-after it means the default render. Always-present rather than omitted-when-empty because an absent
-line and an empty one are otherwise two spellings of the same state, which is the failure this field
-exists to fix. Parsed back, the line must yield exactly the normalised object §4 compares; the two
-are the same fact in a text and an object encoding, and the emitter produces both from one `Context`
-so they cannot drift.
+report with whichever it happens to resolve.
+
+**The value is canonical JSON on one line, not a delimited pair list.** `key=value` joined by `;`
+was the obvious form and it cannot round-trip its own inputs: knob values are free text — `viewer.js`
+sends the control's contents verbatim — so a label of `a;knob.color=red` serialises identically to
+two separate overrides, and the indexer resolves the issue against a frame nobody reported. Escaping
+rules would fix it and are one more thing two implementations get subtly different. So the value is
+a JSON object with **keys sorted by Unicode code point** and no insignificant whitespace, which
+escapes separators, quotes and newlines by construction and is *the same encoding §4 already stores
+in the record* — one representation, not a text one and an object one. The line is **always
+present**; `{}` means the default render, so an absent line and an empty one are never two spellings
+of one state. Parsed back it must yield exactly the object §4 compares, and the emitter produces
+both from one `Context` so they cannot drift.
 
 Fenced rather than an HTML comment: a comment is invisible in the rendered issue, and a reporter
 editing the body has no way to see they have broken it. A fenced block is visible, copy-pasteable,
@@ -603,10 +609,21 @@ comparison-shaped mental model quietly drops.
 
 **Overrides are part of the scope, and this is where that is settled.** The preview id does not
 encode them, so a record must carry them explicitly: an `overrides` object of normalised
-`key: value` pairs — the same knobs the render lane accepts (`uiMode`, `fontScale`, device, locale)
-— with **absent meaning "no overrides"**, which matches only the default render. Matching is exact
-over the whole set: an acceptance authored at `fontScale=1.5` does not apply at `1.0`, and one
-authored with no overrides does not apply to an overridden frame.
+`key: value` pairs — **the whole map the render lane receives**, with **absent meaning "no
+overrides"**, which matches only the default render. Matching is exact over the whole set: an
+acceptance authored at `fontScale=1.5` does not apply at `1.0`, and one authored with no overrides
+does not apply to an overridden frame.
+
+**The whole map, not an enumerated list of families.** An earlier revision named four —
+`uiMode`, `fontScale`, device, locale — as though that were the set. It is not: `viewer.js`'s
+`overrides()` also sends the size fields (`minWidthPx`, `maxWidthPx`, `minHeightPx`, `maxHeightPx`),
+every checked overlay toggle, and every author-declared knob as `knob.<key>`, with the Remote
+Compose lane adding `rc.<name>`. Those change the render — a knob *is* the component's state — so
+an enumerated scope lets a mask authored at `knob.label=Send` suppress pixels at
+`knob.label=Delete`, which is a different component in every sense that matters. The rule is
+therefore structural rather than a list: **every key the render lane accepts is in scope**, because
+a key that did not affect the render would not be in the map. A list would drift the first time a
+knob family was added, and drift silently, since the acceptance would keep matching.
 
 **`variant` carries axes only; overrides live here and nowhere else.** §2 originally folded active
 overrides into `variant`, which would now give the same state two representations with no defined
@@ -719,6 +736,18 @@ prevent, reached through a shape rather than a size. `8192` is the number becaus
 mainstream engine's limit with room to spare and is still an order of magnitude above any plausible
 canonical plane — a preview render is hundreds of pixels a side, not thousands.
 
+**Encoded bytes are a third limit, and the serving host already has one.**
+`ServeCatalogStore.fetchCatalogAsset` caps every fetched catalog asset at `MAX_FETCH_BYTES` — 25 MB
+— so a noisy `accepted-candidate.png` that is comfortably inside 8192 px and 128 megapixels can
+still be evaluated offline, where it is read off disk, and refused on the serving host, where the
+fetch never completes and becomes `artifact-unreadable`. Dimensions do not bound file size: PNG
+compression varies by orders of magnitude with content, and an acceptance's rasters are exactly the
+noisy sub-regions that compress worst. So `v1` caps each artifact at **8 MiB encoded**, checked from
+the byte length the preflight already has in hand, refused as `artifact-too-large` — comfortably
+under the host's own limit so the two engines agree well before the host's fetch would fail, and far
+above a real mask or crop. Per-artifact rather than per-document, and excluded from the pixel budget
+like every other preflight refusal, so the order-independence rule still holds.
+
 Nothing ever holds a value larger than the cap plus one raster, so
 there is nothing to overflow, and the two engines cannot disagree about arithmetic they never do.
 
@@ -784,6 +813,19 @@ segments, and anything resolving outside that directory are `path-not-contained`
 not a new rule so much as the one `ServeDesignReferenceStore.isSafeRelativePath` already applies to
 reference rasters, for the same reason: these paths are read during staging on a host that fetches
 third-party catalogs, so a traversal is an escape from the artifact tree rather than a typo.
+
+**Containment is not portability, so the grammar is restricted too.** A path can be perfectly
+contained and still name different files on either side of the contract. `isSafeRelativePath`
+rewrites `\` to `/` before splitting, so `a\b.png` is *checked* as two segments and *opened* as one
+filename on POSIX and as two on Windows. `#` and `?` are ordinary filename characters that become
+fragment and query syntax the moment the serving host fetches the artifact by URL rather than
+reading it off disk — so the offline engine hashes one file while the host fetches another, or
+reports `artifact-unreadable` for a file that is right there. Percent-encoding rules would settle it
+and are one more thing to get differently right twice. So the grammar is simply narrow: **segments
+of `[A-Za-z0-9._-]` joined by `/`**, the same character class the `id` already uses, with no
+backslashes, no `#`, `?` or `%`, and no whitespace. Anything else is `path-not-contained`. A
+committed artifact path has no need of the rest of Unicode, and the restriction removes the encoding
+question instead of answering it.
 
 **A mask must select something.** An all-zero mask satisfies the encoding and dimension rules and
 still has no bounding box, which leaves `accepted-candidate.png`'s required dimensions undefined —
@@ -917,6 +959,18 @@ inoperable is a broken configuration rather than a stale one. The distinction ma
 `reference-changed` reads as "the design moved" — a fact about the world — while this is "we cannot
 tell", which needs a different fix (publish the hash) and a different message. Both belong in the
 validation-failure fixtures.
+
+**Hashes are compared normalised, never as raw strings.** `ServeDesignReferenceStore` lowercases a
+reference's `sha256` to *validate* it and then serves the original spelling, so an upstream that
+published uppercase hex reaches the gate uppercase while the acceptance records the conventional
+lowercase. Raw string inequality then reports `reference-changed` — "the design moved" — for a
+reference that is byte-for-byte the one the acceptance was authored against, and the fix looks like
+re-authoring the acceptance. So both sides are lowercased before comparison (equivalently, compare
+the decoded digest bytes). Separately, every hash *this* schema owns — `referenceSha256`,
+`maskSha256`, `acceptedCandidateSha256` — must be 64 lowercase hex characters, `schema-invalid`
+otherwise: we cannot constrain what a producer publishes upstream, but we can refuse to accept two
+spellings of our own fields. An uppercase-served / lowercase-recorded pair is a fixture, since it
+passes every other check and fails on the one comparison.
 
 That refusal is the `refused` **status**, so every
 acceptance id still maps to exactly one status and the hash-mismatch fixtures have an expected value
@@ -1109,7 +1163,8 @@ field would leave two engines free to pick different ones. Same fixed ordering r
 `validationFailures`, including when several document-wide failures land together:
 
 `document-unreadable`, `document-too-large`, `duplicate-id`, `id-missing`, `id-not-safe`,
-`schema-invalid`, `orphaned-target`, `path-not-contained`, `header-invalid`, `decode-failed`,
+`schema-invalid`, `orphaned-target`, `path-not-contained`, `artifact-too-large`, `header-invalid`,
+`decode-failed`,
 `degenerate-dimensions`, `dimension-mismatch`, `mask-encoding-invalid`, `animated-png`, `mask-empty`,
 `artifact-unreadable`, `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`,
 `reference-hash-missing`, `tolerance-out-of-range`, `acceptance-is-noop`.
