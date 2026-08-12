@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "07e009230e83b7a44d2e579f142b02aec9a1490b",
+    "generatedFrom": "d8605faba0ae922d1dc98d60cd9a3ed8b18d47ef",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
@@ -625,14 +625,14 @@
             "unstable": false,
             "flapCount": 0
         },
-        "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.GlanceWeatherWidgetPreview_Glance widget — 4×2": {
-            "path": "renders/samples:android/GlanceWeatherWidgetPreview_Glance_widget_4_2.png",
+        "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.GlanceWeatherWidgetPreview_Glance widget via helper API — 4×2": {
+            "path": "renders/samples:android/GlanceWeatherWidgetPreview_Glance_widget_via_helper_API_4_2.png",
             "versions": [
                 {
                     "blob": "53dbb8a50c6d8408c53b79d9d0b62751aea482fe",
-                    "commit": "4a9fa12ae7eca7f69bf5e4158c8bce4e9beb5d5c",
-                    "date": "2026-05-26T20:32:52Z",
-                    "sourceSha": "f5b8d081",
+                    "commit": "d8605faba0ae922d1dc98d60cd9a3ed8b18d47ef",
+                    "date": "2026-08-12T05:36:09Z",
+                    "sourceSha": "779d6546",
                     "commits": 1
                 }
             ],
@@ -806,6 +806,13 @@
             "path": "renders/samples:android/LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5.png",
             "versions": [
                 {
+                    "blob": "098f865f8f3521577a78eb71dd28f496b855571d",
+                    "commit": "d8605faba0ae922d1dc98d60cd9a3ed8b18d47ef",
+                    "date": "2026-08-12T05:36:09Z",
+                    "sourceSha": "779d6546",
+                    "commits": 1
+                },
+                {
                     "blob": "3d4f8946ee64149dccbd3b87f3cba6e51d9d800d",
                     "commit": "4a9fa12ae7eca7f69bf5e4158c8bce4e9beb5d5c",
                     "date": "2026-05-26T20:32:52Z",
@@ -813,7 +820,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -1550,6 +1557,13 @@
             "path": "renders/samples:android/CameraPermissionGrantedPreview_Camera_permission_granted.png",
             "versions": [
                 {
+                    "blob": "2a5c3ef3acee933c799ec86b7ed02b1d7212a8b6",
+                    "commit": "d8605faba0ae922d1dc98d60cd9a3ed8b18d47ef",
+                    "date": "2026-08-12T05:36:09Z",
+                    "sourceSha": "779d6546",
+                    "commits": 1
+                },
+                {
                     "blob": "ad98fe4c91384f0a7b5846e0aa58bce4a5f4e0ee",
                     "commit": "4a9fa12ae7eca7f69bf5e4158c8bce4e9beb5d5c",
                     "date": "2026-05-26T20:32:52Z",
@@ -1557,7 +1571,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -4783,6 +4797,13 @@
             "path": "renders/samples:design-catalog-m3-android/FilledButtonFocused_Dark.png",
             "versions": [
                 {
+                    "blob": "1309af506e0a20d4afa970ef4cc4aa0d797385da",
+                    "commit": "d8605faba0ae922d1dc98d60cd9a3ed8b18d47ef",
+                    "date": "2026-08-12T05:36:09Z",
+                    "sourceSha": "779d6546",
+                    "commits": 1
+                },
+                {
                     "blob": "431f8e5cbf39b5b83b7f939d414d238cbc89f50c",
                     "commit": "27fb5b9ae8bf97e82211b87372d0798c50fb7d31",
                     "date": "2026-07-05T18:16:50Z",
@@ -4790,13 +4811,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-m3-android/com.example.designcatalogm3android.FocusRingKt.FilledButtonFocused_Light": {
             "path": "renders/samples:design-catalog-m3-android/FilledButtonFocused_Light.png",
             "versions": [
+                {
+                    "blob": "2de9ba9c93275278cf31d799a204e7583c0e0a57",
+                    "commit": "d8605faba0ae922d1dc98d60cd9a3ed8b18d47ef",
+                    "date": "2026-08-12T05:36:09Z",
+                    "sourceSha": "779d6546",
+                    "commits": 1
+                },
                 {
                     "blob": "83d75a837db0a906a5901d8c1d4d507825abdb0c",
                     "commit": "27fb5b9ae8bf97e82211b87372d0798c50fb7d31",
@@ -4805,7 +4833,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -6799,6 +6827,13 @@
             "path": "renders/samples:design-catalog-wear-m3/ButtonFocused.png",
             "versions": [
                 {
+                    "blob": "6f4a2b951e9668838eb843d6cffffd8f97b1eb4a",
+                    "commit": "d8605faba0ae922d1dc98d60cd9a3ed8b18d47ef",
+                    "date": "2026-08-12T05:36:09Z",
+                    "sourceSha": "779d6546",
+                    "commits": 1
+                },
+                {
                     "blob": "4adb3e08a74b8b4912c8afc2c8abc32a3e3ec1c6",
                     "commit": "e812c2fe0090d962c65e45a8d1c81913362e6b33",
                     "date": "2026-08-04T11:39:41Z",
@@ -6834,7 +6869,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 5,
+            "observations": 6,
             "unstable": false,
             "flapCount": 0
         },
@@ -9264,6 +9299,21 @@
                 }
             ],
             "observations": 2,
+            "unstable": false,
+            "flapCount": 0
+        },
+        "samples:wear/com.example.samplewear.PlaceholderPreviewsKt.PlaceholderCardOverrideDriven_wearos_small_round": {
+            "path": "renders/samples:wear/PlaceholderCardOverrideDriven_wearos_small_round.png",
+            "versions": [
+                {
+                    "blob": "50c08227628a5da3a83e2b8a430ef1f229814a5f",
+                    "commit": "d8605faba0ae922d1dc98d60cd9a3ed8b18d47ef",
+                    "date": "2026-08-12T05:36:09Z",
+                    "sourceSha": "779d6546",
+                    "commits": 1
+                }
+            ],
+            "observations": 1,
             "unstable": false,
             "flapCount": 0
         },
