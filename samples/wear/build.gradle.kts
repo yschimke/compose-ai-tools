@@ -75,9 +75,11 @@ dependencies {
   implementation(project(":preview-annotations"))
 
   // `:data-preview-overrides-runtime` — the opt-in override seam. `PlaceholderPreviews.kt` reads
-  // `placeholderActive()` / `LocalPlaceholderActive` so one placeholdered card renders in both the
-  // loaded and loading states (issue #2646): the static previews pin the local directly, and a
-  // daemon render drives the same local from `renderNow.overrides.placeholderActive`.
+  // `placeholderActive()` from exactly one place: the preview-only `PlaceholderCardOverrideDriven`
+  // wrapper, which forwards it into `PlaceholderCard`'s hoisted `loading` parameter so a daemon
+  // render can drive the state from `renderNow.overrides.placeholderActive` (issue #2646). The
+  // reusable card itself takes `loading` explicitly and carries no compose-ai-tools import — the
+  // static loaded/loading previews just pass the boolean (issue #3675).
   implementation(project(":data-preview-overrides-runtime"))
 
   testImplementation(libs.junit)

@@ -359,6 +359,112 @@ class DiscoveryFunctionalTest {
   }
 
   /**
+   * `@PermissionPreview` (issue #3676) — the static render lane's way to say which permissions a
+   * capture should be taken under, so a permission-gated screen's granted branch is reachable
+   * without threading a preview-only `granted: Boolean` through the composable.
+   *
+   * Three things at once, because they fail together and a partial pass is misleading: the
+   * annotation is matched by FQN (declared locally here, exactly as the `@OverrideVariant` tests
+   * do, so the test needs no published `preview-annotations` artifact); its `grants` strings parse
+   * into the typed capture model and are stamped onto **every** capture of the function; and a
+   * malformed entry is dropped with a warning while its well-formed siblings survive.
+   *
+   * The malformed half matters more than it looks: the symptom of a silently-dropped grant is a
+   * preview named "granted" that renders the denied branch — which is the original defect, and is
+   * invisible unless discovery says something.
+   */
+  @Test
+  fun `composePreviewDiscover stamps @PermissionPreview grants onto every capture`() {
+    val projectDir = createCmpTestProject()
+
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "PermissionPreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class PermissionPreview(val grants: Array<String> = [])
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/Camera.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+        import ee.schimke.composeai.preview.PermissionPreview
+
+        @Preview
+        @Composable
+        fun CameraDeniedPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Denied") }
+        }
+
+        @Preview
+        @PermissionPreview(
+            grants = [
+                "android.permission.CAMERA=granted",
+                "android.permission.RECORD_AUDIO=DENIED",
+                "android.permission.ACCESS_FINE_LOCATION",
+            ]
+        )
+        @Composable
+        fun CameraGrantedPreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Granted") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+
+    // The un-annotated sibling stays clean — the annotation is per-function, not per-module.
+    val denied = manifest.previews.single { it.functionName == "CameraDeniedPreview" }
+    assertThat(denied.captures.single().permissions).isNull()
+
+    val granted = manifest.previews.single { it.functionName == "CameraGrantedPreview" }
+    assertThat(granted.captures).isNotEmpty()
+    for (capture in granted.captures) {
+      assertThat(capture.permissions)
+        .isEqualTo(
+          PermissionsCapture(
+            grants =
+              mapOf(
+                "android.permission.CAMERA" to PermissionGrantCaptureState.GRANTED,
+                "android.permission.RECORD_AUDIO" to PermissionGrantCaptureState.DENIED,
+              )
+          )
+        )
+    }
+
+    // The third entry has no `=`, so it is dropped — loudly, naming the entry.
+    assertThat(result.output).contains("@PermissionPreview")
+    assertThat(result.output).contains("android.permission.ACCESS_FINE_LOCATION")
+  }
+
+  /**
    * Two hoisted matrices that disagree about one cell. The name is the rendered output's identity,
    * so emitting both would have the second silently overwrite the first's PNG.
    */

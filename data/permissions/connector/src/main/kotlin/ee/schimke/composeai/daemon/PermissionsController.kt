@@ -75,6 +75,25 @@ object PermissionsController {
    */
   @Volatile private var activePreviewId: String? = null
 
+  /**
+   * Every permission name this controller has ever pushed into `ShadowApplication`, across all
+   * previews sharing the sandbox.
+   *
+   * Load-bearing for revocation. [syncRobolectricGrants] can only deny names it passes to
+   * `denyPermissions(vararg String)`, so denying just the incoming map's keys leaves a permission
+   * granted by an *earlier* map still granted in the shadow — the shadow has no "revoke everything"
+   * call to lean on. That leaks across captures inside one Robolectric sandbox: a preview carrying
+   * `@PermissionPreview(grants = ["…CAMERA=granted"])` would hand its grant to the next preview
+   * that renders, including one carrying no annotation at all (whose extension is never even
+   * constructed, so nothing runs to clear it). The result is a capture showing a granted branch it
+   * never asked for — the exact class of defect issue #3676 exists to remove.
+   *
+   * So each sync denies the **union** of this set and the incoming keys before granting, and this
+   * set then becomes the incoming keys. Renders that never seed an override touch nothing: the
+   * union stays empty, so the manifest baseline is left alone.
+   */
+  private val appliedPermissionNames: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
   val grants: State<Map<String, PermissionGrantStateOverride>>
     get() = grantsState
 
@@ -175,9 +194,10 @@ object PermissionsController {
    * public API for seeding the platform permission path; everything `ContextCompat
    * .checkSelfPermission` reaches eventually consults the same data structure.
    *
-   * Permissions present in the override are granted or denied per their wire state. Permissions NOT
-   * present in the override are explicitly denied so a re-render with a shrunk grant map doesn't
-   * leak the previous render's grants.
+   * Permissions present in the override are granted or denied per their wire state. Permissions
+   * absent from it but granted by an earlier sync are denied too — see [appliedPermissionNames] for
+   * why that union is what actually makes "absent from map = revoke" true, and what leaks without
+   * it.
    */
   private fun syncRobolectricGrants(grants: Map<String, PermissionGrantStateOverride>) {
     try {
@@ -191,12 +211,20 @@ object PermissionsController {
       val denied =
         grants.filterValues { it == PermissionGrantStateOverride.DENIED }.keys.toTypedArray()
       val shadowAppCls = shadowApp.javaClass
-      // Clear the previously-granted set first by denying everything in the override; then grant
-      // the explicit grants. Permissions outside the override stay at their post-deny default
-      // (denied), which is what we want for "absent from map = revoke".
-      shadowAppCls
-        .getMethod("denyPermissions", Array<String>::class.java)
-        .invoke(shadowApp, denied + granted)
+      // Deny the union of everything we have ever applied and everything in the incoming map, then
+      // grant the explicit grants back. The union is the load-bearing part: a name granted by a
+      // previous sync but absent from `grants` is only revoked because it is still in
+      // `appliedPermissionNames` — denying `denied + granted` alone would silently carry it into
+      // the next capture. Empty union (no override has ever been applied) → no call at all, so an
+      // un-annotated render never has its manifest baseline touched.
+      val toDeny = (appliedPermissionNames + denied + granted).toTypedArray()
+      if (toDeny.isNotEmpty()) {
+        shadowAppCls
+          .getMethod("denyPermissions", Array<String>::class.java)
+          .invoke(shadowApp, toDeny)
+      }
+      appliedPermissionNames.clear()
+      appliedPermissionNames.addAll(grants.keys)
       if (granted.isNotEmpty()) {
         shadowAppCls
           .getMethod("grantPermissions", Array<String>::class.java)

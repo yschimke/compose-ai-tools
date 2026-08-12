@@ -123,4 +123,35 @@ describe("formatRenderErrorMessage", () => {
         );
         assert.strictEqual(out, "RuntimeException");
     });
+
+    it("shows the native-load diagnosis instead of the exception it cascaded from", () => {
+        // Issue #3690: skiko failed to load, so every preview in the module
+        // carries this same useless class name. The renderer's diagnosis is
+        // the only thing on the card the user can act on.
+        const diagnosis =
+            "skiko's native library could not be loaded because this process mixed two glibc builds";
+        const out = formatRenderErrorMessage(
+            err({
+                exception: "java.lang.NoClassDefFoundError",
+                message:
+                    "Could not initialize class org.jetbrains.skia.Surface",
+                topAppFrame: {
+                    file: "Previews.kt",
+                    line: 12,
+                    function: "Greeting",
+                },
+                diagnosis,
+            }),
+        );
+        // Not "NoClassDefFoundError: … (at Previews.kt:12)": the frame points at a
+        // preview that is fine, which is worse than no frame at all.
+        assert.strictEqual(out, diagnosis);
+    });
+
+    it("ignores an empty diagnosis", () => {
+        const out = formatRenderErrorMessage(
+            err({ exception: "java.lang.RuntimeException", diagnosis: "" }),
+        );
+        assert.strictEqual(out, "RuntimeException");
+    });
 });

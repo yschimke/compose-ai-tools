@@ -665,6 +665,9 @@ class DoctorCommand(
         renderJavaHome = daemonJavaHome,
         ldLibraryPath = System.getenv("LD_LIBRARY_PATH"),
         exists = { path -> File(path).exists() },
+        // Resolved through symlinks so a store lib dir reached via a link farm
+        // (`~/.cache/coo-ee/desktop-gl/lib`, `~/.nix-profile/lib`) is still recognised as one.
+        canonicalize = { path -> runCatching { File(path).canonicalPath }.getOrDefault(path) },
       )
     val check = DesktopNativesCheck.interpret(result, inClaudeCloud = inClaudeCloud)
     addCheck(

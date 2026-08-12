@@ -97,6 +97,17 @@ dependencies {
   // module — extend the connector instead.**
   implementation(project(":data-gestures-connector"))
   runtimeOnly(project(":data-gestures-robolectric-stubs"))
+  // Android runtime-permissions connector. Owns `PermissionsController` and
+  // `PermissionsOverrideExtension`, whose constructor seeds Robolectric's
+  // `ShadowApplication.grantPermissions/denyPermissions` from the override. The renderer builds it
+  // whenever `RenderPreviewCapture.permissions` is set — `@PermissionPreview` discovery stamps
+  // that onto every capture of an annotated function (issue #3676) — and daemon-driven
+  // `renderNow.overrides.permissions` plans the same extension through `RobolectricHost`. Same
+  // architectural rule as ambient / gestures: **no hardcoded permission-grant logic in this module
+  // — extend the connector instead.** In particular, do not add a second path that pokes
+  // `ShadowApplication` directly; the controller is the one writer, which is what keeps the static
+  // and daemon lanes from disagreeing about what "granted" means.
+  implementation(project(":data-permissions-connector"))
   // Launcher-widget container-size connector. Owns `LauncherWidgetExtension` (the
   // `AroundComposable` that wraps the preview in `Box(Modifier.size(...))` at the resolved cell
   // footprint) and the `LauncherWidgetPreviewOverrideExtension` planner. The renderer reads

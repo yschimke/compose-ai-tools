@@ -430,10 +430,14 @@ abstract class RenderPreviewsTask : DefaultTask() {
       )
     }
 
+    // What environment the render JVM starts with — decided once for the execution so the pooled
+    // and forked lanes can never disagree about it (see [RenderNativeEnv]).
+    val nativeEnv = renderNativeEnv()
+
     // One warm renderer for this whole task execution, closed before the action returns so no
     // process outlives the build. Created here rather than held on the task so nothing
     // process-shaped is on a field the configuration cache would try to store.
-    val lane = RenderLane(openWorkerPool())
+    val lane = RenderLane(openWorkerPool(nativeEnv), nativeEnv)
     try {
       renderCaptures(manifest, manifestOutputFiles, previewsRoot, outDir, mainClass, lane)
     } finally {
@@ -600,6 +604,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // Fork on a JDK new enough for the consumer's bytecode when the plugin raised it (see
       // [RenderJvmSelection]); otherwise leave the default (Gradle daemon JVM).
       renderJavaExecutable.orNull?.let { executable = it }
+      // Same environment the pooled worker gets: package-store libraries pruned when this JVM is
+      // not itself from the store, so a hybrid sandbox can't kill every preview with a glibc
+      // mismatch (see [RenderNativeEnv]). Untouched on every other host.
+      RenderNativeEnv.rewritten(lane.nativeEnv, environment)?.let { environment = it }
       classpath = renderClasspath
       this.mainClass.set(mainClass)
       // Run the render JVM as a macOS "background agent" (LSUIElement) so it never claims a Dock
@@ -662,8 +670,30 @@ abstract class RenderPreviewsTask : DefaultTask() {
    * task: a live pool on a task field is exactly the kind of state the configuration cache cannot
    * store.
    */
-  private class RenderLane(val pool: DesktopRenderWorkerPool?) {
+  private class RenderLane(
+    val pool: DesktopRenderWorkerPool?,
+    /** The render JVM's environment decision, applied by whichever lane serves a capture. */
+    val nativeEnv: RenderNativeEnv.Decision,
+  ) {
     val fallbackNoticePrinted = java.util.concurrent.atomic.AtomicBoolean(false)
+  }
+
+  /**
+   * Decide what `LD_LIBRARY_PATH` the render JVM starts with, and say so in the log when it differs
+   * from what the daemon inherited — a silent environment edit is exactly the kind of thing that
+   * makes the *next* native-loading bug undiagnosable.
+   */
+  private fun renderNativeEnv(): RenderNativeEnv.Decision {
+    val decision =
+      RenderNativeEnv.decide(
+        renderJavaExecutable = renderJavaExecutable.orNull,
+        daemonJavaHome = System.getProperty("java.home"),
+        ldLibraryPath = System.getenv(RenderNativeEnv.VAR),
+      )
+    if (decision is RenderNativeEnv.Decision.Sanitized) {
+      logger.info("composePreviewRender: ${decision.explanation}")
+    }
+    return decision
   }
 
   /**
@@ -674,7 +704,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
    * that fails to start or speaks the wrong protocol — is handled per capture inside the pool,
    * which reports `Unusable` and lets the caller fork that one.
    */
-  private fun openWorkerPool(): DesktopRenderWorkerPool? {
+  private fun openWorkerPool(nativeEnv: RenderNativeEnv.Decision): DesktopRenderWorkerPool? {
     if (!DesktopRenderWorkerPool.isEnabled()) return null
     val cp = renderClasspath.files.toList()
     if (cp.isEmpty()) return null
@@ -698,6 +728,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // the `Render failed …` line beside an error sidecar — so without this they would vanish the
       // moment a capture went warm.
       stderrSink = { line -> logger.lifecycle("composePreviewRender: $line") },
+      // The forked lane's environment, verbatim — a worker that saw a different LD_LIBRARY_PATH
+      // from the fork it replaces could load a different libskiko, which is precisely the
+      // divergence this pool must never introduce.
+      nativeEnv = nativeEnv,
     )
   }
 

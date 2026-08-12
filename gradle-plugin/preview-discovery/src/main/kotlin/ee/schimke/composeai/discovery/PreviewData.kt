@@ -346,6 +346,42 @@ data class GestureHintCapture(
 )
 
 /**
+ * Per-preview Android runtime-permission grant state discovered from a `@PermissionPreview`
+ * annotation (issue #3676). Non-null when the annotation contributed at least one usable entry;
+ * the renderer builds `:data-permissions-connector`'s `PermissionsOverrideExtension` from it, whose
+ * construction seeds Robolectric's `ShadowApplication` grant set **before** the first composition
+ * pass — the same controller daemon-driven `renderNow.overrides.permissions` drives through the
+ * connector's planner.
+ *
+ * Ordering is what distinguishes this from [AmbientCapture] / [GestureHintCapture]: those install a
+ * composition local the screen reads from *inside* the composition, whereas a permission is read
+ * through the platform API (`ContextCompat.checkSelfPermission`) on the very first composition, so
+ * the seed has to be in place before `setContent` rather than in an effect that runs after it.
+ */
+@Serializable
+data class PermissionsCapture(
+  /**
+   * Effective grant state keyed by the full Android permission constant string (e.g.
+   * `"android.permission.CAMERA"`). **Exhaustive, not additive** — the renderer denies every
+   * permission not named here, so a previous preview's grants cannot leak into this capture.
+   */
+  val grants: Map<String, PermissionGrantCaptureState> = emptyMap()
+)
+
+/**
+ * Grant state a [PermissionsCapture] can request. Mirrors the daemon protocol's
+ * `PermissionGrantStateOverride`; duplicated here because the Gradle plugin cannot depend on
+ * `:daemon:core` at discovery time, exactly as [AmbientCaptureState] duplicates
+ * `androidx.wear.compose.foundation.AmbientMode`. `DENIED` is explicit rather than "absent" so an
+ * author can pin a denial that survives a future default change.
+ */
+@Serializable
+enum class PermissionGrantCaptureState {
+  GRANTED,
+  DENIED,
+}
+
+/**
  * Per-preview launcher-widget container-size override discovered from a `@LauncherWidgetPreview`
  * annotation. Stamped onto every capture of the annotated function — renderer wraps the composition
  * with `:data-launcher-widget-connector`'s `LauncherWidgetExtension`, which mirrors `MyWidget`
@@ -656,6 +692,14 @@ data class Capture(
    * force-shows the indicator.
    */
   val gestureHint: GestureHintCapture? = null,
+  /**
+   * `null` → no Android runtime-permission override. Set when the preview carries a
+   * `@PermissionPreview` annotation with at least one usable grant entry. The renderer builds
+   * `:data-permissions-connector`'s `PermissionsOverrideExtension` from it *before* `setContent`,
+   * so the screen's first `ContextCompat.checkSelfPermission(...)` read already observes the
+   * requested state.
+   */
+  val permissions: PermissionsCapture? = null,
   /**
    * `null` → no launcher-widget container-size override. Set when the preview carries a
    * `@LauncherWidgetPreview` annotation. Renderer wraps the composition with
