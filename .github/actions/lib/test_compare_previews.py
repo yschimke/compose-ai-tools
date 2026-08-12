@@ -2467,5 +2467,142 @@ class CompareResourcesAgainstEmptyBaselineTest(unittest.TestCase):
         self.assertIn("`drawable/foo`", buf.getvalue())
 
 
+class StageHandoffTest(unittest.TestCase):
+    """`stage-handoff` — the render→publish bridge for fork-safe runs.
+
+    What matters here is that the publish job, restoring this output into a
+    fresh workspace, can still resolve every PNG `compare` will actually open.
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.renders = self.tmp / "build" / "renders"
+        self.renders.mkdir(parents=True)
+
+    def _render(self, name: str, content: bytes) -> str:
+        p = self.renders / name
+        p.write_bytes(content)
+        return str(p)
+
+    def _run(self, envelope, baselines=None):
+        from types import SimpleNamespace
+        cli_json = self.tmp / "_previews.json"
+        cli_json.write_text(json.dumps(envelope))
+        bl_path = None
+        if baselines is not None:
+            bl_path = self.tmp / "baselines.json"
+            bl_path.write_text(json.dumps(baselines))
+        out_dir = self.tmp / "_handoff" / "current"
+        rewrite = self.tmp / "_handoff" / "_previews.json"
+        rc = cp.cmd_stage_handoff(SimpleNamespace(
+            cli_json=str(cli_json),
+            baselines=str(bl_path) if bl_path else None,
+            output_dir=str(out_dir),
+            path_prefix="_handoff/current",
+            rewrite_json=str(rewrite),
+        ))
+        self.assertEqual(rc, 0)
+        return out_dir, json.loads(rewrite.read_text())
+
+    def _envelope(self, previews):
+        return {"schema": "compose-preview-show/v1", "previews": previews}
+
+    def test_changed_render_is_staged_and_path_rebased(self):
+        png = self._render("Fn.png", b"new-bytes")
+        out_dir, rewritten = self._run(
+            self._envelope([_entry(id="Fn", module="app", png=png, sha="new")]),
+            baselines={"app/Fn": {"sha256": "old", "renderBasename": "Fn.png"}},
+        )
+        self.assertTrue((out_dir / "app" / "Fn.png").exists(),
+                        "A sha-differing row's bytes are read again by _is_changed.")
+        self.assertEqual(rewritten["previews"][0]["pngPath"],
+                         "_handoff/current/app/Fn.png")
+
+    def test_unchanged_render_is_rebased_but_not_copied(self):
+        png = self._render("Fn.png", b"same-bytes")
+        out_dir, rewritten = self._run(
+            self._envelope([_entry(id="Fn", module="app", png=png, sha="same")]),
+            baselines={"app/Fn": {"sha256": "same", "renderBasename": "Fn.png"}},
+        )
+        self.assertFalse((out_dir / "app" / "Fn.png").exists(),
+                         "_is_changed fast-paths on a sha match without touching disk.")
+        self.assertEqual(rewritten["previews"][0]["pngPath"],
+                         "_handoff/current/app/Fn.png",
+                         "Every row is rebased so path resolution stays uniform.")
+
+    def test_no_baselines_stages_nothing(self):
+        png = self._render("Fn.png", b"bytes")
+        out_dir, rewritten = self._run(
+            self._envelope([_entry(id="Fn", module="app", png=png, sha="new")]))
+        self.assertFalse(out_dir.exists(),
+                         "With no baseline every row is new; compare never opens a "
+                         "current PNG, and _pr_renders already carries the pixels.")
+        self.assertEqual(rewritten["previews"][0]["pngPath"],
+                         "_handoff/current/app/Fn.png")
+
+    def test_new_preview_is_not_staged(self):
+        png = self._render("Fn.png", b"bytes")
+        out_dir, _rewritten = self._run(
+            self._envelope([_entry(id="Fn", module="app", png=png, sha="new")]),
+            baselines={"app/Other": {"sha256": "x", "renderBasename": "Other.png"}},
+        )
+        self.assertFalse((out_dir / "app" / "Fn.png").exists(),
+                         "Every _is_changed call site guards on the key being in "
+                         "baselines, so a new preview's bytes are never re-read.")
+
+    def test_multi_capture_rows_are_keyed_like_load_cli_output(self):
+        a = self._render("Fn.png", b"a")
+        b = self._render("Fn_SCROLL_end.png", b"b")
+        out_dir, rewritten = self._run(
+            self._envelope([_entry(id="Fn", module="app", captures=[
+                _capture(png=a, sha="a-new"),
+                _capture(png=b, sha="b-same"),
+            ])]),
+            baselines={
+                "app/Fn": {"sha256": "a-old", "renderBasename": "Fn.png"},
+                "app/Fn#1": {"sha256": "b-same", "renderBasename": "Fn_SCROLL_end.png"},
+            },
+        )
+        self.assertTrue((out_dir / "app" / "Fn.png").exists())
+        self.assertFalse((out_dir / "app" / "Fn_SCROLL_end.png").exists(),
+                         "Capture #1 matched its baseline sha — the `#<n>` key has to "
+                         "line up with load_cli_output or it would read as changed.")
+        caps = rewritten["previews"][0]["captures"]
+        self.assertEqual(caps[0]["pngPath"], "_handoff/current/app/Fn.png")
+        self.assertEqual(caps[1]["pngPath"], "_handoff/current/app/Fn_SCROLL_end.png")
+
+    def test_failed_render_without_png_is_left_alone(self):
+        _out_dir, rewritten = self._run(
+            self._envelope([_entry(id="Fn", module="app", png=None, sha=None)]))
+        self.assertIsNone(rewritten["previews"][0]["pngPath"],
+                          "A row with no PNG is a render failure _collect_failures "
+                          "still needs to see as empty.")
+
+    def test_rebased_envelope_round_trips_through_load_cli_output(self):
+        png = self._render("Fn.png", b"new-bytes")
+        out_dir, rewritten = self._run(
+            self._envelope([_entry(id="Fn", module="app", png=png, sha="new")]),
+            baselines={"app/Fn": {"sha256": "old", "renderBasename": "Fn.png"}},
+        )
+        # The publish job restores the handoff under its own workspace root and
+        # runs with that root as cwd, so the relative path has to resolve there.
+        workspace = self.tmp / "publish-workspace"
+        (workspace / "_handoff").mkdir(parents=True)
+        shutil.copytree(out_dir, workspace / "_handoff" / "current")
+        restored = workspace / "_previews.json"
+        restored.write_text(json.dumps(rewritten))
+
+        rows = cp.load_cli_output(restored)
+        rel = rows["app/Fn"]["pngPath"]
+        self.assertFalse(Path(rel).is_absolute())
+        self.assertTrue((workspace / rel).exists(),
+                        "compare() opens pngPath relative to cwd; the publish job "
+                        "cds to the workspace root.")
+        self.assertEqual(rows["app/Fn"]["renderBasename"], "Fn.png",
+                         "renderBasename drives the image URL, so rebasing must not "
+                         "change it.")
+
+
 if __name__ == "__main__":
     unittest.main()
