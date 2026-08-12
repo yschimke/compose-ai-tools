@@ -1119,6 +1119,16 @@ object ServeWeb {
     /** The variant shown by default (server-side): light, else dark, else the neutral render. */
     val default: ServePreview
       get() = light ?: dark ?: neutral!!
+
+    /**
+     * The render the grid actually paints, which on a **dark-first** system is the dark one —
+     * [default] prefers light regardless, and `swapCard` has always opened on the system's own
+     * lane. Anything describing the card to a visitor has to agree with the pixels beside it: a
+     * tree built from [default] would label a dark-first catalog's cards from their light twins and
+     * send every variant link into the light lane while the card next to it is showing dark.
+     */
+    fun rendered(darkFirst: Boolean): ServePreview =
+      if (darkFirst) (dark ?: light ?: neutral!!) else default
   }
 
   /**
@@ -1471,6 +1481,32 @@ object ServeWeb {
         .map { if (it.isLetterOrDigit() || it == '_' || it == '-') it else '-' }
         .joinToString("")
 
+  /**
+   * One anchor per card, minted once for the whole page.
+   *
+   * Two things depend on this happening in a single place. The grid and the tree must not compute
+   * the anchor differently — they name the same element. And the anchors have to be **injective**:
+   * [cardAnchorId] folds everything outside the HTML-id alphabet to `-`, and a preview id may
+   * legitimately contain `/`, `?`, `#` or a space, so `Foo/Bar` and `Foo?Bar` would otherwise mint
+   * one id for two cards and `getElementById` would send both rows — and both fragment URLs — to
+   * whichever card came first. A collision takes a numeric suffix, exactly as the group slugs do.
+   */
+  private fun mintCardAnchors(cards: List<GridCard>): Map<String, String> {
+    val used = HashSet<String>()
+    val out = LinkedHashMap<String, String>()
+    cards.forEach { card ->
+      val base = cardAnchorId(card.default.id)
+      var candidate = base
+      var n = 2
+      while (!used.add(candidate)) {
+        candidate = "$base-$n"
+        n++
+      }
+      out[card.default.id] = candidate
+    }
+    return out
+  }
+
   /** One **primary-axis** variant of a component: a distinct state or props render. */
   private class TreeVariant(val label: String, val href: String)
 
@@ -1490,12 +1526,11 @@ object ServeWeb {
    * same set the viewer would, rather than a second opinion about what belongs together.
    */
   private fun primaryVariants(
-    card: GridCard,
+    default: ServePreview,
     all: List<ServePreview>,
     darkFirst: Boolean,
     href: (ServePreview) -> String,
   ): List<TreeVariant> {
-    val default = card.default
     val lane = themeLane(default, darkFirst)
     val defaultState = default.state ?: "default"
     val rows = mutableListOf<TreeVariant>()
@@ -2210,7 +2245,11 @@ object ServeWeb {
       if (!hasTree) ""
       else
         "\n      var treeGroups = document.querySelectorAll(\".cp-tree-group\");" +
-          "\n      var treeLinks = document.querySelectorAll(\".cp-tree-link\");"
+          "\n      var treeComponents = document.querySelectorAll(\".cp-tree-component\");" +
+          "\n      var treeLinks = document.querySelectorAll(\".cp-tree-link\");" +
+          // The tree's own roving-tab-stop pass, published so `apply()` can call it from outside
+          // the tree script's closure once the filter has changed which rows are on screen.
+          "\n      var cpTreeStops = null;"
     val tabDecls =
       if (hasTabs)
         "\n      var tabBtns = document.querySelectorAll(\".cp-tab\");" +
@@ -2284,18 +2323,30 @@ object ServeWeb {
     // construction (its cards are filtered out by tab), and hiding those rows would delete the
     // navigation instead of filtering it. Re-reflecting last picks up the expansion a search opens.
     val treePost =
-      if (hasTabs)
-        "\n        treeGroups.forEach(function (g) {" +
+      if (!hasTree) ""
+      else
+      // Component rows first: each follows the card it points at, so a search never leaves a row
+      // that scrolls to something hidden. Then the group rows follow their sub-group, which by
+      // now has collapsed if the filter emptied it.
+      "\n        treeComponents.forEach(function (c) {" +
+          "\n          var card = document.getElementById(c.getAttribute(\"data-group\"));" +
+          "\n          if (c.parentElement) c.parentElement.hidden = !!(card && card.hidden);" +
+          "\n        });" +
+          "\n        treeGroups.forEach(function (g) {" +
           "\n          var sub = document.getElementById(g.getAttribute(\"data-group\"));" +
           "\n          if (g.parentElement) g.parentElement.hidden = !!(sub && sub.hidden);" +
           "\n        });" +
-          "\n        tabBtns.forEach(function (t) {" +
-          "\n          var node = t.closest(\".cp-tree-node\");" +
-          "\n          var sec = document.getElementById(t.getAttribute(\"aria-controls\"));" +
-          "\n          if (node) node.hidden = q !== \"\" && !!(sec && sec.hidden);" +
-          "\n        });" +
-          "\n        reflectTabs();"
-      else ""
+          (if (hasTabs)
+            "\n        tabBtns.forEach(function (t) {" +
+              "\n          var node = t.closest(\".cp-tree-node\");" +
+              "\n          var sec = document.getElementById(t.getAttribute(\"aria-controls\"));" +
+              "\n          if (node) node.hidden = q !== \"\" && !!(sec && sec.hidden);" +
+              "\n        });" +
+              "\n        reflectTabs();"
+          else "") +
+          // Last word on the roving tab stop: the rows that just appeared or vanished change which
+          // one should hold it, and `reflectTabs` only ever knew about sections and groups.
+          "\n        if (cpTreeStops) cpTreeStops();"
     val tabWiring =
       if (hasTabs)
         "\n      tabBtns.forEach(function (t) {" +
@@ -2554,6 +2605,10 @@ object ServeWeb {
           openGroup = r.getAttribute("data-group");
         }
       });
+      function parentRow(row) {
+        var list = row.closest("ul.cp-tree-children");
+        return list ? list.previousElementSibling : null;
+      }
       function reflectTree() {
         treeLinks.forEach(function (r) {
           if (!r.hasAttribute("aria-expanded")) return;
@@ -2569,8 +2624,17 @@ object ServeWeb {
           openCard = null;
         } else if (row.classList.contains("cp-tree-component")) {
           openCard = id;
+          // And the group that HOLDS it. A click can only reach a component whose group is already
+          // open, but a `#cp-card-…` fragment can name one in any group — and leaving `openGroup`
+          // on whichever group the server expanded would scroll to the card while keeping its own
+          // row, and every variant under it, collapsed out of the tree.
+          var owner = parentRow(row);
+          if (owner && owner.classList.contains("cp-tree-group")) {
+            openGroup = owner.getAttribute("data-group");
+          }
         }
         reflectTree();
+        syncTabStops();
       }
       // The fragment is part of the address this page describes, and `cpUrlState` deliberately
       // preserves whatever hash is already there when it rewrites the query. So a click that moves
@@ -2612,10 +2676,20 @@ object ServeWeb {
         visibleRows().forEach(function (i) { i.tabIndex = i === el ? 0 : -1; });
         el.focus();
       }
-      function parentRow(row) {
-        var list = row.closest("ul.cp-tree-children");
-        return list ? list.previousElementSibling : null;
+      // A `role="tree"` is ONE tab stop: Tab enters it, the arrow keys move within it, Tab leaves.
+      // Nothing established that until a first arrow press called `focusRow`, so every visible row
+      // sat in the normal tab order until then — the whole point of the pattern, lost on the one
+      // pass that matters, and worse the deeper the tree got. Keeps an existing stop if it is still
+      // on screen (so a filter does not yank focus) and otherwise hands it to the first row.
+      function syncTabStops() {
+        var rows = visibleRows();
+        if (!rows.length) return;
+        var stop = null;
+        rows.forEach(function (r) { if (!stop && r.tabIndex === 0) stop = r; });
+        if (!stop) stop = rows[0];
+        rows.forEach(function (r) { r.tabIndex = r === stop ? 0 : -1; });
       }
+      cpTreeStops = syncTabStops;
       tree.addEventListener("keydown", function (e) {
         var items = visibleRows();
         var at = items.indexOf(document.activeElement);
@@ -2682,6 +2756,7 @@ object ServeWeb {
         }
         return row || tab ? { tab: tab, row: row, id: id } : null;
       }
+      syncTabStops();
       var landing = hashTarget();
       if (landing) {
         if (landing.row) openRow(landing.row);
@@ -4962,6 +5037,7 @@ object ServeWeb {
           it.renderFailure == null && (isNonDefaultState(it) || hasNonDefaultProps(it))
         }
       )
+    val cardAnchors = mintCardAnchors(groups)
     val renderFailureSummary =
       previews
         .mapNotNull { it.renderFailure }
@@ -5132,7 +5208,7 @@ object ServeWeb {
     // rather than from position, so a row keeps pointing at the same component as the catalog
     // grows.
     fun cardHtml(card: GridCard): String {
-      val anchor = " id=\"${cardAnchorId(card.default.id)}\""
+      val anchor = " id=\"${cardAnchors.getValue(card.default.id)}\""
       return if (card.swappable) swapCard(card, anchor) else singleCard(card.default, anchor)
     }
     val cards =
@@ -5168,14 +5244,17 @@ object ServeWeb {
       }
     }
     // The component row for a card: its grid label, the card's own anchor, and the primary-axis
-    // variants the grid folded out from under it.
-    fun treeComponent(card: GridCard): TreeComponent =
-      TreeComponent(
-        label = gridDisplayName(card.default),
-        anchorId = cardAnchorId(card.default.id),
-        variants = primaryVariants(card, previews, darkFirst) { viewerHref(it) },
-        href = viewerHref(card.default),
+    // variants the grid folded out from under it. Built from the render the grid actually paints,
+    // which on a dark-first system is the dark one.
+    fun treeComponent(card: GridCard): TreeComponent {
+      val shown = card.rendered(darkFirst)
+      return TreeComponent(
+        label = gridDisplayName(shown),
+        anchorId = cardAnchors.getValue(card.default.id),
+        variants = primaryVariants(shown, previews, darkFirst) { viewerHref(it) },
+        href = viewerHref(shown),
       )
+    }
     val tabBar =
       when {
         hasTabs -> catalogTreeHtml(sections, ::treeComponent)

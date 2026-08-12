@@ -2875,6 +2875,33 @@ class ServeWebFixtureTest {
         .containsMatchIn(landingTreeDepth),
       "theme stays a secondary axis and earns no tree row",
     )
+    // A filter that hides a card must hide the row pointing at it, at EVERY level and in both tree
+    // modes — otherwise a search leaves rows that scroll to nothing.
+    assertTrue(
+      landingTreeDepth.contains("treeComponents.forEach(function (c) {") &&
+        landingGrouped.contains("treeComponents.forEach(function (c) {") &&
+        landingGrouped.contains("treeGroups.forEach(function (g) {"),
+      "the search filter follows the tree down to its component rows, outline trees included",
+    )
+    // A `role="tree"` is one tab stop. Nothing established that until the first arrow press, so
+    // every visible row sat in the tab order until then.
+    assertTrue(
+      landingTreeDepth.contains("function syncTabStops()") &&
+        landingTreeDepth.contains("cpTreeStops = syncTabStops;") &&
+        landingTreeDepth.contains("if (cpTreeStops) cpTreeStops();"),
+      "the tree keeps a single roving tab stop, re-synced whenever the filter moves rows",
+    )
+    // A `#cp-card-…` fragment can name a component in any group, not just the one the server
+    // expanded — its own row has to open along with it.
+    assertTrue(
+      landingTreeDepth.contains("var owner = parentRow(row);"),
+      "landing on a component's fragment opens the group that holds it",
+    )
+    // Cards are jump targets now, so they need the clearance sections and sub-groups already have.
+    assertTrue(
+      assetText("serve.css").contains(".cp-card { scroll-margin-top:"),
+      "a card cleared the sticky toolbar when a component row jumps to it",
+    )
     assertFalse(
       landingGrouped.contains("data-tab=") ||
         landingGrouped.contains("localStorage.getItem(\"cp-tab:"),

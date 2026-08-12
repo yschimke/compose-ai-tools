@@ -533,6 +533,10 @@ html.cp-js .cp-tree-link[aria-expanded="false"] + .cp-tree-children { display: n
 }
 /* Level three and four. Each nests one step further in and loses a little weight, so depth reads
    at a glance rather than having to be counted: group → component → variant. */
+/* A component row jumps to a card, so a card needs the same clearance under the sticky toolbar
+   that sections and sub-groups already get — without it every component jump parks the preview's
+   top edge behind the toolbar. */
+.cp-card { scroll-margin-top: calc(var(--cp-sticky-tools, 64px) + 12px); }
 .cp-tree-components { margin: 2px 0 4px 12px;
   border-left: 1px solid var(--md-sys-color-outline-variant); }
 .cp-tree-component { display: flex; align-items: center; gap: 6px; min-height: 30px;

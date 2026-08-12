@@ -253,7 +253,9 @@
       if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
       var navGroups = document.querySelectorAll(".cp-subgroup");
       var treeGroups = document.querySelectorAll(".cp-tree-group");
+      var treeComponents = document.querySelectorAll(".cp-tree-component");
       var treeLinks = document.querySelectorAll(".cp-tree-link");
+      var cpTreeStops = null;
       var stored = null;
 try { stored = localStorage.getItem("cp-theme:default"); } catch (e) {}
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
@@ -361,6 +363,15 @@ applyThemeChoice();
         if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
         if (empty) empty.hidden = shown !== 0;
         navGroups.forEach(function (g) { g.hidden = !g.querySelector(".cp-card:not([hidden])"); });
+        treeComponents.forEach(function (c) {
+          var card = document.getElementById(c.getAttribute("data-group"));
+          if (c.parentElement) c.parentElement.hidden = !!(card && card.hidden);
+        });
+        treeGroups.forEach(function (g) {
+          var sub = document.getElementById(g.getAttribute("data-group"));
+          if (g.parentElement) g.parentElement.hidden = !!(sub && sub.hidden);
+        });
+        if (cpTreeStops) cpTreeStops();
       }
       if (input) input.addEventListener("input", function () {
         // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
@@ -435,6 +446,10 @@ applyThemeChoice();
             openGroup = r.getAttribute("data-group");
           }
         });
+        function parentRow(row) {
+          var list = row.closest("ul.cp-tree-children");
+          return list ? list.previousElementSibling : null;
+        }
         function reflectTree() {
           treeLinks.forEach(function (r) {
             if (!r.hasAttribute("aria-expanded")) return;
@@ -450,8 +465,17 @@ applyThemeChoice();
             openCard = null;
           } else if (row.classList.contains("cp-tree-component")) {
             openCard = id;
+            // And the group that HOLDS it. A click can only reach a component whose group is already
+            // open, but a `#cp-card-…` fragment can name one in any group — and leaving `openGroup`
+            // on whichever group the server expanded would scroll to the card while keeping its own
+            // row, and every variant under it, collapsed out of the tree.
+            var owner = parentRow(row);
+            if (owner && owner.classList.contains("cp-tree-group")) {
+              openGroup = owner.getAttribute("data-group");
+            }
           }
           reflectTree();
+          syncTabStops();
         }
         // The fragment is part of the address this page describes, and `cpUrlState` deliberately
         // preserves whatever hash is already there when it rewrites the query. So a click that moves
@@ -493,10 +517,20 @@ applyThemeChoice();
           visibleRows().forEach(function (i) { i.tabIndex = i === el ? 0 : -1; });
           el.focus();
         }
-        function parentRow(row) {
-          var list = row.closest("ul.cp-tree-children");
-          return list ? list.previousElementSibling : null;
+        // A `role="tree"` is ONE tab stop: Tab enters it, the arrow keys move within it, Tab leaves.
+        // Nothing established that until a first arrow press called `focusRow`, so every visible row
+        // sat in the normal tab order until then — the whole point of the pattern, lost on the one
+        // pass that matters, and worse the deeper the tree got. Keeps an existing stop if it is still
+        // on screen (so a filter does not yank focus) and otherwise hands it to the first row.
+        function syncTabStops() {
+          var rows = visibleRows();
+          if (!rows.length) return;
+          var stop = null;
+          rows.forEach(function (r) { if (!stop && r.tabIndex === 0) stop = r; });
+          if (!stop) stop = rows[0];
+          rows.forEach(function (r) { r.tabIndex = r === stop ? 0 : -1; });
         }
+        cpTreeStops = syncTabStops;
         tree.addEventListener("keydown", function (e) {
           var items = visibleRows();
           var at = items.indexOf(document.activeElement);
@@ -563,6 +597,7 @@ applyThemeChoice();
           }
           return row || tab ? { tab: tab, row: row, id: id } : null;
         }
+        syncTabStops();
         var landing = hashTarget();
         if (landing) {
           if (landing.row) openRow(landing.row);
