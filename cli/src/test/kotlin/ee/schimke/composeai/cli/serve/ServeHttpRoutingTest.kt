@@ -1392,7 +1392,54 @@ class ServeHttpRoutingTest {
       head("/compose-m3/render/$previewId.png?fontScale=1.5").first,
       "an override render must not be triggered by a bodyless probe",
     )
+    // The non-PNG products are made on demand whether or not a query is present, so the suffix
+    // alone has to refuse — an override-free `HEAD …/render/<id>.svg` would otherwise take the
+    // render semaphore just to have its body discarded.
+    for (suffix in listOf(".svg", ".slots", ".a11y", ".annotations", ".rc")) {
+      assertEquals(
+        405,
+        head("/compose-m3/render/$previewId$suffix").first,
+        "a bodyless probe must not produce $suffix",
+      )
+    }
     assertEquals(200, head("/compose-m3/render/$previewId.png").first, "the bake still answers")
+  }
+
+  /**
+   * The token gate has to run before the HEAD refusal. `rejectBadToken` answers 404 to conceal that
+   * a route exists at all, so refusing first with `405` + `Allow: GET` would tell an
+   * unauthenticated scanner the opposite — and `/history/render` is only registered when the
+   * repository-backed surface is enabled, making the difference a probe for optional configuration.
+   */
+  @Test
+  fun `an unauthenticated HEAD on a gated lane is concealed, not refused`() {
+    val gated =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "the-secret",
+          sessions = registry,
+          defaultSessionId = "default-mod",
+          isPublic = false,
+        )
+        .also { it.start() }
+    try {
+      fun headOn(path: String): Pair<Int, okhttp3.Headers> {
+        val req = Request.Builder().url("http://127.0.0.1:${gated.port}$path").head().build()
+        client.newCall(req).execute().use { r ->
+          return r.code to r.headers
+        }
+      }
+      for (path in listOf("/bundle.zip", "/bundle/$previewId", "/render/$previewId.svg")) {
+        val (code, headers) = headOn(path)
+        assertEquals(404, code, "HEAD $path must conceal the route, not advertise it")
+        assertEquals(null, headers["Allow"], "a concealed route names no methods: $path")
+      }
+      // With the token, the refusal is the one the work-lane guard exists to give.
+      assertEquals(405, headOn("/bundle.zip?token=the-secret").first)
+    } finally {
+      gated.stop()
+    }
   }
 
   /**

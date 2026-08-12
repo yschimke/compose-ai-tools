@@ -3273,10 +3273,10 @@ class ServeHttpServer(
    * `GET /bundle.zip` (query) and `GET /{system}/bundle.zip` (path): the session as a portable zip.
    */
   private suspend fun RoutingContext.handleBundleZip(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
     // Renders every preview in the catalog and packs a zip. Never probed for an unfurl, and the
     // most expensive thing a HEAD could otherwise trigger anonymously.
     if (rejectHeadProbe()) return
-    if (rejectBadToken()) return
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
       // Render the whole module once (cache-backed) into the portable WebEmbed gallery and stream
       // it
@@ -3299,9 +3299,9 @@ class ServeHttpServer(
 
   /** Return one server-hydrated, self-contained executable PNG+ZIP preview bundle. */
   private suspend fun RoutingContext.handleExecutableBundle(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
     // Materialises a per-preview bundle, which can reach the network.
     if (rejectHeadProbe()) return
-    if (rejectBadToken()) return
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
       val previewId = call.parameters["name"]
       val available =
@@ -3570,9 +3570,9 @@ class ServeHttpServer(
    * both URL forms so the viewer can link relative to whichever prefix it was served under.
    */
   private suspend fun RoutingContext.handleHistoryRender() {
+    if (rejectBadToken()) return
     // Reads an old render out of the local git object store, per request.
     if (rejectHeadProbe()) return
-    if (rejectBadToken()) return
     val history = projectHistory
     val name = call.parameters["name"].orEmpty().removeSuffix(".png")
     val bytes =
@@ -3597,13 +3597,15 @@ class ServeHttpServer(
    * carries `ir/` sidecars (each 404s where unavailable).
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
-    // A bare `/render/<id>.png` replays a baked file and IS what an unfurler probes for `og:image`,
-    // so it must keep answering HEAD. The same path carrying overrides is a daemon render, and
-    // amplifying a bodyless probe into one is the same trade as `/bundle.zip` at smaller scale.
-    // Keyed on the presence of an override param rather than on a parse: the check has to be cheap
-    // and this errs toward refusing, which costs a probe nothing (the caller GETs instead).
-    if (requestCarriesOverrides() && rejectHeadProbe()) return
     if (rejectBadToken()) return
+    // A bare `/render/<id>.png` replays a baked file and IS what an unfurler probes for `og:image`,
+    // so it must keep answering HEAD. Everything else on this route reaches a daemon or a bundle
+    // host, and amplifying a bodyless probe into one is the same trade as `/bundle.zip` at smaller
+    // scale: an override turns the replay into a live render, and the non-PNG products
+    // ([DAEMON_ONLY_RENDER_SUFFIXES]) are produced on demand whether or not a query is present.
+    // The override half is keyed on param names rather than a parse — the check has to be cheap,
+    // and erring toward refusing costs a probe nothing (the caller GETs instead).
+    if ((requestCarriesOverrides() || wantsDaemonOnlyRenderProduct()) && rejectHeadProbe()) return
     val sessionId = selectedSessionId(sessionInPath)
     withLeasedSession(sessionId) { renderHost ->
       val rawName = call.parameters["name"]
@@ -4207,6 +4209,25 @@ class ServeHttpServer(
    */
   private fun RoutingContext.requestCarriesOverrides(): Boolean =
     call.request.queryParameters.entries().any { (key, _) -> ServeOverrides.isOverrideParam(key) }
+
+  /**
+   * The `/render/{name}` suffixes that are **never** a baked replay: the figma-svg export, the slot
+   * / accessibility / annotation products (all daemon-produced), and the captured Remote Compose
+   * document (bundle-host, read per request). Only `<id>.png` — or no suffix — serves published
+   * bytes off disk.
+   */
+  private val DAEMON_ONLY_RENDER_SUFFIXES = listOf(".svg", ".slots", ".a11y", ".annotations", ".rc")
+
+  /**
+   * Whether `/render/{name}` names one of [DAEMON_ONLY_RENDER_SUFFIXES] — i.e. a product this route
+   * has to *make*, with or without a query string. Without this, an override-free `HEAD
+   * /{system}/render/{id}.svg` still ran the full handler, took the render semaphore and possibly
+   * started a daemon, purely to have the body discarded.
+   */
+  private fun RoutingContext.wantsDaemonOnlyRenderProduct(): Boolean {
+    val name = call.parameters["name"] ?: return false
+    return DAEMON_ONLY_RENDER_SUFFIXES.any { name.endsWith(it) }
+  }
 
   private suspend fun RoutingContext.rejectHeadProbe(): Boolean {
     if (call.request.local.method != HttpMethod.Head) return false
