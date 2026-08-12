@@ -239,7 +239,7 @@ fun main() {
 }
 ```
 
-Maven coordinates (pre-1.0):
+Maven coordinates (unstable API — see the caveat below):
 
 ```kotlin
 implementation("ee.schimke.composeai:render-session-api:<version>")
@@ -321,8 +321,9 @@ Pass `--help` to any of them for the full flag list.
 - **`previews.json` schema versioning.** The wire field is `"schema":
   "compose-previews/v1"`. The daemon tolerates unknown fields; clients
   that produce manifests should round-trip schema-stable fields.
-- **Maven Central artifacts are pre-1.0.** Pin to a specific version;
-  expect API changes across minor versions until 1.0.
+- **These Maven Central artifacts do not carry a stability guarantee
+  yet.** Pin to a specific version; expect API changes across releases
+  until the surface settles.
 
 ## Reference
 
