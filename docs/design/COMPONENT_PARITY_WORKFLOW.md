@@ -31,7 +31,7 @@ machinery.
 | Design references | [`ServeDesignReferences.kt`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeDesignReferences.kt) | `compose-preview-references/v1` — one reference per exact preview id, canonical PNG, **optional `sha256`**, provider/revision provenance |
 | Focused comparison | `ServeWeb.referenceComparisonPage`, route `GET /{system}/compare/{previewId}?reference=<id>` | Reference / Diff / Actual triptych, opacity overlay, annotation layers |
 | Annotations | [`ServeAnnotations.kt`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeAnnotations.kt), [`ServeDesignAnnotations.kt`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeDesignAnnotations.kt) | Numbered boxes with `bounds` in each panel's own pixel space, `role`, structured `detail`. Reference side authored by the producer; render side derivable from the `compose/semantics` tree |
-| Scoring | [`format-compare.js`](../../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js) | `scorePlanes` — a **bidirectional edge-tolerant nearest-neighbour search** over content-box-normalised gray planes — plus a magenta delta map, **entirely in the visitor's browser** |
+| Scoring | [`format-compare.js`](../../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/format-compare.js) | `scorePlanes` — a **bidirectional, edge-gated, distance-penalised** comparison over content-box-normalised gray planes (see the six clauses below) — plus a magenta delta map, **entirely in the visitor's browser** |
 | Parity dashboard | [`ServeParityDashboard.kt`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeParityDashboard.kt), route `/{system}/parity(.json)` | Coverage (live), drift correlation, merged activity feed, mapping gaps |
 | Published snapshot precedent | [`ServeParityActivity.kt`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeParityActivity.kt) + [`parity-activity.mjs`](../../scripts/design-artifacts/parity-activity.mjs) | The exact pattern the issue index should copy — see §3 |
 | Catalog refresh | [`ServeCatalogRefresher.kt`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeCatalogRefresher.kt) | Polls each `design-artifacts/<system>` branch head and re-fetches on **any** new commit |
@@ -50,16 +50,25 @@ actually asks for once "component page" is read as "the page you are on when you
 **2. Scoring is client-side, in a candidate-sized normalised space — and it is not SSIM.** Two
 details matter and both were easy to get wrong:
 
-- **The active scorer is `scorePlanes`**, and it is more particular than it looks. It first builds
-  an **edge mask** per plane (`edgeMask`: a pixel is an edge if its 4-neighbour luma gradient
-  reaches `EDGE_GRADIENT_THRESHOLD`). Each directed pass then takes the difference **at the same
-  coordinate**, and only widens to the `EDGE_SEARCH_RADIUS = 5` px displaced search when the source
-  pixel *is an edge* **and** that same-coordinate difference already exceeds `LUMA_TOLERANCE = 16`.
-  Both directions are averaged. `ssim` / `globalSsim` are still in the file but **have no callers**.
+- **The active scorer is `scorePlanes`**, and it is considerably more particular than it looks.
+  Every clause below is load-bearing to the number that comes out:
 
-  So it is neither SSIM nor a plain nearest-neighbour search over every pixel — a distinction that
-  matters to anything claiming to reproduce the verdict, and one this document got wrong for
-  several revisions. See the open problems in §4.
+  1. Build an **edge mask** per plane — a pixel is an edge when its 4-neighbour luma gradient
+     reaches `EDGE_GRADIENT_THRESHOLD = 12`.
+  2. Each directed pass starts from the difference **at the same coordinate**.
+  3. It widens to the `EDGE_SEARCH_RADIUS = 5` px displaced search **only** when the source pixel is
+     an edge *and* that same-coordinate difference already exceeds `LUMA_TOLERANCE = 16`.
+  4. Within that search, a candidate target is considered **only if it is itself an edge** — so
+     repeated flat luminance cannot absorb a displaced mark.
+  5. Each displaced match is **penalised by distance**: `√(ox² + oy²) × EDGE_POSITION_COST`, with
+     `EDGE_POSITION_COST = 10`. Displacement is tolerated, not free.
+  6. The per-pixel charge is `max(0, best − LUMA_TOLERANCE) / (255 − LUMA_TOLERANCE)`, averaged over
+     `width × height`, and the two directions are averaged.
+
+  `ssim` / `globalSsim` are still in the file but **have no callers**. So it is neither SSIM nor a
+  plain nearest-neighbour search — a distinction that matters to anything claiming to reproduce the
+  verdict, and one this document got wrong across several revisions before reading the whole
+  function. That history is itself the argument for §4's open problems.
 - **There are already two planes, both keyed off the candidate.** The score runs on a plane capped
   at `MAX_SIDE = 192` px on its longest side; the diff map and triptych run on the uncapped
   candidate content box. Both take their dimensions from `boxes.candidate`, which moves with device
@@ -644,7 +653,7 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 
 | Stage | Pinned artifact |
 | --- | --- |
-| decode | **all four** raster inputs decoded — reference, current candidate, `mask.png`, `accepted-candidate.png` — in the declared pixel/colour semantics. The candidate gate reads the accepted-candidate decode and mask coverage reads the mask decode, so an alpha or colour divergence in either would otherwise first surface as a wrong verdict rather than as a decoder bug |
+| decode | **every** raster input decoded — the two shared ones (reference, current candidate) plus `mask.png` and `accepted-candidate.png` **for each member of `acceptances[]`**, so a two-acceptance case pins six, not four. The candidate gate reads each accepted-candidate decode and coverage reads each mask decode, so an alpha or colour divergence in any of them would otherwise first surface as a wrong verdict rather than a decoder bug |
 | content boxes | each input's measured content box and the resolved `plane` discriminant, since content-box detection is itself part of the portable path and two engines can otherwise measure differently near a sampled edge or the `MIN_BOX_COVERAGE` threshold |
 | selector | the resolved element — which node the selector matched, its bounds in canonical coordinates, and the tag-uniqueness verdict. Ahead of the union stages, because which acceptances survive decides which masks the union contains (I5) |
 | separation | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite) — per-acceptance, and again for the surviving union |
