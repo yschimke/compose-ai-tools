@@ -147,6 +147,35 @@ inputs:
       Override the event-based mode selector: `auto` (default), `baseline`,
       `comment`, or `skip`.
     default: 'auto'
+  phase:
+    description: >
+      Split the action across two jobs so a **fork** PR can still get a
+      preview comment. On a `pull_request` from a fork, `GITHUB_TOKEN` is
+      read-only for every scope regardless of the workflow's `permissions:`
+      block, so neither the render push nor the comment upsert can succeed —
+      and `pull_request_target` is not the answer, because rendering means
+      building the PR's own code with a write-scoped token.
+
+        - `all` (default) — render, push and comment in one job. Correct for
+          same-repo PRs and for baseline runs on the development branch.
+        - `render` — run the pipelines and stage everything the publish half
+          needs into `handoff-dir`, then stop. Needs no write permission and
+          no secrets, so it is safe to run against untrusted PR code. The
+          caller uploads `handoff-dir` as an artifact.
+        - `publish` — skip rendering entirely; restore a `handoff-dir` the
+          caller has already downloaded, then push the renders and upsert the
+          comments. Runs from the base repository's own code (a `workflow_run`
+          job), so it holds the write token without ever executing PR code.
+
+      `publish` implies `mode: comment` and installs no CLI. See the
+      "Fork PRs" section of README.md for the two workflows.
+    default: 'all'
+  handoff-dir:
+    description: >
+      Directory the `render` phase stages into and the `publish` phase
+      restores from. Must match on both sides — the staged render envelope
+      carries paths relative to it.
+    default: '_compose_preview_handoff'
   ab-config:
     description: >
       Path (relative to the checkout) to the A/B comparison config JSON. When
@@ -201,10 +230,45 @@ runs:
         REF_NAME: ${{ github.ref_name }}
         DEV_BRANCH: ${{ inputs.development-branch }}
         MODE_OVERRIDE: ${{ inputs.mode }}
+        PHASE: ${{ inputs.phase }}
+        HANDOFF_DIR: ${{ inputs.handoff-dir }}
         ONLY: ${{ inputs.only }}
         SKIP: ${{ inputs.skip }}
       run: |
         set -euo pipefail
+        case "$PHASE" in
+          all|render|publish) ;;
+          *) echo "::error::phase must be one of all|render|publish (got '$PHASE')."; exit 1 ;;
+        esac
+
+        # A publish job that re-resolved the pipeline set from its own inputs
+        # would default all four on. A render invoked with `only: compose`
+        # would then reach the notification upsert with no notification data,
+        # and it would patch any existing sticky comment to "no changes" for a
+        # pipeline that never ran. So the render job's resolution travels with
+        # the handoff, and `only` / `skip` need not be repeated on the publish
+        # call. Parsed strictly: this file crosses a trust boundary, so each
+        # field must be exactly 0 or 1 and anything else fails the run rather
+        # than being coerced into an enabled pipeline.
+        if [ "$PHASE" = "publish" ] && [ -f "$HANDOFF_DIR/_pipelines" ]; then
+          staged=$(tr -d '[:space:]' < "$HANDOFF_DIR/_pipelines")
+          if [[ "$staged" =~ ^[01],[01],[01],[01]$ ]]; then
+            IFS=',' read -r compose resources a11y notifications <<< "$staged"
+            echo "compose-preview: publishing the render job's pipeline set ($staged)."
+          else
+            echo "::error::Malformed _pipelines in the handoff ('$staged'); expected four 0/1 fields."
+            exit 1
+          fi
+          publish_mode="$MODE_OVERRIDE"
+          [ "$publish_mode" = "auto" ] && publish_mode=comment
+          echo "mode=$publish_mode" >> "$GITHUB_OUTPUT"
+          echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
+          echo "compose=$compose" >> "$GITHUB_OUTPUT"
+          echo "resources=$resources" >> "$GITHUB_OUTPUT"
+          echo "a11y=$a11y" >> "$GITHUB_OUTPUT"
+          echo "notifications=$notifications" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
         # All four pipelines start ON, then `only` filters down, then `skip`
         # removes any pipelines explicitly turned off.
         compose=1; resources=1; a11y=1; notifications=1
@@ -235,6 +299,13 @@ runs:
         # Mode selection. `auto` maps event_name → mode; explicit values pass
         # through. `skip` aborts the whole action with a notice.
         mode="$MODE_OVERRIDE"
+        # The publish half runs on `workflow_run`, which `auto` maps to `skip`
+        # (it is neither a PR nor a push to the development branch). There is
+        # only ever one thing a publish job does, so resolve it directly rather
+        # than making every consumer pass `mode: comment` alongside `phase`.
+        if [ "$PHASE" = "publish" ] && [ "$mode" = "auto" ]; then
+          mode=comment
+        fi
         if [ "$mode" = "auto" ]; then
           case "$EVENT_NAME" in
             pull_request|pull_request_target)
@@ -257,14 +328,101 @@ runs:
         fi
 
         echo "mode=$mode" >> "$GITHUB_OUTPUT"
+        echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
         echo "compose=$compose" >> "$GITHUB_OUTPUT"
         echo "resources=$resources" >> "$GITHUB_OUTPUT"
         echo "a11y=$a11y" >> "$GITHUB_OUTPUT"
         echo "notifications=$notifications" >> "$GITHUB_OUTPUT"
-        echo "compose-preview: mode=$mode; pipelines: compose=$compose resources=$resources a11y=$a11y notifications=$notifications"
+        echo "compose-preview: phase=$PHASE mode=$mode; pipelines: compose=$compose resources=$resources a11y=$a11y notifications=$notifications"
         if [ "$mode" = "skip" ]; then
           echo "::notice::No pipeline applicable for event=$EVENT_NAME ref=$REF_NAME — skipping."
         fi
+
+    # Publish half of the fork-safe split. Runs before everything else so the
+    # steps that follow — scope resolution included — see a fully restored
+    # workspace and need no publish-specific special-casing of their own.
+    #
+    # The caller has already downloaded the render job's artifact into
+    # `handoff-dir`; this lifts its contents back to the workspace root, where
+    # the push / comment steps expect them. `current/` deliberately stays put:
+    # the staged envelope's `pngPath` values point at `<handoff-dir>/current/…`.
+    - name: Restore fork-safe handoff
+      if: steps.resolve.outputs.phase == 'publish'
+      shell: bash
+      env:
+        HANDOFF_DIR: ${{ inputs.handoff-dir }}
+        AB_CONFIG: ${{ inputs.ab-config }}
+      run: |
+        set -euo pipefail
+        if [ ! -d "$HANDOFF_DIR" ]; then
+          echo "::error::phase=publish but '$HANDOFF_DIR' does not exist. Download the" \
+               "render job's artifact into it before calling this action."
+          exit 1
+        fi
+        restored=0
+        for entry in "$HANDOFF_DIR"/* "$HANDOFF_DIR"/.[!.]*; do
+          [ -e "$entry" ] || continue
+          base=$(basename "$entry")
+          # The staged current renders are addressed in place; everything else
+          # is read from the workspace root.
+          case "$base" in current|current-resources) continue ;; esac
+          # Replace rather than merge: `cp -a dir existing-dir` would nest the
+          # staged tree one level deeper instead of overwriting it.
+          rm -rf "${GITHUB_WORKSPACE:?}/$base"
+          cp -a "$entry" "$GITHUB_WORKSPACE/$base"
+          restored=$((restored + 1))
+        done
+
+        # --- Everything below treats the handoff as hostile input. ---
+        #
+        # This job holds a write-scoped token; the artifact was produced by a
+        # job that ran the PR's own Gradle build. The pipelines write their
+        # push metadata as each surface finishes, but later pipelines — still
+        # executing fork code — run before the handoff is staged, so any file
+        # in here is reachable by an attacker, including one written earlier.
+        #
+        # Push *control* therefore never comes from the artifact. The staging
+        # dirs supply pixels and nothing else: the destination branch, the
+        # commit message and the skip flag are all rebuilt here from the same
+        # literals the single-job path uses. Without this, `_pr_renders/
+        # _push_branch` rewritten to `main` would aim a write token at the
+        # default branch.
+        reset_push_meta() {
+          stage="$1"; branch="$2"; label="$3"
+          [ -d "$stage" ] || return 0
+          # `git add -A` in push-branch.sh commits whatever is in the stage
+          # dir. A workflow file pushed onto a render branch would run on its
+          # own `push` trigger, so drop `.github/` outright — no render
+          # pipeline legitimately writes one. GITHUB_TOKEN is refused workflow
+          # writes unless the caller granted `workflows: write`; this makes the
+          # render branches safe even when they did.
+          if [ -d "$stage/.github" ]; then
+            echo "::warning::Dropped an unexpected .github/ tree from $stage before pushing."
+            rm -rf "$stage/.github"
+          fi
+          printf '%s' "$branch" > "$stage/_push_branch"
+          printf '%s' "$label"  > "$stage/_push_msg"
+          printf '0'            > "$stage/_skip_if_unchanged"
+        }
+        # Comment mode is the only mode the split supports, so these are the
+        # PR-render branches — never a baseline branch, never `main`.
+        reset_push_meta _pr_renders          'compose-preview/pr'               'compose-preview: PR renders'
+        reset_push_meta _pr_resource_renders 'compose-preview/resources/pr'     'compose-preview: PR resource renders'
+        reset_push_meta _a11y_renders        'compose-preview/a11y/pr'          'compose-preview: PR a11y renders'
+        reset_push_meta _notification_renders 'compose-preview/notifications/pr' 'compose-preview: PR notification renders'
+
+        # The A/B config is read from the checkout, which here is the base
+        # branch — so a PR that adds or edits one would otherwise be graded
+        # against the old grouping, unlike the single-job path. Restore the
+        # render job's copy at the configured path. It is parsed as data
+        # (ABTestConfig.load) and only ever groups rows in the comment.
+        if [ -n "${AB_CONFIG:-}" ] && [ -f "$HANDOFF_DIR/_ab_config" ]; then
+          mkdir -p "$(dirname "$AB_CONFIG")"
+          cp "$HANDOFF_DIR/_ab_config" "$AB_CONFIG"
+          echo "compose-preview: restored the PR's A/B config to $AB_CONFIG."
+        fi
+
+        echo "compose-preview: restored $restored handoff entr(ies) from $HANDOFF_DIR."
 
     # Change-scoped rendering (see compute-scope.py). Always runs so its
     # `mode` output is the single source of truth downstream: it passes the
@@ -293,10 +451,28 @@ runs:
         REPO: ${{ github.repository }}
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        PHASE: ${{ steps.resolve.outputs.phase }}
+        HANDOFF_DIR: ${{ inputs.handoff-dir }}
       run: |
         set -euo pipefail
         MODE="$RESOLVE_MODE"
         MODULES="full"
+        # A publish job has no PR diff to classify — it never checked the PR
+        # out. Reuse the scope the render job resolved instead of recomputing
+        # it: defaulting to `full` here would tell the comparator that every
+        # module was rendered, and each baseline the scoped render skipped
+        # would be reported as a Removed preview.
+        if [ "$PHASE" = "publish" ]; then
+          if [ -f "$HANDOFF_DIR/_scope_modules" ]; then
+            MODULES=$(cat "$HANDOFF_DIR/_scope_modules")
+            [ -z "$MODULES" ] && MODULES="full"
+            [ "$MODULES" != "full" ] && \
+              echo "::notice::compose-preview/apply: publishing a change-scoped render — modules: $MODULES"
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "modules=$MODULES" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
         if [ "$MODE" = "comment" ] \
            && [ "$EVENT_NAME" = "pull_request" ] \
            && [ "$SCOPE_OVERRIDE" != "full" ] \
@@ -375,7 +551,7 @@ runs:
     # reuses the skew guard's tested detection (single source of truth).
     - name: Resolve CLI version
       id: clivers
-      if: steps.scope.outputs.mode != 'skip'
+      if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip')
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -404,7 +580,7 @@ runs:
     # composite resolves against the consumer's $GITHUB_WORKSPACE, breaking
     # external use). Tag bumped per release by release-please.
     - name: Install CLI from source
-      if: steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version == 'source'
+      if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version == 'source')
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
       uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.11.5 # x-release-please-version
 
@@ -414,7 +590,7 @@ runs:
     # cleanly with "command not found" when selected without a CLI.
     - name: Install CLI from release
       id: install-release
-      if: steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none'
+      if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none')
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
       uses: yschimke/compose-ai-tools/.github/actions/install@v0.11.5 # x-release-please-version
       with:
@@ -433,7 +609,7 @@ runs:
     # no Gradle cost — runs before doctor so the headline is the skew, not the
     # confusing symptom.
     - name: Check CLI / plugin version skew
-      if: steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none'
+      if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'source' && steps.clivers.outputs.version != 'none')
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -454,7 +630,7 @@ runs:
     # actionable error. A non-zero doctor surfaces as a `::warning::`
     # annotation so it's still visible in the run summary.
     - name: Run compose-preview doctor
-      if: steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'none'
+      if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip' && steps.clivers.outputs.version != 'none')
       shell: bash
       run: |
         echo "::group::compose-preview doctor"
@@ -478,7 +654,7 @@ runs:
           || echo "pixelmatch install failed; falling back to strict-bytes diff" >&2
 
     - name: Install fallback CJK / Arabic / emoji fonts
-      if: steps.scope.outputs.mode != 'skip'
+      if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip')
       shell: bash
       run: |
         # github.action_path points at .github/actions/apply in both a local checkout and a remote
@@ -492,7 +668,7 @@ runs:
     # will actually read rather than an empty `~/.cache` sibling.
     - name: Resolve downloadable-font cache dir
       id: fonts-dir
-      if: inputs.fonts-cache == 'true' && steps.scope.outputs.mode != 'skip'
+      if: steps.resolve.outputs.phase != 'publish' && (inputs.fonts-cache == 'true' && steps.scope.outputs.mode != 'skip')
       shell: bash
       run: |
         set -euo pipefail
@@ -510,7 +686,7 @@ runs:
     # paying the downloads still persists them, so the rerun starts warm.
     - name: Restore downloadable-font cache
       id: fonts-cache-restore
-      if: inputs.fonts-cache == 'true' && steps.scope.outputs.mode != 'skip'
+      if: steps.resolve.outputs.phase != 'publish' && (inputs.fonts-cache == 'true' && steps.scope.outputs.mode != 'skip')
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.fonts-dir.outputs.dir }}
@@ -531,7 +707,7 @@ runs:
 
     - name: Run pipelines
       id: pipelines
-      if: steps.scope.outputs.mode != 'skip'
+      if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip')
       shell: bash
       # Pipelines run back-to-back rather than in parallel: all four
       # invoke Gradle (directly or via the CLI) and all four `git fetch`
@@ -675,7 +851,7 @@ runs:
     # separate workflow jobs on the same commit) will race to save: the loser
     # logs a "key already exists" warning, which is the expected steady state.
     - name: Save downloadable-font cache
-      if: always() && inputs.fonts-cache == 'true' && steps.fonts-dir.outputs.dir != ''
+      if: steps.resolve.outputs.phase != 'publish' && (always() && inputs.fonts-cache == 'true' && steps.fonts-dir.outputs.dir != '')
       continue-on-error: true
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -688,7 +864,7 @@ runs:
     # the output value (not merely whether the rc file exists) avoids noisy,
     # empty artifact steps on every successful run.
     - name: Upload composePreviewRender reports
-      if: always() && steps.pipelines.outputs.compose_render_rc != '' && steps.pipelines.outputs.compose_render_rc != '0'
+      if: steps.resolve.outputs.phase != 'publish' && (always() && steps.pipelines.outputs.compose_render_rc != '' && steps.pipelines.outputs.compose_render_rc != '0')
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: composePreviewRender-reports
@@ -716,7 +892,7 @@ runs:
         retention-days: 14
 
     - name: Upload composePreviewRenderAndroidResources reports
-      if: always() && steps.pipelines.outputs.resources_render_rc != '' && steps.pipelines.outputs.resources_render_rc != '0'
+      if: steps.resolve.outputs.phase != 'publish' && (always() && steps.pipelines.outputs.resources_render_rc != '' && steps.pipelines.outputs.resources_render_rc != '0')
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: composePreviewRenderAndroidResources-reports
@@ -728,7 +904,7 @@ runs:
         retention-days: 14
 
     - name: Upload CLI JSON output on failure
-      if: always() && ((steps.pipelines.outputs.worst != '' && steps.pipelines.outputs.worst != '0') || (steps.pipelines.outputs.compose_render_rc != '' && steps.pipelines.outputs.compose_render_rc != '0') || (steps.pipelines.outputs.resources_render_rc != '' && steps.pipelines.outputs.resources_render_rc != '0'))
+      if: steps.resolve.outputs.phase != 'publish' && (always() && ((steps.pipelines.outputs.worst != '' && steps.pipelines.outputs.worst != '0') || (steps.pipelines.outputs.compose_render_rc != '' && steps.pipelines.outputs.compose_render_rc != '0') || (steps.pipelines.outputs.resources_render_rc != '' && steps.pipelines.outputs.resources_render_rc != '0')))
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: preview-cli-output
@@ -739,7 +915,7 @@ runs:
         retention-days: 14
 
     - name: Upload notification renders artifact
-      if: always() && steps.resolve.outputs.notifications == '1' && hashFiles('_notification_renders/findings.json') != ''
+      if: steps.resolve.outputs.phase != 'publish' && (always() && steps.resolve.outputs.notifications == '1' && hashFiles('_notification_renders/findings.json') != '')
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: notification-previews
@@ -747,12 +923,110 @@ runs:
         if-no-files-found: warn
         retention-days: 14
 
+    # Render half of the fork-safe split: collect everything the publish job
+    # reads off disk into one directory for the caller to upload.
+    #
+    # Most of it is already self-contained — `_pr_renders` and `_baselines`
+    # hold copied PNGs, and the `_*_renders` staging dirs carry their own push
+    # metadata. `_previews.json` is the exception: its `pngPath` values are
+    # absolute paths into this runner's Gradle build dirs, which do not exist
+    # on the publish runner. `stage-handoff` copies the renders that are still
+    # read there (the sha-differing ones, which is all `_is_changed` opens) and
+    # rebases every path onto `<handoff-dir>/current/`.
+    - name: Stage fork-safe handoff
+      if: steps.resolve.outputs.phase == 'render' && steps.scope.outputs.mode != 'skip'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        HANDOFF_DIR: ${{ inputs.handoff-dir }}
+        SCOPE_MODULES: ${{ steps.scope.outputs.modules }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        AB_CONFIG: ${{ inputs.ab-config }}
+        WANT_COMPOSE: ${{ steps.resolve.outputs.compose }}
+        WANT_RESOURCES: ${{ steps.resolve.outputs.resources }}
+        WANT_A11Y: ${{ steps.resolve.outputs.a11y }}
+        WANT_NOTIFICATIONS: ${{ steps.resolve.outputs.notifications }}
+      run: |
+        set -euo pipefail
+        rm -rf "$HANDOFF_DIR"
+        mkdir -p "$HANDOFF_DIR"
+
+        # Everything the push / comment steps read, per surface. Absent
+        # entries are skipped: a run with `only: compose` stages compose alone,
+        # and a no-change run stages no `_pr_renders` at all — the publish job
+        # then finds nothing staged and skips its push, same as a single-job
+        # run would.
+        # Both sides of every comparison have to travel, not just the renders.
+        # The comparators fail closed on a missing baseline — an absent
+        # `_resource_baselines/renders` turns renderer/AA noise into a false
+        # resource diff, and notification-previews.py reads a missing
+        # `_notification_baseline_findings.json` as empty, which reports every
+        # surviving preview as Added and loses removals entirely.
+        for f in _baselines _base_sha _pr_renders \
+                 _resources.json _resource_baselines _resource_base_sha _pr_resource_renders \
+                 _a11y_renders _a11y_comment.md \
+                 _notification_renders _notification_comment.md \
+                 _notification_baseline_findings.json; do
+          [ -e "$f" ] || continue
+          cp -a "$f" "$HANDOFF_DIR/$f"
+        done
+
+        # `only` / `skip` resolution, so the publish call needs neither.
+        printf '%s,%s,%s,%s' "$WANT_COMPOSE" "$WANT_RESOURCES" "$WANT_A11Y" "$WANT_NOTIFICATIONS" \
+          > "$HANDOFF_DIR/_pipelines"
+
+        # The publish job checks out the base branch, so a PR that adds or
+        # edits the A/B config would otherwise be graded against the old one.
+        if [ -n "${AB_CONFIG:-}" ] && [ -f "$AB_CONFIG" ]; then
+          cp "$AB_CONFIG" "$HANDOFF_DIR/_ab_config"
+        fi
+
+        # The publish job can't classify the PR diff itself (it never checks
+        # the PR out), so the resolved scope travels with the renders.
+        printf '%s' "${SCOPE_MODULES:-full}" > "$HANDOFF_DIR/_scope_modules"
+
+        # `github.event.workflow_run.pull_requests` is empty for fork PRs, so
+        # the number has to be carried too. The caller reads this back and
+        # passes it as `pr-number`.
+        printf '%s' "${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}" > "$HANDOFF_DIR/_pr_number"
+
+        if [ -s _previews.json ]; then
+          BASELINES_ARG=()
+          [ -f _baselines/baselines.json ] && BASELINES_ARG=(--baselines _baselines/baselines.json)
+          python3 "$ACTION_PATH/../lib/compare-previews.py" stage-handoff _previews.json \
+            "${BASELINES_ARG[@]}" \
+            --output-dir "$HANDOFF_DIR/current" \
+            --path-prefix "$HANDOFF_DIR/current" \
+            --rewrite-json "$HANDOFF_DIR/_previews.json"
+        fi
+
+        # Resource captures carry absolute pngPaths too, and
+        # `compare-resources` runs them through the same `_is_changed`
+        # perceptual filter, so they need the same rebasing.
+        if [ -s _resources.json ]; then
+          # The resource baselines JSON is fetched into `_baselines/` while its
+          # renders land in `_resource_baselines/renders` — mirror the paths
+          # the comment step itself uses rather than guessing a matched pair.
+          RES_BASELINES_ARG=()
+          [ -f _baselines/resource-baselines.json ] && \
+            RES_BASELINES_ARG=(--baselines _baselines/resource-baselines.json)
+          python3 "$ACTION_PATH/../lib/compare-previews.py" stage-handoff-resources _resources.json \
+            "${RES_BASELINES_ARG[@]}" \
+            --output-dir "$HANDOFF_DIR/current-resources" \
+            --path-prefix "$HANDOFF_DIR/current-resources" \
+            --rewrite-json "$HANDOFF_DIR/_resources.json"
+        fi
+
+        echo "compose-preview: staged fork-safe handoff in $HANDOFF_DIR ($(du -sh "$HANDOFF_DIR" | cut -f1))."
+        echo "::notice::compose-preview/apply: render phase complete — upload '$HANDOFF_DIR' and run the publish phase to push renders and post the comment."
+
     # Pushes + comments run as top-level steps so artifact uploads /
     # comment upserts get named log lines in the workflow run, and so
     # GHA's `if:` can gate them per pipeline.
 
     - name: Push compose baseline / PR renders
-      if: steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.compose == '1'
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.compose == '1')
       shell: bash
       env:
         REPO: ${{ github.repository }}
@@ -787,7 +1061,7 @@ runs:
     - name: Publish compose baseline render history
       # Baseline mode only: history.json describes a delivery branch, and PR render branches are
       # short-lived so a timeline over them would be noise.
-      if: steps.scope.outputs.mode == 'baseline' && steps.resolve.outputs.compose == '1'
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'baseline' && steps.resolve.outputs.compose == '1')
       shell: bash
       env:
         REPO: ${{ github.repository }}
@@ -897,7 +1171,7 @@ runs:
         done
 
     - name: Push resource baseline / PR renders
-      if: steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.resources == '1'
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.resources == '1')
       shell: bash
       env:
         REPO: ${{ github.repository }}
@@ -927,7 +1201,7 @@ runs:
         bash "$ACTION_PATH/lib/push-branch.sh"
 
     - name: Generate compose PR comment body
-      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1'
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1')
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -989,7 +1263,7 @@ runs:
     # `resources == '1'` so `only: resources` runs still produce the
     # resource sticky comment when compose is skipped.
     - name: Generate resource PR comment body
-      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.resources == '1'
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.resources == '1')
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -1030,7 +1304,7 @@ runs:
           > _comment_body_resources.md
 
     - name: Post or update compose PR comment
-      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1' && hashFiles('_comment_body.md') != ''
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1' && hashFiles('_comment_body.md') != '')
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -1062,7 +1336,7 @@ runs:
         bash "$ACTION_PATH/lib/post-comment.sh"
 
     - name: Post or update resource PR comment
-      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.resources == '1' && hashFiles('_comment_body_resources.md') != ''
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.resources == '1' && hashFiles('_comment_body_resources.md') != '')
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -1105,7 +1379,7 @@ runs:
 
     - name: Push a11y baseline / PR renders
       id: push-a11y
-      if: steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.a11y == '1'
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.a11y == '1')
       shell: bash
       env:
         REPO: ${{ github.repository }}
@@ -1129,7 +1403,7 @@ runs:
         echo "head_sha=$(cat "$SHA_OUTPUT_FILE" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
 
     - name: Re-render a11y comment body with pushed SHA
-      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.a11y == '1' && hashFiles('_a11y_comment.md') != ''
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.a11y == '1' && hashFiles('_a11y_comment.md') != '')
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -1148,7 +1422,7 @@ runs:
           > _a11y_comment.md
 
     - name: Upsert a11y PR comment
-      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.a11y == '1' && hashFiles('_a11y_comment.md') != ''
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.a11y == '1' && hashFiles('_a11y_comment.md') != '')
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -1165,7 +1439,7 @@ runs:
 
     - name: Push notifications baseline / PR renders
       id: push-notifications
-      if: steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.notifications == '1'
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode != 'skip' && steps.resolve.outputs.notifications == '1')
       shell: bash
       env:
         REPO: ${{ github.repository }}
@@ -1189,7 +1463,7 @@ runs:
         echo "head_sha=$(cat "$SHA_OUTPUT_FILE" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
 
     - name: Re-render notification comment body with pushed SHA
-      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.notifications == '1' && hashFiles('_notification_comment.md') != ''
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.notifications == '1' && hashFiles('_notification_comment.md') != '')
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -1209,7 +1483,7 @@ runs:
           > _notification_comment.md
 
     - name: Upsert notification PR comment
-      if: steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.notifications == '1'
+      if: steps.resolve.outputs.phase != 'render' && (steps.scope.outputs.mode == 'comment' && steps.resolve.outputs.notifications == '1')
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -1246,7 +1520,7 @@ runs:
     # still get their artifacts uploaded + the PR diff posted before this
     # flips the workflow red.
     - name: Surface pipeline failures
-      if: steps.scope.outputs.mode != 'skip'
+      if: steps.resolve.outputs.phase != 'publish' && (steps.scope.outputs.mode != 'skip')
       shell: bash
       env:
         WORST_RC: ${{ steps.pipelines.outputs.worst }}
