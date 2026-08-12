@@ -1249,13 +1249,20 @@ data class FigmaSvgModel(
       // `clearAndSetSemantics`, so it has no semantics text to match and its glyph arrives from the
       // layout capture alone — rastering it emits the separator twice, once as pixels and once as
       // the live `<text>`.
+      //
+      // The fill/border question is whether a token *paints*, not whether one is present. A fully
+      // transparent border is dropped when the stroke is built below (a `Switch` on-track carries
+      // `borderColor` at alpha 0) and an unparseable colour never becomes one, so counting either
+      // as content would leave the node with no stroke and no raster — an empty layer where the
+      // delegated pixels used to be.
+      val paintsFill =
+        tokens?.backgroundGradient != null ||
+          tokens?.backgroundColor?.let { argbToColor(it, ctx.colorNames) }.paints()
+      val paintsBorder =
+        tokens?.borderGradient != null ||
+          tokens?.borderColor?.let { argbToColor(it, ctx.colorNames) }.paints()
       val nothingElseToDraw =
-        vectorGraphic == null &&
-          tokens?.backgroundColor == null &&
-          tokens?.backgroundGradient == null &&
-          tokens?.borderColor == null &&
-          tokens?.borderGradient == null &&
-          modifierText(ctx) == null
+        vectorGraphic == null && !paintsFill && !paintsBorder && modifierText(ctx) == null
       val background =
         if (
           ctx.captureCanvasDraws &&
@@ -2138,6 +2145,9 @@ data class FigmaSvgModel(
      */
     private fun LayoutInspectorNode.hasDelegatedDrawOnly(otherwiseEmpty: Boolean): Boolean =
       drawsContent && otherwiseEmpty
+
+    /** A colour token counts as content only if it actually puts pixels on the canvas. */
+    private fun FigmaSvgColor?.paints(): Boolean = this != null && opacity > 0.0
 
     private fun LayoutInspectorModifier.isCustomDraw(): Boolean =
       name in DRAW_MODIFIERS && !placeholder
