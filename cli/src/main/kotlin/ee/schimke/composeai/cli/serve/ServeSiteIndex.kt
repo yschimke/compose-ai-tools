@@ -121,9 +121,16 @@ internal object ServeSiteIndex {
       "/*/index.json",
       "/iframe.html",
       "/*/iframe.html",
-      // Non-PNG render formats — the figma-svg export and the Remote Compose document. Both are
-      // for tools, and the SVG in particular is far larger than the PNG beside it.
+      // Non-PNG render products. Every one of these is *made* on request — the figma-svg export,
+      // the slot / accessibility / annotation inspection layers, the captured Remote Compose
+      // document — so unlike `<id>.png` there is no bake to serve and each goes through a
+      // daemon-backed producer and the shared render semaphore. The viewer assets name them, so a
+      // crawler that walks the page finds them; without these rules it would execute exactly the
+      // work the rest of this policy exists to suppress.
       "/*.svg$",
+      "/*.slots$",
+      "/*.a11y$",
+      "/*.annotations$",
       "/*.rc$",
     )
 
