@@ -617,7 +617,14 @@ there is nothing to overflow, and the two engines cannot disagree about arithmet
 
 A file whose header is unreadable, or whose declared
 dimensions disagree with what the full decode later produces, is `header-invalid` — the second half
-matters because a lying header is otherwise a way to walk straight past the cap. `document-too-large`
+matters because a lying header is otherwise a way to walk straight past the cap.
+
+**`header-invalid` refuses that acceptance, not the document.** The preflight is an aggregate, which
+makes it tempting to treat a header it cannot read as fatal to the whole file, but the useful
+behaviour is the local one: exclude that acceptance and its rasters from the running total — they
+will never be decoded — refuse it, and carry on summing the rest. One unreadable PNG then costs its
+own acceptance rather than every other acceptance in the catalog. The dimensions-disagree half is
+necessarily per-acceptance anyway, since it is only detectable after the budget has already passed. `document-too-large`
 is then checked alongside the duplicate-id scan, both whole-document verdicts reached before any
 pixel buffer is allocated.
 
@@ -692,6 +699,12 @@ only report what it can name:
   **document** is rejected, exactly as for a duplicate id.
 
 Both are conformance fixtures, since "one bad record" and "an unreadable file" are different repairs.
+
+**And the file itself may be unreadable**, which is neither of those: truncated JSON, a wrong schema
+token, or `acceptances` that is not an array. There is no record to name and no index to fall back
+on, so this is `document-unreadable` in the identifier-less `{ "reason": … }` shape, with `statuses`
+absent — the same shape as `document-too-large`, for the same reason. Without a token an engine is
+free to simply throw, which is not a result any fixture can compare against.
 
 **Duplicate acceptance ids fail the whole document, not one record.** `statuses` is keyed by id, so
 two records sharing one have a single slot between them — and making the duplicate a *per-acceptance*
@@ -864,7 +877,8 @@ field would leave two engines free to pick different ones. Same fixed ordering r
 `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`, `reference-hash-missing`, `decode-failed`,
 `degenerate-dimensions`, `mask-encoding-invalid`, `mask-empty`, `dimension-mismatch`,
 `tolerance-out-of-range`, `path-not-contained`, `id-not-safe`, `schema-invalid`, `id-missing`,
-`orphaned-target`, `document-too-large`, `header-invalid`, `acceptance-is-noop`.
+`orphaned-target`, `document-too-large`, `header-invalid`, `acceptance-is-noop`,
+`document-unreadable`.
 
 **A per-acceptance refusal populates `validationFailures` as well**, one entry per reason. The two
 fields are not alternatives: `statuses` answers "what happened to this acceptance", and
@@ -879,7 +893,7 @@ the failure can be attributed:
 | --- | --- | --- |
 | `{ "id": …, "reason": … }` | the failing record can be named | `mask-hash-mismatch` |
 | `{ "index": …, "reason": … }` | the record has no usable `id`, so it is identified by its position in `acceptances[]` — always available, always deterministic | `id-missing` |
-| `{ "reason": … }` | the failure is a property of the **document**, attributable to no single record | `document-too-large` |
+| `{ "reason": … }` | the failure is a property of the **document**, attributable to no single record | `document-too-large`, `document-unreadable` |
 
 The third shape is not a convenience: a budget overrun is caused by the set, not by any member of
 it, and forcing an identifier onto it would mean inventing one — picking an arbitrary record to
@@ -887,7 +901,7 @@ blame, which is both false and unstable across engines. Each of the three exists
 failure that fits nothing else.
 
 That list is the *only* populated field when the document itself is rejected — `duplicate-id`,
-`id-missing`, `document-too-large` — in which case `statuses` is absent entirely
+`id-missing`, `document-too-large`, `document-unreadable` — in which case `statuses` is absent entirely
 rather than empty, since "no acceptance was evaluated" and "every acceptance was valid" must not
 serialise the same way.
 
