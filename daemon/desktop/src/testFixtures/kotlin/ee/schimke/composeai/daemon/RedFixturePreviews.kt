@@ -27,6 +27,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,10 +54,13 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalLocaleList
+import androidx.compose.ui.platform.LocalProvidableLocaleList
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -502,6 +506,40 @@ fun HighDensityClickTargetSquare() {
           }
         }
     )
+  }
+}
+
+/**
+ * What [LocaleLocalProbeSquare] observed about its own locale — the two readings that decide
+ * whether the `localeTag` override could ever stop being a process-global switch.
+ */
+object LocaleLocalProbe {
+  /** `androidx.compose.ui.text.intl.Locale.current` — what the text pipeline resolves against. */
+  @Volatile var staticCurrent: String? = null
+
+  /** `LocalLocaleList.current` — what the composition was *told* its locale is. */
+  @Volatile var compositionLocal: String? = null
+
+  fun reset() {
+    staticCurrent = null
+    compositionLocal = null
+  }
+}
+
+/**
+ * Provides `LocalProvidableLocaleList` as `ar` and reports both what the composition local now says
+ * and what the static `Locale.current` says.
+ *
+ * Deliberately does **not** touch the JVM default: the whole question is whether the composition
+ * local alone can steer a locale. See [LocaleCompositionLocalCanaryTest].
+ */
+@Composable
+fun LocaleLocalProbeSquare() {
+  CompositionLocalProvider(LocalProvidableLocaleList provides LocaleList("ar")) {
+    LocaleLocalProbe.staticCurrent = androidx.compose.ui.text.intl.Locale.current.toLanguageTag()
+    LocaleLocalProbe.compositionLocal =
+      LocalLocaleList.current.localeList.firstOrNull()?.toLanguageTag()
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350)))
   }
 }
 
