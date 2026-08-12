@@ -356,6 +356,13 @@ install_major() {
   local major="$1"
   local install_dir tag
   install_dir="$(install_dir_for "$major")"
+  # Trailing slashes stripped before anything derives a path from this. With
+  # `JDK17_DIR=/opt/jdk17/`, "${install_dir}.incoming.$$" lands *inside* the
+  # install dir — and the replace step then deletes the staged JDK along with
+  # the old one, leaving the machine with neither.
+  while [[ "$install_dir" == */ && "$install_dir" != "/" ]]; do
+    install_dir="${install_dir%/}"
+  done
   tag="$(pinned_tag_for "$major")"
 
   # Reuse an existing install; just make sure its trust store + symlink are set.
@@ -455,8 +462,17 @@ install_major() {
       return 1
     fi
   fi
+  # The removal has to have *worked*. `rm -rf` on a mount point empties it and
+  # then fails to unlink the root, and `mv SRC DIR` on a surviving directory
+  # means "move SRC *into* DIR" — which succeeds, nests the JDK one level down,
+  # and would have this function report a healthy install with no bin/java in it.
+  if [[ -e "$install_dir" ]]; then
+    echo "[setup-cloud-jdk] WARNING: could not clear $install_dir (a mount point?); leaving it alone" >&2
+    rm -rf "$staging"
+    return 1
+  fi
   mkdir -p "$(dirname "$install_dir")"
-  if ! mv "$staging" "$install_dir"; then
+  if ! mv "$staging" "$install_dir" || [[ ! -x "$install_dir/bin/java" ]]; then
     echo "[setup-cloud-jdk] WARNING: could not move the new JDK $major into $install_dir" >&2
     rm -rf "$staging"
     return 1

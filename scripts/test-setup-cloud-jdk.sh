@@ -251,6 +251,20 @@ test -e "${fixture}/jvm-rel/temurin-17" ||
   { echo "FAIL: the toolchain symlink dangles for a relative search dir" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
+# 5f. A trailing slash on the install dir must not put the staging directory
+#     inside the installation it is about to replace.
+# ---------------------------------------------------------------------------
+: >"${fixture}/calls"
+make_jdk "${fixture}/opt/jdk17-slash" "17.0.19"
+printf 'IMPLEMENTOR_VERSION="Temurin-17.0.19+7"\n' >>"${fixture}/opt/jdk17-slash/release"
+run_script CLOUD_JDK_MAJORS=17 JDK17_DIR="${fixture}/opt/jdk17-slash/" \
+  JDK17_VERSION="jdk-17.0.20+8" >/dev/null 2>&1 || true
+test -x "${fixture}/opt/jdk17-slash/bin/java" ||
+  { echo "FAIL: a trailing-slash install dir lost its JDK on a failed replace" >&2; exit 1; }
+test -z "$(find "${fixture}/opt/jdk17-slash" -maxdepth 1 -name '.incoming.*' 2>/dev/null)" ||
+  { echo "FAIL: staging was created inside the install dir" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
 # 6. Our own install dir still wins over discovery, and a JDK whose trust store
 #    cannot be written does not abort the run — a store-provided JDK is
 #    read-only, and that is a warning, not a failed provision.
