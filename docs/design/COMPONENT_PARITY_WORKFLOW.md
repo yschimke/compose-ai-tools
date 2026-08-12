@@ -63,7 +63,11 @@ details matter and both were easy to get wrong:
   5. Each displaced match is **penalised by distance**: `√(ox² + oy²) × EDGE_POSITION_COST`, with
      `EDGE_POSITION_COST = 10`. Displacement is tolerated, not free.
   6. The per-pixel charge is `max(0, best − LUMA_TOLERANCE) / (255 − LUMA_TOLERANCE)`, averaged over
-     `width × height`, and the two directions are averaged.
+     `width × height`, and the two directions are averaged into `mismatch`.
+  7. The returned score is `max(0, min(100, (1 − mismatch) × 100))` — a **percentage**, clamped.
+     Worth stating because the six steps above all describe *mismatch*: a port that stops at step 6
+     and returns the average reports `0` for two identical images and `100` for two that share no
+     pixel, which is the published number inverted on every comparison.
 
   `ssim` / `globalSsim` are still in the file but **have no callers**. So it is neither SSIM nor a
   plain nearest-neighbour search — a distinction that matters to anything claiming to reproduce the
@@ -319,10 +323,19 @@ per-pixel threshold the candidate gate compares against; and free-text `note` + 
 author can use to defeat the entire model: set it to the maximum channel distance and every future
 candidate matches `accepted-candidate.png`, so the mask suppresses a missing glyph or any other
 regression forever — precisely the ignore rectangle the non-goals rule out, reached through a
-number rather than a shape. So the schema constrains it to a small finite range (single digits of
-8-bit channel distance; Phase 3 picks the exact ceiling with the fixtures), and anything above that
-is `tolerance-out-of-range`, refused at validation. A tolerance that needs to be large is evidence
-the acceptance is wrong, not evidence the bound is.
+number rather than a shape. So the schema constrains it to a small finite range, and anything
+outside that is `tolerance-out-of-range`, refused at validation. A tolerance that needs to be large
+is evidence the acceptance is wrong, not evidence the bound is.
+
+**`v1` fixes the range at `0 ≤ candidateTolerance ≤ 8`**, in 8-bit channel distance, integer. Named
+here rather than deferred to Phase 3 for the reason the budget caps are named: a ceiling each engine
+picks for itself is not a ceiling, and a record legal to one consumer and refused by another is the
+one outcome this contract exists to prevent. `8` is the defensible upper end — the only real source
+of slack is the single resample into the canonical plane (PNG round-tripping is lossless), and `8`
+sits comfortably below the `LUMA_TOLERANCE = 16` at which the existing scorer already stops charging
+for a pixel at all. A tolerance above that would let an acceptance suppress differences the scorer
+itself would have called free. `2` is a sensible value to author with. As with the budget caps the
+bound is inclusive — `8` is legal, `9` refuses — and the fixtures pin both.
 
 **`candidateTolerance` is a field for the same reason `element.tolerance` is.** The candidate gate
 needs *some* slack for PNG round-tripping and the resample, and two engines choosing their own
@@ -358,14 +371,20 @@ there is exactly one of it. The contract fixes everything around it: the fractio
 the element's **smaller baseline dimension**, it is compared against the **maximum of the four edge
 displacements** between baseline and current bounds, and the comparison is `>` so a displacement
 exactly at tolerance passes. Those are the parts two implementations would otherwise choose
-differently. `0.1` is a sensible value to author with, and Phase 3 should tune it against the
-fixtures rather than treat it as settled here.
+differently. `0.1` is a sensible value to author with.
 
 It is **bounded and non-negative**, for exactly the reason `candidateTolerance` is: a large enough
 fraction disables the movement gate, letting a uniquely tagged element drift far from its authoring
 bounds while the acceptance keeps suppressing the old region's pixels. Both tolerances are
 author-controlled numbers that quietly widen what an acceptance covers, so both are range-checked
 and both refuse with `tolerance-out-of-range`.
+
+**`v1` fixes that range at `0.0 ≤ element.tolerance ≤ 0.25`**, and it is named here for the same
+reason the candidate ceiling is. `0.25` is where the gate stops meaning anything: every edge may
+then move by a quarter of the smaller baseline dimension, so the whole element can translate by that
+much and still be judged to have stayed put — a 16 px icon that slid 4 px is not the element the
+mask was authored over. Inclusive again, so `0.25` passes and anything above it refuses, with a
+fixture on each side.
 
 A fraction rather than an absolute pixel count because an absolute tolerance means
 something different for a 16 px icon than for a 300 px card.
@@ -476,10 +495,10 @@ saying where the value lives — and a producer emitting `element.testTag` again
 ```
 
 `kind` is the discriminant; `tag` carries the value and is required when `kind` is `tag`; `bounds`
-are the authoring-time baseline in canonical-plane coordinates; `tolerance` is the
-element movement tolerance described above. An acceptance with no `element` key at all is the geometric
-case. The fixtures pin this exact shape, not just the resolution behaviour — a schema two producers
-serialise differently is not a schema.
+are the authoring-time baseline in canonical-plane coordinates; `tolerance` is the element movement
+tolerance described above, in `[0.0, 0.25]`. An acceptance with no `element` key at all is the
+geometric case. The fixtures pin this exact shape, not just the resolution behaviour — a schema two
+producers serialise differently is not a schema.
 
 An earlier draft also allowed a `producer` kind for a producer's own identity scheme. It is cut from
 `v1` because nothing can currently carry it: the annotation prerequisite in §5 adds `testTag` and
@@ -609,6 +628,25 @@ is exactly the boundary case the separation rules already work hardest to keep u
 producer that has a soft-edged selection must decide where the edge falls before committing it,
 which is the right place for that decision to be made.
 
+**And the encoding is checked in the header, not inferred from the samples.** Stating the rule is
+not enough on its own, because the browser's only decode path normalises everything to 8-bit RGBA:
+an indexed, 16-bit, or RGBA mask whose samples all happen to land on `0` and `255` sails through a
+sample-value check while flatly violating the declared encoding — and the offline engine, decoding
+natively, sees a different type entirely. Two consumers, same hash-valid bytes, no disagreement
+visible anywhere until a mask with a palette entry between the two values arrives. So the same
+`IHDR` preflight that yields `width × height` also validates the two bytes after them: **bit depth
+must be `8` and colour type must be `0`** (greyscale, no alpha, no palette). Anything else is
+`mask-encoding-invalid`, refused, before any decode. The fixtures carry a palette mask and an RGBA
+mask, both with strictly binary samples, since those are precisely the files a sample-only check
+accepts.
+
+This constrains `mask.png` alone — `accepted-candidate.png` is an ordinary colour raster and carries
+no encoding rule beyond decoding to the dimensions it declares. And since the verdict is reached in
+the same preflight pass, it lands on the same side of the budget: an acceptance refused for its
+mask's encoding contributes neither raster to the running total, exactly as an unreadable header
+does. A refusal that excluded the record on one engine and charged it on another would put the
+order-dependence back that the whole-record preflight removes.
+
 **The acceptance set is bounded before anything is decoded.** Every record costs two more raster
 decodes plus several intermediate planes on both engines, and a catalog is third-party data — so a
 document with a few thousand individually valid, individually small acceptances can exhaust a
@@ -681,11 +719,21 @@ a `__proto__` id so an implementation using `{}` fails visibly rather than silen
 Checking a child path against `.design-parity/known-differences/<id>/` is worthless if `<id>` can
 move that directory: an `id` containing `/` or `..` relocates the base, after which `mask.png` is
 perfectly "contained" within the escaped location and passes. So `id` is constrained first — a
-single segment of `[A-Za-z0-9._-]`, no separators, no `..` — and the final resolved artifact paths
-are additionally verified against the **fixed** `known-differences` root rather than only against
-the derived directory. Two checks because the id is doing double duty as an identifier and a
-filesystem path, and the second is what holds if the first is ever loosened. `id-not-safe` is its
-own refusal reason.
+single segment of `[A-Za-z0-9._-]`, no separators, and **neither `.` nor `..` exactly** — and the
+final resolved artifact paths are additionally verified against the **fixed** `known-differences`
+root rather than only against the derived directory. Two checks because the id is doing double duty
+as an identifier and a filesystem path, and the second is what holds if the first is ever loosened.
+`id-not-safe` is its own refusal reason.
+
+**Both dot names, not just `..`.** `.` is the one that reads as harmless: it contains no separator,
+every character is in the class, and it is not the `..` everyone checks for — yet
+`.design-parity/known-differences/./` normalises to the `known-differences` root itself, so a
+`mask` of `some-other-id/mask.png` is genuinely contained within the derived directory and the
+containment check passes. One acceptance can then address every sibling's artifacts, and a
+`.`-and-`..` pair of ids collides on the same directory while remaining distinct map keys. Rejecting
+the two names outright is cheaper than reasoning about what they normalise to; the fixtures carry
+an `id` of `.` reaching a sibling's `mask.png`, since that is the case a `..`-only check lets
+through.
 
 **Artifact paths resolve against the known-difference directory, and may not leave it.** `mask` and
 `acceptedCandidate` are relative to the acceptance's own directory under `.design-parity/
@@ -734,12 +782,38 @@ is never scoped into any evaluation at all. It produces no status, appears in no
 survives every cleanup pass by being invisible to all of them: the failure mode is an acceptance
 that quietly outlives the thing it was about. `reference-hash-missing` does not cover it, because
 there is no served reference to compare a hash against. So **both** engines additionally walk the whole
-`acceptances[]` against the catalog's published previews and references, independent of any
-comparison, and report the unmatched ones. Assigning that walk to the offline run alone — as an
+`acceptances[]` against the catalog, independent of any comparison, and report the unmatched ones.
+Assigning that walk to the offline run alone — as an
 earlier revision did — leaves the served dashboard blind to exactly the records it most needs to
 show, and makes the two engines disagree about a status the contract says they share: the offline
 gate refuses a record the browser never mentions. With a conformance case, since this is the one status
 no comparison-driven fixture can produce.
+
+**The walk checks every scope field the catalog can resolve, not just the two ids.** Scope matching
+uses the full locator, so *any* recorded field diverging from the catalog makes the acceptance
+permanently unreachable — and a walk that only asks "does this preview exist? does this reference
+exist?" misses the ones that don't touch an id. A component renamed from `IconButton/Tonal` to
+`IconButton/Filled` while its preview and reference ids stay put leaves both lookups succeeding and
+the acceptance orphaned anyway, which is the exact invisible-forever failure this rule exists to
+catch. So the walk resolves the acceptance's `previewId` **within its `system`**, then requires the
+resolved preview's component to equal `component` and its axes to equal `variant`, and requires
+`referenceId` to be a reference **attached to that preview** — a reference that exists but now hangs
+off a different preview is as unreachable as one that was deleted. Any of those failing is
+`orphaned-target`, and the component-rename case is its own fixture, since it is the one an
+id-existence walk passes.
+
+The `variant` half of that reads as redundant — §2 derives `variant` from the preview id's own axis
+segments, so a resolved preview always has the axes its id spells — and it is included precisely
+because the record's copy can disagree with its own `previewId`. That record matches nothing under
+full-scope matching either, and a walk that skips the check because "it must agree" leaves the one
+case where it doesn't as the invisible kind. Checking a derived field costs a string comparison and
+turns a producer bug into a reported one.
+
+**`overrides` is the one scope field the walk cannot check**, and deliberately so: overrides are a
+property of the frame a viewer requested, not of anything the catalog publishes, so there is no
+catalog fact to compare against. An acceptance naming an override combination nobody has opened is
+*unused*, not orphaned — the target is still there — and reporting it as orphaned would flag a
+correct record on every catalog. Unused acceptances are a dashboard question, not a validation one.
 
 **A record that violates the schema is refused — and where the failure lands depends on whether it
 can be keyed.** Missing required fields, wrong types, an unsupported `element.kind`: none of the
@@ -754,6 +828,21 @@ only report what it can name:
   **document** is rejected, exactly as for a duplicate id.
 
 Both are conformance fixtures, since "one bad record" and "an unreadable file" are different repairs.
+
+**The unkeyable case reports `id-missing`, and that token covers all three of its forms.** It needs
+saying, because neither neighbouring token fits: `schema-invalid` is per-acceptance and presupposes
+a valid id to key the status by — the very thing that is absent — and `document-unreadable` is about
+a file that could not be parsed at all, which this one was. Absent, blank, `42`, an object: all are
+`id-missing`, in the `{ "index": …, "reason": … }` shape, since the record's position in
+`acceptances[]` is the only handle left. "Missing" names the absence of a usable key rather than a
+literally absent field, which is the reading the index-shaped entry already forces.
+
+**`id-not-safe` is the neighbouring case and stays per-acceptance.** Its input is a *present,
+well-formed string* — `__proto__`, `a/b`, `..` — which is keyable, so that record refuses alone and
+the rest of the document evaluates. The line between the two tokens is whether a key exists at all,
+not whether it is a good one. Both sides of that line are fixtures, since an engine that folds them
+together either takes down a whole document over one bad name or keeps evaluating a document it
+cannot key.
 
 **And the file itself may be unreadable**, which is neither of those: truncated JSON, a wrong schema
 token, or `acceptances` that is not an array. There is no record to name and no index to fall back
@@ -1524,6 +1613,25 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
     must still classify as resolved. This step is the surfacing of those statuses, not a second
     definition of them.
 
+    **Stale and unknown are a second axis, not two more statuses.** They must not join the
+    precedence table or the `statuses` map: `status` is what a *comparison* concluded, and it is
+    exactly what the two engines are required to agree on, while these come from the issue index —
+    which the offline run may have and a serving host may not, or vice versa. Fold them in and the
+    conformance fixtures start depending on a file that is not part of the contract, and one engine
+    reports `stale` where the other reports `valid` for the same bytes. So the join happens **at
+    the dashboard and the gate**, over an acceptance's mandatory `issue` URL, and produces a
+    separate lifecycle value per acceptance: `open`, `closed`, or `unknown` (no row in the index).
+    The evaluation result is unchanged by it, and `compose-preview-known-differences/v1` gains no
+    field.
+
+    The two axes compose freely — all four statuses occur against all three lifecycle values — and
+    only one combination is called **stale**: `closed` on an acceptance whose status is *not*
+    `resolved`, i.e. a difference the mask still suppresses after its issue was declared done. The
+    combination that looks similar is the opposite of a problem: `resolved` + `closed` is the loop
+    having completed, and the only thing left is step 12's deletion. `unknown` is never stale, per
+    the rule above, and a `refused` acceptance's lifecycle is worth showing but never actionable —
+    fix the record first, since a refused acceptance suppresses nothing whatever its issue says.
+
 12. **Close the loop — deletion and issue closure need an owner.** Nothing so far actually *removes*
     anything: §4 says `resolved` means deleting the acceptance and that an issue closes once every
     linked acceptance has resolved, but surfacing a status is not doing either. Both are committed-
@@ -1556,7 +1664,9 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
   non-goals rule out. Pinning the canonical plane to the reference (§4) is what keeps that resample
   to a single, well-defined step instead of a moving target; if the tolerance still has to be loose
   enough to be uncomfortable, that is the signal to store the accepted candidate losslessly at
-  canonical resolution rather than to widen it.
+  canonical resolution rather than to widen it. §4 caps it at `8` for `v1` so no author can widen it
+  quietly, which bounds the risk without removing it: the *metric* the tolerance applies to is still
+  open, and a permissive metric at a tight ceiling is no safer than the reverse.
 - **Fixing the publish race means touching a shared helper.** `push-branch.sh` is used by other
   publishers, so the carry-forward behaviour in §3 has to be opt-in (an env var naming the paths)
   and covered by its own test. A change that silently altered how every publisher resolves a race
