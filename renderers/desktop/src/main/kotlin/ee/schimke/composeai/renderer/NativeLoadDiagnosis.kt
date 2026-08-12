@@ -34,10 +34,24 @@ internal object NativeLoadDiagnosis {
    * failures are not what a `Could not initialize class org.jetbrains.skia…` cascades from, so they
    * must never be mistaken for its cause.
    */
-  private val reportedNonSkiko: MutableSet<String> =
-    java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
-
   private const val MAX_REMEMBERED_NON_SKIKO = 64
+
+  /**
+   * FIFO-bounded rather than a plain set: the bound must not be able to turn reporting *off* (a
+   * full set that refuses new entries hides a library never seen before) nor turn dedup off (a full
+   * set that clears wholesale re-reports everything it just forgot). Evicting the oldest entry does
+   * neither — every distinct failure is reported, and a failure stays deduped until 64 *other*
+   * distinct ones have pushed it out.
+   */
+  private val reportedNonSkiko: MutableSet<String> =
+    java.util.Collections.newSetFromMap(
+      java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, Boolean>(16, 0.75f, false) {
+          override fun removeEldestEntry(eldest: Map.Entry<String, Boolean>): Boolean =
+            size > MAX_REMEMBERED_NON_SKIKO
+        }
+      )
+    )
 
   /** Roots whose libraries carry the store's own glibc rather than the host's. */
   private val STORE_PREFIXES = listOf("/nix/store/", "/gnu/store/")
@@ -126,19 +140,8 @@ internal object NativeLoadDiagnosis {
       "ldLibraryPath" to env("LD_LIBRARY_PATH").orEmpty(),
     )
 
-  /**
-   * Whether [explanation] is being reported for the first time in this JVM. Bounded, because an
-   * unbounded set here would be a slow leak in a long-lived worker.
-   */
-  private fun firstReportOf(explanation: String): Boolean {
-    // Clearing rather than refusing, when the bound is reached. Short-circuiting on size would
-    // report *every* later failure as already-seen — including one never encountered before — so a
-    // genuinely new broken library would be silently dropped from the log forever. Dropping the
-    // history instead costs at most one repeated line per distinct failure, which is the direction
-    // to err in for something whose whole job is making a failure visible once.
-    if (reportedNonSkiko.size >= MAX_REMEMBERED_NON_SKIKO) reportedNonSkiko.clear()
-    return reportedNonSkiko.add(explanation)
-  }
+  /** Whether [explanation] is being reported for the first time in this JVM. */
+  private fun firstReportOf(explanation: String): Boolean = reportedNonSkiko.add(explanation)
 
   /** Test seam — both latches are JVM-global state, so tests must be able to clear them. */
   internal fun resetForTesting() {

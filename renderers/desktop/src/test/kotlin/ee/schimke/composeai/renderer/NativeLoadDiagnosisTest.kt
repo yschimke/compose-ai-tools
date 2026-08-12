@@ -116,8 +116,8 @@ class NativeLoadDiagnosisTest {
     assertTrue(NativeLoadDiagnosis.diagnose(failure())!!.cascade)
     assertTrue(NativeLoadDiagnosis.diagnose(failure())!!.cascade)
 
-    // A never-seen library is still news after the dedupe bound is reached — the point of the
-    // bookkeeping is to report each failure once, not to go quiet after N of them.
+    // Past the bound, both halves of the contract still hold. A never-seen library is news (a
+    // bound that refuses new entries would hide it forever)...
     repeat(80) { i ->
       NativeLoadDiagnosis.diagnose(
         UnsatisfiedLinkError("/opt/app/lib$i.so: lib$i.so: cannot open shared object file")
@@ -130,6 +130,16 @@ class NativeLoadDiagnosisTest {
         )
       )
     assertFalse(fresh!!.cascade)
+
+    // ...and a *recent* repeat is still deduped, which a wholesale clear-on-full would have
+    // broken: the log would flood again every time the history refilled.
+    val repeatOfFresh =
+      NativeLoadDiagnosis.diagnose(
+        UnsatisfiedLinkError(
+          "/opt/app/libbrandnew.so: libbrandnew.so: cannot open shared object file"
+        )
+      )
+    assertTrue(repeatOfFresh!!.cascade)
 
     // A *different* library is news again, and still not a Skia cascade.
     val other =

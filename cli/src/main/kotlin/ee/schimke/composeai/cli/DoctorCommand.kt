@@ -665,9 +665,13 @@ class DoctorCommand(
     // `composePreview.renderJavaVersion`) is the case that matters most here: store libraries on
     // the path of a *system* JDK is the mixed-glibc trap, and reading the daemon's `java.home`
     // instead would report a Nix daemon as healthy while the render dies (issue #3690).
+    // Per module: its own launcher when the model reports one, the daemon only as *that module's*
+    // fallback. Adding the daemon unconditionally would judge a JVM nothing renders on — and since
+    // the worst verdict wins below, an unused daemon that cannot resolve a library would fail
+    // doctor for a project whose every render is fine.
     val candidates =
-      (desktopModules.values.mapNotNull { it.renderPreviewsTask?.javaLauncherPath } +
-          listOfNotNull(daemonJavaHome))
+      desktopModules.values
+        .map { it.renderPreviewsTask?.javaLauncherPath ?: daemonJavaHome }
         .distinct()
         .ifEmpty { listOf(null) }
     val canonicalize = { path: String ->
