@@ -325,11 +325,18 @@ Each gate sits at the earliest point where its inputs actually exist — which i
    destination is **the plane gate's resolved plane** — the reference's content box in the normal
    case, the full canvas in the `MIN_BOX_COVERAGE` fallback — never unconditionally the content box,
    so a fallback comparison sizes and positions its mask against the plane it was authored in.
-6. **Comparison gates** — `candidate-changed`, then `element-ambiguous` / `element-moved`. No
-   scoring happens until every gate has run.
-7. **Score** the surviving picture, excluding still-valid masked coordinates in **both** roles
+6. **Comparison gates** — `candidate-changed`, then `element-ambiguous` / `element-moved`. Both run
+   at **canonical** resolution, where a glyph is still a glyph. No scoring happens until every gate
+   has run.
+7. **Downsample to the score plane** — each separated region again, independently, with the same
+   portable kernel, to the `MAX_SIDE = 192` cap `scorePlanes` consumes. This step is easy to omit
+   and cannot be: the cap and the 5 px `EDGE_SEARCH_RADIUS` are load-bearing to the number that
+   comes out, so scoring the canonical plane directly would produce a different verdict — while
+   reusing the existing whole-image downsample would re-mix accepted and unaccepted signal across
+   the mask edge and undo step 4. Separation survives *every* resample, including this one.
+8. **Score** the surviving picture, excluding still-valid masked coordinates in **both** roles
    (scored source and neighbourhood candidate) in **both** directed passes.
-8. **Report** raw, accepted and unaccepted separately.
+9. **Report** raw, accepted and unaccepted separately.
 
 **Selector contract.** An acceptance's `element` carries an explicit `kind`. **`v1` defines exactly
 one identifying kind**, deliberately:
@@ -597,7 +604,7 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | decode | **all four** raster inputs decoded — reference, current candidate, `mask.png`, `accepted-candidate.png` — in the declared pixel/colour semantics. The candidate gate reads the accepted-candidate decode and mask coverage reads the mask decode, so an alpha or colour divergence in either would otherwise first surface as a wrong verdict rather than as a decoder bug |
 | separation | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite) |
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
-| score plane | the downsampled planes `scorePlanes` actually consumes, both sides |
+| score plane | the `MAX_SIDE`-capped planes `scorePlanes` actually consumes — both sides, still separated, downsampled per-region rather than whole-image |
 | selector | the resolved element — which node the selector matched, its bounds, and the tag-uniqueness verdict |
 | result | `{raw, accepted, unaccepted, invalidations}` |
 
