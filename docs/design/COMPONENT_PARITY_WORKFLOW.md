@@ -284,10 +284,26 @@ rather than a drag); `mask` and `acceptedCandidate` paths; **three** hashes — 
 against** — a `plane: "content-box" | "full-canvas"` discriminant plus the resolved
 `{x, y, width, height}` box, without which the plane gate cannot be evaluated at
 all; **the element's authoring-time bounds** in canonical-plane coordinates **and its
-`elementTolerance`**, when the acceptance names an `element`; an optional structured `finding`
-matcher (e.g. `{ kind: "color", token: …,
-expected: …, actual: … }`) for the checks design-parity runs that are not pixel comparisons; and
-free-text `note` + `acceptedAt`.
+`elementTolerance`**, when the acceptance names an `element`; **`candidateTolerance`**, the
+per-pixel threshold the candidate gate compares against; and free-text `note` + `acceptedAt`.
+
+**`candidateTolerance` is a field for the same reason `elementTolerance` is.** The candidate gate
+needs *some* slack for PNG round-tripping and the resample, and two engines choosing their own
+constants would disagree at the boundary — the one thing that must not happen. Recording it means
+both read one number off one artifact. The **metric** it applies to (which channels, compared how,
+and whether a count of over-threshold pixels or any single one trips the gate) is not settled here;
+it belongs with the pixel semantics in the open problems above, and the fixtures must pin cases on
+both sides of whatever boundary Phase 3 picks.
+
+**An earlier draft also carried an optional structured `finding` matcher** — `{ kind: "color",
+token: …, expected: …, actual: … }` — for the design-parity checks that are not pixel comparisons.
+It is **cut from `v1`**, for the same reason `kind: producer` was: every gate in this contract
+assumes a mask and an accepted-candidate raster, and nothing here says what matching such a finding
+would mean (complete object equality? selected fields? which fields?) or what it would suppress. A
+field an offline consumer must guess the semantics of is worse than an absent one, because two
+consumers will guess differently and both will believe they implemented the contract. Non-pixel
+findings deserve their own evaluation path and their own conformance cases; that is a deliberate
+`v2` conversation, not a spare field in `v1`.
 
 **The element's baseline bounds are a required field, not derivable.** The element gate invalidates
 when a resolved element has moved "beyond tolerance" — which needs something to measure *from*, and
@@ -361,6 +377,7 @@ by the conformance fixtures. Stated as invariants:
 | I6 | Raw and unaccepted traverse **identical** resampling stages | Filtering is not associative, so a shortcut path makes raw ≠ unaccepted even with no surviving mask, manufacturing a delta out of nothing |
 | I7 | Both artifact hashes are verified before their bytes are used | The mask decides which pixels are suppressed; the accepted candidate decides what they may look like. Either one edited silently redefines "accepted" |
 | I8 | Every coordinate transform is stated, in both directions | Baselines are canonical-plane; `boundsInRoot` is render pixels; a drag is display pixels — mixing them invalidates unchanged elements or passes moved ones |
+| I9 | The **recorded** plane discriminant and box define the canonical destination, for masks, transforms and resampling alike | `normalisedBoxes` falls back to the full canvas below `MIN_BOX_COVERAGE`, so a full-canvas acceptance resampled against a content box suppresses the wrong pixels and invalidates as `candidate-changed` for no real reason |
 
 **Open problems Phase 3 must resolve.** These are the things the review rounds proved cannot be
 settled by prose here. They are listed because finding them was expensive and forgetting them would
@@ -440,10 +457,13 @@ error immediately swamps the tight per-pixel tolerance §7 calls for.
 
 So acceptance gets **its own canonical plane, defined by the reference**:
 
-- **The canonical plane is the reference's content box, at the reference raster's own resolution.**
-  The reference is a published PNG with fixed dimensions and a `sha256` that the acceptance already
-  pins, so this plane is byte-stable by construction — it cannot move unless the reference changes,
-  and a changed reference is already gate 1.
+- **The canonical plane is the one the acceptance recorded** — normally the reference's content box
+  at the reference raster's own resolution, but the **full canvas** whenever this pair fell back
+  below `MIN_BOX_COVERAGE` (I9). The reference is a published PNG with fixed dimensions and a
+  `sha256` the acceptance already pins, so the content-box case is byte-stable by construction: it
+  cannot move unless the reference changes, and a changed reference is already the fingerprint gate.
+  The fallback case is not derivable from the reference alone, which is exactly why the discriminant
+  and the resolved box are recorded fields rather than something re-derived at evaluation time.
 - **`mask.png` is authored in it directly** — but *nothing else is already in it*, and that is the
   easy mistake. See the translation rules below.
 - **`accepted-candidate.png` is stored in it**, cropped to the mask's bounding box. Evaluating an
@@ -845,8 +865,18 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
    pixels they never saw, which is the same identity/pixel mismatch one indirection further out. The
    comparison route therefore has to accept and apply the supported override params before it can be
    the reporting destination for those lanes — a prerequisite of this remedy, not a follow-up to it.
-   Until that lands, the honest fallback is to disable reporting in interactive lanes **without**
-   redirecting anywhere.
+
+   **And override support is necessary without being sufficient.** Overrides are query parameters;
+   *interaction* is not. Once a visitor has clicked, scrolled, or let animation advance in a Live,
+   Wasm or Remote Compose lane, the visible frame is a function of runtime state that no URL carries
+   — the comparison route issues a fresh `/render` and starts from the initial state. So forwarding
+   theme, device and RC parameters still lands the reporter on different pixels than the ones that
+   prompted them. **Reporting stays disabled in the interactive lanes**, not "until overrides land"
+   but until the exact displayed frame and its interactive state can actually be transferred — which
+   is a much larger piece of work (capturing and replaying runtime state, or attaching the displayed
+   bitmap directly to the report) and should be scoped deliberately rather than assumed. The
+   override work above is what makes the *static* lanes' redirect correct; it does not rehabilitate
+   the interactive ones.
 
    **The raw score is a separate problem: the surface with the report form is not the surface that
    knows the score.** The form (`cp-report-body`) and `refreshReportLink()` live only on the viewer,
@@ -896,6 +926,21 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
     causes in §4's [normative contract](#the-normative-contract) — deliberately not re-listed here,
     since every previous restatement of that list drifted), and **stale** (issue closed, acceptance
     remains) — surfaced on the dashboard and as a gate in the offline run.
+
+    **Resolved outranks invalidated, and that precedence is not a detail.** When someone actually
+    *fixes* the accepted difference — the whole point of the workflow — two things happen at once:
+    the raw difference in the masked region disappears, **and** the candidate stops matching
+    `accepted-candidate.png`, which is `candidate-changed`. The success path therefore satisfies
+    "resolved" and "invalidated" simultaneously, and with no precedence rule the dashboard could
+    report a win while the offline gate fails the build for a stale acceptance — on the same commit.
+
+    So: if the raw difference inside the mask is gone, classify as **resolved** regardless of
+    `candidate-changed`, and prompt to delete the acceptance and close the issue. `candidate-changed`
+    means "the accepted region changed into something else"; resolved means "it changed into
+    agreement", which is the strictly more informative reading of the same pixels. The other
+    invalidation causes are unaffected — a `reference-changed` or `element-ambiguous` acceptance is
+    not resolved by anything. Pin the fixed-candidate case in the shared fixtures, since it is both
+    the happy path and the one two implementations are most likely to classify differently.
 12. **Document** the reporting → triage → acceptance → verification → closure loop in
     `docs/public-preview-server.md`, beside the existing parity view section.
 
