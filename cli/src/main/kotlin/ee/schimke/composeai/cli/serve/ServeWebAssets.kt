@@ -50,6 +50,9 @@ internal object ServeWebAssets {
       "rc-lanes.js" to "text/javascript; charset=utf-8",
       // The design-parity page's lane filter; loaded only by that page.
       "parity.js" to "text/javascript; charset=utf-8",
+      // The whole-screen page backdrop's hotspot + render-overlay controls; loaded only by a
+      // `/{system}/pages/{id}` view, which exists only for a catalog that published one.
+      "page-backdrop.js" to "text/javascript; charset=utf-8",
     )
 
   private val cache = java.util.concurrent.ConcurrentHashMap<String, Asset>()

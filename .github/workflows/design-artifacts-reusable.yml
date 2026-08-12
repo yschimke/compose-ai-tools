@@ -169,6 +169,16 @@ on:
         required: false
         type: boolean
         default: true
+      page-backdrop-version:
+        description: >
+          npm version of @design-parity/page-backdrop used to refresh the whole-screen backdrops.
+          Only consulted by a repo that commits a design-pages.json with "enabled": true; every
+          other repo never installs it. Pinned by default rather than `latest`: this step runs with
+          the caller's Figma token in scope, and a mutable tag would let a newly published version
+          execute against that credential with no change to any repository. Bump it deliberately.
+        required: false
+        type: string
+        default: '0.1.47'
       fold-artifact:
         description: 'Name of an artifact (uploaded by a prior caller job) holding a pre-built render bundle to fold in as its own top-level section AFTER generate — e.g. a re-themed sibling catalog. Empty ⇒ no fold-in. Requires fold-bundle, fold-spec, fold-section.'
         required: false
@@ -272,10 +282,14 @@ on:
         required: false
       figma_token:
         description: >-
-          Optional read-only Figma personal access token (`file_content:read`), used only to render
-          `figma:<fileKey>/<nodeId>` entries in the calling repo''s design-map.json into published
-          design references. Absent, those entries are skipped with a warning and every other
-          reference still publishes.
+          Optional read-only Figma personal access token (`file_content:read`). Two consumers, both
+          read-only: rendering `figma:<fileKey>/<nodeId>` entries in the calling repo''s
+          design-map.json into published design references, and — only for a repo that commits a
+          design-pages.json with `"enabled": true` — importing that file''s key pages through
+          `@design-parity/page-backdrop`, a separately distributed npm package pinned by
+          `page-backdrop-version`. Absent, reference entries are skipped with a warning and the
+          page import is skipped in favour of whatever backdrops are committed; everything else
+          still publishes.
         required: false
 
 permissions: {}
@@ -1132,6 +1146,63 @@ jobs:
             --repo "$GITHUB_WORKSPACE" \
             --source-repo "${{ github.repository }}" \
             --ref "${{ github.ref_name }}"
+
+      # Whole-screen page backdrops: the key screens of the design file, with
+      # every component instance on them linked back to the catalog component
+      # that implements it. Feeds the preview server's `/<system>/pages/`
+      # surface (`ServePageBackdrops.kt`).
+      #
+      # Opt-in twice over, and this step bypasses neither gate: it runs
+      # `design-parity-pages status` first and stops cleanly unless the caller
+      # repo commits a `design-pages.json` with `"enabled": true`. A repo that
+      # has never heard of the feature writes nothing and pays one `npx` probe.
+      #
+      # Two ways the pixels get here, in precedence order:
+      #
+      #   1. a fresh import, when `figma_token` is available — the only step in
+      #      this job that reads the design file's *pages*, and the reason the
+      #      published backdrops track the design without anyone re-running the
+      #      manual workflow;
+      #   2. a committed `design/pages/` — the offline path, so a fork or a
+      #      token-less run still republishes the screens it already has.
+      #
+      # Fail-soft like the reference lane: an import failure leaves whatever is
+      # committed, and a screen whose backdrop can't be copied is dropped with a
+      # warning rather than costing the catalog its render.
+      - name: Publish page backdrops
+        if: ${{ inputs.publish || inputs.upload-out }}
+        env:
+          FIGMA_TOKEN: ${{ secrets.figma_token }}
+          PB_VERSION: ${{ inputs.page-backdrop-version }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "design-pages.json" ]; then
+            echo "No design-pages.json in this repo — no page backdrops to publish."
+            exit 0
+          fi
+          # `env -u FIGMA_TOKEN`: the opt-in probe reads a committed JSON file and needs no
+          # credential, so it does not get one. Only the import below — the step that genuinely
+          # talks to the design file — sees the token.
+          status=$(env -u FIGMA_TOKEN npx --yes "@design-parity/page-backdrop@${PB_VERSION}" status || true)
+          echo "$status"
+          if ! printf '%s' "$status" | grep -q '^page backdrops are ON'; then
+            echo "Page backdrops are off for this repo — nothing to publish."
+            exit 0
+          fi
+          if [ -n "${FIGMA_TOKEN:-}" ]; then
+            # Refresh from the design file. Non-fatal: a rate limit or a moved
+            # frame must not take the catalog's publish down with it.
+            if ! npx --yes "@design-parity/page-backdrop@${PB_VERSION}" import \
+                 --design-map design-map.json; then
+              echo "::warning title=Page backdrop import failed::Publishing whatever is committed."
+            fi
+          else
+            echo "::notice::No figma_token — publishing the committed backdrops, if any."
+          fi
+          node compose-ai-tools/scripts/design-artifacts/emit-design-pages.mjs \
+            --out "$GITHUB_WORKSPACE/out" \
+            --repo "$GITHUB_WORKSPACE" \
+            --spec "${{ inputs.spec }}"
 
       # PNG ↔ Remote Compose parity page: for a catalog that ships `.rc`
       # documents (remote-m3), render each one client-side with the vendored

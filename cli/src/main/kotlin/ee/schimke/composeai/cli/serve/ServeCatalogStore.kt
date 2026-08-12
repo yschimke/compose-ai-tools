@@ -4,6 +4,8 @@ import ee.schimke.composeai.cli.BundleClasspathHydration
 import ee.schimke.composeai.cli.BundleReader
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
+import ee.schimke.composeai.designparity.PageBackdropJson
+import ee.schimke.composeai.designparity.PageBackdropManifest
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -522,6 +524,7 @@ class ServeCatalogStore(
     writeDesignReferences(manifestReferences + catalog.references, base, staging)
     writeAnnotations(base, staging)
     writeParityActivity(base, staging)
+    writePageBackdrops(base, staging)
 
     // The staged catalog is usable — atomically replace the live dir with it. The delete + rename
     // is near-instant (same filesystem), so the window where `dir` is absent is microseconds, not
@@ -1521,6 +1524,73 @@ class ServeCatalogStore(
       .writeText(json.encodeToString(ParityActivity.serializer(), activity))
   }
 
+  /**
+   * Stage the catalog's whole-screen page backdrops: the manifest, plus one backdrop PNG per page
+   * it still declares after validation.
+   *
+   * Shaped like [writeDesignReferences] rather than [writeParityActivity] because it has assets:
+   * the manifest alone is useless without its images, so a page whose PNG can't be fetched is
+   * dropped from the staged manifest instead of being advertised and 404ing on open. Validation
+   * runs *before* the write ([ServePageBackdropStore.drawablePages]) so nothing malformed reaches
+   * the staging tree, and each image is re-pathed to a server-owned location (`pages/<id>.png`) so
+   * a manifest cannot dictate where bytes land.
+   *
+   * Fail-soft like the rest of the staging path: no manifest, an unfetchable one, or one that
+   * doesn't survive validation simply serves the catalog with no backdrop surface.
+   */
+  private fun writePageBackdrops(base: String, staging: File) {
+    val dirName = ServePageBackdropStore.DIRECTORY
+    val manifestBytes =
+      runCatching { fetchCatalogAsset("$base$dirName/${ServePageBackdropStore.INDEX_FILE}") }
+        .getOrNull() ?: return
+    val manifest =
+      runCatching {
+          PageBackdropJson.decodeFromString(
+            PageBackdropManifest.serializer(),
+            manifestBytes.decodeToString(),
+          )
+        }
+        .getOrNull() ?: return
+    // Capped before a single byte is fetched. A catalog branch is trusted-ish but not trusted to be
+    // sane: without a ceiling, a branch declaring thousands of screens would cost one refresh that
+    // many requests and fill the staging disk, since each backdrop may be as large as the per-file
+    // cap. The same reasoning as `maxImages` for previews, at a size that fits the feature — a
+    // catalog publishes a handful of key screens, not one per component.
+    val declared = ServePageBackdropStore.drawablePages(manifest)
+    val pages = declared.take(MAX_PAGE_BACKDROPS)
+    if (declared.size > pages.size) {
+      System.err.println(
+        "serve: catalog declares ${declared.size} page backdrops — staging the first " +
+          "$MAX_PAGE_BACKDROPS"
+      )
+    }
+    if (pages.isEmpty()) return
+
+    // One bounded wave, like the reference rasters: a catalog publishes a handful of key screens,
+    // not a page per component, so this is a short fetch and peak memory is a wave of screens.
+    val accepted =
+      pages.chunked(ASSET_FETCH_CONCURRENCY).flatMap { wave ->
+        val fetched = fetchCatalogAssets(wave.map { "$base$dirName/${it.image.uri}" })
+        wave.mapNotNull { page ->
+          val bytes = fetched["$base$dirName/${page.image.uri}"] ?: return@mapNotNull null
+          val localName = "${page.id}.png"
+          val file = File(staging, "$dirName/$localName")
+          file.parentFile?.mkdirs()
+          file.writeBytes(bytes)
+          page.copy(image = page.image.copy(uri = localName))
+        }
+      }
+    if (accepted.isEmpty()) return
+    File(staging, dirName).mkdirs()
+    File(staging, "$dirName/${ServePageBackdropStore.INDEX_FILE}")
+      .writeText(
+        PageBackdropJson.encodeToString(
+          PageBackdropManifest.serializer(),
+          manifest.copy(pages = accepted),
+        )
+      )
+  }
+
   private fun writeDesignReferences(
     references: List<DesignReference>,
     base: String,
@@ -1943,6 +2013,13 @@ class ServeCatalogStore(
      * healthy catalog.
      */
     const val DEFAULT_MAX_IMAGES = 2000
+
+    /**
+     * How many whole-screen backdrops one catalog may stage. A screen is a page-sized PNG, so this
+     * is a disk and request ceiling rather than a display one; the feature is for a repo's few key
+     * screens, and a branch declaring more than this is malformed or hostile either way.
+     */
+    const val MAX_PAGE_BACKDROPS = 24
     private const val MAX_FETCH_BYTES = 25L * 1024 * 1024 // 25 MB per catalog asset
 
     /**

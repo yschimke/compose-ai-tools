@@ -1,6 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.data.overrides.PreviewOverrideOption
+import ee.schimke.composeai.designparity.BackdropPage
+import ee.schimke.composeai.designparity.Placement
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -4045,6 +4047,11 @@ object ServeWeb {
      */
     hasParityView: Boolean = false,
     /**
+     * How many whole-screen page backdrops this catalog publishes ([ServePageBackdrops]). Zero (the
+     * default) omits the link, so a catalog that publishes none is unchanged.
+     */
+    screenCount: Int = 0,
+    /**
      * The design tool this catalog is specified by ("Figma", …), from its references' provider or
      * its parity feed — names the parity action after the thing it compares against ("compare to
      * Figma") rather than after the internal feature. Null (no identifiable tool) keeps the generic
@@ -4566,6 +4573,14 @@ object ServeWeb {
                 "$basePath/parity$q",
                 designToolLabel?.let { tool -> "compare to $tool" } ?: "design parity",
               )
+            },
+          // A screen is a view OF this catalog's components, so it sits with the comparisons
+          // rather than displacing the grid. The count is in the label because one screen and
+          // fourteen are different offers.
+          screenCount
+            .takeIf { it > 0 }
+            ?.let {
+              actionChip("$basePath/pages$q", "$it ${if (it == 1) "screen" else "screens"}")
             },
           playgroundHref?.takeIf { it.isNotBlank() }?.let { actionChip(it, "try in playground") },
         )
@@ -5129,6 +5144,244 @@ $rows
         </div>
         ${scriptTag("url-state.js")}
         ${scriptTag("format-compare.js")}
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
+   * The catalog's **Screens** index: one card per published page backdrop.
+   *
+   * Only rendered when the catalog published at least one, so an ordinary catalog never grows an
+   * empty tab. Each card leads with the design's own pixels and states the coverage number the
+   * whole feature exists to surface — how many of the screen's parts this catalog implements.
+   */
+  fun pageBackdropIndexPage(
+    moduleLabel: String,
+    pages: List<BackdropPage>,
+    token: String,
+    sessionId: String? = null,
+    basePath: String = "",
+    isPublic: Boolean = false,
+    trust: String? = null,
+    themeCss: String = "",
+    unfurl: UnfurlMetadata? = null,
+    version: String? = null,
+    displayTitle: String? = null,
+  ): String {
+    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val navSuffix =
+      querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val cards =
+      pages.joinToString("\n") { page ->
+        val id = WebEscaping.urlEncodeSegment(page.id)
+        val linked = page.placements.count { !it.isUnlinked }
+        """
+        <a class="cp-backdrop-card" href="$basePath/pages/$id$q">
+          <img loading="lazy" alt="" src="$basePath/pages/$id.png$q">
+          <strong>${WebEscaping.htmlEscape(page.name)}</strong>
+          <span class="cp-backdrop-count">$linked of ${page.placements.size} parts implemented</span>
+        </a>
+        """
+          .trimIndent()
+      }
+    return document(
+      title = "$heading — screens",
+      unfurlTitle = "$heading screens",
+      unfurlDescription = "Design screens with every component instance linked back to its code",
+      unfurl = unfurl,
+      version = version,
+      navSuffix = navSuffix,
+      headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Screens"),
+      themeCss = themeCss,
+      body =
+        """
+        <h1 class="cp-head cp-catalog-head">Screens${compactTrustBadge(trust)}</h1>
+        <p class="cp-sub">Whole screens from the design file, with each component instance linked
+        back to the code that implements it.</p>
+        <div class="cp-backdrop-cards">
+        $cards
+        </div>
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
+   * One **page backdrop**: the design screen, the rectangle of every component instance on it, and
+   * — behind a toggle — this catalog's own renders laid over those rectangles.
+   *
+   * ## Why the overlay is worth having here and not everywhere
+   *
+   * The offline viewer design-parity ships takes pre-baked render PNGs as inputs. A preview server
+   * doesn't need them: it already renders every preview in the catalog on demand, so an overlay
+   * here is `<img src="/render/<previewId>.png">` and inherits everything that lane already does —
+   * the live daemon on a live catalog, the theme the visitor picked, a re-render after a refresh.
+   * That is the whole reason to put this surface on the server rather than shipping a static HTML
+   * file: the design half is fixed, and the code half stays live.
+   *
+   * ## Geometry
+   *
+   * Every rectangle is emitted as a **percentage of the frame**, computed here from the manifest's
+   * frame-local design units. The page therefore carries no scale factor, and `page-backdrop.js`
+   * does no geometry at all — see that file. The render is pinned to its placement's top-left and
+   * scaled to the placement's *width* with its own aspect ratio preserved (the CSS deliberately
+   * does not stretch it to the box): a component that renders taller than its design slot is a real
+   * finding, and stretching would hide exactly that.
+   *
+   * ## Trust
+   *
+   * [page] is third-party data — layer names are free text authored in the design file — so every
+   * interpolation goes through [WebEscaping.htmlEscape], and the Figma deep link is reassembled
+   * from a validated key + node id by [ServeFigmaSpec.url] rather than taken from the manifest.
+   */
+  fun pageBackdropPage(
+    moduleLabel: String,
+    page: BackdropPage,
+    /** The file key the manifest declared, already validated. Empty ⇒ no design-tool deep links. */
+    fileKey: String = "",
+    /**
+     * Preview ids this session can actually render. A placement the producer mapped to a preview
+     * this catalog doesn't publish keeps its hotspot (the mapping is still true) but gets no
+     * overlay and no link — better than a card that can only 404.
+     */
+    renderablePreviewIds: Set<String> = emptySet(),
+    token: String,
+    sessionId: String? = null,
+    basePath: String = "",
+    isPublic: Boolean = false,
+    trust: String? = null,
+    themeCss: String = "",
+    unfurl: UnfurlMetadata? = null,
+    version: String? = null,
+    displayTitle: String? = null,
+  ): String {
+    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val navSuffix =
+      querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val backdrop = "$basePath/pages/${WebEscaping.urlEncodeSegment(page.id)}.png$q"
+
+    // Locale.ROOT, not `"%.4f".format(…)`: under a comma-decimal default locale the latter emits
+    // `top:5,0314%`, which is not CSS at all — the whole stage would collapse on a box whose LANG
+    // happened to be de_DE. Same reason [cropPct] pins it.
+    fun pct(value: Double, span: Double): String =
+      String.format(java.util.Locale.ROOT, "%.4f", value / span * 100.0)
+
+    /** The preview this placement can be drawn with on this session, or null. */
+    fun renderable(placement: Placement): String? =
+      placement.renderablePreviewId?.takeIf { it in renderablePreviewIds }
+
+    val hotspots =
+      page.placements.joinToString("\n") { placement ->
+        val style =
+          "left:${pct(placement.bounds.x, page.frame.width)}%;" +
+            "top:${pct(placement.bounds.y, page.frame.height)}%;" +
+            "width:${pct(placement.bounds.width, page.frame.width)}%;" +
+            "height:${pct(placement.bounds.height, page.frame.height)}%"
+        val previewId = renderable(placement)
+        val href =
+          previewId?.let { "$basePath/p/${WebEscaping.urlEncodeSegment(it)}$q" }
+            // Built from the placement's own node id rather than parsed out of its `ref`. The two
+            // are the same thing by definition (`ref` IS `figma:<fileKey>/<nodeId>`), but `ref` is
+            // newer than the contract and absent from a manifest an older producer wrote — and an
+            // unlinked hotspot's deep link is the only link it has, so it must not depend on an
+            // optional field.
+            ?: ServeFigmaSpec.url(fileKey, placement.nodeId)
+        val label =
+          if (placement.isUnlinked) "${placement.name} — no code behind this"
+          else "${placement.name} — ${placement.code.orEmpty()}"
+        val tag = if (href == null) "span" else "a"
+        val hrefAttr = href?.let { " href=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
+        "<$tag class=\"cp-backdrop-hotspot\" data-link=\"${WebEscaping.htmlEscape(placement.link.wire)}\" " +
+          "data-cp-placement=\"${WebEscaping.htmlEscape(placement.nodeId)}\" style=\"$style\"" +
+          "$hrefAttr title=\"${WebEscaping.htmlEscape(label)}\"><span class=\"cp-visually-hidden\">" +
+          "${WebEscaping.htmlEscape(label)}</span></$tag>"
+      }
+
+    val renders =
+      page.placements
+        .mapNotNull { placement ->
+          val previewId = renderable(placement) ?: return@mapNotNull null
+          val style =
+            "left:${pct(placement.bounds.x, page.frame.width)}%;" +
+              "top:${pct(placement.bounds.y, page.frame.height)}%;" +
+              "width:${pct(placement.bounds.width, page.frame.width)}%"
+          "<img class=\"cp-backdrop-render\" alt=\"\" style=\"$style\" " +
+            "src=\"$basePath/render/${WebEscaping.urlEncodeSegment(previewId)}.png$q\">"
+        }
+        .joinToString("\n")
+
+    val rows =
+      page.placements.joinToString("\n") { placement ->
+        val previewId = renderable(placement)
+        val href = previewId?.let { "$basePath/p/${WebEscaping.urlEncodeSegment(it)}$q" }
+        val tag = if (href == null) "div" else "a"
+        val hrefAttr = href?.let { " href=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
+        val code = placement.code
+        val detail = if (code != null) WebEscaping.htmlEscape(code) else "no code behind this"
+        "<$tag class=\"cp-backdrop-row\" data-link=\"${WebEscaping.htmlEscape(placement.link.wire)}\" " +
+          "data-cp-placement=\"${WebEscaping.htmlEscape(placement.nodeId)}\"$hrefAttr>" +
+          "<span class=\"cp-backdrop-dot\" aria-hidden=\"true\"></span>" +
+          "<span class=\"cp-backdrop-row-name\">${WebEscaping.htmlEscape(placement.name)}</span>" +
+          "<span class=\"cp-backdrop-row-code\">$detail</span></$tag>"
+      }
+
+    val linked = page.placements.count { !it.isUnlinked }
+    val figmaLink =
+      ServeFigmaSpec.url(fileKey, page.nodeId)
+        ?.let {
+          " · <a href=\"${WebEscaping.htmlEscape(it)}\" rel=\"noreferrer noopener\">Open in Figma</a>"
+        }
+        .orEmpty()
+    // A frame taller than it is wide is the norm (a phone screen), so the stage's aspect ratio is
+    // the frame's own — the design decides the shape of the box, not the stylesheet.
+    val aspect = String.format(java.util.Locale.ROOT, "%.4f", page.frame.width / page.frame.height)
+
+    return document(
+      title = "${page.name} — screen",
+      unfurlTitle = "$heading — ${page.name}",
+      unfurlDescription = "$linked of ${page.placements.size} parts of this screen are implemented",
+      unfurl = unfurl,
+      version = version,
+      navSuffix = navSuffix,
+      headerBreadcrumb = crumbHtml("$basePath/pages$q", heading, page.name),
+      themeCss = themeCss,
+      body =
+        """
+        <div id="cp-page-backdrop">
+          <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(page.name)}${compactTrustBadge(trust)}</h1>
+          <p class="cp-sub">$linked of ${page.placements.size} parts implemented$figmaLink</p>
+          <div class="cp-backdrop-controls" role="group" aria-label="Backdrop layers">
+            <label><input type="checkbox" data-cp-backdrop-hotspots checked> Hotspots</label>
+            <label><input type="checkbox" data-cp-backdrop-unlinked> Only what we don't implement</label>
+            <label><input type="checkbox" data-cp-backdrop-renders> Show our renders on top</label>
+            <label>Opacity <input type="range" min="0" max="100" value="50" data-cp-backdrop-opacity>
+              <span data-cp-backdrop-opacity-value>50%</span></label>
+            <label>Blend <select data-cp-backdrop-blend>
+              <option value="normal">normal</option>
+              <option value="difference">difference</option>
+            </select></label>
+          </div>
+          <div class="cp-backdrop-legend">
+            <span data-link="code-connect"><i class="cp-backdrop-swatch" style="color:#2da44e"></i> Code Connect</span>
+            <span data-link="manifest"><i class="cp-backdrop-swatch" style="color:#0969da"></i> design-map</span>
+            <span data-link="convention"><i class="cp-backdrop-swatch" style="color:#bf8700"></i> name match</span>
+            <span data-link="unlinked"><i class="cp-backdrop-swatch" style="color:#cf222e;border-style:dashed"></i> not implemented</span>
+          </div>
+          <div class="cp-backdrop-layout">
+            <div class="cp-backdrop-stage" style="--cp-backdrop-aspect:$aspect">
+              <img class="cp-backdrop-image" src="$backdrop" alt="${WebEscaping.htmlEscape(page.name)}">
+              <template data-cp-backdrop-render-source>$renders</template>
+              $hotspots
+            </div>
+            <div class="cp-backdrop-list">
+            $rows
+            </div>
+          </div>
+        </div>
+        ${scriptTag("page-backdrop.js")}
         """
           .trimIndent(),
     )

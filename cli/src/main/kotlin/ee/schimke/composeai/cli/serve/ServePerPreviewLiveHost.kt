@@ -97,6 +97,8 @@ class ServePerPreviewLiveHost(
   override fun designReferenceRaster(referenceId: String): ByteArray? =
     baked.designReferenceRaster(referenceId)
 
+  override fun pageBackdrops(): ServePageBackdropStore = baked.pageBackdrops()
+
   override fun annotationsForPreview(previewId: String): List<DesignAnnotation> =
     baked.annotationsForPreview(previewId)
 

@@ -238,7 +238,7 @@ function collisionFamilyBase(publishedPreviewIds, previewId) {
  * Publishing a reference against a coin-flip is worse than publishing none, so the caller warns
  * instead.
  */
-function matchesForPreviewId({ exact, sanitised, collisionBases }, previewId) {
+export function matchesForPreviewId({ exact, sanitised, collisionBases }, previewId) {
   const mapped = sanitizeBundleEntryId(previewId);
   const suffix = mapped.match(/^(.*)_([1-9][0-9]*)$/);
   if (collisionBases.has(mapped) || (suffix && collisionBases.has(suffix[1]))) return [];

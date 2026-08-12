@@ -1776,3 +1776,178 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   color: var(--cp-muted, #656d76);
   font-size: 0.72rem;
 }
+
+/* ── Page backdrop ────────────────────────────────────────────────────────────────────────────
+   One design screen, the rectangle of every component instance on it, and (optionally) the
+   catalog's own renders laid on top.
+
+   The stage is sized by `aspect-ratio` from the frame's design units and every child is positioned
+   in percentages, so the whole thing scales with its column and needs no JS geometry. */
+.cp-backdrop-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
+  gap: 1.4rem;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .cp-backdrop-layout { grid-template-columns: minmax(0, 1fr); }
+}
+.cp-backdrop-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--cp-backdrop-aspect, 0.42);
+  border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  overflow: hidden;
+  /* The design's own pixels are the ground truth here, so the stage never tints them: a light
+     screen stays light in dark mode rather than being composited onto a dark surface. */
+  background: #fff;
+}
+.cp-backdrop-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.cp-backdrop-hotspot {
+  position: absolute;
+  display: block;
+  border: 2px solid var(--cp-backdrop-hotspot-color, #2da44e);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--cp-backdrop-hotspot-color, #2da44e) 10%, transparent);
+  text-decoration: none;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+/* Colour by *how* the placement was linked, so the weak links read as weak at a glance. An
+   unlinked rectangle — a part of the screen no code implements — is the dashed red one, and is the
+   single most interesting mark on the page. */
+.cp-backdrop-hotspot[data-link="code-connect"] { --cp-backdrop-hotspot-color: #2da44e; }
+.cp-backdrop-hotspot[data-link="manifest"] { --cp-backdrop-hotspot-color: #0969da; }
+.cp-backdrop-hotspot[data-link="convention"] { --cp-backdrop-hotspot-color: #bf8700; }
+.cp-backdrop-hotspot[data-link="unlinked"] {
+  --cp-backdrop-hotspot-color: #cf222e;
+  border-style: dashed;
+  background: color-mix(in srgb, #cf222e 8%, transparent);
+}
+.cp-backdrop-hotspot:hover,
+.cp-backdrop-hotspot:focus-visible,
+.cp-backdrop-hotspot.cp-backdrop-active {
+  background: color-mix(in srgb, var(--cp-backdrop-hotspot-color, #2da44e) 26%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cp-backdrop-hotspot-color, #2da44e) 45%, transparent);
+  outline: none;
+}
+.cp-backdrop-no-hotspots .cp-backdrop-hotspot { opacity: 0; pointer-events: none; }
+/* "Only what we don't implement" — keeps the unlinked rectangles and mutes the rest, which is the
+   fastest read of a screen's coverage. */
+.cp-backdrop-unlinked-only .cp-backdrop-hotspot:not([data-link="unlinked"]) {
+  opacity: 0.12;
+  pointer-events: none;
+}
+/* A render is pinned to its placement's top-left and scaled to the placement's WIDTH, keeping its
+   own aspect ratio — deliberately not stretched to fill the box. A component that renders taller
+   than its design slot is a real finding, and stretching would hide exactly that. */
+.cp-backdrop-render {
+  position: absolute;
+  display: none;
+  height: auto;
+  opacity: var(--cp-backdrop-render-opacity, 0.5);
+  mix-blend-mode: var(--cp-backdrop-render-blend, normal);
+  pointer-events: none;
+}
+.cp-backdrop-overlay-on .cp-backdrop-render { display: block; }
+.cp-backdrop-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0.8rem 0;
+  font-size: var(--md-sys-typescale-body-small-size, 0.82rem);
+}
+.cp-backdrop-controls label { display: inline-flex; align-items: center; gap: 0.35rem; }
+.cp-backdrop-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.5rem 0 1rem;
+  color: var(--cp-fg-muted);
+  font-size: 0.75rem;
+}
+.cp-backdrop-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.cp-backdrop-swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+}
+.cp-backdrop-list { display: flex; flex-direction: column; gap: 0.2rem; }
+.cp-backdrop-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: var(--md-sys-shape-corner-small, 8px);
+  color: inherit;
+  text-decoration: none;
+}
+.cp-backdrop-row:hover,
+.cp-backdrop-row.cp-backdrop-active {
+  border-color: var(--cp-border);
+  background: var(--cp-surface);
+}
+.cp-backdrop-row-name { font-weight: 600; }
+.cp-backdrop-row-code {
+  grid-column: 2;
+  color: var(--cp-fg-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+.cp-backdrop-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--cp-backdrop-hotspot-color, #2da44e);
+}
+.cp-backdrop-row[data-link="code-connect"] { --cp-backdrop-hotspot-color: #2da44e; }
+.cp-backdrop-row[data-link="manifest"] { --cp-backdrop-hotspot-color: #0969da; }
+.cp-backdrop-row[data-link="convention"] { --cp-backdrop-hotspot-color: #bf8700; }
+.cp-backdrop-row[data-link="unlinked"] { --cp-backdrop-hotspot-color: #cf222e; }
+.cp-backdrop-count { color: var(--cp-fg-muted); font-size: 0.8rem; }
+.cp-backdrop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.9rem;
+  border: 1px solid var(--cp-border);
+  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  color: inherit;
+  text-decoration: none;
+}
+.cp-backdrop-card:hover { border-color: var(--cp-border-strong); background: var(--cp-surface); }
+.cp-backdrop-card img {
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+  object-position: top;
+  background: #fff;
+  border-radius: var(--md-sys-shape-corner-small, 8px);
+}
+.cp-backdrop-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+/* A hotspot is a bare rectangle, so its accessible name lives in a visually-hidden span rather
+   than in the (decorative) outline itself. */
+.cp-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
