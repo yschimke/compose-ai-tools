@@ -757,6 +757,15 @@ was fixed" and "it changed into something else" are the same pixels, and only th
 tells them apart. Without this rule a dashboard could report a win while the offline gate failed the
 same commit as stale. `resolved` means delete **that** acceptance.
 
+**Issue identity is the canonical `owner/repo/number`, not the URL string.** Acceptances are
+hand-authored, so the same issue arrives spelled several ways — a trailing slash, a `#issuecomment`
+fragment, `www.`, a mixed-case owner. Aggregating on the raw `issue` string splits those into
+separate groups, and a group that looks fully resolved then closes an issue a sibling acceptance is
+still holding open — the precise failure the aggregation rule below exists to prevent, reintroduced
+by string equality. Parse to `owner`, `repo`, `number` first and aggregate on those, exactly as the
+issue index's own trust boundary already validates them; a URL that does not parse is
+`schema-invalid` rather than its own group of one.
+
 **Closing the issue is an issue-level decision, not an acceptance-level one.** The tracking issue is
 mandatory per acceptance but not *unique* to one — the same glyph-colour delta legitimately spans a
 component's light and dark variants, or several previews, as separate acceptances pointing at one
@@ -778,6 +787,15 @@ authoring alone, such a record is simply `valid` and its mask joins the suppress
 whatever later appears in that region on the strength of an acceptance that never accepted anything.
 The evaluator therefore checks it directly: a stored candidate that already agrees with the
 reference under the match metric is `refused` with `acceptance-is-noop`, with its own fixture.
+
+**But only once the fingerprint gate has passed.** The check compares the stored candidate against
+the *served* reference, and the reference the acceptance was authored against is not kept — so the
+moment the hash differs the predicate is being evaluated against the wrong image. A changed
+reference whose new pixels happen to match the stored candidate would then trip the no-op check,
+and because refusal outranks everything the result becomes `refused: acceptance-is-noop` instead of
+the `invalidated: reference-changed` the contract intends. Sequence it after the fingerprint gate:
+if the reference has moved, that is the finding, and nothing about the old acceptance's contents is
+knowable enough to say more.
 
 **Ambiguity short-circuits the *bounds* check, not the whole gate.** With several matches there is no
 single node whose bounds the index can publish, so `element-moved`'s missing-bounds condition would
@@ -876,11 +894,19 @@ is one of `valid` / `resolved` / `invalidated` / `refused`. `causes` is present 
 order is what makes the multi-cause fixture comparable. `reasons` is present **only** for `refused`, and is an
 **array** for the same reason `causes` is — both artifacts can fail at once, and a single-value
 field would leave two engines free to pick different ones. Same fixed ordering rule, drawn from:
-`mask-hash-mismatch`, `accepted-candidate-hash-mismatch`, `reference-hash-missing`, `decode-failed`,
-`degenerate-dimensions`, `mask-encoding-invalid`, `mask-empty`, `dimension-mismatch`,
-`tolerance-out-of-range`, `path-not-contained`, `id-not-safe`, `schema-invalid`, `id-missing`,
-`orphaned-target`, `document-too-large`, `header-invalid`, `acceptance-is-noop`,
-`document-unreadable`.
+**the list below, in this order** — it is the authoritative ordering for `reasons` *and* for
+`validationFailures`, including when several document-wide failures land together:
+
+`document-unreadable`, `document-too-large`, `duplicate-id`, `id-missing`, `id-not-safe`,
+`schema-invalid`, `orphaned-target`, `path-not-contained`, `header-invalid`, `decode-failed`,
+`degenerate-dimensions`, `dimension-mismatch`, `mask-encoding-invalid`, `mask-empty`,
+`mask-hash-mismatch`, `accepted-candidate-hash-mismatch`, `reference-hash-missing`,
+`tolerance-out-of-range`, `acceptance-is-noop`.
+
+Document-wide tokens lead, then identity, then structure, then artifacts — so a combined failure
+serialises the same way in both engines, and a reader sees the widest problem first. A combined
+document-failure case is a fixture, since that is where an ordering that exists only implicitly
+would diverge.
 
 **A per-acceptance refusal populates `validationFailures` as well**, one entry per reason. The two
 fields are not alternatives: `statuses` answers "what happened to this acceptance", and
@@ -960,7 +986,7 @@ plane:
 | --- | --- | --- |
 | Reference annotation `bounds` | the **full reference raster** (`DesignAnnotation` KDoc: "the annotated image's own pixel space") | subtract `(referenceBox.x, referenceBox.y)`; scale 1; clip |
 | Drag rectangle on the reference panel | CSS/display pixels of the `<img>` | scale by `rasterWidth / displayWidth` and `rasterHeight / displayHeight`, then subtract the box origin; clip |
-| Render-side annotation `bounds`, and the **tag index** | **render** pixel space (`boundsInRoot`) | subtract `(candidateBox.x, candidateBox.y)`, then scale **x and y independently** — `plane.width / candidateBox.width` for x, `plane.height / candidateBox.height` for y, where `plane` is the acceptance's **recorded** canonical plane (I9), not `referenceBox`, which is only the same thing outside the `full-canvas` fallback; clip |
+| Render-side annotation `bounds` (**not** the tag index, which the server already publishes canonical — see below; transforming it again is the mistake this row invites) | **render** pixel space (`boundsInRoot`) | subtract `(candidateBox.x, candidateBox.y)`, then scale **x and y independently** — `plane.width / candidateBox.width` for x, `plane.height / candidateBox.height` for y, where `plane` is the acceptance's **recorded** canonical plane (I9), not `referenceBox`, which is only the same thing outside the `full-canvas` fallback; clip |
 
 **The two axes scale independently, and that is not a rounding detail.** `boxCanvas` stretches each
 source box onto the target width and height separately, and the comparison explicitly *supports*
