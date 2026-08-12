@@ -812,6 +812,52 @@ gets filename-sanitized on its way into a bundle, while the function name is the
 files already agree on. A design-map entry that maps to no published sticker is a warning, not an
 error — a repo may map more components for its own parity run than it publishes.
 
+#### Primary and secondary references
+
+design-parity lets one code component bind an **array** of refs — the untagged default plus one per
+authored `state` / `size` / `theme`. Those bindings are not peers, and the manifest says which is
+which via `tier`:
+
+- The **primary** is the untagged binding: the component's default render, the picture a reader
+  forms of the component, and the one a divergence is least excusable in. Exactly one is required
+  — an ambiguous or all-tagged array is refused rather than guessed at — and it is what `--strict`
+  gates on.
+- A **secondary** is a tagged binding (`{"size": "l"}`), carrying its `slot` so a report can name
+  the cell. It documents one square of the variant matrix. Worth *checking* and worth *reporting*,
+  but a size cell that drifts is not the component being wrong — so **everything a secondary has to
+  say is a coverage note**, never a warning: whether it maps to no sticker, cannot be paired to a
+  `previewId`, or fails to rasterize (a Figma node the run's token can't reach). One unrenderable
+  size cell must not cost the catalog every reference it did resolve.
+
+`tier` is load-bearing beyond the export, too: the parity feed derives its `UNRENDERED_REFERENCE`
+gap from the reference manifest, and every record of one entry — the default and each of its cells
+— carries the same code handle. Only a **primary** answers "does this component have its
+reference?", or a surviving `size=l` cell would report the component as covered while its default
+render had no spec at all.
+
+A binding that is dropped is always *named*. The two arrays are authored independently, so drift is
+reported from both sides — a tagged `ref` with no `previewId` in the same slot, and a tagged
+`previewId` no `ref` claims. Skipping one silently would let the run report complete secondary
+coverage while omitting cells the author wrote down, which is the failure the per-lane tally exists
+to prevent.
+
+A secondary joins on its own `previewId`, not on the function name the primary uses — an
+`@OverrideVariant` cell shares its base's `@Preview` function, so the function index cannot tell
+`xs` from the default render and would bind every cell to the same sticker.
+
+Before this split the driver published the primary and dropped the rest, so m3-catalog's variant
+renders had nothing to diff against even though `design-map.json` had bound every one of them to
+its kit node: **78 references for 78 components, and none for the 345 variant bindings beside
+them**. The Figma rasterizer batches 50 node ids per request, so publishing those costs single-digit
+extra REST calls rather than one per reference.
+
+The export reports the two lanes separately:
+
+```
+design-references: published 423/423 reference(s) to references/ — 78/78 primary,
+  345/345 secondary (0 warning(s), 0 coverage note(s))
+```
+
 Pixels come from, in precedence order: a pre-rendered PNG under `--reference-images` (for a repo
 that already rasterizes references in an earlier job), a committed `.html` mock rasterized with
 Playwright's Chromium against the fonts the workflow already staged, a committed `.png`, or a

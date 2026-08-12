@@ -456,6 +456,63 @@ test("a sanitised catalog id is not mistaken for a dangling mapping", () => {
   );
 });
 
+test("a surviving secondary does not mask a primary that failed to rasterise", () => {
+  // Every record of one entry — the default binding and each of its size/state cells — carries the
+  // same `code` handle. Keyed on the handle alone, a published `size=l` cell would answer "yes,
+  // this component has its reference" while the DEFAULT render had none, silencing the gap exactly
+  // where it matters most.
+  const designMap = {
+    components: [
+      {
+        code: "ui/Foo.kt#Bar",
+        ref: [{ ref: "figma:abc/1:1" }, { ref: "figma:abc/1:2", size: "l" }],
+        previewId: [{ previewId: "pkg.FooKt.Bar" }, { previewId: "pkg.FooKt.Bar_L", size: "l" }],
+      },
+    ],
+  };
+  const secondaryOnly = {
+    references: [
+      { tier: "secondary", slot: { size: "l" }, source: { attributes: { code: "ui/Foo.kt#Bar" } } },
+    ],
+  };
+
+  assert.deepEqual(
+    mappingGaps({
+      designMap,
+      catalogPreviewIds: ["pkg.FooKt.Bar", "pkg.FooKt.Bar_L"],
+      referenceManifest: secondaryOnly,
+    }).map((g) => g.kind),
+    [GAP_KINDS.UNRENDERED_REFERENCE],
+    "a secondary alone leaves the primary's absence reported",
+  );
+
+  // With the primary present the gap closes, whatever its secondaries did.
+  assert.deepEqual(
+    mappingGaps({
+      designMap,
+      catalogPreviewIds: ["pkg.FooKt.Bar", "pkg.FooKt.Bar_L"],
+      referenceManifest: {
+        references: [
+          { tier: "primary", source: { attributes: { code: "ui/Foo.kt#Bar" } } },
+          ...secondaryOnly.references,
+        ],
+      },
+    }),
+    [],
+  );
+
+  // A manifest written before tiers existed carries none, and every record in it was a primary.
+  assert.deepEqual(
+    mappingGaps({
+      designMap,
+      catalogPreviewIds: ["pkg.FooKt.Bar", "pkg.FooKt.Bar_L"],
+      referenceManifest: { references: [{ source: { attributes: { code: "ui/Foo.kt#Bar" } } }] },
+    }),
+    [],
+    "an untiered record still counts as the primary it was",
+  );
+});
+
 test("no reference manifest means no derived gaps — absent is not the same as empty", () => {
   const gaps = mappingGaps({
     designMap,

@@ -259,7 +259,7 @@ test("planDesignReferences maps design-map entries onto serve preview ids", () =
   assert.equal(records[1].origin.ref, "design/ContactChat.dark.html");
 });
 
-test("planDesignReferences publishes the untagged binding from variant arrays", () => {
+test("planDesignReferences publishes the untagged binding as the primary", () => {
   const designMap = {
     components: [
       {
@@ -283,13 +283,144 @@ test("planDesignReferences publishes the untagged binding from variant arrays", 
   const { records, warnings } = planDesignReferences({ designMap, spec: SPEC, catalog: CATALOG });
 
   assert.deepEqual(warnings, []);
-  assert.equal(records.length, 1);
-  assert.equal(records[0].origin.ref, "figma:abc/73:5");
-  assert.equal(
-    records[0].origin.previewId,
-    "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview",
-  );
-  assert.equal(records[0].source.uri, "figma:abc/73:5");
+  // The untagged binding leads and is the primary — the component's default render, and the one
+  // `--strict` gates on. Its id and ordinal are unchanged by the secondaries beside it.
+  const primary = records.find((r) => r.tier === "primary");
+  assert.equal(primary.origin.ref, "figma:abc/73:5");
+  assert.equal(primary.origin.previewId, "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview");
+  assert.equal(primary.source.uri, "figma:abc/73:5");
+  assert.equal(primary.slot, undefined);
+});
+
+// The m3-catalog shape: annotation-led (no spec `groups`), so images carry the discovery
+// `previewId` and an `@OverrideVariant` cell shares its base's @Preview FUNCTION name. That
+// sharing is why a secondary has to join on its previewId — the function name cannot tell the
+// `xs` cell from the default render.
+const MATRIX_CATALOG = {
+  components: [
+    {
+      componentId: "Button/Filled",
+      images: [
+        {
+          path: "images/button-filled/ideal__default__light.png",
+          state: "default",
+          theme: "light",
+          previewId: "ee.m3.ButtonsKt.FilledButton_Light",
+          width: 100,
+          height: 40,
+        },
+        {
+          path: "images/button-filled/ideal__xs.png",
+          state: "xs",
+          previewId: "ee.m3.ButtonsKt.FilledButton_Light_VARIANT_xs",
+          width: 80,
+          height: 32,
+        },
+      ],
+    },
+  ],
+};
+
+const MATRIX_MAP = {
+  components: [
+    {
+      code: "catalog/src/main/kotlin/sections/Buttons.kt#FilledButton",
+      source: "figma",
+      ref: [{ ref: "figma:abc/1:1" }, { ref: "figma:abc/1:2", size: "xs" }],
+      previewId: [
+        { previewId: "ee.m3.ButtonsKt.FilledButton_Light" },
+        { previewId: "ee.m3.ButtonsKt.FilledButton_Light_VARIANT_xs", size: "xs" },
+      ],
+    },
+  ],
+};
+
+test("planDesignReferences publishes each tagged binding as a secondary against its own sticker", () => {
+  const { records, warnings, notes } = planDesignReferences({
+    designMap: MATRIX_MAP,
+    spec: {},
+    catalog: MATRIX_CATALOG,
+  });
+
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(notes, []);
+
+  const primary = records.find((r) => r.tier === "primary");
+  assert.equal(primary.previewId, "button-filled__ideal__default__light");
+  assert.equal(primary.origin.ref, "figma:abc/1:1");
+  assert.equal(primary.slot, undefined);
+
+  const secondary = records.filter((r) => r.tier === "secondary");
+  assert.equal(secondary.length, 1);
+  assert.equal(secondary[0].origin.ref, "figma:abc/1:2");
+  assert.deepEqual(secondary[0].slot, { size: "xs" });
+  // The whole point: it binds the `xs` sticker, NOT the default render the function name would
+  // have handed it.
+  assert.equal(secondary[0].previewId, "button-filled__ideal__xs");
+});
+
+test("a tagged binding that cannot be paired is reported, not silently dropped", () => {
+  const designMap = {
+    components: [
+      {
+        code: "catalog/src/main/kotlin/sections/Buttons.kt#FilledButton",
+        source: "figma",
+        ref: [
+          { ref: "figma:abc/1:1" },
+          { ref: "figma:abc/1:2", size: "xs" },
+          // Authored, but the previewId array never names this slot.
+          { ref: "figma:abc/1:3", size: "xl" },
+        ],
+        previewId: [
+          { previewId: "ee.m3.ButtonsKt.FilledButton_Light" },
+          { previewId: "ee.m3.ButtonsKt.FilledButton_Light_VARIANT_xs", size: "xs" },
+          // …and the mirror: a previewId slot no ref claims.
+          { previewId: "ee.m3.ButtonsKt.FilledButton_Light_VARIANT_l", size: "l" },
+        ],
+      },
+    ],
+  };
+
+  const { records, warnings, notes } = planDesignReferences({
+    designMap,
+    spec: {},
+    catalog: MATRIX_CATALOG,
+  });
+
+  assert.deepEqual(warnings, []);
+  // Both directions of drift are named. Without this the run would report "1/1 secondary, 0 notes"
+  // — complete coverage — while having dropped two authored bindings on the floor.
+  assert.equal(notes.length, 2);
+  assert.ok(notes.some((n) => n.includes("size=xl") && n.includes("no previewId binding")));
+  assert.ok(notes.some((n) => n.includes("size=l") && n.includes("no ref in the same slot")));
+  assert.equal(records.filter((r) => r.tier === "secondary").length, 1);
+});
+
+test("a secondary that maps to no sticker is a note, never a warning", () => {
+  const designMap = {
+    components: [
+      {
+        ...MATRIX_MAP.components[0],
+        previewId: [
+          { previewId: "ee.m3.ButtonsKt.FilledButton_Light" },
+          { previewId: "ee.m3.ButtonsKt.FilledButton_Light_VARIANT_nope", size: "xs" },
+        ],
+      },
+    ],
+  };
+
+  const { records, warnings, notes } = planDesignReferences({
+    designMap,
+    spec: {},
+    catalog: MATRIX_CATALOG,
+  });
+
+  // `--strict` gates on warnings, and a missing size cell must not cost the catalog its primary.
+  assert.deepEqual(warnings, []);
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /size=xs/);
+  assert.equal(records.filter((r) => r.tier === "primary").length, 1);
+  assert.equal(records.filter((r) => r.tier === "secondary").length, 0);
 });
 
 test("planDesignReferences accepts string defaults in variant arrays", () => {
@@ -313,12 +444,9 @@ test("planDesignReferences accepts string defaults in variant arrays", () => {
   const { records, warnings } = planDesignReferences({ designMap, spec: SPEC, catalog: CATALOG });
 
   assert.deepEqual(warnings, []);
-  assert.equal(records.length, 1);
-  assert.equal(records[0].origin.ref, "figma:abc/73:5");
-  assert.equal(
-    records[0].origin.previewId,
-    "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview",
-  );
+  const primary = records.find((r) => r.tier === "primary");
+  assert.equal(primary.origin.ref, "figma:abc/73:5");
+  assert.equal(primary.origin.previewId, "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview");
 });
 
 test("planDesignReferences warns before dropping invalid scalar and array refs", () => {

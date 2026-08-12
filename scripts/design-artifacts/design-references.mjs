@@ -330,17 +330,107 @@ function narrowToMappedPreviewId(matches, mappedPreviewId, fn, warnings) {
 }
 
 /**
- * Reduce a variant-aware design-map entry to the untagged binding the catalog overview publishes.
+ * Split a variant-aware design-map entry into its **primary** binding and its **secondary** ones.
  *
  * design-parity accepts `ref` / `previewId` arrays so one code component can bind every authored
- * state, size and theme. The catalog reference lane currently publishes one inert raster per
- * component, however, and historically understood only scalar bindings. Treating an array as a
- * raster handle made the whole entry fail-soft out of the bundle, which made adding exact parity
- * coverage remove the component's previously published reference.
+ * state, size and theme. Those bindings are not peers:
  *
- * The untagged item is the array form's default binding. Publish that one here; the parity workflow
- * continues to consume the complete arrays directly. Refuse ambiguous or all-tagged arrays instead
- * of guessing which state represents the component.
+ * * The **untagged** item is the component's default render — the picture a reader forms of the
+ *   component, and the one a divergence is least excusable in. It is the primary, and it is what
+ *   `--strict` gates on. Exactly one is required; an ambiguous or all-tagged array is refused
+ *   rather than guessed at, because picking a state to stand for the component is not a decision
+ *   this driver can make.
+ * * Every **tagged** item — `{size: "l"}`, `{state: "xs-square"}` — is a secondary. A size cell
+ *   that drifts is worth reporting, but it is not the component being wrong, and a run must not
+ *   fail over one. So secondaries are planned, rasterised and published like any other reference,
+ *   and their misses land in `notes` rather than `warnings`.
+ *
+ * That split is the whole point: before it, the driver published the primary and dropped the rest,
+ * so m3-catalog's 446 variant renders — the entire size x shape matrix — had nothing to diff
+ * against even though `design-map.json` had bound every one of them to its kit node.
+ */
+function designBindings(entry, warnings, notes) {
+  const tagOf = (item) =>
+    item && typeof item === "object"
+      ? Object.fromEntries(
+          ["state", "theme", "size"].filter((k) => item[k]).map((k) => [k, item[k]]),
+        )
+      : {};
+  const isUntagged = (item) => Object.keys(tagOf(item)).length === 0;
+
+  // A scalar entry is a lone primary — the shape every design-map had before arrays existed.
+  if (!Array.isArray(entry?.ref) && !Array.isArray(entry?.previewId)) {
+    const primary = primaryDesignBinding(entry, warnings);
+    return primary ? [{ entry: primary, tier: "primary", slot: {} }] : [];
+  }
+
+  const primary = primaryDesignBinding(entry, warnings);
+  const bindings = primary ? [{ entry: primary, tier: "primary", slot: {} }] : [];
+  // A refused primary takes its secondaries with it: without the untagged binding there is no
+  // agreement about what the component *is*, and publishing its size cells alone would put a
+  // matrix on the page under a component that has no reference of its own.
+  if (!primary) return bindings;
+
+  const refs = Array.isArray(entry.ref) ? entry.ref : [];
+  const previewIds = Array.isArray(entry.previewId) ? entry.previewId : [];
+  const label = functionNameOf(entry?.code) ?? entry?.code ?? "?";
+  const matchedSlots = [];
+  for (const ref of refs) {
+    if (isUntagged(ref)) continue;
+    const slot = tagOf(ref);
+    // Pair by slot, not by position: the two arrays are written independently and design-parity
+    // does not promise they are ordered alike.
+    const mate = previewIds.find((p) => sameSlot(tagOf(p), slot));
+    matchedSlots.push(slot);
+    const refUri = typeof ref === "string" ? ref : ref?.ref;
+    const previewId = typeof mate === "string" ? mate : mate?.previewId;
+    // A binding that cannot be paired is DROPPED — and a drop has to be said out loud. The tally
+    // downstream counts emitted records, so a silent skip would report complete secondary coverage
+    // while quietly omitting a cell the author wrote down. Silent truncation reading as full
+    // coverage is the failure this lane is meant to end, not one to reintroduce a level down.
+    if (typeof refUri !== "string" || !refUri) {
+      notes.push(`${label} [${describeSlot(slot)}]: tagged ref is not a usable reference handle`);
+      continue;
+    }
+    if (typeof previewId !== "string" || !previewId) {
+      notes.push(
+        `${label} [${describeSlot(slot)}]: tagged ref has no previewId binding in the same slot, ` +
+          `so there is no sticker to compare it against`,
+      );
+      continue;
+    }
+    bindings.push({ entry: { ...entry, ref: refUri, previewId }, tier: "secondary", slot });
+  }
+  // …and the mirror case: a tagged previewId whose slot no ref claims. The arrays are authored
+  // independently, so drift shows up from either side.
+  for (const mate of previewIds) {
+    const slot = tagOf(mate);
+    if (Object.keys(slot).length === 0) continue;
+    if (matchedSlots.some((claimed) => sameSlot(claimed, slot))) continue;
+    notes.push(
+      `${label} [${describeSlot(slot)}]: previewId binding has no ref in the same slot, ` +
+        `so there is no design node to compare against`,
+    );
+  }
+  return bindings;
+}
+
+/** A slot tag as a reader sees it in a report line: `size=l`, `state=xs-square, theme=dark`. */
+function describeSlot(slot) {
+  const parts = Object.entries(slot ?? {}).map(([k, v]) => `${k}=${v}`);
+  return parts.length > 0 ? parts.join(", ") : "default";
+}
+
+/** Whether two slot tags name the same cell. */
+function sameSlot(a, b) {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) if (a[key] !== b[key]) return false;
+  return keys.size > 0;
+}
+
+/**
+ * Reduce a variant-aware design-map entry to the untagged binding — see [designBindings], which
+ * layers the secondary bindings around this.
  */
 function primaryDesignBinding(entry, warnings) {
   const primary = (value, field) => {
@@ -394,6 +484,10 @@ function primaryDesignBinding(entry, warnings) {
  */
 export function planDesignReferences({ designMap, spec, catalog }) {
   const warnings = [];
+  // Secondary-coverage observations. Kept apart from [warnings] because `--strict` gates on those:
+  // a size cell the kit has no node for is a coverage fact to report, not a reason to fail the
+  // export and cost the catalog every reference it *did* resolve.
+  const notes = [];
   const records = [];
   const index = imagesByPreviewFunction(spec, catalog);
   // Only built when the spec-driven index yields nothing for an entry — see [imagesByPreviewId].
@@ -401,25 +495,41 @@ export function planDesignReferences({ designMap, spec, catalog }) {
   const ordinals = new Map();
 
   for (const rawEntry of designMap?.components ?? []) {
-    const entry = primaryDesignBinding(rawEntry, warnings);
-    if (!entry) continue;
+    for (const binding of designBindings(rawEntry, warnings, notes)) {
+    const { entry, tier, slot } = binding;
+    // A secondary never fails the run; its misses are coverage notes.
+    const report = tier === "primary" ? warnings : notes;
+    const where = tier === "primary" ? "" : ` [${describeSlot(slot)}]`;
     const fn = functionNameOf(entry?.code);
     if (!fn) {
-      warnings.push(`design-map entry has no 'path#Member' code handle: ${entry?.code ?? "?"}`);
+      report.push(`design-map entry has no 'path#Member' code handle: ${entry?.code ?? "?"}`);
       continue;
     }
     // Function name first — it is the join a spec-led catalog needs, and it stays authoritative
     // where a spec exists. An annotation-led catalog has no `groups` for that index to walk, so
     // fall back to the entry's own `previewId`, which the export stamps on every catalog image.
-    let allMatches = index.get(fn);
+    //
+    // A SECONDARY inverts that: it is defined by its `previewId` and nothing else. The function
+    // index is keyed by the entry's code handle, which every binding of the entry shares, so a
+    // secondary that fell back to it would bind its size cell to the PRIMARY's sticker — and
+    // publish a reference for `xs` against the default render, which is worse than no reference
+    // at all because it scores as a divergence nobody introduced.
+    let allMatches;
     let joinedOnPreviewId = false;
-    if ((!allMatches || allMatches.length === 0) && typeof entry?.previewId === "string") {
-      allMatches = matchesForPreviewId(byPreviewId, entry.previewId);
+    if (tier === "secondary") {
+      allMatches =
+        typeof entry?.previewId === "string" ? matchesForPreviewId(byPreviewId, entry.previewId) : [];
       joinedOnPreviewId = allMatches.length > 0;
+    } else {
+      allMatches = index.get(fn);
+      if ((!allMatches || allMatches.length === 0) && typeof entry?.previewId === "string") {
+        allMatches = matchesForPreviewId(byPreviewId, entry.previewId);
+        joinedOnPreviewId = allMatches.length > 0;
+      }
     }
     if (!allMatches || allMatches.length === 0) {
-      warnings.push(
-        `design-map '${fn}' matches no published sticker — no catalog.spec.json ` +
+      report.push(
+        `design-map '${fn}'${where} matches no published sticker — no catalog.spec.json ` +
           `preview names that @Preview function, no published image carries its previewId, ` +
           `or its component rendered nothing`,
       );
@@ -429,7 +539,7 @@ export function planDesignReferences({ designMap, spec, catalog }) {
     // field is a no-op at best; skip it so the intent reads once.
     const matches = joinedOnPreviewId
       ? allMatches
-      : narrowToMappedPreviewId(allMatches, entry?.previewId, fn, warnings);
+      : narrowToMappedPreviewId(allMatches, entry?.previewId, fn, report);
     if (matches.length === 0) continue;
     for (const { componentId, image, specComponent } of matches) {
       const previewId = servePreviewId(image.path);
@@ -440,6 +550,12 @@ export function planDesignReferences({ designMap, spec, catalog }) {
         id,
         previewId,
         label: `${componentId} — ${entry.source ?? "design"}`,
+        // Which lane this reference sits in. The primary is the component's default render and the
+        // one `--strict` gates on; a secondary documents one cell of its variant matrix and is
+        // reported rather than enforced. Consumers that only ever showed one reference per
+        // component can filter on it; older readers ignore it and see the set they always did.
+        tier,
+        ...(tier === "secondary" ? { slot } : {}),
         raster: {
           path: `${REFERENCES_DIR}/${id}.png`,
           width: image.width,
@@ -473,8 +589,9 @@ export function planDesignReferences({ designMap, spec, catalog }) {
       if (entry.ref) record.source.uri = entry.ref;
       records.push(record);
     }
+    }
   }
-  return { records, warnings };
+  return { records, warnings, notes };
 }
 
 /**
