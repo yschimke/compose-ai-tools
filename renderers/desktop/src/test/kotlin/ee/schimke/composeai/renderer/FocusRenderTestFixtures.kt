@@ -1,7 +1,9 @@
 package ee.schimke.composeai.renderer
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,5 +44,25 @@ fun FocusableButtonRow() {
 fun NoFocusableRow() {
   MaterialTheme(colorScheme = lightColorScheme()) {
     Row(modifier = Modifier.padding(16.dp)) { Text("Nothing here can take focus") }
+  }
+}
+
+/**
+ * A scrollable column of focusable buttons, tall enough that the last one starts well outside the
+ * viewport. Fixture for the `@ScrollingPreview(END)` + `@FocusedPreview` case: the two drives have
+ * to compose in one scene, so the capture shows the list at its end *and* a focused button, not one
+ * of the two.
+ */
+@Composable
+fun ScrollableFocusableColumn() {
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    // `LazyColumn` rather than `Column(verticalScroll(...))`: the drive dispatches
+    // `SemanticsActions.ScrollBy`, and the lazy list is the shape the desktop scroll path is
+    // proven against (see `ScrollEndCaptureTest`).
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+      items(20) { index ->
+        Button(onClick = {}, modifier = Modifier.padding(8.dp)) { Text("Item " + (index + 1)) }
+      }
+    }
   }
 }

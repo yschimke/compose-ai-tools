@@ -468,13 +468,23 @@ fun main(args: Array<String>) {
           showCurves = animShowCurves,
           fontScale = fontScale,
         )
-      } else if (focusIntent != null) {
+      } else if (
+        focusIntent != null &&
+          scrollDispatchMode != DesktopScrollMode.LONG &&
+          scrollDispatchMode != DesktopScrollMode.GIF
+      ) {
         // `@FocusedPreview` — walk focus with a real `FocusManager.moveFocus(...)` traversal (and,
         // for `pressed = true`, dispatch a real pointer down onto the focused element) before
         // capturing. Declines only when nothing took focus, in which case the undriven capture
         // below is written so a misuse still produces a file rather than a hole in the sheet — the
         // same fall-through shape a declined END scroll uses. The renderer prints the decline, so
         // it isn't silent.
+        //
+        // A capture can carry BOTH intents — discovery crosses the scroll and focus fan-outs — so
+        // the two drives are composed rather than raced: END scrolls first inside the focus path
+        // (see `scrollToEnd`), and LONG / GIF stay with the scroll branch below, because their
+        // product is a stitched strip / animation that a single focused frame cannot stand in for.
+        // Either way no capture is published under a filename naming an intent that never ran.
         val didCapture =
           renderFocusPreview(
             className = className,
@@ -491,6 +501,9 @@ fun main(args: Array<String>) {
             previewArgs = previewArgs,
             localeTag = localeTag,
             focus = focusIntent,
+            scrollToEnd = scrollDispatchMode == DesktopScrollMode.END,
+            scrollAxis = scrollAxis,
+            scrollMaxScrollPx = scrollMaxScrollPx,
             fontScale = fontScale,
             showSystemUi = showSystemUi,
             uiMode = uiMode,
@@ -1386,7 +1399,7 @@ private fun InvokeComposable(
  * [ee.schimke.composeai.renderer.findComposableMethodWithArgs] for the full commentary. Kept local
  * (not shared via a common module) so the two renderer artefacts stay independently buildable.
  */
-private fun findComposableMethodWithArgs(
+internal fun findComposableMethodWithArgs(
   clazz: Class<*>,
   name: String,
   previewArgs: List<Any?>,
@@ -1431,7 +1444,7 @@ private fun InvokeWrappedComposable(wrapperFqn: String, body: @Composable () -> 
   resolved.first.invoke(currentComposer, resolved.second, body)
 }
 
-private fun resolveWrapper(wrapperFqn: String): Pair<ComposableMethod, Any> {
+internal fun resolveWrapper(wrapperFqn: String): Pair<ComposableMethod, Any> {
   val cls = ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass(wrapperFqn)
   val instance = cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
   // PreviewWrapperProvider.Wrap(content: @Composable () -> Unit) compiles to

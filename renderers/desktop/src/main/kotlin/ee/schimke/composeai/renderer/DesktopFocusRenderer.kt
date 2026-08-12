@@ -26,6 +26,7 @@ import ee.schimke.composeai.daemon.FocusOverrideExtension
 import ee.schimke.composeai.daemon.protocol.FocusDirection
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.scroll.ScrollAxis
 import java.awt.Rectangle
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -144,6 +145,14 @@ fun renderFocusPreview(
   previewArgs: List<Any?>,
   localeTag: String?,
   focus: DesktopFocusIntent,
+  /**
+   * `@ScrollingPreview(END)` on the same capture: drive the scrollable to its content end *before*
+   * walking focus, so a capture carrying both intents documents both. Without this the focus branch
+   * would silently win and publish focus-at-the-top under a `_SCROLL_end` filename.
+   */
+  scrollToEnd: Boolean = false,
+  scrollAxis: ScrollAxis = ScrollAxis.VERTICAL,
+  scrollMaxScrollPx: Int = 0,
   fontScale: Float = 1.0f,
   showSystemUi: Boolean = false,
   uiMode: Int = 0,
@@ -152,15 +161,17 @@ fun renderFocusPreview(
   minHeightPx: Int? = null,
   maxWidthPx: Int? = null,
   maxHeightPx: Int? = null,
-  classLoader: ClassLoader? = null,
   fileSystem: FileSystem = SystemFileSystem,
 ): Boolean {
-  val clazz =
-    if (classLoader != null) Class.forName(className, true, classLoader)
-    else Class.forName(className)
+  val clazz = Class.forName(className)
+  // Reflection + wrapper resolution are [renderPreview]'s, not near-copies: an overload lookup
+  // without its `argsMatch` filter can pick a same-arity-but-wrong-types sibling, and a wrapper
+  // loaded with a bare `Class.forName` skips the `PreviewWrapperSubstitutionProvider` swap (the
+  // Remote Compose wrapper is the live case). A focused capture has to be the ordinary capture
+  // plus a state — that has to hold for what gets composed, not just for how it is framed.
   val composableMethod =
     if (previewArgs.isEmpty()) clazz.getDeclaredComposableMethod(functionName)
-    else findComposableMethodForFocus(clazz, functionName, previewArgs)
+    else findComposableMethodWithArgs(clazz, functionName, previewArgs)
 
   // Arm the named-override capture exactly as [renderPreview] does, so a focused capture ships the
   // same `renders/<stem>.overrides.json` sidecar an ordinary one would.
@@ -243,7 +254,7 @@ fun renderFocusPreview(
           }
           val wrapped: @Composable () -> Unit = {
             if (wrapperClassName != null) {
-              InvokeFocusWrappedComposable(wrapperClassName, classLoader, body)
+              InvokeFocusWrappedComposable(wrapperClassName, body)
             } else {
               body()
             }
@@ -267,6 +278,29 @@ fun renderFocusPreview(
       mainClock.advanceTimeByFrame()
       mainClock.advanceTimeByFrame()
 
+      // `@ScrollingPreview(END)` + `@FocusedPreview` on one capture: land the scroll first, then
+      // walk focus in the same scene. Order matters — focus first would be undone by the scroll
+      // moving the focused element out of the viewport (and, for a lazy container, out of
+      // composition entirely). Shares [captureEnd]'s drive verbatim so an END capture is the same
+      // end whether or not focus rides along. A declined drive is only worth a line of stderr: the
+      // focus capture that follows is still valid, it just has nothing to scroll.
+      if (scrollToEnd) {
+        val scrolled =
+          driveScrollToEnd(
+            provider = this,
+            mainClock = mainClock,
+            axis = scrollAxis,
+            viewportPx = if (scrollAxis == ScrollAxis.HORIZONTAL) widthPx else heightPx,
+            maxScrollPx = scrollMaxScrollPx,
+          )
+        if (scrolled == null) {
+          System.err.println(
+            "@ScrollingPreview(END) + @FocusedPreview on $className.$functionName: no scrollable " +
+              "on axis ${scrollAxis.name} — capturing focus at the initial viewport."
+          )
+        }
+      }
+
       // Flip the controller; the connector's `LaunchedEffect` observes the snapshot state and walks
       // focus from inside composition. Driving it from in here (rather than calling `moveFocus`
       // ourselves) is what makes the FocusableNode's paired Focus / Unfocus emission and the
@@ -278,11 +312,23 @@ fun renderFocusPreview(
       val steps = if (focus.directions.isEmpty()) 1 else focus.directions.size
       repeat(steps) { index ->
         FocusController.set(focus.toOverride(index))
+        // `waitForIdle()` before the clock advance, not after: the walk lives in a
+        // `LaunchedEffect`, and whether its coroutine has been *dispatched* by the time we advance
+        // is not something a fixed window can guarantee. Skipping this made the capture a race the
+        // CI render lost while the local one won — the walk landed after the settle, so the node
+        // was focused (the `landed` probe below said so) but its indication had never been given a
+        // frame to fade in, and the published sticker looked exactly like the untouched button.
+        waitForIdle()
         mainClock.advanceTimeBy(FocusController.SETTLE_MS)
       }
 
-      landed = focusedNodeBounds(this) != null
+      // Focus is on a node before the indication is drawn, so probing for it is a precondition,
+      // not the settle. Wait for the walk to land, then give the state layer its own full window —
+      // Material's focus indicator crossfades over ~150 ms and a capture taken mid-fade documents
+      // a weaker state than the component actually has.
+      landed = awaitFocusLanded(this, mainClock)
       if (landed) {
+        mainClock.advanceTimeBy(FocusController.SETTLE_MS)
         if (focus.pressed) {
           // A real pointer down on the focused element. `performTouchInput { down(center) }` goes
           // through the scene's ordinary hit-testing dispatch, so `Modifier.clickable` raises
@@ -345,6 +391,29 @@ private fun DesktopFocusIntent.describe(): String =
     directions.isNotEmpty() -> "step ${step ?: directions.size} ${directions.last().name}"
     else -> "index ${tabIndex ?: 0}"
   }
+
+/**
+ * Advances virtual time in frame-sized steps until something holds focus, up to
+ * [FOCUS_LAND_MAX_FRAMES]. Returns whether focus landed.
+ *
+ * The bound is a runaway guard, not the expected exit: a preview with a focusable settles in the
+ * first frame or two, and one without a focusable never settles at all — which is the case the
+ * caller turns into a decline rather than a capture claiming a state nothing could take.
+ */
+@OptIn(ExperimentalTestApi::class)
+private fun awaitFocusLanded(
+  provider: SemanticsNodeInteractionsProvider,
+  mainClock: androidx.compose.ui.test.MainTestClock,
+): Boolean {
+  repeat(FOCUS_LAND_MAX_FRAMES) {
+    if (focusedNodeBounds(provider) != null) return true
+    mainClock.advanceTimeByFrame()
+  }
+  return focusedNodeBounds(provider) != null
+}
+
+/** ~1 s of virtual time at 16 ms/frame — far past any real focus walk. */
+private const val FOCUS_LAND_MAX_FRAMES = 60
 
 /**
  * Bounds of the focused element in root coordinates, or `null` when nothing holds focus — which is
@@ -429,35 +498,13 @@ private fun InvokeFocusComposable(
   composableMethod.invoke(currentComposer, instance, *previewArgs.toTypedArray())
 }
 
+/**
+ * `@PreviewWrapper(Provider::class)` around the focused content, resolved through [resolveWrapper]
+ * — the same substitution-aware lookup [renderPreview] uses, so a wrapper the
+ * `PreviewWrapperSubstitutionProvider` replaces (the Remote Compose one) is replaced here too.
+ */
 @Composable
-private fun InvokeFocusWrappedComposable(
-  wrapperFqn: String,
-  classLoader: ClassLoader?,
-  body: @Composable () -> Unit,
-) {
-  val resolved =
-    androidx.compose.runtime.remember(wrapperFqn, classLoader) {
-      val cls =
-        if (classLoader != null) Class.forName(wrapperFqn, true, classLoader)
-        else Class.forName(wrapperFqn)
-      val instance = cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
-      val method = cls.getDeclaredComposableMethod("Wrap", Function2::class.java)
-      method to instance
-    }
+private fun InvokeFocusWrappedComposable(wrapperFqn: String, body: @Composable () -> Unit) {
+  val resolved = androidx.compose.runtime.remember(wrapperFqn) { resolveWrapper(wrapperFqn) }
   resolved.first.invoke(currentComposer, resolved.second, body)
-}
-
-private fun findComposableMethodForFocus(
-  clazz: Class<*>,
-  name: String,
-  previewArgs: List<Any?>,
-): ComposableMethod {
-  val argCount = previewArgs.size
-  val candidate =
-    clazz.declaredMethods.firstOrNull { m -> m.name == name && m.parameterCount >= argCount + 2 }
-      ?: throw NoSuchMethodException(
-        "Couldn't find composable method $name on ${clazz.name} taking $argCount parameter(s)"
-      )
-  val declaredTypes = candidate.parameterTypes.take(argCount).toTypedArray()
-  return clazz.getDeclaredComposableMethod(name, *declaredTypes)
 }

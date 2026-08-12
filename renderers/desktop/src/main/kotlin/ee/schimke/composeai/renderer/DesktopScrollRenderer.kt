@@ -415,23 +415,26 @@ private fun captureLong(
  * Returns `false` when the axis carries no scrollable — the caller falls back to the undriven frame
  * rather than failing, since an END capture of a non-scrolling screen is exactly its top.
  */
+/**
+ * Drives the scrollable on [axis] to its content end and settles, without capturing anything.
+ * Returns the distance travelled, or `null` when the axis carries no scrollable.
+ *
+ * Extracted from [captureEnd] because it has a second caller: a capture that carries **both**
+ * `@ScrollingPreview(END)` and `@FocusedPreview` has to land the scroll first and then walk focus,
+ * in one scene. Whichever drive ran alone there would publish a capture its own filename
+ * contradicts — focus-at-the-top under a `_SCROLL_end` suffix, or an end frame with nothing focused
+ * under a `_FOCUS_` one.
+ */
 @OptIn(ExperimentalTestApi::class)
-private fun captureEnd(
-  host: ComposeUiTestScrollHost,
+internal fun driveScrollToEnd(
+  provider: SemanticsNodeInteractionsProvider,
+  mainClock: MainTestClock,
   axis: ScrollAxis,
   viewportPx: Int,
   maxScrollPx: Int,
-  outputFile: File,
-  device: String? = null,
-  fileSystem: FileSystem = SystemFileSystem,
-): Boolean {
-  if (!axisHasScrollable(host, axis)) {
-    System.err.println(
-      "@ScrollingPreview(END) on $outputFile: no scrollable composable on axis ${axis.name} — " +
-        "capturing the initial frame."
-    )
-    return false
-  }
+): Float? {
+  val host = ComposeUiTestScrollHost(provider, mainClock)
+  if (!axisHasScrollable(host, axis)) return null
 
   val cap = if (maxScrollPx > 0) maxScrollPx.toFloat() else Float.POSITIVE_INFINITY
   var scrolledPx = 0f
@@ -457,7 +460,29 @@ private fun captureEnd(
   }
 
   val settleFrames = (POST_SCROLL_SETTLE_MS / 16L).toInt()
-  repeat(settleFrames) { host.mainClock.advanceTimeByFrame() }
+  repeat(settleFrames) { mainClock.advanceTimeByFrame() }
+  return scrolledPx
+}
+
+@OptIn(ExperimentalTestApi::class)
+private fun captureEnd(
+  host: ComposeUiTestScrollHost,
+  axis: ScrollAxis,
+  viewportPx: Int,
+  maxScrollPx: Int,
+  outputFile: File,
+  device: String? = null,
+  fileSystem: FileSystem = SystemFileSystem,
+): Boolean {
+  val scrolledPx =
+    driveScrollToEnd(host.provider, host.mainClock, axis, viewportPx, maxScrollPx)
+      ?: run {
+        System.err.println(
+          "@ScrollingPreview(END) on $outputFile: no scrollable composable on axis ${axis.name} — " +
+            "capturing the initial frame."
+        )
+        return false
+      }
 
   captureRootFrame(host, outputFile, fileSystem)
   // A round device clips its capture to the circle. `renderPreview` does this to every ordinary

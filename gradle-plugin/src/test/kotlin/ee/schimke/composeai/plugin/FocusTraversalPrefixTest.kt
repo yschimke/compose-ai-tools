@@ -50,6 +50,21 @@ class FocusTraversalPrefixTest {
       .inOrder()
   }
 
+  /**
+   * `captures` is the cross product of the scroll / timing / focus fan-outs, so a traversal crossed
+   * with another dimension carries every step once *per row*. The prefix must still be the walk —
+   * one move per step — or step 2 of a two-timing traversal would dispatch four `Next` moves and
+   * land past the element its filename names.
+   */
+  @Test
+  fun `steps repeated across a cross-product fan-out are not replayed twice`() {
+    val step1 = step(1, FocusDirection.Next)
+    val step2 = step(2, FocusDirection.Next)
+    // Two clock timings × two traversal steps = four capture rows, each carrying its focus state.
+    val crossed = preview(step1, step2, step1, step2)
+    assertThat(focusTraversalPrefix(crossed, step2)).containsExactly("Next", "Next").inOrder()
+  }
+
   @Test
   fun `indexed captures carry no traversal prefix`() {
     val indexed = FocusCapture(tabIndex = 2)

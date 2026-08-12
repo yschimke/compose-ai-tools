@@ -898,6 +898,11 @@ internal fun focusTraversalPrefix(preview: PreviewInfo, focus: FocusCapture?): L
     .mapNotNull { it.focus }
     .filter { it.direction != null && (it.step ?: 0) <= step }
     .sortedBy { it.step ?: 0 }
+    // One entry per step, not one per capture row. `captures` is the *cross product* of the
+    // scroll / clock-timing / focus fan-outs, so a traversal crossed with two timings carries each
+    // step twice. Replaying that literally would send `Next` four times for step 2 and land the
+    // capture past the element its `_FOCUS_step2_Next` suffix names.
+    .distinctBy { it.step }
     .mapNotNull { it.direction?.name }
 }
 

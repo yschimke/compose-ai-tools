@@ -193,6 +193,60 @@ class DesktopFocusRendererTest {
   }
 
   /**
+   * `@ScrollingPreview(END)` and `@FocusedPreview` on the same capture compose: the scroll lands
+   * first, then focus walks, in one scene. A capture that ran only the focus drive would sit at the
+   * unscrolled top under a `_SCROLL_end` filename — the mislabelled artifact this whole issue
+   * family exists to remove — so the END+focus capture must differ from the focus-only one.
+   */
+  @Test
+  fun endScrollAndFocusComposeInOneCapture() {
+    // Same frame, same focus request — the only difference is whether the END drive ran.
+    val focusOnly =
+      renderColumn("desktop-focus-noscroll", DesktopFocusIntent(tabIndex = 0), scrollToEnd = false)
+        .first
+    val (scrolledAndFocused, drove) =
+      renderColumn("desktop-focus-scrolled", DesktopFocusIntent(tabIndex = 0), scrollToEnd = true)
+    assertTrue("focus must still land after the scroll drive", drove)
+    assertNotEquals(
+      "an END capture that also focuses must show the scrolled end, not the top",
+      bytes(focusOnly),
+      bytes(scrolledAndFocused),
+    )
+  }
+
+  private fun renderColumn(
+    name: String,
+    focus: DesktopFocusIntent,
+    scrollToEnd: Boolean,
+  ): Pair<File, Boolean> {
+    val out = File(tempFolder.newFolder(name), "$name.png")
+    val drove =
+      renderFocusPreview(
+        className = fixtureClass,
+        functionName = "ScrollableFocusableColumn",
+        widthPx = 600,
+        heightPx = 400,
+        density = 2.0f,
+        showBackground = true,
+        backgroundColor = 0L,
+        outputFile = out,
+        wrapperClassName = null,
+        // Fixed frame: an END scroll needs a viewport to scroll *within*, which a wrap-content
+        // capture (measured to the full content height) does not have.
+        wrapWidth = false,
+        wrapHeight = false,
+        previewArgs = emptyList(),
+        localeTag = null,
+        focus = focus,
+        scrollToEnd = scrollToEnd,
+      )
+    if (out.exists()) {
+      File("build/focus-evidence").apply { mkdirs() }.let { out.copyTo(File(it, out.name), true) }
+    }
+    return out to drove
+  }
+
+  /**
    * Nothing focusable → decline, so the caller falls back to the undriven capture rather than
    * publishing a PNG under a focus label that no component could have taken.
    */
