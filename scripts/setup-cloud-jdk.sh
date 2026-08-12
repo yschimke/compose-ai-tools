@@ -253,18 +253,19 @@ discover_jdk_home() {
   return 1
 }
 
-# Whether the JDK at <dir> is the build named by Temurin tag <tag>.
+# Whether the JDK at <dir> is exactly the build named by Temurin tag <tag>.
 #
-# `release` records the version without the build number (`17.0.20`), while a
-# tag carries it (`jdk-17.0.20+8`), so the comparison is on the version part.
-# Close enough: a pin exists to select a *release*, and two Temurin builds of
-# the same version are not something this script can tell apart anyway.
+# Compared against `IMPLEMENTOR_VERSION` (`Temurin-17.0.20+8`) rather than
+# `JAVA_VERSION` (`17.0.20`), because the build number and the vendor are the
+# whole point of a pin: `17.0.20+7`, or some other vendor's 17.0.20, is not the
+# build that was asked for. Strict on purpose — an install this cannot identify
+# counts as a mismatch and is re-downloaded, since being wrong the other way
+# means silently running something other than the pinned build.
 installed_matches_tag() {
-  local dir="$1" tag="$2" want installed
+  local dir="$1" tag="$2" want impl
   want="${tag#jdk-}"
-  want="${want%%+*}"
-  installed="$(sed -n 's/^JAVA_VERSION="\(.*\)"$/\1/p' "$dir/release" 2>/dev/null | head -n 1)"
-  [[ -n "$installed" && "$installed" == "$want" ]]
+  impl="$(sed -n 's/^IMPLEMENTOR_VERSION="\(.*\)"$/\1/p' "$dir/release" 2>/dev/null | head -n 1)"
+  [[ -n "$impl" && "$impl" == "Temurin-$want" ]]
 }
 
 # Whether <dir> is a full JDK (java *and* javac) of <major>.
@@ -410,11 +411,8 @@ install_major() {
   echo "[setup-cloud-jdk] major=$major tag=$tag arch=$jdk_arch" >&2
   echo "[setup-cloud-jdk] downloading $url" >&2
 
-  # Download to a temp file *before* creating the install dir, so a failed
-  # fetch does not leave an empty /opt/jdk<major> behind masquerading as an
-  # install. `rmdir` (not `rm -rf`) cleans up on the later failure paths: it
-  # only succeeds on an empty directory, so a caller-supplied dir that already
-  # had contents is never destroyed.
+  # Download to a temp file *before* touching the install dir, so a failed fetch
+  # does not leave an empty /opt/jdk<major> behind masquerading as an install.
   local tmp
   tmp="$(mktemp)"
   if ! curl -fsSL --retry 3 --retry-delay 2 -o "$tmp" "$url"; then
@@ -423,18 +421,44 @@ install_major() {
     return 1
   fi
 
-  mkdir -p "$install_dir"
-  if ! tar -xzf "$tmp" --strip-components=1 -C "$install_dir"; then
+  # Extracted into a staging directory, then swapped in — never unpacked over a
+  # populated install dir. Untarring on top would leave stale files from the
+  # previous JDK behind, and a failed extract would leave a working install
+  # half-overwritten. The install dir is only replaced once the new tree has
+  # been validated.
+  local staging="${install_dir}.incoming.$$"
+  rm -rf "$staging"
+  mkdir -p "$staging"
+  if ! tar -xzf "$tmp" --strip-components=1 -C "$staging"; then
     rm -f "$tmp"
+    rm -rf "$staging"
     echo "[setup-cloud-jdk] WARNING: extract failed for JDK $major ($url); skipping" >&2
-    rmdir "$install_dir" 2>/dev/null || true
     return 1
   fi
   rm -f "$tmp"
 
-  if [[ ! -x "$install_dir/bin/java" ]]; then
-    echo "[setup-cloud-jdk] WARNING: expected $install_dir/bin/java after extract (JDK $major) — skipping" >&2
-    rmdir "$install_dir" 2>/dev/null || true
+  if [[ ! -x "$staging/bin/java" ]]; then
+    echo "[setup-cloud-jdk] WARNING: expected bin/java after extract (JDK $major) — skipping" >&2
+    rm -rf "$staging"
+    return 1
+  fi
+
+  # Only ever replaces an empty directory or something that looks like a JDK.
+  # `install_dir` is caller-supplied (JDK<major>_DIR), and `rm -rf` on whatever
+  # a caller happened to name is not a risk worth taking to save a re-download.
+  if [[ -e "$install_dir" ]]; then
+    if [[ -d "$install_dir" && ( -x "$install_dir/bin/java" || -z "$(ls -A "$install_dir")" ) ]]; then
+      rm -rf "$install_dir"
+    else
+      echo "[setup-cloud-jdk] WARNING: $install_dir exists and is not a JDK; refusing to replace it" >&2
+      rm -rf "$staging"
+      return 1
+    fi
+  fi
+  mkdir -p "$(dirname "$install_dir")"
+  if ! mv "$staging" "$install_dir"; then
+    echo "[setup-cloud-jdk] WARNING: could not move the new JDK $major into $install_dir" >&2
+    rm -rf "$staging"
     return 1
   fi
 

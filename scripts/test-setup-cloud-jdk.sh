@@ -197,12 +197,34 @@ grep -Fq "jdk-17.0.20" "${fixture}/calls" ||
     cat "${fixture}/calls" >&2; exit 1; }
 
 : >"${fixture}/calls"
+printf 'IMPLEMENTOR_VERSION="Temurin-17.0.19+7"\n' >>"${fixture}/opt/jdk17-pin/release"
 out="$(run_script CLOUD_JDK_MAJORS=17 JDK17_DIR="${fixture}/opt/jdk17-pin" \
   JDK17_VERSION="jdk-17.0.19+7" 2>/dev/null)"
 test "${out}" = "${fixture}/opt/jdk17-pin" ||
   { echo "FAIL: an install matching the pin should be reused, got '${out}'" >&2; exit 1; }
 test ! -s "${fixture}/calls" ||
   { echo "FAIL: pinning re-downloaded a build already installed" >&2; exit 1; }
+
+# The build number is part of the pin: same version, different build, is a miss.
+: >"${fixture}/calls"
+run_script CLOUD_JDK_MAJORS=17 JDK17_DIR="${fixture}/opt/jdk17-pin" \
+  JDK17_VERSION="jdk-17.0.19+9" >/dev/null 2>&1 || true
+test -s "${fixture}/calls" ||
+  { echo "FAIL: a different build number must not satisfy the pin" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# 5e. A failed extract must not damage the JDK already in the install dir, and a
+#     non-JDK directory is never blown away.
+# ---------------------------------------------------------------------------
+: >"${fixture}/calls"
+make_jdk "${fixture}/opt/jdk17-keep" "17.0.19"
+printf 'IMPLEMENTOR_VERSION="Temurin-17.0.19+7"\n' >>"${fixture}/opt/jdk17-keep/release"
+run_script CLOUD_JDK_MAJORS=17 JDK17_DIR="${fixture}/opt/jdk17-keep" \
+  JDK17_VERSION="jdk-17.0.20+8" >/dev/null 2>&1 || true
+test -x "${fixture}/opt/jdk17-keep/bin/java" ||
+  { echo "FAIL: a failed download destroyed the JDK already installed" >&2; exit 1; }
+grep -Fq 'Temurin-17.0.19+7' "${fixture}/opt/jdk17-keep/release" ||
+  { echo "FAIL: the existing install was partially overwritten" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # 5d. A relative search dir yields an absolute JAVA_HOME. A relative one would
