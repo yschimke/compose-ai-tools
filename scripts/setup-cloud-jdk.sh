@@ -43,6 +43,15 @@
 #       to requested target
 #     The fix is to copy the system Java trust store over Temurin's.
 #
+# Nothing is downloaded for a major this box already has. Reuse is checked in
+# two places: this script's own install dir, and then the JDKs actually present
+# — `java` on PATH, `$JAVA_HOME`, and the directories Gradle scans for
+# toolchains. That second check is the difference between working and dead on a
+# container provisioned by something else: a Nix-installed Temurin symlinked
+# into `/usr/lib/jvm` is a perfectly good JDK 17, and going to Adoptium for
+# another one fails outright where github.com is gated per repository. See
+# `discover_jdk_home`.
+#
 # Usage:
 #   scripts/setup-cloud-jdk.sh [PRIMARY_INSTALL_DIR]
 #
@@ -52,10 +61,19 @@
 #                     JAVA_HOME is printed on stdout for
 #                     `export JAVA_HOME=$(scripts/setup-cloud-jdk.sh)`.
 #   JDK17_VERSION     pin the primary's Temurin tag (back-compat alias for the
-#                     primary major when it is 17; default: latest GA).
+#                     primary major when it is 17; default: latest GA). A pinned
+#                     tag names a specific build, so it also opts that major out
+#                     of reusing whatever JDK happens to be on the box.
 #   JDK17_DIR         primary install dir (default: /opt/jdk<primary>, or arg 1).
 #   JDK<major>_DIR    install dir for a specific major (default: /opt/jdk<major>).
 #   JDK<major>_VERSION pin a specific major's Temurin tag (default: latest GA).
+#   CLOUD_JDK_REUSE_EXISTING
+#                     `0` to always download, even when a JDK of that major is
+#                     already installed elsewhere (default: reuse).
+#   CLOUD_JDK_SEARCH_DIRS
+#                     space-separated globs searched for existing JDKs
+#                     (default: "/usr/lib/jvm/* /opt/jdk* /opt/*jdk*
+#                     $HOME/.sdkman/candidates/java/*").
 #
 # Output: prints the absolute JAVA_HOME of the PRIMARY JDK on stdout.
 # Additional majors are best-effort: a major Adoptium hasn't published yet
@@ -93,10 +111,19 @@ fix_truststore() {
     return 0
   fi
   # Only swap if the Temurin store differs (idempotent re-runs are a no-op).
+  # A JDK we did not install may live somewhere unwritable — a Nix/Guix store
+  # path is read-only by design — so the copy is best-effort. A JDK whose trust
+  # store we cannot replace is still perfectly good for compiling and rendering;
+  # only Java-side HTTPS through the MITM proxy is affected, and whatever
+  # provisioned that JDK owns its trust store. Failing the whole run over it
+  # would be the wrong trade.
   if ! cmp -s "$system_truststore" "$dest"; then
     cp -f "$dest" "$dest.adoptium-orig" 2>/dev/null || true
-    cp -f "$system_truststore" "$dest"
-    echo "[setup-cloud-jdk] swapped $dest <- $system_truststore (trusts proxy CA)" >&2
+    if cp -f "$system_truststore" "$dest" 2>/dev/null; then
+      echo "[setup-cloud-jdk] swapped $dest <- $system_truststore (trusts proxy CA)" >&2
+    else
+      echo "[setup-cloud-jdk] WARNING: could not write $dest (read-only JDK?); leaving its trust store as-is" >&2
+    fi
   fi
 }
 
@@ -147,6 +174,66 @@ install_dir_for() {
   else
     echo "${!var:-/opt/jdk${major}}"
   fi
+}
+
+# The feature major of the JDK at <java_home> (17, 21, 8, …), or nothing (rc 1).
+#
+# Read from `release` (`JAVA_VERSION="17.0.19"`) — every JDK since 9 ships it,
+# and it costs no process. Falls back to running `java -version` for an install
+# that lacks the file. `1.8.0_412` normalises to 8, so a legacy JDK is never
+# mistaken for major "1".
+jdk_major_of() {
+  local home="$1" v=""
+  if [[ -r "$home/release" ]]; then
+    v="$(sed -n 's/^JAVA_VERSION="\(.*\)"$/\1/p' "$home/release" | head -n 1)"
+  fi
+  if [[ -z "$v" && -x "$home/bin/java" ]]; then
+    v="$("$home/bin/java" -version 2>&1 | sed -n '1s/.*version "\([^"]*\)".*/\1/p')"
+  fi
+  [[ -n "$v" ]] || return 1
+  case "$v" in
+    1.*) printf '%s' "$(printf '%s' "$v" | cut -d. -f2)" ;;
+    *) printf '%s' "${v%%[.+_-]*}" ;;
+  esac
+}
+
+# Echo the JAVA_HOME of a JDK of <major> that is already on this box, or nothing
+# (rc 1). Checks the active `java`, then `$JAVA_HOME`, then the locations Gradle
+# itself scans for toolchains.
+#
+# This is what stops the script downloading a JDK the container already has. The
+# old reuse check looked only at its own install dir (`/opt/jdk<major>`), so a
+# box whose JDK 17 lives anywhere else — a Nix-provisioned Temurin symlinked to
+# `/usr/lib/jvm/temurin-17`, say, which is exactly what the coo.ee/env
+# bootstrap produces — was treated as having no JDK 17 at all. It then went to
+# Adoptium for one, and in a sandbox that gates github.com per-repository the
+# fetch 403s and the whole setup aborts. A JDK that is present, on PATH, and of
+# the right major is the answer to the question being asked.
+discover_jdk_home() {
+  local major="$1" cand home
+  if command -v java >/dev/null 2>&1; then
+    home="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+    if [[ -x "$home/bin/java" && "$(jdk_major_of "$home" || true)" == "$major" ]]; then
+      printf '%s' "$home"
+      return 0
+    fi
+  fi
+  # `/usr/lib/jvm/*` covers both distro JDKs and the symlink farm this script's
+  # own `link_into_jvm_dir` (and other provisioners) maintain there. Overridable
+  # via CLOUD_JDK_SEARCH_DIRS (space-separated, globs allowed) for a layout none
+  # of these cover — and so the self-test can search a fixture instead of the
+  # machine it runs on.
+  local dirs="${CLOUD_JDK_SEARCH_DIRS:-/usr/lib/jvm/* /opt/jdk* /opt/*jdk* $HOME/.sdkman/candidates/java/*}"
+  # Deliberately unquoted: $dirs must both word-split and glob-expand here.
+  # shellcheck disable=SC2086
+  for cand in "${JAVA_HOME:-}" $dirs; do
+    [[ -n "$cand" && -x "$cand/bin/java" ]] || continue
+    if [[ "$(jdk_major_of "$cand" || true)" == "$major" ]]; then
+      printf '%s' "$cand"
+      return 0
+    fi
+  done
+  return 1
 }
 
 # Resolve a pinned Temurin tag for a major, if the caller set JDK<major>_VERSION
@@ -242,6 +329,25 @@ install_major() {
 
   local tag
   tag="$(pinned_tag_for "$major")"
+
+  # Nothing in *our* install dir — but the box may already have this major
+  # somewhere else, and downloading a second copy of a JDK that is already on
+  # PATH is both wasteful and, in a sandbox that blocks Adoptium, fatal.
+  #
+  # Skipped when the caller pinned a tag for this major (JDK<major>_VERSION):
+  # that names a specific build, so "some JDK 17" is not what was asked for.
+  # `CLOUD_JDK_REUSE_EXISTING=0` forces a download unconditionally.
+  if [[ -z "$tag" && "${CLOUD_JDK_REUSE_EXISTING:-1}" != "0" ]]; then
+    local found
+    if found="$(discover_jdk_home "$major")" && [[ -n "$found" ]]; then
+      echo "[setup-cloud-jdk] JDK $major already present at $found — reusing it (no download)" >&2
+      fix_truststore "$found"
+      link_into_jvm_dir "$found" "$major"
+      echo "$found"
+      return 0
+    fi
+  fi
+
   if [[ -z "$tag" ]]; then
     tag="$(resolve_latest_tag "$major")" || tag=""
   fi

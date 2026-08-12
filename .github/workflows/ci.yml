@@ -1175,6 +1175,11 @@ jobs:
       # the pre-Noto generic families while supplying broad missing-glyph coverage.
       - name: Run Linux font-fallback installer tests
         run: scripts/test-install-linux-font-fallbacks.sh
+      # Guards which JDKs the cloud bootstrap treats as "already here". Getting this wrong is not
+      # a slow build, it is a dead session: the script downloads from Adoptium, and a sandbox that
+      # gates github.com per repository 403s that fetch — on a box that already had the JDK.
+      - name: Run cloud JDK setup tests
+        run: scripts/test-setup-cloud-jdk.sh
       # Guards the preview-host image's baked font cache. Its failure mode is silent: a wrong
       # cache filename or a skipped stage-2 range query leaves faces the renderer never finds, so
       # the live daemon quietly falls back to Roboto and drifts from the baked catalog PNGs again.
