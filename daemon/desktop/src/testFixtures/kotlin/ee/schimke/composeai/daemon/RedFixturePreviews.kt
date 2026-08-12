@@ -569,6 +569,30 @@ object PressLocaleProbe {
 }
 
 /**
+ * Recomposes on **every frame** and publishes the locale each one ran under to [PressLocaleProbe].
+ *
+ * [PressLocaleProbeSquare] only recomposes once, on the press — enough to say what the settling
+ * frame ran under, but silent about the frames after it. A recording renders a frame per tick and
+ * is the lane where "the composition kept running long after `setUp`" matters, so its probe has to
+ * report on every one of them.
+ */
+@Composable
+fun FrameTickLocaleProbeSquare() {
+  var tick by remember { mutableStateOf(0L) }
+  PressLocaleProbe.record()
+  LaunchedEffect(Unit) {
+    while (true) {
+      withFrameNanos { tick = it }
+    }
+  }
+  Box(
+    modifier =
+      Modifier.fillMaxSize()
+        .background(if (tick % 2L == 0L) Color(0xFFEF5350) else Color(0xFF66BB6A))
+  )
+}
+
+/**
  * Recomposes on a pointer press and publishes the locale it recomposed under to [PressLocaleProbe].
  *
  * The press-settling render is a frame like any other — it composes whatever the press invalidated

@@ -226,7 +226,7 @@ class DesktopRecordingSession(
           // diff is deferred (post-loop), to keep evidence ordering; the pixels are frozen here.
           // The
           // placeholder is FAILED so a (bug) skipped finalization fails closed.
-          val snapshot = frameBytes(state.scene.render(nanoTime = tNanos), frameIndex)
+          val snapshot = frameBytes(renderRecordingFrame(tNanos), frameIndex)
           pendingPixels.add(PendingPixelAssert(evidence.size, snapshot, e))
           evidence.add(failedEvidence(e, "assert.pixels: not evaluated"))
         } else {
@@ -236,7 +236,7 @@ class DesktopRecordingSession(
         nextEventIdx++
       }
 
-      val image = state.scene.render(nanoTime = tNanos)
+      val image = renderRecordingFrame(tNanos)
       writeFramePng(image, frameIndex, virtualTimeMs = tMs)
     }
     // Post-loop: diff each deferred assert.pixels' frozen snapshot against its baseline.
@@ -438,6 +438,19 @@ class DesktopRecordingSession(
       defaultFrameNanos = { 0L },
       settleFrame = { nanoTime -> engine.renderSettlingFrame(state, nanoTime) },
     )
+
+  /**
+   * One recording frame off the held scene, composed inside the preview's locale scope.
+   *
+   * Every `scene.render` in this class goes through here (issue #3721). A recording composes on its
+   * own playback / live-tick thread, so a bare render is two bugs at once: it can run while a
+   * *different* held session has the process-global JVM default `Locale` installed and resolve
+   * `stringResource(...)` in that session's language, and — since a recording recomposes on every
+   * dispatched input, not just at `setUp` — a **localized** recording would re-resolve its own
+   * strings at the host default from the first input onward.
+   */
+  private fun renderRecordingFrame(tNanos: Long): Image =
+    RenderEngine.withPreviewLocale(state.spec.localeTag) { state.scene.render(nanoTime = tNanos) }
 
   private fun pointerIdOrDefault(event: RecordingScriptEvent): Int = event.pointerId ?: 0
 
@@ -846,7 +859,7 @@ class DesktopRecordingSession(
           captureLiveEvent(scriptEvent)
         }
 
-        val image = state.scene.render(nanoTime = tNanos)
+        val image = renderRecordingFrame(tNanos)
         writeFramePng(image, liveFrameCount, virtualTimeMs = tMs)
         liveFrameCount++
 
