@@ -283,6 +283,16 @@ the staged PR renders and their push metadata, the fetched baselines, the
 resolved base SHA, and the per-surface staging dirs for resources / a11y /
 notifications.
 
+The directory itself contains just two entries — `handoff.tar` and
+`_pr_number`. Everything else lives inside the tarball because
+`actions/upload-artifact` refuses any path containing a colon, and a gradle
+module path is full of them (`_pr_renders/renders/ai:sample:wear-gemini/…`).
+Those directory names cannot be sanitised: `_pr_renders` is pushed verbatim to
+the render branch, so its layout *is* the image URL in the comment and has to
+keep matching the baselines. `_pr_number` stays outside so the caller can read
+it back for `pr-number`; the publish phase unpacks the rest before anything
+reads it.
+
 Two values are in there because the publish job cannot recover them itself:
 
 | File | Why it can't be recomputed |
