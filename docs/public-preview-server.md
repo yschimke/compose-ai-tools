@@ -91,6 +91,33 @@ design systems today) keeps the single flat grid, unchanged.
 
 ![Tabbed catalog page — meshcore-mobile (dark)](images/serve-tabs-sections-dark.png)
 
+## The switchers: how a folded render stays reachable
+
+The grid shows **one card per component**. A component's non-default states (`disabled`, `pressed`,
+an `@OverrideVariant` size/shape cell) and its props-axis variants (RTL, a pseudo-locale, a large
+font, `content=icon+label`) are folded into that card, and the viewer's two `<nav>` rows — **State**
+and **Variant** — are what keep them reachable. Both are plain links to a sibling `/p/<id>`, so they
+work with scripting off.
+
+Each row stays within the visitor's current **theme lane**, and a lane resolves before it is
+compared: a render's declared `theme`, else the `__light` / `__dark` token in its id, else the
+system's primary lane (dark for a dark-first Wear catalog, light otherwise). That last fallback is
+load-bearing, because **a catalog does not necessarily tag both modes.** An `@OverrideVariant`
+matrix publishes its dark cells as `…__xs__dark` — the synthetic capture inherits the base
+`@Preview`'s `uiMode` param — but its light cells as a bare `…__xs`, while the component's default
+render still carries the full `…__default__light`. Comparing the raw nullable `theme` put those two
+in different lanes, so the light viewer offered **no State row at all** — and the light lane is the
+one the grid links to, which left m3-catalog's entire size × shape matrix (446 renders across the
+catalog) reachable only by hand-typing an id.
+
+| Before — no State row on the light lane | After — the folded cells are reachable |
+| --- | --- |
+| ![Button Filled viewer, light: only a Variant row](images/serve-state-switcher-untagged-before.png) | ![Button Filled viewer, light: a State row listing the size and shape cells](images/serve-state-switcher-untagged-after.png) |
+
+The dark lane is unchanged, and an untagged render now links back to the primary-lane default as
+well as forward to its siblings — the relation is symmetric because both sides resolve to a lane
+string rather than one of them being `null`.
+
 ## Every selection is in the URL
 
 What a visitor picks is reflected into the page URL, so the page on screen is the page its URL
