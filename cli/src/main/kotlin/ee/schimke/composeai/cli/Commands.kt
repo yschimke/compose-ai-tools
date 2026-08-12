@@ -431,6 +431,13 @@ abstract class Command(
     val manifests: List<Pair<PreviewModule, PreviewManifest>>,
     val results: List<PreviewResult>,
     val discoveredPreviewCount: Int,
+    /**
+     * Preview ids this run rendered, or `null` when it rendered everything the modules declare.
+     * Non-null means the Gradle drive was narrowed to the `--id` / `--filter` request
+     * (issue #3730), so the previews outside it carry whatever the *previous* run left on disk —
+     * often nothing at all. Reporting has to say so rather than count them as render failures.
+     */
+    val renderedIds: Set<String>? = null,
   )
 
   /**
@@ -444,6 +451,12 @@ abstract class Command(
     val modules: List<PreviewModule>,
     val discoveredPreviewCount: Int,
     val taskOutcomes: Map<String, GradleTaskOutcome> = emptyMap(),
+    /**
+     * Preview ids this run actually asked Gradle to render, or `null` when it rendered everything.
+     * Threaded into [buildResults] so a narrowed render doesn't drop the `.cli-state.json` shas of
+     * the previews it deliberately skipped — see [PreviewRenderScope].
+     */
+    val renderedIds: Set<String>? = null,
   )
 
   /**
@@ -472,8 +485,8 @@ abstract class Command(
     var outcome: RawRenderOutcome? = null
     withGradle(silenceStdout = silenceStdout) { gradle ->
       val modules = withGradleStdout(silenceStdout) { resolveModules(gradle).filter(moduleFilter) }
-      val (buildOk, modulesToRead, discoveredPreviewCount, taskOutcomes) =
-        if (modules.isEmpty()) Quad(true, emptyList(), 0, emptyMap<String, GradleTaskOutcome>())
+      outcome =
+        if (modules.isEmpty()) RawRenderOutcome(true, emptyList(), 0)
         else {
           // Explicit discover pass before the render so `shards=auto` sees a fresh previews.json at
           // render-configuration time (see [runDiscover]). Kept as a first-class step — not an
@@ -490,13 +503,13 @@ abstract class Command(
                 discoverySucceeded = discoverySucceeded,
               )
             } else modules
-          if (scopeToPreviewRequest) {
-            warnIfPreviewFilterStillRendersExtraRows(
-              renderModules,
-              discoveryManifests,
-              discoverySucceeded = discoverySucceeded,
-            )
-          }
+          // Narrow the render itself to the requested previews rather than rendering the module and
+          // discarding the rows afterwards (issue #3730). Only for the preview-shaped pipeline:
+          // `show-resources` drives a resource manifest whose entries aren't `@Preview`s at all.
+          val scope =
+            if (scopeToPreviewRequest)
+              previewRenderScope(renderModules, discoveryManifests, discoverySucceeded)
+            else PreviewRenderScope.FULL
           val xrArgs =
             provisionXrCompositeArgs(gradle, renderModules, silenceStdout, discoverFirst = false)
           val tasks = renderModules.map(taskFor).toTypedArray()
@@ -504,28 +517,67 @@ abstract class Command(
             if (renderModules.isEmpty()) true
             else {
               withGradleStdout(silenceStdout) {
-                runGradle(gradle, *tasks, arguments = gradleArguments + xrArgs)
+                runGradle(gradle, *tasks, arguments = gradleArguments + xrArgs + scope.gradleArgs)
               }
             }
           if (!ok) reportRenderFailures(gradle)
           val outcomes = gradle.lastTaskOutcomes()
-          val readableModules = readableRenderModules(renderModules, taskFor, outcomes)
-          val discoveredPreviewCount =
-            if (scopeToPreviewRequest) discoveryManifests.sumOf { it.second.previews.size } else 0
-          Quad(ok, readableModules, discoveredPreviewCount, outcomes)
+          RawRenderOutcome(
+            buildOk = ok,
+            modules = readableRenderModules(renderModules, taskFor, outcomes),
+            discoveredPreviewCount =
+              if (scopeToPreviewRequest) discoveryManifests.sumOf { it.second.previews.size }
+              else 0,
+            taskOutcomes = outcomes,
+            renderedIds = scope.renderedIds,
+          )
         }
-      outcome =
-        RawRenderOutcome(
-          buildOk = buildOk,
-          modules = modulesToRead,
-          discoveredPreviewCount = discoveredPreviewCount,
-          taskOutcomes = taskOutcomes,
-        )
     }
     return outcome ?: error("renderModules: gradle block did not produce an outcome")
   }
 
-  private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+  /**
+   * The `-PcomposePreview.idFilter` narrowing for this invocation's `--id` / `--filter`, plus the
+   * stderr diagnostics that go with it. Shared by the [renderModules] pipeline (`show`, `a11y`,
+   * reports) and by `render`, which drives Gradle itself.
+   *
+   * Returns [PreviewRenderScope.FULL] — render everything, the pre-#3730 behaviour — whenever the
+   * request can't be resolved to an exact id list: no filter, no modules, or a discovery pass that
+   * failed (the render task depends on discovery and is the authoritative retry, so a stale or
+   * missing manifest must never be allowed to narrow it).
+   */
+  internal fun previewRenderScope(
+    renderModules: List<PreviewModule>,
+    discoveryManifests: List<Pair<PreviewModule, PreviewManifest>>,
+    discoverySucceeded: Boolean,
+  ): PreviewRenderScope.Scope {
+    if (exactId == null && filter == null) return PreviewRenderScope.FULL
+    if (renderModules.isEmpty()) return PreviewRenderScope.FULL
+    val flag = if (exactId != null) "--id" else "--filter"
+    if (!discoverySucceeded) {
+      System.err.println(
+        "compose-preview: preview discovery failed, so $flag could not narrow the render; " +
+          "rendering all resolved modules so Gradle can retry discovery."
+      )
+      return PreviewRenderScope.FULL
+    }
+    val byPath = renderModules.map { it.gradlePath }.toSet()
+    val scope =
+      PreviewRenderScope.forRequest(
+        manifests = discoveryManifests.filter { (module, _) -> module.gradlePath in byPath },
+        exactId = exactId,
+        filter = filter,
+        permutations = permutations,
+      )
+    scope.note?.let { System.err.println("compose-preview: $flag $it; rendering the full module.") }
+    if (verbose && scope.narrowed) {
+      System.err.println(
+        "compose-preview: $flag narrowed the render to ${scope.renderedIds?.size ?: 0} preview(s) " +
+          "via -P${PreviewRenderScope.GRADLE_PROPERTY}"
+      )
+    }
+    return scope
+  }
 
   /**
    * Standard "discover modules → run `:composePreviewRenderAll` → load manifests → build results"
@@ -547,7 +599,7 @@ abstract class Command(
         scopeToPreviewRequest = true,
       )
     val manifests = readAllManifests(raw.modules)
-    val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests)
+    val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests, raw.renderedIds)
     return RenderModulesOutcome(
       buildOk = raw.buildOk,
       modules = raw.modules,
@@ -555,6 +607,7 @@ abstract class Command(
       results = results,
       discoveredPreviewCount =
         raw.discoveredPreviewCount.takeIf { it > 0 } ?: manifests.sumOf { it.second.previews.size },
+      renderedIds = raw.renderedIds,
     )
   }
 
@@ -633,9 +686,16 @@ abstract class Command(
    *
    * The top-level `pngPath` / `sha256` / `changed` on [PreviewResult] mirror the first capture
    * verbatim so existing agents keep working.
+   *
+   * [renderedIds] names the previews this run actually re-rendered, or `null` for "all of them". It
+   * only matters once the render is narrowed (issue #3730): a preview that was deliberately skipped
+   * and has no PNG on disk must keep the sha the previous run recorded, or the next full render
+   * would report it as `changed` purely because the CLI forgot it. A skipped preview whose PNG *is*
+   * on disk needs nothing special — its sha still matches, so it reads as unchanged.
    */
   protected fun buildResults(
-    manifests: List<Pair<PreviewModule, PreviewManifest>>
+    manifests: List<Pair<PreviewModule, PreviewManifest>>,
+    renderedIds: Set<String>? = null,
   ): List<PreviewResult> {
     val base = PreviewResultBuilder.build(manifests)
     val imageSizeOverride = ImageSizeOverride.detect()
@@ -652,12 +712,41 @@ abstract class Command(
       val prior = readState(module).shas
       val updated = mutableMapOf<String, String>()
       for (result in moduleResults) {
+        val skipped = renderedIds != null && result.id !in renderedIds
         val overlayed = applyImageOverrideAndStateDiff(result, prior, updated, imageSizeOverride)
+        if (skipped) carryForwardSkippedState(result.id, prior, updated)
         out += annotateExtensions(overlayed, module)
       }
       writeState(module, CliState(updated))
     }
     return out
+  }
+
+  /**
+   * Re-adopt every `.cli-state.json` entry belonging to [id] that this run didn't rewrite
+   * (issue #3730).
+   *
+   * A narrowed render leaves the previews it skipped with no PNG to hash, so
+   * [applyImageOverrideAndStateDiff] writes no sha for them — and a dropped entry reads as
+   * "first-ever render" next time, which would make the following full render report every skipped
+   * preview as `changed`. The render didn't happen, so nothing about those previews' last known
+   * pixels changed either: keep what the previous run recorded.
+   *
+   * It has to work off the prior *keys* rather than the result's captures, because a
+   * `@PreviewParameter` preview whose fan-out files are all absent has **no** captures — the CLI
+   * globs those rows off disk, so an unrendered parameterized preview presents as zero rows rather
+   * than one empty one, and there is nothing to hang a carried-forward sha on. Matching is scoped
+   * to the `<id>` / `<id>#…` family so a sibling (`Foo_Dark` next to `Foo`) can't be dragged along,
+   * and [MutableMap.putIfAbsent] means a sha this run actually computed always wins.
+   */
+  private fun carryForwardSkippedState(
+    id: String,
+    prior: Map<String, String>,
+    updated: MutableMap<String, String>,
+  ) {
+    for ((key, sha) in prior) {
+      if (key == id || key.startsWith("$id#")) updated.putIfAbsent(key, sha)
+    }
   }
 
   /**
@@ -793,39 +882,6 @@ abstract class Command(
       filter = filter,
       discoverySucceeded = discoverySucceeded,
     )
-
-  private fun warnIfPreviewFilterStillRendersExtraRows(
-    renderModules: List<PreviewModule>,
-    manifests: List<Pair<PreviewModule, PreviewManifest>>,
-    discoverySucceeded: Boolean,
-  ) {
-    if (exactId == null && filter == null) return
-    if (renderModules.isEmpty()) return
-    val flag = if (exactId != null) "--id" else "--filter"
-    if (!discoverySucceeded) {
-      System.err.println(
-        "compose-preview: preview discovery failed, so $flag could not narrow the render; " +
-          "rendering all resolved modules so Gradle can retry discovery."
-      )
-      return
-    }
-    val byPath = renderModules.map { it.gradlePath }.toSet()
-    val rendersExtraRows =
-      manifests
-        .filter { (module, _) -> module.gradlePath in byPath }
-        .any { (_, manifest) ->
-          manifest.previews.any {
-            !previewIdMatchesRequest(it.id, exactId = exactId, filter = filter)
-          }
-        }
-    if (!rendersExtraRows) return
-    System.err.println(
-      "compose-preview: $flag narrowed the render to matching module(s) " +
-        renderModules.joinToString(", ") { it.gradlePath } +
-        "; Gradle still renders the full selected module task, so other previews in those " +
-        "module(s) may execute but will not be printed."
-    )
-  }
 
   private fun stateFile(module: PreviewModule): File =
     module.projectDir.resolve("build/compose-previews/.cli-state.json")
@@ -1118,12 +1174,15 @@ class ShowCommand(args: List<String>) : Command(args) {
     val all = outcome.results
     val modules = outcome.modules
     val filtered = applyFilters(all)
+    // Counts reflect the full discovered set so an agent using `--changed-only` can still see
+    // "60 unchanged, 0 changed" and skip a follow-up query — but only when the run actually
+    // rendered that set. Once `--id` / `--filter` narrows the Gradle drive (issue #3730) the
+    // previews outside the request were deliberately not rendered, so counting their absent PNGs
+    // as `missing` would report 63 render failures for a run that did exactly what was asked.
+    val countsScope = if (outcome.renderedIds == null) all else all.filter { matchesRequest(it) }
 
     if (filtered.isEmpty()) {
-      // Counts reflect the full discovered set so an agent using
-      // `--changed-only` can still see "60 unchanged, 0 changed"
-      // and skip a follow-up query.
-      if (jsonOutput) println(encodeResponse(emptyList(), countsScope = all))
+      if (jsonOutput) println(encodeResponse(emptyList(), countsScope = countsScope))
       else println("No previews matched.")
       System.out.flush()
       // A build failure outranks "no match": exit 3 advertises a healthy build that simply had
@@ -1132,7 +1191,7 @@ class ShowCommand(args: List<String>) : Command(args) {
     }
 
     if (jsonOutput) {
-      println(encodeResponse(filtered, countsScope = all))
+      println(encodeResponse(filtered, countsScope = countsScope))
     } else {
       var lastModule: String? = null
       for (r in filtered) {
@@ -1313,11 +1372,44 @@ class RenderCommand(args: List<String>) : Command(args) {
         }
       }
     withGradle { gradle ->
-      val modules = resolveModules(gradle)
-      val xrArgs = provisionXrCompositeArgs(gradle, modules, silenceStdout = false)
+      val resolved = resolveModules(gradle)
+      // Discover first so `--id` / `--filter` can be resolved to the exact ids Gradle should
+      // render, instead of rendering every module at full width and dropping the rows afterwards
+      // (issue #3730). `show` gets this from the shared [renderModules] pipeline; `render` drives
+      // Gradle itself, so it repeats the two steps here.
+      val discoverySucceeded = runDiscover(gradle, resolved, silenceStdout = false)
+      val discoveryManifests = if (discoverySucceeded) readAllManifests(resolved) else emptyList()
+      // `--bundle` packs a whole *module's* previews into one portable artifact, and
+      // `BundlePreviewTask` omits any preview whose PNG isn't on disk — so narrowing under
+      // `--bundle` would quietly ship a bundle containing a single preview, and dropping the
+      // non-matching modules would stop producing their bundles at all. That command keeps its
+      // pre-#3730 full-width behaviour; the render is the cheap half of it anyway.
+      val modules =
+        if (bundle) resolved
+        else
+          modulesMatchingPreviewRequest(
+            resolved,
+            discoveryManifests,
+            exactId = exactId,
+            filter = filter,
+            discoverySucceeded = discoverySucceeded,
+          )
+      if (modules.isEmpty()) {
+        System.err.println("No previews matched.")
+        exitProcess(3)
+      }
+      val scope =
+        if (bundle) PreviewRenderScope.FULL
+        else previewRenderScope(modules, discoveryManifests, discoverySucceeded)
+      val xrArgs =
+        provisionXrCompositeArgs(gradle, modules, silenceStdout = false, discoverFirst = false)
       val tasks = previewTasksFor(modules.map { it.gradlePath }).toTypedArray()
       if (
-        !runGradle(gradle, *tasks, arguments = gradleArgsWithForce(bundleGradleArgs()) + xrArgs)
+        !runGradle(
+          gradle,
+          *tasks,
+          arguments = gradleArgsWithForce(bundleGradleArgs()) + xrArgs + scope.gradleArgs,
+        )
       ) {
         reportRenderFailures(gradle)
         exitProcess(2)
@@ -1326,7 +1418,7 @@ class RenderCommand(args: List<String>) : Command(args) {
       if (bundle) reportBundles(modules)
 
       val manifests = readAllManifests(modules)
-      val all = buildResults(manifests)
+      val all = buildResults(manifests, scope.renderedIds)
       // `render` ignores `--changed-only` so the agent can ask "render
       // the world, but report only what changed" via a follow-up
       // `show --changed-only`.
@@ -1666,7 +1758,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
       System.err.println(message)
       exitProcess(2)
     }
-    val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests)
+    val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests, raw.renderedIds)
     val outcome =
       RenderModulesOutcome(
         buildOk = raw.buildOk,
@@ -1676,6 +1768,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
         discoveredPreviewCount =
           raw.discoveredPreviewCount.takeIf { it > 0 }
             ?: manifests.sumOf { it.second.previews.size },
+        renderedIds = raw.renderedIds,
       )
 
     if (outcome.manifests.isEmpty()) {

@@ -208,8 +208,11 @@ private fun printFullUsage() {
 
     Options:
       --module <name>      Target module (default: auto-detect all)
-      --filter <pattern>   Case-insensitive substring match on preview id
-      --id <exact>         Exact match on preview id
+      --filter <pattern>   Case-insensitive substring match on preview id. Narrows the Gradle
+                           render itself, not just the printed rows: only the matching
+                           previews are rendered, and only in the modules that declare them.
+                           Previews outside the match keep whatever PNG the last run wrote.
+      --id <exact>         Exact match on preview id (narrows the render like --filter)
       --json               Emit JSON (show, list, a11y, devices)
       --brief              JSON only: drop functionName/className/sourceFile/params
       --changed-only       JSON only (show, a11y): drop previews with no changed capture

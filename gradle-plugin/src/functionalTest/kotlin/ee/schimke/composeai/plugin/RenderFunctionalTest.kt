@@ -28,7 +28,12 @@ class RenderFunctionalTest {
     encodeDefaults = true
   }
 
-  private fun createTestProject(): File {
+  /**
+   * [extraPreviewNames] adds one more `@Preview` composable per entry, in its own file. Default
+   * empty so the single-preview fixture the missing-render tests read with `previews.single()` is
+   * unchanged; a filtered render needs at least two so there is something to leave out.
+   */
+  private fun createTestProject(extraPreviewNames: List<String> = emptyList()): File {
     val projectDir = tempDir.root
 
     File(projectDir, "settings.gradle.kts")
@@ -103,7 +108,87 @@ class RenderFunctionalTest {
           .trimIndent()
       )
 
+    for (name in extraPreviewNames) {
+      File(srcDir, "$name.kt")
+        .writeText(
+          """
+          package test
+
+          import androidx.compose.ui.tooling.preview.Preview
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.size
+          import androidx.compose.runtime.Composable
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.unit.dp
+
+          @Preview
+          @Composable
+          fun $name() {
+              Box(modifier = Modifier.size(100.dp).background(Color.Blue))
+          }
+          """
+            .trimIndent()
+        )
+    }
+
     return projectDir
+  }
+
+  @Test
+  fun `an id-filtered composePreviewRenderAll gates only on the previews it rendered`() {
+    // Issue #3730: the CLI now narrows the render with `-PcomposePreview.idFilter` instead of
+    // rendering the whole module and dropping the rows afterwards. The post-condition has to move
+    // with it, or the very run the filter asked for fails on the PNGs it deliberately skipped.
+    val projectDir = createTestProject(extraPreviewNames = listOf("BlueBoxPreview"))
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+
+    val manifestFile = File(projectDir, "build/compose-previews/previews.json")
+    val manifest = json.decodeFromString<PreviewManifest>(manifestFile.readText())
+    assertThat(manifest.previews).hasSize(2)
+    val target = manifest.previews.first { it.functionName == "RedBoxPreview" }
+
+    // Exactly what a narrowed render leaves behind: the requested preview's PNG, and nothing for
+    // the other one. (`-x composePreviewRender` stands in for the renderer, which this synthetic
+    // project can't resolve — see the class kdoc.)
+    File(projectDir, "build/compose-previews/${target.captures.single().renderOutput}").also {
+      it.parentFile.mkdirs()
+      it.writeBytes(byteArrayOf(1, 2, 3))
+    }
+
+    // Unfiltered, that state is a genuine wiring failure and must still fail.
+    val unfiltered =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewRenderAll", "-x", "composePreviewRender")
+        .withPluginClasspath()
+        .buildAndFail()
+    assertThat(unfiltered.output).contains("render produced no output file")
+
+    // Filtered to the preview that did render, the same state is exactly correct.
+    val filtered =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments(
+          "composePreviewRenderAll",
+          "-x",
+          "composePreviewRender",
+          "-PcomposePreview.idFilter==${target.id}",
+        )
+        .withPluginClasspath()
+        .build()
+
+    // SUCCESS, not UP-TO-DATE: the filters are declared inputs, so changing one re-runs the check
+    // rather than letting a previous run's marker stand in for it — which is how the narrowed
+    // render appeared to pass a gate it had merely never reached.
+    assertThat(filtered.task(":composePreviewRenderAll")?.outcome)
+      .isEqualTo(org.gradle.testkit.runner.TaskOutcome.SUCCESS)
   }
 
   @Test

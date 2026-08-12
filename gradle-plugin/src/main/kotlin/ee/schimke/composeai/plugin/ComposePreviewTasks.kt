@@ -1686,6 +1686,13 @@ internal object ComposePreviewTasks {
         .orElse("full")
     val missingRendersProvider = missingRendersProperty(project)
     val permutationsProvider = previewPermutationsProperty(project)
+    // The same selection the render applies (issue #3730). Declared as task inputs as well as read
+    // in the action: without them a filtered run and an unfiltered run have identical inputs, so
+    // whichever ran second would be UP-TO-DATE and skip validation entirely — which is how a
+    // narrowed render appeared to "satisfy" a gate it had merely never reached.
+    val nameFilterProvider = previewFilterProperty(project)
+    val idFilterProvider = previewIdFilterProperty(project)
+    val idExcludeProvider = previewIdExcludeProperty(project)
     project.tasks.register("composePreviewRenderAll", DefaultTask::class.java) {
       group = "compose preview"
       dependsOn(renderTask)
@@ -1696,6 +1703,9 @@ internal object ComposePreviewTasks {
       inputs.property("tier", tierProvider)
       inputs.property("missingRenders", missingRendersProvider)
       inputs.property("permutations", permutationsProvider)
+      inputs.property("previewFilter", nameFilterProvider)
+      inputs.property("previewIdFilter", idFilterProvider)
+      inputs.property("previewIdExclude", idExcludeProvider)
       outputs.file(validationMarker).withPropertyName("validationMarker")
       doLast {
         val isFastTier = tierProvider.get() == "fast"
@@ -1746,14 +1756,32 @@ internal object ComposePreviewTasks {
         // capture's renderOutput lands on disk — report back one missing
         // entry per preview with at least one missing capture.
         val outDir = previewOutputDir.get().asFile
+        // Only gate on what this run was actually asked to render. A `--preview` / `--preview-id`
+        // render deliberately leaves every other preview alone (its PNG stays at whatever the last
+        // run wrote, or absent on a clean tree), so validating the whole manifest would fail the
+        // narrowed render itself — the reason issue #3730's one-line "just pass the property" fix
+        // needed this half too. Filters are applied to the RAW previews and the result expanded,
+        // mirroring `RenderPreviewsTask.render`'s order exactly, so a permutation sibling of a
+        // selected preview is still checked.
+        val validated =
+          PreviewPermutations.expand(
+            selectFilteredPreviews(
+              manifestRaw.previews,
+              nameFilters = nameFilterProvider.get(),
+              idFilters = idFilterProvider.get(),
+              idExcludes = idExcludeProvider.get(),
+            ),
+            permutationsProvider.get(),
+          )
         // Files owned by non-parameterized siblings — exclude them
         // from the `<stem>_*` glob so a `Foo_header.png` that
         // belongs to a different preview never gets treated as
         // part of `Foo`'s fan-out.
-        val missing = missingPreviewOutputIds(manifest, outDir, isFastTier)
+        val missing = missingPreviewOutputIds(manifest, outDir, isFastTier, validate = validated)
         if (missing.isNotEmpty()) {
           val sidecars = readErrorSidecarsFor(manifest, missing, outDir)
-          val message = formatMissingPreviewsMessage(manifest, missing, sidecars)
+          val message =
+            formatMissingPreviewsMessage(manifest.copy(previews = validated), missing, sidecars)
           // `composePreview.missingRenders` controls escalation: `fail` (default) preserves
           // the historical hard error that catches whole-module classpath misconfig; `warn`
           // and `ignore` let multi-module CI runs ride out a handful of stubborn previews
@@ -1969,10 +1997,52 @@ internal object ComposePreviewTasks {
     }
   }
 
+  /**
+   * The previews a filtered render actually renders: name filter first, then the id filter over
+   * what it kept, then the id exclusions — the same compose-in-order policy as
+   * `RenderPreviewsTask.render` and `PreviewFilter.select`.
+   *
+   * Unlike those, this **never throws on an empty result**. It exists to narrow the
+   * `composePreviewRenderAll` post-condition, where a filter matching nothing has already been
+   * reported by the render task that ran first; failing again here would replace that specific
+   * error ("--preview matched no previews for 'Fooo'. Available: …") with a confusing missing-PNG
+   * report.
+   */
+  internal fun selectFilteredPreviews(
+    previews: List<PreviewInfo>,
+    nameFilters: List<String>,
+    idFilters: List<String>,
+    idExcludes: List<String>,
+  ): List<PreviewInfo> {
+    var kept = previews
+    if (nameFilters.any { it.isNotBlank() }) {
+      kept = kept.filter { PreviewNameFilter.matches(nameFilters, it.functionName, it.className) }
+    }
+    if (idFilters.any { it.isNotBlank() }) {
+      kept = kept.filter { PreviewNameFilter.matchesId(idFilters, it.id) }
+    }
+    if (idExcludes.any { it.isNotBlank() }) {
+      kept = kept.filterNot { PreviewNameFilter.matchesId(idExcludes, it.id) }
+    }
+    return kept
+  }
+
+  /**
+   * The ids in [validate] whose render produced no file on disk.
+   *
+   * [validate] defaults to the whole manifest and is narrowed only when the render itself was
+   * narrowed (`--preview` / `-PcomposePreview.idFilter` / …, issue #3730): a filtered run
+   * deliberately leaves every other preview unrendered, so gating on the full manifest would fail
+   * the very run the filter was asked for. [manifest] stays the **complete** set regardless,
+   * because `siblingNames` — which stops a sibling's `Foo_header.png` being counted as part of
+   * `Foo`'s `@PreviewParameter` fan-out — is only correct when it can see previews outside the
+   * filter.
+   */
   internal fun missingPreviewOutputIds(
     manifest: PreviewManifest,
     outDir: java.io.File,
     isFastTier: Boolean,
+    validate: List<PreviewInfo> = manifest.previews,
   ): List<String> {
     val siblingNames =
       manifest.previews
@@ -1984,7 +2054,7 @@ internal object ComposePreviewTasks {
         .map { java.io.File(outDir, it).name }
         .toSet()
 
-    return manifest.previews
+    return validate
       .filter { p ->
         val captureMissing =
           p.captures.any { c ->

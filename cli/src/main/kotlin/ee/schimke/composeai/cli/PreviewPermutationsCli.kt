@@ -13,7 +13,12 @@ internal object PreviewPermutationsCli {
   fun expandManifest(manifest: PreviewManifest, values: List<String>): PreviewManifest =
     manifest.copy(previews = expand(manifest.previews, values))
 
-  private fun expand(previews: List<PreviewInfo>, values: List<String>): List<PreviewInfo> {
+  /**
+   * The previews [values] expands [previews] into, in render order. Internal rather than private so
+   * [PreviewRenderScope] can ask "which ids will this one manifest entry actually produce?" without
+   * synthesising a whole manifest around it.
+   */
+  fun expand(previews: List<PreviewInfo>, values: List<String>): List<PreviewInfo> {
     if (clean(values).none { it.equals(ACCESSIBILITY, ignoreCase = true) }) return previews
     return previews.flatMap { preview ->
       if (preview.params.kind != "COMPOSE") listOf(preview)
