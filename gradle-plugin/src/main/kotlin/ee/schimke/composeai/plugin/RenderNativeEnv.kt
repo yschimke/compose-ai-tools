@@ -104,19 +104,24 @@ internal object RenderNativeEnv {
     if (!osName.lowercase().contains("linux")) return Decision.Inherit
     if (mode.equals(MODE_INHERIT, ignoreCase = true)) return Decision.Inherit
 
-    val entries = ldLibraryPath.orEmpty().split(':').filter { it.isNotBlank() }
-    if (entries.isEmpty()) return Decision.Inherit
+    val entries = ldLibraryPath.orEmpty().split(':')
+    if (entries.none { it.isNotBlank() }) return Decision.Inherit
 
     // The subject is the JVM that will actually run the render: the pinned executable when the
     // plugin raised the render JDK, otherwise the daemon's own home (the historical default).
     val subject = renderJavaExecutable ?: daemonJavaHome ?: return Decision.Inherit
     if (isStorePath(canonicalize(subject))) return Decision.Inherit
 
-    val (dropped, kept) = entries.partition { isStorePath(canonicalize(it)) }
+    // Blank entries are kept in place, not filtered out: glibc reads an empty element as the
+    // current directory, so dropping one silently removes a search location that has nothing to do
+    // with the store — and "everything else exactly as inherited" is the whole contract here.
+    val (dropped, kept) = entries.partition { it.isNotBlank() && isStorePath(canonicalize(it)) }
     if (dropped.isEmpty()) return Decision.Inherit
 
     return Decision.Sanitized(
-      value = kept.joinToString(":").ifEmpty { null },
+      // Removed only when nothing at all survives. An empty *string* would not mean the same
+      // thing as an absent variable, and a surviving `""` element is a real search location.
+      value = if (kept.isEmpty()) null else kept.joinToString(":"),
       kept = kept,
       dropped = dropped,
       explanation =

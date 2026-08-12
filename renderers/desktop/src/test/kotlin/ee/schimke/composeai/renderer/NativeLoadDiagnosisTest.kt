@@ -77,6 +77,32 @@ class NativeLoadDiagnosisTest {
   }
 
   @Test
+  fun `a preview's own JNI library is not blamed on skiko`() {
+    // A preview (or one of its dependencies) calling System.loadLibrary on a host without that
+    // library throws the same UnsatisfiedLinkError. Answering it with libskiko advice would
+    // misattribute the failure — and latching it would dismiss a later real skiko failure as a
+    // cascade of something unrelated.
+    val ownLib =
+      UnsatisfiedLinkError(
+        "/opt/app/libtokenizer.so: libtokenizer.so: cannot open shared object file: " +
+          "No such file or directory"
+      )
+
+    val diagnosis = NativeLoadDiagnosis.diagnose(ownLib)
+
+    assertNotNull(diagnosis)
+    assertFalse(diagnosis!!.cascade)
+    assertTrue(diagnosis.text.contains("libtokenizer.so"))
+    assertFalse(diagnosis.text.contains("skiko"))
+    assertFalse(diagnosis.text.contains("libgl1"))
+
+    // And it did not take the latch: the next skiko failure is still reported as the first one.
+    val skiko = NativeLoadDiagnosis.diagnose(glibcSkewFailure())
+    assertFalse(skiko!!.cascade)
+    assertTrue(skiko.text.contains("skiko"))
+  }
+
+  @Test
   fun `later previews are reported as a cascade of the first failure`() {
     val first = NativeLoadDiagnosis.diagnose(glibcSkewFailure())
     val second =
