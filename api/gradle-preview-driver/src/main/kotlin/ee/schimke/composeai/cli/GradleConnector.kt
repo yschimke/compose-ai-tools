@@ -455,6 +455,12 @@ class GradleConnection(
    * model was built) are recorded in [lastDiscoveryFailures] rather than silently dropped, so an
    * empty result can be explained (issue #3).
    */
+  // @JvmOverloads because this is a published artifact: a Kotlin default parameter compiles to a
+  // single method taking the parameter plus a synthetic bridge, so the no-arg entry point an
+  // already-compiled consumer links against simply vanishes — NoSuchMethodError on upgrade, from a
+  // change that reads as purely additive in source. The generated overloads keep the old signatures
+  // and spare Java callers a mandatory argument.
+  @JvmOverloads
   fun findPreviewModules(timeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS): List<PreviewModule> {
     // The *caller's* budget, not a constant of its own. Configuring every project on a cold daemon
     // is exactly where this overruns — the friction log's "doctor reports the project unusable when
@@ -473,6 +479,7 @@ class GradleConnection(
    * user-visible error rather than silently building an empty task list against a dir that doesn't
    * exist.
    */
+  @JvmOverloads
   fun findPreviewModule(
     gradlePath: String,
     timeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS,
