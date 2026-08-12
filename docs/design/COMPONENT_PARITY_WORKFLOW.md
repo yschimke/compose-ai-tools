@@ -557,6 +557,21 @@ authored against `wear-m3` suppress pixels in `m3` because both happen to publis
 for. Every recorded field must match, and `system`/`component` are the two that a
 comparison-shaped mental model quietly drops.
 
+**Overrides are part of the scope, and this is where that is settled.** The preview id does not
+encode them, so a record must carry them explicitly: an `overrides` object of normalised
+`key: value` pairs — the same knobs the render lane accepts (`uiMode`, `fontScale`, device, locale)
+— with **absent meaning "no overrides"**, which matches only the default render. Matching is exact
+over the whole set: an acceptance authored at `fontScale=1.5` does not apply at `1.0`, and one
+authored with no overrides does not apply to an overridden frame.
+
+That direction is the safe one. Overrides change layout, and a mask is geometry — an acceptance for
+a glyph at one font scale covers different pixels at another, so applying it across scales suppresses
+a region nobody looked at. The cost of being strict is a duplicated acceptance per override
+combination someone genuinely cares about, which is visible work; the cost of being loose is silent
+suppression, which is not. §7 previously left this open with this as the recommendation; the scope
+rule above cannot be implemented while it stays open, so it is settled here — reversing it is a
+`v1` schema decision, not a free choice.
+
 **Only `valid` acceptances contribute a mask to the scoring union.** `resolved`, `invalidated` and
 `refused` all suppress **nothing** — "survivor" means status `valid`, not "reached the end of the
 gates". `resolved` is the case worth spelling out, because its candidate gate *did* fire and the
@@ -588,8 +603,17 @@ than per-catalog settings.
 The count cap is free, but the **pixel** cap needs dimensions the JSON does not record — and reading
 them with the ordinary decoder would allocate the oversized raster to measure it, defeating the
 protection at the moment it fires. So the budget is enforced after a **bounded header preflight**:
-read each PNG's `IHDR` (the first handful of bytes after the signature), take `width × height` from
-it, sum across the set, and only then decide. A file whose header is unreadable, or whose declared
+read each PNG's `IHDR` (the first handful of bytes after the signature) and take `width × height`
+from it.
+
+**Compare as you go; never accumulate a total that can overflow.** Summing `width × height` across a
+third-party set is exactly where the two engines diverge silently: several PNGs with large but
+individually legal dimensions overflow a Kotlin `Int`/`Long` into a negative or wrapped value that
+sits comfortably under the cap, while JavaScript keeps a large positive `Number` and rejects — the
+offline consumer then proceeds to allocate what the browser refused. So the check short-circuits:
+reject the moment **any single dimension**, **any single `width × height`**, or **the running total**
+reaches the cap, and stop reading. Nothing ever holds a value larger than the cap plus one raster, so
+there is nothing to overflow, and the two engines cannot disagree about arithmetic they never do. A file whose header is unreadable, or whose declared
 dimensions disagree with what the full decode later produces, is `header-invalid` — the second half
 matters because a lying header is otherwise a way to walk straight past the cap. `document-too-large`
 is then checked alongside the duplicate-id scan, both whole-document verdicts reached before any
@@ -1432,8 +1456,9 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
 - **The example issue is in a third repo.** `m3-catalog` drives the end-to-end validation, so Phase
   1 step 3 and Phase 3 step 10 both need work landing there. Worth confirming that repo is the
   intended pilot before Phase 1 step 3.
-- **What counts as "the same variant"?** The locator carries variant axes *and* active overrides. An
-  acceptance recorded with `fontScale=1.5` in force should almost certainly not apply at
-  `fontScale=1.0`, but the current preview id does not encode overrides. Decide whether overrides
-  are part of the acceptance scope (recommended: yes, and an acceptance with any override recorded
-  applies only at those overrides) before Phase 3.
+- **What counts as "the same variant"?** *Settled in §4's contract, flagged here because it was an
+  open question for most of this document's life.* The preview id does not encode overrides, so the
+  record carries them explicitly and matching is exact — an acceptance authored at `fontScale=1.5`
+  does not apply at `1.0`. It had to be settled rather than left open, because the full-scope
+  matching rule depends on it. Say so if you want the looser reading; it is a `v1` schema decision
+  either way.
