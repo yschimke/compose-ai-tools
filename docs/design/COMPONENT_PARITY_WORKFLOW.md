@@ -255,7 +255,13 @@ source repo as a secret.
 access token expires after an hour, so provisioning *it* as a repository secret produces a trigger
 that works in testing and is silently dead the next morning. What each source repo stores is the App
 id and private key; each workflow run exchanges them for a fresh installation token (the standard
-`actions/create-github-app-token` step). The PAT alternative is the one credential that *is* durable
+`actions/create-github-app-token` step) — **passing that action's `owner` and `repositories` inputs
+to name the catalog repo.** Its default is to scope the token to the repository it runs in, which is
+the source repo, where the App is not installed and which is not the dispatch target; taking the
+default either fails while minting or yields a token that cannot dispatch. The setup example must
+carry those two inputs, because the default is the thing that looks right and silently is not.
+
+The PAT alternative is the one credential that *is* durable
 as a stored secret, which is its only advantage over the App.
 
 **Name the App's target and permission explicitly in the setup doc**: the App must be installed *on
@@ -598,6 +604,20 @@ whole comparison and another silently drops the acceptance, and neither produces
 status the contract promises. Decode failure and degenerate geometry are therefore `refused` like a
 hash mismatch, and a *correctly hashed malformed artifact* is its own fixture.
 
+**A record that violates the schema is refused — and where the failure lands depends on whether it
+can be keyed.** Missing required fields, wrong types, an unsupported `element.kind`: none of the
+validation conditions so far covers these, so one consumer rejects at deserialization while another
+defaults the missing value and proceeds to `valid`, applying a mask whose gate never functions. The
+rule mirrors the duplicate-id logic and follows from the same constraint — a result keyed by id can
+only report what it can name:
+
+- **`id` present and valid** ⇒ that acceptance is `refused` with `schema-invalid`; the rest of the
+  document evaluates normally.
+- **`id` missing, malformed, or the wrong type** ⇒ the record cannot be keyed at all, so the
+  **document** is rejected, exactly as for a duplicate id.
+
+Both are conformance fixtures, since "one bad record" and "an unreadable file" are different repairs.
+
 **Duplicate acceptance ids fail the whole document, not one record.** `statuses` is keyed by id, so
 two records sharing one have a single slot between them — and making the duplicate a *per-acceptance*
 `refused` status does not help, because that status would need the same colliding key to live in. A
@@ -752,7 +772,7 @@ order is what makes the multi-cause fixture comparable. `reasons` is present **o
 field would leave two engines free to pick different ones. Same fixed ordering rule, drawn from:
 `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`, `reference-hash-missing`, `decode-failed`,
 `degenerate-dimensions`, `mask-encoding-invalid`, `mask-empty`, `dimension-mismatch`,
-`tolerance-out-of-range`, `path-not-contained`, `id-not-safe`.
+`tolerance-out-of-range`, `path-not-contained`, `id-not-safe`, `schema-invalid`.
 
 **A per-acceptance refusal populates `validationFailures` as well**, one entry per reason. The two
 fields are not alternatives: `statuses` answers "what happened to this acceptance", and
@@ -1233,6 +1253,16 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
      otherwise. A missing field is honest; a wrong one is not. With multiple references the viewer
      also has no client-side notion of which one is selected, so the `referenceId` half of the
      locator is only reliable once the lane is up.
+
+   **Selection must be drivable from the tag index, not only from annotation boxes.** A uniquely
+   tagged node with neither typography nor container tokens produces no annotation at all — the same
+   omission that forced uniqueness counting onto the payload — so a comparison page that only makes
+   *annotation boxes* clickable offers nothing to select for exactly the nodes best suited to a tag
+   selector, and the reporter falls back to a drag rectangle. That silently downgrades the
+   acceptance to geometric, with no element gate, so a tagged glyph that later vanishes or moves
+   goes undetected. The index already carries `{count, bounds}` per tag, which is everything a
+   selectable target needs, so the page renders selectable entries from it alongside the annotation
+   boxes rather than treating the annotation layer as the only source of targets.
 
    **Neither option redirects the interactive lanes.** Whichever surface takes the form, the Live,
    Wasm and Remote Compose lanes keep reporting **disabled outright** — not pointed at the focused
