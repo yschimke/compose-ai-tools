@@ -24,7 +24,7 @@ The annotation library and per-data-product schemas are intentionally narrow. Th
 
 ### 2.1 Daemon JSON-RPC (surface 1)
 
-**Negotiation:** `initialize` request carries `protocolVersion: {min, max}` (post-1.0; today a single `int`). The daemon answers with its own `{min, max}` plus a `ServerCapabilities` bag. Both sides operate at `min(client.max, server.max)`. Mismatched ranges → `InvalidRequest`, daemon exits.
+**Negotiation:** `initialize` request carries a single `protocolVersion: Int`; the daemon answers with its own plus a `ServerCapabilities` bag, and any mismatch is `InvalidRequest` and the daemon exits. Range negotiation — client and daemon each sending `{min, max}` and operating at `min(client.max, server.max)` — is **not in 1.0.0**; it lands in a later `1.x` (see [VERSIONING.md § 10](VERSIONING.md#10-status-at-10)).
 
 **Feature detection:** capability bag, never daemon `semver`. The bag already covers `supportedOverrides`, `dataProducts`, `dataExtensions`, `previewExtensions`, `knownDevices`, `backend`, `androidSdk`, `recordingFormats`, `interactive`, `recording`. New features add a capability entry, not a behavior change under an existing field.
 
@@ -62,10 +62,11 @@ Each kind owns its own `schemaVersion: Int`. Producers evolve independently of t
 
 ### 2.4 Gradle plugin DSL (surface 4)
 
-**Stability tiers** (post-1.0):
-- `@Stable` — public, semver-governed. Property type changes, removals, and renames are breaking changes that bump the plugin major.
-- `@Incubating` — public but explicitly opt-in via `composePreview { incubating = true }`. May change in any release; warning at apply time.
+**Stability tiers.** As of 1.0.0 there are two, not three — the DSL has no opt-in tier, which makes the surface *stricter* than the scheme below, not looser:
+- Public — semver-governed. Property type changes, removals, and renames are breaking changes that bump the plugin major. Enforced by Kotlin BCV on `:gradle-plugin` ([VERSIONING.md § 9](VERSIONING.md#9-compatibility-testing)).
 - Internal — `internal` Kotlin visibility. No contract.
+
+The `@Stable` / `@Incubating` split, with `@Incubating` opt-in via `composePreview { incubating = true }` and a warning at apply time, is **not in 1.0.0** — it lands in a later `1.x` (see [VERSIONING.md § 10](VERSIONING.md#10-status-at-10)). Until it does, a new DSL property is public and semver-governed the moment it ships, so add one only when you're willing to keep it.
 
 **Negotiation:** none. Gradle resolves the plugin coordinate; `apply()` validates the AGP/Kotlin/Compose versions present and either accepts or fails closed with a specific error. See § 2.5.
 
@@ -101,7 +102,7 @@ The annotation library has no negotiation surface — the plugin's discovery tas
 
 **Deprecation:** flags follow the cycle in [VERSIONING.md § 5](VERSIONING.md#5-deprecation-policy) — warn for two minors, then remove.
 
-**Negotiation:** `compose-preview --version` and `compose-preview <cmd> --json-schema` (post-1.0) let CI and agents detect capability without parsing `--help`.
+**Negotiation:** `compose-preview --version`. The `compose-preview <cmd> --json-schema` capability probe is **not in 1.0.0** — it lands in a later `1.x` (see [VERSIONING.md § 10](VERSIONING.md#10-status-at-10)); until then CI and agents read `--help`.
 
 ### 2.8 MCP tool names (surface 8)
 
@@ -142,7 +143,7 @@ The VS Code N..N-1 window is the only place we actively decode two protocol vers
 
 ## 5. Stability tags in code
 
-Post-1.0 each public type carries one of:
+The intended scheme — each public type carrying one of these tags — is **not applied as of 1.0.0**; it lands in a later `1.x` (see [VERSIONING.md § 10](VERSIONING.md#10-status-at-10)):
 
 - `// API: stable` — semver-governed.
 - `// API: incubating` — opt-in, may change.
