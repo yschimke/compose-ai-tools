@@ -2034,14 +2034,25 @@ object ServeWeb {
           // the matches sit under must not be the rows you cannot see.
           "\n      function reflectTabs() {" +
           "\n        var searching = !!(input && input.value.trim());" +
+          "\n        var stop = null;" +
+          "\n        var firstShown = null;" +
           "\n        tabBtns.forEach(function (t) {" +
           "\n          var on = t.getAttribute(\"data-tab\") === current;" +
           "\n          t.setAttribute(\"aria-selected\", on ? \"true\" : \"false\");" +
           "\n          if (t.hasAttribute(\"aria-expanded\"))" +
           "\n            t.setAttribute(\"aria-expanded\", on || searching ? \"true\" : \"false\");" +
           "\n          t.tabIndex = on ? 0 : -1;" +
+          "\n          var node = t.closest(\".cp-tree-node\");" +
+          "\n          var shown = !(node && node.hidden);" +
+          "\n          if (shown && !firstShown) firstShown = t;" +
+          "\n          if (on && shown) stop = t;" +
           "\n        });" +
           "\n        treeGroups.forEach(function (g) { g.tabIndex = -1; });" +
+          // A filter can hide the selected section outright — search for something only another
+          // section matches and `current` is off screen. Its row would still hold the tree's only
+          // tab stop, so Tab would skip the whole navigation. Hand the stop to the first branch
+          // still showing instead.
+          "\n        if (!stop && firstShown) firstShown.tabIndex = 0;" +
           "\n      }" +
           "\n      reflectTabs();" +
           "\n      document.documentElement.classList.add(\"cp-js\");"
@@ -2196,6 +2207,20 @@ object ServeWeb {
     (function () {
       var tree = document.getElementById("cp-tabs");
       if (!tree) return;
+      // The toolbar above pins itself at top:0 over everything, so publish its real height for the
+      // sticky tree's offset and for every scroll target's `scroll-margin-top`. Measured rather
+      // than assumed: it wraps on a narrow viewport and grows a row with the declared-theme chips,
+      // and the static fallback in the stylesheet only covers the unwrapped case.
+      var tools = document.querySelector(".cp-catalog-tools");
+      if (tools) {
+        var syncTools = function () {
+          var h = Math.round(tools.getBoundingClientRect().height);
+          if (h > 0) document.documentElement.style.setProperty("--cp-sticky-tools", h + "px");
+        };
+        syncTools();
+        if (window.ResizeObserver) new ResizeObserver(syncTools).observe(tools);
+        else window.addEventListener("resize", syncTools);
+      }
       // The row pointing at a sub-group id, found by COMPARING attribute values rather than by
       // building a selector out of DOM text (CodeQL `js/xss-through-dom`, and the rule the backdrop
       // viewer already follows).
@@ -2276,6 +2301,41 @@ object ServeWeb {
         e.preventDefault();
         focusRow(next);
       });
+      // A group row's href is a real link, so it gets copied and shared — and arriving on
+      // `#cp-group-components-device` in a fresh session used to land nowhere: initialisation reads
+      // `?tab=` and the remembered section only, so the section holding the target stayed hidden
+      // and the browser had nothing to scroll to. A fragment naming a group (or a section panel) is
+      // as explicit a request as `?tab=` is, so it selects that section, outranking the remembered
+      // one. Runs before the trailing `apply()`, which is what actually reveals the panel — hence
+      // the deferred scroll rather than an immediate one.
+      var hash = location.hash ? location.hash.slice(1) : "";
+      if (hash) {
+        var wanted = null;
+        var target = null;
+        treeGroups.forEach(function (g) {
+          if (g.getAttribute("data-group") === hash) {
+            wanted = g.getAttribute("data-tab");
+            target = g;
+          }
+        });
+        if (!wanted) {
+          tabBtns.forEach(function (t) {
+            if (t.getAttribute("aria-controls") === hash) wanted = t.getAttribute("data-tab");
+          });
+        }
+        if (wanted && wanted !== current) {
+          current = wanted;
+          initialTab = current;
+          reflectTabs();
+        }
+        if (wanted) {
+          var landing = document.getElementById(hash);
+          setTimeout(function () {
+            if (landing) landing.scrollIntoView({ block: "start" });
+            if (target) markGroup(target);
+          }, 0);
+        }
+      }
       if (window.IntersectionObserver) {
         var onScreen = [];
         var spy = new IntersectionObserver(function (entries) {

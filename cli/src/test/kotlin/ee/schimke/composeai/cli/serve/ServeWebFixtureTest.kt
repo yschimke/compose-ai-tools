@@ -2705,6 +2705,22 @@ class ServeWebFixtureTest {
         landingSections.contains("localStorage.setItem(\"cp-tab:meshcore-mobile\", current)"),
       "the selected section persists per catalog and is restored when returning from a preview",
     )
+    // Three things the tree has to get right around the sticky toolbar and shared links, each of
+    // which fails silently — the surface still looks correct while being unusable.
+    assertTrue(
+      landingSections.contains("setProperty(\"--cp-sticky-tools\"") &&
+        assetText("serve.css").contains("scroll-margin-top: calc(var(--cp-sticky-tools, 64px)"),
+      "the toolbar's measured height offsets the sticky tree and every scroll target",
+    )
+    assertTrue(
+      landingSections.contains("if (!stop && firstShown) firstShown.tabIndex = 0;"),
+      "a filter that hides the selected section moves the tree's tab stop to a visible branch",
+    )
+    assertTrue(
+      landingSections.contains("var hash = location.hash") &&
+        landingSections.contains("initialTab = current;"),
+      "a shared #cp-group-… link selects the section that holds it",
+    )
     // `role="tree"` (the nav) and `classList.add("cp-js")` (the section script) appear ONLY when
     // sections are rendered — the shared stylesheet's `.cp-tree` / `html.cp-js` rules are on every
     // page, so this checks the markup/script, not the CSS.

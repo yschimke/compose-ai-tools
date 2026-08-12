@@ -374,6 +374,20 @@ const FIXTURE_STATES = [
                         .querySelector('.cp-tab[data-tab="screens"]')
                         ?.getAttribute("aria-expanded") === "true",
             );
+            // The filter hides the SELECTED section here — "device" matches only under Components
+            // and Screens, and the page opens on Themes. The tree's single roving tab stop must
+            // move to a branch that is still on screen, or Tab skips the whole navigation. Not a
+            // pixel claim, so it rides this capture as a wait rather than earning its own shot.
+            await page.waitForFunction(() => {
+                const rows = Array.from(document.querySelectorAll(".cp-tab"));
+                const reachable = rows.filter(
+                    (r) => !r.closest(".cp-tree-node")?.hidden,
+                );
+                return (
+                    reachable.length > 0 &&
+                    reachable.some((r) => r.tabIndex === 0)
+                );
+            });
         },
     },
     {

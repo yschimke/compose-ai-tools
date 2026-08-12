@@ -473,11 +473,20 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
    per-section <h2> (the tree already names the section). */
 .cp-catalog-body { display: block; }
 /* The sidebar only appears where there is room for one beside a grid of 200px cards. Below that
-   the tree stays a full-width block above the panels — the same reading order, stacked. */
+   the tree stays a full-width block above the panels — the same reading order, stacked.
+
+   `--cp-sticky-tools` is how much sticky chrome sits above everything: `.cp-catalog-tools` pins
+   itself at `top: 0` with a higher z-index, so a second sticky element parked at 16px would spend
+   its life underneath the search field, and a `scrollIntoView` that lands an element at viewport
+   zero puts it under there too. Both clear it by that height instead. It is set by the tree script
+   from the toolbar's measured box — it wraps on a narrow viewport and grows a row with the
+   declared-theme chips — and, like every other script-supplied property in this sheet, it is read
+   ONLY with a literal fallback, so the no-JS page still clears an unwrapped toolbar. */
 @media (min-width: 960px) {
   .cp-catalog-body { display: grid; grid-template-columns: minmax(168px, 216px) minmax(0, 1fr);
     gap: 32px; align-items: start; }
-  .cp-tree { position: sticky; top: 16px; margin: 0; max-height: calc(100vh - 32px);
+  .cp-tree { position: sticky; top: calc(var(--cp-sticky-tools, 64px) + 12px); margin: 0;
+    max-height: calc(100vh - var(--cp-sticky-tools, 64px) - 28px);
     overflow-y: auto; overscroll-behavior: contain; }
 }
 .cp-tree { margin: 0 0 22px; }
@@ -538,13 +547,16 @@ html.cp-js .cp-tab[aria-expanded="false"] + .cp-tree-children { display: none; }
 /* A group row's count is plain text: two badge styles down one column would compete. */
 .cp-tree-count { margin-left: auto; font-size: var(--md-sys-typescale-label-small-size);
   font-weight: 400; font-variant-numeric: tabular-nums; color: var(--cp-fg-faint); }
-.cp-section { margin: 0; }
+.cp-section { margin: 0; scroll-margin-top: calc(var(--cp-sticky-tools, 64px) + 16px); }
 .cp-section[hidden] { display: none; }
 .cp-section-head { margin: 0 0 16px; font-size: var(--md-sys-typescale-title-medium-size);
   line-height: var(--md-sys-typescale-title-medium-line);
   letter-spacing: var(--md-sys-typescale-title-medium-tracking); font-weight: 500; }
 html.cp-js .cp-section-head { display: none; }
-.cp-subgroup { margin: 0 0 30px; }
+/* `scroll-margin-top` because both are jump targets — a tree row scrolls to a `.cp-subgroup`, and
+   a no-JS client follows `#cp-panel-<slug>` to a `.cp-section`. Without it the heading they were
+   asked for lands at viewport zero, under the sticky toolbar. */
+.cp-subgroup { margin: 0 0 30px; scroll-margin-top: calc(var(--cp-sticky-tools, 64px) + 16px); }
 .cp-subgroup[hidden] { display: none; }
 .cp-group-head { margin: 26px 0 12px; font-size: var(--md-sys-typescale-label-medium-size);
   line-height: var(--md-sys-typescale-label-medium-line); font-weight: 500; letter-spacing: 0.06em;
