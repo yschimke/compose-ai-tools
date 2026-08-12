@@ -1412,6 +1412,8 @@ class ServeHttpRoutingTest {
         "a bodyless probe must not produce $suffix",
       )
     }
+    // A chrome-less story frame has no baked lane at all.
+    assertEquals(405, head("/compose-m3/iframe.html?id=$previewId").first)
     assertEquals(200, head("/compose-m3/render/$previewId.png").first, "the bake still answers")
   }
 

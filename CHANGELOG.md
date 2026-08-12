@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.0.0](https://github.com/yschimke/compose-ai-tools/compare/v0.19.61...v1.0.0) (2026-08-12)
+
+
+### Features
+
+* **overrides:** let a knob declare its value set, and render it as a picker ([#3712](https://github.com/yschimke/compose-ai-tools/issues/3712)) ([7c8c32e](https://github.com/yschimke/compose-ai-tools/commit/7c8c32e8d6e7ff06c3401e686b696474c59fb4b7))
+* **renderer-desktop:** drive @FocusedPreview with real focus and press on CMP desktop ([#3699](https://github.com/yschimke/compose-ai-tools/issues/3699)) ([ddd16e8](https://github.com/yschimke/compose-ai-tools/commit/ddd16e82ea9fde42ebb00e7df5c9da77606d5de9))
+* **serve:** exploded 3D view of a screen, one sheet per composable ([#3700](https://github.com/yschimke/compose-ai-tools/issues/3700)) ([d9abe80](https://github.com/yschimke/compose-ai-tools/commit/d9abe8050996160cd9ef5f87d6628681b73abc6b))
+* **serve:** split the catalog's comparison actions and name the design tool ([#3709](https://github.com/yschimke/compose-ai-tools/issues/3709)) ([122d747](https://github.com/yschimke/compose-ai-tools/commit/122d7472ac0b8a4656bea13e4d4bd236794acdc5))
+
+
+### Bug Fixes
+
+* **cloud-jdk:** honour a version pin over install-dir reuse, and absolutise discovered homes ([#3713](https://github.com/yschimke/compose-ai-tools/issues/3713)) ([0848728](https://github.com/yschimke/compose-ai-tools/commit/08487282475fe818d408ed3e707e70094250a31e))
+* **cloud-jdk:** reuse a JDK the box already has instead of downloading one ([#3707](https://github.com/yschimke/compose-ai-tools/issues/3707)) ([9bca82b](https://github.com/yschimke/compose-ai-tools/commit/9bca82b4608cca903a384d27d2e8b390262b536a))
+* **daemon:** run the press-settling frame under the preview's locale ([#3715](https://github.com/yschimke/compose-ai-tools/issues/3715)) ([2346b2f](https://github.com/yschimke/compose-ai-tools/commit/2346b2ff91cf543ad2d3ff7fda665414207318fa))
+* **daemon:** settle a pointer press before the next event can arrive ([#3711](https://github.com/yschimke/compose-ai-tools/issues/3711)) ([1922af5](https://github.com/yschimke/compose-ai-tools/commit/1922af5548851297a813ddbe911ae8514217bf11))
+* **figma-svg:** stop rastering content the vector model can represent ([#3693](https://github.com/yschimke/compose-ai-tools/issues/3693)) ([dafedc9](https://github.com/yschimke/compose-ai-tools/commit/dafedc9d7819b2ff12e5af74cfda73fdd5d14f64))
+* green up the four CI failures on main ([#3688](https://github.com/yschimke/compose-ai-tools/issues/3688)) ([5278cd0](https://github.com/yschimke/compose-ai-tools/commit/5278cd0a38bb33d31f088a1e22c28defaf578cee))
+* **render:** keep package-store libs out of a system-glibc render JVM ([#3701](https://github.com/yschimke/compose-ai-tools/issues/3701)) ([bd4a6a2](https://github.com/yschimke/compose-ai-tools/commit/bd4a6a25cb63ef5c3500aa1d191f7c55bbea1b86))
+* **render:** rank doctor verdicts, and stop non-skiko failures flooding the log ([#3708](https://github.com/yschimke/compose-ai-tools/issues/3708)) ([f1d62bf](https://github.com/yschimke/compose-ai-tools/commit/f1d62bfda6a0c18f32143874e50929b9fa233be6))
+* **render:** tighten the native-env pruning and its diagnosis ([#3703](https://github.com/yschimke/compose-ai-tools/issues/3703)) ([7906cef](https://github.com/yschimke/compose-ai-tools/commit/7906ceffa18f99e8f043ee8483d242d4144255de))
+* **samples:** make previews capture the state they claim ([#3691](https://github.com/yschimke/compose-ai-tools/issues/3691)) ([78138e1](https://github.com/yschimke/compose-ai-tools/commit/78138e13b7ff3083a71cf7af2871ab312fbd3073))
+* **serve:** correct the exploded 3D view's masks, shadows and bounds ([#3705](https://github.com/yschimke/compose-ai-tools/issues/3705)) ([6d2325d](https://github.com/yschimke/compose-ai-tools/commit/6d2325d492a357a5af14f01802b3eedb7c37bfc5))
+* **serve:** keep untagged renders in the primary theme lane so the state switcher finds them ([#3704](https://github.com/yschimke/compose-ai-tools/issues/3704)) ([e26aa19](https://github.com/yschimke/compose-ai-tools/commit/e26aa19409a3ed6b6d5ece4afb20a72eb50004b2))
+* **serve:** make link unfurling work in Slack and Google Chat ([#3717](https://github.com/yschimke/compose-ai-tools/issues/3717)) ([2467849](https://github.com/yschimke/compose-ai-tools/commit/2467849e838a5b841a5d3c33ac51498db9ba37f1))
+* **serve:** stop a knob edit spending the previous history entry to auto-enable Wasm ([#3719](https://github.com/yschimke/compose-ai-tools/issues/3719)) ([6685153](https://github.com/yschimke/compose-ai-tools/commit/6685153b17e49cf1f20414613c989bcfc6c9f711))
+* **serve:** stop HEAD probes and crawlers reaching the remaining live renders ([#3720](https://github.com/yschimke/compose-ai-tools/issues/3720)) ([355e49b](https://github.com/yschimke/compose-ai-tools/commit/355e49bfc3d505bfbcb050e3666edfc475ee389e))
+
 ## [0.19.61](https://github.com/yschimke/compose-ai-tools/compare/v0.19.60...v0.19.61) (2026-08-11)
 
 

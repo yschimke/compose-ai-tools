@@ -245,7 +245,7 @@ private fun printFullUsage() {
                            `--json` is set so escape sequences don't pollute captured output.
       --progress           Print per-task milestone/heartbeat lines to stderr
       --verbose, -v        Show full Gradle build output (implies --progress)
-      --timeout <seconds>  Gradle build timeout (default: 300)
+      --timeout <seconds>  Gradle build timeout (default: 600)
       --fail-on <level>    a11y: exit non-zero on 'errors' or 'warnings' (default: mirror Gradle)
       --with-extension <id>
                            Enable a data extension for this run (repeatable; comma-separated

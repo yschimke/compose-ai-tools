@@ -2338,6 +2338,9 @@ class ServeHttpServer(
     // featured catalog is idle — the common case, not a rare one.
     val featuredRender =
       featured?.heroPreviewId?.let { id ->
+        // Same rule as the viewer and the catalog landing: the URL below inherits the request's
+        // query, so a shared `/?widthPx=1200` names a re-render the baked size does not describe.
+        if (requestCarriesOverrides()) return@let null
         val size = catalogMetaSeen[featured.system]?.heroRenderSize ?: return@let null
         val path =
           "/${WebEscaping.urlEncodeSegment(featured.system)}/render/" +
@@ -2382,15 +2385,27 @@ class ServeHttpServer(
    * would resume every suspended daemon on the box, and a sitemap fetch is the last request that
    * should cost that. A catalog that has never been resident contributes nothing yet and appears
    * once it has been seen.
+   *
+   * Deliberately does **not** call [rememberCatalogMeta] to freshen a resident host, even though it
+   * could: that path bakes the hero thumbnail ([ServeHeroImages.heroFor] renders, decodes and
+   * rescales a PNG) and reads render sizes, and doing it here would put that work on the Ktor
+   * request coroutine for every listed system — the home index moves the same work to
+   * `Dispatchers.IO` precisely because it is not free. A sitemap needs two lightweight fields, so
+   * it reads them straight off the resident host and falls back to whatever a previous page view
+   * already remembered.
    */
   private fun crawlableCatalogs(): List<ServeSiteIndex.CatalogEntry> =
     listedCatalogs().mapNotNull { system ->
-      sessions.peekHost(system)?.let { rememberCatalogMeta(system, it) }
-      val meta = catalogMetaSeen[system] ?: return@mapNotNull null
+      val host = sessions.peekHost(system)
+      val meta = catalogMetaSeen[system]
+      val previewIds = host?.previews?.map { it.id } ?: meta?.previewIds ?: return@mapNotNull null
+      val generatedAt =
+        host?.let { catalogBundleHost(it)?.provenance?.generatedAt }
+          ?: meta?.provenance?.generatedAt
       ServeSiteIndex.CatalogEntry(
         system = system,
-        previewIds = meta.previewIds,
-        lastModified = meta.provenance?.generatedAt,
+        previewIds = previewIds,
+        lastModified = generatedAt,
       )
     }
 
@@ -3238,6 +3253,10 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleStorybookIframe(sessionInPath: Boolean) {
     if (rejectBadToken()) return
+    // Renders a story unconditionally — there is no baked lane here. A chrome-less frame for
+    // screenshot tools is never an unfurl target (and is robots-disallowed), so a bodyless probe
+    // gets nothing but the render bill.
+    if (rejectHeadProbe()) return
     val sessionId = selectedSessionId(sessionInPath)
     withLeasedSession(sessionId) { renderHost ->
       val storyId = call.request.queryParameters["id"]
@@ -3727,7 +3746,12 @@ class ServeHttpServer(
     // ([DAEMON_ONLY_RENDER_SUFFIXES]) are produced on demand whether or not a query is present.
     // The override half is keyed on param names rather than a parse — the check has to be cheap,
     // and erring toward refusing costs a probe nothing (the caller GETs instead).
-    if ((requestCarriesOverrides() || wantsDaemonOnlyRenderProduct()) && rejectHeadProbe()) return
+    if (
+      (requestCarriesOverrides() ||
+        wantsDaemonOnlyRenderProduct() ||
+        !renderWouldReplayBakedBytes(sessionInPath)) && rejectHeadProbe()
+    )
+      return
     val sessionId = selectedSessionId(sessionInPath)
     withLeasedSession(sessionId) { renderHost ->
       val rawName = call.parameters["name"]
@@ -4349,6 +4373,29 @@ class ServeHttpServer(
   private fun RoutingContext.wantsDaemonOnlyRenderProduct(): Boolean {
     val name = call.parameters["name"] ?: return false
     return DAEMON_ONLY_RENDER_SUFFIXES.any { name.endsWith(it) }
+  }
+
+  /**
+   * Whether a bare `/render/{name}` can be answered from published bytes alone — the only case
+   * where replaying the GET pipeline for a HEAD is free.
+   *
+   * "It ends in `.png`" is not enough. A plain [ServeRenderHost] has no bake at all, and a
+   * catalog's **deferred** previews ([ServeHost.liveOnlyPreviewIds]) are published without one, so
+   * those go to the daemon even with no query string — the probe would take the render semaphore
+   * and start a daemon purely to have the body discarded. [ServeHost.bakedRenderSize] answers
+   * exactly this question for the cost of a PNG header read, and is null for both.
+   *
+   * Also requires the session to be **resident**: [ServeSessionRegistry.peekHost] never resumes, so
+   * a probe for a suspended catalog is refused rather than waking it. Both refusals are safe for
+   * the unfurl case — an image fetcher issues a GET, and the page URLs an unfurler probes do not
+   * come through this route.
+   */
+  private fun RoutingContext.renderWouldReplayBakedBytes(sessionInPath: Boolean): Boolean {
+    // Only a HEAD pays for this lookup; a GET is going to do the work regardless.
+    if (call.request.local.method != HttpMethod.Head) return true
+    val name = call.parameters["name"]?.removeSuffix(".png") ?: return false
+    val host = sessions.peekHost(selectedSessionId(sessionInPath)) ?: return false
+    return host.bakedRenderSize(name) != null
   }
 
   private suspend fun RoutingContext.rejectHeadProbe(): Boolean {

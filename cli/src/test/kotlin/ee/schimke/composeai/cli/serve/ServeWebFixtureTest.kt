@@ -4530,7 +4530,9 @@ class ServeWebFixtureTest {
       "the URL field is taken out of the flow rather than given a third of the line",
     )
     assertTrue(
-      assetText("viewer.js").contains("function refreshLinks()") &&
+      // Matched without the parameter list — the helper's existence is the contract, not its
+      // arity, which grew a `skipUrlSync` opt-out for the wasm auto-enable path.
+      assetText("viewer.js").contains("function refreshLinks(") &&
         assetText("viewer.js").contains("location.origin"),
       "the links are rebuilt from location.origin as the controls change",
     )

@@ -31,6 +31,22 @@ class ServeSiteIndexTest {
    * the same path with an override query re-renders — and the grid links the override forms, so a
    * crawler that followed them would render every preview in every theme.
    */
+  /**
+   * The non-PNG render products have no bake to serve — each is made through a daemon-backed
+   * producer and the shared render semaphore — and the viewer assets name them, so a crawler that
+   * walks a page will find them. Blocking only `.svg` and `.rc` left three that execute exactly the
+   * work this policy exists to suppress.
+   */
+  @Test
+  fun `every made-on-request render product is closed to crawlers`() {
+    val robots = ServeSiteIndex.robotsTxt(isPublic = true, sitemapUrl = null)
+    for (suffix in listOf("svg", "slots", "a11y", "annotations", "rc")) {
+      assertTrue(robots.contains("Disallow: /*.$suffix$"), "closes .$suffix: $robots")
+    }
+    // The baked PNG is the one render URL that stays open — it is the og:image.
+    assertFalse(robots.contains("Disallow: /*.png"), "the bake stays crawlable: $robots")
+  }
+
   @Test
   fun `query strings are closed on the render lane only`() {
     val robots = ServeSiteIndex.robotsTxt(isPublic = true, sitemapUrl = null)
