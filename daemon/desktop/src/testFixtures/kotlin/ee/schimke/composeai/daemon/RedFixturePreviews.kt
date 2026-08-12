@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -514,32 +515,61 @@ fun HighDensityClickTargetSquare() {
  * whether the `localeTag` override could ever stop being a process-global switch.
  */
 object LocaleLocalProbe {
-  /** `androidx.compose.ui.text.intl.Locale.current` — what the text pipeline resolves against. */
+  /**
+   * The paragraph direction Compose actually resolved for neutral text — the **consumer** reading,
+   * and the one that decides whether this canary means anything.
+   *
+   * Asserting on locale *accessors* would be vacuous: `Locale.current` is a plain getter with no
+   * `Composer`, so it can never read a composition local no matter what upstream does. The change
+   * worth detecting is a **consumer** switching from the static delegate to `LocalLocaleList` — so
+   * a consumer is what has to be measured.
+   */
+  @Volatile var paragraphDirection: String? = null
+
+  /** `androidx.compose.ui.text.intl.Locale.current` — recorded for diagnostics, not asserted on. */
   @Volatile var staticCurrent: String? = null
 
-  /** `LocalLocaleList.current` — what the composition was *told* its locale is. */
+  /** `LocalLocaleList.current` — proves the provider applied at all. */
   @Volatile var compositionLocal: String? = null
 
   fun reset() {
+    paragraphDirection = null
     staticCurrent = null
     compositionLocal = null
   }
 }
 
 /**
- * Provides `LocalProvidableLocaleList` as `ar` and reports both what the composition local now says
- * and what the static `Locale.current` says.
+ * Lays out **direction-neutral** text and reports the paragraph direction Compose resolved for it.
  *
- * Deliberately does **not** touch the JVM default: the whole question is whether the composition
- * local alone can steer a locale. See [LocaleCompositionLocalCanaryTest].
+ * Digits are neutral, so nothing in the string itself picks a side: skiko's paragraph intrinsics
+ * fall back to the ambient locale (`localeList ?: Locale.current`, then `isRtl`) to choose a base
+ * direction. That makes the resolved direction a direct, non-pixel readout of *which* locale the
+ * text pipeline consulted.
+ */
+@Composable
+fun LocaleTextDirectionProbeSquare() {
+  LocaleLocalProbe.staticCurrent = androidx.compose.ui.text.intl.Locale.current.toLanguageTag()
+  LocaleLocalProbe.compositionLocal =
+    LocalLocaleList.current.localeList.firstOrNull()?.toLanguageTag()
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350))) {
+    BasicText(
+      text = "123",
+      onTextLayout = {
+        LocaleLocalProbe.paragraphDirection = it.getParagraphDirection(0).toString()
+      },
+    )
+  }
+}
+
+/**
+ * [LocaleTextDirectionProbeSquare] under `LocalProvidableLocaleList = ar`, with the JVM default
+ * left alone — the composition-local-only lever, on its own.
  */
 @Composable
 fun LocaleLocalProbeSquare() {
   CompositionLocalProvider(LocalProvidableLocaleList provides LocaleList("ar")) {
-    LocaleLocalProbe.staticCurrent = androidx.compose.ui.text.intl.Locale.current.toLanguageTag()
-    LocaleLocalProbe.compositionLocal =
-      LocalLocaleList.current.localeList.firstOrNull()?.toLanguageTag()
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350)))
+    LocaleTextDirectionProbeSquare()
   }
 }
 
