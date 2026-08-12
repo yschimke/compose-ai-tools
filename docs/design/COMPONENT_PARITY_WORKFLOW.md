@@ -636,12 +636,24 @@ individually legal dimensions overflow a Kotlin `Int`/`Long` into a negative or 
 sits comfortably under the cap, while JavaScript keeps a large positive `Number` and rejects — the
 offline consumer then proceeds to allocate what the browser refused. So the check short-circuits:
 reject the moment **any single dimension**, **any single `width × height`**, or **the running total**
-reaches the cap, and stop reading. Nothing ever holds a value larger than the cap plus one raster, so
+*exceeds* the cap, and stop reading. **Exceeds, not reaches**: a document exactly at 256 acceptances
+or exactly 128 megapixels is legal, which is what makes the boundary fixtures meaningful — one case
+sitting on the limit and passing, one a single unit past it and refused. A `>=` check would reject
+both and leave the two engines free to disagree about the case in between. Nothing ever holds a value larger than the cap plus one raster, so
 there is nothing to overflow, and the two engines cannot disagree about arithmetic they never do.
 
 A file whose header is unreadable, or whose declared
 dimensions disagree with what the full decode later produces, is `header-invalid` — the second half
 matters because a lying header is otherwise a way to walk straight past the cap.
+
+**Preflight a record completely before it contributes anything.** An acceptance has two rasters, and
+if one has an oversized-but-readable header while the other's is unreadable, the outcome would
+depend on which was read first — oversized first rejects the document, unreadable first excludes the
+acceptance and carries on. Two engines walking the same file in different orders would disagree. So
+both headers are read and validated **before** either raster joins the running total: an acceptance
+with any unreadable header is refused and contributes nothing, and only fully-preflighted
+acceptances are summed. The budget check is then order-independent, which is the property that
+actually matters — not which of the two verdicts "wins".
 
 **`header-invalid` refuses that acceptance, not the document.** The preflight is an aggregate, which
 makes it tempting to treat a header it cannot read as fatal to the whole file, but the useful
@@ -698,8 +710,13 @@ conformance cases for both.
 contained and syntactically perfect while the file is missing, unreadable, or truncated to nothing —
 at which point there are no bytes to hash, no header to parse and no decode to attempt, so none of
 the other tokens apply. Left unnamed, the browser turns a failed fetch into a local refusal while the
-offline reader throws or silently drops the record. `artifact-unreadable`, refused, covering every
-file-open failure.
+offline reader throws or silently drops the record. `artifact-unreadable`, refused.
+
+**Strictly a fetch/open/read failure, though.** A file that *opens* and is merely empty or truncated
+is not this: the preflight gets its hands on the bytes and finds too few of them for an `IHDR`, which
+is `header-invalid`. The line is where the failure occurs, not how little data there turned out to
+be — otherwise "truncated to nothing" is describable by both tokens and the two engines pick
+differently for identical bytes.
 
 **A correct hash does not make an artifact usable.** Bytes can be committed with a correctly
 computed `sha256` and still be corrupt, non-PNG, or decode to zero dimensions — the hash proves
@@ -1048,8 +1065,8 @@ wrong space.
 ### Evaluation order (the safety requirements, as an algorithm)
 
 Given the raw normalised pair and the acceptances whose **entire recorded scope** matches this
-comparison — `system`, `component`, `previewId`, `referenceId` **and** `variant`, every field, not
-the subset a page happens to key by:
+comparison — `system`, `component`, `previewId`, `referenceId`, `variant` **and `overrides`**, every
+field, not the subset a page happens to key by:
 
 1. **Fingerprint gate.** If the served reference's `sha256` ≠ the acceptance's `referenceSha256`,
    the acceptance is `invalidated: reference-changed`. It contributes no suppression, and the page
