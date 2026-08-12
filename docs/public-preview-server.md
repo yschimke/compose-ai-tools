@@ -178,9 +178,18 @@ Both are served for real (they used to fall through to the styled HTML 404) and 
 their baked PNGs stay open — they are a map lookup, and they are what a shared link points at.
 Closed: the playground (it compiles Kotlin), `/bundle.zip` and the wasm tier (megabytes per fetch),
 `/history/render` (reads the git object store), the compare/parity/reference lanes (they decode and
-diff), the machine lanes, and — the rule that actually protects the render daemons — **any URL with
-a query string**, since `/…/render/<id>.png` is a baked file but the same path with `?theme=` is a
-live re-render, and the grid links the override forms.
+diff), the machine lanes, and — the rule that actually protects the render daemons — **a render URL
+carrying a query string**, since `/…/render/<id>.png` is a baked file but the same path with
+`?theme=` is a live re-render, and the grid links the override forms. Scoped to the render lane on
+purpose: a blanket "no query strings" would also have closed `…/compose-m3/?tab=components&theme=…`,
+which is exactly the link someone pastes into a chat after picking a theme, and Googlebot obeys this
+group.
+
+HEAD is refused (`405` + `Allow: GET`) on the same work lanes. `AutoHeadResponse` answers a HEAD by
+running the whole GET handler and discarding the body, so `HEAD /bundle.zip` would otherwise render
+every preview and pack a zip only to throw it away — an anonymous `curl -I` could burn a catalog's
+render capacity while downloading nothing. Pages and baked PNGs, the things an unfurler probes, keep
+answering.
 
 Link unfurlers get their own group with only the private lanes closed and no `Crawl-delay`: their
 robots parsers are the simple prefix kind, so the general group's wildcard rules would be misread,

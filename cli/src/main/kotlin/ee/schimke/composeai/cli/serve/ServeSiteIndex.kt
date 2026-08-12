@@ -128,14 +128,20 @@ internal object ServeSiteIndex {
     )
 
   /**
-   * Every render URL that carries a query string. This is the rule that actually protects the
-   * daemons: `/…/render/<id>.png` with no query serves baked bytes off disk, while the same path
-   * with `?theme=`, `?themeProvider=`, `?w=` or any other override is a live re-render. The grid
-   * links the override forms, so a crawler that followed them would render the entire catalog in
-   * every theme. Broad on purpose — no page on this server *needs* its query string to be
-   * indexable, and the canonical `og:url` is always the bare path.
+   * Render URLs that carry a query string. This is the rule that actually protects the daemons:
+   * `/…/render/<id>.png` with no query serves baked bytes off disk, while the same path with
+   * `?themeProvider=`, `?fontScale=`, `?device=` or any other override is a live re-render. The
+   * grid links the override forms, so a crawler that followed them would render the entire catalog
+   * in every theme.
+   *
+   * Scoped to the **render lane**, not to every query string on the server. A blanket "disallow
+   * anything with a query" also closed the browser-facing pages, and a page URL with state in it is
+   * precisely what people share: `…/compose-m3/?tab=components&theme=…` is the link someone pastes
+   * into a chat after picking a theme. Since the general group is the one Googlebot obeys (see
+   * [PREVIEW_FETCHERS]), blanket-closing query strings would have blocked Google from reading the
+   * Open Graph block on exactly the links this change exists to make unfurl.
    */
-  private const val NO_QUERY_STRINGS = "/*?"
+  private val NO_QUERY_ON_RENDER = listOf("/render/*?", "/*/render/*?")
 
   /**
    * `robots.txt` for this server.
@@ -164,7 +170,7 @@ internal object ServeSiteIndex {
     CLOSED_TO_ALL.forEach { appendLine("Disallow: $it") }
     CLOSED_TO_CRAWLERS.forEach { appendLine("Disallow: $it") }
     appendLine("# Override params re-render a preview; the bare path serves the bake.")
-    appendLine("Disallow: $NO_QUERY_STRINGS")
+    NO_QUERY_ON_RENDER.forEach { appendLine("Disallow: $it") }
     appendLine("Crawl-delay: 10")
     appendLine()
 
@@ -249,10 +255,26 @@ internal object ServeSiteIndex {
    * a crawler discard the *whole* sitemap, not just the offending entry. Omitting one catalog's
    * timestamp is a far cheaper failure than losing every URL in the file.
    */
-  private fun w3cDateTime(raw: String): String? = raw.takeIf { W3C_DATETIME.matches(it) }
+  private fun w3cDateTime(raw: String): String? {
+    // Shape first: `java.time` accepts spellings the sitemap profile does not (a local date-time
+    // with no offset, say), so the regex fixes which forms are allowed at all.
+    if (!W3C_DATETIME.matches(raw)) return null
+    // Then meaning. The regex alone passes `2026-13-40T25:99:99+99:99` — digit-shaped and entirely
+    // impossible — which would land in `<lastmod>` and defeat the whole point of validating: a date
+    // a crawler rejects invalidates the document, exactly the failure the fail-safe exists to
+    // avoid.
+    val parsed =
+      runCatching {
+          if (raw.length == 10) java.time.LocalDate.parse(raw)
+          else java.time.OffsetDateTime.parse(raw)
+        }
+        .isSuccess
+    return raw.takeIf { parsed }
+  }
 
   /**
    * `2026-07-17`, `2026-07-17T12:34Z`, `2026-07-17T12:34:56.789+02:00` — the shapes sitemaps take.
+   * Shape only; [w3cDateTime] additionally requires the value to be a real instant.
    */
   private val W3C_DATETIME =
     Regex("""^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?$""")

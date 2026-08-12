@@ -1527,8 +1527,12 @@ class ServeHttpServer(
           requestQuerySuffix()
       }
       // Measured off the PNG header, so the unfurl card can declare `og:image:width`/`height`
-      // instead of making the fetcher download the render to find out.
-      val heroSize = heroId?.let { renderHost.bakedRenderSize(it) }
+      // instead of making the fetcher download the render to find out. Skipped when the URL carries
+      // overrides — `heroUrl` inherits the page's query, so the image would be a re-render at a
+      // size
+      // the bake doesn't describe (same reasoning as the viewer's `imageSize`).
+      val heroSize =
+        if (requestCarriesOverrides()) null else heroId?.let { renderHost.bakedRenderSize(it) }
       markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.landingPage(
@@ -2206,9 +2210,13 @@ class ServeHttpServer(
     // for a large-image card and under Google's 512² guidance for using the image at all. The page
     // wants a small file; a link preview wants a big picture. Falls back to whatever the card uses
     // when the catalog has no readable full render.
+    // Read from the remembered metadata, not from a live host: `peekHost` is null for a suspended
+    // catalog, and falling back would quietly re-advertise the undersized thumbnail exactly when
+    // the
+    // featured catalog is idle — the common case, not a rare one.
     val featuredRender =
       featured?.heroPreviewId?.let { id ->
-        val size = sessions.peekHost(featured.system)?.bakedRenderSize(id) ?: return@let null
+        val size = catalogMetaSeen[featured.system]?.heroRenderSize ?: return@let null
         val path =
           "/${WebEscaping.urlEncodeSegment(featured.system)}/render/" +
             "${WebEscaping.urlEncodeSegment(id)}.png"
@@ -2549,6 +2557,18 @@ class ServeHttpServer(
      * catalog has no hero, or its PNG couldn't be decoded — the card falls back to `/render`.
      */
     val heroImage: ServeHeroImages.Hero?,
+    /**
+     * The pixel size of the hero preview's **full** render — what the front door advertises to link
+     * unfurlers, as opposed to the card-sized [heroImage] thumbnail beside it.
+     *
+     * Remembered rather than looked up when the home page renders, for the same reason [heroImage]
+     * is: `peekHost` returns null for a suspended catalog, so a live lookup would silently fall
+     * back to advertising the downscaled thumbnail — the undersized image this stopped advertising
+     * — whenever the featured catalog happened to be idle. Which catalog is featured depends only
+     * on publisher grouping, so that would have been the *usual* state on a quiet server, not an
+     * edge case.
+     */
+    val heroRenderSize: Pair<Int, Int>?,
     val darkStage: Boolean,
     val degradation: String?,
     val provenance: ServeWeb.CatalogProvenance?,
@@ -2585,6 +2605,7 @@ class ServeHttpServer(
         // Memoised per (host instance, preview): the decode + scale runs once per catalog, and a
         // refresh — which installs a fresh host — re-bakes under a new hash.
         heroImage = heroId?.let { heroImages.heroFor(bundle, it, heroCrop) },
+        heroRenderSize = heroId?.let { host.bakedRenderSize(it) },
         darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle.stageSurface),
         degradation = host.degradations.firstOrNull()?.detail,
         provenance = bundle.provenance,
@@ -3252,6 +3273,9 @@ class ServeHttpServer(
    * `GET /bundle.zip` (query) and `GET /{system}/bundle.zip` (path): the session as a portable zip.
    */
   private suspend fun RoutingContext.handleBundleZip(sessionInPath: Boolean) {
+    // Renders every preview in the catalog and packs a zip. Never probed for an unfurl, and the
+    // most expensive thing a HEAD could otherwise trigger anonymously.
+    if (rejectHeadProbe()) return
     if (rejectBadToken()) return
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
       // Render the whole module once (cache-backed) into the portable WebEmbed gallery and stream
@@ -3275,6 +3299,8 @@ class ServeHttpServer(
 
   /** Return one server-hydrated, self-contained executable PNG+ZIP preview bundle. */
   private suspend fun RoutingContext.handleExecutableBundle(sessionInPath: Boolean) {
+    // Materialises a per-preview bundle, which can reach the network.
+    if (rejectHeadProbe()) return
     if (rejectBadToken()) return
     withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
       val previewId = call.parameters["name"]
@@ -3336,7 +3362,14 @@ class ServeHttpServer(
       // PNG-header read, so the unfurl card carries the render's real size rather than making the
       // fetcher download it to measure. Also what stops a 300×210 component from claiming a
       // large-image card it can't fill (see [ServeWeb.twitterCard]).
-      val imageSize = renderHost.bakedRenderSize(preview.id)
+      //
+      // Only when the URL carries no overrides. `imageUrl` inherits the page's query suffix, so a
+      // link shared from a viewer with `?device=` / `?widthPx=` / `?orientation=` points at a
+      // re-render whose pixel size is not the baked one — declaring the baked dimensions there
+      // would have the card lay out against a size the image doesn't have. Omitting them is always
+      // safe: the fetcher measures the image itself.
+      val imageSize =
+        if (requestCarriesOverrides()) null else renderHost.bakedRenderSize(preview.id)
       val engagement =
         if (isViewRequest()) incrementPreviewViews(sessionId, preview.id)
         else previewEngagement(sessionId, listOf(preview)).getValue(preview.id)
@@ -3537,6 +3570,8 @@ class ServeHttpServer(
    * both URL forms so the viewer can link relative to whichever prefix it was served under.
    */
   private suspend fun RoutingContext.handleHistoryRender() {
+    // Reads an old render out of the local git object store, per request.
+    if (rejectHeadProbe()) return
     if (rejectBadToken()) return
     val history = projectHistory
     val name = call.parameters["name"].orEmpty().removeSuffix(".png")
@@ -3562,6 +3597,12 @@ class ServeHttpServer(
    * carries `ir/` sidecars (each 404s where unavailable).
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
+    // A bare `/render/<id>.png` replays a baked file and IS what an unfurler probes for `og:image`,
+    // so it must keep answering HEAD. The same path carrying overrides is a daemon render, and
+    // amplifying a bodyless probe into one is the same trade as `/bundle.zip` at smaller scale.
+    // Keyed on the presence of an override param rather than on a parse: the check has to be cheap
+    // and this errs toward refusing, which costs a probe nothing (the caller GETs instead).
+    if (requestCarriesOverrides() && rejectHeadProbe()) return
     if (rejectBadToken()) return
     val sessionId = selectedSessionId(sessionInPath)
     withLeasedSession(sessionId) { renderHost ->
@@ -4137,6 +4178,42 @@ class ServeHttpServer(
    * shared link and inflating the numbers with traffic that never rendered a pixel for anyone.
    */
   private fun RoutingContext.isViewRequest(): Boolean = call.request.local.method != HttpMethod.Head
+
+  /**
+   * Refuse a `HEAD` on a lane whose GET handler does real work, answering `405` + `Allow: GET`
+   * instead. True when the request was refused and the caller must return.
+   *
+   * [io.ktor.server.plugins.autohead.AutoHeadResponse] answers a HEAD by running the **whole** GET
+   * handler and discarding the body, which is exactly right for a page or a baked PNG and exactly
+   * wrong here. `HEAD /bundle.zip` would render every preview in the catalog and pack the zip only
+   * to throw it away, so on a public host an unauthenticated `curl -I` — or a link checker, or an
+   * uptime monitor — could cold-start a catalog's daemons and burn its render capacity repeatedly
+   * while downloading nothing.
+   *
+   * Scoped to the work lanes, deliberately not applied by default: the whole point of installing
+   * the plugin is that an unfurler's probe of a page and its `og:image` succeeds, and both of those
+   * are a map lookup or a file read. A caller that wants the bytes can still GET; nothing shares
+   * links to a zip and expects a card.
+   */
+  /**
+   * Whether the request's query names any render override (`fontScale`, `device`, `themeProvider`,
+   * `knob.<key>`, …) — i.e. whether the response could be anything other than the published pixels.
+   *
+   * Deliberately the cheap key-level test rather than [ServeOverrides.parse]: both callers only
+   * need "could this differ from the bake?", and both of them fail safe when it over-reports. A
+   * render that would have replayed baked pixels anyway refuses a HEAD (the caller GETs, costing
+   * nothing), and an unfurl card omits dimensions it could have declared (the fetcher measures the
+   * image).
+   */
+  private fun RoutingContext.requestCarriesOverrides(): Boolean =
+    call.request.queryParameters.entries().any { (key, _) -> ServeOverrides.isOverrideParam(key) }
+
+  private suspend fun RoutingContext.rejectHeadProbe(): Boolean {
+    if (call.request.local.method != HttpMethod.Head) return false
+    call.response.headers.append(HttpHeaders.Allow, HttpMethod.Get.value)
+    call.respondText("", status = HttpStatusCode.MethodNotAllowed)
+    return true
+  }
 
   private fun RoutingContext.requestIsSignedIn(): Boolean = githubAuth?.currentLogin(call) != null
 

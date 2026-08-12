@@ -1323,6 +1323,10 @@ class ServeHttpRoutingTest {
         .containsMatchIn(body),
       "the unfurl image is the full render, not the hero thumbnail: $body",
     )
+    // …and it carries the render's measured size, so a fetcher lays the card out without
+    // downloading the image first.
+    assertTrue(body.contains("<meta property=\"og:image:width\""), "declares its width: $body")
+    assertTrue(body.contains("<meta property=\"og:image:height\""), "declares its height: $body")
     // It is NOT the default module's own preview grid.
     assertTrue(!body.contains("default-mod"), "root is the index, not the default module: $body")
   }
@@ -1368,6 +1372,30 @@ class ServeHttpRoutingTest {
   }
 
   /**
+   * `AutoHeadResponse` answers a HEAD by running the whole GET handler and discarding the body,
+   * which is right for a page or a baked PNG and badly wrong for the work lanes: `HEAD /bundle.zip`
+   * would render every preview and pack a zip only to throw it away, so an anonymous `curl -I` on a
+   * public host could burn a catalog's render capacity while downloading nothing. Those refuse the
+   * probe with `405` + `Allow: GET` instead.
+   */
+  @Test
+  fun `HEAD is refused on the lanes whose GET does real work`() {
+    for (path in listOf("/compose-m3/bundle.zip", "/compose-m3/bundle/$previewId")) {
+      val (code, headers) = head(path)
+      assertEquals(405, code, "HEAD $path must not run the GET handler")
+      assertEquals("GET", headers["Allow"], "refusal names the method that works: $path")
+    }
+    // An override-bearing render is a daemon render; the bare path is the baked file an unfurler
+    // probes for og:image and must keep answering.
+    assertEquals(
+      405,
+      head("/compose-m3/render/$previewId.png?fontScale=1.5").first,
+      "an override render must not be triggered by a bodyless probe",
+    )
+    assertEquals(200, head("/compose-m3/render/$previewId.png").first, "the bake still answers")
+  }
+
+  /**
    * A HEAD is a probe, not a visit. `AutoHeadResponse` answers it by running the GET pipeline and
    * dropping the body, so the view tallies would otherwise count the probe an unfurler sends *and*
    * the fetch that follows it — double-counting every link shared into a chat.
@@ -1399,6 +1427,31 @@ class ServeHttpRoutingTest {
       ?.toIntOrNull() ?: 0
 
   /**
+   * A viewer's `og:image` inherits the page's query suffix, so a link shared from an overridden
+   * view points at a re-render whose pixel size is not the baked one. Declaring the baked
+   * dimensions there would have the card lay out against a size the image doesn't have — omit them
+   * and let the fetcher measure.
+   */
+  @Test
+  fun `an overridden viewer link declares no image dimensions`() {
+    val (_, plain) = get("/compose-m3/p/$previewId")
+    assertTrue(
+      plain.contains("<meta property=\"og:image:width\""),
+      "baked view is measured: $plain",
+    )
+
+    val (_, overridden) = get("/compose-m3/p/$previewId?fontScale=1.5")
+    assertTrue(
+      overridden.contains("fontScale=1.5\">"),
+      "the card still points at the overridden render: $overridden",
+    )
+    assertFalse(
+      overridden.contains("og:image:width"),
+      "baked dimensions must not describe an overridden render: $overridden",
+    )
+  }
+
+  /**
    * `robots.txt` opens the browsing surface and closes the lanes that cost the box something. The
    * assertions name the failure modes rather than the file's exact text: the browsing pages must
    * stay crawlable (that is the whole point of publishing a sitemap), and the render-with-overrides
@@ -1410,14 +1463,23 @@ class ServeHttpRoutingTest {
     assertEquals(200, code)
     assertTrue(body.startsWith("# compose-preview"), "robots.txt is the real file: $body")
     // The expensive lanes.
-    for (closed in listOf("/playground", "/bundle.zip", "/wasm/", "/*?", "/*/compare")) {
+    for (closed in listOf("/playground", "/bundle.zip", "/wasm/", "/*/render/*?", "/*/compare")) {
       assertTrue(body.contains("Disallow: $closed"), "closes $closed: $body")
     }
     // The browsing surface is never disallowed — no rule may match a catalog landing, a viewer, or
-    // the baked PNG an unfurl card points at.
+    // the baked PNG an unfurl card points at. Compared line-exactly, because the legitimate
+    // `/*/render/*?` rule has the open form as a prefix and a substring test would read it as a
+    // violation of itself.
+    val rules = body.lines().map { it.trim() }
     for (open in
-      listOf("Disallow: /$", "Disallow: /\n", "Disallow: /*/p/", "Disallow: /*/render/")) {
-      assertFalse(body.contains(open), "must not close the browse surface ($open): $body")
+      listOf(
+        "Disallow: /",
+        "Disallow: /$",
+        "Disallow: /*/p/",
+        "Disallow: /*/render/",
+        "Disallow: /*?",
+      )) {
+      assertFalse(rules.contains(open), "must not close the browse surface ($open): $body")
     }
     // Link unfurlers get their own group, without the crawl delay and without wildcard rules their
     // simple prefix parsers would misread.

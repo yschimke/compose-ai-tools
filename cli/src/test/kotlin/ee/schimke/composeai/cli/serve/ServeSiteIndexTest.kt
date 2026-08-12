@@ -32,11 +32,20 @@ class ServeSiteIndexTest {
    * crawler that followed them would render every preview in every theme.
    */
   @Test
-  fun `query strings are closed while the bare paths stay open`() {
+  fun `query strings are closed on the render lane only`() {
     val robots = ServeSiteIndex.robotsTxt(isPublic = true, sitemapUrl = null)
-    assertTrue(robots.contains("Disallow: /*?"), robots)
-    assertFalse(robots.contains("Disallow: /*/render/"), "the baked PNG stays fetchable: $robots")
+    assertTrue(robots.contains("Disallow: /*/render/*?"), robots)
+    assertTrue(robots.contains("Disallow: /render/*?"), robots)
+    // The bare render path is the og:image an unfurler fetches — it must stay open.
+    assertFalse(robots.contains("Disallow: /*/render/\n"), "the baked PNG stays fetchable: $robots")
     assertFalse(robots.contains("Disallow: /*/p/"), "the viewer page stays crawlable: $robots")
+    // And the rule must NOT be the blanket form. Googlebot obeys this group, so closing every query
+    // string would block it from reading the Open Graph block on a link someone shared after
+    // picking a tab or a theme — which is most of the links people actually share.
+    assertFalse(
+      robots.lines().any { it.trim() == "Disallow: /*?" },
+      "a page URL carrying state must stay fetchable: $robots",
+    )
   }
 
   /**
@@ -122,6 +131,30 @@ class ServeSiteIndexTest {
     assertTrue(xml.contains("<loc>https://preview.example/reply/p/Inbox</loc>"), xml)
     assertFalse(xml.contains("<lastmod>"), "no timestamp rather than a bad one: $xml")
     assertFalse(xml.contains("last tuesday"), xml)
+  }
+
+  /**
+   * Shape-checking alone lets `2026-13-40T25:99:99+99:99` through — digit-shaped and impossible. A
+   * date a crawler rejects invalidates the whole document, which is the exact failure the
+   * validation exists to prevent, so the value has to be a real instant and not merely look like
+   * one.
+   */
+  @Test
+  fun `a well-shaped but impossible date is rejected too`() {
+    fun lastmodOf(raw: String): String? =
+      ServeSiteIndex.sitemapXml(
+          "https://preview.example",
+          listOf(ServeSiteIndex.CatalogEntry("m3", emptyList(), raw)),
+        )
+        .let { Regex("<lastmod>([^<]+)</lastmod>").find(it)?.groupValues?.get(1) }
+
+    assertEquals(null, lastmodOf("2026-13-40T25:99:99+99:99"), "month 13 / day 40 / hour 25")
+    assertEquals(null, lastmodOf("2026-02-30"), "February never has 30 days")
+    assertEquals(null, lastmodOf("2026-07-17T12:34:56"), "no offset is not the sitemap profile")
+    // The real shapes still pass, including a date-only value and minute precision.
+    assertEquals("2026-07-17", lastmodOf("2026-07-17"))
+    assertEquals("2026-07-17T12:34Z", lastmodOf("2026-07-17T12:34Z"))
+    assertEquals("2026-07-17T12:34:56.789+02:00", lastmodOf("2026-07-17T12:34:56.789+02:00"))
   }
 
   /** A preview id can carry `&`, `?` and spaces; both the URL and the XML have to survive it. */
