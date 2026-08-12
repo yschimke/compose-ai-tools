@@ -269,18 +269,34 @@ rather than a drag); `mask` and `acceptedCandidate` paths; **three** hashes — 
 `acceptedCandidateSha256` **and `maskSha256`**; the **canonical plane the mask was authored
 against** — a `plane: "content-box" | "full-canvas"` discriminant plus the resolved
 `{x, y, width, height}` box, without which the plane gate (step 3 below) cannot be evaluated at
-all; an optional structured `finding` matcher (e.g. `{ kind: "color", token: …, expected: …,
-actual: … }`) for the checks design-parity runs that are not pixel comparisons; and free-text
-`note` + `acceptedAt`.
+all; **the element's authoring-time bounds**, in canonical-plane coordinates, when the acceptance
+names an `element`; an optional structured `finding` matcher (e.g. `{ kind: "color", token: …,
+expected: …, actual: … }`) for the checks design-parity runs that are not pixel comparisons; and
+free-text `note` + `acceptedAt`.
+
+**The element's baseline bounds are a required field, not derivable.** The element gate invalidates
+when a resolved element has moved "beyond tolerance" — which needs something to measure *from*, and
+the evaluator otherwise holds only the element's *current* bounds. The mask is not a usable stand-in:
+a mask commonly covers one part of the selected element (the glyph inside the button), so treating
+its bounding box as the element's baseline would report movement for an element that never moved,
+or miss movement smaller than the slack between them. Record the bounds at authoring time, in the
+canonical plane so they survive device-size changes, and state the tolerance as a fraction of the
+element's own smaller dimension rather than an absolute pixel count — an absolute tolerance means
+something different for a 16 px icon than for a 300 px card.
 
 **The mask must be hashed, not just referenced by path.** The mask is the thing that decides *what
 gets suppressed*, so an edited or swapped `mask.png` with an unchanged JSON record silently widens
 the accepted region — hiding regressions the record still claims are in scope, with no invalidation
-anywhere. That is a direct breach of the safety requirement the whole model exists for, and it is
-the one tampering path the other two hashes do not cover. A mask whose bytes don't match its
-`maskSha256` is a **hard validation failure** (the acceptance is refused outright and reported),
-not an invalidation that degrades to "compare normally" — a mask we cannot trust is a broken
-artifact, not a stale one.
+anywhere. That is a direct breach of the safety requirement the whole model exists for. A mask whose
+bytes don't match its `maskSha256` is a **hard validation failure** (the acceptance is refused
+outright and reported), not an invalidation that degrades to "compare normally" — a mask we cannot
+trust is a broken artifact, not a stale one.
+
+**`acceptedCandidateSha256` is checked the same way, and for a sibling reason** (see step 2 of the
+pipeline). The mask decides which pixels are suppressed; the accepted candidate decides what those
+pixels are permitted to look like. Leaving either unverified lets an edited artifact redefine what
+"accepted" means without any record changing — so both are validated before decode, and both refuse
+rather than degrade.
 
 The schema is defined **here**, in this repo, because `serve` is a consumer and this is where the
 other wire contracts (`compose-preview-references/v1`, `compose-preview-annotations/v1`,
@@ -302,8 +318,17 @@ Each gate sits at the earliest point where its inputs actually exist — which i
 
 1. **Fingerprint gate** — `reference-changed`. Genuinely metadata-only: a `sha256` compared against
    the manifest, no pixels required, so it is the cheap early-out and goes first.
-2. **Decode** all four rasters — reference, current candidate, `mask.png`, `accepted-candidate.png`
-   — under the declared pixel/colour semantics.
+2. **Artifact validation, then decode.** Before decoding, check `mask.png` against `maskSha256`
+   **and `accepted-candidate.png` against `acceptedCandidateSha256`**; a mismatch on either is a
+   hard validation failure (the acceptance is refused and reported), not an invalidation. Then
+   decode all four rasters — reference, current candidate, mask, accepted candidate — under the
+   declared pixel/colour semantics.
+
+   Both hashes matter for the same reason and it is easy to check only the first. The mask decides
+   *which pixels* are suppressed; the accepted candidate decides *what they are allowed to look
+   like*. An edited `accepted-candidate.png` with an unchanged record silently redefines the thing
+   the candidate gate compares against, so a difference nobody reviewed becomes the new accepted
+   state — the same class of breach as a widened mask, arriving through the other artifact.
 3. **Plane gate** — `plane-changed`. **This one needs decoded pixels and cannot precede step 2.**
    Resolving the plane means calling `normalisedBoxes`, which calls `contentBox` on *both* images,
    and `contentBox` samples the decoded pixels to find the drawn region and evaluate the
@@ -334,9 +359,18 @@ Each gate sits at the earliest point where its inputs actually exist — which i
    comes out, so scoring the canonical plane directly would produce a different verdict — while
    reusing the existing whole-image downsample would re-mix accepted and unaccepted signal across
    the mask edge and undo step 4. Separation survives *every* resample, including this one.
-8. **Score** the surviving picture, excluding still-valid masked coordinates in **both** roles
-   (scored source and neighbourhood candidate) in **both** directed passes.
-9. **Report** raw, accepted and unaccepted separately.
+8. **Score twice.** Once over the **untouched** planes, masking nothing — that is the **raw**
+   result. Once over the surviving picture, excluding still-valid masked coordinates in **both**
+   roles (scored source and neighbourhood candidate) in **both** directed passes — that is the
+   **unaccepted** result.
+
+   Two passes, not one, and this is forced rather than wasteful. The masked pass yields only the
+   unaccepted number; raw cannot be recovered from it, for exactly the reason the gate ordering
+   already relies on — the neighbourhood search is nonlinear, so removing coordinates changes the
+   contribution of every pixel near them and no arithmetic afterwards reconstructs what the score
+   would have been unmasked. Since "raw findings remain visible after acceptance" is a requirement
+   rather than a nicety, the raw pass has to actually be run.
+9. **Report** raw, accepted (raw − unaccepted) and unaccepted separately.
 
 **Selector contract.** An acceptance's `element` carries an explicit `kind`. **`v1` defines exactly
 one identifying kind**, deliberately:
@@ -587,8 +621,8 @@ things depending on which tool you asked. Options considered:
   browser scorer is what runs against a *live* render with overrides in force, so it would have
   nothing to apply acceptance to.
 - **Shared conformance fixtures** — a committed set of
-  `(reference, candidate, acceptance, semanticsPayload) → expected …` cases, in this repo, run by
-  both the JS unit tests here and design-parity's own suite.
+  `(reference, candidate, acceptances[], semanticsPayload) → expected …` cases, in this repo, run
+  by both the JS unit tests here and design-parity's own suite.
 
 **Recommended: the third.** It is the same device already used for `parity-activity.mjs` ↔
 `ServeParityActivityStore` (one committed fixture, two languages, both tests load it), it is cheap,
@@ -615,6 +649,14 @@ resampled before separating would enshrine the bug the pipeline order exists to 
 candidate, so pinning only the candidate's intermediates leaves reference-side mask coverage and
 reference-side resampling unchecked — and a divergence there shows up as a score difference at the
 very end, which is exactly the diagnosis-by-guesswork the fixtures exist to avoid.
+
+**Acceptances are a set, and the set is where engines diverge.** A fixture carrying one acceptance
+exercises none of the behaviour that only appears with several: masks that **overlap** (whose union
+is what step 8 excludes, so double-counting or gapping at the seam is invisible with one), and
+**mixed validity** — one acceptance invalidated while another survives, where the failure mode is
+retaining suppression from the invalidated mask. Both engines can pass every single-acceptance case
+and still disagree on these, so the input is a collection and the suite must include an overlapping
+pair and a mixed-validity pair as named cases.
 
 **The semantics payload is a fixture input, not context.** With `element.kind: tag`, the verdict
 depends on the current `ComposeSemanticsPayload`: whether the tag is still unique, still present,
