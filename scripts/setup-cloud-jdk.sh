@@ -241,11 +241,30 @@ discover_jdk_home() {
   # shellcheck disable=SC2086
   for cand in "${JAVA_HOME:-}" $dirs; do
     if [[ -n "$cand" ]] && is_jdk_of_major "$cand" "$major"; then
+      # Absolute, always. This value is printed as JAVA_HOME (the script's stated
+      # contract) and handed to `ln -s`, where a relative target would be resolved
+      # against the *link's* directory — so a relative CLOUD_JDK_SEARCH_DIRS entry
+      # would otherwise produce /usr/lib/jvm/temurin-N -> vendor/jdks/… and dangle.
+      [[ "$cand" == /* ]] || cand="$PWD/$cand"
       printf '%s' "$cand"
       return 0
     fi
   done
   return 1
+}
+
+# Whether the JDK at <dir> is the build named by Temurin tag <tag>.
+#
+# `release` records the version without the build number (`17.0.20`), while a
+# tag carries it (`jdk-17.0.20+8`), so the comparison is on the version part.
+# Close enough: a pin exists to select a *release*, and two Temurin builds of
+# the same version are not something this script can tell apart anyway.
+installed_matches_tag() {
+  local dir="$1" tag="$2" want installed
+  want="${tag#jdk-}"
+  want="${want%%+*}"
+  installed="$(sed -n 's/^JAVA_VERSION="\(.*\)"$/\1/p' "$dir/release" 2>/dev/null | head -n 1)"
+  [[ -n "$installed" && "$installed" == "$want" ]]
 }
 
 # Whether <dir> is a full JDK (java *and* javac) of <major>.
@@ -334,23 +353,28 @@ resolve_latest_tag() {
 # non-zero on failure. All human-readable logging goes to stderr.
 install_major() {
   local major="$1"
-  local install_dir
+  local install_dir tag
   install_dir="$(install_dir_for "$major")"
+  tag="$(pinned_tag_for "$major")"
 
   # Reuse an existing install; just make sure its trust store + symlink are set.
-  # `CLOUD_JDK_REUSE_EXISTING=0` means "always download", so it has to bypass
-  # this branch too — otherwise the escape hatch could never refresh the very
-  # install this script placed, which is the one people actually want to redo.
-  if [[ "${CLOUD_JDK_REUSE_EXISTING:-1}" != "0" && -x "$install_dir/bin/java" ]]; then
+  #
+  # Two things bypass this. `CLOUD_JDK_REUSE_EXISTING=0` means "always
+  # download", so it has to reach the install dir too — otherwise the escape
+  # hatch could never refresh the very install this script placed, which is the
+  # one people actually want to redo. And a pinned JDK<major>_VERSION names a
+  # *specific* build: handing back a different one that happens to be sitting in
+  # the directory is exactly what the pin exists to prevent. An install already
+  # matching the pin is still reused — re-downloading a build we have would make
+  # every session pay for the pin.
+  if [[ "${CLOUD_JDK_REUSE_EXISTING:-1}" != "0" && -x "$install_dir/bin/java" ]] &&
+    { [[ -z "$tag" ]] || installed_matches_tag "$install_dir" "$tag"; }; then
     echo "[setup-cloud-jdk] reusing existing JDK $major at $install_dir" >&2
     fix_truststore "$install_dir"
     link_into_jvm_dir "$install_dir" "$major"
     echo "$install_dir"
     return 0
   fi
-
-  local tag
-  tag="$(pinned_tag_for "$major")"
 
   # Nothing in *our* install dir — but the box may already have this major
   # somewhere else, and downloading a second copy of a JDK that is already on

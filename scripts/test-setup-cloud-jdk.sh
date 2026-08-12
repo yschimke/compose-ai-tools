@@ -184,6 +184,51 @@ grep -Fq "curl" "${fixture}/calls" ||
   { echo "FAIL: a JRE (no bin/javac) must not satisfy the JDK requirement" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
+# 5c. A pinned version bypasses install-dir reuse when the installed build is a
+#     different one — but reuses it when it already matches, so pinning does not
+#     re-download the same JDK every session.
+# ---------------------------------------------------------------------------
+: >"${fixture}/calls"
+make_jdk "${fixture}/opt/jdk17-pin" "17.0.19"
+run_script CLOUD_JDK_MAJORS=17 JDK17_DIR="${fixture}/opt/jdk17-pin" \
+  JDK17_VERSION="jdk-17.0.20+8" >/dev/null 2>&1 || true
+grep -Fq "jdk-17.0.20" "${fixture}/calls" ||
+  { echo "FAIL: a pin must not hand back a different build sitting in the install dir" >&2
+    cat "${fixture}/calls" >&2; exit 1; }
+
+: >"${fixture}/calls"
+out="$(run_script CLOUD_JDK_MAJORS=17 JDK17_DIR="${fixture}/opt/jdk17-pin" \
+  JDK17_VERSION="jdk-17.0.19+7" 2>/dev/null)"
+test "${out}" = "${fixture}/opt/jdk17-pin" ||
+  { echo "FAIL: an install matching the pin should be reused, got '${out}'" >&2; exit 1; }
+test ! -s "${fixture}/calls" ||
+  { echo "FAIL: pinning re-downloaded a build already installed" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# 5d. A relative search dir yields an absolute JAVA_HOME. A relative one would
+#     break the output contract and produce a dangling toolchain symlink, since
+#     `ln` resolves a relative target against the link's own directory.
+# ---------------------------------------------------------------------------
+: >"${fixture}/calls"
+mkdir -p "${fixture}/relbase/vendor"
+make_jdk "${fixture}/relbase/vendor/jdk17" "17.0.19"
+out="$(
+  cd "${fixture}/relbase" && env -u JAVA_HOME \
+    CALL_LOG="${fixture}/calls" \
+    CLOUD_JDK_SEARCH_DIRS="vendor/jdk17" \
+    CLOUD_JDK_JVM_LINK_DIR="${fixture}/jvm-rel" \
+    PATH="${fixture}/bin:${fixture}/pathjdk/bin:/usr/bin:/bin" \
+    CLOUD_JDK_MAJORS=17 JDK17_DIR="${fixture}/opt/jdk17-rel" \
+    bash "${script}" 2>/dev/null
+)"
+case "${out}" in
+  /*) ;;
+  *) echo "FAIL: JAVA_HOME must be absolute, got '${out}'" >&2; exit 1 ;;
+esac
+test -e "${fixture}/jvm-rel/temurin-17" ||
+  { echo "FAIL: the toolchain symlink dangles for a relative search dir" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
 # 6. Our own install dir still wins over discovery, and a JDK whose trust store
 #    cannot be written does not abort the run — a store-provided JDK is
 #    read-only, and that is a warning, not a failed provision.
