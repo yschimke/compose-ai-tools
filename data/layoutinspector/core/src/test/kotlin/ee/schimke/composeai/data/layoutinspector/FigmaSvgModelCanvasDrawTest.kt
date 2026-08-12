@@ -106,6 +106,29 @@ class FigmaSvgModelCanvasDrawTest {
   }
 
   @Test
+  fun aDelegatedDrawIsNotSuppressedByAFullyTransparentGradient() {
+    // Same rule, applied to gradients: a gradient whose every stop is transparent paints exactly as
+    // much as no gradient at all, so it must not stand in for the delegated pixels either.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "delegated-draw",
+        component = "Spacer",
+        bounds = bounds(3, 5, 103, 45),
+        size = LayoutInspectorSize(100, 40),
+        drawsContent = true,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundGradient = LayoutInspectorGradient(colors = listOf("#00000000", "#00FFFFFF"))
+          ),
+      )
+
+    val m = model(node, captureCanvasDraws = true)
+
+    assertEquals("the invisible gradient must not suppress the raster", 1, m.rasterTargets.size)
+    assertNotNull("the delegated draw survives as a background image", m.root.background)
+  }
+
+  @Test
   fun aVisibleTokenStillKeepsTheNodeVector() {
     // The other side of the same line: a border that does paint is content the vector model can
     // represent, so the node stays a vector layer and nothing is cropped from the frame.

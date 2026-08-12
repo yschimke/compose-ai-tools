@@ -1256,10 +1256,10 @@ data class FigmaSvgModel(
       // as content would leave the node with no stroke and no raster — an empty layer where the
       // delegated pixels used to be.
       val paintsFill =
-        tokens?.backgroundGradient != null ||
+        tokens?.backgroundGradient.paints(ctx) ||
           tokens?.backgroundColor?.let { argbToColor(it, ctx.colorNames) }.paints()
       val paintsBorder =
-        tokens?.borderGradient != null ||
+        tokens?.borderGradient.paints(ctx) ||
           tokens?.borderColor?.let { argbToColor(it, ctx.colorNames) }.paints()
       val nothingElseToDraw =
         vectorGraphic == null && !paintsFill && !paintsBorder && modifierText(ctx) == null
@@ -2148,6 +2148,10 @@ data class FigmaSvgModel(
 
     /** A colour token counts as content only if it actually puts pixels on the canvas. */
     private fun FigmaSvgColor?.paints(): Boolean = this != null && opacity > 0.0
+
+    /** …and so does a gradient: every stop transparent paints exactly as much as no gradient. */
+    private fun LayoutInspectorGradient?.paints(ctx: BuildContext): Boolean =
+      this != null && colors.any { argbToColor(it, ctx.colorNames).paints() }
 
     private fun LayoutInspectorModifier.isCustomDraw(): Boolean =
       name in DRAW_MODIFIERS && !placeholder
