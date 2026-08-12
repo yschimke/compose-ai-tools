@@ -144,6 +144,26 @@ class ServePageBackdropStoreTest {
   }
 
   @Test
+  fun `placements are capped per page, not just pages per catalog`() {
+    // A page cap bounds how many backdrop PNGs a catalog can stage, but nothing about one page's
+    // manifest entry — and every placement becomes a hotspot, an overlay image and a list row.
+    val many =
+      (1..ServePageBackdropStore.MAX_PLACEMENTS_PER_PAGE + 25).joinToString(",") { i ->
+        """{"nodeId":"1:$i","name":"Item $i",
+           "bounds":{"x":0,"y":0,"width":10,"height":10},"link":"unlinked"}"""
+      }
+    val crowded =
+      upcoming.replace(
+        Regex("\"placements\":\\[.*\\]", RegexOption.DOT_MATCHES_ALL),
+        "\"placements\":[$many]",
+      )
+    assertEquals(
+      ServePageBackdropStore.MAX_PLACEMENTS_PER_PAGE,
+      store(manifest(crowded)).pages.single().placements.size,
+    )
+  }
+
+  @Test
   fun `a duplicate page id keeps the first declaration`() {
     val second = upcoming.replace("\"name\":\"Upcoming-Mobile\"", "\"name\":\"Impostor\"")
     val loaded = store(manifest("$upcoming,$second"))

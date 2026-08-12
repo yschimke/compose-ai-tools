@@ -290,3 +290,14 @@ test("an unsupported confidence is dropped, not republished", () => {
   assert.equal(placement.link, "manifest");
   assert.equal(placement.previewId, "top-app-bar-medium__ideal__default__light");
 });
+
+test("an out-of-range depth is normalised rather than republished", () => {
+  // `Number.isInteger(2147483648)` is true, but the consumer decodes depth as a Kotlin Int — so
+  // republishing it fails the parse for the whole manifest and hides every screen. Depth is only a
+  // nesting hint, so an out-of-range one becomes 0.
+  const deep = { ...appBar, depth: 2147483648 };
+  const plan = planPageBackdrops({ manifest: manifest([page([deep])]), spec, catalog });
+  assert.equal(plan.manifest.pages[0].placements[0].depth, 0);
+  // The placement itself survives — only the hint is normalised.
+  assert.equal(plan.manifest.pages[0].placements[0].link, "manifest");
+});

@@ -282,10 +282,14 @@ on:
         required: false
       figma_token:
         description: >-
-          Optional read-only Figma personal access token (`file_content:read`), used only to render
-          `figma:<fileKey>/<nodeId>` entries in the calling repo''s design-map.json into published
-          design references. Absent, those entries are skipped with a warning and every other
-          reference still publishes.
+          Optional read-only Figma personal access token (`file_content:read`). Two consumers, both
+          read-only: rendering `figma:<fileKey>/<nodeId>` entries in the calling repo''s
+          design-map.json into published design references, and — only for a repo that commits a
+          design-pages.json with `"enabled": true` — importing that file''s key pages through
+          `@design-parity/page-backdrop`, a separately distributed npm package pinned by
+          `page-backdrop-version`. Absent, reference entries are skipped with a warning and the
+          page import is skipped in favour of whatever backdrops are committed; everything else
+          still publishes.
         required: false
 
 permissions: {}

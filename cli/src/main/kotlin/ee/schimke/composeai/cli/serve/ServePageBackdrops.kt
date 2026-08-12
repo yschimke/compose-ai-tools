@@ -118,6 +118,13 @@ private constructor(
 
     const val INDEX_FILE = "index.json"
 
+    /**
+     * How many instances one screen may carry. The densest real screen in the Material 3 kit has
+     * eleven; this is orders of magnitude above any honest import and exists so a malformed or
+     * hostile manifest can't turn one page into an enormous response.
+     */
+    const val MAX_PLACEMENTS_PER_PAGE = 500
+
     private val SAFE_ID = Regex("[A-Za-z0-9._-]{1,160}")
     private val PNG_SIGNATURE = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
 
@@ -161,7 +168,13 @@ private constructor(
       val seen = HashSet<String>()
       return manifest.pages
         .filter { page -> isDrawable(page) && seen.add(page.id) }
-        .map { page -> page.copy(placements = page.placements.filter(::isDrawable)) }
+        .map { page ->
+          // Placements are capped too, not just pages. A page cap alone bounds the number of
+          // backdrop PNGs but nothing about a single page's manifest entry — and every placement
+          // becomes a hotspot, an overlay image and a list row, so an absurd count is a huge
+          // response and a huge DOM rather than a useful screen. A real key screen has tens.
+          page.copy(placements = page.placements.filter(::isDrawable).take(MAX_PLACEMENTS_PER_PAGE))
+        }
     }
 
     /** A Figma file key is URL-safe alphanumerics; anything else is not a key we will link to. */

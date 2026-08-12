@@ -212,7 +212,14 @@ export function planPageBackdrops({ manifest, spec, catalog }) {
           width: placement.bounds.width,
           height: placement.bounds.height,
         },
-        depth: Number.isInteger(placement?.depth) && placement.depth >= 0 ? placement.depth : 0,
+        // Range-checked, not just integer-checked. The consumer decodes `depth` as a Kotlin Int,
+        // so republishing `2147483648` — which `Number.isInteger` happily accepts — fails the parse
+        // for the WHOLE manifest and hides every screen. Same failure shape as an unsupported
+        // `confidence`, and depth is only a nesting hint, so an out-of-range one becomes 0.
+        depth:
+          Number.isInteger(placement?.depth) && placement.depth >= 0 && placement.depth <= 2147483647
+            ? placement.depth
+            : 0,
         ref: String(placement?.ref ?? ""),
         link,
         ...(placement?.code ? { code: String(placement.code) } : {}),
