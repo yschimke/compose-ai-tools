@@ -16,6 +16,9 @@ pristine worktree; every "after" from the branch, through the same
 | `wear-pressed-unchanged.png` | Wear `Button/Filled` `pressed`, deliberately **not** converted — see below. |
 | `widget-clamped-before.png` / `widget-clamped-after.png` | `LauncherWidgetClampedPreview` picking up the production condition string after the RemoteViews factory was shared. |
 | `placeholder-override-driven-new.png` | New preview: `PlaceholderCardOverrideDriven`, the preview-only wrapper that keeps the live `placeholderActive` override lane exercised. |
+| `cmp-focused-before.png` / `cmp-focused-after.png` | CMP/desktop `Button/Filled` `keyboard-focus`. Before: the forged `FocusInteraction.Focus` rendered **nothing** — `#6750A4`, the resting container colour. After, under `@FocusedPreview(indices = [0])`: `#7661AD`, the real focus state layer. |
+| `cmp-pressed-before.png` / `cmp-pressed-after.png` | CMP/desktop `Button/Filled` `pressed`. Before: also `#6750A4` — indistinguishable from resting. After, under `@FocusedPreview(indices = [0], pressed = true)`: `#8471B5`, the pressed state layer raised by a real pointer down. |
+| `cmp-resting-reference.png` | The plain `Button/Filled` sticker, unchanged, at `#6750A4` — the control that makes the two "before" captures legible as *no state at all*. |
 
 ## Why the Wear `pressed` sticker was not converted
 
@@ -32,3 +35,19 @@ marked stopgap instead, and stays byte-identical to `main`.
 
 The Android M3 focus ring (`m3-focus-ring-after.png`) is the counter-example
 showing the mechanism does work where the component cooperates.
+
+## The CMP/desktop sheet, converted afterwards
+
+The desktop half of #3672 was left out of the sweep above because
+`renderers/desktop` had no focus or press dispatch at all. It does now — the
+renderer drives `@FocusedPreview` through the same connector-side walk under
+`runSkikoComposeUiTest`, and `pressed = true` dispatches an ordinary pointer down
+onto the focused element (desktop has no indirect-pointer channel, so the press
+is hit-tested like a real click).
+
+The `cmp-*` rows above are that conversion, and they are the sharpest evidence in
+this directory: on `main` the CMP catalog's `pressed` and `keyboard-focus`
+stickers were **pixel-identical to a resting button** (`#6750A4` in all three).
+The forged interaction was not merely a weak approximation of the state — it
+produced no state at all, and the sheet had been publishing two labelled state
+stickers that showed none.

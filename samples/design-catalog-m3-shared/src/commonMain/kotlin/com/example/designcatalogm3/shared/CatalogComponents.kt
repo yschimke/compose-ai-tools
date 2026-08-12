@@ -3,9 +3,6 @@
 package com.example.designcatalogm3.shared
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.interaction.FocusInteraction
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,7 +39,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,7 +47,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -111,9 +106,10 @@ import org.jetbrains.compose.resources.stringResource
  * compose M3's non-clickable overload on every surface because their semantics tree is itself a
  * published artifact (see the comment on `card-elevated`).
  *
- * The pressed/focused button states seed a held interaction — the resting state-layer is the design
- * contract for that state, not an animation. See [pressedSource] for why those two are still forged
- * here rather than driven by real input.
+ * **The pressed / focused button states are driven by real input, not forged here.** Both compose a
+ * plain `Button`; the state comes from `@FocusedPreview` on the sticker preview (a real focus
+ * traversal, and a real pointer press for the pressed one), so the capture proves the component
+ * receives the interaction instead of proving its state layer can be painted (issue #3672).
  *
  * **Editable knobs.** Each component's author-facing values — labels, the entered text-field value,
  * selection/toggle flags, slider & progress values, the badge count, the slotted card's accent —
@@ -290,18 +286,26 @@ fun CatalogComponent(id: String) {
         catalogOverrideString("label", stringResource(Res.string.textfield_label)),
       )
 
-    // States — interaction (pressed / focused), disabled, and toggle off↔on. The held interaction
-    // source pins the state layer; the click itself still counts, so these stay responsive in a
-    // live session rather than reading as frozen images.
+    // States — interaction (pressed / focused), disabled, and toggle off↔on.
+    //
+    // The two interaction states are **plain buttons** (issue #3672). They used to hold a
+    // hand-emitted `PressInteraction.Press` / `FocusInteraction.Focus` on a
+    // `MutableInteractionSource`, which forged the visual: nothing was really focused or pressed,
+    // the emission was never paired with a `Release` / `Unfocus`, and the capture only worked
+    // because `Button` happens to read its indication off the interaction source. The state now
+    // comes from the render harness instead — `@FocusedPreview` on the sticker previews next door
+    // in `:samples:design-catalog-m3` walks real focus and dispatches a real pointer press — so
+    // these ids compose the same button the rest of the catalog does, and a live lane shows the
+    // state when a visitor actually focuses or presses it.
     "button-filled-pressed" -> {
       val (label, onClick) =
         counted(catalogOverrideString("label", stringResource(Res.string.label_pressed)))
-      Button(onClick = onClick, interactionSource = pressedSource()) { Text(label) }
+      Button(onClick = onClick) { Text(label) }
     }
     "button-filled-focused" -> {
       val (label, onClick) =
         counted(catalogOverrideString("label", stringResource(Res.string.label_focused)))
-      Button(onClick = onClick, interactionSource = focusedSource()) { Text(label) }
+      Button(onClick = onClick) { Text(label) }
     }
     // Content axis (not a state): the same Filled button with a leading icon + label, so the
     // catalog shows the icon-and-text configuration alongside the label-only default. The icon is
@@ -550,30 +554,17 @@ fun SegmentedToggle() {
   }
 }
 
-// --- Held interaction sources: seed a state so the resting state layer matches the catalog. ---
+// --- No held interaction sources live here any more (issue #3672). ---
 //
-// **A stopgap, not the pattern to copy — issue #3672.** Emitting an interaction onto a source the
-// component didn't raise itself forges the visual: nothing is really focused, nothing is really
-// pressed, and a component whose indication reads the focus system rather than the interaction
-// source (Glimmer's `Modifier.surface` is the known case) captures no differently than an untouched
-// one. The repo's real mechanism is `@FocusedPreview` (real `FocusManager.moveFocus` traversal,
-// `LocalInputModeManager` flipped to Keyboard, and `pressed = true` dispatching a real
-// indirect-pointer Press onto the focused node), and the Android catalogs
-// (`:samples:design-catalog-wear-m3`, `:samples:design-catalog-m3-android`) have been moved onto
-// it. This module can't follow yet: it is a Compose Multiplatform **desktop** catalog and the
-// desktop renderer (`renderers/desktop`) has no focus or press dispatch at all. Delete these two
-// helpers and annotate `button-filled-pressed` / `button-filled-focused` the moment it does.
-
-@Composable
-fun pressedSource(): MutableInteractionSource {
-  val source = remember { MutableInteractionSource() }
-  LaunchedEffect(source) { source.emit(PressInteraction.Press(Offset.Zero)) }
-  return source
-}
-
-@Composable
-fun focusedSource(): MutableInteractionSource {
-  val source = remember { MutableInteractionSource() }
-  LaunchedEffect(source) { source.emit(FocusInteraction.Focus()) }
-  return source
-}
+// `pressedSource()` / `focusedSource()` used to sit at the bottom of this file, emitting a
+// `PressInteraction.Press` / `FocusInteraction.Focus` from a `LaunchedEffect` so the two
+// interaction-state stickers would render with a state layer. They were marked as a stopgap and
+// they are gone: the desktop renderer now drives `@FocusedPreview` the way the Android one does —
+// a real `FocusManager.moveFocus` traversal under a synthetic keyboard input mode, plus a real
+// pointer press dispatched onto the focused element — so `button-filled-pressed` /
+// `button-filled-focused` compose a plain `Button` and the harness supplies the state.
+//
+// If a future sticker needs a state this catalog can't reach through real input, add the capture
+// mechanism to the renderer rather than a held interaction source here: a forged interaction
+// documents the state layer, not the component, and silently keeps documenting it after the
+// component stops being able to enter that state at all.

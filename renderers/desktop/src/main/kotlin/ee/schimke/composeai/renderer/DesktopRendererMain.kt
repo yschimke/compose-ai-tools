@@ -85,6 +85,15 @@ import org.jetbrains.skia.EncodedImageFormat
  * `compose-preview serve` produces for the same size override — letting a component be captured as
  * it would appear constrained to e.g. a list column.
  *
+ * Args 33–38 (indices 32–37) carry `@FocusedPreview` per-capture drive (issue #3672):
+ * `focusTabIndex` (indexed mode, `-1`/blank when absent), `focusDirections` (traversal mode: a
+ * `|`-joined list of every step up to and including this capture's, replayed in order) +
+ * `focusStep`, `focusEnterPlacesFocus`, `focusPressed`, `focusOverlay`. When either mode is present
+ * the capture leaves the [ImageComposeScene] path for [renderFocusPreview], which walks focus with
+ * a real `FocusManager.moveFocus(...)` traversal under a synthetic keyboard input mode and — for
+ * `focusPressed` — dispatches a real pointer down onto the focused element. Omitted by older
+ * plugins, which keeps every capture on the undriven path.
+ *
  * Args 15–18 carry `@ScrollingPreview` intent. When [scrollMode] is `"LONG"` or `"GIF"` the
  * renderer leaves the [ImageComposeScene] path and dispatches to [renderScrollPreview] (which uses
  * `runComposeUiTest` for paused-clock + semantic scroll). `"TOP"` / `"END"` / empty are handled by
@@ -213,6 +222,50 @@ fun main(args: Array<String>) {
   val minHeightPx = args.getOrNull(29)?.toIntOrNull()?.takeIf { it > 0 }
   val maxWidthPx = args.getOrNull(30)?.toIntOrNull()?.takeIf { it > 0 }
   val maxHeightPx = args.getOrNull(31)?.toIntOrNull()?.takeIf { it > 0 }
+  // Args 33–38 (indices 32–37) — `@FocusedPreview` per-capture drive (issue #3672). All absent /
+  // blank on a preview without the annotation, which is what keeps every existing capture on the
+  // untouched [renderPreview] path. Indexed mode carries `focusTabIndex >= 0`; traversal mode
+  // carries `focusDirection` (+ its 1-based `focusStep` for the overlay label). Both empty means
+  // "no focus intent" even if a later flag is set, so a garbled tail degrades to the old
+  // behaviour rather than driving a walk nobody asked for.
+  val focusTabIndex = args.getOrNull(32)?.toIntOrNull()?.takeIf { it >= 0 }
+  // `|`-joined traversal directions — every step from 1 up to and including the one this capture
+  // documents, so the walk can be replayed from scratch in this capture's own scene (the desktop
+  // renderer composes one scene per capture; see [DesktopFocusIntent.directions]). A single-step
+  // traversal is just a one-element list.
+  val focusDirections =
+    args
+      .getOrNull(33)
+      ?.split('|')
+      .orEmpty()
+      .filter { it.isNotBlank() }
+      .mapNotNull { name ->
+        ee.schimke.composeai.daemon.protocol.FocusDirection.entries.firstOrNull {
+          it.name.equals(name, ignoreCase = true)
+        }
+      }
+  val focusStep = args.getOrNull(34)?.toIntOrNull()?.takeIf { it > 0 }
+  val focusEnterPlacesFocus = args.getOrNull(35)?.toBoolean() ?: false
+  val focusPressed = args.getOrNull(36)?.toBoolean() ?: false
+  val focusOverlay = args.getOrNull(37)?.toBoolean() ?: false
+  val focusIntent: DesktopFocusIntent? =
+    when {
+      focusDirections.isNotEmpty() ->
+        DesktopFocusIntent(
+          directions = focusDirections,
+          step = focusStep,
+          pressed = focusPressed,
+          overlay = focusOverlay,
+        )
+      focusTabIndex != null ->
+        DesktopFocusIntent(
+          tabIndex = focusTabIndex,
+          enterPlacesFocus = focusEnterPlacesFocus,
+          pressed = focusPressed,
+          overlay = focusOverlay,
+        )
+      else -> null
+    }
   // `@OverrideVariant` seed for a synthetic variant preview, forwarded by RenderPreviewsTask as the
   // `composeai.overrides.seed` per-render system property (the desktop subprocess has no manifest
   // to
@@ -415,6 +468,63 @@ fun main(args: Array<String>) {
           showCurves = animShowCurves,
           fontScale = fontScale,
         )
+      } else if (focusIntent != null) {
+        // `@FocusedPreview` — walk focus with a real `FocusManager.moveFocus(...)` traversal (and,
+        // for `pressed = true`, dispatch a real pointer down onto the focused element) before
+        // capturing. Declines only when nothing took focus, in which case the undriven capture
+        // below is written so a misuse still produces a file rather than a hole in the sheet — the
+        // same fall-through shape a declined END scroll uses. The renderer prints the decline, so
+        // it isn't silent.
+        val didCapture =
+          renderFocusPreview(
+            className = className,
+            functionName = functionName,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            density = density,
+            showBackground = showBackground,
+            backgroundColor = backgroundColor,
+            outputFile = targetFile,
+            wrapperClassName = wrapperClassName,
+            wrapWidth = wrapWidth,
+            wrapHeight = wrapHeight,
+            previewArgs = previewArgs,
+            localeTag = localeTag,
+            focus = focusIntent,
+            fontScale = fontScale,
+            showSystemUi = showSystemUi,
+            uiMode = uiMode,
+            device = device,
+            minWidthPx = minWidthPx,
+            minHeightPx = minHeightPx,
+            maxWidthPx = maxWidthPx,
+            maxHeightPx = maxHeightPx,
+          )
+        if (!didCapture) {
+          renderPreview(
+            className,
+            functionName,
+            widthPx,
+            heightPx,
+            density,
+            showBackground,
+            backgroundColor,
+            targetFile,
+            wrapperClassName,
+            wrapWidth,
+            wrapHeight,
+            previewArgs,
+            localeTag,
+            fontScale,
+            showSystemUi,
+            uiMode,
+            device,
+            minWidthPx = minWidthPx,
+            minHeightPx = minHeightPx,
+            maxWidthPx = maxWidthPx,
+            maxHeightPx = maxHeightPx,
+          )
+        }
       } else if (scrollDispatchMode != null) {
         // @ScrollingPreview(modes = [LONG, GIF, END]) — drive the dedicated scroll path. For a
         // primary *capture*, falls through to the default single-frame render on "no

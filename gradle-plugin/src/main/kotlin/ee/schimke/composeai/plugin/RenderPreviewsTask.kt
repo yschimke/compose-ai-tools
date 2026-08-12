@@ -515,6 +515,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
           outputFile = outputFile,
           scroll = capture.scroll,
           animation = capture.animation,
+          focus = capture.focus,
           fanoutSiblingStems = fanoutSiblingStems(manifestOutputFiles, outputFile),
           lane = lane,
         )
@@ -555,6 +556,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     outputFile: java.io.File,
     scroll: ScrollCapture?,
     animation: AnimationCapture? = null,
+    focus: FocusCapture? = null,
     fanoutSiblingStems: List<String> = emptyList(),
     lane: RenderLane,
   ) {
@@ -568,6 +570,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
         outputFile = outputFile,
         scroll = scroll,
         animation = animation,
+        focus = focus,
         fanoutSiblingStems = fanoutSiblingStems,
       )
     val overridesSeed =
@@ -763,6 +766,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     outputFile: java.io.File,
     scroll: ScrollCapture?,
     animation: AnimationCapture?,
+    focus: FocusCapture?,
     fanoutSiblingStems: List<String>,
   ): List<String> =
     listOf(
@@ -847,7 +851,54 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // subprocess has no manifest, so without this it treats every `<stem>_*` file as its
       // own fan-out and deletes the sibling's renders. Empty string signals "no siblings".
       fanoutSiblingStems.joinToString("|"),
+      // 29th–32nd — wrapped-axis content-size bounds. Not plumbed from this task (the plugin has
+      // no size-mode input; the daemon's `compose-preview serve` / `bundle render` path is what
+      // sets them), but the renderer reads them positionally, so the focus tail below has to sit
+      // *after* four placeholders rather than sliding into their slots. `0` is the renderer's
+      // "no bound" sentinel — the same value a missing arg decodes to.
+      "0",
+      "0",
+      "0",
+      "0",
+      // 33rd–38th — `@FocusedPreview` per-capture drive (issue #3672). Only the DESKTOP renderer
+      // reads these: the Android lane gets the same state from the manifest it already loads, and
+      // ignores argv entirely. `-1` / empty means "no focus intent", which is what every preview
+      // without the annotation sends, so those captures stay byte-identical on the undriven path.
+      // Discovery has always emitted `@FocusedPreview` captures on every target — desktop simply
+      // dropped the state on the floor and rendered the resting frame N times, one per requested
+      // index. Forwarding it is what makes a CMP focused / pressed sticker real input rather than
+      // a hand-emitted interaction.
+      (focus?.tabIndex ?: -1).toString(),
+      focusTraversalPrefix(preview, focus).joinToString("|"),
+      (focus?.step ?: 0).toString(),
+      (focus?.enterPlacesFocus ?: false).toString(),
+      (focus?.pressed ?: false).toString(),
+      (focus?.overlay ?: false).toString(),
     )
+}
+
+/**
+ * Every traversal direction a capture's walk has to apply, in order — steps 1..N of the preview's
+ * `@FocusedPreview(traverse = [...])` up to and including [focus]'s own step. Empty for an
+ * indexed-mode (or absent) focus capture.
+ *
+ * Only the **desktop** renderer needs this. The Android renderer keeps one composition alive across
+ * a preview's captures and flips the focus controller per step, so each capture inherits where the
+ * previous one left focus. The desktop renderer runs one process per capture, so a step has no
+ * predecessor to inherit from and must replay the walk from the start; passing only `Previous` for
+ * step 3 of `[Next, Next, Previous]` would render step 1's frame under step 3's name.
+ *
+ * Internal (not private) so [FocusTraversalPrefixTest] can pin the ordering without a Gradle task
+ * instance.
+ */
+internal fun focusTraversalPrefix(preview: PreviewInfo, focus: FocusCapture?): List<String> {
+  val step = focus?.step ?: return emptyList()
+  if (focus.direction == null) return emptyList()
+  return preview.captures
+    .mapNotNull { it.focus }
+    .filter { it.direction != null && (it.step ?: 0) <= step }
+    .sortedBy { it.step ?: 0 }
+    .mapNotNull { it.direction?.name }
 }
 
 private fun Float.roundHalfUpPx(): Int = kotlin.math.floor(this + 0.5f).toInt().coerceAtLeast(1)
