@@ -6,6 +6,7 @@ import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
+import kotlin.concurrent.thread
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -248,6 +249,122 @@ class DesktopInteractiveSessionTest {
       host.shutdown()
     }
   }
+
+  /**
+   * Issue #3721 — a localized session must not lend its locale to a concurrent unlocalized one.
+   *
+   * `localeTag` is applied by moving the *process-global* JVM default `Locale` for the duration of
+   * a composition. One-shot renders are safe because [DesktopHost] serialises them onto a single
+   * render thread, but every held session composes on its own
+   * `compose-ai-daemon-interactive-scene-<previewId>` executor — so two sessions can be inside
+   * `RenderEngine`'s locale-scoped regions at the same time, and the unlocalized one resolves
+   * `stringResource(...)` under the other's language. `rememberResourceEnvironment` caches what it
+   * resolves, so a later frame does not reliably correct it.
+   *
+   * The leak is a window rather than a state, so the test opens it deliberately: the German session
+   * parks *inside* its composition (holding the override), and only then is the unlocalized session
+   * pressed. Waiting on the parked session first is what makes the failing direction reliable —
+   * under the bug the unlocalized press is unblocked and composes within milliseconds of being
+   * asked, well inside [LEAK_WINDOW_MS]. The passing direction needs no timing at all: the fix
+   * blocks that press until the German frame finishes.
+   */
+  @Test
+  fun a_localized_session_does_not_leak_its_locale_to_a_concurrent_session() {
+    val outputDir = tempFolder.newFolder("interactive-concurrent-locale-renders")
+    val host =
+      DesktopHost(
+        engine = RenderEngine(outputDir = outputDir),
+        previewSpecResolver = { previewId ->
+          when (previewId) {
+            LOCALIZED_PREVIEW_ID -> localeProbeSpec(previewId, localeTag = "de")
+            UNLOCALIZED_PREVIEW_ID -> localeProbeSpec(previewId, localeTag = null)
+            else -> null
+          }
+        },
+      )
+    val hostDefault = java.util.Locale.getDefault()
+    host.start()
+    try {
+      java.util.Locale.setDefault(java.util.Locale.forLanguageTag("en-US"))
+      val classLoader = DesktopInteractiveSessionTest::class.java.classLoader!!
+      val localized =
+        host.acquireInteractiveSession(previewId = LOCALIZED_PREVIEW_ID, classLoader = classLoader)
+      val unlocalized =
+        host.acquireInteractiveSession(
+          previewId = UNLOCALIZED_PREVIEW_ID,
+          classLoader = classLoader,
+        )
+      try {
+        localized.render(requestId = RenderHost.nextRequestId())
+        unlocalized.render(requestId = RenderHost.nextRequestId())
+
+        // Arm the gate only for the German session's scene thread, then reset so the bootstrap
+        // renders above don't count toward what either session observed.
+        PressLocaleProbe.reset()
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val reached = java.util.concurrent.CountDownLatch(1)
+        PressLocaleProbe.gate = gate
+        PressLocaleProbe.gateReached = reached
+        PressLocaleProbe.gateThreadMarker = LOCALIZED_PREVIEW_ID
+
+        val localizedPress = thread { localized.dispatch(press(LOCALIZED_PREVIEW_ID)) }
+        try {
+          assertTrue(
+            "the localized session must reach its gated composition, or the window this test " +
+              "needs was never opened",
+            reached.await(60, java.util.concurrent.TimeUnit.SECONDS),
+          )
+
+          // The German override is live right now. Press the *other* session from another thread —
+          // under the fix this blocks until the gate opens, so it cannot be awaited here.
+          val unlocalizedPress = thread { unlocalized.dispatch(press(UNLOCALIZED_PREVIEW_ID)) }
+          Thread.sleep(LEAK_WINDOW_MS)
+          gate.countDown()
+          unlocalizedPress.join(60_000)
+        } finally {
+          gate.countDown()
+          localizedPress.join(60_000)
+        }
+
+        val leaked = PressLocaleProbe.observedOn(UNLOCALIZED_PREVIEW_ID)
+        assertTrue(
+          "the unlocalized session must have composed at all, or this asserts nothing",
+          leaked.isNotEmpty(),
+        )
+        assertEquals(
+          "an unlocalized session composed under the concurrent session's locale; saw $leaked",
+          emptyList<String>(),
+          leaked.filter { it.startsWith("de") },
+        )
+      } finally {
+        unlocalized.close()
+        localized.close()
+      }
+    } finally {
+      PressLocaleProbe.reset()
+      java.util.Locale.setDefault(hostDefault)
+      host.shutdown()
+    }
+  }
+
+  private fun localeProbeSpec(previewId: String, localeTag: String?) =
+    RenderSpec(
+      className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+      functionName = "PressLocaleProbeSquare",
+      widthPx = 64,
+      heightPx = 64,
+      localeTag = localeTag,
+      outputBaseName = previewId,
+    )
+
+  private fun press(streamId: String) =
+    InteractiveInputParams(
+      frameStreamId = streamId,
+      kind = InteractiveInputKind.POINTER_DOWN,
+      pixelX = 32,
+      pixelY = 32,
+      pointerId = 0,
+    )
 
   @Test
   fun live_render_advances_frame_clock_with_monotonic_wall_time() {
@@ -650,6 +767,15 @@ class DesktopInteractiveSessionTest {
     private const val HIGH_DENSITY_TARGET_PREVIEW_ID = "high-density-click-target-square"
     private const val KEY_PRESS_PREVIEW_ID = "key-press-color-square"
     private const val PRESS_LOCALE_PREVIEW_ID = "press-locale-probe-square"
+    private const val LOCALIZED_PREVIEW_ID = "locale-probe-localized"
+    private const val UNLOCALIZED_PREVIEW_ID = "locale-probe-unlocalized"
+
+    /**
+     * How long the unlocalized press is left running while the localized session holds the
+     * override. Only the *failing* direction depends on it: an unblocked press composes within
+     * milliseconds, so this is orders of magnitude more than a real leak needs.
+     */
+    private const val LEAK_WINDOW_MS = 2_000L
     private const val TAGGED_TARGET_PREVIEW_ID = "tagged-click-target-square"
   }
 }

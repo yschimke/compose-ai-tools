@@ -517,12 +517,54 @@ fun HighDensityClickTargetSquare() {
 object PressLocaleProbe {
   @Volatile var composedUnder: String? = null
 
+  /**
+   * Every locale seen, keyed by the composing thread's name.
+   *
+   * A held session composes on its own `compose-ai-daemon-interactive-scene-<previewId>` executor,
+   * so the thread name is which *session* composed — which is what a concurrency test needs, since
+   * two sessions share this one object.
+   */
+  val observedByThread: java.util.concurrent.ConcurrentHashMap<String, MutableList<String>> =
+    java.util.concurrent.ConcurrentHashMap()
+
+  /**
+   * Held open, mid-composition, on threads whose name contains [gateThreadMarker].
+   *
+   * A locale leak is a *window*, not a state: it needs one session to be inside the override while
+   * another composes. Parking the localized session inside its composition is how a test opens that
+   * window on purpose instead of hoping the scheduler produces it.
+   */
+  @Volatile var gate: java.util.concurrent.CountDownLatch? = null
+
+  /** Counted down once a gated composition has recorded and is about to park. */
+  @Volatile var gateReached: java.util.concurrent.CountDownLatch? = null
+
+  @Volatile var gateThreadMarker: String? = null
+
   fun record() {
-    composedUnder = java.util.Locale.getDefault().toLanguageTag()
+    val thread = Thread.currentThread().name
+    val tag = java.util.Locale.getDefault().toLanguageTag()
+    composedUnder = tag
+    observedByThread
+      .computeIfAbsent(thread) { java.util.Collections.synchronizedList(mutableListOf()) }
+      .add(tag)
+    val marker = gateThreadMarker
+    if (marker != null && thread.contains(marker)) {
+      gateReached?.countDown()
+      gate?.await(30, java.util.concurrent.TimeUnit.SECONDS)
+    }
   }
+
+  /** Locales recorded by composing threads whose name contains [threadMarker]. */
+  fun observedOn(threadMarker: String): List<String> =
+    observedByThread.entries.filter { it.key.contains(threadMarker) }.flatMap { it.value.toList() }
 
   fun reset() {
     composedUnder = null
+    observedByThread.clear()
+    gate = null
+    gateReached = null
+    gateThreadMarker = null
   }
 }
 
