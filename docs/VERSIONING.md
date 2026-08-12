@@ -21,6 +21,8 @@ Different surfaces use different schemes — pick the right one for the contract
 
 Plugin / CLI / extension share one release-please-driven semver chain (see [RELEASING.md](RELEASING.md)). Protocol and schema integers are independent.
 
+> **Two of those carriers don't exist yet.** `previews.json` and the `HistoryEntry` sidecar are both listed above as carrying a `schemaVersion` field, and neither actually writes one. The per-data-product and bundle schemas do. See § 10.
+
 ## 2. Semver rules for the published artifacts
 
 For plugin, CLI, extension, MCP, annotations:
@@ -51,13 +53,15 @@ These apply to surfaces 1, 2, 3, and the history sidecar.
 
 ### 4.1 Enum discipline
 
-Every enum that crosses a process boundary is decoded **tolerantly**:
+Every enum that crosses a process boundary should be decoded **tolerantly**:
 
 - An unknown string maps to a per-enum `UNKNOWN` value (Kotlin) or a falsy sentinel (TypeScript).
 - Code branching on the enum has an explicit `else` / default arm.
 - The fixture corpus has at least one fixture per enum that exercises a synthetic future value to prove tolerance.
 
-Adding a new enum value is **additive** under this rule. Without tolerant decode, every new enum value is a silent break — the rule is what makes the additive promise real.
+Adding a new enum value is **additive** under this rule. Without tolerant decode, every new enum value is a silent break — the rule is what would make the additive promise real.
+
+> **Not true of the existing wire enums.** Most `@Serializable` enums in `Messages.kt` are plain enums with no `UNKNOWN` member and no custom serializer — `FileKind` and `ChangeType` are two of many. `ignoreUnknownKeys` covers unknown *fields*, not unknown enum *values*, so a peer sending a newly added value today makes decoding throw. Treat this section as the rule for enums you add or touch, not as a description of the current corpus. Retrofitting the rest is [tracked work](#10-what-is-and-is-not-enforced), not a shipped guarantee.
 
 ### 4.2 Unknown fields
 
@@ -105,9 +109,9 @@ The plugin declares a **supported matrix** in [RENDERER_COMPATIBILITY.md](RENDER
 - Dropping a corner older than 18 months is permitted at any **minor** with one release of warning (`apply()` prints "AGP X.Y is deprecated; will be unsupported in compose-preview Z.0").
 - Dropping multiple majors at once requires a plugin **major**.
 
-`apply()` enforces the matrix at configuration time. Out-of-range versions fail with a specific error message naming both the consumer's version and the supported range.
+**What `apply()` actually gates today is the Gradle version** ([`GradleVersionCheck.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/GradleVersionCheck.kt)); there is no AGP / Kotlin / Compose comparison at configuration time, so an out-of-matrix consumer gets whatever failure the toolchain produces rather than a named supported range. `compose-preview doctor` diagnoses skew after the fact ([`CompatRules.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/tooling/CompatRules.kt)), which is a report, not a gate.
 
-The CI integration suite covers at least three matrix points: current, current-1, and next-RC.
+The CI integration suite runs sample renders against several toolchain points, but they are not maintained as explicit current / current-1 / next-RC cells.
 
 ## 7. Branch conventions (GH actions)
 
@@ -129,27 +133,41 @@ Daemon protocol versions and per-data-product schema versions are decoupled — 
 
 ## 9. Compatibility testing
 
-Three layers, all required to remain green on `main`:
+Three layers were designed; this is what each one actually does today.
 
-1. **Fixture corpus** — `docs/daemon/protocol-fixtures/` round-trips on Kotlin and TypeScript.
-2. **Kotlin BCV** — `binary-compatibility-validator` on `:gradle-plugin` and `:preview-annotations`.
-3. **Toolchain integration matrix** — `.github/workflows/integration.yml` runs sample renders against the AGP matrix corners.
-
-Adding a public type or annotation without updating the BCV golden file is a CI failure. Adding a wire message without a fixture is a CI failure. Bumping the AGP corner without a green integration run is a CI failure.
-
-## 10. Status at 1.0
-
-Through the `0.x` line the rules in §§ 2–5 were aspirational — any contract could break in any release with a CHANGELOG note. **From `1.0.0` they are in effect**, and the contracts in [API_STABILITY.md](API_STABILITY.md) are enforceable: breaking a listed surface requires a major.
-
-Four *discovery* mechanisms these documents describe are **not part of 1.0.0**. They were always written as post-1.0 evolution rather than 1.0 gates, and cutting 1.0.0 does not make them retroactively true — so they are named here rather than left implied:
-
-| Mechanism | Where it's described | State at 1.0.0 |
+| Layer | Intended gate | Reality |
 |---|---|---|
-| `protocolVersion: {min, max}` range negotiation | § 4.5, [API_STABILITY.md § 2.1](API_STABILITY.md#21-daemon-json-rpc-surface-1) | Not implemented — single `Int`, handshake fails closed on mismatch |
-| `compose-preview <cmd> --json-schema` | [API_STABILITY.md § 2.7](API_STABILITY.md#27-cli-argv-surface-7) | Not implemented — capability detection is `--version` plus `--help` |
-| `// API: stable` / `// API: incubating` source tags | [API_STABILITY.md § 5](API_STABILITY.md#5-stability-tags-in-code) | Not applied — Kotlin BCV is the enforced boundary for the plugin and annotations modules |
-| `@Stable` / `@Incubating` DSL tiers, opt-in via `composePreview { incubating = true }` | [API_STABILITY.md § 2.4](API_STABILITY.md#24-gradle-plugin-dsl-surface-4) | Not implemented — every public DSL property is semver-governed, with no opt-in tier to escape into |
+| **Fixture corpus** — `docs/daemon/protocol-fixtures/` | Adding a wire message without a fixture fails CI | Round-trips on Kotlin and TypeScript for the messages it covers, but `MessagesTest.fixtureInventoryMatchesExpected` compares against a **hand-maintained** set. A new message type adds no entry, so it lands green with no fixture; history, interactive, stream, XR, recording, and extension methods are already uncovered |
+| **Kotlin BCV** — `:gradle-plugin`, `:preview-annotations` | Changing a public API without updating the golden file fails CI | **Not wired.** No `binary-compatibility-validator` plugin, no `.api` golden files, no `apiCheck` in any workflow. Nothing catches a breaking API change |
+| **Toolchain integration matrix** — `.github/workflows/integration.yml` | Bumping a matrix corner without a green run fails CI | Runs sample renders, and does gate merges — but against fixtures and moving external repositories rather than pinned current / current-1 / next-RC cells |
 
-None of the four weakens the stability promise. Three are ways to *discover* the contract rather than the contract itself, and the missing DSL tier makes the surface stricter — with no incubating escape hatch, a property is committed the moment it ships. The guarantees stand on the deprecation policy (§ 5), the tolerant-decode rules (§ 4), and the three test layers in § 9, all live today. Each mechanism lands in a later `1.x` as an additive change.
+The fixture corpus and the integration suite are real tests that catch real regressions. What none of the three currently provides is the *exhaustive* coverage the rules above assume.
 
-The 1.0 readiness punch list itself was [issue #798](https://github.com/yschimke/compose-ai-tools/issues/798), closed as completed.
+## 10. What is and is not enforced
+
+**Read §§ 2–9 as the intended policy, not as a description of shipped machinery.** `1.0.0` is a version number: it ended the `0.x` convention where a minor could break anything, and it says we intend to treat the surfaces in [API_STABILITY.md](API_STABILITY.md) as contracts. It did **not** turn on the enforcement these documents describe. An earlier revision of this section claimed those mechanisms were live; they are not, and the difference matters to anyone deciding how much to depend on a surface.
+
+What holds today rests on review and convention:
+
+- We do not knowingly break a listed surface without a major.
+- The deprecation cycle in § 5 is followed when a surface is retired.
+- The fixture corpus and the integration suite catch real regressions within their coverage (§ 9).
+
+What is described but **not implemented**:
+
+| Mechanism | Described in | State |
+|---|---|---|
+| Kotlin BCV on `:gradle-plugin` / `:preview-annotations` | § 9 | No plugin, no `.api` golden files, no CI check — a breaking API change ships silently |
+| Tolerant enum decode across the wire | § 4.1 | Most `Messages.kt` enums have no `UNKNOWN`; a new value from a peer throws |
+| `apply()`-time AGP × Kotlin × Compose gate | § 6 | Only the Gradle version is checked; `doctor` reports skew but does not gate |
+| Exhaustive fixture coverage | § 9 | Inventory is a hand-maintained set; a new message lands green with no fixture |
+| `schemaVersion` on `previews.json` and the `HistoryEntry` sidecar | § 1 | Field absent from both — a reader cannot tell a supported document from a future one |
+| `protocolVersion: {min, max}` range negotiation | § 4.5, [API_STABILITY.md § 2.1](API_STABILITY.md#21-daemon-json-rpc-surface-1) | Single `Int`; the daemon rejects any value but its own |
+| VS Code ↔ daemon `N..N-1` window | [API_STABILITY.md § 3](API_STABILITY.md#3-multi-version-support-window) | Not possible while the above holds — the extension sends one hard-coded version and a mismatch fails the handshake |
+| `compose-preview <cmd> --json-schema` | [API_STABILITY.md § 2.7](API_STABILITY.md#27-cli-argv-surface-7) | Not implemented; capability detection is `--version` plus `--help` |
+| `// API: stable` / `// API: incubating` source tags | [API_STABILITY.md § 5](API_STABILITY.md#5-stability-tags-in-code) | Not applied |
+| `@Stable` / `@Incubating` DSL tiers | [API_STABILITY.md § 2.4](API_STABILITY.md#24-gradle-plugin-dsl-surface-4) | Not implemented — no opt-in tier exists |
+
+Each is additive and can land in any `1.x`. Until one does, do not cite it as a guarantee — in a PR description, in docs, or to a consumer.
+
+The earlier 1.0 readiness punch list was [issue #798](https://github.com/yschimke/compose-ai-tools/issues/798); it covered feature completeness, not the enforcement above.
