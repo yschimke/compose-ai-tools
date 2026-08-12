@@ -455,14 +455,14 @@ class GradleConnection(
    * model was built) are recorded in [lastDiscoveryFailures] rather than silently dropped, so an
    * empty result can be explained (issue #3).
    */
-  fun findPreviewModules(): List<PreviewModule> {
-    // Same budget as a build, and for the same reason: configuring every project on a cold daemon
-    // is exactly where this overruns. The friction log's "doctor reports the project unusable when
-    // it is usable" was this timeout firing — the model query cancelled, and doctor reported
-    // "could not query Gradle project model … cancel requested but timed out" for a project whose
-    // `list` and `render` then both worked.
-    val result =
-      runBuildAction(DiscoverPreviewModulesAction(), timeoutSeconds = DEFAULT_TIMEOUT_SECONDS)
+  fun findPreviewModules(timeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS): List<PreviewModule> {
+    // The *caller's* budget, not a constant of its own. Configuring every project on a cold daemon
+    // is exactly where this overruns — the friction log's "doctor reports the project unusable when
+    // it is usable" was this firing, cancelling the model query for a project whose `list` and
+    // `render` then both worked — but a hardcoded number is the wrong fix in both directions:
+    // `--timeout 60` could not bound a hung discovery, and `--timeout 1800` could not rescue a
+    // legitimately slow one.
+    val result = runBuildAction(DiscoverPreviewModulesAction(), timeoutSeconds = timeoutSeconds)
     discoveryFailures = result?.failures ?: emptyList()
     return result?.modules ?: emptyList()
   }
@@ -473,9 +473,12 @@ class GradleConnection(
    * user-visible error rather than silently building an empty task list against a dir that doesn't
    * exist.
    */
-  fun findPreviewModule(gradlePath: String): PreviewModule? {
+  fun findPreviewModule(
+    gradlePath: String,
+    timeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS,
+  ): PreviewModule? {
     val normalized = gradlePath.removePrefix(":")
-    return findPreviewModules().firstOrNull { it.gradlePath == normalized }
+    return findPreviewModules(timeoutSeconds).firstOrNull { it.gradlePath == normalized }
   }
 
   override fun close() {

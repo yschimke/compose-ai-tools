@@ -63,13 +63,14 @@ class GradlePreviewDriver(projectRoot: File, private val options: DriverOptions 
    * CLI's default auto-inject path always supplies a current plugin, so this only matters for
    * projects that manually pin an older plugin version *and* disable auto-inject.
    */
-  fun discoverModules(): List<PreviewModule> = connection.findPreviewModules()
+  fun discoverModules(): List<PreviewModule> = connection.findPreviewModules(options.timeoutSeconds)
 
   /**
    * Resolve a single subproject by its Gradle path (with or without the leading colon). Returns
    * `null` when no project with that path applies the plugin.
    */
-  fun discoverModule(gradlePath: String): PreviewModule? = connection.findPreviewModule(gradlePath)
+  fun discoverModule(gradlePath: String): PreviewModule? =
+    connection.findPreviewModule(gradlePath, options.timeoutSeconds)
 
   /**
    * Drive a render against [request].modules. Returns a [RenderOutcome] carrying the build's

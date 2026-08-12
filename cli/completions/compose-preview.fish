@@ -176,7 +176,7 @@ for sub in $__cp_render_cmds
     complete -c compose-preview -f -n "__compose_preview_using_command $sub" \
         -l verbose -s v -d 'Show full Gradle build output'
     complete -c compose-preview -x -n "__compose_preview_using_command $sub" \
-        -l timeout -d 'Gradle build timeout in seconds (default 300)'
+        -l timeout -d 'Gradle build timeout in seconds (default 600)'
     complete -c compose-preview -x -n "__compose_preview_using_command $sub" \
         -l with-extension -a 'a11y' -d 'Enable a data extension for this run'
     complete -c compose-preview -x -n "__compose_preview_using_command $sub" \
