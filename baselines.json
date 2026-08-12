@@ -469,17 +469,41 @@
       "sha256": "690e573c0b2f463bf807eaa0eff058323960c0d66e21a5e8f770715224fcfc08",
       "size": 78744
     },
+    "serve-landing-sections-filtered.dark.png": {
+      "fixture": "serve-landing-sections-filtered",
+      "theme": "dark",
+      "sha256": "d52842f2c481bd6453c581889958df2f586fe911f2fbe13b17bb383477a4d041",
+      "size": 73646
+    },
+    "serve-landing-sections-filtered.light.png": {
+      "fixture": "serve-landing-sections-filtered",
+      "theme": "light",
+      "sha256": "6c724e2fa57ca2d28605d92f871b3dc1f4e0df03798c4952a3ddab17dba8d4b7",
+      "size": 72304
+    },
+    "serve-landing-sections-section-open.dark.png": {
+      "fixture": "serve-landing-sections-section-open",
+      "theme": "dark",
+      "sha256": "281913a82231d2daf8ae798b57ebb697d2584f127b977ff0692999da94548baa",
+      "size": 78374
+    },
+    "serve-landing-sections-section-open.light.png": {
+      "fixture": "serve-landing-sections-section-open",
+      "theme": "light",
+      "sha256": "c553ce5a81c692d9903da6156b6d53f861252ff7c080e08c6b74bfb06f39a6ea",
+      "size": 76863
+    },
     "serve-landing-sections.dark.png": {
       "fixture": "serve-landing-sections",
       "theme": "dark",
-      "sha256": "e83af7f7256f7eb77eef25aea33798f6aa8a13537e2f2f06248098637e910720",
-      "size": 62195
+      "sha256": "aa29b91bf54c5e099c1bacd27810fa32639cd1ce73c920f281183afe45064e02",
+      "size": 63072
     },
     "serve-landing-sections.light.png": {
       "fixture": "serve-landing-sections",
       "theme": "light",
-      "sha256": "1d11f6755e7b80c1c3253b135266e3ed4f1aeb4857fd6f3bf5c0876153e44e76",
-      "size": 60500
+      "sha256": "b19d2dd94a127308bcdea75a7cd507fe9f6fa7091866572a2da174897050344c",
+      "size": 61662
     },
     "serve-landing-states.dark.png": {
       "fixture": "serve-landing-states",

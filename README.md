@@ -291,6 +291,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-sections/dark](renders/serve-landing-sections.dark.png) |
 | `light` | ![serve-landing-sections/light](renders/serve-landing-sections.light.png) |
 
+## serve-landing-sections-filtered
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-sections-filtered/dark](renders/serve-landing-sections-filtered.dark.png) |
+| `light` | ![serve-landing-sections-filtered/light](renders/serve-landing-sections-filtered.light.png) |
+
+## serve-landing-sections-section-open
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-sections-section-open/dark](renders/serve-landing-sections-section-open.dark.png) |
+| `light` | ![serve-landing-sections-section-open/light](renders/serve-landing-sections-section-open.light.png) |
+
 ## serve-landing-states
 
 | Theme | Capture |
