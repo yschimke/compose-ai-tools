@@ -1,6 +1,6 @@
 {
     "formatVersion": "compose-preview-history/v1",
-    "generatedFrom": "d8605faba0ae922d1dc98d60cd9a3ed8b18d47ef",
+    "generatedFrom": "f8fa39ac3b92e26ac8a67a6f8d93c74b56c681f4",
     "previews": {
         "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
             "path": "renders/samples:android-alpha/FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
@@ -5771,6 +5771,13 @@
             "path": "renders/samples:design-catalog-m3/FilledButtonFocused_Dark.png",
             "versions": [
                 {
+                    "blob": "b3efdf98f5461df6c344c31dd4ac015df610c029",
+                    "commit": "f8fa39ac3b92e26ac8a67a6f8d93c74b56c681f4",
+                    "date": "2026-08-12T07:11:27Z",
+                    "sourceSha": "d9abe805",
+                    "commits": 1
+                },
+                {
                     "blob": "a46a2ac3bf12caf06fcbe2c476ec4118672cfff0",
                     "commit": "4d155eeb07b59c4f9cfc826f88bf2e24b76640e0",
                     "date": "2026-08-05T05:58:10Z",
@@ -5778,13 +5785,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-m3/com.example.designcatalogm3.CatalogStatesKt.FilledButtonFocused_Light": {
             "path": "renders/samples:design-catalog-m3/FilledButtonFocused_Light.png",
             "versions": [
+                {
+                    "blob": "44a492f028614ac380d364db14dd6a5d433af176",
+                    "commit": "f8fa39ac3b92e26ac8a67a6f8d93c74b56c681f4",
+                    "date": "2026-08-12T07:11:27Z",
+                    "sourceSha": "d9abe805",
+                    "commits": 1
+                },
                 {
                     "blob": "063e6ccfaefeb15d10f2b5d02fc554167455b0aa",
                     "commit": "4d155eeb07b59c4f9cfc826f88bf2e24b76640e0",
@@ -5793,7 +5807,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
@@ -5831,6 +5845,13 @@
             "path": "renders/samples:design-catalog-m3/FilledButtonPressed_Dark.png",
             "versions": [
                 {
+                    "blob": "cffbdb3b844c1ae67475cdd6335b86e46ea0382a",
+                    "commit": "f8fa39ac3b92e26ac8a67a6f8d93c74b56c681f4",
+                    "date": "2026-08-12T07:11:27Z",
+                    "sourceSha": "d9abe805",
+                    "commits": 1
+                },
+                {
                     "blob": "2b48ccd8f890837794ac44dac66702c2ab799c8e",
                     "commit": "4d155eeb07b59c4f9cfc826f88bf2e24b76640e0",
                     "date": "2026-08-05T05:58:10Z",
@@ -5838,13 +5859,20 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
         "samples:design-catalog-m3/com.example.designcatalogm3.CatalogStatesKt.FilledButtonPressed_Light": {
             "path": "renders/samples:design-catalog-m3/FilledButtonPressed_Light.png",
             "versions": [
+                {
+                    "blob": "5185f89d4eaa77cb41dc1cef41dc6b8a6c63c9a0",
+                    "commit": "f8fa39ac3b92e26ac8a67a6f8d93c74b56c681f4",
+                    "date": "2026-08-12T07:11:27Z",
+                    "sourceSha": "d9abe805",
+                    "commits": 1
+                },
                 {
                     "blob": "27d4faa4822f7d2151c45ea75752a04523b303ef",
                     "commit": "4d155eeb07b59c4f9cfc826f88bf2e24b76640e0",
@@ -5853,7 +5881,7 @@
                     "commits": 1
                 }
             ],
-            "observations": 1,
+            "observations": 2,
             "unstable": false,
             "flapCount": 0
         },
