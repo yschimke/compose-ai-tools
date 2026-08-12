@@ -813,7 +813,31 @@ object ServeWeb {
    * the whole size/shape matrix was reachable only by hand-typing an id. Both now key
    * `button-filled__ideal` and [themeLane] keeps light and dark apart.
    */
-  private fun switcherStateKey(p: ServePreview): String = baseKey(stateInvariantKey(p))
+  private fun switcherStateKey(p: ServePreview): String =
+    themeStrippedKey(stateInvariantKey(p), p.theme)
+
+  /**
+   * The props-family counterpart of [switcherStateKey], normalised the same way and for the same
+   * reason: a themed default (`button__ideal__default__light`) and an untagged props sibling
+   * (`button__ideal__default__content-icon-label`) resolve to one lane but would otherwise key
+   * apart, and the family check runs first — so the lane agreeing would never get to matter and the
+   * folded variant would stay unreachable.
+   */
+  private fun switcherPropsKey(p: ServePreview): String =
+    themeStrippedKey(propsFamilyKey(p), p.theme)
+
+  /**
+   * [id] with its theme segment dropped ([baseKey]) — but **only when the render declares a
+   * theme**.
+   *
+   * The guard is what keeps a state from being read as a theme. `baseKey` finds the last
+   * `light`/`dark` token positionally, and a component may legitimately name a *state* `dark`
+   * (`toggle__ideal__dark` with `state = "dark"`, no theme at all). Stripping that would key the
+   * state apart from its own siblings; asking only renders that actually carry a theme to give it
+   * up cannot.
+   */
+  private fun themeStrippedKey(id: String, theme: String?): String =
+    if (theme == null) id else baseKey(id)
 
   /**
    * The light/dark **lane** a render belongs to for switcher grouping — its declared
@@ -825,9 +849,12 @@ object ServeWeb {
    * in that lane or it strands there alone. Compared as a resolved string rather than a nullable so
    * the relation is symmetric — an untagged sibling reaches the primary-lane default and the
    * primary-lane default reaches it back.
+   *
+   * The id is read **state-stripped**, so the token scan cannot pick up a state named `light` or
+   * `dark` and lane an unthemed render away from its own siblings.
    */
   private fun themeLane(p: ServePreview, darkFirst: Boolean): String =
-    p.theme ?: cardTheme(p.id) ?: if (darkFirst) "dark" else "light"
+    p.theme ?: cardTheme(stateInvariantKey(p)) ?: if (darkFirst) "dark" else "light"
 
   /**
    * The viewer's **state switcher**: a `<nav>` of plain links from [current] to each of its
@@ -968,7 +995,7 @@ object ServeWeb {
     q: String,
     darkFirst: Boolean,
   ): String {
-    val key = propsFamilyKey(current)
+    val key = switcherPropsKey(current)
     val curState = current.state ?: "default"
     val lane = themeLane(current, darkFirst)
     // One preview per distinct props signature, first appearance wins, restricted to the current
@@ -978,7 +1005,7 @@ object ServeWeb {
     // their own.
     val byVariant = LinkedHashMap<String, ServePreview>()
     for (p in all) {
-      if (propsFamilyKey(p) != key) continue
+      if (switcherPropsKey(p) != key) continue
       if (themeLane(p, darkFirst) != lane) continue
       if ((p.state ?: "default") != curState) continue
       byVariant.putIfAbsent(propsSignature(p.props), p)

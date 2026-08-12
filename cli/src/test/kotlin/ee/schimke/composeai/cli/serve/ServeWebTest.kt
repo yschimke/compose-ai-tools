@@ -206,6 +206,50 @@ class ServeWebTest {
   }
 
   @Test
+  fun `a state named dark is not mistaken for a theme`() {
+    // An unthemed component may legitimately call a STATE `dark` (or `light`). Reading the lane off
+    // the raw id would find that token and file the state in the dark lane while its own default
+    // sits in the light one — the grid folds the state out, so it would then be unreachable.
+    val toggle =
+      listOf(
+        ServePreview("toggle__ideal__default", "Toggle", state = "default"),
+        ServePreview("toggle__ideal__dark", "Toggle", state = "dark"),
+      )
+    val html = ServeWeb.viewerPage(toggle[0], token = "t", basePath = "/catalog", siblings = toggle)
+
+    assertTrue(html.contains("class=\"cp-states\""), "the state switcher is rendered")
+    val nav = html.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    assertTrue(
+      nav.contains("/catalog/p/toggle__ideal__dark"),
+      "a state named `dark` stays in its component's lane rather than being read as a theme",
+    )
+  }
+
+  @Test
+  fun `the variant switcher pairs a themed default with an untagged props sibling`() {
+    // The props-family key needs the same theme normalisation as the state key: the family check
+    // runs before the lane comparison, so without it the lanes agreeing never gets to matter.
+    val mixed =
+      listOf(
+        ServePreview("button__ideal__default__light", "Button", state = "default", theme = "light"),
+        ServePreview(
+          "button__ideal__default__content-icon-label",
+          "Button · Icon+label",
+          state = "default",
+          props = jsonProps("content" to "icon+label"),
+        ),
+      )
+    val html = ServeWeb.viewerPage(mixed[0], token = "t", basePath = "/catalog", siblings = mixed)
+
+    assertTrue(html.contains("aria-label=\"Component variant\""), "variant switcher rendered")
+    val nav = html.substringAfter("aria-label=\"Component variant\"").substringBefore("</nav>")
+    assertTrue(
+      nav.contains("/catalog/p/button__ideal__default__content-icon-label"),
+      "an untagged props sibling is reachable from the themed default",
+    )
+  }
+
+  @Test
   fun `on a dark-first system an untagged render lanes with dark`() {
     // Wear catalogs draw for a black watch face, so their untagged renders are the DARK lane — the
     // same rule the stage backing already uses (`bgTheme`), applied to switcher grouping.
