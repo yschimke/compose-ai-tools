@@ -448,26 +448,26 @@
     "serve-landing-public-card-hover.dark.png": {
       "fixture": "serve-landing-public-card-hover",
       "theme": "dark",
-      "sha256": "9908b3cbb33dc8812f3e154643e275a1dcbf95cd9d65776854fa92a168087a7b",
-      "size": 86047
+      "sha256": "b9b6ff72c97a8ca6f6fda869dd350ee97d162b38ca78cd6e035f50e2fd848d80",
+      "size": 86738
     },
     "serve-landing-public-card-hover.light.png": {
       "fixture": "serve-landing-public-card-hover",
       "theme": "light",
-      "sha256": "43aeb5cf6155990d1a6218706bd30fc16a6f75629d27dfc6f1b9165c50c62ec8",
-      "size": 83819
+      "sha256": "377091f8cb706f172e9b7fe5438a9e6e86691a2731436daa7e5e0dabe604837b",
+      "size": 84504
     },
     "serve-landing-public.dark.png": {
       "fixture": "serve-landing-public",
       "theme": "dark",
-      "sha256": "3df9a4aaafb0364ea45ca76f5db1087305f669adc27d0763887ce4cad7c9c85f",
-      "size": 80108
+      "sha256": "4c86b526005118472feb5aea806c1739534bb4305aedfac8e78a2cd16aafbd71",
+      "size": 80781
     },
     "serve-landing-public.light.png": {
       "fixture": "serve-landing-public",
       "theme": "light",
-      "sha256": "a1b87a4f537a57235d401260172478703ce81fe03fa4ec8bdce4503ce85ca3f8",
-      "size": 78042
+      "sha256": "690e573c0b2f463bf807eaa0eff058323960c0d66e21a5e8f770715224fcfc08",
+      "size": 78744
     },
     "serve-landing-sections.dark.png": {
       "fixture": "serve-landing-sections",
@@ -540,6 +540,54 @@
       "theme": "light",
       "sha256": "d06323e622c9eb059e606cb63be94fb8c0874db57d4e29ce3837cff7e246cadd",
       "size": 25612
+    },
+    "serve-page-backdrop-index.dark.png": {
+      "fixture": "serve-page-backdrop-index",
+      "theme": "dark",
+      "sha256": "7a5851199e9c4f2e64271b5d17bff2ff1cef40aa741abb3b88bfccfea72ef370",
+      "size": 38166
+    },
+    "serve-page-backdrop-index.light.png": {
+      "fixture": "serve-page-backdrop-index",
+      "theme": "light",
+      "sha256": "2abe69916e42bf3fbc44044941769ad1986e2bcd2c862d40f9a1cb6164cd5a5a",
+      "size": 37158
+    },
+    "serve-page-backdrop-overlay.dark.png": {
+      "fixture": "serve-page-backdrop-overlay",
+      "theme": "dark",
+      "sha256": "e4747c39858f431182821143a47a46fd5a1562548adefc6523121cc6765490cc",
+      "size": 127041
+    },
+    "serve-page-backdrop-overlay.light.png": {
+      "fixture": "serve-page-backdrop-overlay",
+      "theme": "light",
+      "sha256": "b48cffa90888c9e1e676d33bb9831cc445a36846a8d5239b0d846f8656c6c3db",
+      "size": 126272
+    },
+    "serve-page-backdrop-unlinked-only.dark.png": {
+      "fixture": "serve-page-backdrop-unlinked-only",
+      "theme": "dark",
+      "sha256": "07af4b30c6f98ac46177770fd9ffda8f2791693a96f32d336e2ecb7d9bf28b95",
+      "size": 99747
+    },
+    "serve-page-backdrop-unlinked-only.light.png": {
+      "fixture": "serve-page-backdrop-unlinked-only",
+      "theme": "light",
+      "sha256": "dbc71fb69834f5508be4167887467d78997c410026af9ff4fe9ff72dc1815c59",
+      "size": 98049
+    },
+    "serve-page-backdrop.dark.png": {
+      "fixture": "serve-page-backdrop",
+      "theme": "dark",
+      "sha256": "7820903a203cfccfe2e37a6c7e5d86cae522d947697b88041ec656eb041a33fa",
+      "size": 97509
+    },
+    "serve-page-backdrop.light.png": {
+      "fixture": "serve-page-backdrop",
+      "theme": "light",
+      "sha256": "46a56d56c4b05e4ebd50005ca9bc29d9ec4df8838695de3835faa1f842017050",
+      "size": 95703
     },
     "serve-parity.dark.png": {
       "fixture": "serve-parity",
