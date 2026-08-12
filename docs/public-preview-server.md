@@ -73,23 +73,42 @@
    Every catalog's branch (whatever repo) must be in the `--trust-store` to badge `Trusted(Branch)`;
    otherwise it serves `Unverified` (the data tiers serve either way).
 
-## Tabbed catalog pages
+## Catalog pages navigate as a tree
 
 A catalog whose components declare a **`section`** (set per group in the catalog spec — `Themes`,
-`Components`, `Screens`, `Animations`, …) is served with its previews grouped into **tabs**, one per
-section, and the component `group` shown as a sub-heading inside a tab. Sections, their groups, and
-the cards within follow the catalog's **authored order**, so the tabs read Themes → Components →
-Screens rather than alphabetically (the served preview list is otherwise id-sorted). Empty sections
-are omitted and the set is open-ended — tag a group with any section name to grow a new tab.
+`Components`, `Screens`, `Animations`, …) is served with a **navigation tree** beside its grid: one
+row per section, each opening onto that section's named `group`s, which are also the sub-headings
+the grid draws over each cluster of cards. Sections, their groups, and the cards within follow the
+catalog's **authored order**, so the tree reads Themes → Components → Screens rather than
+alphabetically (the served preview list is otherwise id-sorted). Empty sections are omitted and the
+set is open-ended — tag a group with any section name to grow a new branch.
 
-Tabs are progressive enhancement: with scripting off every section shows under its own heading and
-the tabs are in-page anchor links; with scripting on, selecting a tab shows just that section while
-the **search box still spans every tab**. A catalog whose previews carry no section (the published
-design systems today) keeps the single flat grid, unchanged.
+This used to be a row of tabs, which published only the top level of a structure that is two deep:
+a section's groups existed solely as headings, so the only way to learn what a section *contained*
+was to open it and scroll. The tree publishes both levels at once, and a group row is a destination
+— it selects the section and scrolls to that group's cards.
 
-![Tabbed catalog page — meshcore-mobile (light)](images/serve-tabs-sections-light.png)
+A section is expanded exactly when it is selected, which is the same statement the grid beside it
+makes. The exception is a live **search**, which spans every section: every branch that still holds
+a match opens, and a group row disappears with the cluster the filter emptied, so a row never
+survives the destination it points at.
 
-![Tabbed catalog page — meshcore-mobile (dark)](images/serve-tabs-sections-dark.png)
+The tree carries the keyboard pattern its role names — Down/Up walk the visible rows, Right opens a
+collapsed section, Left climbs from a group back to its section — and marks the group you are
+actually scrolled to. It is progressive enhancement throughout: with scripting off nothing collapses
+at all, every section shows under its own heading, and every row is a working in-page anchor. A
+catalog whose previews carry no section (most of the published design systems today) keeps the
+single flat grid, unchanged.
+
+![Catalog navigation tree — meshcore-mobile (light)](images/serve-catalog-tree-light.png)
+
+![Catalog navigation tree — meshcore-mobile (dark)](images/serve-catalog-tree-dark.png)
+
+Opening another branch, and the search that spans them all:
+
+![The Components branch open, its Device group marked](images/serve-catalog-tree-section-open.png)
+
+![A search for "device", every matching branch open](images/serve-catalog-tree-filtered.png)
 
 ## The switchers: how a folded render stays reachable
 

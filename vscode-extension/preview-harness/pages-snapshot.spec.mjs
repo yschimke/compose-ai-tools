@@ -209,9 +209,17 @@ const STYLED_FIXTURES = new Set([
     // shot an unstyled column of links, so a change to any of that moved no baseline at all —
     // which is exactly how the section spacing and the card hover reached production unreviewed.
     "serve-home-index",
-    // The catalog landing is the same claim one level down: the tab bar, the group headings and
+    // The catalog landing is the same claim one level down: the navigation, the group headings and
     // the preview-card grid ARE the page, and its cards share the front door's hover treatment.
     "serve-landing-public",
+    // The sectioned catalog, and the only fixture that renders the navigation TREE. Every claim it
+    // makes is painted: the sidebar standing beside the grid at all (a CSS grid above 960px), the
+    // selected section's pill, the twisty that says a branch is open, the guide line down its
+    // sub-groups, and the `aria-current` rule the scroll-spy moves. Captured bare — which is how it
+    // was captured while it was a tab bar — the whole surface is a nested list of unstyled links
+    // and none of that would move a baseline. Its two states below are the ones the tree exists
+    // for.
+    "serve-landing-sections",
     // The Wear viewer exists for ONE claim: the Size panel offers watch shapes and no Orientation
     // row. That claim lives entirely inside the override drawer, so it has to be painted by the
     // real stylesheet — captured bare it is a column of unstyled labels where a panel regression
@@ -330,6 +338,73 @@ const FIXTURE_STATES = [
             // about the filter alone.
             await page.uncheck("[data-cp-backdrop-renders]");
             await page.check("[data-cp-backdrop-unlinked]");
+        },
+    },
+    {
+        // Switching branches. The committed HTML can only ever hold ONE arrangement — the first
+        // section selected and open, the rest collapsed — so the thing the tree is for (open
+        // another branch, its sub-groups appear, the grid under it changes) is invisible to a
+        // baseline without this. It also pins the two halves moving together: the pill and twisty
+        // on the row, and the panel the section switching swapped in beside it.
+        fixture: "serve-landing-sections",
+        suffix: "section-open",
+        apply: async (page) => {
+            await page.click('.cp-tab[data-tab="components"]');
+            await page.waitForFunction(
+                () =>
+                    document
+                        .querySelector('.cp-tab[data-tab="components"]')
+                        ?.getAttribute("aria-expanded") === "true",
+            );
+        },
+    },
+    {
+        // Searching. A query spans every section, so the tree opens every branch that still holds a
+        // match and drops the group rows whose sub-group the filter emptied — "device" here matches
+        // in Components and Screens and nothing under Themes. That is the one state where the tree
+        // shows more than one branch at once, and the rule that a row never survives the
+        // destination it points at is exactly the kind of thing that regresses silently.
+        fixture: "serve-landing-sections",
+        suffix: "filtered",
+        apply: async (page) => {
+            // States are applied cumulatively to the SAME loaded page, so this one inherits
+            // `section-open`'s Components selection. That matters: "device" matches inside
+            // Components, so the selected row would survive the filter and the tab-stop assertion
+            // below would hold whether or not the fallback it exists for is there at all. Put the
+            // page back on Themes first, which the query matches nothing in — the only arrangement
+            // in which the selected section is actually hidden.
+            await page.click('.cp-tab[data-tab="themes"]');
+            await page.waitForFunction(
+                () =>
+                    document
+                        .querySelector('.cp-tab[data-tab="themes"]')
+                        ?.getAttribute("aria-selected") === "true",
+            );
+            await page.fill("#cp-search", "device");
+            await page.waitForFunction(
+                () =>
+                    document
+                        .querySelector('.cp-tab[data-tab="screens"]')
+                        ?.getAttribute("aria-expanded") === "true",
+            );
+            // The filter now hides the SELECTED section. The tree's single roving tab stop has to
+            // move to a branch still on screen, or Tab skips the whole navigation. Not a pixel
+            // claim, so it rides this capture as a wait rather than earning its own shot.
+            await page.waitForFunction(() => {
+                const themes = document.querySelector(
+                    '.cp-tab[data-tab="themes"]',
+                );
+                // Guards the guard: if the selected section were somehow still visible, this
+                // assertion would be trivially true and would pin nothing.
+                if (!themes?.closest(".cp-tree-node")?.hidden) return false;
+                const reachable = Array.from(
+                    document.querySelectorAll(".cp-tab"),
+                ).filter((r) => !r.closest(".cp-tree-node")?.hidden);
+                return (
+                    reachable.length > 0 &&
+                    reachable.some((r) => r.tabIndex === 0)
+                );
+            });
         },
     },
     {

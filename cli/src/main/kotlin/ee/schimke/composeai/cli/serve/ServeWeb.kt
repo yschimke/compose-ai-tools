@@ -1175,8 +1175,14 @@ object ServeWeb {
   private fun isThemeSpecimen(p: ServePreview): Boolean =
     p.fixedTheme || p.section?.equals(THEMES_SECTION, ignoreCase = true) == true
 
-  /** One sub-heading group inside a section tab: its [name] (null ⇒ ungrouped) and its cards. */
-  private class LandingGroup(val name: String?) {
+  /**
+   * One sub-heading group inside a section tab: its [name] (null ⇒ ungrouped) and its cards.
+   *
+   * [slug] is the group's half of the `cp-group-<section>-<group>` anchor the navigation tree jumps
+   * to, assigned by [buildSections] and unique within its section. Empty for a synthesized flat
+   * group ([synthesizeGroups]), which has no tree above it to be jumped to from.
+   */
+  private class LandingGroup(val name: String?, var slug: String = "") {
     val cards = mutableListOf<GridCard>()
   }
 
@@ -1243,16 +1249,93 @@ object ServeWeb {
           n++
         }
         val section = LandingSection(name, slug)
+        // Group slugs are scoped to their section, so the same group name reused across two
+        // sections (meshcore-mobile's "Device" appears under both Components and Screens) still
+        // yields two distinct anchors rather than one that swallows both.
+        val usedGroupSlugs = HashSet<String>()
         acc.groups.values
           .sortedBy { g -> g.cards.minOf { ord(it) } }
           .forEach { g ->
-            val ordered = LandingGroup(g.name)
+            var gslug = g.name?.let { sectionSlug(it) } ?: "ungrouped"
+            var gn = 2
+            while (!usedGroupSlugs.add(gslug)) {
+              gslug = "${g.name?.let { sectionSlug(it) } ?: "ungrouped"}-$gn"
+              gn++
+            }
+            val ordered = LandingGroup(g.name, gslug)
             ordered.cards.addAll(g.cards.sortedBy { ord(it) })
             section.groups.add(ordered)
           }
         section
       }
   }
+
+  /**
+   * The catalog's **navigation tree**: one row per section, each expanding to its named sub-groups,
+   * standing beside the grid rather than above it.
+   *
+   * This replaces the row of section tabs. The tabs showed only the top level of a structure that
+   * is two deep — a catalog's groups (Foundation, Contacts, Scanner, …) existed solely as headings
+   * you had to scroll a panel to find, so the only way to learn what a section *contained* was to
+   * open it and read. The tree publishes both levels at once: every group in the selected section
+   * is a destination you can see and click, and the selected one is marked as you scroll.
+   *
+   * The DOM contract the section rows carry is deliberately unchanged from the tab bar —
+   * `.cp-tab[data-tab]`, `#cp-tab-<slug>`, `aria-controls`, `aria-selected`, and the
+   * `href="#cp-panel-<slug>"` fallback — because that is what [catalogFilterScript]'s section
+   * switching, the remembered-tab key, and the `?tab=` URL param all key off. What is new is the
+   * nesting: a `role="group"` list of `.cp-tree-group` links, each pointing at its
+   * `#cp-group-<section>-<group>` anchor on the sub-group divider the grid already emits.
+   *
+   * A section is **expanded exactly when it is selected**, which is the same statement its panel
+   * makes — one section's contents at a time, rather than a second piece of state that can disagree
+   * with which panel is showing. While a search is active the script spans every section (that is
+   * the existing tab behaviour), so the tree expands every section that still holds a match. With
+   * no JS nothing collapses at all: `html.cp-js` gates the collapse, so a no-JS client sees the
+   * full outline over the full stack of panels, and every row is a working in-page anchor.
+   *
+   * Sections whose groups are all unnamed render as leaves — there is nothing to list under them.
+   */
+  private fun catalogTreeHtml(sections: List<LandingSection>): String = buildString {
+    append("<nav class=\"cp-tree\" id=\"cp-tabs\" aria-label=\"Catalog sections\">\n")
+    append("<ul class=\"cp-tree-list\" role=\"tree\" aria-label=\"Catalog sections\">\n")
+    sections.forEachIndexed { i, sec ->
+      val selected = if (i == 0) "true" else "false"
+      val named = sec.groups.filter { it.name != null }
+      append("<li class=\"cp-tree-node\" role=\"none\">\n")
+      val childrenId = "cp-tree-children-${sec.slug}"
+      append("  <a class=\"cp-tab\" role=\"treeitem\" id=\"cp-tab-${sec.slug}\"")
+      append(" href=\"#cp-panel-${sec.slug}\" data-tab=\"${sec.slug}\"")
+      append(" aria-controls=\"cp-panel-${sec.slug}\" aria-selected=\"$selected\"")
+      // `aria-owns` because the markup cannot nest the group inside the treeitem: the row has to
+      // be an <a> to stay a real link (the no-JS path), and the <li> that does contain both is
+      // `role="none"`. Without this the `role="group"` would hang off the tree rather than off the
+      // section whose `aria-expanded` governs it, so a screen reader could not report the group
+      // rows as that section's children.
+      if (named.isNotEmpty()) append(" aria-expanded=\"$selected\" aria-owns=\"$childrenId\"")
+      append(" tabindex=\"${if (i == 0) "0" else "-1"}\">")
+      append(WebEscaping.htmlEscape(sec.name))
+      append("<span class=\"cp-tab-count\">${sec.count}</span></a>\n")
+      if (named.isNotEmpty()) {
+        append("  <ul class=\"cp-tree-children\" id=\"$childrenId\" role=\"group\">\n")
+        named.forEach { g ->
+          val anchor = groupAnchorId(sec.slug, g.slug)
+          append("    <li role=\"none\"><a class=\"cp-tree-group\" role=\"treeitem\"")
+          append(" href=\"#$anchor\" data-tab=\"${sec.slug}\" data-group=\"$anchor\"")
+          append(" tabindex=\"-1\">")
+          append(WebEscaping.htmlEscape(g.name!!))
+          append("<span class=\"cp-tree-count\">${g.cards.size}</span></a></li>\n")
+        }
+        append("  </ul>\n")
+      }
+      append("</li>\n")
+    }
+    append("</ul>\n</nav>\n")
+  }
+
+  /** The id of the sub-group divider a tree row jumps to — its section's slug, then its own. */
+  private fun groupAnchorId(sectionSlug: String, groupSlug: String) =
+    "cp-group-$sectionSlug-$groupSlug"
 
   /** Prettier display names for a few component families whose bare title-case reads badly. */
   private val FAMILY_DISPLAY_NAMES =
@@ -1935,6 +2018,7 @@ object ServeWeb {
     val tabDecls =
       if (hasTabs)
         "\n      var tabBtns = document.querySelectorAll(\".cp-tab\");" +
+          "\n      var treeGroups = document.querySelectorAll(\".cp-tree-group\");" +
           "\n      var tabSections = document.querySelectorAll(\".cp-section\");" +
           "\n      var current = tabBtns.length ? tabBtns[0].getAttribute(\"data-tab\") : null;" +
           "\n      try {" +
@@ -1950,10 +2034,33 @@ object ServeWeb {
           "\n        if (t.getAttribute(\"data-tab\") === urlTab) current = urlTab;" +
           "\n      });" +
           "\n      var initialTab = current;" +
+          // Selection, expansion and the tree's single tab stop are one statement: the selected
+          // section is the open one and the one Tab lands on. The exception is a live search, which
+          // spans every section — so every branch that still holds a match opens, because the rows
+          // the matches sit under must not be the rows you cannot see.
           "\n      function reflectTabs() {" +
+          "\n        var searching = !!(input && input.value.trim());" +
+          "\n        var stop = null;" +
+          "\n        var firstShown = null;" +
           "\n        tabBtns.forEach(function (t) {" +
-          "\n          t.setAttribute(\"aria-selected\", t.getAttribute(\"data-tab\") === current ? \"true\" : \"false\");" +
+          "\n          var on = t.getAttribute(\"data-tab\") === current;" +
+          "\n          t.setAttribute(\"aria-selected\", on ? \"true\" : \"false\");" +
+          "\n          if (t.hasAttribute(\"aria-expanded\"))" +
+          "\n            t.setAttribute(\"aria-expanded\", on || searching ? \"true\" : \"false\");" +
+          "\n          var node = t.closest(\".cp-tree-node\");" +
+          "\n          var shown = !(node && node.hidden);" +
+          // The stop belongs to the selected row only while that row is on screen, so a filtered-
+          // out section does not keep a claim on it that the fallback below then duplicates.
+          "\n          t.tabIndex = on && shown ? 0 : -1;" +
+          "\n          if (shown && !firstShown) firstShown = t;" +
+          "\n          if (on && shown) stop = t;" +
           "\n        });" +
+          "\n        treeGroups.forEach(function (g) { g.tabIndex = -1; });" +
+          // A filter can hide the selected section outright — search for something only another
+          // section matches and `current` is off screen. Its row would still hold the tree's only
+          // tab stop, so Tab would skip the whole navigation. Hand the stop to the first branch
+          // still showing instead.
+          "\n        if (!stop && firstShown) firstShown.tabIndex = 0;" +
           "\n      }" +
           "\n      reflectTabs();" +
           "\n      document.documentElement.classList.add(\"cp-js\");"
@@ -1975,6 +2082,24 @@ object ServeWeb {
       if (hasTabs)
         "\n        tabSections.forEach(function (s) { s.hidden = !s.querySelector(\".cp-card:not([hidden])\"); });"
       else ""
+    // The tree tracks what the grid just did: a group row disappears with the sub-group it points
+    // at, so a filter never leaves a destination that scrolls to nothing. Section rows are hidden
+    // ONLY while searching — outside a search every section but the current one is empty by
+    // construction (its cards are filtered out by tab), and hiding those rows would delete the
+    // navigation instead of filtering it. Re-reflecting last picks up the expansion a search opens.
+    val treePost =
+      if (hasTabs)
+        "\n        treeGroups.forEach(function (g) {" +
+          "\n          var sub = document.getElementById(g.getAttribute(\"data-group\"));" +
+          "\n          if (g.parentElement) g.parentElement.hidden = !!(sub && sub.hidden);" +
+          "\n        });" +
+          "\n        tabBtns.forEach(function (t) {" +
+          "\n          var node = t.closest(\".cp-tree-node\");" +
+          "\n          var sec = document.getElementById(t.getAttribute(\"aria-controls\"));" +
+          "\n          if (node) node.hidden = q !== \"\" && !!(sec && sec.hidden);" +
+          "\n        });" +
+          "\n        reflectTabs();"
+      else ""
     val tabWiring =
       if (hasTabs)
         "\n      tabBtns.forEach(function (t) {" +
@@ -1988,6 +2113,15 @@ object ServeWeb {
           "\n        });" +
           "\n      });"
       else ""
+    // The tree's own behaviour: its group rows, its keyboard, and the scroll-spy that keeps the
+    // row you are looking at marked. Spliced in at the same indent as the rest, and empty for a
+    // flat catalog — which has no tree.
+    val treeWiring =
+      if (!hasTabs) ""
+      else
+        catalogTreeScript(tabStorageKey).lines().joinToString("") {
+          if (it.isEmpty()) "\n" else "\n      $it"
+        }
     // Back / Forward: re-read the whole selection off the URL and re-apply it in place — no
     // reload, so nothing is re-fetched that the page already has. A history entry that carries no
     // param for a control falls back to what THIS page load resolved to, never to the
@@ -2042,7 +2176,7 @@ object ServeWeb {
           if ($shownCond) shown++;
         });
         if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
-        if (empty) empty.hidden = shown !== 0;$groupPost$sectionPost
+        if (empty) empty.hidden = shown !== 0;$groupPost$sectionPost$treePost
       }
       if (input) input.addEventListener("input", function () {
         // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
@@ -2051,12 +2185,215 @@ object ServeWeb {
         replaceUrl({ q: input.value.trim() });
         apply();
       });
-      $themeWiring$tabWiring$popWiring
+      $themeWiring$tabWiring$treeWiring$popWiring
       apply();$presenceWiring
     })();
     """
       .trimIndent()
   }
+
+  /**
+   * The navigation tree's behaviour, spliced into [catalogFilterScript]'s IIFE so it closes over
+   * the selection it shares with the grid (`current`, `reflectTabs`, `apply`, `pushUrl`) instead of
+   * keeping a second copy that could disagree with which panel is showing.
+   *
+   * Three things the flat tab bar had no need of:
+   * * **group rows** — a jump within the catalog: select the section, then scroll its sub-group
+   *   divider into view. The bare `#cp-group-…` href stays as the no-JS fallback, because following
+   *   it with JS present would land on a divider inside a panel the section switching still has
+   *   hidden.
+   * * **keyboard** — the tree pattern's roving focus (Down/Up walk the *visible* rows, Right opens
+   *   a collapsed section, Left climbs from a group back to its section, Home/End jump the ends).
+   *   The tab bar never implemented its own pattern's arrow keys; a tree that publishes two levels
+   *   is where not having them starts to cost something.
+   * * **scroll-spy** — the row for the sub-group on screen is marked `aria-current`, so the tree
+   *   says where you *are* and not merely where you last clicked. Additive: with no
+   *   `IntersectionObserver` the marking simply follows clicks.
+   */
+  private fun catalogTreeScript(tabStorageKey: String): String =
+    """
+    (function () {
+      var tree = document.getElementById("cp-tabs");
+      if (!tree) return;
+      // The toolbar above pins itself at top:0 over everything, so publish its real height for the
+      // sticky tree's offset and for every scroll target's `scroll-margin-top`. Measured rather
+      // than assumed: it wraps on a narrow viewport and grows a row with the declared-theme chips,
+      // and the static fallback in the stylesheet only covers the unwrapped case.
+      var tools = document.querySelector(".cp-catalog-tools");
+      if (tools) {
+        var syncTools = function () {
+          var h = Math.round(tools.getBoundingClientRect().height);
+          if (h > 0) document.documentElement.style.setProperty("--cp-sticky-tools", h + "px");
+        };
+        syncTools();
+        if (window.ResizeObserver) new ResizeObserver(syncTools).observe(tools);
+        else window.addEventListener("resize", syncTools);
+      }
+      // The row pointing at a sub-group id, found by COMPARING attribute values rather than by
+      // building a selector out of DOM text (CodeQL `js/xss-through-dom`, and the rule the backdrop
+      // viewer already follows).
+      function rowFor(id) {
+        var found = null;
+        treeGroups.forEach(function (g) { if (g.getAttribute("data-group") === id) found = g; });
+        return found;
+      }
+      function markGroup(row) {
+        treeGroups.forEach(function (g) {
+          if (g === row) g.setAttribute("aria-current", "true");
+          else g.removeAttribute("aria-current");
+        });
+      }
+      function selectTab(slug) {
+        if (!slug || slug === current) return;
+        current = slug;
+        try { localStorage.setItem("$tabStorageKey", current); } catch (e) {}
+        reflectTabs();
+        pushUrl({ tab: current });
+        apply();
+      }
+      // The fragment is part of the address this page describes, and `cpUrlState` deliberately
+      // preserves whatever hash is already there when it rewrites the query. So a click that moves
+      // you somewhere else has to move the fragment too, or the URL keeps pointing at where you
+      // WERE — `?tab=components#cp-group-themes-foundation` reads as Components in the query and
+      // Themes in the hash, and since the hash outranks `?tab=` on load, reloading or sharing it
+      // lands on Themes. `replaceState`, not push: the entry itself was just pushed by
+      // [selectTab], and a jump inside a section is a scroll, not a place to come Back to.
+      function setFragment(id) {
+        var url = location.pathname + location.search + (id ? "#" + id : "");
+        try { history.replaceState(history.state, "", url); } catch (e) {}
+      }
+      treeGroups.forEach(function (g) {
+        g.addEventListener("click", function (e) {
+          var target = document.getElementById(g.getAttribute("data-group"));
+          if (!target) return;
+          e.preventDefault();
+          selectTab(g.getAttribute("data-tab"));
+          setFragment(g.getAttribute("data-group"));
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+          markGroup(g);
+        });
+      });
+      // Choosing a whole section retires any group fragment for the same reason: the row you
+      // clicked is the statement of where you are, and a leftover `#cp-group-…` from another
+      // section would outrank it on the next load.
+      tabBtns.forEach(function (t) {
+        t.addEventListener("click", function () { setFragment(""); });
+      });
+      // Only the rows a visitor can actually reach: a collapsed section contributes its own row and
+      // none of its children, and a row the filter hid contributes nothing.
+      function visibleRows() {
+        var items = [];
+        tabBtns.forEach(function (t) {
+          var node = t.closest(".cp-tree-node");
+          if (node && node.hidden) return;
+          items.push(t);
+          if (t.getAttribute("aria-expanded") === "false") return;
+          var kids = t.nextElementSibling;
+          if (!kids) return;
+          kids.querySelectorAll(".cp-tree-group").forEach(function (g) {
+            if (!g.parentElement || !g.parentElement.hidden) items.push(g);
+          });
+        });
+        return items;
+      }
+      function focusRow(el) {
+        if (!el) return;
+        visibleRows().forEach(function (i) { i.tabIndex = i === el ? 0 : -1; });
+        el.focus();
+      }
+      tree.addEventListener("keydown", function (e) {
+        var items = visibleRows();
+        var at = items.indexOf(document.activeElement);
+        if (at === -1) return;
+        var key = e.key;
+        var next = null;
+        if (key === "ArrowDown") next = items[Math.min(at + 1, items.length - 1)];
+        else if (key === "ArrowUp") next = items[Math.max(at - 1, 0)];
+        else if (key === "Home") next = items[0];
+        else if (key === "End") next = items[items.length - 1];
+        else if (key === "ArrowRight") {
+          if (items[at].getAttribute("aria-expanded") === "false") {
+            e.preventDefault();
+            selectTab(items[at].getAttribute("data-tab"));
+            return;
+          }
+          next = items[Math.min(at + 1, items.length - 1)];
+        } else if (key === "ArrowLeft") {
+          var node = items[at].closest(".cp-tree-node");
+          if (items[at].classList.contains("cp-tree-group") && node)
+            next = node.querySelector(".cp-tab");
+        } else return;
+        if (!next) return;
+        e.preventDefault();
+        focusRow(next);
+      });
+      // A group row's href is a real link, so it gets copied and shared — and arriving on
+      // `#cp-group-components-device` in a fresh session used to land nowhere: initialisation reads
+      // `?tab=` and the remembered section only, so the section holding the target stayed hidden
+      // and the browser had nothing to scroll to. A fragment naming a group (or a section panel) is
+      // as explicit a request as `?tab=` is, so it selects that section, outranking the remembered
+      // one. Runs before the trailing `apply()`, which is what actually reveals the panel — hence
+      // the deferred scroll rather than an immediate one.
+      // Percent-DECODED before comparing: a section or group name keeps its non-ASCII letters
+      // through `sectionSlug` (Kotlin's `isLetterOrDigit` is Unicode-aware), so the id in the DOM
+      // is the raw text while browsers hand back `location.hash` encoded. Undecoded, a shared link
+      // to an accented or CJK group would match no row at all and silently do nothing. A malformed
+      // escape sequence throws, and is simply not a fragment this page knows.
+      var hash = location.hash ? location.hash.slice(1) : "";
+      try { hash = decodeURIComponent(hash); } catch (e) {}
+      if (hash) {
+        var wanted = null;
+        var target = null;
+        treeGroups.forEach(function (g) {
+          if (g.getAttribute("data-group") === hash) {
+            wanted = g.getAttribute("data-tab");
+            target = g;
+          }
+        });
+        if (!wanted) {
+          tabBtns.forEach(function (t) {
+            if (t.getAttribute("aria-controls") === hash) wanted = t.getAttribute("data-tab");
+          });
+        }
+        if (wanted && wanted !== current) {
+          current = wanted;
+          initialTab = current;
+          reflectTabs();
+        }
+        if (wanted) {
+          var landing = document.getElementById(hash);
+          setTimeout(function () {
+            if (landing) landing.scrollIntoView({ block: "start" });
+            if (target) markGroup(target);
+          }, 0);
+        }
+      }
+      if (window.IntersectionObserver) {
+        var onScreen = [];
+        var spy = new IntersectionObserver(function (entries) {
+          entries.forEach(function (en) {
+            var at = onScreen.indexOf(en.target);
+            if (en.isIntersecting) { if (at === -1) onScreen.push(en.target); }
+            else if (at !== -1) onScreen.splice(at, 1);
+          });
+          // The highest sub-group still in the band is the one being read.
+          var top = null;
+          onScreen.forEach(function (el) {
+            if (el.hidden) return;
+            if (!top || el.getBoundingClientRect().top < top.getBoundingClientRect().top) top = el;
+          });
+          if (top) markGroup(rowFor(top.id));
+        // A band, not the whole viewport: the top inset clears the sticky header, and the bottom
+        // one keeps the LAST sub-group from claiming the mark the moment its first row appears.
+        // Deliberately generous at the bottom — a narrow strip near the top would leave nothing
+        // marked at all on first paint, since a catalog's first sub-group starts a header, a
+        // provenance strip and a toolbar down the page.
+        }, { rootMargin: "-64px 0px -20% 0px" });
+        document.querySelectorAll(".cp-subgroup[id]").forEach(function (g) { spy.observe(g); });
+      }
+    })();
+    """
+      .trimIndent()
 
   /**
    * A heartbeat telling the server that a visitor is still on this catalog's pages.
@@ -4482,24 +4819,7 @@ object ServeWeb {
     // Any `.cp-subgroup` dividers present (authored tabs OR synthesized flat groups) → the filter
     // script must collapse an emptied sub-group on search, independent of the tab machinery.
     val hasGroups = hasTabs || synthGroups != null
-    val tabBar =
-      if (!hasTabs) ""
-      else
-        buildString {
-          append(
-            "<nav class=\"cp-tabs\" id=\"cp-tabs\" role=\"tablist\" aria-label=\"Catalog sections\">\n"
-          )
-          sections.forEachIndexed { i, sec ->
-            val selected = if (i == 0) "true" else "false"
-            append("  <a class=\"cp-tab\" role=\"tab\" id=\"cp-tab-${sec.slug}\"")
-            append(" href=\"#cp-panel-${sec.slug}\" data-tab=\"${sec.slug}\"")
-            append(" aria-controls=\"cp-panel-${sec.slug}\" aria-selected=\"$selected\">")
-            append(
-              "${WebEscaping.htmlEscape(sec.name)}<span class=\"cp-tab-count\">${sec.count}</span></a>\n"
-            )
-          }
-          append("</nav>\n")
-        }
+    val tabBar = if (!hasTabs) "" else catalogTreeHtml(sections)
     // The grid body: either the tabbed section panels (id=cp-grid, so the search box's
     // aria-controls
     // + the filter script still target it) or the plain flat grid. The flat form reproduces the
@@ -4528,11 +4848,16 @@ object ServeWeb {
         buildString {
           append("<div class=\"cp-sections\" id=\"cp-grid\">\n")
           sections.forEach { sec ->
-            append("<section class=\"cp-section\" id=\"cp-panel-${sec.slug}\" role=\"tabpanel\"")
+            // `role="region"`, not `tabpanel`: the navigation above is a tree, and a tabpanel with
+            // no tab to own it is a role that describes a relationship the page no longer has.
+            append("<section class=\"cp-section\" id=\"cp-panel-${sec.slug}\" role=\"region\"")
             append(" aria-labelledby=\"cp-tab-${sec.slug}\" data-section=\"${sec.slug}\">\n")
             append("<h2 class=\"cp-section-head\">${WebEscaping.htmlEscape(sec.name)}</h2>\n")
             sec.groups.forEach { g ->
-              append("<div class=\"cp-subgroup\">\n")
+              // The tree's group rows jump here, so a named group carries the anchor id the row
+              // links to; an unnamed one has no row and needs none.
+              val anchor = if (g.name == null) "" else " id=\"${groupAnchorId(sec.slug, g.slug)}\""
+              append("<div class=\"cp-subgroup\"$anchor>\n")
               if (g.name != null)
                 append("<h3 class=\"cp-group-head\">${WebEscaping.htmlEscape(g.name)}</h3>\n")
               append("<div class=\"cp-cards\">\n")
@@ -4544,6 +4869,13 @@ object ServeWeb {
           append("</div>")
         }
       }
+    // A tree stands BESIDE what it navigates, so a sectioned catalog wraps its nav and its panels
+    // in one two-column container (a single column, tree first, below the sidebar breakpoint). A
+    // flat catalog has no nav to stand beside anything and keeps the bare grid — which is also why
+    // its committed golden is untouched by this.
+    val navAndGrid =
+      if (!hasTabs) "$tabBar$gridBlock"
+      else "<div class=\"cp-catalog-body\">\n$tabBar$gridBlock\n</div>"
     // The "about" intro now sits at the BOTTOM of a catalog page (below the grid) so the catalog's
     // own content leads; it still appears only for the public server.
     val about = if (isPublic) "\n" + aboutSection() else ""
@@ -4689,7 +5021,7 @@ object ServeWeb {
         </div>
         $renderFailureSummary<div class="cp-catalog-tools">
         $themeToggle$searchBox</div>
-        $tabBar$gridBlock$emptyState$filterScript$liveScript$about
+        $navAndGrid$emptyState$filterScript$liveScript$about
         """
           .trimIndent(),
     )

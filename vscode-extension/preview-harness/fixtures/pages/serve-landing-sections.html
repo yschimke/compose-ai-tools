@@ -65,15 +65,35 @@
   <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind each preview">Transparent</button>
 </div>
 </div>
-        <nav class="cp-tabs" id="cp-tabs" role="tablist" aria-label="Catalog sections">
-  <a class="cp-tab" role="tab" id="cp-tab-themes" href="#cp-panel-themes" data-tab="themes" aria-controls="cp-panel-themes" aria-selected="true">Themes<span class="cp-tab-count">2</span></a>
-  <a class="cp-tab" role="tab" id="cp-tab-components" href="#cp-panel-components" data-tab="components" aria-controls="cp-panel-components" aria-selected="false">Components<span class="cp-tab-count">4</span></a>
-  <a class="cp-tab" role="tab" id="cp-tab-screens" href="#cp-panel-screens" data-tab="screens" aria-controls="cp-panel-screens" aria-selected="false">Screens<span class="cp-tab-count">3</span></a>
+        <div class="cp-catalog-body">
+<nav class="cp-tree" id="cp-tabs" aria-label="Catalog sections">
+<ul class="cp-tree-list" role="tree" aria-label="Catalog sections">
+<li class="cp-tree-node" role="none">
+  <a class="cp-tab" role="treeitem" id="cp-tab-themes" href="#cp-panel-themes" data-tab="themes" aria-controls="cp-panel-themes" aria-selected="true" aria-expanded="true" aria-owns="cp-tree-children-themes" tabindex="0">Themes<span class="cp-tab-count">2</span></a>
+  <ul class="cp-tree-children" id="cp-tree-children-themes" role="group">
+    <li role="none"><a class="cp-tree-group" role="treeitem" href="#cp-group-themes-foundation" data-tab="themes" data-group="cp-group-themes-foundation" tabindex="-1">Foundation<span class="cp-tree-count">2</span></a></li>
+  </ul>
+</li>
+<li class="cp-tree-node" role="none">
+  <a class="cp-tab" role="treeitem" id="cp-tab-components" href="#cp-panel-components" data-tab="components" aria-controls="cp-panel-components" aria-selected="false" aria-expanded="false" aria-owns="cp-tree-children-components" tabindex="-1">Components<span class="cp-tab-count">4</span></a>
+  <ul class="cp-tree-children" id="cp-tree-children-components" role="group">
+    <li role="none"><a class="cp-tree-group" role="treeitem" href="#cp-group-components-device" data-tab="components" data-group="cp-group-components-device" tabindex="-1">Device<span class="cp-tree-count">2</span></a></li>
+    <li role="none"><a class="cp-tree-group" role="treeitem" href="#cp-group-components-contacts" data-tab="components" data-group="cp-group-components-contacts" tabindex="-1">Contacts<span class="cp-tree-count">2</span></a></li>
+  </ul>
+</li>
+<li class="cp-tree-node" role="none">
+  <a class="cp-tab" role="treeitem" id="cp-tab-screens" href="#cp-panel-screens" data-tab="screens" aria-controls="cp-panel-screens" aria-selected="false" aria-expanded="false" aria-owns="cp-tree-children-screens" tabindex="-1">Screens<span class="cp-tab-count">3</span></a>
+  <ul class="cp-tree-children" id="cp-tree-children-screens" role="group">
+    <li role="none"><a class="cp-tree-group" role="treeitem" href="#cp-group-screens-scanner" data-tab="screens" data-group="cp-group-screens-scanner" tabindex="-1">Scanner<span class="cp-tree-count">2</span></a></li>
+    <li role="none"><a class="cp-tree-group" role="treeitem" href="#cp-group-screens-device" data-tab="screens" data-group="cp-group-screens-device" tabindex="-1">Device<span class="cp-tree-count">1</span></a></li>
+  </ul>
+</li>
+</ul>
 </nav>
 <div class="cp-sections" id="cp-grid">
-<section class="cp-section" id="cp-panel-themes" role="tabpanel" aria-labelledby="cp-tab-themes" data-section="themes">
+<section class="cp-section" id="cp-panel-themes" role="region" aria-labelledby="cp-tab-themes" data-section="themes">
 <h2 class="cp-section-head">Themes</h2>
-<div class="cp-subgroup">
+<div class="cp-subgroup" id="cp-group-themes-foundation">
 <h3 class="cp-group-head">Foundation</h3>
 <div class="cp-cards">
 <a class="cp-card" href="/meshcore-mobile/p/theme-meshcore-light__ideal__default__compact">
@@ -99,9 +119,9 @@
 </div>
 </div>
 </section>
-<section class="cp-section" id="cp-panel-components" role="tabpanel" aria-labelledby="cp-tab-components" data-section="components">
+<section class="cp-section" id="cp-panel-components" role="region" aria-labelledby="cp-tab-components" data-section="components">
 <h2 class="cp-section-head">Components</h2>
-<div class="cp-subgroup">
+<div class="cp-subgroup" id="cp-group-components-device">
 <h3 class="cp-group-head">Device</h3>
 <div class="cp-cards">
 <a class="cp-card" href="/meshcore-mobile/p/devicesummarycard-populated__ideal__default__compact">
@@ -126,7 +146,7 @@
 </a>
 </div>
 </div>
-<div class="cp-subgroup">
+<div class="cp-subgroup" id="cp-group-components-contacts">
 <h3 class="cp-group-head">Contacts</h3>
 <div class="cp-cards">
 <a class="cp-card" href="/meshcore-mobile/p/contactrow-variants__ideal__default__compact">
@@ -152,9 +172,9 @@
 </div>
 </div>
 </section>
-<section class="cp-section" id="cp-panel-screens" role="tabpanel" aria-labelledby="cp-tab-screens" data-section="screens">
+<section class="cp-section" id="cp-panel-screens" role="region" aria-labelledby="cp-tab-screens" data-section="screens">
 <h2 class="cp-section-head">Screens</h2>
-<div class="cp-subgroup">
+<div class="cp-subgroup" id="cp-group-screens-scanner">
 <h3 class="cp-group-head">Scanner</h3>
 <div class="cp-cards">
 <a class="cp-card" href="/meshcore-mobile/p/scanner-savedpopulated__ideal__default__compact">
@@ -179,7 +199,7 @@
 </a>
 </div>
 </div>
-<div class="cp-subgroup">
+<div class="cp-subgroup" id="cp-group-screens-device">
 <h3 class="cp-group-head">Device</h3>
 <div class="cp-cards">
 <a class="cp-card" href="/meshcore-mobile/p/device-manycontacts__ideal__default__compact">
@@ -195,6 +215,7 @@
 </div>
 </div>
 </section>
+</div>
 </div>
 <p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
 <script src="/assets/serve/fixture/url-state.js"></script>
@@ -215,6 +236,7 @@
   if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
   var navGroups = document.querySelectorAll(".cp-subgroup");
   var tabBtns = document.querySelectorAll(".cp-tab");
+  var treeGroups = document.querySelectorAll(".cp-tree-group");
   var tabSections = document.querySelectorAll(".cp-section");
   var current = tabBtns.length ? tabBtns[0].getAttribute("data-tab") : null;
   try {
@@ -229,9 +251,22 @@
   });
   var initialTab = current;
   function reflectTabs() {
+    var searching = !!(input && input.value.trim());
+    var stop = null;
+    var firstShown = null;
     tabBtns.forEach(function (t) {
-      t.setAttribute("aria-selected", t.getAttribute("data-tab") === current ? "true" : "false");
+      var on = t.getAttribute("data-tab") === current;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      if (t.hasAttribute("aria-expanded"))
+        t.setAttribute("aria-expanded", on || searching ? "true" : "false");
+      var node = t.closest(".cp-tree-node");
+      var shown = !(node && node.hidden);
+      t.tabIndex = on && shown ? 0 : -1;
+      if (shown && !firstShown) firstShown = t;
+      if (on && shown) stop = t;
     });
+    treeGroups.forEach(function (g) { g.tabIndex = -1; });
+    if (!stop && firstShown) firstShown.tabIndex = 0;
   }
   reflectTabs();
   document.documentElement.classList.add("cp-js");
@@ -254,6 +289,16 @@
     if (empty) empty.hidden = shown !== 0;
     navGroups.forEach(function (g) { g.hidden = !g.querySelector(".cp-card:not([hidden])"); });
     tabSections.forEach(function (s) { s.hidden = !s.querySelector(".cp-card:not([hidden])"); });
+    treeGroups.forEach(function (g) {
+      var sub = document.getElementById(g.getAttribute("data-group"));
+      if (g.parentElement) g.parentElement.hidden = !!(sub && sub.hidden);
+    });
+    tabBtns.forEach(function (t) {
+      var node = t.closest(".cp-tree-node");
+      var sec = document.getElementById(t.getAttribute("aria-controls"));
+      if (node) node.hidden = q !== "" && !!(sec && sec.hidden);
+    });
+    reflectTabs();
   }
   if (input) input.addEventListener("input", function () {
     // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
@@ -273,6 +318,186 @@
       apply();
     });
   });
+  (function () {
+    var tree = document.getElementById("cp-tabs");
+    if (!tree) return;
+    // The toolbar above pins itself at top:0 over everything, so publish its real height for the
+    // sticky tree's offset and for every scroll target's `scroll-margin-top`. Measured rather
+    // than assumed: it wraps on a narrow viewport and grows a row with the declared-theme chips,
+    // and the static fallback in the stylesheet only covers the unwrapped case.
+    var tools = document.querySelector(".cp-catalog-tools");
+    if (tools) {
+      var syncTools = function () {
+        var h = Math.round(tools.getBoundingClientRect().height);
+        if (h > 0) document.documentElement.style.setProperty("--cp-sticky-tools", h + "px");
+      };
+      syncTools();
+      if (window.ResizeObserver) new ResizeObserver(syncTools).observe(tools);
+      else window.addEventListener("resize", syncTools);
+    }
+    // The row pointing at a sub-group id, found by COMPARING attribute values rather than by
+    // building a selector out of DOM text (CodeQL `js/xss-through-dom`, and the rule the backdrop
+    // viewer already follows).
+    function rowFor(id) {
+      var found = null;
+      treeGroups.forEach(function (g) { if (g.getAttribute("data-group") === id) found = g; });
+      return found;
+    }
+    function markGroup(row) {
+      treeGroups.forEach(function (g) {
+        if (g === row) g.setAttribute("aria-current", "true");
+        else g.removeAttribute("aria-current");
+      });
+    }
+    function selectTab(slug) {
+      if (!slug || slug === current) return;
+      current = slug;
+      try { localStorage.setItem("cp-tab:meshcore-mobile", current); } catch (e) {}
+      reflectTabs();
+      pushUrl({ tab: current });
+      apply();
+    }
+    // The fragment is part of the address this page describes, and `cpUrlState` deliberately
+    // preserves whatever hash is already there when it rewrites the query. So a click that moves
+    // you somewhere else has to move the fragment too, or the URL keeps pointing at where you
+    // WERE — `?tab=components#cp-group-themes-foundation` reads as Components in the query and
+    // Themes in the hash, and since the hash outranks `?tab=` on load, reloading or sharing it
+    // lands on Themes. `replaceState`, not push: the entry itself was just pushed by
+    // [selectTab], and a jump inside a section is a scroll, not a place to come Back to.
+    function setFragment(id) {
+      var url = location.pathname + location.search + (id ? "#" + id : "");
+      try { history.replaceState(history.state, "", url); } catch (e) {}
+    }
+    treeGroups.forEach(function (g) {
+      g.addEventListener("click", function (e) {
+        var target = document.getElementById(g.getAttribute("data-group"));
+        if (!target) return;
+        e.preventDefault();
+        selectTab(g.getAttribute("data-tab"));
+        setFragment(g.getAttribute("data-group"));
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        markGroup(g);
+      });
+    });
+    // Choosing a whole section retires any group fragment for the same reason: the row you
+    // clicked is the statement of where you are, and a leftover `#cp-group-…` from another
+    // section would outrank it on the next load.
+    tabBtns.forEach(function (t) {
+      t.addEventListener("click", function () { setFragment(""); });
+    });
+    // Only the rows a visitor can actually reach: a collapsed section contributes its own row and
+    // none of its children, and a row the filter hid contributes nothing.
+    function visibleRows() {
+      var items = [];
+      tabBtns.forEach(function (t) {
+        var node = t.closest(".cp-tree-node");
+        if (node && node.hidden) return;
+        items.push(t);
+        if (t.getAttribute("aria-expanded") === "false") return;
+        var kids = t.nextElementSibling;
+        if (!kids) return;
+        kids.querySelectorAll(".cp-tree-group").forEach(function (g) {
+          if (!g.parentElement || !g.parentElement.hidden) items.push(g);
+        });
+      });
+      return items;
+    }
+    function focusRow(el) {
+      if (!el) return;
+      visibleRows().forEach(function (i) { i.tabIndex = i === el ? 0 : -1; });
+      el.focus();
+    }
+    tree.addEventListener("keydown", function (e) {
+      var items = visibleRows();
+      var at = items.indexOf(document.activeElement);
+      if (at === -1) return;
+      var key = e.key;
+      var next = null;
+      if (key === "ArrowDown") next = items[Math.min(at + 1, items.length - 1)];
+      else if (key === "ArrowUp") next = items[Math.max(at - 1, 0)];
+      else if (key === "Home") next = items[0];
+      else if (key === "End") next = items[items.length - 1];
+      else if (key === "ArrowRight") {
+        if (items[at].getAttribute("aria-expanded") === "false") {
+          e.preventDefault();
+          selectTab(items[at].getAttribute("data-tab"));
+          return;
+        }
+        next = items[Math.min(at + 1, items.length - 1)];
+      } else if (key === "ArrowLeft") {
+        var node = items[at].closest(".cp-tree-node");
+        if (items[at].classList.contains("cp-tree-group") && node)
+          next = node.querySelector(".cp-tab");
+      } else return;
+      if (!next) return;
+      e.preventDefault();
+      focusRow(next);
+    });
+    // A group row's href is a real link, so it gets copied and shared — and arriving on
+    // `#cp-group-components-device` in a fresh session used to land nowhere: initialisation reads
+    // `?tab=` and the remembered section only, so the section holding the target stayed hidden
+    // and the browser had nothing to scroll to. A fragment naming a group (or a section panel) is
+    // as explicit a request as `?tab=` is, so it selects that section, outranking the remembered
+    // one. Runs before the trailing `apply()`, which is what actually reveals the panel — hence
+    // the deferred scroll rather than an immediate one.
+    // Percent-DECODED before comparing: a section or group name keeps its non-ASCII letters
+    // through `sectionSlug` (Kotlin's `isLetterOrDigit` is Unicode-aware), so the id in the DOM
+    // is the raw text while browsers hand back `location.hash` encoded. Undecoded, a shared link
+    // to an accented or CJK group would match no row at all and silently do nothing. A malformed
+    // escape sequence throws, and is simply not a fragment this page knows.
+    var hash = location.hash ? location.hash.slice(1) : "";
+    try { hash = decodeURIComponent(hash); } catch (e) {}
+    if (hash) {
+      var wanted = null;
+      var target = null;
+      treeGroups.forEach(function (g) {
+        if (g.getAttribute("data-group") === hash) {
+          wanted = g.getAttribute("data-tab");
+          target = g;
+        }
+      });
+      if (!wanted) {
+        tabBtns.forEach(function (t) {
+          if (t.getAttribute("aria-controls") === hash) wanted = t.getAttribute("data-tab");
+        });
+      }
+      if (wanted && wanted !== current) {
+        current = wanted;
+        initialTab = current;
+        reflectTabs();
+      }
+      if (wanted) {
+        var landing = document.getElementById(hash);
+        setTimeout(function () {
+          if (landing) landing.scrollIntoView({ block: "start" });
+          if (target) markGroup(target);
+        }, 0);
+      }
+    }
+    if (window.IntersectionObserver) {
+      var onScreen = [];
+      var spy = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          var at = onScreen.indexOf(en.target);
+          if (en.isIntersecting) { if (at === -1) onScreen.push(en.target); }
+          else if (at !== -1) onScreen.splice(at, 1);
+        });
+        // The highest sub-group still in the band is the one being read.
+        var top = null;
+        onScreen.forEach(function (el) {
+          if (el.hidden) return;
+          if (!top || el.getBoundingClientRect().top < top.getBoundingClientRect().top) top = el;
+        });
+        if (top) markGroup(rowFor(top.id));
+      // A band, not the whole viewport: the top inset clears the sticky header, and the bottom
+      // one keeps the LAST sub-group from claiming the mark the moment its first row appears.
+      // Deliberately generous at the bottom — a narrow strip near the top would leave nothing
+      // marked at all on first paint, since a catalog's first sub-group starts a header, a
+      // provenance strip and a toolbar down the page.
+      }, { rootMargin: "-64px 0px -20% 0px" });
+      document.querySelectorAll(".cp-subgroup[id]").forEach(function (g) { spy.observe(g); });
+    }
+  })();
   if (urlState) {
     urlState.onPop(function () {
       var poppedTab = urlParam("tab") || initialTab;
