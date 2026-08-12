@@ -506,6 +506,51 @@ fun HighDensityClickTargetSquare() {
 }
 
 /**
+ * Records the JVM default `Locale` each time [PressLocaleProbeSquare] composes.
+ *
+ * `localeTag` is applied by pointing the JVM default `Locale` at the override for the duration of a
+ * composition / frame — that is what CMP `stringResource(...)` resolves against on desktop (see
+ * `RenderEngine.overrideJvmDefaultLocale`). So "which locale was live while this composed" *is* the
+ * JVM default at composition time, and reading it is how a test can tell whether a given frame ran
+ * inside the override or outside it.
+ */
+object PressLocaleProbe {
+  @Volatile var composedUnder: String? = null
+
+  fun record() {
+    composedUnder = java.util.Locale.getDefault().toLanguageTag()
+  }
+
+  fun reset() {
+    composedUnder = null
+  }
+}
+
+/**
+ * Recomposes on a pointer press and publishes the locale it recomposed under to [PressLocaleProbe].
+ *
+ * The press-settling render is a frame like any other — it composes whatever the press invalidated
+ * — so it has to run inside the same `localeTag` scope as the capture frames, or a localized
+ * preview caches host-language resources on a press it can never re-resolve.
+ */
+@Composable
+fun PressLocaleProbeSquare() {
+  var pressed by remember { mutableStateOf(false) }
+  PressLocaleProbe.record()
+  Box(
+    modifier =
+      Modifier.fillMaxSize()
+        .background(if (pressed) Color(0xFF66BB6A) else Color(0xFFEF5350))
+        .pointerInput(Unit) {
+          awaitPointerEventScope {
+            awaitFirstDown()
+            pressed = true
+          }
+        }
+  )
+}
+
+/**
  * Live interactive fixture that exposes Compose's frame clock as pixels. It starts red and turns
  * green after at least 250 ms of frame-clock time has elapsed. If [ImageComposeScene.render] is
  * called without an explicit timestamp, every frame is rendered at `nanoTime = 0` and this preview

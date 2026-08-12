@@ -436,6 +436,7 @@ class DesktopRecordingSession(
       scene = { state.scene },
       defaultTimeMillis = { 0L },
       defaultFrameNanos = { 0L },
+      settleFrame = { nanoTime -> engine.renderSettlingFrame(state, nanoTime) },
     )
 
   private fun pointerIdOrDefault(event: RecordingScriptEvent): Int = event.pointerId ?: 0
