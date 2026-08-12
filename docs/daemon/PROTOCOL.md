@@ -1,6 +1,6 @@
 # Preview daemon — IPC protocol
 
-> **Status:** v2 contract. Pre-1.0 — wire shape may break across minor versions in a coordinated daemon + client release. v2 made `initialize.capabilities.{dataProducts,dataExtensions,previewExtensions}` opt-in via `extensions/enable` (see § 3a); v1 clients fail the `protocolVersion` check.
+> **Status:** v2 contract. The wire shape may still break across artifact minor versions, in a coordinated daemon + client release — `protocolVersion` is decoupled from the artifact semver ([VERSIONING.md § 8](../VERSIONING.md#8-release-coordination)), and range negotiation is deferred past 1.0.0 ([§ 10](../VERSIONING.md#10-status-at-10)), so a bump means old clients fail the handshake rather than being served the old version. v2 made `initialize.capabilities.{dataProducts,dataExtensions,previewExtensions}` opt-in via `extensions/enable` (see § 3a); v1 clients fail the `protocolVersion` check.
 
 This document is the authoritative wire-format spec for the JSON-RPC channel between the VS Code extension and the per-module preview daemon. It is referenced by [DESIGN.md § 5](DESIGN.md).
 

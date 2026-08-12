@@ -142,9 +142,9 @@ binary header followed by the payload bytes:
 ```
 
 `StreamFrameHeader` in `:daemon:core` is the canonical pack/parse
-implementation; `StreamFrameHeaderTest` pins the round-trip. Pre-1.0
-binary clients are not supported on the wire today; the JSON envelope is
-the only sanctioned transport.
+implementation; `StreamFrameHeaderTest` pins the round-trip. Binary
+clients are not supported on the wire today; the JSON envelope is the
+only sanctioned transport.
 
 ## Client model — newest-wins queue + canvas paint
 
