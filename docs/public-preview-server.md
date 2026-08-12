@@ -812,6 +812,38 @@ gets filename-sanitized on its way into a bundle, while the function name is the
 files already agree on. A design-map entry that maps to no published sticker is a warning, not an
 error — a repo may map more components for its own parity run than it publishes.
 
+#### Primary and secondary references
+
+design-parity lets one code component bind an **array** of refs — the untagged default plus one per
+authored `state` / `size` / `theme`. Those bindings are not peers, and the manifest says which is
+which via `tier`:
+
+- The **primary** is the untagged binding: the component's default render, the picture a reader
+  forms of the component, and the one a divergence is least excusable in. Exactly one is required
+  — an ambiguous or all-tagged array is refused rather than guessed at — and it is what `--strict`
+  gates on.
+- A **secondary** is a tagged binding (`{"size": "l"}`), carrying its `slot` so a report can name
+  the cell. It documents one square of the variant matrix. Worth *checking* and worth *reporting*,
+  but a size cell that drifts is not the component being wrong, so a secondary that resolves to
+  nothing is a **coverage note** rather than a warning and never fails the export.
+
+A secondary joins on its own `previewId`, not on the function name the primary uses — an
+`@OverrideVariant` cell shares its base's `@Preview` function, so the function index cannot tell
+`xs` from the default render and would bind every cell to the same sticker.
+
+Before this split the driver published the primary and dropped the rest, so m3-catalog's variant
+renders had nothing to diff against even though `design-map.json` had bound every one of them to
+its kit node: **78 references for 78 components, and none for the 345 variant bindings beside
+them**. The Figma rasterizer batches 50 node ids per request, so publishing those costs single-digit
+extra REST calls rather than one per reference.
+
+The export reports the two lanes separately:
+
+```
+design-references: published 423/423 reference(s) to references/ — 78/78 primary,
+  345/345 secondary (0 warning(s), 0 coverage note(s))
+```
+
 Pixels come from, in precedence order: a pre-rendered PNG under `--reference-images` (for a repo
 that already rasterizes references in an earlier job), a committed `.html` mock rasterized with
 Playwright's Chromium against the fonts the workflow already staged, a committed `.png`, or a

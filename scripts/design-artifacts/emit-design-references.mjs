@@ -130,8 +130,18 @@ if (drift.length > 0) {
   process.exit(1);
 }
 
-const { records, warnings: planWarnings } = planDesignReferences({ designMap, spec, catalog });
+const {
+  records,
+  warnings: planWarnings,
+  notes: planNotes,
+} = planDesignReferences({ designMap, spec, catalog });
 planWarnings.forEach(warn);
+// Secondary-coverage observations. Printed, never counted as warnings: `--strict` exists to stop a
+// catalog publishing a WRONG primary, and a size cell the kit has no node for is neither wrong nor
+// the component's problem. Failing the export over one would cost the catalog every reference it
+// did resolve, which is the trade that capped this lane at one reference per component to begin
+// with.
+planNotes.forEach((note) => console.log(`design-references: note: ${note}`));
 
 if (records.length === 0) {
   console.log("design-references: no design-map entry maps to a published sticker; nothing to do");
@@ -443,10 +453,26 @@ fs.writeFileSync(
 
 writeReferenceAnnotations();
 
+// Report the two lanes separately. A run that publishes 78 primaries and 300 secondaries has very
+// different coverage from one that publishes 78 and none, and the single total hid that.
+const tallyOf = (tier) => {
+  const of = records.filter((r) => r.tier === tier);
+  return { planned: of.length, published: of.filter((r) => r.rastered !== false).length };
+};
+const primary = tallyOf("primary");
+const secondary = tallyOf("secondary");
 console.log(
   `design-references: published ${written}/${records.length} reference(s) to ` +
-    `${REFERENCES_DIR}/ (${warnings.length} warning(s))`,
+    `${REFERENCES_DIR}/ — ${primary.published}/${primary.planned} primary, ` +
+    `${secondary.published}/${secondary.planned} secondary ` +
+    `(${warnings.length} warning(s), ${planNotes.length} coverage note(s))`,
 );
+if (secondary.planned === 0 && records.length > 0) {
+  console.log(
+    "design-references: no secondary references — every design-map entry binds a single " +
+      "scalar ref, so only each component's default render has a spec to diff against.",
+  );
+}
 
 if (written === 0) {
   // Nothing to serve: leave no half-empty directory behind for the branch to carry.
