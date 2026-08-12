@@ -403,6 +403,10 @@ be worse than leaving them open:
    similarity is false.
 6. **Sub-pixel geometry** — element-bounds tolerance and mask-edge alignment both need defined
    rounding, at each transform.
+7. **The match metric**, shared by the candidate gate and the resolution test — which channels,
+   compared how, against what threshold, and what happens at the mask edge. The two must use the
+   same one (see the status table) or they can disagree about whether two images match, but *which*
+   one is a Phase 3 choice for the same reason the kernel is.
 
 The gates and their invalidation causes below are design decisions and do stand as written; it is
 the pixel mechanics above that are deferred.
@@ -488,7 +492,7 @@ part of this contract because §6 cannot override it:
 
 | Status | Condition | Precedence |
 | --- | --- | --- |
-| `resolved` | the **raw** difference inside the mask is gone | **wins over `candidate-changed`** |
+| `resolved` | the masked region now agrees with the **reference** (see below) | **wins over `candidate-changed`** |
 | `invalidated: <cause>` | any gate above fires | applies otherwise |
 | `valid` | no gate fires | — |
 
@@ -500,8 +504,27 @@ dashboard could report a win while the offline gate failed the same commit as st
 means delete the acceptance and close the issue; the other four causes are unaffected, since
 nothing about a changed reference or an ambiguous tag is resolved by agreement.
 
-`status` is part of the fixture result, and the fixed-candidate case is a required fixture — it is
-both the happy path and the case two implementations are most likely to classify differently.
+**What "resolved" tests, precisely.** The two comparisons in play run against *different* targets,
+and conflating them is the easy mistake:
+
+| Test | Compares | Answers |
+| --- | --- | --- |
+| candidate gate | canonical candidate inside the mask ↔ **`accepted-candidate.png`** | "is it still the difference we accepted?" |
+| resolution test | canonical candidate inside the mask ↔ **the reference** | "has it converged on the spec?" |
+
+So `resolved` is *not* "the candidate gate failed in a nice direction" — it is its own comparison,
+against the reference, over the masked region only. That much is a design decision and is settled
+here. What is **not** settled here is the metric and threshold it uses, or how it behaves at the
+mask edge: exact channel equality, `candidateTolerance`, the scorer's `LUMA_TOLERANCE` floor, and a
+regional score all classify a near-miss differently, and picking one blind would be the same error
+as picking a resampling kernel blind. It joins the pixel-semantics **open problems** above, with one
+constraint from this contract: whatever the resolution test uses, it must be the *same* metric the
+candidate gate uses, so the two cannot disagree about whether two images match.
+
+Status is **per acceptance**, not per comparison — a set with one invalidated and one surviving
+member has two statuses, and the fixture result carries them as a map keyed by acceptance id. The
+fixed-candidate case is a required fixture: it is both the happy path and the case two
+implementations are most likely to classify differently.
 
 ### Coordinate space — the real problem
 
@@ -737,7 +760,7 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
 | score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, still separated, downsampled per-region rather than whole-image |
 | score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, so a divergence between the two downsample paths is caught here rather than as a raw/unaccepted mismatch |
-| result | `{raw, accepted, unaccepted, status, invalidations, validationFailures}` — `status` per the contract's precedence table, so the fixed-candidate case has an expected value to pin |
+| result | `{raw, accepted, unaccepted, statuses, validationFailures}` — `statuses` is a **map keyed by acceptance id**, one entry per member of `acceptances[]`, each per the contract's precedence table. A single aggregate status cannot express a mixed-validity case, so both engines could emit the same summary while disagreeing about which mask survived; the mixed-validity fixtures pin the per-id identities |
 
 The stages exist to localise a divergence, so they must follow whatever order the Phase 3 algorithm
 settles on — and must satisfy the invariants above regardless. Two orderings are already known to be
