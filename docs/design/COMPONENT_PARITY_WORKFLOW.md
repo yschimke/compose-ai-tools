@@ -542,10 +542,11 @@ because the drift would show up later as unexplained score movement that nobody 
 **The gate path and the score path are separate, and only the gates use the canonical plane.** Gates
 compare at canonical resolution because that is where a glyph is still a glyph and where the mask
 and accepted candidate are stored. Scoring does not: it draws each region straight from the source
-image into the score plane, one resample, exactly as `scoreImages` does today (I10). That keeps the
-raw number a catalog already displays unchanged when no acceptance survives — enabling this feature
-must not silently move every score — and it keeps both passes on identical geometry, which is what
-I6 actually requires.
+image into the score plane, one resample, exactly as `scoreImages` does today (I10). What that
+preserves is the **geometry**, not the value: enabling acceptance must not move a score by itself,
+and both passes stay on identical stages, which is what I6 actually requires. The *number* still
+shifts once when the portable kernel replaces `drawImage` — see the rebaseline note above; these two
+statements are only compatible if this one is read as being about geometry alone.
 
 **Only `valid` acceptances contribute a mask to the scoring union.** `resolved`, `invalidated` and
 `refused` all suppress **nothing** — "survivor" means status `valid`, not "reached the end of the
@@ -565,6 +566,26 @@ a threshold is one more constant two engines could pick differently, and an anti
 is exactly the boundary case the separation rules already work hardest to keep unambiguous. A
 producer that has a soft-edged selection must decide where the edge falls before committing it,
 which is the right place for that decision to be made.
+
+**The acceptance set is bounded before anything is decoded.** Every record costs two more raster
+decodes plus several intermediate planes on both engines, and a catalog is third-party data — so a
+document with a few thousand individually valid, individually small acceptances can exhaust a
+browser tab or an offline run long before any per-record refusal has a chance to fire. The existing
+catalog fetch limits are per asset and do not see the aggregate. So the document declares out of
+budget and is rejected **before** the per-acceptance decode loop begins: a cap on the number of
+acceptances, and a cap on total decoded pixels across their rasters, both fixed constants rather
+than per-catalog settings. `document-too-large`, checked at the same point as the duplicate-id scan
+— the two are the only whole-document verdicts, and both are cheap enough to reach without touching
+a single PNG.
+
+**The `id` must also be safe as a map key, which is not the same constraint.** `__proto__` is a
+perfectly good path segment and a catastrophic object key: `statuses[id] = value` in the browser
+mutates the prototype instead of creating the own-property the contract requires, while the offline
+map stores it normally — same document, two different results, and duplicate detection breaks the
+same way for `constructor`. Two defences, because either alone is brittle: the reserved names
+`__proto__`, `constructor` and `prototype` are rejected as `id-not-safe`, **and** the browser builds
+`statuses` as a `Map` or a null-prototype object rather than an object literal. The fixtures include
+a `__proto__` id so an implementation using `{}` fails visibly rather than silently.
 
 **The `id` must be a safe single path segment, because the artifact directory is derived from it.**
 Checking a child path against `.design-parity/known-differences/<id>/` is worthless if `<id>` can
@@ -603,6 +624,17 @@ nobody edited the file, not that the file was ever valid. Left undefined, one en
 whole comparison and another silently drops the acceptance, and neither produces the per-acceptance
 status the contract promises. Decode failure and degenerate geometry are therefore `refused` like a
 hash mismatch, and a *correctly hashed malformed artifact* is its own fixture.
+
+**An acceptance whose target no longer exists is `refused` with `orphaned-target`.** Everything else
+in this contract is evaluated *from a comparison* — some `(previewId, referenceId)` pair a page or a
+run opened — so an acceptance naming a preview or reference the catalog has since renamed or removed
+is never scoped into any evaluation at all. It produces no status, appears in no dashboard, and
+survives every cleanup pass by being invisible to all of them: the failure mode is an acceptance
+that quietly outlives the thing it was about. `reference-hash-missing` does not cover it, because
+there is no served reference to compare a hash against. So the offline run additionally walks the
+whole `acceptances[]` against the catalog's published previews and references, independent of any
+comparison, and reports the unmatched ones. With a conformance case, since this is the one status
+no comparison-driven fixture can produce.
 
 **A record that violates the schema is refused — and where the failure lands depends on whether it
 can be keyed.** Missing required fields, wrong types, an unsupported `element.kind`: none of the
@@ -720,6 +752,17 @@ as picking a resampling kernel blind. It joins the pixel-semantics **open proble
 constraint from this contract: whatever the resolution test uses, it must be the *same* metric the
 candidate gate uses, so the two cannot disagree about whether two images match.
 
+**`plane-changed` short-circuits the element gates, which is what makes one index sufficient.** Two
+acceptances on the same comparison can record *different* canonical planes — one authored either
+side of the `MIN_BOX_COVERAGE` fallback — and a single server-transformed index can only carry
+bounds in one of them. But it does not have to carry both: a comparison resolves exactly one plane,
+so at most one of those acceptances passes the plane gate, and the other is already `plane-changed`.
+Running its element gate against bounds transformed through a plane it was not authored in would
+manufacture a false `element-moved` cause on top of a correct `plane-changed` — so once
+`plane-changed` fires, the element gates are not evaluated for that acceptance and contribute no
+causes. The index is therefore always in the plane of every acceptance still being gated, and the
+`causes` list stays comparable across engines.
+
 **The index publishes bounds in canonical coordinates, already transformed.** `boundsInRoot` is
 render-pixel space (I8), the fixtures expect canonical, and nothing said who converts — so one
 implementation would compare raw bounds against a canonical baseline, another transform once, and a
@@ -772,7 +815,8 @@ order is what makes the multi-cause fixture comparable. `reasons` is present **o
 field would leave two engines free to pick different ones. Same fixed ordering rule, drawn from:
 `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`, `reference-hash-missing`, `decode-failed`,
 `degenerate-dimensions`, `mask-encoding-invalid`, `mask-empty`, `dimension-mismatch`,
-`tolerance-out-of-range`, `path-not-contained`, `id-not-safe`, `schema-invalid`.
+`tolerance-out-of-range`, `path-not-contained`, `id-not-safe`, `schema-invalid`, `id-missing`,
+`orphaned-target`, `document-too-large`.
 
 **A per-acceptance refusal populates `validationFailures` as well**, one entry per reason. The two
 fields are not alternatives: `statuses` answers "what happened to this acceptance", and
@@ -780,8 +824,14 @@ fields are not alternatives: `statuses` answers "what happened to this acceptanc
 An earlier revision showed a `refused` status beside an empty `validationFailures`, which left both
 readings implementable and would have produced different fixture results.
 
-`validationFailures` is a list of `{ "id": …, "reason": … }`, and is the *only* populated field when
-the document itself is rejected — `duplicate-id` — in which case `statuses` is absent entirely
+`validationFailures` is a list of `{ "id": …, "reason": … }` — or `{ "index": …, "reason": … }` when
+the record has no usable id, since a missing or malformed `id` is precisely the case that cannot be
+named by one. The array index in `acceptances[]` is always available and always deterministic, so
+that is the fallback identifier, and the reason is `id-missing`. Without this, the document-level
+rejection the schema rules require had no serialisable form at all.
+
+That list is the *only* populated field when the document itself is rejected — `duplicate-id`,
+`id-missing`, `document-too-large` — in which case `statuses` is absent entirely
 rather than empty, since "no acceptance was evaluated" and "every acceptance was valid" must not
 serialise the same way.
 
@@ -1027,8 +1077,8 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
 | separation + canonical (surviving union) | the same split redone against the union of **`valid`-status acceptances** only — resolved, invalidated and refused ones suppress nothing — **and resampled into the canonical plane again** — separation still precedes its resample (I3). A distinct, later stage on purpose: the union cannot be formed until the candidate and element gates have run, and those gates need the canonical pixels the row above produces (I5) |
 | score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, each region drawn **straight from the source image** (I10), per-region rather than whole-image |
-| score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, drawn straight from the source by the same single resample, so raw stays byte-identical to today's number when nothing is accepted |
-| result | `{raw, accepted, unaccepted, statuses, validationFailures}` — `statuses` is a **map keyed by acceptance id**, absent entirely for a document-level rejection (duplicate ids), where `validationFailures` carries the reason alone, one entry per member of `acceptances[]`, each per the contract's precedence table. A single aggregate status cannot express a mixed-validity case, so both engines could emit the same summary while disagreeing about which mask survived; the mixed-validity fixtures pin the per-id identities |
+| score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, drawn straight from the source by the same single resample, so raw and unaccepted stay on identical geometry and acceptance alone never moves the number (the kernel rebaseline does, once) |
+| result | `{raw, accepted, unaccepted, statuses, validationFailures}` — `statuses` is a **map keyed by acceptance id**, absent entirely for a document-level rejection (duplicate ids), where `validationFailures` carries the reason alone; `validationFailures` has **one entry per reason**, not per acceptance, so a record failing two hash checks contributes two, one entry per member of `acceptances[]`, each per the contract's precedence table. A single aggregate status cannot express a mixed-validity case, so both engines could emit the same summary while disagreeing about which mask survived; the mixed-validity fixtures pin the per-id identities |
 
 The stages exist to localise a divergence, so they must follow whatever order the Phase 3 algorithm
 settles on — and must satisfy the invariants above regardless. Two orderings are already known to be
