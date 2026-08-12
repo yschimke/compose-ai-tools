@@ -415,7 +415,8 @@ class RenderEngine(
     // `SceneState`. Keeping it on the held state would let a locale-overridden
     // interactive/recording
     // session leak its locale onto every other render in the same daemon until it closed;
-    // [renderOnce] re-applies it around each frame instead. See [overrideJvmDefaultLocale].
+    // [renderOnce] re-applies it around each frame instead. See [enterPreviewLocale], which also
+    // serialises the switch against every other composition in the process (issue #3721).
     // Announce the scene before anything composes into it — see [sceneLifecycleListener]. Guarded
     // because a producer-side failure must never fail the render it is only observing.
     val lifecyclePreviewId = spec.previewId
@@ -429,7 +430,7 @@ class RenderEngine(
         )
       }
     }
-    val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(spec.localeTag))
+    val localeScope = enterPreviewLocale(spec.localeTag)
     try {
       // Composable-level spans nest *inside* `compose:setContent`, which is the phase that actually
       // composes — so the trace reads "setContent took 40ms, and here is which composable spent
@@ -609,7 +610,7 @@ class RenderEngine(
     } finally {
       // Composition is done (or threw) — drop the process-global locale switch so it never outlives
       // the composition window, whether or not the scene is held past this point.
-      restoreJvmDefaultLocale(previousDefaultLocale)
+      localeScope.close()
     }
     return SceneState(
       spec = spec,
@@ -642,12 +643,7 @@ class RenderEngine(
    */
   @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
   internal fun renderSettlingFrame(state: SceneState, nanoTime: Long) {
-    val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(state.spec.localeTag))
-    try {
-      state.scene.render(nanoTime = nanoTime).close()
-    } finally {
-      restoreJvmDefaultLocale(previousDefaultLocale)
-    }
+    withPreviewLocale(state.spec.localeTag) { state.scene.render(nanoTime = nanoTime).close() }
   }
 
   /**
@@ -699,7 +695,7 @@ class RenderEngine(
     // re-reads `androidx.compose.ui.text.intl.Locale.current`, so the override must be live for the
     // frame to keep resolving CMP `stringResource(...)` in the target locale; restored immediately
     // after the capture so the switch never spans two renders.
-    val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(state.spec.localeTag))
+    val localeScope = enterPreviewLocale(state.spec.localeTag)
     val rawImage =
       try {
         // Render two frames so any LaunchedEffect / animations have a tick to settle. Same
@@ -708,7 +704,7 @@ class RenderEngine(
         trace.section("compose:frame") { renderFrame(state, useWallClockFrameTime) }
         trace.section("compose:captureFrame") { renderFrame(state, useWallClockFrameTime) }
       } finally {
-        restoreJvmDefaultLocale(previousDefaultLocale)
+        localeScope.close()
       }
     // AS-parity wrap crop: a no-size preview measured smaller than the sandbox, so crop the frame
     // to
@@ -1465,12 +1461,7 @@ class RenderEngine(
     // `rememberResourceEnvironment` caches what it resolves — so without this a localized END
     // capture would bake default-language `stringResource(...)` text into the items the drive
     // brought on screen, and re-applying the locale for the final frames alone would not undo it.
-    val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(state.spec.localeTag))
-    try {
-      driveStaticScrollToEndLocalized(state, intent)
-    } finally {
-      restoreJvmDefaultLocale(previousDefaultLocale)
-    }
+    withPreviewLocale(state.spec.localeTag) { driveStaticScrollToEndLocalized(state, intent) }
   }
 
   @OptIn(
@@ -1811,9 +1802,9 @@ class RenderEngine(
      * + the RTL direction). Without this, a `@Preview(locale = "de")` override reached the layout
      *   direction but `stringResource(...)` still rendered the base (English) copy.
      *
-     * Serialized-render assumption: the daemon renders one scene at a time on the compose thread —
-     * the same assumption the `contextClassLoader` install in [setUp] already relies on — so this
-     * process-global switch can't race a concurrent render.
+     * **Not safe to call bare.** The switch is process-global and held sessions each compose on
+     * their own thread, so every use goes through [withPreviewLocale] / [enterPreviewLocale], which
+     * serialise it.
      */
     internal fun overrideJvmDefaultLocale(effectiveTag: String?): java.util.Locale? {
       effectiveTag ?: return null
@@ -1825,6 +1816,80 @@ class RenderEngine(
     /** Restore a JVM default [java.util.Locale] captured by [overrideJvmDefaultLocale]. */
     internal fun restoreJvmDefaultLocale(previous: java.util.Locale?) {
       if (previous != null) java.util.Locale.setDefault(previous)
+    }
+
+    /**
+     * Process-wide gate over the JVM default [java.util.Locale] (issue #3721).
+     *
+     * `fair = true` deliberately. Unlocalized renders are the readers here, and on a busy
+     * multi-seat serve they never stop arriving — a non-fair lock would let them starve a localized
+     * session's writer indefinitely.
+     *
+     * Static, not per-[RenderEngine]: the thing being guarded is one JVM-wide static, and a daemon
+     * (or a test) can hold several engines.
+     */
+    private val localeGate = java.util.concurrent.locks.ReentrantReadWriteLock(true)
+
+    /** An entered locale scope, released exactly once by [PreviewLocaleScope.close]. */
+    internal class PreviewLocaleScope internal constructor(private val release: () -> Unit) {
+      fun close() = release()
+    }
+
+    /**
+     * Claim the locale gate for a render of [localeTag] and apply the override, returning the scope
+     * that releases both. **The caller must `close()` it in a `finally`.**
+     *
+     * [withPreviewLocale] is the form to reach for; this exists for [setUp], whose scope is a
+     * 180-line `try`/`catch` that a lambda would re-indent wholesale.
+     *
+     * The reader/writer split is inverted from the usual intuition, and that inversion is the whole
+     * design:
+     * - a render with **no** locale override is a **reader** — it doesn't touch the global, it only
+     *   depends on it staying put. Any number run concurrently, and the cost is one uncontended
+     *   read-lock acquire per frame, which is what makes this affordable in the common case.
+     * - a render **with** an override is a **writer** — it mutates the global, so it excludes
+     *   everyone.
+     *
+     * Without this, two held sessions (each on its own scene executor — one-shot renders are
+     * already serialised onto [DesktopHost]'s single render thread, held sessions are not) could
+     * sit inside a locale scope at the same time: the unlocalized one resolves
+     * `stringResource(...)` under the other's language and `rememberResourceEnvironment` caches it,
+     * and two localized scopes could restore out of order and leave the daemon's default moved for
+     * good.
+     *
+     * **Enter this on the thread that composes, never around a cross-thread wait.** Held sessions
+     * reach the engine through `submit(...).get()`; a scope entered on the calling side of that
+     * wait would deadlock against the executor thread that needs it.
+     */
+    internal fun enterPreviewLocale(localeTag: String?): PreviewLocaleScope {
+      val effectiveTag = effectiveLocaleTag(localeTag)
+      if (effectiveTag == null) {
+        localeGate.readLock().lock()
+        return PreviewLocaleScope { localeGate.readLock().unlock() }
+      }
+      // A read→write upgrade deadlocks on ReentrantReadWriteLock rather than failing. It can't
+      // happen while one SceneState means one locale for its whole render — this turns a future
+      // violation of that invariant into a diagnosable exception instead of a hung daemon.
+      check(localeGate.readHoldCount == 0) {
+        "enterPreviewLocale($effectiveTag) would upgrade a read lock this thread already holds; a " +
+          "localized render must not nest inside an unlocalized one"
+      }
+      localeGate.writeLock().lock()
+      val previousDefaultLocale = overrideJvmDefaultLocale(effectiveTag)
+      return PreviewLocaleScope {
+        restoreJvmDefaultLocale(previousDefaultLocale)
+        localeGate.writeLock().unlock()
+      }
+    }
+
+    /** [enterPreviewLocale] around [block], released on the way out however it leaves. */
+    internal fun <T> withPreviewLocale(localeTag: String?, block: () -> T): T {
+      val scope = enterPreviewLocale(localeTag)
+      try {
+        return block()
+      } finally {
+        scope.close()
+      }
     }
 
     private fun localeProviders(localeTag: String?): Array<ProvidedValue<*>> {

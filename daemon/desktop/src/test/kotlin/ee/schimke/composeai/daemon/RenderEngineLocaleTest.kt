@@ -2,8 +2,10 @@ package ee.schimke.composeai.daemon
 
 import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -92,6 +94,101 @@ class RenderEngineLocaleTest {
         androidx.compose.ui.text.intl.Locale.current.language,
       )
       RenderEngine.restoreJvmDefaultLocale(previous)
+    } finally {
+      Locale.setDefault(original)
+    }
+  }
+
+  // --- The process-wide gate (issue #3721). The concurrency behaviour it exists for is asserted
+  // against real held sessions in `DesktopInteractiveSessionTest`; these pin the contract of the
+  // helper itself, which needs no Skiko.
+
+  @Test
+  fun withPreviewLocaleAppliesAndRestoresAroundTheBlock() {
+    val original = Locale.getDefault()
+    try {
+      Locale.setDefault(Locale.forLanguageTag("en-US"))
+      val marker = Locale.getDefault()
+      val seen = RenderEngine.withPreviewLocale("de") { Locale.getDefault().language }
+      assertEquals("the block must run under the override", "de", seen)
+      assertSame("and the previous default must be back afterwards", marker, Locale.getDefault())
+    } finally {
+      Locale.setDefault(original)
+    }
+  }
+
+  @Test
+  fun withPreviewLocaleRestoresWhenTheBlockThrows() {
+    val original = Locale.getDefault()
+    try {
+      Locale.setDefault(Locale.forLanguageTag("en-US"))
+      val marker = Locale.getDefault()
+      try {
+        RenderEngine.withPreviewLocale<Unit>("de") { error("boom") }
+      } catch (_: IllegalStateException) {}
+      assertSame(
+        "a throwing render must not leave the daemon's default locale moved",
+        marker,
+        Locale.getDefault(),
+      )
+    } finally {
+      Locale.setDefault(original)
+    }
+  }
+
+  /**
+   * `renderOnce` nests `driveStaticScrollToEnd` inside itself, and both go through the gate — so
+   * same-mode nesting has to be reentrant on both sides or a localized scrolling capture deadlocks
+   * against itself.
+   */
+  @Test
+  fun withPreviewLocaleNestsInEitherMode() {
+    val original = Locale.getDefault()
+    try {
+      Locale.setDefault(Locale.forLanguageTag("en-US"))
+      val nestedWrite =
+        RenderEngine.withPreviewLocale("de") {
+          RenderEngine.withPreviewLocale("de") { Locale.getDefault().language }
+        }
+      assertEquals("de", nestedWrite)
+      assertEquals(
+        "en",
+        RenderEngine.withPreviewLocale(null) {
+          RenderEngine.withPreviewLocale(null) { Locale.getDefault().language }
+        },
+      )
+      // Restoration unwinds to the outer scope's locale, not to whatever the inner one captured.
+      assertEquals("en-US", Locale.getDefault().toLanguageTag())
+    } finally {
+      Locale.setDefault(original)
+    }
+  }
+
+  /**
+   * A read→write upgrade is the one nesting `ReentrantReadWriteLock` cannot serve: it blocks
+   * forever rather than failing. It can't happen while one `SceneState` means one locale for a
+   * whole render, but a future caller that breaks that invariant must get a diagnosable exception
+   * instead of a hung daemon.
+   */
+  @Test
+  fun withPreviewLocaleRefusesAReadToWriteUpgrade() {
+    val original = Locale.getDefault()
+    try {
+      Locale.setDefault(Locale.forLanguageTag("en-US"))
+      val failure =
+        try {
+          RenderEngine.withPreviewLocale(null) {
+            RenderEngine.withPreviewLocale("de") { "should not reach here" }
+          }
+          null
+        } catch (e: IllegalStateException) {
+          e
+        }
+      assertNotNull("a localized render nested inside an unlocalized one must fail loudly", failure)
+      assertTrue(
+        "the message should name the upgrade; got \"${failure?.message}\"",
+        failure?.message?.contains("upgrade") == true,
+      )
     } finally {
       Locale.setDefault(original)
     }
