@@ -349,6 +349,9 @@
   // Compose player pick and `rcPlayerPicked` gates whether it rides the render URL — so page load
   // stays on the instant default snapshot until the visitor actually chooses a server-side player.
   var laneSelect = document.getElementById("cp-lane-select");
+  // The design-spec lane's own chip, beside the combo rather than inside it (see ServeWeb's
+  // specChipHtml). Present only when this preview carries an imported reference.
+  var specChip = document.getElementById("cp-spec-chip");
   var rcDefaultBackend = laneSelect ? (laneSelect.getAttribute("data-rc-default") || "") : "";
   var rcPlayerBackend = rcDefaultBackend;
   var rcPlayerPicked = false;
@@ -2022,15 +2025,25 @@
   // wise the matching option's own label, so the chip and the combo can never name a lane two
   // different things. With no combo at all the chip is the only control on the row, and the
   // generic invitation reads better than "Snapshot".
+  // The renderer the chip returns to when the current lane isn't one of the combo's own — today
+  // that means the design spec, which is a chip of its own. Server-rendered from the same
+  // `primaryLaneLabel` the chip opens on, so a preview with no combo to read has a name too.
+  function defaultLaneLabel() {
+    return (liveToggle && liveToggle.getAttribute("data-default-lane-label")) || "Live preview";
+  }
   function laneLabelText() {
     if (live && live.checked) return "Live";
-    if (!laneSelect) return "Live preview";
+    if (!laneSelect) return defaultLaneLabel();
     var wanted = currentLaneValue();
     var label = "";
     Array.prototype.forEach.call(laneSelect.options, function (o) {
       if (o.value === wanted) label = o.textContent;
     });
-    return label || "Live preview";
+    // On the spec lane there is no matching option — the spec chip beside this one is lit and
+    // already names it, and two adjacent chips both reading "Figma" would be two controls arguing
+    // about the same fact. So this one keeps naming the render lane, which is exactly where
+    // clicking it goes back to.
+    return label || defaultLaneLabel();
   }
   function updateLiveToggle() {
     var interactive = anyInteractive();
@@ -2041,6 +2054,17 @@
       liveToggle.disabled = !liveTransportAvailable() && !interactive;
     }
     if (liveToggleLabel) liveToggleLabel.textContent = laneLabelText();
+    // The spec chip is a toggle, so it reports the lane's state the same way the Live chip does.
+    // Driven from here rather than from its own click handler so every route out of the lane (the
+    // Live chip, a combo pick, an SVG swap, Back/Forward) un-presses it too.
+    if (specChip) {
+      var onSpecLane = specActive();
+      specChip.setAttribute("aria-pressed", onSpecLane ? "true" : "false");
+      specChip.disabled = !specAvailable() && !onSpecLane;
+      specChip.title = onSpecLane
+        ? "Showing the imported design spec — click to return to the render"
+        : specChip.getAttribute("data-spec-chip-tip") || specChip.title;
+    }
     // …and the tooltip, from the same state. The chip's meaning inverts as the visitor moves
     // through the lanes — on the static snapshot a click enters Live, on an interactive lane it
     // exits back to the snapshot — so a fixed `title` would end up describing the opposite of what
@@ -2072,6 +2096,16 @@
       // server-side player the combo will show — there is no static form of the JS canvas lane.
       if (anyInteractive()) { setMode("png"); }
       else { var m = bestLiveMode(); if (m) setMode(m); }
+    });
+  }
+  // The design-spec chip: in and straight back out of the spec lane, no menu in between. Leaving
+  // returns to the static snapshot — the same place the Live chip returns to — rather than to
+  // whichever interactive lane was up before, because the spec is entered to compare against the
+  // *render*, and that is the lane the comparison views (Diff / Triptych / Slider) draw from.
+  if (specChip) {
+    specChip.addEventListener("click", function () {
+      if (specActive()) setMode("png");
+      else if (specAvailable()) setMode("spec");
     });
   }
   // ---- The renderer combo box ------------------------------------------------------------------
@@ -2114,9 +2148,6 @@
         }
       } else if (value === "wasm") {
         if (!wasmActive()) setMode("wasm"); else syncLaneSelect();
-      } else if (value === "spec") {
-        if (!specAvailable()) { syncLaneSelect(); return; }
-        if (!specActive()) setMode("spec"); else syncLaneSelect();
       } else {
         setMode("png");
       }

@@ -795,11 +795,16 @@ class ServeWebTest {
           ),
       )
     assertTrue(html.contains("id=\"cp-spec-lane\""), "the spec lane carrier is rendered")
-    // The lane is one option in the renderer combo, named for the provider it imported from, and
-    // the raster is served from THIS server's reference route — nothing points at figma.com.
+    // The lane is a top-level chip named after the design tool it imported from — NOT an option
+    // inside the renderer combo, which is where it used to sit behind five player names. The raster
+    // is served from THIS server's reference route; nothing points at figma.com.
     assertTrue(
-      html.contains("<option value=\"spec\">Figma spec</option>"),
-      "the spec is offered as a renderer option",
+      html.contains("id=\"cp-spec-chip\"") && html.contains(">Figma</button>"),
+      "the spec lane has its own chip, named after the design tool: $html",
+    )
+    assertFalse(
+      html.contains("<option value=\"spec\""),
+      "the spec lane is no longer hidden inside the renderer combo: $html",
     )
     assertTrue(
       html.contains("data-spec-src=\"/meshcore-mobile/reference/contact-chat-figma.png?token=t\""),
@@ -922,8 +927,8 @@ class ServeWebTest {
       )
     assertTrue(html.contains("id=\"cp-spec-lane\""), "the lane is offered for any provider")
     assertTrue(
-      html.contains("<option value=\"spec\">Design spec</option>"),
-      "a non-Figma provider reads as a plain design spec",
+      html.contains("id=\"cp-spec-chip\"") && html.contains(">Design spec</button>"),
+      "a non-Figma provider reads as a plain design spec: $html",
     )
   }
 

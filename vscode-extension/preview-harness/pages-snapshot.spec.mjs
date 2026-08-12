@@ -457,15 +457,16 @@ const FIXTURE_STATES = [
     },
     {
         // The design-spec lane with the spec actually on the stage. The committed HTML always
-        // opens on the render — the imported reference is only fetched once the lane is selected —
-        // so this is the only way the lane's *end state* is diffed: the combo naming the spec, the
+        // opens on the render — the imported reference is only fetched once the lane is entered —
+        // so this is the only way the lane's *end state* is diffed: the lit Figma chip, the
         // "imported design spec — not a render" hint, the ◇ badge, and the reference filling the
-        // stage where the render was. The raster comes from the harness's existing
-        // `**/reference/**` stub, so no design tool is contacted here either.
+        // stage where the render was. Entered through `#cp-spec-chip`, the lane's own top-level
+        // control (it used to be an `<option>` in the renderer combo). The raster comes from the
+        // harness's existing `**/reference/**` stub, so no design tool is contacted here either.
         fixture: "serve-viewer-path",
         suffix: "spec-lane",
         apply: async (page) => {
-            await page.selectOption("#cp-lane-select", "spec");
+            await page.click("#cp-spec-chip");
             await page.waitForFunction(
                 () => document.getElementById("cp-spec-img")?.hidden === false,
             );
@@ -1224,8 +1225,10 @@ test("contract · the spec lane compares the frame that was on the stage", async
             .catch(() => {});
 
     // From the static raster lane: the blob is the frame, so comparing costs nothing extra.
+    // The lane is entered through its own chip — `#cp-spec-chip`, beside the renderer combo rather
+    // than inside it.
     const beforeSnapshot = requests.length;
-    await page.selectOption("#cp-lane-select", "spec");
+    await page.click("#cp-spec-chip");
     await page.click('[data-cp-spec-view="triptych"]');
     await settled();
     await page.waitForTimeout(100);
@@ -1239,13 +1242,13 @@ test("contract · the spec lane compares the frame that was on the stage", async
     // exercises exactly the path a real Live/Wasm/RC lane takes, without needing a daemon or a
     // Wasm app in the harness. The stale blob must NOT be reused: the lane has to ask the server
     // for the current controls instead.
-    await page.selectOption("#cp-lane-select", "png");
+    await page.click("#cp-spec-chip");
     await page.waitForTimeout(100);
     await page
         .locator(".cp-viewer")
         .evaluate((root) => root.setAttribute("data-mode", "live"));
     const beforeLive = requests.length;
-    await page.selectOption("#cp-lane-select", "spec");
+    await page.click("#cp-spec-chip");
     await settled();
     await expect.poll(() => requests.length).toBe(beforeLive + 1);
     expect(requests.at(-1).pathname.endsWith(".png")).toBe(true);

@@ -1659,9 +1659,18 @@ class ServeHttpRoutingTest {
       queryBody.contains("data-rc-neutral=\"/render/$previewId.rc?session=compose-m3\""),
       "the legacy page keeps its session query on the RC document URL: $queryBody",
     )
+    // The landing links each comparison it can actually offer, by name: this catalog carries RC
+    // documents and design references but no SVG export, so it gets the RC action and the
+    // design-tool one, and no "compare SVG" leading to a dead tab.
+    val landing = get("/compose-m3/").second
     assertTrue(
-      get("/compose-m3/").second.contains("href=\"/compose-m3/compare\""),
-      "the catalog landing links to the native comparison page",
+      landing.contains("href=\"/compose-m3/compare?format=rc\">compare RC players</a>") &&
+        !landing.contains("compare SVG"),
+      "the catalog landing links the comparison formats it carries: $landing",
+    )
+    assertTrue(
+      landing.contains("href=\"/compose-m3/parity\">compare to Figma</a>"),
+      "the catalog landing names the design tool its references come from: $landing",
     )
   }
 
