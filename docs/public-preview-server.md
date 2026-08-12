@@ -703,6 +703,54 @@ and selecting it scores each mock against the sticker it is mapped to:
 
 ![PNG ↔ Design reference lane on the meshcore-mobile catalog](images/serve-references-compare.png)
 
+## Exploded 3D — the screen pulled apart by composable (`?exploded=1`)
+
+The viewer's **3D** chip, beside **SVG**, answers a question a flat render can't: *what is this
+screen made of?* It tilts the vector export back and pulls it apart into one floating sheet per
+level of composable nesting — the frame, then the root composable's own drawing, then its
+children's, and so on — with a leader line naming the composables on each sheet.
+
+![The exploded 3D view of a screen, one sheet per level of composable nesting](../renders/exploded-view/inbox-screen.exploded.png)
+
+It reuses the [`compose/figma-svg`](daemon/DATA-PRODUCTS.md) export and nothing else. That export
+already emits **every composable as a `<g id="…">`, nested exactly as the composables nest**, so the
+structure this needs is sitting in bytes the SVG lane already serves: the view is a pure SVG→SVG
+rewrite ([`ExplodedSvg`](../data/layoutinspector/core/src/main/kotlin/ee/schimke/composeai/data/layoutinspector/ExplodedSvg.kt)),
+not a second capture, a new data product, or a daemon capability to negotiate. Each drawing element
+is assigned to the plane matching its named-group depth; each plane is re-emitted as a structural
+copy of the original tree with only that plane's elements kept, so the enclosing
+`transform` / `clip-path` chain still places everything exactly where it was.
+
+Two consequences worth stating plainly, because they are why this is a server-side SVG rewrite
+rather than a WebGL scene in the page:
+
+- **Any host that can answer `.svg` can answer this**, including a fully static catalog serving a
+  baked `figma/<slug>.svg` off its delivery branch. There is no daemon anywhere in the path.
+- **The result is still one static SVG.** It embeds in a PR body, opens in a browser, `curl`s from
+  an agent, rasterizes in the visual-diff bot and pastes into Figma with its layers intact — none of
+  which a canvas does. The viewer's **Copy link** / **Download** for SVG hand over the exploded view
+  whenever the chip is pressed, because it is the same URL.
+
+A plane is flat, so the camera reduces to one affine `matrix(…)` per sheet. Lean is measured from
+face-on (`0` leaves a portrait preview reading as a portrait preview) and the separation is a
+screen-space offset rather than a distance along the plane normal — a deliberate exaggeration,
+since a physically-honest camera can only separate the sheets by first laying the screen flat, which
+is the one thing this view must not do. The axes live in the overrides drawer:
+
+![The Exploded 3D group in the overrides drawer](../renders/exploded-view/viewer-exploded-controls.png)
+
+Every axis is in the URL, which is the point of projecting server-side: `?exploded=1` is a shareable
+link, and `&explodeTilt=` / `&explodeSpin=` / `&explodeGap=` / `&explodeDepth=` carry a tuned angle
+with it. Untouched axes are omitted, so the common link stays `?exploded=1`. `explodeDepth` caps the
+sheet count — a real screen is fifteen levels deep, and composables nested past the cap fold into the
+last sheet rather than building a tower nobody can read. Out-of-range or unparseable values fall back
+to the default instead of 400ing: this is a view axis on an export URL, not a render override, so a
+stale bookmark still produces a picture.
+
+It composes with the other rewrites of the same bytes — `?mode=web` (external Google Fonts `@import`
+instead of embedded faces) and `?scroll=long` (the full-page export of a scrolling preview) — because
+all three are post-processing steps over one render.
+
 ## Remote Compose players (`/<system>/compare?format=rc`)
 
 A catalog that ships Remote Compose documents gets a **Remote Compose players** lane on the same

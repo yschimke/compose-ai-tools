@@ -47,6 +47,16 @@ const serveAssetsDir = resolve(
 // a realistic size instead of collapsing on broken images.
 const renderPlaceholder = resolve(pagesDir, "_render-placeholder.png");
 const renderSvgPlaceholder = resolve(pagesDir, "_render-placeholder.svg");
+// The `?exploded=1` lane's stub. Unlike the flat placeholders above this one is NOT hand-drawn:
+// `ExplodedSvgFixtureTest` generates it from `_render-placeholder-layered.svg` through the
+// production `ExplodedSvg` renderer and commits the result, so the picture the diff bot posts for
+// the exploded viewer is the real projection — every change to the camera, the sheet split, or the
+// labels moves this baseline on its own.
+const renderExplodedPlaceholder = resolve(pagesDir, "_render-placeholder-exploded.svg");
+// Fixtures navigated with a query string, because the state they capture lives in the URL rather
+// than in the served markup. The exploded viewer is the deep-link case in full: `?exploded=1` is
+// what puts the page on the vector lane and presses the 3D chip, exactly as a shared link does.
+const FIXTURE_QUERY = { "serve-viewer-exploded": "?exploded=1" };
 const IMAGE_LANES = ["**/render/**", "**/hero/**", "**/reference/**", "**/rc-compare/**"];
 const REFERENCE_PLACEHOLDER = `
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="420" viewBox="0 0 200 420">
@@ -194,6 +204,12 @@ const STYLED_FIXTURES = new Set([
     // painted at runtime by `inspect.js` — boxes over the stage, a legend beside it — so captured
     // bare there is nothing to see at all. Its `layers` state below is what actually draws them.
     "serve-viewer-inspect",
+    // The exploded 3D view. Everything it claims is produced at runtime: `viewer.js` reads
+    // `?exploded=1`, presses the 3D chip, switches the stage to the vector lane and fetches the
+    // exploded SVG, and the camera sliders in the drawer are laid out by `serve.css`. Captured
+    // bare, the page shows an unpressed button over a flat placeholder and neither the projection
+    // nor the controls would move a baseline.
+    "serve-viewer-exploded",
     // The Remote Compose viewer, and the page the renderer picker exists for: five players for one
     // captured document. The picker's whole claim is visual — one chip naming the current renderer
     // beside one combo of alternatives, where a row of six pressed-state chips used to be — so
@@ -789,6 +805,26 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The exploded view's camera controls. The default shot proves the projection lands on the
+        // stage; the sliders that shape it sit inside a closed `<details>`, so their layout — a
+        // range and a live readout on one 240px row — is invisible to it and a regression there
+        // would move no baseline. Open the group and nudge the lean off its default so the readout
+        // is shown holding a value rather than its initial text.
+        fixture: "serve-viewer-exploded",
+        suffix: "controls",
+        apply: async (page) => {
+            await page.click('[data-cp-group="explode"] > summary');
+            await page.locator("#cp-explode-tilt").fill("46");
+            await page.locator("#cp-explode-tilt").dispatchEvent("input");
+            await expect(page.locator("#cp-explode-tilt-value")).toHaveText("46°");
+            // The knob re-fetches the re-projected SVG (debounced). Hold until that has landed, or
+            // the shot catches a spinner over the stage and the baseline flickers per run.
+            await page.waitForFunction(
+                () => !document.querySelector('.cp-stage[aria-busy="true"]'),
+            );
+        },
+    },
+    {
         // The player wall's other half. It opens as a plain side-by-side of every player — nothing
         // is diffed until a column is picked as the reference — so the diff layout (the badge on
         // the reference column, the mismatch chips, a diff growing inside each other column) is
@@ -837,9 +873,15 @@ for (const fixture of listPageFixtures()) {
                             contentType: "image/svg+xml",
                         });
                     }
-                    const svg = new URL(route.request().url()).pathname.endsWith(".svg");
+                    const url = new URL(route.request().url());
+                    const svg = url.pathname.endsWith(".svg");
+                    const exploded = svg && url.searchParams.get("exploded") === "1";
                     return route.fulfill({
-                        path: svg ? renderSvgPlaceholder : renderPlaceholder,
+                        path: exploded
+                            ? renderExplodedPlaceholder
+                            : svg
+                              ? renderSvgPlaceholder
+                              : renderPlaceholder,
                         contentType: svg ? "image/svg+xml" : "image/png",
                     });
                 });
@@ -860,7 +902,9 @@ for (const fixture of listPageFixtures()) {
                 }),
             );
             await page.emulateMedia({ colorScheme: theme });
-            await page.goto(`/preview-harness/fixtures/pages/${fixture}.html`);
+            await page.goto(
+                `/preview-harness/fixtures/pages/${fixture}.html${FIXTURE_QUERY[fixture] || ""}`,
+            );
 
             // Wait until every (placeholder-stubbed) image has decoded so the
             // shot isn't a pre-image-load frame. Tolerant: pages with no

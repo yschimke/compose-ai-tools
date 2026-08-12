@@ -5749,6 +5749,17 @@ $rows
         "<button type=\"button\" id=\"cp-svg-toggle\" class=\"cp-fmt-toggle\" " +
           "aria-pressed=\"false\" title=\"Show the vector (SVG) render\">SVG</button>"
       else ""
+    // The exploded 3D toggle — the layered figma-svg tilted back and pulled apart into one sheet
+    // per level of composable nesting ([ExplodedSvg]). It sits beside the SVG toggle because it is
+    // a view *of* that export rather than a separate renderer lane, and is gated on the same
+    // per-preview [hasSvgExport]: with no layered export there is nothing to pull apart, so the
+    // control is omitted rather than offered dead.
+    val explodeToggle =
+      if (hasSvgExport)
+        "<button type=\"button\" id=\"cp-explode-toggle\" class=\"cp-fmt-toggle\" " +
+          "aria-pressed=\"false\" title=\"Explode the vector render into one layer per " +
+          "composable\">3D</button>"
+      else ""
     val svgMatch =
       if (hasSvgExport) {
         val compareQuery =
@@ -6463,6 +6474,7 @@ $rows
           comparePlayersLink,
           specSelector,
           svgFmtToggle,
+          explodeToggle,
           svgMatch,
         )
         .filter { it.isNotBlank() }
@@ -6579,7 +6591,7 @@ $rows
                the DOM. The visible Theme control is the chip row on the viewer bar. -->
           $themeSelectorHtml
           $sizeControlsHtml
-          ${scrollGroupHtml(hasScrollExport, hasSvgExport)}
+          ${exportShapeGroupsHtml(hasScrollExport, hasSvgExport)}
           <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
@@ -6951,6 +6963,69 @@ $rows
         <span class="cp-export-head" id="cp-export-head">Export</span>
         ${group("PNG", "png")}$svgGroup
       </div>
+      """
+      .trimIndent()
+  }
+
+  /**
+   * The drawer groups that shape the *export* rather than the render — Scroll and Exploded 3D —
+   * joined into one slot so a session that offers neither contributes nothing at all. (Interpolated
+   * separately, an absent group left a blank line in every viewer that can't export SVG, which is
+   * most of them.)
+   */
+  private fun exportShapeGroupsHtml(hasScrollExport: Boolean, hasSvgExport: Boolean): String =
+    listOf(scrollGroupHtml(hasScrollExport, hasSvgExport), explodeGroupHtml(hasSvgExport))
+      .filter { it.isNotBlank() }
+      .joinToString("\n          ")
+
+  /**
+   * The overrides drawer's "Exploded 3D" group: the camera and separation knobs behind the viewer
+   * bar's **3D** toggle.
+   *
+   * The toggle alone is the whole feature for most visitors — the defaults are the readable preset
+   * — so the axes live in the drawer rather than on the bar, next to the other things that shape an
+   * export. They are `<input type="range">` rather than numbers because nobody knows what tilt they
+   * want in degrees; they know it when they see it, and the SVG re-projects per drag.
+   *
+   * Every knob carries `data-cp-default`, which is what lets the viewer JS omit an untouched axis
+   * from the URL (so the common link stays `?exploded=1`) and reset it on a Back that drops the
+   * param. The values must therefore stay equal to `ExplodedSvg.Options`' own defaults; the fixture
+   * test is what notices when they drift apart.
+   *
+   * Empty when the session can't export SVG at all — there is no layered vector to pull apart.
+   */
+  private fun explodeGroupHtml(hasSvgExport: Boolean): String {
+    if (!hasSvgExport) return ""
+    fun slider(
+      id: String,
+      label: String,
+      min: String,
+      max: String,
+      step: String,
+      default: String,
+      unit: String,
+      hint: String,
+    ): String =
+      """
+      <label class="cp-explode-row" title="$hint">$label
+        <input id="cp-explode-$id" class="cp-explode-knob" type="range" min="$min" max="$max"
+          step="$step" value="$default" data-cp-default="$default" data-cp-unit="$unit" disabled>
+        <output id="cp-explode-$id-value" class="cp-explode-value">$default$unit</output>
+      </label>
+      """
+        .trimIndent()
+    return """
+      <details class="cp-group" data-cp-group="explode">
+        <summary>Exploded 3D</summary>
+        <div class="cp-group-body">
+          ${slider("tilt", "Lean", "0", "75", "1", "28", "°", "How far the layers lean away from you; 0 is face-on").prependIndent("          ").trimStart()}
+          ${slider("spin", "Spin", "-80", "80", "1", "-16", "°", "How far the layers are turned in their own plane").prependIndent("          ").trimStart()}
+          ${slider("gap", "Separation", "0", "600", "5", "0", "", "Distance between layers; 0 derives one from the preview's size").prependIndent("          ").trimStart()}
+          ${slider("depth", "Layers", "1", "16", "1", "6", "", "Composables nested deeper than this fold into the last layer").prependIndent("          ").trimStart()}
+          <div class="cp-knobs-head">One layer per level of composable nesting, from the
+            <code>compose/figma-svg</code> export. Rides the SVG link and download.</div>
+        </div>
+      </details>
       """
       .trimIndent()
   }
