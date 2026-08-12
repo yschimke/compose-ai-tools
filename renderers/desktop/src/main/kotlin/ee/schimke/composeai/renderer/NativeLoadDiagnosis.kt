@@ -127,12 +127,18 @@ internal object NativeLoadDiagnosis {
     )
 
   /**
-   * Whether [explanation] is being reported for the first time in this JVM. Bounded: a preview set
-   * that manages to produce dozens of *distinct* native failures has bigger problems than a noisy
-   * log, and an unbounded set here would be a slow leak in a long-lived worker.
+   * Whether [explanation] is being reported for the first time in this JVM. Bounded, because an
+   * unbounded set here would be a slow leak in a long-lived worker.
    */
-  private fun firstReportOf(explanation: String): Boolean =
-    reportedNonSkiko.size < MAX_REMEMBERED_NON_SKIKO && reportedNonSkiko.add(explanation)
+  private fun firstReportOf(explanation: String): Boolean {
+    // Clearing rather than refusing, when the bound is reached. Short-circuiting on size would
+    // report *every* later failure as already-seen — including one never encountered before — so a
+    // genuinely new broken library would be silently dropped from the log forever. Dropping the
+    // history instead costs at most one repeated line per distinct failure, which is the direction
+    // to err in for something whose whole job is making a failure visible once.
+    if (reportedNonSkiko.size >= MAX_REMEMBERED_NON_SKIKO) reportedNonSkiko.clear()
+    return reportedNonSkiko.add(explanation)
+  }
 
   /** Test seam — both latches are JVM-global state, so tests must be able to clear them. */
   internal fun resetForTesting() {

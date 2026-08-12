@@ -116,6 +116,21 @@ class NativeLoadDiagnosisTest {
     assertTrue(NativeLoadDiagnosis.diagnose(failure())!!.cascade)
     assertTrue(NativeLoadDiagnosis.diagnose(failure())!!.cascade)
 
+    // A never-seen library is still news after the dedupe bound is reached — the point of the
+    // bookkeeping is to report each failure once, not to go quiet after N of them.
+    repeat(80) { i ->
+      NativeLoadDiagnosis.diagnose(
+        UnsatisfiedLinkError("/opt/app/lib$i.so: lib$i.so: cannot open shared object file")
+      )
+    }
+    val fresh =
+      NativeLoadDiagnosis.diagnose(
+        UnsatisfiedLinkError(
+          "/opt/app/libbrandnew.so: libbrandnew.so: cannot open shared object file"
+        )
+      )
+    assertFalse(fresh!!.cascade)
+
     // A *different* library is news again, and still not a Skia cascade.
     val other =
       NativeLoadDiagnosis.diagnose(
