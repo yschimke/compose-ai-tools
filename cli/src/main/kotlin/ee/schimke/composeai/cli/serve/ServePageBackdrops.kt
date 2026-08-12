@@ -241,8 +241,16 @@ private constructor(
     /** A Figma file key is URL-safe alphanumerics; anything else is not a key we will link to. */
     fun isSafeFileKey(value: String): Boolean = Regex("[A-Za-z0-9_-]{1,64}").matches(value)
 
+    /**
+     * `.png` is **reserved**, because the image comes off the same route as the view with that
+     * suffix. A page legitimately id'd `home.png` would be unreachable — `/pages/home.png` reads as
+     * "the image of the page `home`" — so it is refused here rather than published and half-broken.
+     * Reserving the suffix keeps the URL shape; a separate asset path would only move the
+     * ambiguity.
+     */
     private fun isDrawable(page: BackdropPage): Boolean =
       SAFE_ID.matches(page.id) &&
+        !page.id.endsWith(".png", ignoreCase = true) &&
         page.frame.width.isPositiveFinite() &&
         page.frame.height.isPositiveFinite() &&
         page.image.scale.isPositiveFinite() &&

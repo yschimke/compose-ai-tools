@@ -50,6 +50,14 @@ export const PAGES_VERSION = 1;
 /** `ServePageBackdropStore.SAFE_ID` — a page id is a URL path segment on `/{system}/pages/{id}`. */
 const SAFE_ID = /^[A-Za-z0-9._-]{1,160}$/;
 
+/**
+ * `.png` is reserved: the server serves a page's backdrop off the same route as its view with that
+ * suffix, so a page id'd `home.png` would be unreachable behind the image of the page `home`. The
+ * server refuses one too ([ServePageBackdropStore]); refusing it here as well means the delivery
+ * branch never carries a page the consumer will silently drop.
+ */
+const RESERVED_ID_SUFFIX = /\.png$/i;
+
 const LINK_METHODS = new Set(["code-connect", "manifest", "convention", "unlinked"]);
 
 /** A finite number greater than zero — every dimension the server draws with. */
@@ -85,8 +93,13 @@ export function pageImageName(pageId) {
 function resolveServePreviewId(placement, { byPreviewId, byFunction }) {
   const declared = typeof placement?.previewId === "string" ? placement.previewId : "";
   if (declared !== "") {
+    // Terminal: a declared id that resolves to nothing must NOT fall through to the function name.
+    // [matchesForPreviewId] returns empty for a *sanitised bundle-id collision* — a family where an
+    // apparent exact hit can belong to the colliding sibling — and that emptiness is a refusal, not
+    // a miss. Falling back would then pick the first image of a `@Preview` function that may cover
+    // several themes or states, overlaying a sticker the producer explicitly declined to name.
     const matches = matchesForPreviewId(byPreviewId, declared);
-    if (matches.length > 0) return servePreviewId(matches[0].image?.path);
+    return matches.length > 0 ? servePreviewId(matches[0].image?.path) : null;
   }
   const fn = functionNameOf(placement?.code);
   if (fn) {
@@ -137,7 +150,7 @@ export function planPageBackdrops({ manifest, spec, catalog }) {
   const pages = [];
   for (const page of manifest.pages ?? []) {
     const id = typeof page?.id === "string" ? page.id : "";
-    if (!SAFE_ID.test(id)) {
+    if (!SAFE_ID.test(id) || RESERVED_ID_SUFFIX.test(id)) {
       warnings.push(`page ${JSON.stringify(page?.id ?? null)} has no route-safe id; skipped`);
       continue;
     }

@@ -105,7 +105,18 @@ if (!fs.existsSync(specPath)) {
 
 const catalog = readJson(catalogPath);
 const spec = fs.existsSync(specPath) ? readJson(specPath, { comments: true }) : {};
-const manifest = readJson(manifestPath);
+
+// Fail-soft on the one input this lane owns. A truncated `pages.json` — a killed import, a bad
+// committed edit — would otherwise throw out of this script, and the workflow's `set -e` would take
+// the whole catalog publish down with it. The backdrop is an enhancement; it must never cost a
+// catalog its render, which is the same posture the server's reader has for the same file.
+let manifest;
+try {
+  manifest = readJson(manifestPath);
+} catch (error) {
+  warn(`${PAGES}/pages.json is not readable JSON (${error.message}); publishing without screens`);
+  process.exit(STRICT ? 1 : 0);
+}
 
 const plan = planPageBackdrops({ manifest, spec, catalog });
 for (const message of plan.warnings) warn(message);
@@ -121,16 +132,46 @@ fs.mkdirSync(outDir, { recursive: true });
 // Copy each backdrop under its page id. A screen whose PNG is missing is dropped from the manifest
 // rather than advertised: the server would 404 the image and paint an empty stage.
 const copied = new Set();
+/** The 8-byte PNG signature. The server refuses anything else, so publishing it would be a lie. */
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+function isPng(file) {
+  const head = Buffer.alloc(PNG_SIGNATURE.length);
+  const fd = fs.openSync(file, "r");
+  try {
+    return fs.readSync(fd, head, 0, head.length, 0) === head.length && head.equals(PNG_SIGNATURE);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 for (const { pageId, from } of plan.images) {
-  const source = path.resolve(pagesDir, from);
-  // Contain the read to the producer's own directory — the manifest is generated, but it is still
-  // an input, and `../..` in an image uri must not read arbitrary files into the published bundle.
-  if (!source.startsWith(pagesDir + path.sep)) {
-    warn(`page ${pageId}: backdrop path ${from} escapes ${PAGES}; skipped`);
+  // Contain the read to the producer's own directory. The manifest is generated, but it is still an
+  // input: `../..` in an image uri must not pull arbitrary files into a published bundle.
+  //
+  // Resolved with `realpathSync`, not a lexical prefix test — a *symlink* sitting inside
+  // `design/pages` passes a lexical check while `copyFileSync` follows it out of the directory, so
+  // a repo could publish checkout metadata or another workspace file as `<pageId>.png`. Comparing
+  // real paths closes that, and the regular-file + PNG-signature checks make the published bytes
+  // what the server will actually accept.
+  const realRoot = fs.realpathSync(pagesDir);
+  let source;
+  try {
+    source = fs.realpathSync(path.resolve(pagesDir, from));
+  } catch {
+    warn(`page ${pageId}: backdrop ${from} is missing; skipped`);
     continue;
   }
-  if (!fs.existsSync(source)) {
-    warn(`page ${pageId}: backdrop ${from} is missing; skipped`);
+  if (source !== realRoot && !source.startsWith(realRoot + path.sep)) {
+    warn(`page ${pageId}: backdrop path ${from} resolves outside ${PAGES}; skipped`);
+    continue;
+  }
+  if (!fs.statSync(source).isFile()) {
+    warn(`page ${pageId}: backdrop ${from} is not a regular file; skipped`);
+    continue;
+  }
+  if (!isPng(source)) {
+    warn(`page ${pageId}: backdrop ${from} is not a PNG; skipped`);
     continue;
   }
   fs.copyFileSync(source, path.join(outDir, pageImageName(pageId)));

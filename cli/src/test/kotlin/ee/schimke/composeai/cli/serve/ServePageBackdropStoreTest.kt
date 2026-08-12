@@ -116,6 +116,18 @@ class ServePageBackdropStoreTest {
   }
 
   @Test
+  fun `a page id ending in png is refused — that suffix is the image route`() {
+    // `/{system}/pages/home.png` reads as "the image of the page `home`", so a page genuinely id'd
+    // `home.png` would be unreachable behind it while only its image resolved. Refused rather than
+    // advertised half-broken.
+    val shadowing =
+      upcoming
+        .replace("\"id\":\"upcoming\"", "\"id\":\"home.png\"")
+        .replace("\"uri\":\"upcoming.png\"", "\"uri\":\"home.png\"")
+    assertTrue(store(manifest(shadowing), images = mapOf("home.png" to pngHeader)).pages.isEmpty())
+  }
+
+  @Test
   fun `a duplicate page id keeps the first declaration`() {
     val second = upcoming.replace("\"name\":\"Upcoming-Mobile\"", "\"name\":\"Impostor\"")
     val loaded = store(manifest("$upcoming,$second"))

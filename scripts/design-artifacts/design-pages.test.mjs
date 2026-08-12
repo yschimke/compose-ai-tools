@@ -119,6 +119,50 @@ test("a linked placement the catalog publishes no sticker for keeps its mapping 
   assert.match(plan.warnings.join("\n"), /1 linked placement\(s\) map to no published sticker/);
 });
 
+test("a declared preview id that resolves to nothing does not fall back to the function name", () => {
+  // `matchesForPreviewId` returns empty for a sanitised bundle-id collision family — a refusal, not
+  // a miss. Falling through to the function-name index would then pick the first image of a
+  // `@Preview` that may cover several themes or states, overlaying a sticker the producer
+  // explicitly declined to name.
+  const colliding = {
+    components: [
+      {
+        componentId: "TopAppBar/Medium",
+        images: [
+          { path: "images/a/ideal__default__light.png", previewId: "Kt_Sticker_Small Round" },
+          { path: "images/b/ideal__default__light.png", previewId: "Kt_Sticker_Small_Round" },
+          { path: "images/c/ideal__default__light.png", previewId: "Kt_Sticker_Small_Round_1" },
+        ],
+      },
+    ],
+  };
+  const collidingSpec = {
+    groups: [{ components: [{ componentId: "TopAppBar/Medium", preview: "MediumTopAppBarSticker" }] }],
+  };
+  const plan = planPageBackdrops({
+    manifest: manifest([page([{ ...appBar, previewId: "Kt_Sticker_Small_Round" }])]),
+    spec: collidingSpec,
+    catalog: colliding,
+  });
+  assert.equal(plan.manifest.pages[0].placements[0].previewId, undefined);
+  assert.equal(plan.manifest.pages[0].placements[0].link, "manifest");
+});
+
+test("a page id ending in .png is refused — the suffix is the image route", () => {
+  // `/pages/home.png` reads as "the image of the page `home`", so a page id'd `home.png` would be
+  // unreachable behind it. The server refuses one too; refusing here keeps it off the branch.
+  const plan = planPageBackdrops({
+    manifest: manifest([page([appBar], { id: "home.png" }), page([appBar], { id: "library" })]),
+    spec,
+    catalog,
+  });
+  assert.deepEqual(
+    plan.manifest.pages.map((p) => p.id),
+    ["library"],
+  );
+  assert.match(plan.warnings.join("\n"), /no route-safe id/);
+});
+
 test("an unknown link method degrades to unlinked", () => {
   const odd = { ...appBar, link: "vibes" };
   const plan = planPageBackdrops({ manifest: manifest([page([odd])]), spec, catalog });

@@ -19,14 +19,38 @@
   var blend = root.querySelector("[data-cp-backdrop-blend]");
   var unlinkedToggle = root.querySelector("[data-cp-backdrop-unlinked]");
 
+  // A hotspot that is hidden or muted is also taken out of the tab order and the accessibility
+  // tree. CSS alone can't do this: `opacity: 0` + `pointer-events: none` still leaves an anchor
+  // focusable, so a keyboard user could tab onto an invisible rectangle — no focus ring, no
+  // indication of where they are — and press Enter to navigate. Kept in one place because both
+  // toggles produce non-interactive hotspots and they compose.
+  function syncFocusability() {
+    var hidden = hotspotsToggle && !hotspotsToggle.checked;
+    var unlinkedOnly = unlinkedToggle && unlinkedToggle.checked;
+    var spots = stage.querySelectorAll(".cp-backdrop-hotspot");
+    for (var i = 0; i < spots.length; i++) {
+      var spot = spots[i];
+      var inert = hidden || (unlinkedOnly && spot.getAttribute("data-link") !== "unlinked");
+      if (inert) {
+        spot.setAttribute("tabindex", "-1");
+        spot.setAttribute("aria-hidden", "true");
+      } else {
+        spot.removeAttribute("tabindex");
+        spot.removeAttribute("aria-hidden");
+      }
+    }
+  }
+
   function applyHotspots() {
     if (!hotspotsToggle) return;
     stage.classList.toggle("cp-backdrop-no-hotspots", !hotspotsToggle.checked);
+    syncFocusability();
   }
 
   function applyUnlinked() {
     if (!unlinkedToggle) return;
     stage.classList.toggle("cp-backdrop-unlinked-only", unlinkedToggle.checked);
+    syncFocusability();
   }
 
   // The renders are `loading="lazy"` and only get their real `src` when the overlay is first turned
