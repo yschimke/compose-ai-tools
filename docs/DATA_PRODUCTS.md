@@ -3,7 +3,8 @@
 ## Single producer
 
 The **daemon is the single producer of *structured* data products** — accessibility
-(ATF) findings, semantics trees, theme tokens, layout, recomposition. They're
+(ATF) findings, semantics trees, theme tokens, layout, recomposition, runtime
+permissions. They're
 registered in `DataProductRegistry` and travel as JSON over the daemon protocol.
 Consumers reach them three ways, all backed by the same daemon:
 
@@ -22,6 +23,37 @@ it renders screenshots (and secondary rendered artefacts — see below) but prod
 needs structured data it spins up a short-lived daemon (as `compose-preview a11y`
 does) rather than teaching the Test task to produce it. That split is deliberate:
 it keeps the cold render path lean and free of the daemon's dependency surface.
+
+### Seeding an environment is not producing a data product
+
+The rule above is about *reading analysis out of* a render, not about *pushing state
+into* one. Those are separate directions, and the static lane is allowed the second
+one: `@PermissionPreview`, `@AmbientPreview`, `@GestureHintPreview`, `@FocusedPreview`
+and friends all seed a connector's controller before composition so the render lands
+on the branch the author asked for. A seeded environment changes the *pixels*, which
+is exactly what the lean PNG path exists to produce.
+
+`compose/permissions` is the worked example of the split, because its connector has
+two legs that reach the lanes differently — and that asymmetry is deliberate:
+
+| Leg | Daemon | Static `composePreviewRenderAll` |
+| --- | --- | --- |
+| **Grants** — `PermissionsController.set(...)` → `ShadowApplication.grantPermissions/denyPermissions`, so `ContextCompat.checkSelfPermission` flips the rendered branch | ✅ `renderNow.overrides.permissions` | ✅ `@PermissionPreview(grants = [...])` |
+| **Queries** — `ShadowContextWrapperPermissionTracker` records which permissions the screen asked about, surfaced as the `queried` list | ✅ registered by `SandboxHoldingRunner` | ❌ **by design** |
+
+Grants are seeding: they decide what gets drawn, so the static lane needs them and has
+them (issue #3676, `PermissionPreviewPixelTest`). Queries are analysis: the `queried`
+list is only ever read back through `PermissionsDataProductRegistry` over
+`data/fetch?kind=compose/permissions`, which the standalone Test task has no protocol
+to answer on. Registering the tracker shadow in
+`GenerateRobolectricPropertiesTask`'s generated `robolectric.properties` would collect
+a list nothing in that lane can read, and would route *every* static-lane
+`ContextWrapper.checkPermission` through the connector's grant map — including previews
+carrying no `@PermissionPreview` at all, whose controller state is empty. That is cost
+and blast radius for no consumer, so the tracker stays daemon-only (issue #3698).
+
+The general shape: **if a connector leg changes what the render draws, it belongs in
+both lanes; if it only produces a payload someone fetches, it stays daemon-only.**
 
 ## Two senses of "data product"
 
@@ -61,6 +93,12 @@ so the rename is wire-neutral; the field name stays `dataProducts` for back-comp
   data products.** That's the daemon's job. Keeping it there is what lets the cold
   render path stay lean and dependency-light — see the renderer-compatibility notes
   in [RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md).
+- **Don't add `ShadowContextWrapperPermissionTracker` to the generated
+  `robolectric.properties`.** It looks like a one-line parity fix and isn't — see the
+  table above. `GenerateRobolectricPropertiesTaskTest` pins its absence so the "fix"
+  can't land by accident; if the static lane ever *should* emit permission queries,
+  that needs a sidecar-writing path and a deliberate reversal of the single-producer
+  rule, not just the extra `instrumentedPackages` entry.
 - **Don't teach anything here to produce sense-3 data.** A page backdrop needs a
   Figma read API and a design→code correspondence layer; both are design-parity's
   job, and importing that domain here would duplicate it. If the shape is
