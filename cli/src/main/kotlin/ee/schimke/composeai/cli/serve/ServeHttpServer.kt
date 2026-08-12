@@ -9,12 +9,14 @@ import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.plugins.autohead.AutoHeadResponse
 import io.ktor.server.plugins.compression.Compression
 import io.ktor.server.plugins.compression.gzip
 import io.ktor.server.plugins.compression.matchContentType
@@ -378,6 +380,19 @@ class ServeHttpServer(
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
       install(WebSockets)
+      // Answer HEAD everywhere GET is answered. Every route on this server is registered with
+      // `get`, so without this a HEAD got 405 where a constant path segment matched and 404 where
+      // routing needed a `{system}` — the whole site was un-HEAD-able.
+      //
+      // That is what broke link unfurling: an unfurler probes a URL and its `og:image` with HEAD
+      // before committing to a download, and a 4xx there reads as "this link is dead" rather than
+      // "this server only speaks GET". The same probe is what link checkers, uptime monitors and
+      // `curl -I` use, so all three were being told the site was broken.
+      //
+      // The plugin re-runs the GET pipeline and drops the body, so the headers a probe is asking
+      // about (content type and length, `Cache-Control`, ETag, the generation marker) match the GET
+      // exactly — which is the whole point of the probe.
+      install(AutoHeadResponse)
       // Sliding sessions: any request carrying a session past its half-life gets a freshly signed
       // cookie, so a visitor who keeps coming back is never bounced through GitHub. Runs before
       // routing so it covers every response, and no-ops (no `Set-Cookie` at all) for a young
@@ -461,6 +476,14 @@ class ServeHttpServer(
         // sensitive than `/version`/`/healthz`, so a private box keeps it behind the token.
         get("/status") { handleStatus(json = false) }
         get("/status.json") { handleStatus(json = true) }
+
+        // The crawler-facing pair (see [ServeSiteIndex]). Both are deliberately UNGATED even on a
+        // token-gated host: a crawler has no token, and answering the styled HTML 404 — which is
+        // what these paths did before they existed — tells it nothing. A private server's
+        // `robots.txt` says "disallow everything" and its sitemap is simply absent, which is the
+        // honest answer and the one that keeps its URLs out of an index.
+        get("/robots.txt") { handleRobotsTxt() }
+        get("/sitemap.xml") { handleSitemapXml() }
 
         // Shared frontend assets for ServeWeb pages. These are generic CSS/JS bytes baked into the
         // CLI jar, so they are ungated like the Wasm/RC players and cacheable with an ETag.
@@ -1450,7 +1473,10 @@ class ServeHttpServer(
     // Belt to `private, no-store`'s braces: an intermediary that under-honours the directive still
     // learns the body turns on the session cookie, rather than keying one visitor's HTML by URL
     // alone.
-    if (cacheControl == SIGNED_IN_PAGE_CACHE_CONTROL) {
+    // Load-bearing for ANON_PAGE_CACHE_CONTROL, not just belt-and-braces: that value invites a
+    // shared cache to store the response, and without `Vary: Cookie` the cache would key one
+    // anonymous rendering by URL alone and hand it to a signed-in visitor.
+    if (cacheControl == SIGNED_IN_PAGE_CACHE_CONTROL || cacheControl == ANON_PAGE_CACHE_CONTROL) {
       call.response.headers.append(HttpHeaders.Vary, HttpHeaders.Cookie)
     }
   }
@@ -1488,7 +1514,9 @@ class ServeHttpServer(
       selectedSessionId,
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
-      val systemViews = engagementStore.incrementSystem(selectedSessionId)
+      val systemViews =
+        if (isViewRequest()) engagementStore.incrementSystem(selectedSessionId)
+        else engagementStore.systemViews(listOf(selectedSessionId)).getValue(selectedSessionId)
       val heroId =
         catalogBundleHost(renderHost)?.declaredHeroPreviewId
           ?: ServeWeb.representativePreviewId(renderHost.previews)
@@ -1498,6 +1526,9 @@ class ServeHttpServer(
           "/render/${WebEscaping.urlEncodeSegment(it)}.png" +
           requestQuerySuffix()
       }
+      // Measured off the PNG header, so the unfurl card can declare `og:image:width`/`height`
+      // instead of making the fetcher download the render to find out.
+      val heroSize = heroId?.let { renderHost.bakedRenderSize(it) }
       markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.landingPage(
@@ -1593,7 +1624,13 @@ class ServeHttpServer(
           themeRenderBurstCapacity = renderHost.themeRenderBurstCapacity,
           engagement = previewEngagement(selectedSessionId, renderHost.previews),
           systemViews = systemViews,
-          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = heroUrl),
+          unfurl =
+            ServeWeb.UnfurlMetadata(
+              pageUrl = externalPageUrl(),
+              imageUrl = heroUrl,
+              imageWidth = heroSize?.first,
+              imageHeight = heroSize?.second,
+            ),
           displayTitle = catalogBundleHost(renderHost)?.title,
         ),
         ContentType.Text.Html,
@@ -2164,6 +2201,19 @@ class ServeHttpServer(
             "${WebEscaping.urlEncodeSegment(it)}.png"
         }
     val featuredUrl = featuredPath?.let { externalOrigin() + it + requestQuerySuffix() }
+    // The unfurl image is the FULL render, not the `/hero/` thumbnail the card lays out — those are
+    // downscaled to card size (the front door's is 216×480), which is under every unfurler's floor
+    // for a large-image card and under Google's 512² guidance for using the image at all. The page
+    // wants a small file; a link preview wants a big picture. Falls back to whatever the card uses
+    // when the catalog has no readable full render.
+    val featuredRender =
+      featured?.heroPreviewId?.let { id ->
+        val size = sessions.peekHost(featured.system)?.bakedRenderSize(id) ?: return@let null
+        val path =
+          "/${WebEscaping.urlEncodeSegment(featured.system)}/render/" +
+            "${WebEscaping.urlEncodeSegment(id)}.png"
+        (externalOrigin() + path + requestQuerySuffix()) to size
+      }
     markGeneration("static-page", pageCacheControl())
     call.respondText(
       ServeWeb.homeIndexPage(
@@ -2171,7 +2221,13 @@ class ServeHttpServer(
         token,
         isPublic = isPublic,
         version = BUNDLE_VERSION,
-        unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = featuredUrl),
+        unfurl =
+          ServeWeb.UnfurlMetadata(
+            pageUrl = externalPageUrl(),
+            imageUrl = featuredRender?.first ?: featuredUrl,
+            imageWidth = featuredRender?.second?.first,
+            imageHeight = featuredRender?.second?.second,
+          ),
         githubAuth =
           githubAuth?.let { auth ->
             ServeWeb.GitHubAuthStatus(
@@ -2182,6 +2238,56 @@ class ServeHttpServer(
           },
       ),
       ContentType.Text.Html,
+    )
+  }
+
+  /**
+   * The catalogs a crawler may enumerate: the **listed** ones, each with its preview ids and its
+   * generation date. Unlisted app catalogs are excluded for exactly the reason they're kept off the
+   * front door — they're served, not published — so the sitemap and the home index agree on what
+   * this server claims to offer.
+   *
+   * Reads through [ServeSessionRegistry.peekHost] + [catalogMetaSeen] rather than leasing, which is
+   * the same trick `/status` and the home index use: enumerating every catalog's previews by lease
+   * would resume every suspended daemon on the box, and a sitemap fetch is the last request that
+   * should cost that. A catalog that has never been resident contributes nothing yet and appears
+   * once it has been seen.
+   */
+  private fun crawlableCatalogs(): List<ServeSiteIndex.CatalogEntry> =
+    listedCatalogs().mapNotNull { system ->
+      sessions.peekHost(system)?.let { rememberCatalogMeta(system, it) }
+      val meta = catalogMetaSeen[system] ?: return@mapNotNull null
+      ServeSiteIndex.CatalogEntry(
+        system = system,
+        previewIds = meta.previewIds,
+        lastModified = meta.provenance?.generatedAt,
+      )
+    }
+
+  /** `GET /robots.txt`: what a crawler may ask this server for. See [ServeSiteIndex]. */
+  private suspend fun RoutingContext.handleRobotsTxt() {
+    // Advertised only when there is something in it — an empty sitemap is a broken promise, and a
+    // token-gated host has no crawlable pages at all.
+    val sitemapUrl =
+      if (isPublic && crawlableCatalogs().isNotEmpty()) externalOrigin() + "/sitemap.xml" else null
+    markGeneration("robots", STATIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(ServeSiteIndex.robotsTxt(isPublic, sitemapUrl), ContentType.Text.Plain)
+  }
+
+  /**
+   * `GET /sitemap.xml`: every catalog landing and preview viewer, each stamped with the date its
+   * catalog was generated. 404 on a token-gated host — its pages need a token the crawler doesn't
+   * have, so publishing their URLs would only mint dead links.
+   */
+  private suspend fun RoutingContext.handleSitemapXml() {
+    if (!isPublic) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    markGeneration("sitemap", STATIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(
+      ServeSiteIndex.sitemapXml(externalOrigin(), crawlableCatalogs()),
+      ContentType.Application.Xml,
     )
   }
 
@@ -2423,6 +2529,14 @@ class ServeHttpServer(
     val subtitle: String?,
     val trust: String?,
     val previews: Int?,
+    /**
+     * The preview ids themselves, not just the [previews] count — the sitemap lists one URL per
+     * viewer page and has to name them. Remembered here for the same reason everything else in this
+     * snapshot is: `peekHost` never resumes a suspended catalog, so building the sitemap off live
+     * hosts alone would publish only whichever catalogs happened to be warm, and the file would
+     * change shape between two requests a minute apart.
+     */
+    val previewIds: List<String>,
     val failedRenders: Int,
     val deferredPreviews: Int,
     val heroPreviewId: String?,
@@ -2463,6 +2577,7 @@ class ServeHttpServer(
         subtitle = bundle.subtitle,
         trust = BundleVerifier.summary(bundle.trust),
         previews = host.previews.size,
+        previewIds = host.previews.map { it.id },
         failedRenders = host.previews.count { it.renderFailure != null },
         deferredPreviews = host.liveOnlyPreviewIds.size,
         heroPreviewId = heroId,
@@ -3218,7 +3333,13 @@ class ServeHttpServer(
       val origin = externalOrigin()
       val imageUrl =
         "$origin$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png${requestQuerySuffix()}"
-      val engagement = incrementPreviewViews(sessionId, preview.id)
+      // PNG-header read, so the unfurl card carries the render's real size rather than making the
+      // fetcher download it to measure. Also what stops a 300×210 component from claiming a
+      // large-image card it can't fill (see [ServeWeb.twitterCard]).
+      val imageSize = renderHost.bakedRenderSize(preview.id)
+      val engagement =
+        if (isViewRequest()) incrementPreviewViews(sessionId, preview.id)
+        else previewEngagement(sessionId, listOf(preview)).getValue(preview.id)
       val bundleHost = catalogBundleHost(renderHost)
       // Link the preview to its source file on GitHub, built from the catalog's SOURCE (repo/ref/
       // module of the Kotlin — NOT the delivery branch) joined with the preview's module-relative
@@ -3280,7 +3401,11 @@ class ServeHttpServer(
         withContext(Dispatchers.IO) { renderHost.canDownloadExecutableBundle(preview.id) }
       markGeneration(
         "static-page",
-        viewerCacheControl(githubAuthConfigured = githubAuth != null, isPublic = isPublic),
+        viewerCacheControl(
+          githubAuthConfigured = githubAuth != null,
+          isPublic = isPublic,
+          signedIn = requestIsSignedIn(),
+        ),
       )
       call.respondText(
         ServeWeb.viewerPage(
@@ -3353,7 +3478,13 @@ class ServeHttpServer(
           // catalog-level reason (no live bundle, unverified, …) alongside the per-control note.
           degradations = renderHost.degradations,
           engagement = engagement,
-          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = imageUrl),
+          unfurl =
+            ServeWeb.UnfurlMetadata(
+              pageUrl = externalPageUrl(),
+              imageUrl = imageUrl,
+              imageWidth = imageSize?.first,
+              imageHeight = imageSize?.second,
+            ),
           version = BUNDLE_VERSION,
           sourceHref = sourceHref,
           reportIssue = reportIssue,
@@ -3990,8 +4121,31 @@ class ServeHttpServer(
     }
   }
 
-  private fun pageCacheControl(): String =
-    pageCacheControl(githubAuthConfigured = githubAuth != null, isPublic = isPublic)
+  /**
+   * Whether *this* request is a signed-in one — it presented a valid session cookie. The input that
+   * decides between [SIGNED_IN_PAGE_CACHE_CONTROL] and [ANON_PAGE_CACHE_CONTROL], and the reason
+   * both cache-control helpers are request-scoped rather than server-scoped: "this server has auth
+   * configured" is not the same claim as "this response is personal", and only the second one
+   * justifies refusing to store it.
+   */
+  /**
+   * Whether this request should count as somebody *looking at* the page.
+   *
+   * False for a HEAD. [io.ktor.server.plugins.autohead.AutoHeadResponse] answers a HEAD by running
+   * the GET pipeline and discarding the body, so without this the view tallies would count the
+   * probe an unfurler sends before it fetches — and then count the fetch too, double-counting every
+   * shared link and inflating the numbers with traffic that never rendered a pixel for anyone.
+   */
+  private fun RoutingContext.isViewRequest(): Boolean = call.request.local.method != HttpMethod.Head
+
+  private fun RoutingContext.requestIsSignedIn(): Boolean = githubAuth?.currentLogin(call) != null
+
+  private fun RoutingContext.pageCacheControl(): String =
+    pageCacheControl(
+      githubAuthConfigured = githubAuth != null,
+      isPublic = isPublic,
+      signedIn = requestIsSignedIn(),
+    )
 
   private fun prebakedImageCacheControl(): String = prebakedImageCacheControl(isPublic)
 
@@ -4442,12 +4596,48 @@ class ServeHttpServer(
     internal const val SIGNED_IN_PAGE_CACHE_CONTROL = "private, no-store"
 
     /**
-     * Caching for an assembled HTML page. Public and auth-free ⇒ short edge caching; otherwise the
-     * response is personal (sign-in state) or token-bearing, and is not stored at all.
+     * Caching for a page on a GitHub-auth server that the request proves is **not** personal — no
+     * session cookie, so the HTML is the signed-out rendering every anonymous visitor gets.
+     *
+     * [SIGNED_IN_PAGE_CACHE_CONTROL] used to cover this case too, and `no-store` on an anonymous
+     * public page is a stronger claim than the page deserves: it tells every intermediary and every
+     * link-preview service that this response must not be retained at all, which is a poor thing to
+     * say about a page whose whole purpose is to be shared into a chat and unfurled.
+     *
+     * `max-age=0` keeps the *browser* exactly where `no-store` had it — every visit revalidates, so
+     * the sign-in chip can never be replayed stale, which is the regression the constant above
+     * exists to prevent. `s-maxage` licenses only shared caches, and only in combination with the
+     * `Vary: Cookie` that [markGeneration] appends alongside this value: a request carrying a
+     * session key is a different cache entry and never reaches these bytes. Deliberately no
+     * `stale-while-revalidate` — that is precisely the directive that would let a browser paint the
+     * pre-sign-in HTML after the visitor has signed in.
+     *
+     * One thing `no-store` did that this doesn't: block the back/forward cache. A visitor who signs
+     * in and then presses Back can see the signed-out chrome until they reload. That is a cosmetic
+     * wart for the few who sign in, traded against every shared link on the server being storable.
      */
-    internal fun pageCacheControl(githubAuthConfigured: Boolean, isPublic: Boolean): String =
-      if (githubAuthConfigured) SIGNED_IN_PAGE_CACHE_CONTROL
-      else if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
+    internal const val ANON_PAGE_CACHE_CONTROL = "public, max-age=0, s-maxage=300, must-revalidate"
+
+    /**
+     * Caching for an assembled HTML page. Public and auth-free ⇒ short edge caching; a token-gated
+     * or signed-in response is personal and is not stored at all; an anonymous page on an auth
+     * server is public bytes that shared caches may keep ([ANON_PAGE_CACHE_CONTROL]).
+     *
+     * [signedIn] is only consulted when auth is configured *and* the server is public. A
+     * token-gated host stays on `no-store` whoever is asking: its URLs carry a credential, and
+     * "nobody is signed in" says nothing about whether the response may be stored.
+     */
+    internal fun pageCacheControl(
+      githubAuthConfigured: Boolean,
+      isPublic: Boolean,
+      signedIn: Boolean = true,
+    ): String =
+      when {
+        !githubAuthConfigured ->
+          if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
+        !isPublic || signedIn -> SIGNED_IN_PAGE_CACHE_CONTROL
+        else -> ANON_PAGE_CACHE_CONTROL
+      }
 
     /**
      * The viewer page follows [pageCacheControl]. It used to drop to `no-store` only for a
@@ -4455,8 +4645,11 @@ class ServeHttpServer(
      * personalised thing on the page — but the sign-in chip is on every viewer, live or not, so the
      * non-live viewer was being cached with one visitor's identity baked in.
      */
-    internal fun viewerCacheControl(githubAuthConfigured: Boolean, isPublic: Boolean): String =
-      pageCacheControl(githubAuthConfigured, isPublic)
+    internal fun viewerCacheControl(
+      githubAuthConfigured: Boolean,
+      isPublic: Boolean,
+      signedIn: Boolean = true,
+    ): String = pageCacheControl(githubAuthConfigured, isPublic, signedIn)
 
     /** Classpath location of the vendored Remote Compose player IIFE bundle (global `RC`). */
     private const val RC_PLAYER_RESOURCE = "/rc-player/bundle.js"

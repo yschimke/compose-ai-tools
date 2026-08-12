@@ -33,8 +33,45 @@ object ServeWeb {
    * utility/error pages leave it null and get an honest text-only card. Kept explicit rather than
    * derived here because only the HTTP layer knows the externally visible scheme/host (notably when
    * Caddy terminates TLS).
+   *
+   * [imageWidth]/[imageHeight] are the image's real pixel dimensions, read from the PNG's IHDR by
+   * the caller. Advertising them is not decoration: without them an unfurler has to download the
+   * image and measure it before it can lay out a card, and both Slack and Google drop the image
+   * rather than block on that when the fetch is slow or the measure fails. They also decide which
+   * card the page gets — see [twitterCard], which stops claiming a large-image card for a thumbnail
+   * that cannot fill one.
    */
-  data class UnfurlMetadata(val pageUrl: String, val imageUrl: String? = null)
+  data class UnfurlMetadata(
+    val pageUrl: String,
+    val imageUrl: String? = null,
+    val imageWidth: Int? = null,
+    val imageHeight: Int? = null,
+  )
+
+  /**
+   * The narrower edge a `summary_large_image` card needs before it is worth asking for.
+   *
+   * Slack and Twitter/X both fall back to the small card for an image below roughly this size, and
+   * Google recommends 512² as the floor for a preview image — so a page that asks for the large
+   * card with a 300×210 component render gets the small one anyway, having first told the fetcher
+   * something untrue. A single component preview genuinely is a thumbnail; asking for `summary` and
+   * getting a clean square beats asking for a banner and getting a broken one.
+   */
+  private const val LARGE_CARD_MIN_EDGE = 320
+
+  /**
+   * `twitter:card` for an unfurl — the large-image card only when there is an image *and* we know
+   * it is big enough to fill one. An image whose dimensions we couldn't read keeps the large card:
+   * unknown size is not evidence of a small image, and the fetcher measures it itself in that case.
+   */
+  private fun twitterCard(unfurl: UnfurlMetadata): String {
+    if (unfurl.imageUrl == null) return "summary"
+    val w = unfurl.imageWidth
+    val h = unfurl.imageHeight
+    if (w == null || h == null) return "summary_large_image"
+    return if (w >= LARGE_CARD_MIN_EDGE && h >= LARGE_CARD_MIN_EDGE) "summary_large_image"
+    else "summary"
+  }
 
   /** Aggregate engagement metrics surfaced by the live server UI/API. */
   data class PreviewEngagement(val views: Long = 0)
@@ -6813,13 +6850,23 @@ $rows
           WebEscaping.htmlEscape(unfurlDescription ?: "Compose preview rendered by compose-preview")
         val pageUrl = WebEscaping.htmlEscape(unfurl.pageUrl)
         val imageUrl = unfurl.imageUrl?.let(WebEscaping::htmlEscape)
+        // Only when both are known: a card given one axis has to measure the image anyway, and a
+        // half-declared size is the one input an unfurler can't sanity-check against the pixels.
+        val dimensionsHtml =
+          if (unfurl.imageWidth == null || unfurl.imageHeight == null) ""
+          else
+            """
+
+            <meta property="og:image:width" content="${unfurl.imageWidth}">
+            <meta property="og:image:height" content="${unfurl.imageHeight}">"""
+              .trimIndent()
         val imageHtml =
           if (imageUrl == null) ""
           else
             """
             <meta property="og:image" content="$imageUrl">
             <meta property="og:image:type" content="image/png">
-            <meta property="og:image:alt" content="$metaTitle">
+            <meta property="og:image:alt" content="$metaTitle">$dimensionsHtml
             """
               .trimIndent()
         val twitterImageHtml =
@@ -6837,7 +6884,7 @@ $rows
         <meta property="og:description" content="$description">
         <meta property="og:url" content="$pageUrl">
         $imageHtml
-        <meta name="twitter:card" content="${if (imageUrl == null) "summary" else "summary_large_image"}">
+        <meta name="twitter:card" content="${twitterCard(unfurl)}">
         <meta name="twitter:title" content="$metaTitle">
         <meta name="twitter:description" content="$description">
         $twitterImageHtml

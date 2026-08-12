@@ -331,6 +331,50 @@ class ServeWebTest {
     )
   }
 
+  /**
+   * Declared dimensions let an unfurler lay the card out without downloading and measuring the
+   * image first — the step both Slack and Google skip (dropping the image) when it is slow.
+   */
+  @Test
+  fun `a known image size is declared, and sizes the card honestly`() {
+    fun viewerWith(w: Int?, h: Int?): String =
+      ServeWeb.viewerPage(
+        preview = ServePreview("red", "Red"),
+        token = "unused",
+        unfurl =
+          ServeWeb.UnfurlMetadata(
+            pageUrl = "https://preview.example/p/red",
+            imageUrl = "https://preview.example/render/red.png",
+            imageWidth = w,
+            imageHeight = h,
+          ),
+      )
+
+    val big = viewerWith(1024, 768)
+    assertTrue(big.contains("<meta property=\"og:image:width\" content=\"1024\">"), big)
+    assertTrue(big.contains("<meta property=\"og:image:height\" content=\"768\">"), big)
+    assertTrue(big.contains("<meta name=\"twitter:card\" content=\"summary_large_image\">"), big)
+
+    // A single component render is a thumbnail. Asking for the large card and getting the small one
+    // anyway is worse than asking for the small one: the fetcher was told something untrue.
+    val small = viewerWith(300, 210)
+    assertTrue(small.contains("<meta property=\"og:image:width\" content=\"300\">"), small)
+    assertTrue(small.contains("<meta name=\"twitter:card\" content=\"summary\">"), small)
+
+    // Unknown size is not evidence of a small image — the fetcher measures it itself, and the
+    // dimensions are omitted rather than guessed.
+    val unknown = viewerWith(null, null)
+    assertFalse(unknown.contains("og:image:width"), unknown)
+    assertTrue(
+      unknown.contains("<meta name=\"twitter:card\" content=\"summary_large_image\">"),
+      unknown,
+    )
+
+    // Half a size is no size: a fetcher can't sanity-check one axis against the pixels.
+    val partial = viewerWith(1024, null)
+    assertFalse(partial.contains("og:image:width"), partial)
+  }
+
   @Test
   fun `the renderer combo lists every player with the unavailable ones disabled`() {
     // A Remote Compose preview on an Android daemon: js (client canvas) + java + cmp-android are

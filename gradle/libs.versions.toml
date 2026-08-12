@@ -290,6 +290,11 @@ ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.re
 # the catalog PNG/bundle lanes are already-compressed bytes and are excluded. Same `ktor` version
 # ref so it can't skew the slf4j pin in :cli.
 ktor-server-compression = { module = "io.ktor:ktor-server-compression", version.ref = "ktor" }
+# HEAD-answers-GET for the embedded server. Every `serve` route is registered with `get`, so
+# without this plugin a HEAD probe — what link unfurlers, link checkers and `curl -I` send before
+# committing to a download — got a 404/405 across the whole site. Same `ktor` version ref so it
+# can't skew the slf4j pin in :cli.
+ktor-server-auto-head-response = { module = "io.ktor:ktor-server-auto-head-response", version.ref = "ktor" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
 # Coil 2 / coil 3 — see the version comments above. `coil-compose` (not `coil-base`) because the
