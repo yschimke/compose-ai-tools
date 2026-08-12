@@ -147,12 +147,7 @@ on:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
-# Needed by the paths that still publish inline: the baseline push on `main`
-# and same-repo PRs. On a fork PR GitHub downgrades the token to read-only no
-# matter what this block says — which is the whole reason the split exists.
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}          # nothing by default; each job asks for what it needs
 
 # Two `synchronize` events on one PR would otherwise race: the older render
 # can finish last, and its publisher then overwrites the shared render
@@ -162,8 +157,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  render:
+  # Fork PRs: render only, in a job that is READ-ONLY BY CONSTRUCTION.
+  #
+  # Don't fold this back into the job below by switching `phase` on a
+  # condition. GitHub normally downgrades a fork PR's token to read-only on
+  # its own, but an organization can turn on "send write tokens to workflows
+  # from fork pull requests" — and then a shared job's requested write scopes
+  # are granted for real, while this action exports `github.token` into the
+  # environment the fork's Gradle build runs in. Job-level `permissions` is
+  # what makes the isolation hold regardless of that org setting.
+  render-fork:
+    if: github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -171,16 +178,28 @@ jobs:
       - uses: ./.github/actions/setup           # your java + SDK + cache composite
       - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.0.0
         with:
-          # Same-repo PRs and baseline pushes keep the single-job path, which
-          # already holds a write token. Only fork PRs need the split.
-          phase: ${{ github.event.pull_request.head.repo.fork && 'render' || 'all' }}
+          phase: render
       - uses: actions/upload-artifact@v7
-        if: github.event.pull_request.head.repo.fork
         with:
           name: compose-preview-handoff
           path: _compose_preview_handoff/
           if-no-files-found: error
           retention-days: 1
+
+  # Everything trusted — same-repo PRs and the baseline push on `main` — keeps
+  # the single-job path, which already holds the write token it needs.
+  apply:
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.0.0
 ```
 
 ```yaml
@@ -216,19 +235,33 @@ jobs:
         with:
           persist-credentials: false
 
+      # Only a fork run uploads a handoff. Same-repo runs publish inline and
+      # upload nothing, so this workflow fires with nothing to do — that's the
+      # common case, not an error. Deciding it from `head_repository` rather
+      # than from the download's own outcome is deliberate: a blanket
+      # `continue-on-error` would also swallow a genuine artifact-service or
+      # auth failure on a fork run and let the publisher finish green having
+      # pushed nothing.
+      - id: fork
+        run: |
+          if [ "${{ github.event.workflow_run.head_repository.full_name }}" = "${{ github.repository }}" ]; then
+            echo "is_fork=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_fork=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # No continue-on-error: on a fork run this download failing is a real
+      # failure, and should stay visible and re-runnable.
       - uses: actions/download-artifact@v7
-        id: handoff
-        continue-on-error: true
+        if: steps.fork.outputs.is_fork == 'true'
         with:
           name: compose-preview-handoff
           path: _compose_preview_handoff
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Same-repo runs publish inline and upload no handoff, so this workflow
-      # fires with nothing to do. That's the common case, not an error.
       - id: pr
-        if: steps.handoff.outcome == 'success'
+        if: steps.fork.outputs.is_fork == 'true'
         run: echo "number=$(cat _compose_preview_handoff/_pr_number)" >> "$GITHUB_OUTPUT"
 
       - uses: yschimke/compose-ai-tools/.github/actions/apply@v1.0.0
@@ -236,6 +269,10 @@ jobs:
         with:
           phase: publish
           pr-number: ${{ steps.pr.outputs.number }}
+          # Comment-shaping inputs are consumed on THIS side, so repeat any
+          # you set on the render call — e.g. comment-on-empty-diff,
+          # rerun-checkbox, ab-config. `only` / `skip` are the exception: the
+          # render job's resolution travels in the handoff.
 ```
 
 ### What travels between the jobs

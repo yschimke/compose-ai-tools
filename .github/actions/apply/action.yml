@@ -259,9 +259,18 @@ runs:
             echo "::error::Malformed _pipelines in the handoff ('$staged'); expected four 0/1 fields."
             exit 1
           fi
-          publish_mode="$MODE_OVERRIDE"
-          [ "$publish_mode" = "auto" ] && publish_mode=comment
-          echo "mode=$publish_mode" >> "$GITHUB_OUTPUT"
+          # Comment mode is the only mode the split supports, and this is a
+          # security boundary rather than a convenience: the baseline push
+          # steps take their destination branch from `_baselines` /
+          # `_resource_baselines`, which the restore step does not rebuild
+          # (they are not PR staging dirs). A publish run that reached
+          # baseline mode — passed in, or injected through a staged output —
+          # would take its push target from the artifact again.
+          if [ "$MODE_OVERRIDE" != "auto" ] && [ "$MODE_OVERRIDE" != "comment" ]; then
+            echo "::error::phase=publish supports mode=comment only (got '$MODE_OVERRIDE')."
+            exit 1
+          fi
+          echo "mode=comment" >> "$GITHUB_OUTPUT"
           echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
           echo "compose=$compose" >> "$GITHUB_OUTPUT"
           echo "resources=$resources" >> "$GITHUB_OUTPUT"
@@ -303,7 +312,14 @@ runs:
         # (it is neither a PR nor a push to the development branch). There is
         # only ever one thing a publish job does, so resolve it directly rather
         # than making every consumer pass `mode: comment` alongside `phase`.
-        if [ "$PHASE" = "publish" ] && [ "$mode" = "auto" ]; then
+        # Same rule on the no-_pipelines fallback path: publish is comment
+        # mode, unconditionally, because baseline pushes would read their
+        # destination branch out of the artifact.
+        if [ "$PHASE" = "publish" ]; then
+          if [ "$mode" != "auto" ] && [ "$mode" != "comment" ]; then
+            echo "::error::phase=publish supports mode=comment only (got '$mode')."
+            exit 1
+          fi
           mode=comment
         fi
         if [ "$mode" = "auto" ]; then
@@ -352,8 +368,36 @@ runs:
       env:
         HANDOFF_DIR: ${{ inputs.handoff-dir }}
         AB_CONFIG: ${{ inputs.ab-config }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        RUN_HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+        RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
       run: |
         set -euo pipefail
+
+        # `pr-number` reaches this job from `_pr_number` in the artifact, and
+        # the render job ran fork code — Gradle returning does not mean the
+        # PR's processes exited, so one can outlive it and rewrite the staged
+        # number before the upload snapshots it. Left unchecked, that points a
+        # write-scoped commenter at an unrelated PR with attacker-authored
+        # content. Bind it back to the run that produced the artifact: the
+        # named PR must be the one whose head is this workflow_run's head.
+        if [ -n "${PR_NUMBER:-}" ] && [ -n "${RUN_HEAD_REPO:-}" ]; then
+          if ! printf '%s' "$PR_NUMBER" | grep -qE '^[0-9]+$'; then
+            echo "::error::pr-number must be numeric (got '$PR_NUMBER')."
+            exit 1
+          fi
+          pr_repo=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.repo.full_name' 2>/dev/null || true)
+          pr_branch=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.ref' 2>/dev/null || true)
+          if [ "$pr_repo" != "$RUN_HEAD_REPO" ] || [ "$pr_branch" != "$RUN_HEAD_BRANCH" ]; then
+            echo "::error::Staged pr-number $PR_NUMBER is ${pr_repo:-unknown}:${pr_branch:-unknown}," \
+                 "but this run rendered ${RUN_HEAD_REPO}:${RUN_HEAD_BRANCH}. Refusing to comment."
+            exit 1
+          fi
+          echo "compose-preview: pr-number $PR_NUMBER matches the triggering run's head."
+        fi
+
         if [ ! -d "$HANDOFF_DIR" ]; then
           echo "::error::phase=publish but '$HANDOFF_DIR' does not exist. Download the" \
                "render job's artifact into it before calling this action."
@@ -411,6 +455,15 @@ runs:
         reset_push_meta _a11y_renders        'compose-preview/a11y/pr'          'compose-preview: PR a11y renders'
         reset_push_meta _notification_renders 'compose-preview/notifications/pr' 'compose-preview: PR notification renders'
 
+        # The baseline dirs are comparison inputs here, never push sources —
+        # publish is comment mode, so no baseline push step runs. Strip their
+        # push metadata anyway: it is the one shape that would turn a staged
+        # directory back into a push target if that ever stopped holding.
+        for stage in _baselines _resource_baselines; do
+          [ -d "$stage" ] || continue
+          rm -f "$stage/_push_branch" "$stage/_push_msg" "$stage/_skip_if_unchanged"
+        done
+
         # The A/B config is read from the checkout, which here is the base
         # branch — so a PR that adds or edits one would otherwise be graded
         # against the old grouping, unlike the single-job path. Restore the
@@ -464,8 +517,34 @@ runs:
         # would be reported as a Removed preview.
         if [ "$PHASE" = "publish" ]; then
           if [ -f "$HANDOFF_DIR/_scope_modules" ]; then
+            # Hostile input on its way to $GITHUB_OUTPUT. A newline in this
+            # file would close the `modules=` line and let the rest of it
+            # declare further outputs — `full\nmode=baseline` flips the run
+            # into baseline mode, whose push steps read their target branch
+            # from `_baselines`. Command substitution strips trailing
+            # newlines but not interior ones, so validate the whole value
+            # against the shape compute-scope.py actually emits: `full`, or a
+            # comma-separated list of gradle paths.
             MODULES=$(cat "$HANDOFF_DIR/_scope_modules")
             [ -z "$MODULES" ] && MODULES="full"
+            # Rejects what is actually dangerous here rather than allowlisting
+            # a character set. The sink is a single-line `key=value` write, so
+            # the risk is a control character — a newline ends the `modules=`
+            # line and lets the rest of the value declare its own outputs.
+            # Everything else is just text: `$MODULES` reaches its consumer as
+            # a quoted argument, and `compute-scope.py` echoes gradle project
+            # paths verbatim, which may legitimately contain `@`, `+`, spaces
+            # or non-ASCII. An allowlist here would reject a scope the render
+            # phase staged happily and strand the publish.
+            #
+            # Matched as one whole string, deliberately: `grep -E '^…$'` is
+            # the wrong tool, because it tests line by line and the payload
+            # this guards against matches on its first line.
+            case "$MODULES" in
+              *[[:cntrl:]]* | ,* | *, | *,,*)
+                echo "::error::Refusing a malformed _scope_modules from the handoff."
+                exit 1 ;;
+            esac
             [ "$MODULES" != "full" ] && \
               echo "::notice::compose-preview/apply: publishing a change-scoped render — modules: $MODULES"
           fi
@@ -933,13 +1012,19 @@ runs:
     # on the publish runner. `stage-handoff` copies the renders that are still
     # read there (the sha-differing ones, which is all `_is_changed` opens) and
     # rebases every path onto `<handoff-dir>/current/`.
+    # Runs even when the scope step resolved `skip` (a docs-only PR with no
+    # render-affecting changes). The handoff is then near-empty, but it exists:
+    # the documented upload uses `if-no-files-found: error`, so skipping this
+    # step outright would turn an intentional no-op into a red workflow and
+    # never reach the `workflow_run` publisher at all.
     - name: Stage fork-safe handoff
-      if: steps.resolve.outputs.phase == 'render' && steps.scope.outputs.mode != 'skip'
+      if: steps.resolve.outputs.phase == 'render'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
         HANDOFF_DIR: ${{ inputs.handoff-dir }}
         SCOPE_MODULES: ${{ steps.scope.outputs.modules }}
+        SCOPE_MODE: ${{ steps.scope.outputs.mode }}
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         AB_CONFIG: ${{ inputs.ab-config }}
@@ -972,9 +1057,18 @@ runs:
           cp -a "$f" "$HANDOFF_DIR/$f"
         done
 
-        # `only` / `skip` resolution, so the publish call needs neither.
-        printf '%s,%s,%s,%s' "$WANT_COMPOSE" "$WANT_RESOURCES" "$WANT_A11Y" "$WANT_NOTIFICATIONS" \
-          > "$HANDOFF_DIR/_pipelines"
+        # `only` / `skip` resolution, so the publish call needs neither. A run
+        # the scope step resolved to `skip` rendered nothing, so it hands over
+        # an all-off set: the publisher then has a well-formed handoff to
+        # download and simply posts nothing, rather than reaching comment
+        # steps with no data behind them.
+        if [ "$SCOPE_MODE" = "skip" ]; then
+          printf '0,0,0,0' > "$HANDOFF_DIR/_pipelines"
+          echo "::notice::compose-preview/apply: nothing to render — staging an empty handoff so the publish job is a clean no-op."
+        else
+          printf '%s,%s,%s,%s' "$WANT_COMPOSE" "$WANT_RESOURCES" "$WANT_A11Y" "$WANT_NOTIFICATIONS" \
+            > "$HANDOFF_DIR/_pipelines"
+        fi
 
         # The publish job checks out the base branch, so a PR that adds or
         # edits the A/B config would otherwise be graded against the old one.
