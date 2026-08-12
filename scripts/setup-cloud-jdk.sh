@@ -43,10 +43,11 @@
 #       to requested target
 #     The fix is to copy the system Java trust store over Temurin's.
 #
-# Nothing is downloaded for a major this box already has. Reuse is checked in
-# two places: this script's own install dir, and then the JDKs actually present
-# — `java` on PATH, `$JAVA_HOME`, and the directories Gradle scans for
-# toolchains. That second check is the difference between working and dead on a
+# Nothing is downloaded for a major this box already has — where "has" means a
+# full JDK, compiler included, since a JRE is no use as a Gradle toolchain.
+# Reuse is checked in two places: this script's own install dir, and then the
+# JDKs actually present — `java` on PATH, `$JAVA_HOME`, and the directories
+# Gradle scans for toolchains. That second check is the difference between working and dead on a
 # container provisioned by something else: a Nix-installed Temurin symlinked
 # into `/usr/lib/jvm` is a perfectly good JDK 17, and going to Adoptium for
 # another one fails outright where github.com is gated per repository. See
@@ -74,6 +75,9 @@
 #                     space-separated globs searched for existing JDKs
 #                     (default: "/usr/lib/jvm/* /opt/jdk* /opt/*jdk*
 #                     $HOME/.sdkman/candidates/java/*").
+#   CLOUD_JDK_JVM_LINK_DIR
+#                     where the toolchain symlinks are written
+#                     (default: /usr/lib/jvm).
 #
 # Output: prints the absolute JAVA_HOME of the PRIMARY JDK on stdout.
 # Additional majors are best-effort: a major Adoptium hasn't published yet
@@ -140,7 +144,11 @@ fix_truststore() {
 link_into_jvm_dir() {
   local jdk="$1"
   local major="$2"
-  local jvm_dir="/usr/lib/jvm"
+  # Overridable so the self-test can point this at a fixture. It must never
+  # write into the machine's real /usr/lib/jvm: replacing a live `temurin-17`
+  # with a path that is deleted when the test exits leaves a dangling toolchain
+  # link behind, and on an unprivileged runner the `ln` just fails.
+  local jvm_dir="${CLOUD_JDK_JVM_LINK_DIR:-/usr/lib/jvm}"
   local link="$jvm_dir/temurin-$major"
   if [[ ! -d "$jvm_dir" ]]; then
     mkdir -p "$jvm_dir" 2>/dev/null || {
@@ -209,11 +217,16 @@ jdk_major_of() {
 # Adoptium for one, and in a sandbox that gates github.com per-repository the
 # fetch 403s and the whole setup aborts. A JDK that is present, on PATH, and of
 # the right major is the answer to the question being asked.
+#
+# A JRE is not an answer to this question. Gradle needs a *compiler* for a
+# toolchain, so a `java` of the right major with no `bin/javac` beside it must
+# not short-circuit the download — it would hand back a JAVA_HOME that fails
+# later, at compile time, where the cause is much harder to see.
 discover_jdk_home() {
   local major="$1" cand home
   if command -v java >/dev/null 2>&1; then
     home="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
-    if [[ -x "$home/bin/java" && "$(jdk_major_of "$home" || true)" == "$major" ]]; then
+    if is_jdk_of_major "$home" "$major"; then
       printf '%s' "$home"
       return 0
     fi
@@ -227,13 +240,19 @@ discover_jdk_home() {
   # Deliberately unquoted: $dirs must both word-split and glob-expand here.
   # shellcheck disable=SC2086
   for cand in "${JAVA_HOME:-}" $dirs; do
-    [[ -n "$cand" && -x "$cand/bin/java" ]] || continue
-    if [[ "$(jdk_major_of "$cand" || true)" == "$major" ]]; then
+    if [[ -n "$cand" ]] && is_jdk_of_major "$cand" "$major"; then
       printf '%s' "$cand"
       return 0
     fi
   done
   return 1
+}
+
+# Whether <dir> is a full JDK (java *and* javac) of <major>.
+is_jdk_of_major() {
+  local dir="$1" major="$2"
+  [[ -x "$dir/bin/java" && -x "$dir/bin/javac" ]] || return 1
+  [[ "$(jdk_major_of "$dir" || true)" == "$major" ]]
 }
 
 # Resolve a pinned Temurin tag for a major, if the caller set JDK<major>_VERSION
@@ -319,7 +338,10 @@ install_major() {
   install_dir="$(install_dir_for "$major")"
 
   # Reuse an existing install; just make sure its trust store + symlink are set.
-  if [[ -x "$install_dir/bin/java" ]]; then
+  # `CLOUD_JDK_REUSE_EXISTING=0` means "always download", so it has to bypass
+  # this branch too — otherwise the escape hatch could never refresh the very
+  # install this script placed, which is the one people actually want to redo.
+  if [[ "${CLOUD_JDK_REUSE_EXISTING:-1}" != "0" && -x "$install_dir/bin/java" ]]; then
     echo "[setup-cloud-jdk] reusing existing JDK $major at $install_dir" >&2
     fix_truststore "$install_dir"
     link_into_jvm_dir "$install_dir" "$major"

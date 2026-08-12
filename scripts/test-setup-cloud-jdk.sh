@@ -11,11 +11,16 @@
 # github.com per repository, that 403s and the whole setup aborts, on a box that
 # had a perfectly good JDK 17 on PATH the whole time.
 #
-# Hermetic by construction: `curl` is a stub that records calls and always
-# fails, the JDKs are directory trees with a `release` file and a stub
-# `bin/java`, `CLOUD_JDK_SEARCH_DIRS` points discovery at the fixture instead of
-# this machine, and every case pins what `java` on PATH resolves to. Otherwise
-# the host's own JDKs decide the results.
+# Hermetic by construction, and it has to be: `curl` is a stub that records
+# calls and always fails, the JDKs are fixture directory trees,
+# CLOUD_JDK_SEARCH_DIRS points discovery at the fixture instead of this machine,
+# CLOUD_JDK_JVM_LINK_DIR keeps the toolchain symlinks out of the real
+# /usr/lib/jvm, and every case pins what `java` on PATH resolves to.
+#
+# None of that is belt-and-braces. An earlier draft leaked on every axis: the
+# host's own JDKs answered half the cases, and the symlink step replaced a live
+# /usr/lib/jvm/temurin-17 with a fixture path that dangled the moment the test
+# cleaned up after itself.
 
 set -euo pipefail
 
@@ -24,8 +29,17 @@ script="${repo_root}/scripts/setup-cloud-jdk.sh"
 fixture="$(mktemp -d)"
 trap 'chmod -R u+w "${fixture}" 2>/dev/null || true; rm -rf "${fixture}"' EXIT
 
-# A JDK-shaped directory: `release` carries the version the script reads.
+# A JDK-shaped directory: `release` carries the version the script reads, and
+# `bin/javac` is what makes it a JDK rather than a JRE.
 make_jdk() { # make_jdk <dir> <java-version>
+  local dir="$1" version="$2"
+  make_jre "${dir}" "${version}"
+  printf '#!/usr/bin/env bash\n:\n' >"${dir}/bin/javac"
+  chmod +x "${dir}/bin/javac"
+}
+
+# Same, without a compiler — Gradle cannot use this as a toolchain.
+make_jre() { # make_jre <dir> <java-version>
   local dir="$1" version="$2"
   mkdir -p "${dir}/bin" "${dir}/lib/security"
   printf 'JAVA_VERSION="%s"\n' "${version}" >"${dir}/release"
@@ -56,6 +70,7 @@ run_script() { # run_script [env assignments...]
   env -u JAVA_HOME "$@" \
     CALL_LOG="${fixture}/calls" \
     CLOUD_JDK_SEARCH_DIRS="${fixture}/search/*" \
+    CLOUD_JDK_JVM_LINK_DIR="${fixture}/jvm" \
     PATH="${fixture}/bin:${fixture}/pathjdk/bin:/usr/bin:/bin" \
     bash "${script}"
 }
@@ -72,6 +87,7 @@ out="$(
   env -u JAVA_HOME PATH="${fixture}/bin:${fixture}/onpath17/bin:/usr/bin:/bin" \
     CALL_LOG="${fixture}/calls" \
     CLOUD_JDK_SEARCH_DIRS="${fixture}/search/*" \
+    CLOUD_JDK_JVM_LINK_DIR="${fixture}/jvm" \
     CLOUD_JDK_MAJORS=17 \
     JDK17_DIR="${fixture}/opt/jdk17" \
     bash "${script}" 2>"${fixture}/stderr"
@@ -82,6 +98,10 @@ test ! -s "${fixture}/calls" ||
   { echo "FAIL: downloaded despite a JDK 17 on PATH:" >&2; cat "${fixture}/calls" >&2; exit 1; }
 grep -Fq "already present" "${fixture}/stderr" ||
   { echo "FAIL: no 'already present' log line" >&2; cat "${fixture}/stderr" >&2; exit 1; }
+test "$(readlink -f "${fixture}/jvm/temurin-17")" = "$(readlink -f "${fixture}/onpath17")" ||
+  { echo "FAIL: the reused JDK should be symlinked for toolchain detection" >&2; exit 1; }
+# And nowhere near the machine's own toolchain directory.
+test ! -e /usr/lib/jvm/temurin-999 || { echo "FAIL: test wrote to the real /usr/lib/jvm" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # 2. A JDK found only in a scanned directory (not on PATH, not JAVA_HOME) counts
@@ -134,13 +154,34 @@ grep -Fq "jdk-17.0.20" "${fixture}/calls" ||
     cat "${fixture}/calls" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# 5. CLOUD_JDK_REUSE_EXISTING=0 forces a download even with a JDK present.
+# 5. CLOUD_JDK_REUSE_EXISTING=0 forces a download even with a JDK present —
+#    including one sitting in the script's own install dir, which is the copy
+#    people actually want to refresh.
 # ---------------------------------------------------------------------------
 : >"${fixture}/calls"
 run_script CLOUD_JDK_MAJORS=17 JDK17_DIR="${fixture}/opt/jdk17-e" \
   CLOUD_JDK_REUSE_EXISTING=0 >/dev/null 2>&1 || true
 test -s "${fixture}/calls" ||
   { echo "FAIL: CLOUD_JDK_REUSE_EXISTING=0 should have attempted a download" >&2; exit 1; }
+
+: >"${fixture}/calls"
+make_jdk "${fixture}/opt/jdk17-e2" "17.0.19"
+run_script CLOUD_JDK_MAJORS=17 JDK17_DIR="${fixture}/opt/jdk17-e2" \
+  CLOUD_JDK_REUSE_EXISTING=0 >/dev/null 2>&1 || true
+test -s "${fixture}/calls" ||
+  { echo "FAIL: CLOUD_JDK_REUSE_EXISTING=0 must bypass install-dir reuse too" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# 5b. A JRE of the right major is not a toolchain. Reusing it would hand back a
+#     JAVA_HOME with no compiler, and the failure would surface much later.
+# ---------------------------------------------------------------------------
+: >"${fixture}/calls"
+rm -rf "${fixture}/search"; mkdir -p "${fixture}/search"
+make_jre "${fixture}/search/jre17" "17.0.19"
+run_script CLOUD_JDK_MAJORS=17 JDK17_DIR="${fixture}/opt/jdk17-jre" \
+  >/dev/null 2>&1 || true
+grep -Fq "curl" "${fixture}/calls" ||
+  { echo "FAIL: a JRE (no bin/javac) must not satisfy the JDK requirement" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # 6. Our own install dir still wins over discovery, and a JDK whose trust store
