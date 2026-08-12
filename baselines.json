@@ -709,6 +709,18 @@
       "sha256": "d257013ecbbb1f0310b024585843aa549de4d87e00c119ade789c8d25db902bf",
       "size": 72618
     },
+    "serve-social-card.dark.png": {
+      "fixture": "serve-social-card",
+      "theme": "dark",
+      "sha256": "cf101b71dc9d0351427a6c4610cd5c3cb40895a8dade65541ffc5edb67ad7477",
+      "size": 75663
+    },
+    "serve-social-card.light.png": {
+      "fixture": "serve-social-card",
+      "theme": "light",
+      "sha256": "cf101b71dc9d0351427a6c4610cd5c3cb40895a8dade65541ffc5edb67ad7477",
+      "size": 75663
+    },
     "serve-status.dark.png": {
       "fixture": "serve-status",
       "theme": "dark",

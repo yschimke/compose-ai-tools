@@ -417,6 +417,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-reference-compare-annotated/dark](renders/serve-reference-compare-annotated.dark.png) |
 | `light` | ![serve-reference-compare-annotated/light](renders/serve-reference-compare-annotated.light.png) |
 
+## serve-social-card
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-social-card/dark](renders/serve-social-card.dark.png) |
+| `light` | ![serve-social-card/light](renders/serve-social-card.light.png) |
+
 ## serve-status
 
 | Theme | Capture |
