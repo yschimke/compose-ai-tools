@@ -1617,6 +1617,39 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         siblings = statefulPreviews,
       )
+    // The tree at full depth. `synthesizeGroups` only divides a catalog with at least two families
+    // and one family holding more than one card, and the variant/state fixtures above are each a
+    // single component — so neither of them renders a tree at all, and the component and variant
+    // rows would go uncaptured. This mixes them: a Button family of two cards (one carrying the
+    // props axis), plus Checkbox and Radio button carrying the state axis.
+    val treeDepthPreviews =
+      variantPreviews +
+        listOf(
+          ServePreview(
+            "button-outlined__ideal__default__light",
+            "Button · Outlined (light)",
+            state = "default",
+            theme = "light",
+          ),
+          ServePreview(
+            "button-outlined__ideal__default__dark",
+            "Button · Outlined (dark)",
+            state = "default",
+            theme = "dark",
+          ),
+        ) +
+        statefulPreviews
+    val landingTreeDepth =
+      ServeWeb.landingPage(
+        "compose-m3",
+        treeDepthPreviews,
+        token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        hasHomeIndex = true,
+        version = version,
+      )
     // A catalog whose component carries baked PROPS-axis variants (RTL / pseudo-locale / large
     // font): the landing folds the eight renders to ONE (default) card, the variants reachable via
     // the viewer's variant switcher.
@@ -2004,6 +2037,7 @@ class ServeWebFixtureTest {
         "serve-viewer-states.html" to viewerStates,
         "serve-status.html" to serveStatus,
         "serve-landing-variants.html" to landingVariants,
+        "serve-landing-tree-depth.html" to landingTreeDepth,
         "serve-viewer-variants.html" to viewerVariants,
         "serve-landing-grouped.html" to landingGrouped,
         "serve-viewer-nav-collapsed.html" to viewerNavCollapsed,
@@ -2750,7 +2784,7 @@ class ServeWebFixtureTest {
     // next visitor to the wrong section.
     assertTrue(
       landingSections.contains("function setFragment(id)") &&
-        landingSections.contains("setFragment(g.getAttribute(\"data-group\"))") &&
+        landingSections.contains("setFragment(id);") &&
         landingSections.contains("setFragment(\"\");"),
       "navigating replaces the fragment, and choosing a section clears it",
     )
@@ -2799,9 +2833,52 @@ class ServeWebFixtureTest {
         landingGrouped.contains("<h2 class=\"cp-group-head\">FAB</h2>"),
       "a section-less catalog renders synthesized family sub-group dividers",
     )
+    // A section-less catalog now gets an OUTLINE tree over the same flat grid: its synthesized
+    // families are the top level, so the two levels of structure it does have (family, then
+    // component) are navigable instead of invisible. No sections means no panels to switch, so
+    // these rows carry no `data-tab` and the script emits none of the section machinery.
+    assertTrue(
+      landingGrouped.contains("role=\"tree\"") &&
+        landingGrouped.contains("aria-label=\"Catalog contents\"") &&
+        landingGrouped.contains("<div class=\"cp-subgroup\" id=\"cp-group-button\">"),
+      "a section-less catalog renders an outline tree over its synthesized families",
+    )
+    // The tree's two deepest levels. A component row jumps to its card (an in-page `data-group`);
+    // a variant row has nowhere on the page to go — the grid folds those renders out — so it is a
+    // plain link to the viewer, and carries no `data-group` at all.
+    assertTrue(
+      landingTreeDepth.contains(
+        "<a class=\"cp-tree-component cp-tree-link\" role=\"treeitem\"" +
+          " href=\"#cp-card-button-filled__ideal__default__light\""
+      ),
+      "each component is a row pointing at its own grid card",
+    )
+    val variantRows =
+      Regex("<a class=\"cp-tree-variant cp-tree-link\"[^>]*>([^<]+)</a>")
+        .findAll(landingTreeDepth)
+        .map { it.groupValues[1] }
+        .toList()
+    assertTrue(
+      variantRows.containsAll(listOf("Default", "RTL", "Locale ar-XB", "Font 2.0×", "Unchecked")),
+      "primary-axis variants (props and state) each become a row: $variantRows",
+    )
+    assertTrue(
+      landingTreeDepth.contains(
+        "href=\"/p/button-filled__ideal__default__light__direction-rtl?session=compose-m3\""
+      ),
+      "a variant row links to the viewer rather than jumping within the page",
+    )
+    // Theme is SECONDARY — the card swaps it in place — so it never becomes a row, and neither the
+    // dark twin of a component nor a `__dark` variant appears in the tree.
     assertFalse(
-      landingGrouped.contains("role=\"tree\""),
-      "synthesized family grouping renders no navigation tree (it is a flat grouped grid)",
+      Regex("<a class=\"cp-tree-(component|variant)[^>]*(Dark|__dark)")
+        .containsMatchIn(landingTreeDepth),
+      "theme stays a secondary axis and earns no tree row",
+    )
+    assertFalse(
+      landingGrouped.contains("data-tab=") ||
+        landingGrouped.contains("localStorage.getItem(\"cp-tab:"),
+      "an outline tree switches no panels, so it emits no section machinery",
     )
     // The component nav collapses to ONE entry per component: button-filled's ~8 baked variants +
     // checkbox/radiobutton states yield exactly three nav items, button-filled listed once.
@@ -3133,7 +3210,7 @@ class ServeWebFixtureTest {
       "themed catalog shows the theme toggle",
     )
     assertTrue(
-      landingThemed.contains("class=\"cp-card\" data-swap=\"1\"") &&
+      Regex("class=\"cp-card\"[^>]*data-swap=\"1\"").containsMatchIn(landingThemed) &&
         landingThemed.contains("data-l-src=") &&
         landingThemed.contains("data-d-src="),
       "a paired component renders one swap card carrying both themes' baked render",
@@ -4785,7 +4862,7 @@ class ServeWebFixtureTest {
     // Two components × two themes → two swap cards, each carrying both themes' render.
     assertEquals(
       2,
-      Regex("class=\"cp-card\" data-swap=\"1\"").findAll(pairedHtml).count(),
+      Regex("class=\"cp-card\"[^>]*data-swap=\"1\"").findAll(pairedHtml).count(),
       "each paired component is one swap card (two components → two cards, not four)",
     )
     assertTrue(
@@ -4846,7 +4923,7 @@ class ServeWebFixtureTest {
     // one.
     assertEquals(
       2,
-      Regex("class=\"cp-card\" data-swap=\"1\"").findAll(html).count(),
+      Regex("class=\"cp-card\"[^>]*data-swap=\"1\"").findAll(html).count(),
       "the dark-state and light-state toggles stay separate swap cards",
     )
     // Both states survive: each state's light+dark ids appear as swap-card data (none dropped).

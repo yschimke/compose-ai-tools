@@ -220,6 +220,16 @@ const STYLED_FIXTURES = new Set([
     // and none of that would move a baseline. Its two states below are the ones the tree exists
     // for.
     "serve-landing-sections",
+    // The tree at full depth, and the only fixture that reaches its lower two levels: a group
+    // opening onto its components, and a component onto the primary-axis variants the grid folds
+    // out. Every claim it makes is painted — the nesting rails, the twisty on a component row, the
+    // lighter treatment that separates a variant (which leaves the page) from a component (which
+    // scrolls the grid). Captured bare it is a nested list of unstyled links.
+    "serve-landing-tree-depth",
+    // The section-less catalog, which is the shape most published design systems are in. Its whole
+    // change is navigational and therefore visual — it went from a bare wall of cards with no
+    // navigation at all to an outline tree beside them — so captured bare it would move nothing.
+    "serve-landing-grouped",
     // The Wear viewer exists for ONE claim: the Size panel offers watch shapes and no Orientation
     // row. That claim lives entirely inside the override drawer, so it has to be painted by the
     // real stylesheet — captured bare it is a column of unstyled labels where a panel regression
@@ -338,6 +348,26 @@ const FIXTURE_STATES = [
             // about the filter alone.
             await page.uncheck("[data-cp-backdrop-renders]");
             await page.check("[data-cp-backdrop-unlinked]");
+        },
+    },
+    {
+        // A component opened onto its variants — the state the two deepest levels exist for, and
+        // one the committed HTML cannot hold: components ship collapsed, so without this the
+        // variant rows would never appear in a baseline at all.
+        fixture: "serve-landing-tree-depth",
+        suffix: "component-open",
+        apply: async (page) => {
+            await page.click(
+                '.cp-tree-component[data-group="cp-card-button-filled__ideal__default__light"]',
+            );
+            await page.waitForFunction(
+                () =>
+                    document
+                        .querySelector(
+                            '.cp-tree-component[data-group="cp-card-button-filled__ideal__default__light"]',
+                        )
+                        ?.getAttribute("aria-expanded") === "true",
+            );
         },
     },
     {

@@ -93,12 +93,38 @@ makes. The exception is a live **search**, which spans every section: every bran
 a match opens, and a group row disappears with the cluster the filter emptied, so a row never
 survives the destination it points at.
 
+Below a group the tree keeps going: one row per **component**, and under a component the
+**variants** the grid folds out from under it. A component row scrolls to that component's card; a
+variant row is the one row that leaves the page, because those renders have no card of their own —
+it opens the viewer on that variant.
+
+Which variants get a row is the primary/secondary split. **Primary** is `state` (disabled, pressed,
+checked) and `props` (with icon, RTL, large font) — axes where the variant is a different thing to
+look at. **Secondary** is theme, breakpoint, fontScale and locale — a different rendering of the
+same thing — and those stay out of the tree, theme because the card already swaps it in place, the
+rest because they would multiply every component by a matrix nobody navigates by.
+
+Depth is paid for by the same rule at every level: a group is open exactly when it is the current
+one, and so is a component. Otherwise a catalog of eighty components would put all of them, and
+their variants, in the sidebar at once — the wall the grid already is.
+
+A catalog that declares **no section at all** — the shape most published design systems are in,
+where the inventory comes from `@CatalogComponent(group = …)` and nothing names a section — now gets
+an **outline** tree, whose top level is those groups. It used to get no tree whatever: the landing
+fell back to a flat grid and the structure the catalog did have stayed invisible. There are no
+panels to switch there, so every row is purely a jump.
+
 The tree carries the keyboard pattern its role names — Down/Up walk the visible rows, Right opens a
-collapsed section, Left climbs from a group back to its section — and marks the group you are
-actually scrolled to. It is progressive enhancement throughout: with scripting off nothing collapses
-at all, every section shows under its own heading, and every row is a working in-page anchor. A
-catalog whose previews carry no section (most of the published design systems today) keeps the
-single flat grid, unchanged.
+collapsed row or steps into an open one, Left closes it or climbs to the parent — and marks the
+group you are actually scrolled to. It is progressive enhancement throughout: with scripting off
+nothing collapses at all, every section shows under its own heading, and every row is a working
+in-page anchor.
+
+A component opened onto its variants, and the outline tree a section-less catalog now gets:
+
+![A component row opened onto its primary-axis variants](images/serve-catalog-tree-variants.png)
+
+![The outline tree over a section-less catalog](images/serve-catalog-tree-outline.png)
 
 ![Catalog navigation tree — meshcore-mobile (light)](images/serve-catalog-tree-light.png)
 

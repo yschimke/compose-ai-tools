@@ -517,8 +517,44 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized); }
 .cp-tab[aria-expanded="true"]::before { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .cp-tab[aria-expanded]::before { transition-duration: 0.01ms; } }
-/* Collapse is a JS-only state: a no-JS client shows every panel, so it must show every branch. */
-html.cp-js .cp-tab[aria-expanded="false"] + .cp-tree-children { display: none; }
+/* Collapse is a JS-only state: a no-JS client shows every panel, so it must show every branch —
+   which is also the only way its rows stay reachable, since the arrow keys never bind there. One
+   rule for all four levels: a collapsed row hides the list it owns. */
+html.cp-js .cp-tab[aria-expanded="false"] + .cp-tree-children,
+html.cp-js .cp-tree-link[aria-expanded="false"] + .cp-tree-children { display: none; }
+/* The twisty, drawn for any row that can expand — group and component alike. */
+.cp-tree-link[aria-expanded]::before { content: ""; flex: none; width: 0; height: 0;
+  margin-left: -6px; border: 4px solid transparent;
+  border-left-color: currentColor; border-right-width: 0;
+  transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized); }
+.cp-tree-link[aria-expanded="true"]::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) {
+  .cp-tree-link[aria-expanded]::before { transition-duration: 0.01ms; }
+}
+/* Level three and four. Each nests one step further in and loses a little weight, so depth reads
+   at a glance rather than having to be counted: group → component → variant. */
+.cp-tree-components { margin: 2px 0 4px 12px;
+  border-left: 1px solid var(--md-sys-color-outline-variant); }
+.cp-tree-component { display: flex; align-items: center; gap: 6px; min-height: 30px;
+  padding: 4px 10px; border-radius: 0 var(--md-sys-shape-corner-full)
+    var(--md-sys-shape-corner-full) 0;
+  font-size: var(--md-sys-typescale-label-medium-size);
+  color: var(--cp-fg-muted); text-decoration: none;
+  transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
+.cp-tree-component:hover { color: var(--md-sys-color-on-surface); text-decoration: none;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
+.cp-tree-component[aria-expanded="true"] { color: var(--md-sys-color-on-surface);
+  font-weight: 500; }
+.cp-tree-variants { margin: 0 0 4px 12px;
+  border-left: 1px dashed var(--md-sys-color-outline-variant); }
+/* A variant row leaves the page — it is the one row that navigates to the viewer, because the
+   grid folds these renders out and there is nothing here to jump to. */
+.cp-tree-variant { display: block; min-height: 26px; padding: 3px 10px;
+  font-size: var(--md-sys-typescale-label-small-size);
+  color: var(--cp-fg-faint); text-decoration: none; }
+.cp-tree-variant:hover { color: var(--md-sys-color-primary); text-decoration: underline; }
+.cp-tree-component:focus-visible, .cp-tree-variant:focus-visible {
+  outline: 3px solid var(--md-sys-color-secondary); outline-offset: -2px; }
 /* A section's sub-groups, indented under one guide line. */
 .cp-tree-children { margin: 2px 0 8px 22px;
   border-left: 1px solid var(--md-sys-color-outline-variant); }
