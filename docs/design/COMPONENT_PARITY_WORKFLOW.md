@@ -495,7 +495,17 @@ suppresses nothing and is surfaced as needing review:
 
 A mask whose bytes do not match `maskSha256` is not an invalidation at all — it is a **hard
 validation failure**: the acceptance is refused and reported, because a mask we cannot trust is a
-broken artifact rather than a stale one. That refusal is the `refused` **status**, so every
+broken artifact rather than a stale one.
+
+**A reference with no `sha256` is refused for the same reason**, not invalidated as
+`reference-changed`. The fingerprint gate compares a recorded hash against a served one; with
+nothing to compare, the gate cannot run, and an acceptance whose primary safety check is
+inoperable is a broken configuration rather than a stale one. The distinction matters because
+`reference-changed` reads as "the design moved" — a fact about the world — while this is "we cannot
+tell", which needs a different fix (publish the hash) and a different message. Both belong in the
+validation-failure fixtures.
+
+That refusal is the `refused` **status**, so every
 acceptance id still maps to exactly one status and the hash-mismatch fixtures have an expected value
 like any other case — `validationFailures` carries the detail of *what* failed, `statuses` says
 which acceptance it happened to.
@@ -508,7 +518,7 @@ Evaluated strictly in this order — the first row whose condition holds wins:
 
 | # | Status | Condition |
 | --- | --- | --- |
-| 1 | `refused` | either artifact's bytes fail their recorded hash — the acceptance is never evaluated |
+| 1 | `refused` | either artifact's bytes fail their recorded hash, **or the targeted reference publishes no `sha256`** — the acceptance is never evaluated |
 | 2 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
 | 3 | `resolved` | the masked region now agrees with the **reference** (see below) |
 | 4 | `invalidated: [candidate-changed]` | the candidate gate fired and the region did not converge |
@@ -631,8 +641,9 @@ referenceId, variant)`:
 
 1. **Fingerprint gate.** If the served reference's `sha256` ≠ the acceptance's `referenceSha256`,
    the acceptance is `invalidated: reference-changed`. It contributes no suppression, and the page
-   says so. An acceptance targeting a reference that publishes no `sha256` is refused at validation
-   time.
+   says so. An acceptance targeting a reference that publishes no `sha256` is `refused` — status
+   row 1 of the contract, not an invalidation, since a gate with nothing to compare against cannot
+   have fired.
 2. **Plane gate.** Recompute the plane for this pair. If its `plane` discriminant or resolved box
    disagrees with the acceptance's recorded one — a candidate that has crossed `MIN_BOX_COVERAGE`
    since the acceptance was authored — it is `invalidated: plane-changed`. Comparing across two
