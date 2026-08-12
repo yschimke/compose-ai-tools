@@ -97,8 +97,8 @@ rerendering the catalog" is satisfiable exactly as written.
 
 ## 2. The locator contract
 
-The identity is `repository + system + componentId + previewId + referenceId + variant`, and every
-part of it is already computable on the serve host:
+The identity is `repository + system + componentId + previewId + referenceId + variant + overrides`,
+and every part of it is already computable on the serve host:
 
 | Field | Source today |
 | --- | --- |
@@ -107,7 +107,8 @@ part of it is already computable on the serve host:
 | `componentId` | `ServePreview.componentId` from `catalog.json`; falls back to `ServeParityDashboard.componentKey`'s derivation when the catalog names none |
 | `previewId` | the route-safe served id (`iconbutton-tonal__ideal__default__light`) — **not** the daemon discovery id |
 | `referenceId` | `DesignReference.id` |
-| `variant` | the axis segments already inside the preview id — **axes only**. Live overrides are *not* folded in here; they travel in their own `overrides` field (§4), because two representations of one fact means two ways to spell it and no rule for which wins |
+| `variant` | the axis segments already inside the preview id — **axes only**. Live overrides are *not* folded in here; they travel in their own `overrides` field, because two representations of one fact means two ways to spell it and no rule for which wins |
+| `overrides` | the render overrides active on the frame (`uiMode`, `fontScale`, device, locale) — the same normalised set §4 matches acceptances on |
 | `revision` | `repo@branch` provenance + the compose-ai-tools version that rendered it |
 
 Two rules worth writing into the schema doc so they survive contact with a second implementer:
@@ -130,8 +131,20 @@ back out without GitHub Projects or per-component labels:
     preview: iconbutton-tonal__ideal__default__light
     reference: iconbutton-tonal-figma
     variant: ideal/default/light
+    overrides: fontScale=1.5;uiMode=dark
     revision: yschimke/m3-catalog@main
     ```
+
+**`overrides` is part of the block, not an optional extra.** §4 makes overrides part of the scope an
+acceptance matches on, so a locator that omits them describes two frames at once: an issue filed at
+`fontScale=1.5` and one filed at the default serialise identically, and the indexer associates the
+report with whichever it happens to resolve. The canonical form is `key=value` pairs joined by `;`,
+**keys sorted by Unicode code point**, and the line is **always present** — `overrides:` with nothing
+after it means the default render. Always-present rather than omitted-when-empty because an absent
+line and an empty one are otherwise two spellings of the same state, which is the failure this field
+exists to fix. Parsed back, the line must yield exactly the normalised object §4 compares; the two
+are the same fact in a text and an object encoding, and the emitter produces both from one `Context`
+so they cannot drift.
 
 Fenced rather than an HTML comment: a comment is invisible in the rendered issue, and a reporter
 editing the body has no way to see they have broken it. A fenced block is visible, copy-pasteable,
@@ -647,6 +660,20 @@ mask's encoding contributes neither raster to the running total, exactly as an u
 does. A refusal that excluded the record on one engine and charged it on another would put the
 order-dependence back that the whole-record preflight removes.
 
+**Neither artifact may be animated.** An APNG is a PNG: it carries the signature, a conforming
+`IHDR` — greyscale and 8-bit if the producer wants the mask to pass — honest dimensions, and a hash
+that verifies. Every check in this contract accepts it, and then the two engines read different
+pixels out of it, because an animated PNG has two answers to "what does this file contain": the
+default image in `IDAT`, which is what a decoding library returns, and the animation, which is what
+an `<img>` or `createImageBitmap` may advance through. A mask that changes between frames is a
+suppression union that changes while you look at it. So the preflight rejects any file carrying an
+`acTL` chunk, for **both** rasters, with `animated-png`. That widens the preflight from "read the
+`IHDR`" to "walk chunk *headers* — the length and type of each, never its data — until the first
+`IDAT`", which `acTL` must precede: still a bounded read of a fixed number of bytes per chunk, still
+nothing decoded. Rejecting is right rather than pinning "decode frame zero":
+a static acceptance artifact has no use for frames, so the file is a mistake or an attack either way,
+and "we defined which frame counts" is a rule two engines can still implement differently.
+
 **The acceptance set is bounded before anything is decoded.** Every record costs two more raster
 decodes plus several intermediate planes on both engines, and a catalog is third-party data — so a
 document with a few thousand individually valid, individually small acceptances can exhaust a
@@ -656,7 +683,8 @@ budget and is rejected **before** the per-acceptance decode loop begins: a cap o
 acceptances, and a cap on total decoded pixels across their rasters, both fixed constants rather
 than per-catalog settings — and **named**, because "a fixed constant" that each engine picks for
 itself is not fixed. `v1` sets them at **256 acceptances** and **128 megapixels** of declared raster
-across the set; both are versioned with the schema, and the fixtures pin a document at each exact
+across the set, plus a **per-axis maximum of 8192 px**; all three are versioned with the schema, and
+the fixtures pin a document at each exact
 boundary and one past it, since an off-by-one here means one engine evaluates what the other
 rejects. The numbers are generous against real use — a catalog with hundreds of deliberate,
 reviewed, issue-linked acceptances has a different problem — and deliberately not per-catalog
@@ -665,19 +693,31 @@ settings, since a hostile document must not be able to raise its own ceiling.
 The count cap is free, but the **pixel** cap needs dimensions the JSON does not record — and reading
 them with the ordinary decoder would allocate the oversized raster to measure it, defeating the
 protection at the moment it fires. So the budget is enforced after a **bounded header preflight**:
-read each PNG's `IHDR` (the first handful of bytes after the signature) and take `width × height`
-from it.
+read each PNG's `IHDR` (the first handful of bytes after the signature), take `width × height` from
+it, and walk the chunk headers to the first `IDAT` for the animation check below. Bounded throughout
+— chunk lengths and types only, never chunk data, and never a decode.
 
 **Compare as you go; never accumulate a total that can overflow.** Summing `width × height` across a
 third-party set is exactly where the two engines diverge silently: several PNGs with large but
 individually legal dimensions overflow a Kotlin `Int`/`Long` into a negative or wrapped value that
 sits comfortably under the cap, while JavaScript keeps a large positive `Number` and rejects — the
 offline consumer then proceeds to allocate what the browser refused. So the check short-circuits:
-reject the moment **any single dimension**, **any single `width × height`**, or **the running total**
-*exceeds* the cap, and stop reading. **Exceeds, not reaches**: a document exactly at 256 acceptances
-or exactly 128 megapixels is legal, which is what makes the boundary fixtures meaningful — one case
-sitting on the limit and passing, one a single unit past it and refused. A `>=` check would reject
-both and leave the two engines free to disagree about the case in between.
+reject the moment **any single dimension exceeds 8192**, **any single `width × height`** exceeds the
+pixel cap, or **the running total** does, and stop reading. **Exceeds, not reaches**: a document
+exactly at 256 acceptances, exactly 128 megapixels, or exactly 8192 px on a side is legal, which is
+what makes the boundary fixtures meaningful — one case sitting on the limit and passing, one a
+single unit past it and refused. A `>=` check would reject both and leave the two engines free to
+disagree about the case in between.
+
+**The per-axis cap is a separate number because the area cap does not imply it.** A `1 × 128,000,000`
+PNG is 128 megapixels exactly — inside the area budget, and no *dimension* is over an area cap, since
+comparing a length against a pixel count is a category error that happens to type-check. But no
+browser will decode it: canvas and image dimensions are capped well below that (the smallest limit
+among current engines is the binding one), so the browser reports `decode-failed` for bytes the
+offline decoder evaluates normally. That is the divergence class this whole section exists to
+prevent, reached through a shape rather than a size. `8192` is the number because it clears every
+mainstream engine's limit with room to spare and is still an order of magnitude above any plausible
+canonical plane — a preview render is hundreds of pixels a side, not thousands.
 
 Nothing ever holds a value larger than the cap plus one raster, so
 there is nothing to overflow, and the two engines cannot disagree about arithmetic they never do.
@@ -859,6 +899,17 @@ no `statuses` entries are produced, and the failure is reported in `validationFa
 offending id. That is also the honest signal — nobody meant to write two acceptances with one id, so
 the artifact is malformed rather than partially applicable.
 
+**One entry per duplicated *value*, ordered by first occurrence.** "Report the offending id" is
+under-specified the moment a document has three records sharing an id, or two different ids each
+duplicated: one engine emits one entry per colliding value, another one per colliding record,
+another one per occurrence after the first — three different arrays for the same rejected file, all
+defensible readings of the same sentence. So: **one `{ "id": …, "reason": "duplicate-id" }` per
+distinct id that appears more than once**, regardless of how many records carry it, ordered by the
+index of that id's **first** occurrence in `acceptances[]`. First occurrence rather than last
+because it is the only position every engine has already seen at the moment it detects the
+collision. A document with one id used three times and a second used twice is a fixture, since it
+separates all three readings at once.
+
 **A reference with no `sha256` is refused for the same reason**, not invalidated as
 `reference-changed`. The fingerprint gate compares a recorded hash against a served one; with
 nothing to compare, the gate cannot run, and an acceptance whose primary safety check is
@@ -915,6 +966,24 @@ issue. So `resolved` on one of them does not mean the issue is fixed. Aggregate 
 is closable only once **every** acceptance linked to it has resolved. Closing on the first resolution
 would also be self-defeating, since Phase 4's stale detection (closed issue, live acceptance) would
 immediately flag the siblings the closure just orphaned.
+
+**"Every acceptance" is every acceptance *anywhere*, and one run cannot see that far.** An
+evaluation reads one `known-differences.json`, in one source repo; the workflow explicitly supports
+many source repos and many catalogs, and nothing stops two of them from filing against one issue —
+the same upstream component bug reported from two catalogs is the *normal* way that happens. Each
+run then sees its own records all resolved, concludes the issue is closable, and closes it out from
+under a live acceptance in a document it never opened. There is no global acceptance inventory in
+this plan, and inventing one is a much larger change than the closure step warrants. So `v1`
+constrains the other side: **an issue is owned by exactly one `known-differences.json`**, and the
+closing PR (Phase 4 step 12) may only close an issue whose acceptances all live in the document it
+is editing. A run that cannot establish that — because it has no way to know what other documents
+reference the issue — deletes its resolved records and leaves the issue open for a human, which is
+the safe half of the operation and the one that never needs global knowledge.
+
+Nothing offline can *enforce* single ownership, which is worth stating plainly rather than implying:
+it is a convention the closing step depends on, and the honest fallback is that closure is a
+reviewed PR rather than an automatic action. Aggregating every referencing document before closing
+is the real fix and a `v2` conversation — it needs an inventory that does not exist yet.
 
 **`resolved` requires the candidate to have actually changed.** Row 3 is guarded on
 `candidate-changed` having fired, which looks redundant and is not: the resolution metric is
@@ -1041,7 +1110,7 @@ field would leave two engines free to pick different ones. Same fixed ordering r
 
 `document-unreadable`, `document-too-large`, `duplicate-id`, `id-missing`, `id-not-safe`,
 `schema-invalid`, `orphaned-target`, `path-not-contained`, `header-invalid`, `decode-failed`,
-`degenerate-dimensions`, `dimension-mismatch`, `mask-encoding-invalid`, `mask-empty`,
+`degenerate-dimensions`, `dimension-mismatch`, `mask-encoding-invalid`, `animated-png`, `mask-empty`,
 `artifact-unreadable`, `mask-hash-mismatch`, `accepted-candidate-hash-mismatch`,
 `reference-hash-missing`, `tolerance-out-of-range`, `acceptance-is-noop`.
 
@@ -1055,7 +1124,8 @@ serialises the same way in both engines, and a reader sees the widest problem fi
 document-failure case is a fixture, since that is where an ordering that exists only implicitly
 would diverge.
 
-**A per-acceptance refusal populates `validationFailures` as well**, one entry per reason. The two
+**A per-acceptance refusal populates `validationFailures` as well**, one entry per `(record, reason)`
+pair — so two acceptances failing the same way contribute two entries, never one. The two
 fields are not alternatives: `statuses` answers "what happened to this acceptance", and
 `validationFailures` is the flat list a build gate reports and fails on, without walking the map.
 An earlier revision showed a `refused` status beside an empty `validationFailures`, which left both
@@ -1324,7 +1394,7 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | separation + canonical (surviving union) | the same split redone against the union of **`valid`-status acceptances** only — resolved, invalidated and refused ones suppress nothing — **and resampled into the canonical plane again** — separation still precedes its resample (I3). A distinct, later stage on purpose: the union cannot be formed until the candidate and element gates have run, and those gates need the canonical pixels the row above produces (I5) |
 | score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, each region drawn **straight from the source image** (I10), per-region rather than whole-image |
 | score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, drawn straight from the source by the same single resample, so raw and unaccepted stay on identical geometry and acceptance alone never moves the number (the kernel rebaseline does, once) |
-| result | `{raw, accepted, unaccepted, statuses, validationFailures}` — `statuses` is a **map keyed by acceptance id**, absent entirely for a document-level rejection (duplicate ids), where `validationFailures` carries the reason alone; `validationFailures` has **one entry per reason**, not per acceptance, so a record failing two hash checks contributes two, one entry per member of `acceptances[]`, each per the contract's precedence table. A single aggregate status cannot express a mixed-validity case, so both engines could emit the same summary while disagreeing about which mask survived; the mixed-validity fixtures pin the per-id identities |
+| result | `{raw, accepted, unaccepted, statuses, validationFailures}` — `statuses` is a **map keyed by acceptance id**, absent entirely for a document-level rejection (duplicate ids), where `validationFailures` carries the reason alone; `validationFailures` has **one entry per `(record, reason)` pair** — a record failing two hash checks contributes two, and two records failing the same way contribute one each, in input-index order, per the ordering rule in the contract. Not "one per reason": that reading would let one engine deduplicate a token shared by two acceptances while the other emitted both, from the same document. `statuses` still carries one entry per member of `acceptances[]`, each per the contract's precedence table. A single aggregate status cannot express a mixed-validity case, so both engines could emit the same summary while disagreeing about which mask survived; the mixed-validity fixtures pin the per-id identities |
 
 The stages exist to localise a divergence, so they must follow whatever order the Phase 3 algorithm
 settles on — and must satisfy the invariants above regardless. Two orderings are already known to be
@@ -1645,6 +1715,12 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
     (the offline run already knows the full set of resolved ids and their canonical issue identity);
     doing it by hand is fine to start with, but it has to be someone's documented step rather than
     an implication of the status.
+
+    **The closing keyword goes in only when this document owns the issue** — §4's single-ownership
+    rule. A run that cannot establish ownership still opens the PR and still deletes its resolved
+    records; it just omits the keyword and says so in the body, leaving the close to whoever can see
+    the other referencing documents. Deletion is always safe locally; closure is the half that needs
+    knowledge this plan does not give a single run.
 13. **Document** the reporting → triage → acceptance → verification → closure loop in
     `docs/public-preview-server.md`, beside the existing parity view section.
 
