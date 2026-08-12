@@ -17,7 +17,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `All colours` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/colorcatalog__all.png" width="150" /> |
 | `FadeInBoxAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/FadeInBoxAnimatedPreview.gif" width="150" /> |
 | `RevealLabelAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/RevealLabelAnimatedPreview.gif" width="150" /> |
-| `GlanceWeatherWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/GlanceWeatherWidgetPreview_Glance_widget_4_2.png" width="150" /> |
+| `GlanceWeatherWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/GlanceWeatherWidgetPreview_Glance_widget_via_helper_API_4_2.png" width="150" /> |
 | `LauncherModeHomeScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen.png" width="150" /> |
 | `LauncherModeResizePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_1x1.png" width="150" /> |
 | `LauncherModeResizePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_2x1.png" width="150" /> |
@@ -572,6 +572,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `ScrollIndicatorStickerPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ScrollIndicatorStickerPreview.png" width="150" /> |
 | `PlaceholderCardLoaded` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PlaceholderCardLoaded_wearos_small_round.png" width="150" /> |
 | `PlaceholderCardLoading` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PlaceholderCardLoading_wearos_small_round.png" width="150" /> |
+| `PlaceholderCardOverrideDriven` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PlaceholderCardOverrideDriven_wearos_small_round.png" width="150" /> |
 | `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListFontScalesPreview_Fonts_Large.png" width="150" /> |
 | `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListFontScalesPreview_Fonts_Larger.png" width="150" /> |
 | `ActivityListFontScalesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListFontScalesPreview_Fonts_Largest.png" width="150" /> |
