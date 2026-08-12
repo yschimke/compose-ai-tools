@@ -624,7 +624,9 @@ makes it tempting to treat a header it cannot read as fatal to the whole file, b
 behaviour is the local one: exclude that acceptance and its rasters from the running total — they
 will never be decoded — refuse it, and carry on summing the rest. One unreadable PNG then costs its
 own acceptance rather than every other acceptance in the catalog. The dimensions-disagree half is
-necessarily per-acceptance anyway, since it is only detectable after the budget has already passed. `document-too-large`
+necessarily per-acceptance anyway, since it is only detectable after the budget has already passed.
+
+`document-too-large`
 is then checked alongside the duplicate-id scan, both whole-document verdicts reached before any
 pixel buffer is allocated.
 
