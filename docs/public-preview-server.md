@@ -829,6 +829,12 @@ which via `tier`:
   `previewId`, or fails to rasterize (a Figma node the run's token can't reach). One unrenderable
   size cell must not cost the catalog every reference it did resolve.
 
+`tier` is load-bearing beyond the export, too: the parity feed derives its `UNRENDERED_REFERENCE`
+gap from the reference manifest, and every record of one entry — the default and each of its cells
+— carries the same code handle. Only a **primary** answers "does this component have its
+reference?", or a surviving `size=l` cell would report the component as covered while its default
+render had no spec at all.
+
 A binding that is dropped is always *named*. The two arrays are authored independently, so drift is
 reported from both sides — a tagged `ref` with no `previewId` in the same slot, and a tagged
 `previewId` no `ref` claims. Skipping one silently would let the run report complete secondary
