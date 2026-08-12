@@ -201,6 +201,8 @@ dependencies {
   // WebSockets plugin: the `serve` streamed-frame lane (`/ws/{id}`) — tier-2 streaming spike.
   implementation(libs.ktor.server.websockets)
   implementation(libs.ktor.server.compression)
+  // HEAD answers GET across the whole site — the probe link unfurlers send before downloading.
+  implementation(libs.ktor.server.auto.head.response)
 
   // Bundle the MCP server so `compose-preview mcp serve` can invoke it in-process —
   // the consumer install story stays a single tarball + a single launcher.

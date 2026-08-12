@@ -189,6 +189,18 @@ interface ServeHost : AutoCloseable {
   fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? = null
 
   /**
+   * [previewId]'s baked render size in pixels, read from the PNG header alone — no decode, no
+   * fetch, no daemon — or null when the pixels aren't already on this box.
+   *
+   * Exists so a page can advertise `og:image:width`/`height` (see [ServeWeb.UnfurlMetadata]) for
+   * free. The dimensions are 8 bytes of a PNG's IHDR chunk, so the alternative — reading the whole
+   * render through [bakedRender] just to measure it — would pull ~90 KB off disk on every page
+   * build to learn two integers. Null is always safe: the page then omits the dimensions and the
+   * unfurler measures the image itself.
+   */
+  fun bakedRenderSize(previewId: String): Pair<Int, Int>? = null
+
+  /**
    * A visitor is present on this session's pages right now (see `POST /api/presence`) — get its
    * live render lane ready, if it has one and isn't ready already.
    *

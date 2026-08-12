@@ -856,6 +856,11 @@ class ServeCatalogLiveHost(
     return baked.bakedRender(previewId, overrides)
   }
 
+  // Unconditional, unlike [bakedRender] above: this measures the *published* pixels, and an unfurl
+  // card always points at the override-free render regardless of what the live lane could produce.
+  override fun bakedRenderSize(previewId: String): Pair<Int, Int>? =
+    baked.bakedRenderSize(previewId)
+
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
     renderInternal(previewId, overrides, leased = false)
 
