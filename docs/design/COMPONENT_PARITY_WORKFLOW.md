@@ -247,13 +247,22 @@ up. A reconciliation pass is cheap here precisely because regenerating the index
 
 **The dispatch leg needs a credential, and the default one won't do it.** A source repo's automatic
 `GITHUB_TOKEN` is scoped to that repo and cannot create a `repository_dispatch` event in the catalog
-repo, so the low-latency half fails closed unless something is provisioned: a GitHub App
-installation token (preferred — scoped, rotatable, no human owner) or a PAT with `repo` on the
-catalog repo, distributed to each source repo as a secret. **Name the App's target and permission
-explicitly in the setup doc**: the App must be installed *on the catalog repo* and its installation
-token needs **Contents: write** there, because that is what `POST /repos/{owner}/{repo}/dispatches`
-requires. An App carrying the more natural-sounding read-only Contents permission returns 403 and
-the trigger is silently dead — which looks exactly like "no issues changed". That provisioning is
+repo, so the low-latency half fails closed unless something is provisioned: a GitHub App (preferred
+— scoped, rotatable, no human owner) or a PAT with `repo` on the catalog repo, distributed to each
+source repo as a secret.
+
+**Store App credentials and mint the token per run — do not store the token.** An installation
+access token expires after an hour, so provisioning *it* as a repository secret produces a trigger
+that works in testing and is silently dead the next morning. What each source repo stores is the App
+id and private key; each workflow run exchanges them for a fresh installation token (the standard
+`actions/create-github-app-token` step). The PAT alternative is the one credential that *is* durable
+as a stored secret, which is its only advantage over the App.
+
+**Name the App's target and permission explicitly in the setup doc**: the App must be installed *on
+the catalog repo* and its installation token needs **Contents: write** there, because that is what
+`POST /repos/{owner}/{repo}/dispatches` requires. An App carrying the more natural-sounding
+read-only Contents permission returns 403 and the trigger is silently dead — which looks exactly
+like "no issues changed". That provisioning is
 per-source-repo setup work and is the reason the cron backstop is not optional: it is what a source
 repo falls back to when nobody has wired its credential yet, which will be the normal state for a
 while.
@@ -284,10 +293,11 @@ rather than a drag); `mask` and `acceptedCandidate` paths; **three** hashes — 
 against** — a `plane: "content-box" | "full-canvas"` discriminant plus the resolved
 `{x, y, width, height}` box, without which the plane gate cannot be evaluated at
 all; **the element's authoring-time bounds** in canonical-plane coordinates **and its
-`elementTolerance`**, when the acceptance names an `element`; **`candidateTolerance`**, the
+`element.tolerance`**, when the acceptance names an `element` (both live *inside* the `element`
+object — see its wire shape below, not as top-level fields); **`candidateTolerance`**, the
 per-pixel threshold the candidate gate compares against; and free-text `note` + `acceptedAt`.
 
-**`candidateTolerance` is a field for the same reason `elementTolerance` is.** The candidate gate
+**`candidateTolerance` is a field for the same reason `element.tolerance` is.** The candidate gate
 needs *some* slack for PNG round-tripping and the resample, and two engines choosing their own
 constants would disagree at the boundary — the one thing that must not happen. Recording it means
 both read one number off one artifact. The **metric** it applies to (which channels, compared how,
@@ -313,9 +323,10 @@ its bounding box as the element's baseline would report movement for an element 
 or miss movement smaller than the slack between them. Record the bounds at authoring time, in the
 canonical plane so they survive device-size changes.
 
-**The tolerance is a recorded field too, not a constant each engine picks.** `elementTolerance`
-lives on the acceptance, so both engines read one number off one artifact and cannot disagree at
-the threshold — which is the actual requirement; *which* number it is matters far less than that
+**The tolerance is a recorded field too, not a constant each engine picks.** `element.tolerance`
+lives inside the acceptance's `element` object — one canonical path, not a top-level sibling — so
+both engines read one number off one artifact and cannot disagree at the threshold, which is the
+actual requirement; *which* number it is matters far less than that
 there is exactly one of it. The contract fixes everything around it: the fraction is relative to
 the element's **smaller baseline dimension**, it is compared against the **maximum of the four edge
 displacements** between baseline and current bounds, and the comparison is `>` so a displacement
@@ -434,7 +445,7 @@ saying where the value lives — and a producer emitting `element.testTag` again
 
 `kind` is the discriminant; `tag` carries the value and is required when `kind` is `tag`; `bounds`
 are the authoring-time baseline in canonical-plane coordinates; `tolerance` is the
-`elementTolerance` described above. An acceptance with no `element` key at all is the geometric
+element movement tolerance described above. An acceptance with no `element` key at all is the geometric
 case. The fixtures pin this exact shape, not just the resolution behaviour — a schema two producers
 serialise differently is not a schema.
 
@@ -484,7 +495,10 @@ suppresses nothing and is surfaced as needing review:
 
 A mask whose bytes do not match `maskSha256` is not an invalidation at all — it is a **hard
 validation failure**: the acceptance is refused and reported, because a mask we cannot trust is a
-broken artifact rather than a stale one.
+broken artifact rather than a stale one. That refusal is the `refused` **status**, so every
+acceptance id still maps to exactly one status and the hash-mismatch fixtures have an expected value
+like any other case — `validationFailures` carries the detail of *what* failed, `statuses` says
+which acceptance it happened to.
 
 **`resolved` outranks `candidate-changed`, and that belongs here rather than in the lifecycle
 section.** Every acceptance evaluates to exactly one **status**, and the resolution predicate is
@@ -492,6 +506,7 @@ part of this contract because §6 cannot override it:
 
 | Status | Condition | Precedence |
 | --- | --- | --- |
+| `refused` | either artifact's bytes fail their recorded hash | **outranks everything** — the acceptance is not evaluated at all |
 | `resolved` | the masked region now agrees with the **reference** (see below) | **wins over `candidate-changed`** |
 | `invalidated: <cause>` | any gate above fires | applies otherwise |
 | `valid` | no gate fires | — |
@@ -756,8 +771,9 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | decode | **every** raster input decoded — the two shared ones (reference, current candidate) plus `mask.png` and `accepted-candidate.png` **for each member of `acceptances[]`**, so a two-acceptance case pins six, not four. The candidate gate reads each accepted-candidate decode and coverage reads each mask decode, so an alpha or colour divergence in any of them would otherwise first surface as a wrong verdict rather than a decoder bug |
 | content boxes | each input's measured content box and the resolved `plane` discriminant, since content-box detection is itself part of the portable path and two engines can otherwise measure differently near a sampled edge or the `MIN_BOX_COVERAGE` threshold |
 | selector | the resolved element — which node the selector matched, its bounds in canonical coordinates, and the tag-uniqueness verdict. Ahead of the union stages, because which acceptances survive decides which masks the union contains (I5) |
-| separation | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite) — per-acceptance, and again for the surviving union |
+| separation (per acceptance) | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite), for **each** acceptance independently |
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
+| separation + canonical (surviving union) | the same split redone against the union of **gate survivors** only, **and resampled into the canonical plane again** — separation still precedes its resample (I3). A distinct, later stage on purpose: the union cannot be formed until the candidate and element gates have run, and those gates need the canonical pixels the row above produces (I5) |
 | score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, still separated, downsampled per-region rather than whole-image |
 | score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, so a divergence between the two downsample paths is caught here rather than as a raw/unaccepted mismatch |
 | result | `{raw, accepted, unaccepted, statuses, validationFailures}` — `statuses` is a **map keyed by acceptance id**, one entry per member of `acceptances[]`, each per the contract's precedence table. A single aggregate status cannot express a mixed-validity case, so both engines could emit the same summary while disagreeing about which mask survived; the mixed-validity fixtures pin the per-id identities |
