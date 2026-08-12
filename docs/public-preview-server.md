@@ -722,6 +722,76 @@ keeps the older in-browser lane (baked PNG ↔ the JS player, rendered live), an
 
 ![Every Remote Compose player side by side](design/evidence/serve-rc-player-wall/serve-rc-players-default.png)
 
+## Whole screens (`/<system>/pages`)
+
+Everything above is per component. A catalog that publishes **page backdrops** also answers the
+whole-screen question: *here is the Upcoming screen from the design file — which of its parts do we
+implement, where, and do our renders sit right on top of the design?*
+
+The landing links `N screens` beside "design parity" when the catalog publishes any; a catalog that
+publishes none is unchanged and the route 404s rather than serving an empty stage.
+
+Each screen is the design's own exported pixels, with one rectangle per component instance on it,
+coloured by **how** it was linked: green Code Connect, blue `design-map.json`, amber name match, and
+a dashed red outline for **unlinked** — a part of the screen with no code behind it, which is
+usually the most interesting mark on the page. "Only what we don't implement" mutes everything else,
+which is the fastest read of a screen's coverage. Clicking a rectangle opens that component's
+viewer; a rectangle with no code behind it deep-links into Figma instead.
+
+### The overlay is the reason this lives on the server
+
+design-parity ships an offline HTML viewer for the same manifest, and it takes **pre-baked render
+PNGs** as inputs — the caller has to render the catalog first and pass one `--render code=path` per
+component. A preview server needs none of that: it already renders every preview in the catalog on
+demand, so laying the code over the design is `<img src="/render/<previewId>.png">` and inherits
+everything that lane already does — the live daemon on a live catalog, the theme the visitor picked,
+a re-render after a refresh. The design half is fixed at import time; the code half stays live.
+
+A render is pinned to its placement's top-left and scaled to the placement's **width**, keeping its
+own aspect ratio. It deliberately does not stretch to fill the box: a component that renders taller
+than its design slot is a real finding, and stretching would hide exactly that. Switch the blend to
+`difference` and matching pixels go black, so only the drift lights up.
+
+The overlay images carry `data-src` until the toggle is first switched on. A screen can hold a
+couple of dozen placements and on a live catalog each one is a daemon render, so a visitor who never
+opens the overlay costs the box nothing.
+
+### Where a published catalog's screens come from
+
+The same shape as the design references: the **pipeline** imports them, the server only draws them.
+
+[`@design-parity/page-backdrop`](https://github.com/yschimke/design-parity/tree/main/packages/page-backdrop)
+reads the design file's pages and writes a manifest — the frame, and every instance's rectangle,
+design ref, and code handle. The publish job runs that (it already holds `FIGMA_TOKEN`), then
+[`emit-design-pages.mjs`](../scripts/design-artifacts/emit-design-pages.mjs) re-keys each placement
+onto the catalog's **serve** preview ids and writes `pages/index.json` plus one backdrop PNG per
+screen onto `design-artifacts/<system>`. The server stages those like any other catalog asset and
+re-paths each image to a server-owned location.
+
+That re-keying is the load-bearing step, and it is the same id problem
+[`design-references.mjs`](../scripts/design-artifacts/design-references.mjs) exists to solve: a
+placement carries the *repo's* discovery preview id, and a published catalog keys everything on the
+route-safe serve id. Handing the manifest over unchanged would give the server ids that render
+nothing.
+
+Two rules the manifest's own schema states and the server keeps:
+
+- **Geometry is in frame-local design units, never image pixels.** The backdrop PNG is exported at
+  some scale; pinning placements to the unscaled frame means a re-export at another resolution
+  doesn't invalidate the manifest. The page converts to percentages once, server-side, so
+  `page-backdrop.js` does no geometry at all and the stage stays correct while it is responsive,
+  zoomed, or printed.
+- **An unlinked placement is data, not an omission.** It is published, drawn, and counted, because
+  "this part of the screen has no code behind it" is the finding the surface exists for.
+
+The server still holds **no Figma credential and never talks to Figma** — the deep link on a
+rectangle is reassembled from a validated file key and node id against a literal origin, exactly
+like the per-preview spec link.
+
+**Opt-in twice over.** Nothing runs unless the catalog's repo commits a `design-pages.json` with
+`"enabled": true`; the publish step probes that first and stops cleanly otherwise. A repo that has
+never heard of the feature publishes exactly what it did before.
+
 ## The design-parity view (`/<system>/parity`)
 
 A catalog landing links **design parity** beside "compare formats". That page answers one question

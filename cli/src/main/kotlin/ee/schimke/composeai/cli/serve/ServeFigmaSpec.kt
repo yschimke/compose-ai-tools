@@ -63,6 +63,24 @@ internal object ServeFigmaSpec {
   }
 
   /**
+   * A deep link to one node of one file, or null when either part is shaped wrong.
+   *
+   * The same literal-origin reassembly as [of], exposed for the callers that already hold the pair
+   * rather than a [DesignReference] — a page backdrop's placements carry a `figma:<key>/<node>` ref
+   * each ([ServePageBackdrops]), and every one of them is third-party text.
+   */
+  fun url(fileKey: String, nodeId: String): String? {
+    val key = fileKey.trim()
+    val node = nodeId.trim()
+    if (!FILE_KEY.matches(key) || !NODE_ID.matches(node)) return null
+    return "https://www.figma.com/design/$key?node-id=${node.replace(':', '-')}"
+  }
+
+  /** The node id of a `figma:<fileKey>/<nodeId>` handle, or null when it doesn't parse. */
+  fun nodeOfHandle(handle: String): String? =
+    HANDLE.find(handle.trim())?.groupValues?.get(2)?.takeIf { NODE_ID.matches(it) }
+
+  /**
    * The `(fileKey, nodeId)` pair a Figma-backed reference carries. Two shapes are accepted, both of
    * which real producers emit: the `figma:<key>/<node>` handle, and a figma.com URL paired with a
    * `nodeId` (or `node-id`) attribute — the form the manifest example in the docs uses.

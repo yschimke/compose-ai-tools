@@ -784,6 +784,14 @@ class ServeHttpServer(
         get("/reference/{name}") { handleDesignReferenceAsset(sessionInPath = false) }
         get("/{system}/reference/{name}") { handleDesignReferenceAsset(sessionInPath = true) }
 
+        // Whole-screen page backdrops (see [ServePageBackdrops]). One route per level rather than a
+        // separate asset path: `{name}` ending in `.png` is the backdrop image, anything else is
+        // the screen's own view — the same suffix convention `/reference/{name}` already uses.
+        get("/pages") { handlePageBackdropIndex(sessionInPath = false) }
+        get("/{system}/pages") { handlePageBackdropIndex(sessionInPath = true) }
+        get("/pages/{name}") { handlePageBackdrop(sessionInPath = false) }
+        get("/{system}/pages/{name}") { handlePageBackdrop(sessionInPath = true) }
+
         // The published Remote Compose player renders + build-time diffs the compare page replays
         // (see [ServeRcCompare]). Content-addressed by lane and slot, never by a published id.
         get("/rc-compare/{lane}/{name}") { handleRcCompareAsset(sessionInPath = false) }
@@ -1521,6 +1529,8 @@ class ServeHttpServer(
           hasParityView =
             renderHost.parityActivity() != null ||
               renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
+          // Same condition `handlePageBackdropIndex` serves on, for the same reason.
+          screenCount = renderHost.pageBackdrops().pages.size,
           version = BUNDLE_VERSION,
           // Catalog provenance (delivery branch, generation date, tool versions) for the strip
           // under the header; null for a plain (non-catalog) module session.
@@ -1815,6 +1825,100 @@ class ServeHttpServer(
         markGeneration("design-reference", "private, max-age=300")
         call.respondBytes(bytes, ContentType.Image.PNG)
       }
+    }
+  }
+
+  /** The catalog's published screens, or a 404 when it publishes none. */
+  private suspend fun RoutingContext.handlePageBackdropIndex(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val sessionId = selectedSessionId(sessionInPath)
+    val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
+    withLeasedSession(
+      sessionId,
+      onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
+    ) { renderHost ->
+      val pages = renderHost.pageBackdrops().pages
+      if (pages.isEmpty()) {
+        respondNotFoundHtml("This design system publishes no screens.")
+        return@withLeasedSession
+      }
+      markGeneration("static-page", pageCacheControl())
+      call.respondText(
+        ServeWeb.pageBackdropIndexPage(
+          moduleLabel = renderHost.label,
+          pages = pages,
+          token = token,
+          sessionId = webSessionId,
+          basePath = basePath,
+          isPublic = isPublic,
+          trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          version = BUNDLE_VERSION,
+          displayTitle = catalogBundleHost(renderHost)?.title,
+        ),
+        ContentType.Text.Html,
+      )
+    }
+  }
+
+  /**
+   * One published screen: its view, or — when the name carries a `.png` suffix — the backdrop image
+   * itself. The image is the design's own export, inert bytes staged at catalog load; the server
+   * holds no Figma credential and never fetches it per request.
+   */
+  private suspend fun RoutingContext.handlePageBackdrop(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val sessionId = selectedSessionId(sessionInPath)
+    val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
+    val name = call.parameters["name"].orEmpty()
+    val isImage = name.endsWith(".png")
+    val pageId = if (isImage) name.removeSuffix(".png") else name
+    withLeasedSession(
+      sessionId,
+      onMissing = {
+        if (isImage) call.respond(HttpStatusCode.NotFound)
+        else respondNotFoundHtml("That design system was not found on this server.")
+      },
+    ) { renderHost ->
+      val backdrops = renderHost.pageBackdrops()
+      val page = backdrops.page(pageId)
+      if (page == null) {
+        if (isImage) call.respond(HttpStatusCode.NotFound)
+        else respondNotFoundHtml("That screen was not found in this design system.")
+        return@withLeasedSession
+      }
+      if (isImage) {
+        val bytes = renderHost.pageBackdropImage(pageId)
+        if (bytes == null) {
+          call.respond(HttpStatusCode.NotFound)
+        } else {
+          markGeneration("page-backdrop", "private, max-age=300")
+          call.respondBytes(bytes, ContentType.Image.PNG)
+        }
+        return@withLeasedSession
+      }
+      markGeneration("static-page", pageCacheControl())
+      call.respondText(
+        ServeWeb.pageBackdropPage(
+          moduleLabel = renderHost.label,
+          page = page,
+          fileKey = backdrops.fileKey,
+          // Resolved against what this session actually publishes, so a placement mapped to a
+          // preview the catalog dropped renders as a plain hotspot instead of a broken image.
+          renderablePreviewIds = renderHost.previews.mapTo(HashSet()) { it.id },
+          token = token,
+          sessionId = webSessionId,
+          basePath = basePath,
+          isPublic = isPublic,
+          trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          version = BUNDLE_VERSION,
+          displayTitle = catalogBundleHost(renderHost)?.title,
+        ),
+        ContentType.Text.Html,
+      )
     }
   }
 

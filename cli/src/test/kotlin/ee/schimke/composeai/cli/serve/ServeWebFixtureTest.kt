@@ -55,6 +55,30 @@ class ServeWebFixtureTest {
 
   private fun assetText(name: String): String = ServeWebAssets.load(name)!!.bytes.decodeToString()
 
+  /** One placement of the page-backdrop fixture, in the frame's own design units. */
+  private fun backdropPlacement(
+    nodeId: String,
+    name: String,
+    x: Double,
+    y: Double,
+    width: Double,
+    height: Double,
+    code: String? = null,
+    previewId: String? = null,
+    link: String = "manifest",
+    confidence: String? = if (code == null) null else "high",
+  ) =
+    BackdropPlacement(
+      nodeId = nodeId,
+      name = name,
+      bounds = BackdropRect(x = x, y = y, width = width, height = height),
+      ref = "figma:ocdacdEsnHipMJD3egzxKb/$nodeId",
+      code = code,
+      previewId = previewId,
+      link = link,
+      confidence = confidence,
+    )
+
   private val token = "demo-token-fixture"
   private val moduleLabel = ":samples:cmp"
 
@@ -1314,6 +1338,112 @@ class ServeWebFixtureTest {
             ),
           ),
       )
+    // The whole-screen page backdrop: a design screen from the kit, the rectangle of every
+    // component instance on it, and this catalog's renders behind an overlay toggle. Every geometry
+    // number below is in the frame's own design units (412×954, a phone frame), because that is
+    // what the manifest carries and what the page turns into percentages — a fixture in image
+    // pixels would silently stop covering the conversion.
+    //
+    // The mix of placements is the point: two `manifest` links whose previews this catalog
+    // publishes, one `convention` (low-confidence name match), one `manifest` link to a preview
+    // that ISN'T published (hotspot, no overlay), and two `unlinked` — the OS chrome no code
+    // implements, which is the finding the surface exists to surface.
+    val backdropPage =
+      BackdropPage(
+        id = "upcoming-mobile",
+        name = "Upcoming-Mobile",
+        nodeId = "56615:48121",
+        frame = BackdropFrame(width = 412.0, height = 954.0),
+        image = BackdropImage(uri = "upcoming-mobile.png", scale = 2.0),
+        placements =
+          listOf(
+            backdropPlacement("1:2", "Status bar", 0.0, 0.0, 412.0, 48.0, link = "unlinked"),
+            backdropPlacement(
+              "1:1",
+              "App bar",
+              0.0,
+              48.0,
+              412.0,
+              64.0,
+              code = "ui/TopAppBars.kt#SmallTopAppBar",
+              previewId = "com.example.ProfileCardPreview",
+            ),
+            backdropPlacement(
+              "1:3",
+              "Carousel",
+              16.0,
+              128.0,
+              380.0,
+              180.0,
+              code = "ui/Carousel.kt#MultiBrowseCarousel",
+              previewId = "com.example.ProfileCardPreview",
+            ),
+            backdropPlacement(
+              "1:4",
+              "Button - text",
+              16.0,
+              326.0,
+              120.0,
+              24.0,
+              code = "ui/Buttons.kt#TextButton",
+              link = "convention",
+              confidence = "low",
+              previewId = "com.example.ProfileCardPreview",
+            ),
+            backdropPlacement(
+              "1:5",
+              "Icon button - standard",
+              360.0,
+              64.0,
+              32.0,
+              32.0,
+              code = "ui/IconButtons.kt#StandardIconButton",
+              previewId = "com.example.NotInThisCatalog",
+            ),
+          ) +
+            (0..4).map { index ->
+              backdropPlacement(
+                "1:1${index}0",
+                "List item",
+                16.0,
+                362.0 + index * 72.0,
+                380.0,
+                64.0,
+                code = "ui/Lists.kt#ListItemSticker",
+                previewId = "com.example.ProfileCardPreview",
+              )
+            } +
+            listOf(
+              backdropPlacement("1:9", "Gesture bar", 0.0, 920.0, 412.0, 34.0, link = "unlinked")
+            ),
+      )
+
+    val pageBackdrop =
+      ServeWeb.pageBackdropPage(
+        moduleLabel = "compose-m3",
+        page = backdropPage,
+        fileKey = "ocdacdEsnHipMJD3egzxKb",
+        // Everything except the icon button, so the fixture covers a placement the producer mapped
+        // but this catalog cannot draw.
+        renderablePreviewIds = setOf("com.example.ProfileCardPreview"),
+        token = token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        version = version,
+      )
+
+    val pageBackdropIndex =
+      ServeWeb.pageBackdropIndexPage(
+        moduleLabel = "compose-m3",
+        pages = listOf(backdropPage),
+        token = token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        version = version,
+      )
+
     // The same themed catalog served LIVE by a session whose app declares `@ThemeCatalog` themes:
     // the header's Theme control lists every configured theme (issue #2881) — the baked Light/Dark
     // pair plus each declared theme — instead of only Light/Dark. Picking a declared theme
@@ -1809,6 +1939,8 @@ class ServeWebFixtureTest {
         "serve-format-compare.html" to formatComparison,
         "serve-rc-lanes.html" to rcLanesComparison,
         "serve-reference-compare.html" to referenceComparison,
+        "serve-page-backdrop.html" to pageBackdrop,
+        "serve-page-backdrop-index.html" to pageBackdropIndex,
         "serve-parity.html" to parity,
         "serve-landing-declared-themes.html" to landingDeclaredThemes,
         "serve-landing-ir-replay-themes.html" to landingIrReplayThemes,

@@ -170,6 +170,10 @@ class ServeCatalogLiveHost(
   override fun designReferenceRaster(referenceId: String): ByteArray? =
     baked.designReferenceRaster(referenceId)
 
+  // Backdrops ride the baked staging dir, so a live-lane catalog shows the same screens — with its
+  // overlay renders coming from the live daemon rather than the baked PNGs.
+  override fun pageBackdrops(): ServePageBackdropStore = baked.pageBackdrops()
+
   override fun annotationsForPreview(previewId: String): List<DesignAnnotation> =
     baked.annotationsForPreview(previewId)
 

@@ -30,6 +30,15 @@ interface ServeHost : AutoCloseable {
   fun designReferenceRaster(referenceId: String): ByteArray? = null
 
   /**
+   * Whole-screen page backdrops this session publishes (`pages/index.json`), or empty when it
+   * publishes none — the common case, and the one every host defaults to. See [ServePageBackdrops].
+   */
+  fun pageBackdrops(): ServePageBackdropStore = ServePageBackdropStore.empty()
+
+  /** PNG bytes of a previously advertised page's backdrop image. */
+  fun pageBackdropImage(pageId: String): ByteArray? = pageBackdrops().image(pageId)
+
+  /**
    * Typography / layout annotations over this preview's *rendered* frame, if the session carries
    * any. Empty by default — a host with no annotation manifest serves the compare page unchanged.
    */

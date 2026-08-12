@@ -522,6 +522,7 @@ class ServeCatalogStore(
     writeDesignReferences(manifestReferences + catalog.references, base, staging)
     writeAnnotations(base, staging)
     writeParityActivity(base, staging)
+    writePageBackdrops(base, staging)
 
     // The staged catalog is usable — atomically replace the live dir with it. The delete + rename
     // is near-instant (same filesystem), so the window where `dir` is absent is microseconds, not
@@ -1519,6 +1520,55 @@ class ServeCatalogStore(
     dir.mkdirs()
     File(dir, ParityActivity.FILE)
       .writeText(json.encodeToString(ParityActivity.serializer(), activity))
+  }
+
+  /**
+   * Stage the catalog's whole-screen page backdrops: the manifest, plus one backdrop PNG per page
+   * it still declares after validation.
+   *
+   * Shaped like [writeDesignReferences] rather than [writeParityActivity] because it has assets:
+   * the manifest alone is useless without its images, so a page whose PNG can't be fetched is
+   * dropped from the staged manifest instead of being advertised and 404ing on open. Validation
+   * runs *before* the write ([ServePageBackdropStore.sanitize]) so nothing malformed reaches the
+   * staging tree, and each image is re-pathed to a server-owned location (`pages/<id>.png`) so a
+   * manifest cannot dictate where bytes land.
+   *
+   * Fail-soft like the rest of the staging path: no manifest, an unfetchable one, or one that
+   * doesn't survive validation simply serves the catalog with no backdrop surface.
+   */
+  private fun writePageBackdrops(base: String, staging: File) {
+    val dirName = PageBackdropManifest.DIRECTORY
+    val manifestBytes =
+      runCatching { fetchCatalogAsset("$base$dirName/${PageBackdropManifest.INDEX_FILE}") }
+        .getOrNull() ?: return
+    val manifest =
+      runCatching {
+          json.decodeFromString(PageBackdropManifest.serializer(), manifestBytes.decodeToString())
+        }
+        .getOrNull() ?: return
+    val pages = ServePageBackdropStore.sanitize(manifest)
+    if (pages.isEmpty()) return
+
+    // One bounded wave, like the reference rasters: a catalog publishes a handful of key screens,
+    // not a page per component, so this is a short fetch and peak memory is a wave of screens.
+    val accepted =
+      pages.chunked(ASSET_FETCH_CONCURRENCY).flatMap { wave ->
+        val fetched = fetchCatalogAssets(wave.map { "$base$dirName/${it.image.uri}" })
+        wave.mapNotNull { page ->
+          val bytes = fetched["$base$dirName/${page.image.uri}"] ?: return@mapNotNull null
+          val localName = "${page.id}.png"
+          val file = File(staging, "$dirName/$localName")
+          file.parentFile?.mkdirs()
+          file.writeBytes(bytes)
+          page.copy(image = page.image.copy(uri = localName))
+        }
+      }
+    if (accepted.isEmpty()) return
+    File(staging, dirName).mkdirs()
+    File(staging, "$dirName/${PageBackdropManifest.INDEX_FILE}")
+      .writeText(
+        json.encodeToString(PageBackdropManifest.serializer(), manifest.copy(pages = accepted))
+      )
   }
 
   private fun writeDesignReferences(
