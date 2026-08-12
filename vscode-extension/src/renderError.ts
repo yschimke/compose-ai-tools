@@ -27,6 +27,14 @@ import { PreviewRenderError } from "./types";
  * already available in `renderError.exception` for tooling that wants it.
  */
 export function formatRenderErrorMessage(err: PreviewRenderError): string {
+    // A native-library failure isn't about this preview: every preview in
+    // the module died of the same cause, and all but the first carry only
+    // `Could not initialize class org.jetbrains.skia.Surface`, which tells
+    // the user nothing they can act on. The renderer's one-sentence
+    // diagnosis replaces the class name outright in that case.
+    if (err.diagnosis) {
+        return err.diagnosis;
+    }
     const cls = err.exception.split(".").pop() ?? err.exception;
     const head = err.message ? `${cls}: ${err.message}` : cls;
     const frame = err.topAppFrame;

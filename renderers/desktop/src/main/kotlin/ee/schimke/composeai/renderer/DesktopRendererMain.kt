@@ -630,6 +630,10 @@ private fun writeErrorSidecar(
   if (pngFile.exists()) pngFile.delete()
   val stack = java.io.StringWriter().also { e.printStackTrace(java.io.PrintWriter(it)) }.toString()
   val top = pickTopAppFrame(e)
+  // A native-loading failure kills every preview in the module with the same root cause, so say so
+  // on the sidecar rather than leaving 1000 identical `NoClassDefFoundError`s to be reverse
+  // engineered (issue #3690). Null for an ordinary preview throw, which is nearly always.
+  val diagnosis = NativeLoadDiagnosis.diagnose(e)
   // Hand-rolled JSON to avoid pulling kotlinx-serialization into the
   // renderer-desktop runtime classpath (the plugin owns serialisation
   // and we don't want a second copy here). Schema must mirror
@@ -646,9 +650,27 @@ private fun writeErrorSidecar(
     sb.append("\"function\":").append(jsonString(top.function))
     sb.append("},")
   }
+  if (diagnosis != null) {
+    sb.append("\"diagnosis\":").append(jsonString(diagnosis.text)).append(',')
+  }
+  // Which JVM drew this, and what it would have searched for native libraries. Always present:
+  // "which of the four JDKs on this box did the toolchain actually fork, and did my LD_LIBRARY_PATH
+  // reach it?" is unanswerable after the fact, and it is two lines of JSON to answer up front.
+  sb.append("\"runtime\":{")
+  NativeLoadDiagnosis.runtimeSnapshot().forEachIndexed { index, (key, value) ->
+    if (index > 0) sb.append(',')
+    sb.append(jsonString(key)).append(':').append(jsonString(value))
+  }
+  sb.append("},")
   sb.append("\"stackTrace\":").append(jsonString(stack))
   sb.append('}')
   fileSystem.write(sidecar.path.toPath()) { writeUtf8(sb.toString()) }
+  // The build log is where a batch render is actually watched, and a per-preview stack trace there
+  // would be the cascade all over again — one line, once per JVM, only for the failure class that
+  // means "nothing in this module can render".
+  if (diagnosis != null && !diagnosis.cascade) {
+    System.err.println("Render failed (native): ${diagnosis.text}")
+  }
 }
 
 /**

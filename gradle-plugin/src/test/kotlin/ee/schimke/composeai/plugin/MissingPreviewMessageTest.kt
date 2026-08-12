@@ -167,4 +167,79 @@ class MissingPreviewMessageTest {
     // than scrolling the user off-screen.
     assertThat(msg).contains("(+5 more with sidecars)")
   }
+
+  @Test
+  fun `formatMissingPreviewsMessage collapses one root cause into a single counted line`() {
+    // Issue #3690's shape: skiko failed to load, so the first preview carries the real error and
+    // every other one carries the same cascading NoClassDefFoundError. Listing five arbitrary
+    // members of that cascade is how the actual cause got buried.
+    val manifest =
+      PreviewManifest(
+        module = "catalog",
+        variant = "debug",
+        previews = (1..8).map { previewWithCapture("P$it", "renders/P$it.png") },
+      )
+    val sidecars =
+      (1..8).associate { i ->
+        "P$i" to
+          ComposePreviewTasks.ErrorSidecar(
+            exception = "java.lang.NoClassDefFoundError",
+            message = "Could not initialize class org.jetbrains.skia.Surface",
+            diagnosis = "${ComposePreviewTasks.CASCADE_DIAGNOSIS_PREFIX} in this render JVM.",
+          )
+      }
+
+    val msg =
+      ComposePreviewTasks.formatMissingPreviewsMessage(
+        manifest = manifest,
+        missingIds = (1..8).map { "P$it" },
+        sidecars = sidecars,
+      )
+
+    assertThat(msg).contains("NoClassDefFoundError")
+    assertThat(msg).contains("8 previews, e.g. P1, P2, P3")
+    // One line covered all eight, so there is nothing left to apologise for.
+    assertThat(msg).doesNotContain("more with sidecars")
+  }
+
+  @Test
+  fun `formatMissingPreviewsMessage leads with the real cause, not the cascade`() {
+    val manifest =
+      PreviewManifest(
+        module = "catalog",
+        variant = "debug",
+        previews =
+          listOf(previewWithCapture("A", "renders/A.png"), previewWithCapture("B", "renders/B.png")),
+      )
+    val rootCause =
+      "skiko's native library could not be loaded because this process mixed two glibc builds"
+    val sidecars =
+      mapOf(
+        // Deliberately cascade-first: the map's iteration order must not decide which explanation
+        // the user is shown.
+        "A" to
+          ComposePreviewTasks.ErrorSidecar(
+            exception = "java.lang.NoClassDefFoundError",
+            message = "Could not initialize class org.jetbrains.skia.Surface",
+            diagnosis = "${ComposePreviewTasks.CASCADE_DIAGNOSIS_PREFIX} in this render JVM.",
+          ),
+        "B" to
+          ComposePreviewTasks.ErrorSidecar(
+            exception = "java.lang.ExceptionInInitializerError",
+            message = "",
+            diagnosis = rootCause,
+          ),
+      )
+
+    val msg =
+      ComposePreviewTasks.formatMissingPreviewsMessage(
+        manifest = manifest,
+        missingIds = listOf("A", "B"),
+        sidecars = sidecars,
+      )
+
+    assertThat(msg).contains(rootCause)
+    // Before the per-preview list, which is where it was previously buried.
+    assertThat(msg.indexOf(rootCause)).isLessThan(msg.indexOf("Per-preview render errors"))
+  }
 }

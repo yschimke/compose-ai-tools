@@ -32,7 +32,7 @@ readelf -d ~/.skiko/*/libskiko-linux-x64.so | grep NEEDED
 On Debian/Ubuntu those four come from `libgl1 libx11-6 libfontconfig1 libstdc++6`. The Android
 (Robolectric) render path needs none of this — the trap is Desktop-only.
 
-## Three ways this breaks, in order of how often
+## Four ways this breaks, in order of how often
 
 ### 1. The render JVM's loader ignores the system library path
 
@@ -91,6 +91,46 @@ anything about the environment:
 ```sh
 apt-get install -y libgl1 libx11-6 libfontconfig1 libstdc++6
 ```
+
+### 4. Store libraries loaded into a system-glibc JVM (hybrid sandboxes)
+
+The mirror image of #1, and it looks nothing like a missing library — the libraries are all
+*present*, and the render still fails on every preview
+([#3690](https://github.com/yschimke/compose-ai-tools/issues/3690)):
+
+```
+UnsatisfiedLinkError: …/libskiko-linux-x64.so:
+  /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_ABI_DT_X86_64_PLT' not found
+  (required by /nix/store/…-glibc-2.42-67/lib/libpthread.so.0)
+```
+
+A Nix/Guix store ships its own glibc, and every library in it carries a `RUNPATH` back to that
+glibc. So a store `libGL.so.1` reached through `LD_LIBRARY_PATH` pulls the store's `libpthread` into
+a process that already holds the system `libc.so.6` — and if the store's glibc is newer, the loader
+refuses the mix. This happens on hybrid userlands (an Ubuntu base with a Nix-provisioned toolchain)
+whenever the render JVM is **not** the store JVM the store libraries were provisioned for: typically
+a `jvmToolchain(21)` resolving to `/usr/lib/jvm/java-21-openjdk-amd64` while the daemon runs a store
+JDK 17 and exports its store search path to every child.
+
+The first preview to touch Skia reports the error above; every later one in the same JVM reports
+only `NoClassDefFoundError: Could not initialize class org.jetbrains.skia.Surface`. Look at the
+first failure, or read the `diagnosis` field the renderer now writes into each
+`<preview>.png.error.json` — it names the mismatch, and its `runtime` block records the JVM that ran
+the render and the `LD_LIBRARY_PATH` it inherited, which is the pair of facts this is otherwise
+impossible to confirm from the outside.
+
+**The plugin handles this itself.** `RenderPreviewsTask` prunes package-store directories from
+`LD_LIBRARY_PATH` when the render JVM is not itself from a store, for both the pooled worker and the
+per-capture fork (`RenderNativeEnv`). A store render JVM keeps everything it inherited — there,
+`LD_LIBRARY_PATH` is the only channel its loader reads, which is the fix in #1. Opt out with:
+
+```sh
+./gradlew :app:composePreviewRenderAll -Dcomposeai.render.nativeEnv=inherit
+```
+
+If you hit it outside the plugin (a bare `java -jar`, an IDE, another build tool), the rule is the
+same: give store libraries to a store JDK, or give a system JDK nothing and let `/etc/ld.so.cache`
+do its job. `compose-preview doctor` reports the mixed state as a warning on `env.desktop-natives`.
 
 ## After fixing it, force the re-render
 
