@@ -117,6 +117,14 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     // the host wall clock and stops diffing on every run (issue #3239).
     // `ShadowSdkGestureInputManager` replaces Wear Material3's device-only gesture bridge so raw
     // public `Modifier.oneHandedGesture` components remain registrable and testable off-watch.
+    // Deliberately NOT here: `ShadowContextWrapperPermissionTracker`. `@PermissionPreview` already
+    // flips the rendered branch in this lane — `PermissionsController.set` mirrors grants into
+    // `ShadowApplication`, which `ContextCompat.checkSelfPermission` reads — and the tracker's only
+    // other job is recording queried permissions for the `compose/permissions` payload, which only
+    // the daemon's `data/fetch` can serve. Registering it here would collect a list nothing in this
+    // lane reads while routing every `ContextWrapper.checkPermission` through the connector's grant
+    // map, including previews with no annotation. Daemon-only by decision — issue #3698 and
+    // `docs/DATA_PRODUCTS.md`; `GenerateRobolectricPropertiesTaskTest` pins the absence.
     val shadowsLine =
       "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat," +
         "ee.schimke.composeai.renderer.ShadowAsyncImagePainter," +

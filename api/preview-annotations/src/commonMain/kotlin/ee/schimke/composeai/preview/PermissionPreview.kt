@@ -61,6 +61,17 @@ package ee.schimke.composeai.preview
  *   `rememberPermissionState`. A screen that asks the `PackageManager` about *another* package, or
  *   that consults a permission through a path this connector does not model, still renders its real
  *   answer.
+ * * **The grant flips the render everywhere; the `compose/permissions` *query* list is daemon-only
+ *   (issue #3698).** This annotation's whole job — putting the capture on the granted branch —
+ *   works in the static Gradle render lane and in a live daemon session alike. What does *not*
+ *   cross into the static lane is the connector's other leg: the record of which permissions the
+ *   screen asked about, collected by a Robolectric shadow the daemon registers and the generated
+ *   `robolectric.properties` deliberately omits. So `composePreviewRenderAll` gives you the right
+ *   pixels but no `queried = […]` payload; fetch that from the daemon (the VS Code inspection chip
+ *   or `data/fetch?kind=compose/permissions`). That asymmetry follows the repo-wide rule that the
+ *   daemon is the single producer of structured data products, written up in
+ *   `docs/DATA_PRODUCTS.md` — seeding state that changes what is drawn belongs in both lanes,
+ *   emitting a payload someone fetches does not.
  * * **A malformed entry is dropped with a build warning, not a build failure.** Discovery treats an
  *   unparseable annotation the way it treats a broken `@PreviewAxis`: it costs the grant it would
  *   have applied and says so, rather than failing every other preview in the module. The visible
