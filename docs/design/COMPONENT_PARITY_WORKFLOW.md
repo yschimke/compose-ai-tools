@@ -268,7 +268,7 @@ Each acceptance record carries: a stable `id`; a **mandatory** `issue` URL; the 
 rather than a drag); `mask` and `acceptedCandidate` paths; **three** hashes — `referenceSha256`,
 `acceptedCandidateSha256` **and `maskSha256`**; the **canonical plane the mask was authored
 against** — a `plane: "content-box" | "full-canvas"` discriminant plus the resolved
-`{x, y, width, height}` box, without which the plane gate (step 1 below) cannot be evaluated at
+`{x, y, width, height}` box, without which the plane gate (step 3 below) cannot be evaluated at
 all; an optional structured `finding` matcher (e.g. `{ kind: "color", token: …, expected: …,
 actual: … }`) for the checks design-parity runs that are not pixel comparisons; and free-text
 `note` + `acceptedAt`.
@@ -297,19 +297,22 @@ sequenced as such (§6).
 > and every one of those restatements eventually drifted out of step with the others.
 
 **Pipeline, in order.** Each step consumes the previous step's output; the order is load-bearing.
-The gates are split deliberately: the two that depend only on **metadata** run first, because they
-decide whether a coordinate space even exists to do pixel work in; the two that depend on **pixels**
-can only run once that space is established.
+Each gate sits at the earliest point where its inputs actually exist — which is *not* the same as
+"all gates first", and the distinction matters more than it looks.
 
-1. **Metadata gates** — `reference-changed` and `plane-changed`, in that order. Both precede every
-   pixel operation. The plane gate in particular *cannot* come later: it is what establishes that
-   the plane the acceptance recorded still matches the one this pair resolves to, and steps 3–4
-   have no valid destination to map or resample into until it has. A pair that has crossed
-   `MIN_BOX_COVERAGE` since authoring must return `plane-changed` cleanly here rather than
-   resampling against a stale plane or colliding with incompatible dimensions.
+1. **Fingerprint gate** — `reference-changed`. Genuinely metadata-only: a `sha256` compared against
+   the manifest, no pixels required, so it is the cheap early-out and goes first.
 2. **Decode** all four rasters — reference, current candidate, `mask.png`, `accepted-candidate.png`
    — under the declared pixel/colour semantics.
-3. **Separate** — map the mask onto **both** inputs and split each into masked and unmasked regions,
+3. **Plane gate** — `plane-changed`. **This one needs decoded pixels and cannot precede step 2.**
+   Resolving the plane means calling `normalisedBoxes`, which calls `contentBox` on *both* images,
+   and `contentBox` samples the decoded pixels to find the drawn region and evaluate the
+   `MIN_BOX_COVERAGE` fallback. Treating it as metadata is wrong. What remains true is that it must
+   precede **mask mapping and resampling**: those have no valid destination until the recorded and
+   recomputed planes are known to agree, and a pair that has crossed `MIN_BOX_COVERAGE` since
+   authoring must return `plane-changed` cleanly here rather than resampling against a stale plane
+   or colliding with incompatible dimensions.
+4. **Separate** — map the mask onto **both** inputs and split each into masked and unmasked regions,
    in that input's own pixel space, **before any resample.** Separation must precede the resample,
    not follow it: once a kernel has averaged across a mask edge, the accepted and unaccepted
    contributions are mixed irreversibly and no later split can unmix them.
@@ -318,15 +321,15 @@ can only run once that space is established.
    reference sample contaminated by masked reference pixels can match an unrelated *candidate*
    regression outside the mask and erase it — the same cancellation, arriving from the other side.
    Separating only the candidate closes one direction of a two-directional search.
-4. **Resample** each region into the canonical plane using the named portable kernel. The
+5. **Resample** each region into the canonical plane using the named portable kernel. The
    destination is **the plane gate's resolved plane** — the reference's content box in the normal
    case, the full canvas in the `MIN_BOX_COVERAGE` fallback — never unconditionally the content box,
    so a fallback comparison sizes and positions its mask against the plane it was authored in.
-5. **Pixel gates** — `candidate-changed`, then `element-ambiguous` / `element-moved`. No scoring
-   happens until all four gates have run.
-6. **Score** the surviving picture, excluding still-valid masked coordinates in **both** roles
+6. **Comparison gates** — `candidate-changed`, then `element-ambiguous` / `element-moved`. No
+   scoring happens until every gate has run.
+7. **Score** the surviving picture, excluding still-valid masked coordinates in **both** roles
    (scored source and neighbourhood candidate) in **both** directed passes.
-7. **Report** raw, accepted and unaccepted separately.
+8. **Report** raw, accepted and unaccepted separately.
 
 **Selector contract.** An acceptance's `element` carries an explicit `kind`. **`v1` defines exactly
 one identifying kind**, deliberately:
@@ -444,7 +447,9 @@ referenceId, variant)`:
 2. **Plane gate.** Recompute the plane for this pair. If its `plane` discriminant or resolved box
    disagrees with the acceptance's recorded one — a candidate that has crossed `MIN_BOX_COVERAGE`
    since the acceptance was authored — it is `invalidated: plane-changed`. Comparing across two
-   different coordinate planes is meaningless, so this has to precede any pixel work.
+   different coordinate planes is meaningless, so this has to precede all **mask mapping and
+   resampling**. It does *not* precede decoding: resolving the plane samples both images' pixels
+   (see the contract's step 3).
 3. **Candidate gate.** Inside each mask, compare the current candidate against
    `accepted-candidate.png` — not against the reference. Match within tolerance ⇒ the acceptance
    stays valid. Mismatch ⇒ `invalidated: candidate-changed`, and the region is reported as a new
