@@ -50,11 +50,16 @@ actually asks for once "component page" is read as "the page you are on when you
 **2. Scoring is client-side, in a candidate-sized normalised space — and it is not SSIM.** Two
 details matter and both were easy to get wrong:
 
-- **The active scorer is `scorePlanes`**, a bidirectional nearest-neighbour search within
-  `EDGE_SEARCH_RADIUS = 5` px with a `LUMA_TOLERANCE = 16` floor, scored symmetrically in both
-  directions. `ssim` / `globalSsim` are still in the file but **have no callers**. Anything that
-  claims to reproduce the server's verdict — the mask algorithm, the cross-engine conformance
-  fixtures in §4 — has to reproduce *that* edge-search behaviour, not an SSIM window.
+- **The active scorer is `scorePlanes`**, and it is more particular than it looks. It first builds
+  an **edge mask** per plane (`edgeMask`: a pixel is an edge if its 4-neighbour luma gradient
+  reaches `EDGE_GRADIENT_THRESHOLD`). Each directed pass then takes the difference **at the same
+  coordinate**, and only widens to the `EDGE_SEARCH_RADIUS = 5` px displaced search when the source
+  pixel *is an edge* **and** that same-coordinate difference already exceeds `LUMA_TOLERANCE = 16`.
+  Both directions are averaged. `ssim` / `globalSsim` are still in the file but **have no callers**.
+
+  So it is neither SSIM nor a plain nearest-neighbour search over every pixel — a distinction that
+  matters to anything claiming to reproduce the verdict, and one this document got wrong for
+  several revisions. See the open problems in §4.
 - **There are already two planes, both keyed off the candidate.** The score runs on a plane capped
   at `MAX_SIDE = 192` px on its longest side; the diff map and triptych run on the uncapped
   candidate content box. Both take their dimensions from `boxes.candidate`, which moves with device
@@ -268,7 +273,7 @@ Each acceptance record carries: a stable `id`; a **mandatory** `issue` URL; the 
 rather than a drag); `mask` and `acceptedCandidate` paths; **three** hashes — `referenceSha256`,
 `acceptedCandidateSha256` **and `maskSha256`**; the **canonical plane the mask was authored
 against** — a `plane: "content-box" | "full-canvas"` discriminant plus the resolved
-`{x, y, width, height}` box, without which the plane gate (step 3 below) cannot be evaluated at
+`{x, y, width, height}` box, without which the plane gate cannot be evaluated at
 all; **the element's authoring-time bounds** in canonical-plane coordinates **and its
 `elementTolerance`**, when the acceptance names an `element`; an optional structured `finding`
 matcher (e.g. `{ kind: "color", token: …,
@@ -304,7 +309,7 @@ bytes don't match its `maskSha256` is a **hard validation failure** (the accepta
 outright and reported), not an invalidation that degrades to "compare normally" — a mask we cannot
 trust is a broken artifact, not a stale one.
 
-**`acceptedCandidateSha256` is checked the same way, and for a sibling reason** (see step 2 of the
+**`acceptedCandidateSha256` is checked the same way, and for a sibling reason** (invariant I7 of the
 pipeline). The mask decides which pixels are suppressed; the accepted candidate decides what those
 pixels are permitted to look like. Leaving either unverified lets an edited artifact redefine what
 "accepted" means without any record changing — so both are validated before decode, and both refuse
@@ -324,112 +329,57 @@ sequenced as such (§6).
 > document restated the pipeline, the selector rules and the invalidation list in several places,
 > and every one of those restatements eventually drifted out of step with the others.
 
-**Pipeline, in order.** Each step consumes the previous step's output; the order is load-bearing.
-Each gate sits at the earliest point where its inputs actually exist — which is *not* the same as
-"all gates first", and the distinction matters more than it looks.
+**Evaluation, as ordering constraints rather than an algorithm.** Earlier revisions of this section
+spelled out a numbered pixel-level pipeline. That was a mistake, and the mistake is instructive
+enough to record: a planning document cannot validate a pixel algorithm, and successive review
+rounds found real defects in every version of it — a gate placed before the data it reads existed,
+a resample that mixed what a previous step had just separated, a delta computed in the wrong
+direction, a scorer description that turned out not to match `scorePlanes` at all. Each fix was
+correct and each introduced the next defect, because there was no implementation and no fixture to
+check any of it against.
 
-1. **Fingerprint gate** — `reference-changed`. Genuinely metadata-only: a `sha256` compared against
-   the manifest, no pixels required, so it is the cheap early-out and goes first.
-2. **Artifact validation, then decode.** Before decoding, check `mask.png` against `maskSha256`
-   **and `accepted-candidate.png` against `acceptedCandidateSha256`**; a mismatch on either is a
-   hard validation failure (the acceptance is refused and reported), not an invalidation. Then
-   decode all four rasters — reference, current candidate, mask, accepted candidate — under the
-   declared pixel/colour semantics.
+So what belongs here is the part that *is* a design decision — the constraints any correct
+implementation must satisfy, and why — with the algorithm itself as a Phase 3 deliverable validated
+by the conformance fixtures. Stated as invariants:
 
-   Both hashes matter for the same reason and it is easy to check only the first. The mask decides
-   *which pixels* are suppressed; the accepted candidate decides *what they are allowed to look
-   like*. An edited `accepted-candidate.png` with an unchanged record silently redefines the thing
-   the candidate gate compares against, so a difference nobody reviewed becomes the new accepted
-   state — the same class of breach as a widened mask, arriving through the other artifact.
-3. **Plane gate** — `plane-changed`. **This one needs decoded pixels and cannot precede step 2.**
-   Resolving the plane means calling `normalisedBoxes`, which calls `contentBox` on *both* images,
-   and `contentBox` samples the decoded pixels to find the drawn region and evaluate the
-   `MIN_BOX_COVERAGE` fallback. Treating it as metadata is wrong. What remains true is that it must
-   precede **mask mapping and resampling**: those have no valid destination until the recorded and
-   recomputed planes are known to agree, and a pair that has crossed `MIN_BOX_COVERAGE` since
-   authoring must return `plane-changed` cleanly here rather than resampling against a stale plane
-   or colliding with incompatible dimensions.
+| # | Invariant | Why it is not negotiable |
+| --- | --- | --- |
+| I1 | Every gate resolves before any score is computed | Excluding coordinates changes the neighbourhood search nonlinearly; a mask found invalid later cannot have its suppression subtracted back out |
+| I2 | Each gate runs at the earliest point its inputs exist — no earlier | `reference-changed` is metadata; `plane-changed` needs decoded pixels because `contentBox` samples them; the element gates need the semantics tree |
+| I3 | Masked and unmasked regions stay separate through **every** resample | Once a kernel averages across a mask edge the contributions are mixed irreversibly |
+| I4 | Separation applies to **both** inputs | `scorePlanes` is bidirectional: a contaminated *reference* sample can erase a *candidate* regression |
+| I5 | Gates run per acceptance; scoring runs against the union of **survivors** | Separating against the union up front lets an invalidated mask keep suppressing; combining per-acceptance planes is not equivalent to filtering against the union at their boundaries |
+| I6 | Raw and unaccepted traverse **identical** resampling stages | Filtering is not associative, so a shortcut path makes raw ≠ unaccepted even with no surviving mask, manufacturing a delta out of nothing |
+| I7 | Both artifact hashes are verified before their bytes are used | The mask decides which pixels are suppressed; the accepted candidate decides what they may look like. Either one edited silently redefines "accepted" |
+| I8 | Every coordinate transform is stated, in both directions | Baselines are canonical-plane; `boundsInRoot` is render pixels; a drag is display pixels — mixing them invalidates unchanged elements or passes moved ones |
 
-   **Content-box detection is part of the portable path.** `contentBox` reaches its verdict through
-   a host `drawImage` downscale, so two engines can measure different boxes — and therefore
-   different `plane` discriminants — from identical bytes, near a sampled edge or the
-   `MIN_BOX_COVERAGE` threshold. The portable kernel requirement covers this sampling too, not only
-   the canonical and score resamples, and the fixtures pin the measured boxes.
-4. **Per-acceptance separate + resample, then gate.** For *each* acceptance independently: map its
-   mask onto **both** inputs, split each into masked and unmasked regions in that input's own pixel
-   space, and resample those regions into the plane gate's resolved plane with the portable kernel.
-   Then run its **comparison gates** — `candidate-changed`, then `element-ambiguous` /
-   `element-moved` — at canonical resolution, where a glyph is still a glyph.
+**Open problems Phase 3 must resolve.** These are the things the review rounds proved cannot be
+settled by prose here. They are listed because finding them was expensive and forgetting them would
+be worse than leaving them open:
 
-   Separation must precede the resample, not follow it: once a kernel has averaged across a mask
-   edge the accepted and unaccepted contributions are mixed irreversibly, and no later split can
-   unmix them. And it covers **both inputs**, because `scorePlanes` compares bidirectionally — a
-   reference sample contaminated by masked reference pixels can match an unrelated *candidate*
-   regression outside the mask and erase it, the same cancellation arriving from the other side.
-5. **Rebuild against the surviving union.** Only now is it known which acceptances survived, so only
-   now can the plane the unaccepted pass scores be built: separate and resample **once more**,
-   against the union of the **still-valid** masks alone.
+1. **The portable pixel path** — kernel, rounding, edge handling, channel/alpha/premultiplication
+   and gray-projection semantics, and content-box sampling, which currently reaches its verdict
+   through a host `drawImage` downscale and so can differ per engine.
+2. **Score-plane geometry** — `MAX_SIDE` caps the longest side but does not determine width and
+   height when the two boxes differ in aspect; which box governs must be fixed.
+3. **Mask participation in `edgeMask`** — the scorer classifies edges from raw neighbour values with
+   no notion of validity, so whatever fills a separated region can manufacture or suppress an edge
+   at the boundary, which decides whether a neighbouring pixel gets the displaced search at all.
+   Excluding masked coordinates as *sources and search candidates* is not sufficient.
+4. **The masked pass's denominator** — dividing by the full plane versus by remaining scorable
+   coordinates gives different numbers, and the all-masked case needs a defined result.
+5. **What "accepted contribution" means** — it is *not* a simple difference of the two scores. Under
+   a scorable-coordinate denominator the unaccepted mismatch can legitimately exceed raw (a small
+   accepted delta removed from a badly-regressed image raises the average), so the subtraction goes
+   negative while the acceptance is perfectly valid. Either define it as a signed score *effect*, or
+   report the accepted region's own regional mismatch instead of presenting a difference as an
+   additive contribution. The current text's claim that a valid acceptance necessarily raises
+   similarity is false.
+6. **Sub-pixel geometry** — element-bounds tolerance and mask-edge alignment both need defined
+   rounding, at each transform.
 
-   This second pass is not redundant, and skipping it breaks mixed-validity sets in one of two
-   ways. Separating against the union *up front* would let a mask that later invalidates keep
-   suppressing pixels it is no longer entitled to. Reusing step 4's per-acceptance planes instead
-   would mean combining independently filtered planes, which is not equivalent to filtering against
-   the union at their boundaries — the same non-composability that forces every other separate-then-
-   resample rule here. So: per-acceptance data for the gates, union-based data for the score.
-6. **Downsample to the score plane** — to the `MAX_SIDE = 192` cap, with the same portable kernel,
-   producing **two independent sets**:
-
-   - **Union-separated**, each region of step 5's planes downsampled on its own, for the unaccepted
-     pass. The cap and the 5 px `EDGE_SEARCH_RADIUS` are load-bearing to the number that comes out,
-     so scoring the canonical plane directly would produce a different verdict — while a
-     whole-image downsample here would re-mix accepted and unaccepted signal across the mask edge.
-     Separation survives *every* resample, including this one.
-   - **Whole**, each input downsampled unseparated, for the raw pass. Raw is by definition the pass
-     that masks nothing, so it needs genuinely untouched planes at score resolution; those cannot
-     be recovered from the separated set, and the canonical or decoded planes would change the
-     scorer's resolution and therefore its verdict.
-
-   **The plane's dimensions come from the canonical plane, not from either content box.**
-   `MAX_SIDE` caps the longest side but does not by itself determine width and height, and the two
-   boxes may differ in size and aspect. Today's scorer derives them from the *candidate* box; by
-   this point in the pipeline everything already lives in the canonical plane, so that is what
-   scales — `scale = min(1, MAX_SIDE / max(canonical.width, canonical.height))`, applied to both
-   axes. Deriving from the reference or candidate box instead changes the pixel grid *and* the
-   effective reach of the 5 px search radius, so it must not be left to the implementer.
-7. **Score twice.** Once over the **whole** planes, masking nothing — the **raw** result. Once over
-   the union-separated planes, excluding surviving-masked coordinates in **both** roles (scored
-   source and neighbourhood candidate) in **both** directed passes — the **unaccepted** result.
-
-   Two passes, not one, and this is forced rather than wasteful. The masked pass yields only the
-   unaccepted number; raw cannot be recovered from it, for exactly the reason the gate ordering
-   already relies on — the neighbourhood search is nonlinear, so removing coordinates changes the
-   contribution of every pixel near them and no arithmetic afterwards reconstructs what the score
-   would have been unmasked. Since "raw findings remain visible after acceptance" is a requirement
-   rather than a nicety, the raw pass has to actually be run.
-
-   **The denominator is the scorable coordinates, not the whole plane.** `scorePlanes` divides each
-   directed pass's accumulated mismatch by `width × height`; with coordinates excluded, "excluding"
-   admits two readings that give different numbers. Divide by **the count of source coordinates
-   that remain scorable**, so the unaccepted score answers "how different is the part still being
-   judged?" rather than being mechanically inflated in proportion to how much was suppressed —
-   which would let a larger mask improve the score without anything improving. When *every*
-   coordinate is excluded the pass has nothing to judge: define it as mismatch 0 / similarity 100,
-   and surface it as fully-accepted rather than as a perfect match.
-8. **Report** raw, unaccepted, and the accepted contribution — **as mismatch, not similarity.**
-
-   `scorePlanes` returns a *similarity*: `(1 − mismatch) × 100`, higher is better. So a valid
-   acceptance that suppresses a known difference makes the unaccepted score **higher** than raw
-   (raw 90 → unaccepted 95), and the naive `raw − unaccepted` is negative. Convert first and
-   subtract in the direction the quantity actually runs:
-
-       rawMismatch        = 100 − raw
-       unacceptedMismatch = 100 − unaccepted
-       accepted           = rawMismatch − unacceptedMismatch
-
-   which for that example is `10 − 5 = 5` — "the acceptance accounts for 5 points of the
-   difference", the sentence a reader expects. The surface should show the two similarity scores
-   as scores and the accepted contribution as a difference, rather than presenting all three in one
-   column and inviting the subtraction that has the sign backwards.
+The gates and their invalidation causes below are design decisions and do stand as written; it is
+the pixel mechanics above that are deferred.
 
 **Selector contract.** An acceptance's `element` carries an explicit `kind`. **`v1` defines exactly
 one identifying kind**, deliberately:
@@ -490,8 +440,8 @@ So acceptance gets **its own canonical plane, defined by the reference**:
 - **`accepted-candidate.png` is stored in it**, cropped to the mask's bounding box. Evaluating an
   acceptance therefore means resampling the live candidate into the canonical plane — against a
   stored crop that never moves — rather than storing a crop in a plane that moves under it. Note
-  this is a resample of the **separated regions**, not of the whole frame: see step 2 of the
-  normative pipeline, which is what keeps a kernel from averaging across the mask edge.
+  this is a resample of the **separated regions**, not of the whole frame (invariants I3/I4),
+  which is what keeps a kernel from averaging across the mask edge.
 - **Suppression is then mapped into whichever plane is being reported.** The canonical plane, the
   score plane and the diff plane are all content-box crops related by an affine scale, so the mask's
   coverage maps into each with the same arithmetic `boxCanvas` already does. Do the *comparison* at
@@ -696,15 +646,17 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | --- | --- |
 | decode | **all four** raster inputs decoded — reference, current candidate, `mask.png`, `accepted-candidate.png` — in the declared pixel/colour semantics. The candidate gate reads the accepted-candidate decode and mask coverage reads the mask decode, so an alpha or colour divergence in either would otherwise first surface as a wrong verdict rather than as a decoder bug |
 | content boxes | each input's measured content box and the resolved `plane` discriminant, since content-box detection is itself part of the portable path and two engines can otherwise measure differently near a sampled edge or the `MIN_BOX_COVERAGE` threshold |
+| selector | the resolved element — which node the selector matched, its bounds in canonical coordinates, and the tag-uniqueness verdict. Ahead of the union stages, because which acceptances survive decides which masks the union contains (I5) |
 | separation | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite) — per-acceptance, and again for the surviving union |
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
 | score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, still separated, downsampled per-region rather than whole-image |
 | score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, so a divergence between the two downsample paths is caught here rather than as a raw/unaccepted mismatch |
-| selector | the resolved element — which node the selector matched, its bounds, and the tag-uniqueness verdict |
 | result | `{raw, accepted, unaccepted, invalidations, validationFailures}` |
 
-The stage order mirrors the normative pipeline exactly, and deliberately so: a fixture suite that
-resampled before separating would enshrine the bug the pipeline order exists to prevent.
+The stages exist to localise a divergence, so they must follow whatever order the Phase 3 algorithm
+settles on — and must satisfy the invariants above regardless. Two orderings are already known to be
+wrong and must not be pinned: resampling before separating (I3), and building the surviving-union
+planes before selector resolution has decided which acceptances survive (I5).
 
 **Hard validation failures need an expected value too.** A mask or accepted candidate whose bytes
 don't match its recorded hash is a *refusal*, not an invalidation — a distinct branch of the
