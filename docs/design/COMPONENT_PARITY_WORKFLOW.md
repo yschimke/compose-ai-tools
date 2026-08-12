@@ -269,8 +269,9 @@ rather than a drag); `mask` and `acceptedCandidate` paths; **three** hashes — 
 `acceptedCandidateSha256` **and `maskSha256`**; the **canonical plane the mask was authored
 against** — a `plane: "content-box" | "full-canvas"` discriminant plus the resolved
 `{x, y, width, height}` box, without which the plane gate (step 3 below) cannot be evaluated at
-all; **the element's authoring-time bounds**, in canonical-plane coordinates, when the acceptance
-names an `element`; an optional structured `finding` matcher (e.g. `{ kind: "color", token: …,
+all; **the element's authoring-time bounds** in canonical-plane coordinates **and its
+`elementTolerance`**, when the acceptance names an `element`; an optional structured `finding`
+matcher (e.g. `{ kind: "color", token: …,
 expected: …, actual: … }`) for the checks design-parity runs that are not pixel comparisons; and
 free-text `note` + `acceptedAt`.
 
@@ -280,8 +281,19 @@ the evaluator otherwise holds only the element's *current* bounds. The mask is n
 a mask commonly covers one part of the selected element (the glyph inside the button), so treating
 its bounding box as the element's baseline would report movement for an element that never moved,
 or miss movement smaller than the slack between them. Record the bounds at authoring time, in the
-canonical plane so they survive device-size changes, and state the tolerance as a fraction of the
-element's own smaller dimension rather than an absolute pixel count — an absolute tolerance means
+canonical plane so they survive device-size changes.
+
+**The tolerance is a recorded field too, not a constant each engine picks.** `elementTolerance`
+lives on the acceptance, so both engines read one number off one artifact and cannot disagree at
+the threshold — which is the actual requirement; *which* number it is matters far less than that
+there is exactly one of it. The contract fixes everything around it: the fraction is relative to
+the element's **smaller baseline dimension**, it is compared against the **maximum of the four edge
+displacements** between baseline and current bounds, and the comparison is `>` so a displacement
+exactly at tolerance passes. Those are the parts two implementations would otherwise choose
+differently. `0.1` is a sensible value to author with, and Phase 3 should tune it against the
+fixtures rather than treat it as settled here.
+
+A fraction rather than an absolute pixel count because an absolute tolerance means
 something different for a 16 px icon than for a 300 px card.
 
 **The mask must be hashed, not just referenced by path.** The mask is the thing that decides *what
@@ -353,12 +365,22 @@ Each gate sits at the earliest point where its inputs actually exist — which i
 6. **Comparison gates** — `candidate-changed`, then `element-ambiguous` / `element-moved`. Both run
    at **canonical** resolution, where a glyph is still a glyph. No scoring happens until every gate
    has run.
-7. **Downsample to the score plane** — each separated region again, independently, with the same
-   portable kernel, to the `MAX_SIDE = 192` cap `scorePlanes` consumes. This step is easy to omit
-   and cannot be: the cap and the 5 px `EDGE_SEARCH_RADIUS` are load-bearing to the number that
-   comes out, so scoring the canonical plane directly would produce a different verdict — while
-   reusing the existing whole-image downsample would re-mix accepted and unaccepted signal across
-   the mask edge and undo step 4. Separation survives *every* resample, including this one.
+7. **Downsample to the score plane** — to the `MAX_SIDE = 192` cap `scorePlanes` consumes, with the
+   same portable kernel, producing **two independent sets of planes**:
+
+   - **Separated**, each region downsampled on its own, for the unaccepted pass. The cap and the
+     5 px `EDGE_SEARCH_RADIUS` are load-bearing to the number that comes out, so scoring the
+     canonical plane directly would produce a different verdict — while reusing a whole-image
+     downsample here would re-mix accepted and unaccepted signal across the mask edge and undo
+     step 4. Separation survives *every* resample, including this one.
+   - **Whole**, each input downsampled unseparated, for the raw pass. The raw score is by
+     definition the one that masks nothing, so it needs genuinely untouched planes at score
+     resolution — and those cannot be recovered from the separated set, because recombining two
+     independently filtered regions is not equivalent to filtering the whole at the boundary. Using
+     the canonical or decoded planes instead would change the scorer's resolution and therefore its
+     verdict.
+
+   Two resamples of the same inputs is the honest cost of reporting both numbers truthfully.
 8. **Score twice.** Once over the **untouched** planes, masking nothing — that is the **raw**
    result. Once over the surviving picture, excluding still-valid masked coordinates in **both**
    roles (scored source and neighbourhood candidate) in **both** directed passes — that is the
@@ -370,7 +392,21 @@ Each gate sits at the earliest point where its inputs actually exist — which i
    contribution of every pixel near them and no arithmetic afterwards reconstructs what the score
    would have been unmasked. Since "raw findings remain visible after acceptance" is a requirement
    rather than a nicety, the raw pass has to actually be run.
-9. **Report** raw, accepted (raw − unaccepted) and unaccepted separately.
+9. **Report** raw, unaccepted, and the accepted contribution — **as mismatch, not similarity.**
+
+   `scorePlanes` returns a *similarity*: `(1 − mismatch) × 100`, higher is better. So a valid
+   acceptance that suppresses a known difference makes the unaccepted score **higher** than raw
+   (raw 90 → unaccepted 95), and the naive `raw − unaccepted` is negative. Convert first and
+   subtract in the direction the quantity actually runs:
+
+       rawMismatch        = 100 − raw
+       unacceptedMismatch = 100 − unaccepted
+       accepted           = rawMismatch − unacceptedMismatch
+
+   which for that example is `10 − 5 = 5` — "the acceptance accounts for 5 points of the
+   difference", the sentence a reader expects. The surface should show the two similarity scores
+   as scores and the accepted contribution as a difference, rather than presenting all three in one
+   column and inviting the subtraction that has the sign backwards.
 
 **Selector contract.** An acceptance's `element` carries an explicit `kind`. **`v1` defines exactly
 one identifying kind**, deliberately:
@@ -638,7 +674,8 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 | decode | **all four** raster inputs decoded — reference, current candidate, `mask.png`, `accepted-candidate.png` — in the declared pixel/colour semantics. The candidate gate reads the accepted-candidate decode and mask coverage reads the mask decode, so an alpha or colour divergence in either would otherwise first surface as a wrong verdict rather than as a decoder bug |
 | separation | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite) |
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
-| score plane | the `MAX_SIDE`-capped planes `scorePlanes` actually consumes — both sides, still separated, downsampled per-region rather than whole-image |
+| score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, still separated, downsampled per-region rather than whole-image |
+| score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, so a divergence between the two downsample paths is caught here rather than as a raw/unaccepted mismatch |
 | selector | the resolved element — which node the selector matched, its bounds, and the tag-uniqueness verdict |
 | result | `{raw, accepted, unaccepted, invalidations}` |
 
