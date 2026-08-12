@@ -103,6 +103,50 @@ class ServeAuthTest {
     )
   }
 
+  /**
+   * The narrowing that makes shared links storable. "This server has auth configured" is not the
+   * same claim as "this response is personal" — an anonymous request gets the signed-out rendering
+   * every anonymous visitor gets, and telling every intermediary and link-preview service not to
+   * retain it is a stronger statement than the bytes deserve.
+   */
+  @Test
+  fun `an anonymous page on an auth server is public bytes, not a personal response`() {
+    assertEquals(
+      "public, max-age=0, s-maxage=300, must-revalidate",
+      ServeHttpServer.pageCacheControl(
+        githubAuthConfigured = true,
+        isPublic = true,
+        signedIn = false,
+      ),
+    )
+    // `max-age=0` is load-bearing: the browser still revalidates every visit, so the sign-in chip
+    // can never be replayed stale. No `stale-while-revalidate` — that is the directive that would
+    // paint the pre-sign-in HTML after the OAuth round-trip.
+    assertFalse(
+      ServeHttpServer.pageCacheControl(true, isPublic = true, signedIn = false)
+        .contains("stale-while-revalidate")
+    )
+    // A token-gated host stays on `no-store` whoever is asking: its URLs carry a credential, and
+    // "nobody is signed in" says nothing about whether a shared cache may store the response.
+    assertEquals(
+      "private, no-store",
+      ServeHttpServer.pageCacheControl(
+        githubAuthConfigured = true,
+        isPublic = false,
+        signedIn = false,
+      ),
+    )
+    // Same rule on the viewer, which is the page most often shared.
+    assertEquals(
+      "public, max-age=0, s-maxage=300, must-revalidate",
+      ServeHttpServer.viewerCacheControl(
+        githubAuthConfigured = true,
+        isPublic = true,
+        signedIn = false,
+      ),
+    )
+  }
+
   @Test
   fun `the viewer page follows the same personalisation rule as every other page`() {
     // Not just the live-streaming viewer: the sign-in chip and the issue reporter's "filed as @you"

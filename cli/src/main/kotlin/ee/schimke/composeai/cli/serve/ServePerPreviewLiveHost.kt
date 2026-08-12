@@ -86,6 +86,11 @@ class ServePerPreviewLiveHost(
 
   override val label: String = baked.label
 
+  // The published pixels' size, which is what an unfurl card advertises — the live lane never
+  // changes it, and asking the baked host costs a PNG header read.
+  override fun bakedRenderSize(previewId: String): Pair<Int, Int>? =
+    baked.bakedRenderSize(previewId)
+
   override fun designReferencesFor(previewId: String): List<DesignReference> =
     baked.designReferencesFor(previewId)
 

@@ -566,6 +566,10 @@ class ServeWebFixtureTest {
         // "try in playground" on the summary line — the catalog-level half of the handoff, captured
         // so its placement in that run of actions is diffed like any other pixel.
         playgroundHref = "/playground?catalog=compose-m3",
+        // A published screen, so the action row's "N screens" chip is captured alongside the
+        // comparison chips it sits with. Without this no golden carries one, and the chip could be
+        // restyled or lost with no baseline moving.
+        screenCount = 2,
       )
     // The public preview server's FRONT DOOR: an index of the published design systems, each a card
     // with a meaningful hero preview, its title + library, trust badge, and a link to /<system>/.
@@ -867,8 +871,10 @@ class ServeWebFixtureTest {
         version = version,
         // meshcore-mobile is the catalog that really publishes Figma-backed design references, so
         // it is the one whose landing offers the design-parity view — captured here so the
-        // visual-diff bot covers the new summary-line action.
+        // visual-diff bot covers the new summary-line action, named after the design tool the
+        // references came from.
         hasParityView = true,
+        designToolLabel = "Figma",
       )
     val viewerPath =
       ServeWeb.viewerPage(
@@ -1045,7 +1051,10 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
         hasHomeIndex = true,
-        hasFormatComparison = true,
+        // Both comparison actions, so the golden captures the split summary line ("compare SVG ·
+        // compare RC players") the visual-diff bot shoots.
+        hasSvgComparison = true,
+        hasRcComparison = true,
         version = version,
       )
     // The catalog-theme sync: a served system's pages are framed in ITS colours, not the built-in
@@ -1249,6 +1258,9 @@ class ServeWebFixtureTest {
         version = version,
         displayTitle = "Compose Material 3",
         hasReferenceFor = { it.startsWith("button-filled") },
+        // The catalog names its design tool, so the page's way back out to the whole-catalog
+        // comparison table is captured with the same wording as the link that leads here.
+        designToolLabel = "Figma",
       )
     val referenceComparison =
       ServeWeb.referenceComparisonPage(
@@ -2183,10 +2195,25 @@ class ServeWebFixtureTest {
         "the $name page carries the palette",
       )
     }
+    // One assist chip per comparable format, each deep-linking the format it names, rather than a
+    // single "compare formats" text link that hid what this catalog can actually compare.
     assertTrue(
-      landingThemed.contains("class=\"cp-format-link\" href=\"/compare?session=compose-m3\"") &&
-        landingThemed.contains(">compare formats</a>"),
-      "a catalog with alternate formats exposes the subtle comparison link",
+      landingThemed.contains(
+        "<a class=\"cp-action-chip\" href=\"/compare?format=svg&amp;session=compose-m3\">" +
+          "compare SVG</a>"
+      ) &&
+        landingThemed.contains(
+          "<a class=\"cp-action-chip\" href=\"/compare?format=rc&amp;session=compose-m3\">" +
+            "compare RC players</a>"
+        ),
+      "a catalog with alternate formats links each one separately: $landingThemed",
+    )
+    // …and the design-parity action is named after the tool it compares against.
+    assertTrue(
+      landingPath.contains(
+        "<a class=\"cp-action-chip\" href=\"/meshcore-mobile/parity\">compare to Figma</a>"
+      ),
+      "a Figma-specified catalog offers 'compare to Figma' rather than the feature's name",
     )
     assertTrue(
       formatComparison.contains("data-compare-format=\"svg\"") &&
@@ -3275,6 +3302,7 @@ class ServeWebFixtureTest {
     assertTrue(
       openLive.contains(
         "id=\"cp-live-toggle\" class=\"cp-live-toggle\" aria-pressed=\"false\" " +
+          "data-default-lane-label=\"Live preview\" " +
           "title=\"Static snapshot — click for the live, interactive preview\">"
       ),
       "live preview remains an ordinary toggle when no GitHub sign-in prompt is required",
@@ -4290,9 +4318,11 @@ class ServeWebFixtureTest {
     // A knob edit has a dedicated handler (onKnobEdited) that drives whichever transport is live —
     // here the carried daemon via /render (canRenderOverrides). The Wasm tier also honours named
     // knobs now, so the handler picks the iframe when Wasm is active (see the wasm-only case
-    // below).
+    // below). Matched without the parameter list: the handler's *existence* is the contract here,
+    // and pinning its arity broke this when it grew one.
     assertTrue(
-      assetText("viewer.js").contains("function onKnobEdited()"),
+      assetText("viewer.js").contains("function onKnobEdited(") &&
+        assetText("viewer.js").contains("function knobRoute()"),
       "knob edits have a dedicated, transport-aware handler",
     )
     assertTrue(
@@ -4398,7 +4428,7 @@ class ServeWebFixtureTest {
     // posts the override patch (with the knob) to the iframe, or auto-enables Wasm from the
     // snapshot.
     assertTrue(
-      assetText("viewer.js").contains("function onKnobEdited()") &&
+      assetText("viewer.js").contains("function onKnobEdited(") &&
         assetText("viewer.js").contains("wasmFrame.contentWindow.postMessage(wasmOverridePatch()"),
       "a knob edit routes to the Wasm iframe when that tier is active",
     )

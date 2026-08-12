@@ -344,6 +344,14 @@ class ServeHttpRoutingTest {
     }
   }
 
+  /** A `HEAD` for [path]: status plus the headers, which are the entire point of the method. */
+  private fun head(path: String): Pair<Int, okhttp3.Headers> {
+    val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").head().build()
+    client.newCall(req).execute().use { r ->
+      return r.code to r.headers
+    }
+  }
+
   /** [get], keeping the response headers — the baked-fallback signals ride there. */
   private fun getFull(path: String): Triple<Int, String, okhttp3.Headers> {
     val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
@@ -1306,12 +1314,256 @@ class ServeHttpRoutingTest {
       heroSrc(body)?.startsWith("/hero/compose-m3/") == true,
       "index card shows a prebaked hero: $body",
     )
+    // Nothing the BROWSER fetches may point at the render lane. Scoped to the attributes that
+    // actually issue a request (`src`, `href`) rather than the whole body, because the `og:image`
+    // below deliberately does name the render — a meta tag is inert until a link unfurler reads it,
+    // and one baked PNG per shared link is not the per-visitor render load this guards against.
     assertTrue(
-      !body.contains("/compose-m3/render/$previewId.png"),
+      !Regex("""(src|href)="[^"]*/compose-m3/render/""").containsMatchIn(body),
       "the front door does not put a render request on the server: $body",
     )
+    // The unfurl image IS the full render, not the downscaled `/hero/` thumbnail the card lays out:
+    // that thumbnail is card-sized and too small for a link-preview card to use.
+    assertTrue(
+      body.contains("""<meta property="og:image" content="http://"""),
+      "the front door advertises an unfurl image: $body",
+    )
+    assertTrue(
+      Regex("""<meta property="og:image" content="[^"]*/compose-m3/render/""")
+        .containsMatchIn(body),
+      "the unfurl image is the full render, not the hero thumbnail: $body",
+    )
+    // …and it carries the render's measured size, so a fetcher lays the card out without
+    // downloading the image first.
+    assertTrue(body.contains("<meta property=\"og:image:width\""), "declares its width: $body")
+    assertTrue(body.contains("<meta property=\"og:image:height\""), "declares its height: $body")
     // It is NOT the default module's own preview grid.
     assertTrue(!body.contains("default-mod"), "root is the index, not the default module: $body")
+  }
+
+  /**
+   * Every route answers HEAD, because that is the probe a link unfurler sends before it commits to
+   * downloading a page or its `og:image`. Before [io.ktor.server.plugins.autohead.AutoHeadResponse]
+   * was installed these were 405 where a constant segment matched (`/`, `/status`) and 404 where
+   * routing needed a `{system}` (every catalog page and every render), so the entire site read as
+   * dead to anything that probes before fetching.
+   */
+  @Test
+  fun `HEAD answers wherever GET does, with the same headers`() {
+    val paths =
+      listOf(
+        "/",
+        "/status",
+        "/version",
+        "/compose-m3/",
+        "/compose-m3/p/$previewId",
+        "/compose-m3/render/$previewId.png",
+        "/robots.txt",
+        "/sitemap.xml",
+      )
+    for (path in paths) {
+      val (headCode, headHeaders) = head(path)
+      val (getCode, _, getHeaders) = getFull(path)
+      assertEquals(getCode, headCode, "HEAD and GET disagree on status for $path")
+      assertEquals(200, headCode, "HEAD $path")
+      // The headers are what the probe is asking about: a HEAD that reported a different content
+      // type than the GET would be worse than no HEAD at all.
+      assertEquals(
+        getHeaders["Content-Type"],
+        headHeaders["Content-Type"],
+        "HEAD and GET disagree on content type for $path",
+      )
+      assertEquals(
+        getHeaders["Cache-Control"],
+        headHeaders["Cache-Control"],
+        "HEAD and GET disagree on cache-control for $path",
+      )
+    }
+  }
+
+  /**
+   * `AutoHeadResponse` answers a HEAD by running the whole GET handler and discarding the body,
+   * which is right for a page or a baked PNG and badly wrong for the work lanes: `HEAD /bundle.zip`
+   * would render every preview and pack a zip only to throw it away, so an anonymous `curl -I` on a
+   * public host could burn a catalog's render capacity while downloading nothing. Those refuse the
+   * probe with `405` + `Allow: GET` instead.
+   */
+  @Test
+  fun `HEAD is refused on the lanes whose GET does real work`() {
+    for (path in listOf("/compose-m3/bundle.zip", "/compose-m3/bundle/$previewId")) {
+      val (code, headers) = head(path)
+      assertEquals(405, code, "HEAD $path must not run the GET handler")
+      assertEquals("GET", headers["Allow"], "refusal names the method that works: $path")
+    }
+    // An override-bearing render is a daemon render; the bare path is the baked file an unfurler
+    // probes for og:image and must keep answering.
+    assertEquals(
+      405,
+      head("/compose-m3/render/$previewId.png?fontScale=1.5").first,
+      "an override render must not be triggered by a bodyless probe",
+    )
+    // The non-PNG products are made on demand whether or not a query is present, so the suffix
+    // alone has to refuse — an override-free `HEAD …/render/<id>.svg` would otherwise take the
+    // render semaphore just to have its body discarded.
+    for (suffix in listOf(".svg", ".slots", ".a11y", ".annotations", ".rc")) {
+      assertEquals(
+        405,
+        head("/compose-m3/render/$previewId$suffix").first,
+        "a bodyless probe must not produce $suffix",
+      )
+    }
+    assertEquals(200, head("/compose-m3/render/$previewId.png").first, "the bake still answers")
+  }
+
+  /**
+   * The token gate has to run before the HEAD refusal. `rejectBadToken` answers 404 to conceal that
+   * a route exists at all, so refusing first with `405` + `Allow: GET` would tell an
+   * unauthenticated scanner the opposite — and `/history/render` is only registered when the
+   * repository-backed surface is enabled, making the difference a probe for optional configuration.
+   */
+  @Test
+  fun `an unauthenticated HEAD on a gated lane is concealed, not refused`() {
+    val gated =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "the-secret",
+          sessions = registry,
+          defaultSessionId = "default-mod",
+          isPublic = false,
+        )
+        .also { it.start() }
+    try {
+      fun headOn(path: String): Pair<Int, okhttp3.Headers> {
+        val req = Request.Builder().url("http://127.0.0.1:${gated.port}$path").head().build()
+        client.newCall(req).execute().use { r ->
+          return r.code to r.headers
+        }
+      }
+      for (path in listOf("/bundle.zip", "/bundle/$previewId", "/render/$previewId.svg")) {
+        val (code, headers) = headOn(path)
+        assertEquals(404, code, "HEAD $path must conceal the route, not advertise it")
+        assertEquals(null, headers["Allow"], "a concealed route names no methods: $path")
+      }
+      // With the token, the refusal is the one the work-lane guard exists to give.
+      assertEquals(405, headOn("/bundle.zip?token=the-secret").first)
+    } finally {
+      gated.stop()
+    }
+  }
+
+  /**
+   * A HEAD is a probe, not a visit. `AutoHeadResponse` answers it by running the GET pipeline and
+   * dropping the body, so the view tallies would otherwise count the probe an unfurler sends *and*
+   * the fetch that follows it — double-counting every link shared into a chat.
+   */
+  @Test
+  fun `a HEAD probe does not count as a view`() {
+    val path = "/compose-m3/p/$previewId"
+    // Establish a baseline, then probe repeatedly: the tally must not move.
+    get(path)
+    val (_, afterGet) = get(path)
+    val baseline = viewCount(afterGet)
+    repeat(3) { head(path) }
+    val (_, afterHeads) = get(path)
+    // One more than the baseline: the GET that read the tally back, and none of the three HEADs.
+    assertEquals(
+      baseline + 1,
+      viewCount(afterHeads),
+      "HEAD probes were counted as views: $afterHeads",
+    )
+  }
+
+  /** The viewer's rendered view tally, or 0 when the page shows none. */
+  private fun viewCount(html: String): Int =
+    Regex("""cp-viewer-engage[^>]*>([\d,]+)""")
+      .find(html)
+      ?.groupValues
+      ?.get(1)
+      ?.replace(",", "")
+      ?.toIntOrNull() ?: 0
+
+  /**
+   * A viewer's `og:image` inherits the page's query suffix, so a link shared from an overridden
+   * view points at a re-render whose pixel size is not the baked one. Declaring the baked
+   * dimensions there would have the card lay out against a size the image doesn't have — omit them
+   * and let the fetcher measure.
+   */
+  @Test
+  fun `an overridden viewer link declares no image dimensions`() {
+    val (_, plain) = get("/compose-m3/p/$previewId")
+    assertTrue(
+      plain.contains("<meta property=\"og:image:width\""),
+      "baked view is measured: $plain",
+    )
+
+    val (_, overridden) = get("/compose-m3/p/$previewId?fontScale=1.5")
+    assertTrue(
+      overridden.contains("fontScale=1.5\">"),
+      "the card still points at the overridden render: $overridden",
+    )
+    assertFalse(
+      overridden.contains("og:image:width"),
+      "baked dimensions must not describe an overridden render: $overridden",
+    )
+  }
+
+  /**
+   * `robots.txt` opens the browsing surface and closes the lanes that cost the box something. The
+   * assertions name the failure modes rather than the file's exact text: the browsing pages must
+   * stay crawlable (that is the whole point of publishing a sitemap), and the render-with-overrides
+   * lane must not be, since a crawler walking the grid's theme links would re-render every preview.
+   */
+  @Test
+  fun `robots txt opens the browse surface and closes the render and code lanes`() {
+    val (code, body) = get("/robots.txt")
+    assertEquals(200, code)
+    assertTrue(body.startsWith("# compose-preview"), "robots.txt is the real file: $body")
+    // The expensive lanes.
+    for (closed in listOf("/playground", "/bundle.zip", "/wasm/", "/*/render/*?", "/*/compare")) {
+      assertTrue(body.contains("Disallow: $closed"), "closes $closed: $body")
+    }
+    // The browsing surface is never disallowed — no rule may match a catalog landing, a viewer, or
+    // the baked PNG an unfurl card points at. Compared line-exactly, because the legitimate
+    // `/*/render/*?` rule has the open form as a prefix and a substring test would read it as a
+    // violation of itself.
+    val rules = body.lines().map { it.trim() }
+    for (open in
+      listOf(
+        "Disallow: /",
+        "Disallow: /$",
+        "Disallow: /*/p/",
+        "Disallow: /*/render/",
+        "Disallow: /*?",
+      )) {
+      assertFalse(rules.contains(open), "must not close the browse surface ($open): $body")
+    }
+    // Link unfurlers get their own group, without the crawl delay and without wildcard rules their
+    // simple prefix parsers would misread.
+    assertTrue(body.contains("User-agent: Slackbot-LinkExpanding"), "names Slackbot: $body")
+    assertTrue(body.contains("User-agent: Slack-ImgProxy"), "names Slack's image fetcher: $body")
+    assertTrue(body.contains("Sitemap: http://"), "advertises the sitemap: $body")
+  }
+
+  /**
+   * The sitemap lists the pages worth landing on — catalog landings and viewers — built from the
+   * remembered catalog metadata rather than from live hosts, so a suspended catalog still appears.
+   */
+  @Test
+  fun `sitemap lists catalog landings and their preview viewers`() {
+    val (code, body) = get("/sitemap.xml")
+    assertEquals(200, code)
+    assertTrue(body.startsWith("<?xml"), "sitemap is XML: $body")
+    assertTrue(body.contains("<loc>http://127.0.0.1:${server.port}/</loc>"), "front door: $body")
+    assertTrue(body.contains("/compose-m3/</loc>"), "catalog landing: $body")
+    assertTrue(body.contains("/compose-m3/p/$previewId</loc>"), "preview viewer: $body")
+    // Not the images, and not the lanes robots.txt just closed — a sitemap that advertises what
+    // robots.txt forbids is a contradiction a crawler reports as an error.
+    assertFalse(body.contains("/render/"), "sitemap lists pages, not images: $body")
+    assertFalse(body.contains("/compare"), "sitemap does not list the closed lanes: $body")
+    // Unlisted catalogs are served but not published; they stay off the sitemap like they stay off
+    // the front door.
+    assertFalse(body.contains("/baked-only/"), "unlisted catalogs are not in the sitemap: $body")
   }
 
   /** The `src` of the first hero `<img>` on the home index, or null when there is none. */
@@ -1407,9 +1659,18 @@ class ServeHttpRoutingTest {
       queryBody.contains("data-rc-neutral=\"/render/$previewId.rc?session=compose-m3\""),
       "the legacy page keeps its session query on the RC document URL: $queryBody",
     )
+    // The landing links each comparison it can actually offer, by name: this catalog carries RC
+    // documents and design references but no SVG export, so it gets the RC action and the
+    // design-tool one, and no "compare SVG" leading to a dead tab.
+    val landing = get("/compose-m3/").second
     assertTrue(
-      get("/compose-m3/").second.contains("href=\"/compose-m3/compare\""),
-      "the catalog landing links to the native comparison page",
+      landing.contains("href=\"/compose-m3/compare?format=rc\">compare RC players</a>") &&
+        !landing.contains("compare SVG"),
+      "the catalog landing links the comparison formats it carries: $landing",
+    )
+    assertTrue(
+      landing.contains("href=\"/compose-m3/parity\">compare to Figma</a>"),
+      "the catalog landing names the design tool its references come from: $landing",
     )
   }
 

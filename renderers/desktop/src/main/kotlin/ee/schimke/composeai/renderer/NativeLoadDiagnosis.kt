@@ -25,8 +25,33 @@ import java.util.concurrent.atomic.AtomicReference
  */
 internal object NativeLoadDiagnosis {
 
-  /** The first native-load explanation seen in this JVM, if any. */
+  /** The first *skiko* native-load explanation seen in this JVM, if any. */
   private val firstFailure = AtomicReference<String?>(null)
+
+  /**
+   * Non-skiko native failures already reported in this JVM, so a broken application JNI library
+   * gets one log line rather than one per preview. Deliberately separate from [firstFailure]: those
+   * failures are not what a `Could not initialize class org.jetbrains.skia…` cascades from, so they
+   * must never be mistaken for its cause.
+   */
+  private const val MAX_REMEMBERED_NON_SKIKO = 64
+
+  /**
+   * FIFO-bounded rather than a plain set: the bound must not be able to turn reporting *off* (a
+   * full set that refuses new entries hides a library never seen before) nor turn dedup off (a full
+   * set that clears wholesale re-reports everything it just forgot). Evicting the oldest entry does
+   * neither — every distinct failure is reported, and a failure stays deduped until 64 *other*
+   * distinct ones have pushed it out.
+   */
+  private val reportedNonSkiko: MutableSet<String> =
+    java.util.Collections.newSetFromMap(
+      java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, Boolean>(16, 0.75f, false) {
+          override fun removeEldestEntry(eldest: Map.Entry<String, Boolean>): Boolean =
+            size > MAX_REMEMBERED_NON_SKIKO
+        }
+      )
+    )
 
   /** Roots whose libraries carry the store's own glibc rather than the host's. */
   private val STORE_PREFIXES = listOf("/nix/store/", "/gnu/store/")
@@ -41,10 +66,12 @@ internal object NativeLoadDiagnosis {
 
   /**
    * @property text the sentence written to the sidecar and (for the first failure) the build log.
-   * @property cascade true when this preview only failed because an *earlier* one already broke
-   *   Skia in this JVM. Reported on the sidecar all the same — the panel shows one card at a time,
-   *   so a card that just says "could not initialize class" is useless — but logged only once, or
-   *   the build output becomes the very cascade this exists to collapse.
+   * @property cascade true when this failure has already been accounted for in this JVM — either an
+   *   earlier preview broke Skia and this one inherited the wreckage, or the same native library
+   *   already failed to load for a previous preview. Reported on the sidecar all the same — the
+   *   panel shows one card at a time, so a card that just says "could not initialize class" is
+   *   useless — but logged only once, or the build output becomes the very flood this exists to
+   *   collapse.
    */
   data class Diagnosis(val text: String, val cascade: Boolean)
 
@@ -68,7 +95,14 @@ internal object NativeLoadDiagnosis {
       // and latching it so a later *real* skiko failure is dismissed as a cascade of it.
       val skiko = chain.any(::mentionsSkiko)
       val explanation = explain(native, skiko)
-      if (!skiko) return Diagnosis(explanation, cascade = false)
+      if (!skiko) {
+        // Kept out of the Skia latch — a missing application JNI library says nothing about
+        // skiko — but still reported once per JVM. Every preview that touches the same broken
+        // library raises the same error, and a warm worker would otherwise print a thousand
+        // identical lines: the exact log flood the latch exists to prevent, arriving by a
+        // different door.
+        return Diagnosis(explanation, cascade = !firstReportOf(explanation))
+      }
       // First one wins: later previews in this JVM see the cascade, not another copy of the cause.
       val alreadySeen = !firstFailure.compareAndSet(null, explanation)
       return Diagnosis(explanation, cascade = alreadySeen)
@@ -106,9 +140,13 @@ internal object NativeLoadDiagnosis {
       "ldLibraryPath" to env("LD_LIBRARY_PATH").orEmpty(),
     )
 
-  /** Test seam — the latch is JVM-global state, so tests must be able to clear it. */
+  /** Whether [explanation] is being reported for the first time in this JVM. */
+  private fun firstReportOf(explanation: String): Boolean = reportedNonSkiko.add(explanation)
+
+  /** Test seam — both latches are JVM-global state, so tests must be able to clear them. */
   internal fun resetForTesting() {
     firstFailure.set(null)
+    reportedNonSkiko.clear()
   }
 
   /** Whether a message says *why* the load failed, rather than only which file failed to load. */

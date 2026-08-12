@@ -108,7 +108,7 @@
 
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
-      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" title="Static snapshot — this session has no live lane to switch to" disabled>
+      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Live preview" title="Static snapshot — this session has no live lane to switch to" disabled>
             <span class="cp-live-dot" aria-hidden="true"></span>
             <span id="cp-live-toggle-label">Live preview</span>
           </button>
@@ -197,7 +197,9 @@
                 <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off" disabled>
                 <!-- A datalist, not a fixed <select>: the presets (pseudolocales, RTL, common
                      tags) drop down for quick picking, but any valid BCP-47 tag the server
-                     accepts can still be typed in. -->
+                     accepts can still be typed in — so this is the OPEN form of the same value
+                     set an author declares with `previewOverrideChoice`, rendered through the
+                     same helper rather than hand-written twice. -->
                 <datalist id="cp-localeTag-list">
                   <option value="en-XA" label="Accented (pseudo)"></option>
                   <option value="ar-XB" label="Bidi / RTL (pseudo)"></option>

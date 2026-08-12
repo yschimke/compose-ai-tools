@@ -27,6 +27,16 @@ object PreviewOverrideType {
 }
 
 /**
+ * One value of a knob's **value set** — what the knob may be set to, and how a viewer names it.
+ *
+ * [label] defaults to [value], so a set whose values are already human-readable declares nothing
+ * extra. It earns its keep where the wire value is a slug the visitor should not have to know: a
+ * size axis seeds `xs` and reads "Extra small", a pseudo-locale is `en-XA` and reads "Accented
+ * (pseudo)".
+ */
+@Serializable data class PreviewOverrideOption(val value: String, val label: String = value)
+
+/**
  * One author-declared editable knob a preview exposes through a `previewOverride*` lookup.
  *
  * Named distinctly from the protocol's [ee.schimke.composeai.daemon.protocol.PreviewOverrides] (the
@@ -75,6 +85,29 @@ data class PreviewOverrideDeclaration(
    * selectable while the declared [suggestions] stay at the top. Off for an ordinary knob.
    */
   val googleFonts: Boolean = false,
+  /**
+   * The knob's **value set** — every value it may take, each with the name a viewer shows.
+   *
+   * Distinct from [suggestions] in kind, not just in shape: suggestions are *hints* over a field
+   * that stays free-text, whereas a value set paired with [optionsExhaustive] says these are the
+   * only values, and a viewer may then render a closed picker instead of a text box. That is the
+   * difference between having to know that a `size` knob spells its values `xs`/`s`/`m`/`l`/`xl`
+   * and being able to see them.
+   *
+   * Empty for a knob that declares none, which is every knob authored before this field existed —
+   * an older reader ignores it and renders the input it always did.
+   */
+  val options: List<PreviewOverrideOption> = emptyList(),
+  /**
+   * Whether [options] is the **complete** set of values (a closed enumeration) rather than a
+   * shortlist. Only meaningful with a non-empty [options].
+   *
+   * A viewer renders an exhaustive set as a closed picker — no value outside the set is expressible
+   * — and a non-exhaustive one as a combobox that still accepts anything typed. The locale field is
+   * the standing example of the latter: the presets are worth offering, but any valid BCP-47 tag
+   * has to remain typeable.
+   */
+  val optionsExhaustive: Boolean = false,
 ) {
   /**
    * The composite key the daemon seeds against: the bare [key] for a scalar knob, or the key with

@@ -118,6 +118,55 @@ The dark lane is unchanged, and an untagged render now links back to the primary
 well as forward to its siblings — the relation is symmetric because both sides resolve to a lane
 string rather than one of them being `null`.
 
+## Value sets: a knob that says what it may be
+
+A `previewOverride*` knob publishes its current value, and until it also publishes its **value set**
+that is all a visitor gets. A size axis rendered as a text field reading `s`: correct, and useless
+for finding out that `xs` / `m` / `l` / `xl` are the alternatives — you had to read the source, or
+guess the spelling and watch the render refuse to move.
+
+[`previewOverrideChoice`](../data/preview-overrides/runtime/src/main/kotlin/ee/schimke/composeai/overrides/PreviewOverrideHost.kt)
+declares the set alongside the value. Each entry may carry a label, so the picker can read
+"Extra small" while the wire value stays the `xs` the composable reads — seeding and
+`@OverrideVariant` are untouched:
+
+```kotlin
+val size = previewOverrideChoice(
+  "size",
+  default = "s",
+  options = listOf(PreviewOverrideOption("xs", "Extra small"), PreviewOverrideOption("s", "Small")),
+)
+```
+
+| Before — the value, not the alternatives | After — the set is the control |
+| --- | --- |
+| ![A density knob as a text field reading cosy](images/serve-knob-value-set-before.png) | ![The same knob as a picker reading Cosy](images/serve-knob-value-set-after.png) |
+
+The set travels in the declaration (`options`, plus `optionsExhaustive` for whether it is the
+complete list), so it reaches the viewer through the same `previews/<id>.overrides.json` sidecar the
+rest of the knob does — no new lane, and an older reader that doesn't know the fields renders the
+input it always did.
+
+**Two forms, one helper.** An *exhaustive* set becomes a `<select>`: nothing outside it is
+expressible, and every value is on screen without interacting. A *non-exhaustive* one stays a
+free-text `<input list>` over a `<datalist>` — the options are worth offering but must not be the
+only thing accepted. The **locale field is the standing instance of the second form**: its presets
+(pseudolocales first, then RTL languages, then common tags) render through the same helper, while
+any valid BCP-47 tag stays typeable and the control keeps the id and raw-value contract the viewer
+script already drives it by.
+
+A value the control is *currently* showing but the author never declared — a hand-written
+`knob.size=xxl`, a link from before a value was renamed — is added to the picker rather than
+dropped, so the control cannot quietly disagree with the pixels beside it. That holds for a value
+baked into the sidecar and for one that only ever existed in the page URL, which is where a stale
+link actually arrives.
+
+> **Consumer docs live elsewhere.** The above is the contributor view — how the server renders a
+> declared value set. `previewOverrideChoice` is part of the *published* authoring surface, so the
+> guidance for someone applying the plugin to their own project belongs in the
+> [`compose-preview` skill](https://github.com/yschimke/skills/tree/main/skills/compose-preview),
+> not here. See [AGENTS.md](AGENTS.md) on the two doc trees.
+
 ## Every selection is in the URL
 
 What a visitor picks is reflected into the page URL, so the page on screen is the page its URL
@@ -165,6 +214,76 @@ and its safety model, with a link to the machine-readable [`/version`](#endpoint
 ![Public landing "about" intro (light)](images/serve-about-public-light.png)
 
 ![Public landing "about" intro (dark)](images/serve-about-public-dark.png)
+
+## Pasting a link into Slack or Google Chat
+
+Every browser-facing page carries an Open Graph / Twitter card block — title, description, canonical
+`og:url`, and the image the page is *about* (the featured hero on the front door, the catalog's hero
+on a landing, the exact render on a viewer). Utility and error pages advertise no image and get an
+honest text-only card.
+
+Three things beyond the meta tags decide whether the card actually appears, and all three used to be
+missing:
+
+- **HEAD answers GET, everywhere.** An unfurler probes a URL and its `og:image` with `HEAD` before
+  committing to a download. Every route here is registered with Ktor's `get`, so before
+  [`AutoHeadResponse`](https://ktor.io/docs/server-autoheadresponse.html) was installed a probe got
+  `405` on the constant paths and `404` on everything under `/{system}` — the whole site read as
+  dead to anything that checks before fetching. Link checkers and `curl -I` were being told the same
+  thing.
+- **The image declares its size.** `og:image:width` / `og:image:height` come from the render's PNG
+  header (`ServeHost.bakedRenderSize` — 8 bytes of the IHDR, no decode, no fetch), so a fetcher can
+  lay the card out without downloading the image to measure it. That measurement is the step Slack
+  and Google skip — dropping the image — when it is slow. The size also picks the card honestly: a
+  300×210 component render asks for `summary`, not the `summary_large_image` it could never fill.
+  The front door's unfurl image is deliberately the **full render**, not the downscaled `/hero/`
+  thumbnail the card lays out — that one is card-sized (216×480) and below every unfurler's floor.
+- **An anonymous page is storable.** On a server with `--github-auth-*`, every page used to be
+  `private, no-store` because it renders the visitor's sign-in chip. An *anonymous* request gets the
+  signed-out rendering everyone else gets, so it is now `public, max-age=0, s-maxage=300,
+  must-revalidate` with `Vary: Cookie`. The browser still revalidates every visit (so the sign-in
+  chip can never be replayed stale — that is why there is no `stale-while-revalidate`), while shared
+  and preview caches may keep it. A signed-in request, and any token-gated host, stays `no-store`.
+
+### `/robots.txt` and `/sitemap.xml`
+
+Both are served for real (they used to fall through to the styled HTML 404) and are generated by
+[`ServeSiteIndex`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeSiteIndex.kt).
+
+`robots.txt` splits on **cheap published bytes vs. work**. Catalog landings, preview viewers and
+their baked PNGs stay open — they are a map lookup, and they are what a shared link points at.
+Closed: the playground (it compiles Kotlin), `/bundle.zip` and the wasm tier (megabytes per fetch),
+`/history/render` (reads the git object store), the compare/parity/reference lanes (they decode and
+diff), the machine lanes, and — the rule that actually protects the render daemons — **a render URL
+carrying a query string**, since `/…/render/<id>.png` is a baked file but the same path with
+`?theme=` is a live re-render, and the grid links the override forms. Scoped to the render lane on
+purpose: a blanket "no query strings" would also have closed `…/compose-m3/?tab=components&theme=…`,
+which is exactly the link someone pastes into a chat after picking a theme, and Googlebot obeys this
+group.
+
+HEAD is refused (`405` + `Allow: GET`) on the same work lanes. `AutoHeadResponse` answers a HEAD by
+running the whole GET handler and discarding the body, so `HEAD /bundle.zip` would otherwise render
+every preview and pack a zip only to throw it away — an anonymous `curl -I` could burn a catalog's
+render capacity while downloading nothing. Pages and baked PNGs, the things an unfurler probes, keep
+answering.
+
+Link unfurlers get their own group with only the private lanes closed and no `Crawl-delay`: their
+robots parsers are the simple prefix kind, so the general group's wildcard rules would be misread,
+and a delayed unfurl is a missing unfurl. `Googlebot` is deliberately **not** in that group —
+robots groups are winner-takes-all, so naming it there would exempt Google's whole crawl fleet from
+every rule above. It doesn't need the exemption: nothing in the general group blocks a page or its
+`og:image`.
+
+`sitemap.xml` lists the pages worth landing on — the front door, each listed catalog's landing, and
+one URL per preview viewer — each stamped with `<lastmod>` from the catalog's own `generatedAt`
+provenance rather than the server's refresh clock. That distinction is the point: the refresh poller
+touches every catalog on a timer whether or not the bytes changed, so a refresh-timestamped sitemap
+would claim everything changed every hour and teach crawlers to ignore the field. It is built from
+the remembered catalog metadata (`peekHost`, never a lease), so a suspended catalog still appears and
+a sitemap fetch never wakes a daemon.
+
+A token-gated host disallows everything and serves no sitemap — its URLs need a token the crawler
+doesn't have, so every crawl would be a 404 and every indexed URL a dead one.
 
 ## Catalog theme selector
 
@@ -538,9 +657,11 @@ no equivalent there.
 ### Putting the spec on the stage beside the players
 
 The link above sends you to Figma. The **Spec lane** keeps you here: when the catalog publishes a
-design reference for a preview, the viewer's renderer row grows a `SPEC:` group beside the
-Remote Compose player chips, so the same control strip that chooses *which player draws the code*
-also offers *what the design says*.
+design reference for a preview, the viewer's renderer row grows a chip named after the design tool
+("Figma"), beside the renderer combo rather than inside it — the combo chooses *which player draws
+the code*, and this chip offers *what the design says*, which is a different question and gets its
+own top-level control. It is a toggle like the Live chip: pressed while the spec is on the stage,
+one click back to the render.
 
 | Before | After |
 | --- | --- |
@@ -614,9 +735,10 @@ opacity overlay are what you want.
 ## Design references and UI mocks
 
 A bundle or published catalog can map independently-authored UI mocks to exact preview ids. The
-landing links to **compare formats**; its **PNG ↔ Design reference** lane scores the canonical mock
-against Compose, and the focused comparison shows **Reference / Diff / Actual** plus an opacity
-overlay and source provenance.
+landing links to **compare to Figma** (named after the tool the references came from — see
+[the design-parity view](#the-design-parity-view-systemparity)); the comparison page's **PNG ↔
+Figma** lane scores the canonical mock against Compose, and the focused comparison shows
+**Reference / Diff / Actual** plus an opacity overlay and source provenance.
 
 References use a provider-neutral `compose-preview-references/v1` manifest at
 `references/index.json`. Published catalogs fetch this manifest from their delivery branch;
@@ -878,8 +1000,12 @@ never heard of the feature publishes exactly what it did before.
 
 ## The design-parity view (`/<system>/parity`)
 
-A catalog landing links **design parity** beside "compare formats". That page answers one question
-the grid can't: *has this catalog's code drifted from the design file it is specified by?*
+A catalog landing links this page beside its comparison actions, named after the design tool the
+catalog is specified by — **compare to Figma** when its references carry `source.provider: figma`
+(or its parity feed names a Figma file), falling back to **design parity** when no tool can be
+named. That page answers one question the grid can't: *has this catalog's code drifted from the
+design file it is specified by?* Its subheading links back out to the whole-catalog **PNG ↔ Figma**
+table (`/<system>/compare?format=reference`) for every mapped component at once.
 
 ![The design-parity view](images/serve-parity-light.png)
 

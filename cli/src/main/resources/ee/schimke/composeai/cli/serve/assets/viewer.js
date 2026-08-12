@@ -349,6 +349,9 @@
   // Compose player pick and `rcPlayerPicked` gates whether it rides the render URL — so page load
   // stays on the instant default snapshot until the visitor actually chooses a server-side player.
   var laneSelect = document.getElementById("cp-lane-select");
+  // The design-spec lane's own chip, beside the combo rather than inside it (see ServeWeb's
+  // specChipHtml). Present only when this preview carries an imported reference.
+  var specChip = document.getElementById("cp-spec-chip");
   var rcDefaultBackend = laneSelect ? (laneSelect.getAttribute("data-rc-default") || "") : "";
   var rcPlayerBackend = rcDefaultBackend;
   var rcPlayerPicked = false;
@@ -2022,15 +2025,25 @@
   // wise the matching option's own label, so the chip and the combo can never name a lane two
   // different things. With no combo at all the chip is the only control on the row, and the
   // generic invitation reads better than "Snapshot".
+  // The renderer the chip returns to when the current lane isn't one of the combo's own — today
+  // that means the design spec, which is a chip of its own. Server-rendered from the same
+  // `primaryLaneLabel` the chip opens on, so a preview with no combo to read has a name too.
+  function defaultLaneLabel() {
+    return (liveToggle && liveToggle.getAttribute("data-default-lane-label")) || "Live preview";
+  }
   function laneLabelText() {
     if (live && live.checked) return "Live";
-    if (!laneSelect) return "Live preview";
+    if (!laneSelect) return defaultLaneLabel();
     var wanted = currentLaneValue();
     var label = "";
     Array.prototype.forEach.call(laneSelect.options, function (o) {
       if (o.value === wanted) label = o.textContent;
     });
-    return label || "Live preview";
+    // On the spec lane there is no matching option — the spec chip beside this one is lit and
+    // already names it, and two adjacent chips both reading "Figma" would be two controls arguing
+    // about the same fact. So this one keeps naming the render lane, which is exactly where
+    // clicking it goes back to.
+    return label || defaultLaneLabel();
   }
   function updateLiveToggle() {
     var interactive = anyInteractive();
@@ -2041,6 +2054,17 @@
       liveToggle.disabled = !liveTransportAvailable() && !interactive;
     }
     if (liveToggleLabel) liveToggleLabel.textContent = laneLabelText();
+    // The spec chip is a toggle, so it reports the lane's state the same way the Live chip does.
+    // Driven from here rather than from its own click handler so every route out of the lane (the
+    // Live chip, a combo pick, an SVG swap, Back/Forward) un-presses it too.
+    if (specChip) {
+      var onSpecLane = specActive();
+      specChip.setAttribute("aria-pressed", onSpecLane ? "true" : "false");
+      specChip.disabled = !specAvailable() && !onSpecLane;
+      specChip.title = onSpecLane
+        ? "Showing the imported design spec — click to return to the render"
+        : specChip.getAttribute("data-spec-chip-tip") || specChip.title;
+    }
     // …and the tooltip, from the same state. The chip's meaning inverts as the visitor moves
     // through the lanes — on the static snapshot a click enters Live, on an interactive lane it
     // exits back to the snapshot — so a fixed `title` would end up describing the opposite of what
@@ -2072,6 +2096,16 @@
       // server-side player the combo will show — there is no static form of the JS canvas lane.
       if (anyInteractive()) { setMode("png"); }
       else { var m = bestLiveMode(); if (m) setMode(m); }
+    });
+  }
+  // The design-spec chip: in and straight back out of the spec lane, no menu in between. Leaving
+  // returns to the static snapshot — the same place the Live chip returns to — rather than to
+  // whichever interactive lane was up before, because the spec is entered to compare against the
+  // *render*, and that is the lane the comparison views (Diff / Triptych / Slider) draw from.
+  if (specChip) {
+    specChip.addEventListener("click", function () {
+      if (specActive()) setMode("png");
+      else if (specAvailable()) setMode("spec");
     });
   }
   // ---- The renderer combo box ------------------------------------------------------------------
@@ -2114,9 +2148,6 @@
         }
       } else if (value === "wasm") {
         if (!wasmActive()) setMode("wasm"); else syncLaneSelect();
-      } else if (value === "spec") {
-        if (!specAvailable()) { syncLaneSelect(); return; }
-        if (!specActive()) setMode("spec"); else syncLaneSelect();
       } else {
         setMode("png");
       }
@@ -2243,9 +2274,46 @@
   // from the `knob.<key>` patch), so a knob edit drives whichever transport is live: the Wasm
   // iframe when it's active (or auto-enable it on a static published catalog), the daemon stream
   // when Live is up, or a `/render` snapshot when the session can re-render.
-  function onKnobEdited() {
+  // A closed value-set knob (`previewOverrideChoice`) renders as a <select>, and a <select> silently
+  // drops an assignment it has no option for — `.value` becomes "". That matters because "" is a
+  // REAL value for a string knob (a cleared label, a variant seeded empty), so it would be sent as
+  // `knob.<key>=` rather than ignored: opening `?knob.size=xxl` would render the wrong override
+  // instead of the stale one it names. The server already keeps an unknown *baked* value by adding
+  // it as an option; this is the same courtesy for a value that only ever existed in the URL — a
+  // hand-written link, or one from before a value was renamed.
+  function adoptChoiceValue(el, value) {
+    if (el.tagName !== "SELECT" || value === "") return;
+    for (var i = 0; i < el.options.length; i++) if (el.options[i].value === value) return;
+    var option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    el.insertBefore(option, el.firstChild);
+  }
+  // Which transport will carry a knob edit. Resolved BEFORE the URL sync rather than inline in the
+  // dispatch below, because the answer decides who owns the history entry — see [discrete] in
+  // onKnobEdited.
+  function knobRoute() {
+    if (wasmActive()) return "wasm";
+    if (live.checked && ws && ws.readyState === 1) return "live";
+    if (canRenderOverrides) return "snapshot";
+    // A published catalog can't re-render on the server, but its in-browser app can apply the
+    // knob — auto-enable the Wasm tier and let its load carry the edit (wasmInitialSrc bakes the
+    // patch into the fragment), mirroring the display-axis auto-enable in onControlsChanged.
+    if (staticSnapshot && wasmToggle) return "enable-wasm";
+    return "none";
+  }
+  // [discrete] marks an edit that earns its own history entry (a value picked from a closed set),
+  // as opposed to a continuous one (typing a label) that replaces.
+  //
+  // It pushes here for every route BUT `enable-wasm`: that path ends in `setMode("wasm")`, and
+  // `enterMode` already pushes for the lane change. Pushing in both places would leave an
+  // intermediate `choice + png` entry between the two — a state that cannot apply the choice it
+  // names — so Back would land there instead of on the previous choice.
+  function onKnobEdited(discrete) {
+    var route = knobRoute();
+    if (discrete && route !== "enable-wasm") urlPush = true;
     refreshLinks();
-    if (wasmActive()) {
+    if (route === "wasm") {
       if (wasmReady && wasmFrame.contentWindow) {
         wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
       } else {
@@ -2253,19 +2321,22 @@
       }
       return;
     }
-    if (live.checked && ws && ws.readyState === 1) {
+    if (route === "live") {
       ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
-    } else if (canRenderOverrides) {
+    } else if (route === "snapshot") {
       refreshSnapshot();
-    } else if (staticSnapshot && wasmToggle) {
-      // A published catalog can't re-render on the server, but its in-browser app can apply the
-      // knob — auto-enable the Wasm tier and let its load carry the edit (wasmInitialSrc bakes
-      // the patch into the fragment), mirroring the display-axis auto-enable in onControlsChanged.
+    } else if (route === "enable-wasm") {
       setMode("wasm");
     }
   }
   document.querySelectorAll(".cp-knob").forEach(function (el) {
-    el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobEdited);
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", function () {
+      // A closed value-set knob renders as a <select>, and picking from it is a DISCRETE choice —
+      // like a lane switch or a theme pick — so it earns a history entry and Back returns to the
+      // previously chosen value. A typed knob stays continuous and replaces instead, or one edit
+      // of a label would bury the page under an entry per keystroke. See `urlPush`.
+      onKnobEdited(el.tagName === "SELECT");
+    });
   });
   // The app-theme selector and detected-feature toggles route ONLY through the server daemon —
   // an app-declared theme provider is a server-side wrapper, and focus/gesture overlays are
@@ -2477,7 +2548,7 @@
       var value = q.get("knob." + key);
       if (value === null) value = el.getAttribute("data-knob-initial") || "";
       if (el.type === "checkbox") el.checked = (value === "true" || value === "1");
-      else el.value = value;
+      else { adoptChoiceValue(el, value); el.value = value; }
     });
     document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
       var name = el.getAttribute("data-rc-name");

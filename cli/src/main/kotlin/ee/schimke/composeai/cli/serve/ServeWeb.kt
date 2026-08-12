@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.data.overrides.PreviewOverrideOption
 import ee.schimke.composeai.designparity.BackdropPage
 import ee.schimke.composeai.designparity.Placement
 import java.time.Instant
@@ -35,8 +36,45 @@ object ServeWeb {
    * utility/error pages leave it null and get an honest text-only card. Kept explicit rather than
    * derived here because only the HTTP layer knows the externally visible scheme/host (notably when
    * Caddy terminates TLS).
+   *
+   * [imageWidth]/[imageHeight] are the image's real pixel dimensions, read from the PNG's IHDR by
+   * the caller. Advertising them is not decoration: without them an unfurler has to download the
+   * image and measure it before it can lay out a card, and both Slack and Google drop the image
+   * rather than block on that when the fetch is slow or the measure fails. They also decide which
+   * card the page gets — see [twitterCard], which stops claiming a large-image card for a thumbnail
+   * that cannot fill one.
    */
-  data class UnfurlMetadata(val pageUrl: String, val imageUrl: String? = null)
+  data class UnfurlMetadata(
+    val pageUrl: String,
+    val imageUrl: String? = null,
+    val imageWidth: Int? = null,
+    val imageHeight: Int? = null,
+  )
+
+  /**
+   * The narrower edge a `summary_large_image` card needs before it is worth asking for.
+   *
+   * Slack and Twitter/X both fall back to the small card for an image below roughly this size, and
+   * Google recommends 512² as the floor for a preview image — so a page that asks for the large
+   * card with a 300×210 component render gets the small one anyway, having first told the fetcher
+   * something untrue. A single component preview genuinely is a thumbnail; asking for `summary` and
+   * getting a clean square beats asking for a banner and getting a broken one.
+   */
+  private const val LARGE_CARD_MIN_EDGE = 320
+
+  /**
+   * `twitter:card` for an unfurl — the large-image card only when there is an image *and* we know
+   * it is big enough to fill one. An image whose dimensions we couldn't read keeps the large card:
+   * unknown size is not evidence of a small image, and the fetcher measures it itself in that case.
+   */
+  private fun twitterCard(unfurl: UnfurlMetadata): String {
+    if (unfurl.imageUrl == null) return "summary"
+    val w = unfurl.imageWidth
+    val h = unfurl.imageHeight
+    if (w == null || h == null) return "summary_large_image"
+    return if (w >= LARGE_CARD_MIN_EDGE && h >= LARGE_CARD_MIN_EDGE) "summary_large_image"
+    else "summary"
+  }
 
   /** Aggregate engagement metrics surfaced by the live server UI/API. */
   data class PreviewEngagement(val views: Long = 0)
@@ -3991,8 +4029,16 @@ object ServeWeb {
      * `&session=` param (the path carries the session). Empty ⇒ links are exactly as before.
      */
     basePath: String = "",
-    /** Whether this session has at least one SVG or Remote Compose format to compare. */
-    hasFormatComparison: Boolean = false,
+    /**
+     * Whether this session can compare a render against its SVG export — gates the "compare SVG"
+     * action, which deep-links the comparison page's `svg` format.
+     */
+    hasSvgComparison: Boolean = false,
+    /**
+     * Whether this session can compare a render against Remote Compose output — gates the "compare
+     * RC players" action, which deep-links the comparison page's `rc` format.
+     */
+    hasRcComparison: Boolean = false,
     /**
      * Whether this catalog has a design-parity view to link to — it maps at least one preview to a
      * design reference, or it publishes a `parity/activity.json` feed. False (the default) omits
@@ -4005,6 +4051,13 @@ object ServeWeb {
      * default) omits the link, so a catalog that publishes none is unchanged.
      */
     screenCount: Int = 0,
+    /**
+     * The design tool this catalog is specified by ("Figma", …), from its references' provider or
+     * its parity feed — names the parity action after the thing it compares against ("compare to
+     * Figma") rather than after the internal feature. Null (no identifiable tool) keeps the generic
+     * "design parity" label. See [designToolLabel].
+     */
+    designToolLabel: String? = null,
     /**
      * Per-preview thumbnail content-crop lookup — frames a card's render to its component box (a
      * Wear sticker on a 454² watch canvas shows just the component). Returns null for a card that
@@ -4480,35 +4533,58 @@ object ServeWeb {
     val liveNote =
       if (liveScript.isEmpty()) ""
       else " · <span class=\"cp-live-note\">hold a card for a live session</span>"
-    val formatLink =
-      if (hasFormatComparison)
-        " · <a class=\"cp-format-link\" href=\"$basePath/compare$q\">compare formats</a>"
-      else ""
-    // Joins the same run of catalog-level actions as "compare formats" rather than becoming a tab:
-    // parity is a property OF this catalog, and the grid stays the page's subject.
-    val parityLink =
-      if (hasParityView)
-        " · <a class=\"cp-format-link\" href=\"$basePath/parity$q\">design parity</a>"
-      else ""
-    // Same run again, same reasoning: a screen is a view OF this catalog's components, so it sits
-    // beside "design parity" rather than displacing the grid. The count is in the label because one
-    // screen and fourteen are different offers.
-    val screensLink =
-      if (screenCount <= 0) ""
-      else {
-        val noun = if (screenCount == 1) "screen" else "screens"
-        " · <a class=\"cp-format-link\" href=\"$basePath/pages$q\">$screenCount $noun</a>"
-      }
-    // Subtle by placement, not by styling: it joins the summary line's existing run of
-    // catalog-level actions rather than becoming a button competing with the grid. Absent on a host
-    // with no playground lane, so it never reads as an offer this server cannot keep.
-    val playgroundLink =
-      playgroundHref
-        ?.takeIf { it.isNotBlank() }
-        ?.let {
-          " · <a class=\"cp-format-link\" href=\"${WebEscaping.htmlEscape(it)}\">" +
-            "try in playground</a>"
-        } ?: ""
+    // ---- The catalog's actions
+    // -------------------------------------------------------------------
+    //
+    // A row of M3 assist chips under the summary line, in place of the run of 0.75rem muted text
+    // links this line used to end with (`… · compare formats · design parity · try in playground`).
+    // Those were the page's only routes to the comparison and parity views, and they were styled to
+    // disappear: smaller than the body copy, grey until hovered, and separated by interpuncts that
+    // read as one sentence rather than as several destinations. A chip is the M3 vocabulary this
+    // page already speaks (the theme toggle right below it is the same shape), and it makes each
+    // route a thing you can see and hit.
+    fun actionChip(href: String, label: String): String =
+      "<a class=\"cp-action-chip\" href=\"${WebEscaping.htmlEscape(href)}\">" +
+        "${WebEscaping.htmlEscape(label)}</a>"
+
+    // One action per comparison a visitor might actually want, rather than a single "compare
+    // formats" that made them discover the format switcher to find out what this catalog can even
+    // compare. Each deep-links the comparison page's own `?format=` so the landing already answers
+    // "compare *what*", and a catalog carrying only one of them shows only that one.
+    fun compareChip(format: String, label: String): String {
+      val query =
+        listOf("format=$format", linkQuery(token, sessionId, basePath, isPublic))
+          .filter { it.isNotEmpty() }
+          .joinToString("&")
+      return actionChip("$basePath/compare?$query", label)
+    }
+    val actionChips =
+      listOfNotNull(
+          actionChip("$basePath/bundle.zip$q", "download all (.zip)"),
+          compareChip("svg", "compare SVG").takeIf { hasSvgComparison },
+          compareChip("rc", "compare RC players").takeIf { hasRcComparison },
+          // Named after the design tool it compares against when the catalog identifies one —
+          // "compare to Figma" says what the page is for, where "design parity" only named the
+          // feature.
+          hasParityView
+            .takeIf { it }
+            ?.let {
+              actionChip(
+                "$basePath/parity$q",
+                designToolLabel?.let { tool -> "compare to $tool" } ?: "design parity",
+              )
+            },
+          // A screen is a view OF this catalog's components, so it sits with the comparisons
+          // rather than displacing the grid. The count is in the label because one screen and
+          // fourteen are different offers.
+          screenCount
+            .takeIf { it > 0 }
+            ?.let {
+              actionChip("$basePath/pages$q", "$it ${if (it == 1) "screen" else "screens"}")
+            },
+          playgroundHref?.takeIf { it.isNotBlank() }?.let { actionChip(it, "try in playground") },
+        )
+        .joinToString("\n          ")
     return document(
       title = "$heading — compose-preview",
       unfurlTitle = heading,
@@ -4523,8 +4599,10 @@ object ServeWeb {
       body =
         """
         <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
-        $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} ·
-          <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink$parityLink$screensLink$playgroundLink$liveNote</p>
+        $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""}$liveNote</p>
+        <div class="cp-catalog-actions">
+          $actionChips
+        </div>
         $renderFailureSummary<div class="cp-catalog-tools">
         $themeToggle$searchBox</div>
         $tabBar$gridBlock$emptyState$filterScript$liveScript$about
@@ -4532,6 +4610,23 @@ object ServeWeb {
           .trimIndent(),
     )
   }
+
+  /**
+   * Display name for a design reference's `source.provider` token — `figma` → `Figma`.
+   *
+   * Null for a provider that names no design tool (a checked-in `png`, an `svg`, an `html` mock, or
+   * the default `file`), so a caller falls back to neutral wording instead of inventing a vendor
+   * the catalog never claimed. Only tokens we can name are mapped: an unknown provider is not
+   * title-cased into a plausible-looking product name.
+   */
+  fun designToolLabel(provider: String?): String? =
+    when (provider?.trim()?.lowercase()) {
+      "figma" -> "Figma"
+      "sketch" -> "Sketch"
+      "penpot" -> "Penpot"
+      "framer" -> "Framer"
+      else -> null
+    }
 
   /** PNG↔native-format and PNG↔design-reference comparison page for one served session. */
   fun comparisonPage(
@@ -4583,6 +4678,13 @@ object ServeWeb {
     // whose `.rc` sidecar never reached this box, so it turns the format on by itself.
     val hasRc = comparablePreviews.any { hasRemoteComposeFor(it.id) } || rcCompare != null
     val hasReference = comparablePreviews.any { referencesFor(it.id).isNotEmpty() }
+    // Name the design lane after the tool the references actually came from ("PNG ↔ Figma"), the
+    // same wording the catalog's own action uses, so the two read as one route rather than two
+    // features. A catalog whose references are plain PNGs/mocks keeps the neutral label.
+    val referenceToolLabel =
+      comparablePreviews.firstNotNullOfOrNull { preview ->
+        referencesFor(preview.id).firstNotNullOfOrNull { designToolLabel(it.source.provider) }
+      } ?: "Design reference"
     val defaultFormat = if (hasSvg) "svg" else if (hasRc) "rc" else "reference"
     val darkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
     // A viewer deep-link may name a non-default state/props variant that is intentionally folded
@@ -4677,7 +4779,8 @@ object ServeWeb {
       if (hasReference)
         append(
           "<button type=\"button\" class=\"cp-theme-btn\" data-compare-format=\"reference\" " +
-            "aria-pressed=\"${defaultFormat == "reference"}\">PNG ↔ Design reference</button>"
+            "aria-pressed=\"${defaultFormat == "reference"}\">PNG ↔ " +
+            "${WebEscaping.htmlEscape(referenceToolLabel)}</button>"
         )
     }
     val themeControls =
@@ -5324,6 +5427,11 @@ $rows
     displayTitle: String? = null,
     /** Whether a preview carries a design reference — decides "compare" vs "open" on a link. */
     hasReferenceFor: (String) -> Boolean = { false },
+    /**
+     * The design tool this catalog is specified by ("Figma", …) — names the whole-catalog compare
+     * link. Null keeps the neutral "design references" wording. See [designToolLabel].
+     */
+    designToolLabel: String? = null,
   ): String {
     fun esc(s: String) = WebEscaping.htmlEscape(s)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -5654,6 +5762,26 @@ $rows
           .trimIndent()
       }
 
+    // The catalog landing sends every design-tool question here ("compare to Figma"), so this page
+    // owes a way back out to the side-by-side table of ALL mapped components — the comparison
+    // page's `reference` format. Offered only when something is mapped; a feed-only catalog (no
+    // references) would land on an empty table.
+    val compareAllLink =
+      if (coverage.mapped == 0) ""
+      else {
+        val query =
+          listOf("format=reference", linkQuery(token, sessionId, basePath, isPublic))
+            .filter { it.isNotEmpty() }
+            .joinToString("&")
+        val against = designToolLabel?.let(::esc) ?: "the design references"
+        // The same assist chip the catalog landing uses for its actions, so the route on and the
+        // route back are the same affordance rather than a chip in one direction and a grey text
+        // link in the other.
+        "\n        <div class=\"cp-catalog-actions\">" +
+          "<a class=\"cp-action-chip\" href=\"$basePath/compare?$query\">" +
+          "compare every mapped component against $against</a></div>"
+      }
+
     val parityScripts = buildString {
       if (dashboard.comparisons.any { it.referenceId != null })
         append(scriptTag("format-compare.js"))
@@ -5721,7 +5849,7 @@ $rows
         """
         <h1 class="cp-head cp-catalog-head">Design parity${compactTrustBadge(trust)}</h1>
         <p class="cp-sub">How this catalog's code and its design file have moved, and how far apart
-          they are.</p>
+          they are.</p>$compareAllLink
         $sourcesStrip
         <div class="cp-status-grid">
         $stats
@@ -6163,9 +6291,10 @@ $rows
         "slider" to ("Slider" to "One frame, wiped between the spec and the render"),
       )
     // The spec lane's *carrier*, not a control: `data-spec-src` is the raster viewer.js paints onto
-    // the stage when the picker selects `spec`, the comparison group beside it chooses how that
-    // pair is drawn, and the trailing link is the step out to the focused comparison page. The lane
-    // has no chip of its own — it is one `<option>` in [laneSelectHtml] like every other renderer.
+    // the stage when the lane is entered, the comparison group beside it chooses how that pair is
+    // drawn, and the trailing link is the step out to the focused comparison page. Entering the
+    // lane is [specChipHtml]'s job — a chip of its own on the bar, not an `<option>` inside the
+    // renderer combo.
     val specSelector =
       if (specRasterUrl == null || specProviderLabel == null || specLabel == null) ""
       else {
@@ -6225,15 +6354,29 @@ $rows
           add(ViewerLane("rc:${backend.wire}", backend.label, backend.wire in rcEnabled))
         }
       if (wasmSrc != null) add(ViewerLane("wasm", "In browser (Wasm)", true))
-      if (specRasterUrl != null && specProviderLabel != null)
-        add(
-          ViewerLane(
-            "spec",
-            if (specProviderLabel == "Figma") "Figma spec" else "Design spec",
-            true,
-          )
-        )
     }
+    // The **design-spec chip** — the imported reference, promoted OUT of the renderer combo and
+    // onto
+    // the row as a control of its own.
+    //
+    // It used to be one `<option>` among the players ("Figma spec", after five Remote Compose
+    // backends and the Wasm app), which put the one lane that answers a different *question* behind
+    // the same menu as the ones that answer "which engine drew this?". Very few catalogs publish
+    // references at all, so on the ones that do it is the most interesting thing on the page and it
+    // was the least visible. As a chip it is one click from rest, it says which tool the spec came
+    // from ("Figma") instead of a generic label, and — like the Live chip beside it — its
+    // `aria-pressed` reports whether the spec is currently on the stage. viewer.js drives both from
+    // the same lane state, so the chip and the combo cannot disagree.
+    val specChipHtml =
+      if (specRasterUrl == null || specProviderLabel == null) ""
+      else {
+        val label = if (specProviderLabel == "Figma") "Figma" else "Design spec"
+        val tip = "Put the imported $specProviderLabel spec on the stage instead of the render"
+        "<button type=\"button\" id=\"cp-spec-chip\" class=\"cp-spec-chip\" " +
+          "aria-pressed=\"false\" data-spec-chip-label=\"${WebEscaping.htmlEscape(label)}\" " +
+          "data-spec-chip-tip=\"${WebEscaping.htmlEscape(tip)}\" " +
+          "title=\"${WebEscaping.htmlEscape(tip)}\">${WebEscaping.htmlEscape(label)}</button>"
+      }
     val defaultLane = if (enabledRcPlayers.isEmpty()) "png" else "rc:$defaultRcBackend"
     // Rendered only when there is genuinely something to switch *to*: a single-lane preview keeps
     // the chip on its own rather than growing a combo box with one entry in it.
@@ -6263,10 +6406,12 @@ $rows
           "<option value=\"${lane.value}\"$disabledAttr>" +
             "${WebEscaping.htmlEscape(text)}</option>"
         }
-    // The chip's opening label: the lane it opens on when a combo box is there to disambiguate, and
-    // the plain "Live preview" invitation when the chip is the only control on the row.
+    // The chip's opening label: the lane it opens on whenever something else on the row can put a
+    // different lane on the stage (the renderer combo, or the design-spec chip), and the plain
+    // "Live preview" invitation when this chip is the only lane control there is — with nothing to
+    // disambiguate against, the invitation reads better than "Snapshot".
     val primaryLaneLabel =
-      if (laneSelectHtml.isEmpty()) "Live preview"
+      if (laneSelectHtml.isEmpty() && specChipHtml.isEmpty()) "Live preview"
       else lanes.firstOrNull { it.value == defaultLane }?.label ?: "Live preview"
     // The step from "look at one player" to "look at them all": the format-comparison page, focused
     // on this preview and opened on its Remote Compose lane. A subtle text link rather than another
@@ -6391,7 +6536,13 @@ $rows
         "\""
     val liveToggleButton =
       "<button type=\"button\" id=\"cp-live-toggle\" class=\"cp-live-toggle\" " +
-        "aria-pressed=\"false\"$liveToggleTitleAttr$liveToggleDis>\n" +
+        "aria-pressed=\"false\" " +
+        // What the chip goes back to naming when it leaves the design-spec lane on a preview with
+        // no renderer combo. `laneLabelText()` reads the combo's options for this everywhere else;
+        // with no combo there is nothing to read, and without this the chip would come back from
+        // the spec lane calling a static snapshot "Live preview".
+        "data-default-lane-label=\"${WebEscaping.htmlEscape(primaryLaneLabel)}\"" +
+        "$liveToggleTitleAttr$liveToggleDis>\n" +
         "            <span class=\"cp-live-dot\" aria-hidden=\"true\"></span>\n" +
         "            <span id=\"cp-live-toggle-label\">" +
         "${WebEscaping.htmlEscape(primaryLaneLabel)}</span>\n" +
@@ -6786,12 +6937,15 @@ $rows
     val switchers =
       listOf(stateSwitcher, variantSwitcher).filter { it.isNotBlank() }.joinToString("\n")
     // Left to right: the chip that names the current renderer and toggles it live, the combo box of
-    // alternatives, the two subtle "go compare this elsewhere" links, then the SVG format toggle
-    // for whatever the chip is currently showing.
+    // alternatives, the design-spec chip (top level, not an option inside the combo), the two
+    // subtle
+    // "go compare this elsewhere" links, then the SVG format toggle for whatever the chip is
+    // currently showing.
     val primaryControls =
       listOf(
           liveToggleHtml,
           laneSelectHtml,
+          specChipHtml,
           comparePlayersLink,
           specSelector,
           svgFmtToggle,
@@ -6920,26 +7074,11 @@ $rows
                 <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off"$wasmDis>
                 <!-- A datalist, not a fixed <select>: the presets (pseudolocales, RTL, common
                      tags) drop down for quick picking, but any valid BCP-47 tag the server
-                     accepts can still be typed in. -->
+                     accepts can still be typed in — so this is the OPEN form of the same value
+                     set an author declares with `previewOverrideChoice`, rendered through the
+                     same helper rather than hand-written twice. -->
                 <datalist id="cp-localeTag-list">
-                  <option value="en-XA" label="Accented (pseudo)"></option>
-                  <option value="ar-XB" label="Bidi / RTL (pseudo)"></option>
-                  <option value="ar" label="Arabic (RTL)"></option>
-                  <option value="he" label="Hebrew (RTL)"></option>
-                  <option value="fa" label="Persian (RTL)"></option>
-                  <option value="en-US"></option>
-                  <option value="en-GB"></option>
-                  <option value="de-DE"></option>
-                  <option value="fr-FR"></option>
-                  <option value="es-ES"></option>
-                  <option value="pt-BR"></option>
-                  <option value="ru-RU"></option>
-                  <option value="ja-JP"></option>
-                  <option value="ko-KR"></option>
-                  <option value="zh-CN"></option>
-                  <option value="zh-Hant-TW"></option>
-                  <option value="hi-IN"></option>
-                  <option value="th-TH"></option>
+                  ${datalistOptionsHtml(LOCALE_PRESETS, indent = "                  ")}
                 </datalist>
               </label>
               <label>Font scale: <span id="cp-fontScale-val">default</span>
@@ -7134,13 +7273,23 @@ $rows
           WebEscaping.htmlEscape(unfurlDescription ?: "Compose preview rendered by compose-preview")
         val pageUrl = WebEscaping.htmlEscape(unfurl.pageUrl)
         val imageUrl = unfurl.imageUrl?.let(WebEscaping::htmlEscape)
+        // Only when both are known: a card given one axis has to measure the image anyway, and a
+        // half-declared size is the one input an unfurler can't sanity-check against the pixels.
+        val dimensionsHtml =
+          if (unfurl.imageWidth == null || unfurl.imageHeight == null) ""
+          else
+            """
+
+            <meta property="og:image:width" content="${unfurl.imageWidth}">
+            <meta property="og:image:height" content="${unfurl.imageHeight}">"""
+              .trimIndent()
         val imageHtml =
           if (imageUrl == null) ""
           else
             """
             <meta property="og:image" content="$imageUrl">
             <meta property="og:image:type" content="image/png">
-            <meta property="og:image:alt" content="$metaTitle">
+            <meta property="og:image:alt" content="$metaTitle">$dimensionsHtml
             """
               .trimIndent()
         val twitterImageHtml =
@@ -7158,7 +7307,7 @@ $rows
         <meta property="og:description" content="$description">
         <meta property="og:url" content="$pageUrl">
         $imageHtml
-        <meta name="twitter:card" content="${if (imageUrl == null) "summary" else "summary_large_image"}">
+        <meta name="twitter:card" content="${twitterCard(unfurl)}">
         <meta name="twitter:title" content="$metaTitle">
         <meta name="twitter:description" content="$description">
         $twitterImageHtml
@@ -7389,6 +7538,42 @@ $rows
    * skipped. Empty if the resource is somehow absent — a font knob's datalist then carries only its
    * declared [PreviewOverrideDeclaration.suggestions].
    */
+  /**
+   * The locale field's **value set** — the tags worth offering, each with the name the picker
+   * shows.
+   *
+   * Open rather than exhaustive: these drop down for quick picking, and any valid BCP-47 tag the
+   * server accepts stays typeable, which is why the control remains an `<input list>` rather than
+   * becoming a `<select>`. Declared here as data so it renders through the same
+   * [datalistOptionsHtml] an author-declared value set does instead of being hand-written HTML —
+   * the labels are the whole reason a bare tag list is a poor control, and they were previously
+   * spelled out inline where nothing could reuse them.
+   *
+   * Pseudolocales lead (they are the reason to reach for this control at all), then the real RTL
+   * languages, then common tags.
+   */
+  private val LOCALE_PRESETS: List<PreviewOverrideOption> =
+    listOf(
+      PreviewOverrideOption("en-XA", "Accented (pseudo)"),
+      PreviewOverrideOption("ar-XB", "Bidi / RTL (pseudo)"),
+      PreviewOverrideOption("ar", "Arabic (RTL)"),
+      PreviewOverrideOption("he", "Hebrew (RTL)"),
+      PreviewOverrideOption("fa", "Persian (RTL)"),
+      PreviewOverrideOption("en-US"),
+      PreviewOverrideOption("en-GB"),
+      PreviewOverrideOption("de-DE"),
+      PreviewOverrideOption("fr-FR"),
+      PreviewOverrideOption("es-ES"),
+      PreviewOverrideOption("pt-BR"),
+      PreviewOverrideOption("ru-RU"),
+      PreviewOverrideOption("ja-JP"),
+      PreviewOverrideOption("ko-KR"),
+      PreviewOverrideOption("zh-CN"),
+      PreviewOverrideOption("zh-Hant-TW"),
+      PreviewOverrideOption("hi-IN"),
+      PreviewOverrideOption("th-TH"),
+    )
+
   private val googleFontFamilies: List<String> by lazy {
     ServeWeb::class
       .java
@@ -7411,7 +7596,49 @@ $rows
     val seen = LinkedHashSet<String>()
     suggestions.forEach { if (it.isNotBlank()) seen.add(it) }
     if (googleFonts) seen.addAll(googleFontFamilies)
-    return seen.joinToString("\n") { "<option value=\"${WebEscaping.htmlEscape(it)}\"></option>" }
+    return datalistOptionsHtml(seen.map { PreviewOverrideOption(it) })
+  }
+
+  /**
+   * `<option>`s for a **`<datalist>`** — the open form of a value set, where the field stays
+   * free-text and the options are a shortlist.
+   *
+   * A value whose label differs from it carries `label=`, which is what lets the locale presets
+   * read "Accented (pseudo)" while seeding `en-XA`; a self-labelling value emits the bare `value=`
+   * a font family always did, so a font knob's markup is unchanged.
+   */
+  private fun datalistOptionsHtml(
+    options: List<PreviewOverrideOption>,
+    /**
+     * Leading whitespace for each line after the first. A template interpolation only indents where
+     * the `$…` sits, so a multi-line block otherwise lands flush against the margin — invisible in
+     * a browser, but the viewer pages are checked in as golden fixtures and read by humans there.
+     */
+    indent: String = "",
+  ): String =
+    options.joinToString("\n$indent") { o ->
+      val value = WebEscaping.htmlEscape(o.value)
+      if (o.label == o.value) "<option value=\"$value\"></option>"
+      else "<option value=\"$value\" label=\"${WebEscaping.htmlEscape(o.label)}\"></option>"
+    }
+
+  /**
+   * `<option>`s for a **`<select>`** — the closed form, where [selected] is the value the control
+   * opens on.
+   *
+   * A [selected] outside the set is emitted as an extra leading option rather than dropped. The set
+   * is what the *author* declared, and a render can still be reached carrying something else (a
+   * hand-written `knob.size=xxl`, a link from before a value was renamed); showing it keeps the
+   * control honest about what is on screen, where silently snapping to the first option would lie.
+   */
+  private fun selectOptionsHtml(options: List<PreviewOverrideOption>, selected: String): String {
+    val known = options.any { it.value == selected }
+    val all = if (known) options else listOf(PreviewOverrideOption(selected)) + options
+    return all.joinToString("\n") { o ->
+      val active = if (o.value == selected) " selected" else ""
+      "<option value=\"${WebEscaping.htmlEscape(o.value)}\"$active>" +
+        "${WebEscaping.htmlEscape(o.label)}</option>"
+    }
   }
 
   private fun overrideKnobsHtml(
@@ -7459,19 +7686,37 @@ $rows
         if (bool) {
           val checked = if (value == "true" || value == "1") " checked" else ""
           "<label class=\"cp-live-row\"><input type=\"checkbox\" $attrs$checked$dis> $label</label>"
+        } else if (d.optionsExhaustive && d.options.isNotEmpty()) {
+          // A CLOSED value set (`previewOverrideChoice`): every value is on screen and nothing else
+          // is expressible, so this is a `<select>` rather than a field the visitor has to already
+          // know the vocabulary for. `xs`/`s`/`m`/`l`/`xl` was previously a text box showing `s` —
+          // the current value was visible, the alternatives were not.
+          //
+          // The viewer JS needs no branch for it: it reads `.value` / `.disabled` off the control
+          // and only special-cases `type === "checkbox"`, which a `<select>` (`select-one`) is not.
+          """
+          <label>${label}
+            <select $attrs$dis>
+          ${selectOptionsHtml(d.options, overrideValueText(d.current ?: d.default))}
+            </select>
+          </label>
+          """
+            .trimIndent()
         } else {
           val inputType = if (d.type == "int" || d.type == "float") "number" else "text"
           // Any knob that carries discovered options — a font knob (declared via
           // `previewOverrideFont` / `catalogOverrideFont`, with autocomplete suggestions and/or the
-          // Google Fonts flag) or any other knob with declared `suggestions` (e.g. `theme.colors`)
-          // —
-          // renders as a combobox "like Locale": a free-text `<input list>` bound to a `<datalist>`
-          // (declared names first, then, for a font knob, the full fonts.google.com list). Any knob
-          // with no options stays a plain text/number input.
-          val hasOptions = d.googleFonts || d.suggestions.isNotEmpty()
+          // Google Fonts flag), a non-exhaustive value set, or any other knob with declared
+          // `suggestions` (e.g. `theme.colors`) — renders as a combobox "like Locale": a free-text
+          // `<input list>` bound to a `<datalist>` (declared names first, then, for a font knob,
+          // the
+          // full fonts.google.com list). Any knob with no options stays a plain text/number input.
+          val hasOptions = d.googleFonts || d.suggestions.isNotEmpty() || d.options.isNotEmpty()
           if (hasOptions) {
             val listId = "cp-dl-" + wireKey.replace(Regex("[^A-Za-z0-9_-]"), "-")
-            val options = fontDatalistOptions(d.suggestions, d.googleFonts)
+            val options =
+              if (d.options.isNotEmpty()) datalistOptionsHtml(d.options)
+              else fontDatalistOptions(d.suggestions, d.googleFonts)
             """
             <label>${label}
               <input type="$inputType" $attrs value="$value" list="$listId"$dis>

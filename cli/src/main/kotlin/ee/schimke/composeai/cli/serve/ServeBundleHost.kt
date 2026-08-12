@@ -565,6 +565,15 @@ class ServeBundleHost(
     )
   }
 
+  // Deliberately [localBakedPng], for the same reason [bakedRender] is: measuring an image must
+  // never trigger the fetch that would make it measurable. A declared-but-not-yet-local preview
+  // reports no size, and the page omits the dimensions rather than paying a network round trip to
+  // fill in an optimisation.
+  override fun bakedRenderSize(previewId: String): Pair<Int, Int>? {
+    if (previewId !in previewIds) return null
+    return readPngSize(localBakedPng(previewId) ?: return null)
+  }
+
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     if (previewId !in previewIds) return RenderOutcome.NotFound
     val png = bakedPngFile(previewId) ?: return RenderOutcome.NotFound

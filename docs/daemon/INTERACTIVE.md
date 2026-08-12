@@ -366,6 +366,14 @@ empty and no selection is painted at all (issue #3697). Tap detection has
 the same exposure, which is why the click path already rendered between
 its press and release by hand.
 
+The settling frame goes through `RenderEngine.renderSettlingFrame`, not
+`scene.render` directly: it composes whatever the press invalidated, so
+it carries the same `localeTag` JVM-default-`Locale` scope the capture
+frames run under (`rememberResourceEnvironment` caches what it resolves,
+and a `stringResource(...)` first resolved at the host default is not
+re-resolved by the capture that follows), and it closes the snapshot it
+allocates instead of leaving native Skia memory to a cleaner.
+
 ## 9.10 v3 Android pointer
 
 Android click dispatch requires sandbox pinning: see
