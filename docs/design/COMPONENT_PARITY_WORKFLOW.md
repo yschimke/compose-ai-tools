@@ -491,7 +491,7 @@ suppresses nothing and is surfaced as needing review:
 | `plane-changed` | recomputed plane discriminant or resolved box ≠ recorded |
 | `candidate-changed` | canonical candidate inside the mask ≠ `accepted-candidate.png` within tolerance |
 | `element-ambiguous` | selector resolves to more than one node (per the kind's rule above) |
-| `element-moved` | selector resolves to nothing, or to bounds beyond tolerance |
+| `element-moved` | selector resolves to nothing; or its indexed bounds are missing, malformed or zero-area; or its displacement exceeds tolerance |
 
 A mask whose bytes do not match `maskSha256` is not an invalidation at all — it is a **hard
 validation failure**: the acceptance is refused and reported, because a mask we cannot trust is a
@@ -504,20 +504,35 @@ which acceptance it happened to.
 section.** Every acceptance evaluates to exactly one **status**, and the resolution predicate is
 part of this contract because §6 cannot override it:
 
-| Status | Condition | Precedence |
-| --- | --- | --- |
-| `refused` | either artifact's bytes fail their recorded hash | **outranks everything** — the acceptance is not evaluated at all |
-| `resolved` | the masked region now agrees with the **reference** (see below) | **wins over `candidate-changed`** |
-| `invalidated: <cause>` | any gate above fires | applies otherwise |
-| `valid` | no gate fires | — |
+Evaluated strictly in this order — the first row whose condition holds wins:
 
-The precedence exists because the workflow's success path trips a gate. When someone actually fixes
-the accepted difference, the raw difference in the masked region disappears **and** the candidate
-stops matching `accepted-candidate.png` — so "it was fixed" and "it changed into something else"
-are the same pixels, and only the raw-difference test distinguishes them. Without this rule a
-dashboard could report a win while the offline gate failed the same commit as stale. `resolved`
-means delete the acceptance and close the issue; the other four causes are unaffected, since
-nothing about a changed reference or an ambiguous tag is resolved by agreement.
+| # | Status | Condition |
+| --- | --- | --- |
+| 1 | `refused` | either artifact's bytes fail their recorded hash — the acceptance is never evaluated |
+| 2 | `invalidated: [causes]` | **any gate other than `candidate-changed`** fires — `reference-changed`, `plane-changed`, `element-ambiguous`, `element-moved` |
+| 3 | `resolved` | the masked region now agrees with the **reference** (see below) |
+| 4 | `invalidated: [candidate-changed]` | the candidate gate fired and the region did not converge |
+| 5 | `valid` | nothing fired |
+
+**`resolved` outranks `candidate-changed` only, and only after the other gates pass** — rows 2 and 3
+are in that order deliberately. If the pinned reference changed and the *new* reference happens to
+agree with the candidate inside the mask, that is not a resolution: it is an acceptance measured
+against a different spec, and closing the issue on it would discard a review nobody performed. The
+same holds for a changed plane or an ambiguous element. Only `candidate-changed` is ambiguous
+evidence, because it is the one cause the success path necessarily produces.
+
+That is the whole reason the precedence exists. When someone actually fixes the accepted difference,
+the region stops matching `accepted-candidate.png` **and** starts agreeing with the reference — "it
+was fixed" and "it changed into something else" are the same pixels, and only the reference test
+tells them apart. Without this rule a dashboard could report a win while the offline gate failed the
+same commit as stale. `resolved` means delete the acceptance and close the issue.
+
+**Causes are a list, not a single value.** Several gates can fire at once — a changed reference
+alongside a tag that became ambiguous — and with a singular `invalidated: <cause>` two engines
+would each pick one and report different statuses while both obeyed every gate. So row 2 carries
+*every* non-`candidate-changed` cause that fired, in the fixed order above, and a multi-failure case
+is a required fixture. Reporting all of them is also simply more useful: an acceptance that is stale
+in three ways wants all three shown, not whichever the implementation happened to check first.
 
 **What "resolved" tests, precisely.** The two comparisons in play run against *different* targets,
 and conflating them is the easy mistake:
@@ -768,13 +783,14 @@ when two later steps happen to cancel it. So each case pins, as named artifacts:
 
 | Stage | Pinned artifact |
 | --- | --- |
-| decode | **every** raster input decoded — the two shared ones (reference, current candidate) plus `mask.png` and `accepted-candidate.png` **for each member of `acceptances[]`**, so a two-acceptance case pins six, not four. The candidate gate reads each accepted-candidate decode and coverage reads each mask decode, so an alpha or colour divergence in any of them would otherwise first surface as a wrong verdict rather than a decoder bug |
+| decode (validated inputs only) | **every** *hash-valid* raster input decoded — the two shared ones (reference, current candidate) plus `mask.png` and `accepted-candidate.png` **for each member of `acceptances[]`**, so a two-acceptance case pins six, not four. The candidate gate reads each accepted-candidate decode and coverage reads each mask decode, so an alpha or colour divergence in any of them would otherwise first surface as a wrong verdict rather than a decoder bug. **A hash-mismatch fixture pins no decode for the failing artifact** — I7 refuses it before its bytes are used, and a tampered file may not be decodable at all, so requiring a decoded plane for it would contradict the contract it exists to test |
 | content boxes | each input's measured content box and the resolved `plane` discriminant, since content-box detection is itself part of the portable path and two engines can otherwise measure differently near a sampled edge or the `MIN_BOX_COVERAGE` threshold |
 | selector | the resolved element — which node the selector matched, its bounds in canonical coordinates, and the tag-uniqueness verdict. Ahead of the union stages, because which acceptances survive decides which masks the union contains (I5) |
 | separation (per acceptance) | the masked and unmasked regions of **both inputs**, each in its own pixel space, before any resample (never a pre-averaged composite), for **each** acceptance independently |
 | canonical | every separated region — reference *and* candidate — after the named resampler, in the resolved canonical plane |
 | separation + canonical (surviving union) | the same split redone against the union of **gate survivors** only, **and resampled into the canonical plane again** — separation still precedes its resample (I3). A distinct, later stage on purpose: the union cannot be formed until the candidate and element gates have run, and those gates need the canonical pixels the row above produces (I5) |
 | score plane (separated) | the `MAX_SIDE`-capped planes the unaccepted pass consumes — both sides, still separated, downsampled per-region rather than whole-image |
+| canonical (whole) | each **unseparated** input resampled into the canonical plane, so the raw pass traverses source→canonical→score exactly as the unaccepted pass does (I6). Without this row an engine could take source→score for raw, and ordinary fixtures where those filters happen to coincide would not catch it |
 | score plane (whole) | the `MAX_SIDE`-capped unseparated planes the raw pass consumes — both sides, so a divergence between the two downsample paths is caught here rather than as a raw/unaccepted mismatch |
 | result | `{raw, accepted, unaccepted, statuses, validationFailures}` — `statuses` is a **map keyed by acceptance id**, one entry per member of `acceptances[]`, each per the contract's precedence table. A single aggregate status cannot express a mixed-validity case, so both engines could emit the same summary while disagreeing about which mask survived; the mixed-validity fixtures pin the per-id identities |
 
@@ -953,6 +969,13 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
    comparison instead**, which has a defined pair and a defined frame. Recommend the latter until a
    lane demonstrably needs its own reporting.
 
+   **That makes the focused-comparison report form a prerequisite, not a preference.** Phase 1
+   step 1 offers two surfaces and marks the comparison one "preferred"; if the viewer-only option is
+   taken instead, this redirect sends interactive-lane visitors to a page with no reporting
+   affordance at all — reporting becomes impossible rather than merely awkward. So either the
+   comparison form lands, or the interactive lanes keep an explicit handoff back to the viewer's
+   form; what they must not do is point at a page that cannot file anything.
+
    **That redirect only works if it carries the overrides.** Today it would not:
    `handleReferenceComparison` reads `name` and `reference` and nothing else, and
    `referenceComparisonPage` builds its Actual `/render` URL from `linkQuery`'s auth/session
@@ -1014,17 +1037,20 @@ Sequenced so each step is independently useful and nothing is blocked on the cro
 ### Phase 3 — Scoped acceptance
 
 8. **`compose-preview-known-differences/v1` schema + conformance fixtures**, defined here.
-9. **Apply acceptances in `format-compare.js`** per §4, raw/accepted/unaccepted reported separately.
+9. **Apply acceptances in `format-compare.js`** per §4, raw/accepted/unaccepted reported separately
+   — **including status evaluation**, `resolved` among them. Detecting resolution is not Phase 4
+   work: the conformance fixtures Phase 3 must pass carry a per-acceptance `statuses` map with a
+   required fixed-candidate `resolved` case, so an engine that defers resolution cannot satisfy its
+   own contract. Phase 4 surfaces and acts on these statuses; it does not compute them.
 10. **Publish through catalog-export**, and **apply the same semantics in `design-parity`**.
     *Cross-repo; sequence after 8 so both sides build against a settled schema and the shared
     fixtures.*
 
 ### Phase 4 — Resolution
 
-11. **Detect resolved** (raw difference gone, acceptance still present), **invalidated** (any of the
-    causes in §4's [normative contract](#the-normative-contract) — deliberately not re-listed here,
-    since every previous restatement of that list drifted), and **stale** (issue closed, acceptance
-    remains) — surfaced on the dashboard and as a gate in the offline run.
+11. **Surface** the statuses Phase 3 already computes — `resolved`, `invalidated`, `refused` — plus
+    **stale** (issue closed, acceptance remains), which is the one lifecycle state that needs the
+    issue index rather than the comparison: on the dashboard, and as a gate in the offline run.
 
     The `resolved` / `invalidated` / `valid` statuses and their precedence are defined once in §4's
     [normative contract](#the-normative-contract) — including why the success path trips a gate and
