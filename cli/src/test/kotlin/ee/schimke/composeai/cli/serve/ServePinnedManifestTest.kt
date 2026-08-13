@@ -3,6 +3,8 @@ package ee.schimke.composeai.cli.serve
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ServePinnedManifestTest {
@@ -54,18 +56,45 @@ class ServePinnedManifestTest {
   }
 
   @Test
-  fun `a manifest this reader does not understand yields no paths rather than failing`() {
-    // Published by an older (or newer) CLI than the one reading it, truncated, or simply a 404 page
-    // — every one of these degrades to "resolve through the tip's map instead".
-    assertEquals(emptyMap(), ServePinnedManifest.parseCatalog(""))
-    assertEquals(emptyMap(), ServePinnedManifest.parseCatalog("<html>404</html>"))
-    assertEquals(emptyMap(), ServePinnedManifest.parseCatalog("""{"components":"not-an-array"}"""))
-    assertEquals(emptyMap(), ServePinnedManifest.parseReferences("""{"references":[{"id":1}]}"""))
+  fun `a manifest this reader cannot parse is distinguishable from one that lists nothing`() {
+    // The distinction decides whether a fallback to the tip's map is licensed at all, so it is the
+    // parser's job to answer "was this a manifest?" separately from "what did it contain?".
+    assertNull(ServePinnedManifest.parseCatalog(""))
+    assertNull(ServePinnedManifest.parseCatalog("<html>404</html>"))
+    assertNull(ServePinnedManifest.parseCatalog("""{"components":"not-an-array"}"""))
+    assertNull(ServePinnedManifest.parseReferences("nonsense"))
+    // Read, and it genuinely lists none — an answer, not an absence.
+    assertEquals(emptyMap(), ServePinnedManifest.parseCatalog("""{"components":[]}"""))
+    assertEquals(emptyMap(), ServePinnedManifest.parseReferences("""{"references":[]}"""))
     // A single malformed entry costs only itself, not the rest of the map.
     assertEquals(
       mapOf("card__ideal" to "images/card/ideal.png"),
       ServePinnedManifest.parseCatalog(
         """{"components":[{"images":[{"nopath":1},{"path":"images/card/ideal.png"}]}]}"""
+      ),
+    )
+  }
+
+  @Test
+  fun `each lane resolves a duplicate id the way its own loader does`() {
+    // Two paths can flatten to one route id. The live loader assigns (`bakedPathById[id] = path`),
+    // so the LAST declaration is what a visitor sees — and a pin to that same commit must agree,
+    // or the revision serves different pixels than it served while current.
+    assertEquals(
+      mapOf("foo__bar__baz" to "images/foo/bar__baz.png"),
+      ServePinnedManifest.parseCatalog(
+        """{"components":[{"images":[
+             {"path":"images/foo__bar/baz.png"},{"path":"images/foo/bar__baz.png"}]}]}"""
+      ),
+    )
+    // References go the other way, because their importer discards a duplicate id rather than
+    // overwriting: first wins. The asymmetry mirrors the two loaders, not one another.
+    assertEquals(
+      mapOf("dup" to "references/first.png"),
+      ServePinnedManifest.parseReferences(
+        """{"references":[
+             {"id":"dup","raster":{"path":"references/first.png"}},
+             {"id":"dup","raster":{"path":"references/second.png"}}]}"""
       ),
     )
   }
@@ -105,6 +134,27 @@ class ServePinnedManifestTest {
     // A branch that cannot answer for a commit will not start answering, and a page of broken
     // pinned images must not re-ask once per image.
     assertEquals(2, fetches.get())
+  }
+
+  @Test
+  fun `a readable manifest is authoritative, an unreadable one licenses the fallback`() {
+    val readable =
+      ServePinnedManifest(
+        fetch = { _, file ->
+          if (file == ServeCatalogRevision.CATALOG_FILE)
+            """{"components":[{"images":[{"path":"images/card/ideal.png"}]}]}""".encodeToByteArray()
+          else null
+        }
+      )
+
+    val paths = readable.forCommit(commit)
+
+    // The catalog was read, so what it does not list, that revision did not publish — the caller
+    // must not fall back to the tip's map for an id this manifest omits.
+    assertTrue(paths.catalogRead)
+    assertNull(paths.renders["never-published"])
+    // The reference manifest was NOT readable, which is an absence rather than an answer.
+    assertFalse(paths.referencesRead)
   }
 
   @Test

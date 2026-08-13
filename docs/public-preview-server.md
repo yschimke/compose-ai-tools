@@ -267,13 +267,25 @@ The rules the lane holds to, each of which exists because its opposite would mak
 
   The lanes that have no historical answer refuse rather than fall through: `/render/<id>.svg?at=…`
   (and the `.slots` / `.a11y` / `.annotations` / `.rc` products) is a `404` naming the reason, so a
-  hand-typed URL cannot get today's export under an old sha either.
+  hand-typed URL cannot get today's export under an old sha either. A product selected by **query**
+  goes the same way with a `400` — `?at=<sha>&scroll=long`, `&rcPlayer=cmp-jvm`, or any override
+  (`fontScale`, `device`, `knob.…`) asks for pixels rendered to order, and answering with the plain
+  baked PNG would be a 200 that silently ignores half the URL. The comparison page's **annotation
+  layers** are suppressed under a pin for the same reason: they are published per catalog load, not
+  per revision, so drawing them would label today's bounds as that revision's spec.
 - **A revision resolves its paths from its own manifests.** The `catalog.json` and
   `references/index.json` *at the pinned commit* decide where an asset lived, not the tip's map. The
   two lanes need it for opposite reasons: a render's id is derived from its path, so a rename
   retires the id a permalink names and today's map cannot resolve it under any path; a reference's
   id survives a path change, so today's map resolves it confidently to a path that commit never had.
-  Both manifests are memoised per commit, and an unreadable one falls back to the tip's map.
+  Both manifests are memoised per commit (one fetch even when a page's images race in together),
+  and each lane resolves a duplicate id the way its own loader does — last-wins for renders,
+  first-wins for references — so a pin can never disagree with what that commit served while it was
+  current.
+
+  A manifest that **was read** is authoritative about its own revision: an id it doesn't list was
+  not published then, and the answer is a 404 rather than whatever happens to sit at today's path in
+  that commit. The tip's map is the fallback only for a manifest that could not be read at all.
 - **The response is `immutable`** (on a public box — a token-gated one keeps `no-store` like every
   other private response), because `(commit, path)` is immutable by construction.
 
