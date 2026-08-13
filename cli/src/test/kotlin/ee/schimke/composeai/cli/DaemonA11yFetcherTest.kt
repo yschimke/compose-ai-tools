@@ -327,6 +327,42 @@ class DaemonA11yFetcherTest {
   }
 
   @Test
+  fun `hierarchy nodes are not proof that ATF ran`() {
+    val projectDir = newTempFolder("module-merge-nodes")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    // `readNodes` populates `nodes` off `a11y-hierarchy.json` for every preview whether or not its
+    // ATF fetch succeeded, and that file survives from earlier renders — so a failed entry can
+    // carry a full node list. Treating that as evidence would launder it into a clean row.
+    writeExistingReport(
+      projectDir,
+      status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
+      entries =
+        arrayOf(
+          entry("AlphaPreview"),
+          AccessibilityEntry(
+            previewId = "BetaPreview",
+            findings = emptyList(),
+            nodes = listOf(AccessibilityNode(label = "Submit", boundsInScreen = "0,0,10,10")),
+          ),
+        ),
+    )
+
+    DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+        modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+      )
+
+    val report = readReport(projectDir)
+    assertEquals(listOf("AlphaPreview"), report.entries.map { it.previewId })
+    assertTrue(report.partial, "Beta is uncovered — its node list proves nothing about ATF")
+  }
+
+  @Test
   fun `real findings under an unavailable stamp still carry forward`() {
     val projectDir = newTempFolder("module-merge-status-real")
     File(projectDir, "build/compose-previews").mkdirs()

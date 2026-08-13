@@ -210,22 +210,27 @@ internal class DaemonA11yFetcher(
 
   /**
    * The entries of [existing] that are worth keeping — everything, unless that report was stamped
-   * [A11Y_REPORT_STATUS_ATF_UNAVAILABLE], in which case the ones carrying **neither findings nor
-   * nodes** are dropped.
+   * [A11Y_REPORT_STATUS_ATF_UNAVAILABLE], in which case only the ones **carrying findings** do.
    *
-   * Those entries record a fetch that produced nothing — under that stamp, one that quite possibly
-   * never ran at all (#1453) — so keeping them would let a later narrowed success republish them
-   * with no stamp of their own and have every consumer read them as "checked, found nothing".
-   * Dropping them instead leaves those previews *uncovered*, which [AccessibilityReport.partial]
-   * already reports honestly, so the run needs no second mechanism to say "don't trust these".
-   * Entries with real findings or a node list are data whatever the report-level stamp says — a
-   * stamp can come from a failed session open on top of a previous run's genuine results — so those
-   * always carry.
+   * An entry with no findings under that stamp records a fetch that produced nothing — quite
+   * possibly one that never ran at all (#1453) — so keeping it would let a later narrowed success
+   * republish it with no stamp of its own and have every consumer read it as "checked, found
+   * nothing". Dropping it instead leaves that preview *uncovered*, which
+   * [AccessibilityReport.partial] already reports honestly, so the run needs no second mechanism to
+   * say "don't trust these". Findings are the only sound proof: they can only come from a decoded
+   * `a11y/atf` payload, and an entry that has them is data whatever the report-level stamp says (a
+   * stamp can come from a failed session open landing on top of a previous run's genuine results).
+   *
+   * **Not `nodes`** — tempting, and wrong. [readNodes] reads `a11y-hierarchy.json` off disk for
+   * every preview whether or not its ATF fetch succeeded, and that file can be left over from an
+   * earlier render, so a node list says nothing about whether ATF ran. The cost of the strict rule
+   * is that a genuinely clean preview carried through a stamped report reads as "not checked" until
+   * the next full run — an understatement of coverage, which is the safe direction to be wrong in.
    */
   private fun carryForward(existing: AccessibilityReport?): List<AccessibilityEntry> {
     val entries = existing?.entries.orEmpty()
     if (existing?.status != A11Y_REPORT_STATUS_ATF_UNAVAILABLE) return entries
-    return entries.filter { it.findings.isNotEmpty() || it.nodes.isNotEmpty() }
+    return entries.filter { it.findings.isNotEmpty() }
   }
 
   /**
