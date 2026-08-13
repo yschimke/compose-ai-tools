@@ -173,27 +173,30 @@ horologist = "0.7.15"
 #    verified-together alpha. alpha14 / alpha07 is the next such pair:
 #    `RemoteDensity.from` dropped its trailing `Context` arg and now derives
 #    density solely from the `RemoteCreationDisplayInfo` it's handed.
-compose-remote = "1.0.0-alpha16"
+#    alpha17 / alpha09 is the current such pair: `remote-material3:1.0.0-alpha09`
+#    declares `remote-creation`/`remote-creation-compose` 1.0.0-alpha17 in its POM,
+#    and `glance-wear:1.0.0-alpha16` does the same, so all three move together.
+compose-remote = "1.0.0-alpha17"
 # Matches what the `compose-bom-compat` Compose artifacts already resolve collection to; pinned
 # explicitly because `:third-party-rc-embedded-player` names `ObjectIntMap`/`IntObjectMap` directly.
 androidx-collection = "1.6.0"
 # `FontRequest` / `FontsContractCompat` — the downloadable-fonts provider API the vendored embedded
 # player's typeface resolver uses to service `google:` font prefixes.
 androidx-core = "1.19.0"
-#    alpha08 does not exist: the whole `androidx.wear.compose.remote` group stops
-#    at alpha07 on Google Maven (remote-material3 / remote-core / remote-player all
-#    404), so #2823's bump made `:samples:design-catalog-remote-m3` unresolvable and
-#    took `main` red. Back to alpha07 until the wear side actually publishes; when it
-#    does, bump it together with `compose-remote` as the paragraph above requires.
-wear-compose-remote = "1.0.0-alpha08"
+#    Check Google Maven before bumping: the `androidx.wear.compose.remote` group
+#    publishes behind `androidx.compose.remote`, and #2823 once pinned a version that
+#    didn't exist yet (every artifact 404'd), making `:samples:design-catalog-remote-m3`
+#    unresolvable and taking `main` red. Bump it together with `compose-remote`, to the
+#    version whose POM names the `compose-remote` pin above.
+wear-compose-remote = "1.0.0-alpha09"
 # Glance Wear — the Wear OS *widget* layer on top of Remote Compose. Used by
 # `:samples:design-catalog-remote-m3` to sticker the widget **container** (the
 # squircle the host draws around widget content) via the
-# `wear-tooling-preview` artifact's `WearWidgetPreview` wrapper. alpha13 is
-# built against compose-remote alpha14 (see its POM), so bump this in lockstep
+# `wear-tooling-preview` artifact's `WearWidgetPreview` wrapper. alpha16 is
+# built against compose-remote alpha17 (see its POM), so bump this in lockstep
 # with the `compose-remote` pin above — a skewed pair risks the same
 # creation/player version drift the Remote Compose comment describes.
-glance-wear = "1.0.0-alpha15"
+glance-wear = "1.0.0-alpha16"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
