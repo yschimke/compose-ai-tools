@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.image.BufferedImage
 import java.io.File
@@ -1368,26 +1369,16 @@ class ShowCommand(args: List<String>) : Command(args) {
       val policy = missingRendersPolicy?.lowercase()
       val prefix =
         if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
-      System.err.println(
-        "${prefix}Render task completed but produced no PNG for ${missing.size} of " +
-          "${filtered.size} preview(s):"
-      )
       // List the offenders so the CI log is self-diagnosing — no need to download the
-      // `composePreviewRender-reports` artifact just to learn *which* previews failed.
-      for (r in missing) {
-        val nullCoords =
-          r.captures
-            .filter { it.pngPath == null && !it.optional }
-            .joinToString(", ") { captureCoordLabel(it) }
-            .ifEmpty { "default" }
-        val moduleTag = if (r.module.isNotBlank()) " (${r.module})" else ""
-        System.err.println("  - ${r.id}$moduleTag — no PNG for: $nullCoords")
-      }
+      // `composePreviewRender-reports` artifact just to learn *which* previews failed — and read
+      // the renderer's `.error.json` sidecar beside each one so a preview that rendered and *threw*
+      // reports its exception instead of the NO-SOURCE build-wiring guess (issue #3741).
       System.err.println(
-        "Check the Gradle output above — a common cause is the `composePreviewRender` task " +
-          "reporting NO-SOURCE, which means the renderer test class wasn't found on " +
-          "testClassesDirs. Per-preview stack traces are in the `composePreviewRender-reports` " +
-          "artifact attached to the run."
+        formatMissingRenderReport(
+          collectMissingRenders(missing, outcome.manifests),
+          total = filtered.size,
+          prefix = prefix,
+        )
       )
       System.out.flush()
       if (shouldFailOnMissingRenders()) exitProcess(2)
@@ -1595,10 +1586,15 @@ class RenderCommand(args: List<String>) : Command(args) {
           val policy = missingRendersPolicy?.lowercase()
           val prefix =
             if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
+          // Same report `show` prints: the `.error.json` sidecar beside each would-be output tells
+          // "the preview threw" apart from "the render task never ran" (issue #3741).
           System.err.println(
-            "${prefix}Render task completed but produced no PNG for ${missing.size} preview(s):"
+            formatMissingRenderReport(
+              collectMissingRenders(missing, manifests),
+              total = filtered.size,
+              prefix = prefix,
+            )
           )
-          for (r in missing) System.err.println("  ${r.id}")
           if (shouldFailOnMissingRenders()) exitProcess(2)
         }
       }
@@ -1839,21 +1835,41 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
   override fun implicitExtensions(): List<String> = listOf(extensionId)
 
   /**
+   * One preview a data-product hook has been asked to produce for.
+   *
+   * [previewId] is the id to **address the daemon with** — always one the plugin discovered, since
+   * `PreviewIndex.byId` is an exact lookup against `previews.json`. [entryId] is the id to **key
+   * the result on**, which is what a consumer looks up. They differ only for a `--permutations`
+   * variant: `Foo_dark` is synthesised client-side, so the fetch names `Foo` and carries
+   * [overrides] — the dark/RTL/font-scale configuration the daemon threads into its re-render —
+   * while the result is filed under `Foo_dark` (issue #3762).
+   *
+   * [overrides] is `null` for a plain preview, which is also the "no params bag" case.
+   */
+  data class RequestedPreview(
+    val previewId: String,
+    val entryId: String,
+    val overrides: PreviewOverrides? = null,
+  ) {
+    /** True when this is a client-side permutation rather than a declared preview. */
+    val isPermutation: Boolean
+      get() = entryId != previewId
+  }
+
+  /**
    * One module's share of the work [produceAdditionalDataProducts] has to do.
    *
-   * [previewIds] is **already narrowed** to the invocation's `--id` / `--filter` — implementations
+   * [previews] is **already narrowed** to the invocation's `--id` / `--filter` — implementations
    * fan out over it rather than over `manifest.previews`, so `a11y --filter Foo` pays for one
    * per-preview daemon render instead of the module's full set (issue #3742). A module none of
    * whose previews the request selects never becomes a request at all.
    *
    * [consumerPreviewIds] is every id a *consumer* of the sidecar may look up — the manifest
    * expanded through [PreviewPermutationsCli], which is the id space `PreviewResult`s carry and so
-   * the one the extension renderers annotate against. Coverage is measured against this, not
-   * against [previewIds]: a `--permutations accessibility` run can produce data for every declared
-   * preview and still leave `Foo_dark` unaddressed, and a report that called itself complete there
-   * would let the renderer synthesise a clean row for a permutation nobody rendered.
+   * the one the extension renderers annotate against. Coverage is measured against this rather than
+   * against what was fetched, so a run that skipped a permutation is reported as not covering it.
    *
-   * [narrowed] is true exactly when [previewIds] is a strict subset of the module's previews, i.e.
+   * [narrowed] is true exactly when [previews] is a strict subset of [consumerPreviewIds], i.e.
    * when whatever this hook writes covers only part of the module. The sidecars are *per-module*
    * reports, so a narrowed run that writes one wholesale discards the findings for previews the
    * user didn't ask about — the analogue of the `.cli-state.json` problem #3730 had to solve.
@@ -1862,7 +1878,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
   data class DataProductRequest(
     val module: PreviewModule,
     val manifest: PreviewManifest,
-    val previewIds: List<String>,
+    val previews: List<RequestedPreview>,
     val consumerPreviewIds: List<String>,
     val narrowed: Boolean,
   )
@@ -1895,50 +1911,33 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
   protected fun dataProductRequests(
     manifests: List<Pair<PreviewModule, PreviewManifest>>
   ): List<DataProductRequest> = manifests.mapNotNull { (module, manifest) ->
-    val requested = requestedPreviewIds(manifest)
+    val consumerIds = mutableListOf<String>()
+    val requested = mutableListOf<RequestedPreview>()
+    for (preview in manifest.previews) {
+      // Fetch order within a preview is load-bearing: the daemon keys its artefacts by preview id,
+      // so each permutation's overlay lands on top of the last. [RequestedPreview] production keeps
+      // the declared preview *first* here, and `DaemonA11yFetcher` reverses that so the base render
+      // is the one left on disk under its own id. See its `fetch` KDoc.
+      for (expanded in PreviewPermutationsCli.expand(listOf(preview), permutations)) {
+        consumerIds += expanded.id
+        if (!matchesRequest(expanded.id)) continue
+        requested +=
+          RequestedPreview(
+            previewId = preview.id,
+            entryId = expanded.id,
+            overrides = PreviewPermutationsCli.overridesFor(preview, expanded),
+          )
+      }
+    }
     if (requested.isEmpty()) null
-    else {
-      warnAboutPermutationSubstitution(module, manifest, requested)
+    else
       DataProductRequest(
         module = module,
         manifest = manifest,
-        previewIds = requested,
-        consumerPreviewIds =
-          PreviewPermutationsCli.expand(manifest.previews, permutations).map { it.id },
-        narrowed = requested.size < manifest.previews.size,
+        previews = requested,
+        consumerPreviewIds = consumerIds,
+        narrowed = requested.size < consumerIds.size,
       )
-    }
-  }
-
-  /**
-   * Say out loud when the request only matched through `--permutations` expansion, so this run
-   * fetched the *declared* preview instead (see [requestedPreviewIds]).
-   *
-   * Data products are produced for the declared preview at its own parameters: the daemon has no
-   * per-permutation lane, and its artefacts are keyed by preview id
-   * (`build/compose-previews/data/<id>/`), so several permutations of one preview would overwrite
-   * each other's overlay and hierarchy files. What the user sees is that the permutation row they
-   * asked about carries no data — and without this line, that reads as a clean result.
-   */
-  private fun warnAboutPermutationSubstitution(
-    module: PreviewModule,
-    manifest: PreviewManifest,
-    requested: List<String>,
-  ) {
-    // Matched against the manifest rows rather than the bare ids so `--preview
-    // <Class>.<function>` — a form only the row can answer — isn't mistaken for a permutation
-    // substitution and warned about on every run.
-    val requestedIds = requested.toSet()
-    val substituted =
-      manifest.previews.filter { it.id in requestedIds && !matchesRequest(it) }.map { it.id }
-    if (substituted.isEmpty()) return
-    System.err.println(
-      "compose-preview $extensionId: ${module.gradlePath} — the request matched " +
-        "${substituted.size} preview(s) only through --permutations expansion, so $extensionId " +
-        "data is produced for the declared preview(s) (${substituted.joinToString(", ")}) at " +
-        "their own parameters. The permutation row itself will carry no $extensionId data; " +
-        "per-permutation production is not implemented (issue #3762)."
-    )
   }
 
   /**
@@ -2085,12 +2084,12 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
     }
     val fetcher = DaemonA11yFetcher(onLog = { System.err.println("[daemon a11y] $it") })
     for (request in requests) {
-      val (module, manifest, previewIds, consumerPreviewIds, narrowed) = request
+      val (module, manifest, previews, consumerPreviewIds, narrowed) = request
       attemptedAnyModule = true
       if (verbose && narrowed) {
         System.err.println(
-          "compose-preview a11y: ${module.gradlePath} fetching ATF for ${previewIds.size} of " +
-            "${manifest.previews.size} preview(s); the rest keep whatever the last run recorded, " +
+          "compose-preview a11y: ${module.gradlePath} fetching ATF for ${previews.size} of " +
+            "${consumerPreviewIds.size} preview(s); the rest keep whatever the last run recorded, " +
             "and the report is marked partial for any still uncovered."
         )
       }
@@ -2099,7 +2098,7 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
           projectDir = module.projectDir,
           modulePath = module.gradlePath,
           moduleName = manifest.module,
-          previewIds = previewIds,
+          previews = previews,
           // A narrowed run only speaks for the previews it fetched, so the fetcher carries the
           // rest of the module's report forward and marks what it still doesn't cover as partial
           // rather than publishing a module-wide report full of silent gaps (issue #3742).

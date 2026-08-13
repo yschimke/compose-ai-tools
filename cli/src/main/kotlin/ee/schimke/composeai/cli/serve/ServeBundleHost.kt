@@ -592,14 +592,46 @@ class ServeBundleHost(
    * current bytes: a permalink that silently answers with today's render is the bug this whole
    * feature exists to fix, and it would be undetectable from the outside.
    */
-  fun pinnedRender(commit: String, previewId: String): ByteArray? =
+  fun pinnedRender(commit: String, previewId: String): PinnedOutcome =
     pinnedAsset(
       commit,
       branchPath(commit, previewId, bakedBranchPaths, { it.catalogRead }, { it.renders }),
     )
 
+  /**
+   * A preview this catalog published at [commit] but does **not** list today, as a record the
+   * viewer can page.
+   *
+   * This is the other half of resolving a retired id. [pinnedRender] finds its pixels; without this
+   * the *page* around them still 404s, because the session's preview list is built from the branch
+   * tip and a renamed-away id is not in it — so a permalink made before the rename would answer
+   * with an image but not with the page a person actually opened.
+   *
+   * Null for an id this revision didn't publish either, and null when its catalog can't be read:
+   * inventing a page for an id nothing confirms would be worse than admitting we don't have it.
+   * Deliberately minimal — an id and whatever name that revision gave it. Everything else the
+   * viewer draws (axes, siblings, references, knobs) describes the *current* catalog, and a pinned
+   * page has all of those lanes off anyway.
+   */
+  fun pinnedPreview(commit: String, previewId: String): ServePreview? {
+    val paths = pinnedManifest?.forCommit(commit) ?: return null
+    if (!paths.catalogRead || previewId !in paths.renders) return null
+    return ServePreview(id = previewId, label = paths.labels[previewId] ?: previewId)
+  }
+
+  /**
+   * Whether [commit]'s own catalog could be read — i.e. whether it is entitled to answer for what
+   * that revision published.
+   *
+   * The page lookup needs this separately from [pinnedPreview], because "no such preview then" and
+   * "I could not ask" must lead to different pages: the first is a 404, the second falls back to
+   * the tip. Returning null from [pinnedPreview] alone cannot say which happened.
+   */
+  fun pinnedCatalogIsAuthoritative(commit: String): Boolean =
+    pinnedManifest?.forCommit(commit)?.catalogRead == true
+
   /** [referenceId]'s canonical reference raster as published at [commit]. See [pinnedRender]. */
-  fun pinnedReference(commit: String, referenceId: String): ByteArray? =
+  fun pinnedReference(commit: String, referenceId: String): PinnedOutcome =
     pinnedAsset(
       commit,
       branchPath(
@@ -610,6 +642,28 @@ class ServeBundleHost(
         { it.references },
       ),
     )
+
+  /**
+   * What came of a pinned read. [Missing] and [Busy] are kept apart because they are different
+   * statements about the world — "that revision published no such asset", which is permanent and
+   * belongs in a 404, versus "this server would not go and look right now", which is temporary and
+   * belongs in a 503. Collapsing them would teach a visitor (or a link checker) that a perfectly
+   * good permalink is dead.
+   */
+  sealed interface PinnedOutcome {
+    data class Ok(val bytes: ByteArray) : PinnedOutcome {
+      // Arrays get identity equals/hashCode, which a data class would silently inherit. Nothing
+      // compares these today; defining them keeps that from becoming a surprise if anything does.
+      override fun equals(other: Any?): Boolean =
+        this === other || (other is Ok && bytes.contentEquals(other.bytes))
+
+      override fun hashCode(): Int = bytes.contentHashCode()
+    }
+
+    data object Missing : PinnedOutcome
+
+    data object Busy : PinnedOutcome
+  }
 
   /**
    * Where [id]'s asset lived **at [commit]**, preferring that commit's own manifest over the tip's
@@ -651,25 +705,68 @@ class ServeBundleHost(
    * capacity it simply drops an arbitrary entry: with a long tail of one-off links there is no
    * recency order worth maintaining, and the cost of a miss is one small fetch.
    */
-  private fun pinnedAsset(commit: String, path: String?): ByteArray? {
-    val fetch = fetchPinnedAsset ?: return null
-    val safePath = ServeCatalogRevision.normalizePath(path) ?: return null
-    val pin = ServeCatalogRevision.normalize(commit) ?: return null
+  private fun pinnedAsset(commit: String, path: String?): PinnedOutcome {
+    val fetch = fetchPinnedAsset ?: return PinnedOutcome.Missing
+    val safePath = ServeCatalogRevision.normalizePath(path) ?: return PinnedOutcome.Missing
+    val pin = ServeCatalogRevision.normalize(commit) ?: return PinnedOutcome.Missing
     val key = "$pin/$safePath"
     pinnedCache[key]?.let {
-      return it
+      return PinnedOutcome.Ok(it)
     }
-    val bytes = runCatching { fetch(pin, safePath) }.getOrNull() ?: return null
+    // A URL this branch has already refused is refused again from memory. Without it, a page whose
+    // images all 404 re-asks the branch once per image, and a visitor reloading it does so again —
+    // the same wasted round trips a *successful* pin only pays once for.
+    if (key in pinnedMisses) return PinnedOutcome.Missing
+    // Admission. Every other lane that reaches out is bounded; this one was not, and it is the only
+    // lane whose target a *request* chooses — `?at=<any syntactically valid sha>` names a fetch, so
+    // an anonymous caller could otherwise open as many concurrent branch reads as it liked and hold
+    // an IO worker for each. A bounded permit turns that into a queue with a ceiling, and a caller
+    // that cannot get a permit in time is told the server is busy rather than told the revision
+    // does not exist — those are different answers and a permalink must not confuse them.
+    if (!pinnedPermits.tryAcquire(PINNED_FETCH_WAIT_SECONDS, java.util.concurrent.TimeUnit.SECONDS))
+      return PinnedOutcome.Busy
+    val bytes =
+      try {
+        // Re-checked under the permit: while this caller waited, the fetch it is queued behind may
+        // have been for exactly this URL — the common case on a page whose images share a commit.
+        pinnedCache[key] ?: runCatching { fetch(pin, safePath) }.getOrNull()
+      } finally {
+        pinnedPermits.release()
+      }
+    if (bytes == null) {
+      remember(pinnedMisses, key, MAX_PINNED_MISS_ENTRIES)
+      return PinnedOutcome.Missing
+    }
     synchronized(pinnedCache) {
       if (pinnedCache.size >= MAX_PINNED_CACHE_ENTRIES) {
         pinnedCache.keys.firstOrNull()?.let(pinnedCache::remove)
       }
       pinnedCache[key] = bytes
     }
-    return bytes
+    return PinnedOutcome.Ok(bytes)
+  }
+
+  private fun remember(set: MutableSet<String>, key: String, max: Int) {
+    synchronized(set) {
+      if (set.size >= max) set.firstOrNull()?.let(set::remove)
+      set.add(key)
+    }
   }
 
   private val pinnedCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+
+  /**
+   * URLs this branch answered nothing for. Deliberately keyed like [pinnedCache] and deliberately
+   * *not* time-bounded: `(commit, path)` is immutable, so "that revision has no such file" is a
+   * permanent fact — unlike a transient failure, which this cannot tell apart and therefore
+   * remembers too. That is the accepted cost: the set is small and drops entries under pressure, so
+   * a blip strands a pin until eviction rather than for the life of the process, and the far more
+   * common case (a genuinely absent asset, asked for repeatedly) stops costing round trips.
+   */
+  private val pinnedMisses: MutableSet<String> =
+    java.util.Collections.synchronizedSet(LinkedHashSet())
+
+  private val pinnedPermits = java.util.concurrent.Semaphore(MAX_CONCURRENT_PINNED_FETCHES)
 
   /** [previewId]'s baked PNG only if it is already local — never fetches. */
   private fun localBakedPng(previewId: String): okio.Path? =
@@ -921,6 +1018,27 @@ class ServeBundleHost(
      * would trade a real memory cost against traffic that mostly never repeats.
      */
     private const val MAX_PINNED_CACHE_ENTRIES = 32
+
+    /**
+     * How many URLs this branch has already refused are remembered, so a page of absent pinned
+     * images stops costing round trips. Larger than the hit cache because a miss costs bytes to
+     * remember and a hit costs a whole PNG.
+     */
+    private const val MAX_PINNED_MISS_ENTRIES = 256
+
+    /**
+     * Concurrent branch reads the pinned lane may have in flight. Small: these are small files off
+     * a CDN, the caches absorb repeats, and the number exists to bound what an anonymous caller can
+     * make this server do — not to make pinned pages fast.
+     */
+    private const val MAX_CONCURRENT_PINNED_FETCHES = 4
+
+    /**
+     * How long a pinned read waits for a permit before answering "busy". Long enough that an
+     * ordinary page's images queue through rather than failing, short enough that a flood is shed
+     * instead of parking request threads.
+     */
+    private const val PINNED_FETCH_WAIT_SECONDS = 5L
 
     // Fallback render density for a cmp-jvm render when `previews.json` declares none — the desktop
     // renderer's own default (a 200dp preview bakes to 525px), so an unspecified preview still

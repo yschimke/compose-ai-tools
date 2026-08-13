@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.daemon.protocol.DataFetchParams
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.render.session.DataProductException
 import ee.schimke.composeai.render.session.RenderSession
@@ -12,6 +14,9 @@ import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -52,8 +57,20 @@ internal class DaemonA11yFetcher(
    * handshake; defaults to [projectDir] when the caller doesn't have a separate workspace root
    * handy (single-module projects).
    *
-   * [narrowed] says whether [previewIds] is a subset of what the module declares — true when `--id`
-   * / `--filter` cut the fan-out down (issue #3742). It decides **merge vs. wholesale rewrite**: a
+   * [previews] pairs the id each fetch is *addressed* with against the id its entry is *filed*
+   * under. They differ for a `--permutations` variant: the daemon only knows the previews the
+   * plugin discovered, so `Foo_dark` is fetched as `Foo` carrying the dark-mode
+   * [ee.schimke.composeai.daemon.protocol.PreviewOverrides] in the params bag, and filed as
+   * `Foo_dark` (issue #3762).
+   *
+   * Permutations are fetched **before** the declared preview, and their artefacts snapshotted as
+   * each one lands. The daemon writes overlay + hierarchy to `data/<previewId>/`, keyed by the id
+   * it was asked for rather than by the overrides — so without both of those, four permutations of
+   * one preview would overwrite each other and every entry would end up pointing at whichever
+   * render finished last.
+   *
+   * [narrowed] says whether [previews] is a subset of what the module declares — true when `--id` /
+   * `--filter` cut the fan-out down (issue #3742). It decides **merge vs. wholesale rewrite**: a
    * narrowed run carries forward the entries of previews it didn't ask about (minus the ones that
    * never really ran — see [carryForward]), the same bargain the `.cli-state.json` carry-forward
    * strikes for previews a narrowed render skipped (#3730), while a full run rewrites and so stays
@@ -71,9 +88,9 @@ internal class DaemonA11yFetcher(
     projectDir: File,
     modulePath: String,
     moduleName: String,
-    previewIds: List<String>,
+    previews: List<ReportCommand.RequestedPreview>,
     workspaceRoot: File = projectDir,
-    modulePreviewIds: List<String> = previewIds,
+    modulePreviewIds: List<String> = previews.map { it.entryId },
     narrowed: Boolean = false,
   ): Outcome {
     val descriptorFile = File(projectDir, "build/compose-previews/daemon-launch.json")
@@ -115,32 +132,93 @@ internal class DaemonA11yFetcher(
       // so it must not overwrite what a previous run actually found. See [mergeEntries].
       val failedIds = mutableSetOf<String>()
       var anyFetchOk = false
-      for (previewId in previewIds) {
-        val payload =
-          try {
-            live
-              .fetchData(
-                previewId = previewId,
-                kind = ATF_KIND,
-                inline = true,
-                timeout = 120.seconds,
-              )
-              .payload
-          } catch (e: DataProductException) {
-            onLog("a11y fetch for '$previewId' failed: code=${e.code} ${e.wireMessage}")
-            null
-          } catch (e: RenderSessionException) {
-            onLog("a11y fetch for '$previewId' transport error: ${e.message}")
-            null
+
+      fun fetchOne(previewId: String, entryId: String, params: JsonElement?): JsonElement? =
+        try {
+          live
+            .fetchData(
+              previewId = previewId,
+              kind = ATF_KIND,
+              inline = true,
+              params = params,
+              timeout = 120.seconds,
+            )
+            .payload
+        } catch (e: DataProductException) {
+          onLog("a11y fetch for '$entryId' failed: code=${e.code} ${e.wireMessage}")
+          null
+        } catch (e: RenderSessionException) {
+          onLog("a11y fetch for '$entryId' transport error: ${e.message}")
+          null
+        }
+
+      // Group by the id the daemon is addressed with, because everything that needs care here is
+      // per *declared* preview: its permutations share one artefact directory, one cached
+      // data-product file, and one `renders/<id>.png`.
+      for ((previewId, group) in previews.groupBy { it.previewId }) {
+        val permutations = group.filter { it.isPermutation }
+        val base = group.firstOrNull { !it.isPermutation }
+        for (preview in permutations) {
+          val payload = fetchOne(previewId, preview.entryId, fetchParams(preview))
+          if (payload != null) anyFetchOk = true else failedIds += preview.entryId
+          // Copy this render's artefacts out before the next fetch of the same preview replaces
+          // them — but only when the fetch produced something. On a failure the directory still
+          // holds the *previous* configuration's files, and snapshotting those would file another
+          // permutation's overlay and hierarchy under this one's id.
+          if (payload != null) snapshotArtifacts(projectDir, from = previewId, to = preview.entryId)
+          entries.add(
+            AccessibilityEntry(
+              previewId = preview.entryId,
+              findings = payload?.let(::parseFindings).orEmpty(),
+              nodes = if (payload != null) readNodes(projectDir, preview.entryId) else emptyList(),
+              annotatedPath =
+                if (payload != null) relativeOverlayPath(projectDir, preview.entryId) else null,
+            )
+          )
+        }
+
+        if (permutations.isEmpty()) {
+          // Nothing overrode this preview, so the ordinary cached path is fine — this is the narrow
+          // fast fetch #3742 exists to keep.
+          val preview = base ?: continue
+          val payload = fetchOne(previewId, preview.entryId, null)
+          if (payload != null) anyFetchOk = true else failedIds += preview.entryId
+          entries.add(
+            AccessibilityEntry(
+              previewId = preview.entryId,
+              findings = payload?.let(::parseFindings).orEmpty(),
+              nodes = readNodes(projectDir, preview.entryId),
+              annotatedPath = relativeOverlayPath(projectDir, preview.entryId),
+            )
+          )
+          continue
+        }
+
+        // A permutation is rendered *as* this preview, so once one has run, two things under the
+        // declared id describe the override rather than the preview: the data product it wrote sits
+        // at this preview's own cache path — and an unforced fetch serves that existing file rather
+        // than re-rendering, since `FileBackedDataProductRegistry` only queues a re-render when the
+        // file is *missing* — and `renders/<previewId>.png`, which `buildResults` hashes as this
+        // preview, holds the override's pixels. One forced fetch at default overrides fixes both,
+        // so it runs even when the declared preview has no entry to file (`--id Foo_dark`): the
+        // report gains nothing, but the render on disk stops lying about which configuration it is.
+        val payload = fetchOne(previewId, base?.entryId ?: previewId, forcedDefaultParams())
+        if (base == null) {
+          if (payload == null) {
+            onLog(
+              "could not restore the default render of '$previewId' after its permutations; " +
+                "renders/$previewId.png may still hold a permutation's pixels"
+            )
           }
-        if (payload != null) anyFetchOk = true else failedIds += previewId
-        val findings = payload?.let(::parseFindings).orEmpty()
+          continue
+        }
+        if (payload != null) anyFetchOk = true else failedIds += base.entryId
         entries.add(
           AccessibilityEntry(
-            previewId = previewId,
-            findings = findings,
-            nodes = readNodes(projectDir, previewId),
-            annotatedPath = relativeOverlayPath(projectDir, previewId),
+            previewId = base.entryId,
+            findings = payload?.let(::parseFindings).orEmpty(),
+            nodes = readNodes(projectDir, base.entryId),
+            annotatedPath = relativeOverlayPath(projectDir, base.entryId),
           )
         )
       }
@@ -149,7 +227,7 @@ internal class DaemonA11yFetcher(
       // so downstream consumers (the python PR-comment helper, CLI exit-code policy) can tell
       // "ATF didn't run" apart from "ATF ran cleanly." When `previewIds` is empty there's nothing
       // to report on either way, so leave `status` null.
-      val atfAvailable = anyFetchOk || previewIds.isEmpty()
+      val atfAvailable = anyFetchOk || previews.isEmpty()
       val status = if (atfAvailable) null else A11Y_REPORT_STATUS_ATF_UNAVAILABLE
       val reportFile =
         writeReport(
@@ -289,6 +367,65 @@ internal class DaemonA11yFetcher(
   }
 
   /**
+   * The `params` bag for one fetch: the permutation's render overrides, plus a forced re-render so
+   * the daemon produces the artefact at *those* overrides rather than serving whatever the shared
+   * per-preview file already holds. `null` for a declared preview, which wants its own defaults and
+   * can reuse a cached render.
+   */
+  private fun fetchParams(preview: ReportCommand.RequestedPreview): JsonElement? {
+    val overrides = preview.overrides ?: return null
+    return buildJsonObject {
+      put(DataFetchParams.PARAM_FORCE_RERENDER, JsonPrimitive(true))
+      put(
+        DataFetchParams.PARAM_OVERRIDES,
+        json.encodeToJsonElement(PreviewOverrides.serializer(), overrides),
+      )
+    }
+  }
+
+  /**
+   * The `params` bag for the declared preview's fetch when a permutation of it already ran: a
+   * forced re-render carrying **no** overrides, so the daemon rebuilds this preview at its own
+   * configuration instead of serving the file the override left at the shared cache path.
+   */
+  private fun forcedDefaultParams(): JsonElement = buildJsonObject {
+    put(DataFetchParams.PARAM_FORCE_RERENDER, JsonPrimitive(true))
+  }
+
+  /**
+   * Copy the artefacts the daemon just wrote for [from] into [to]'s own directory, so a permutation
+   * keeps the overlay and hierarchy of *its* render.
+   *
+   * The daemon keys `data/<previewId>/` by the id it was asked for, and a permutation is fetched
+   * under its declared preview's id — so these files are transient: the next fetch of the same
+   * preview replaces them. `fetchData` returns only after the render completes, so copying here is
+   * safe. Best-effort: a permutation whose artefacts can't be copied still keeps its findings,
+   * which came back inline in the payload rather than through the filesystem.
+   *
+   * A file the latest render *didn't* produce is deleted from [to] rather than left alone: the
+   * target directory may hold an earlier run's copy, and keeping it would let [readNodes] and
+   * [relativeOverlayPath] hand this permutation a hierarchy or overlay from a render it isn't.
+   */
+  private fun snapshotArtifacts(projectDir: File, from: String, to: String) {
+    val sourceDir = projectDir.resolve("build/compose-previews/data/$from")
+    val targetDir = projectDir.resolve("build/compose-previews/data/$to")
+    for (name in SNAPSHOT_FILES) {
+      val source = sourceDir.resolve(name)
+      val target = targetDir.resolve(name)
+      try {
+        if (!source.isFile) {
+          target.delete()
+          continue
+        }
+        targetDir.mkdirs()
+        source.copyTo(target, overwrite = true)
+      } catch (e: Exception) {
+        onLog("could not snapshot $name for '$to': ${e.message}")
+      }
+    }
+  }
+
+  /**
    * Resolve the daemon-side overlay PNG (`a11y-overlay.png`) for [previewId] relative to the
    * accessibility.json that will be written. Returns null when the file is absent.
    */
@@ -350,5 +487,11 @@ internal class DaemonA11yFetcher(
 
   companion object {
     private const val ATF_KIND = "a11y/atf"
+
+    /**
+     * The per-preview artefacts a permutation needs a copy of. Both are written by the daemon into
+     * `data/<previewId>/` and read back from there by [readNodes] / [relativeOverlayPath].
+     */
+    private val SNAPSHOT_FILES = listOf("a11y-overlay.png", "a11y-hierarchy.json")
   }
 }

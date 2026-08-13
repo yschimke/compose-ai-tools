@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.daemon.protocol.UiMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -227,7 +228,7 @@ class A11yCommandTest {
     val requests = cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta", "Gamma")))
 
     val request = requests.single()
-    assertEquals(listOf("Alpha", "Beta", "Gamma"), request.previewIds)
+    assertEquals(listOf("Alpha", "Beta", "Gamma"), request.previews.map { it.entryId })
     assertFalse(request.narrowed, "a full module is not a partial report")
   }
 
@@ -240,7 +241,7 @@ class A11yCommandTest {
 
     val request = cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta", "Gamma"))).single()
 
-    assertEquals(listOf("Alpha"), request.previewIds)
+    assertEquals(listOf("Alpha"), request.previews.map { it.entryId })
     assertTrue(request.narrowed, "a subset of the module must merge into the module's report")
   }
 
@@ -252,39 +253,58 @@ class A11yCommandTest {
 
     val request = cmd.requestsFor(listOf(manifest("app", "AlphaPreview", "BetaPreview"))).single()
 
-    assertEquals(listOf("AlphaPreview", "BetaPreview"), request.previewIds)
+    assertEquals(listOf("AlphaPreview", "BetaPreview"), request.previews.map { it.entryId })
     assertFalse(request.narrowed)
   }
 
   @Test
-  fun `an exact permutation id resolves to the preview the daemon can address`() {
+  fun `an exact permutation id is addressed as its declared preview, with overrides`() {
     // `--permutations accessibility` synthesises `Foo_dark` client-side; the daemon's PreviewIndex
-    // only knows the ids the plugin discovered, and resolves them exactly. Asking it for `Foo_dark`
-    // gets "unknown preview", which on a narrowed run is the *only* fetch and so fails the command
-    // outright. Match on the expansion the user saw, address the base preview.
+    // only knows the ids the plugin discovered and resolves them exactly, so asking it for
+    // `Foo_dark` gets "unknown preview". The request names `Foo` and carries the dark-mode
+    // configuration instead — and files the result under the id the user asked about (#3762).
     val cmd = TestableReportCommand(listOf("--id", "Foo_dark", "--permutations", "accessibility"))
 
     val request = cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))).single()
 
-    assertEquals(listOf("Foo"), request.previewIds)
-    assertTrue(request.narrowed, "one of two previews")
+    val requested = request.previews.single()
+    assertEquals("Foo", requested.previewId, "the daemon-addressable id")
+    assertEquals("Foo_dark", requested.entryId, "the id a consumer looks up")
+    assertEquals(UiMode.DARK, requested.overrides?.uiMode)
+    assertTrue(requested.isPermutation)
+    assertTrue(request.narrowed, "one of eight expanded previews")
+  }
+
+  @Test
+  fun `each accessibility permutation carries the configuration it stands for`() {
+    val cmd = TestableReportCommand(listOf("--filter", "Foo", "--permutations", "accessibility"))
+
+    val byEntry =
+      cmd.requestsFor(listOf(manifest("app", "Foo"))).single().previews.associateBy { it.entryId }
+
+    assertEquals(null, byEntry.getValue("Foo").overrides, "the declared preview renders as itself")
+    assertEquals(UiMode.DARK, byEntry.getValue("Foo_dark").overrides?.uiMode)
+    assertEquals("ar-XB", byEntry.getValue("Foo_rtl").overrides?.localeTag)
+    assertEquals(2.0f, byEntry.getValue("Foo_fontscale-2x").overrides?.fontScale)
+    // Every fetch still addresses the one preview the plugin discovered.
+    assertEquals(setOf("Foo"), byEntry.values.map { it.previewId }.toSet())
   }
 
   @Test
   fun `coverage is measured against the ids a consumer will look up`() {
-    // The trap: a one-preview module where the request substitutes to the only declared preview.
-    // Measured against the manifest, the report covers everything and would call itself complete —
-    // and `A11yReportRenderer` would then synthesise a clean row for `Foo_dark`, the exact variant
-    // nobody rendered. Coverage has to be measured in the id space the results carry.
+    // A one-preview module: the request covers one of the four ids the results will carry, so the
+    // report must call itself partial rather than let the renderer synthesise clean rows for the
+    // three permutations nobody asked for.
     val cmd = TestableReportCommand(listOf("--id", "Foo_dark", "--permutations", "accessibility"))
 
     val request = cmd.requestsFor(listOf(manifest("app", "Foo"))).single()
 
-    assertEquals(listOf("Foo"), request.previewIds)
+    assertEquals(listOf("Foo_dark"), request.previews.map { it.entryId })
     assertEquals(
       listOf("Foo", "Foo_dark", "Foo_rtl", "Foo_fontscale-2x"),
       request.consumerPreviewIds,
     )
+    assertTrue(request.narrowed)
   }
 
   @Test
@@ -293,24 +313,15 @@ class A11yCommandTest {
 
     val request = cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))).single()
 
-    assertEquals(request.previewIds, request.consumerPreviewIds)
+    assertEquals(request.previews.map { it.entryId }, request.consumerPreviewIds)
   }
 
   @Test
-  fun `substituting a permutation for its declared preview says so on stderr`() {
-    // The substitution is correct (it's the only id the daemon can serve) but it means the row the
-    // user asked about carries no a11y data. Silence there reads as a clean result.
+  fun `a permutation request no longer warns about substitution`() {
+    // It used to say the permutation row would carry no data, because the run fetched the declared
+    // preview at its own parameters instead. It now fetches the permutation's configuration, so
+    // there is nothing to apologise for.
     val cmd = TestableReportCommand(listOf("--id", "Foo_dark", "--permutations", "accessibility"))
-
-    val err = captureStderr { cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))) }
-
-    assertTrue("--permutations expansion" in err, "expected a substitution warning, got: $err")
-    assertTrue("Foo" in err, "expected the declared preview named, got: $err")
-  }
-
-  @Test
-  fun `an ordinary request says nothing about permutations`() {
-    val cmd = TestableReportCommand(listOf("--id", "Foo"))
 
     val err = captureStderr { cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))) }
 
@@ -318,14 +329,19 @@ class A11yCommandTest {
   }
 
   @Test
-  fun `a filter under permutations fetches each base preview once`() {
-    // The expanded view has four `Foo*` rows; fetching per row would pay four daemon renders for
-    // an id space the daemon doesn't even have.
+  fun `a filter under permutations fetches every matching permutation`() {
+    // Each expanded row is its own render at its own configuration, and checking a11y across those
+    // configurations is the point of `--permutations accessibility` — dark contrast, RTL layout,
+    // 2x font scale. Deduplicating them back to the declared preview would report one result four
+    // times over.
     val cmd = TestableReportCommand(listOf("--filter", "Foo", "--permutations", "accessibility"))
 
     val request = cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))).single()
 
-    assertEquals(listOf("Foo"), request.previewIds)
+    assertEquals(
+      listOf("Foo", "Foo_dark", "Foo_rtl", "Foo_fontscale-2x"),
+      request.previews.map { it.entryId },
+    )
   }
 
   @Test
@@ -338,7 +354,7 @@ class A11yCommandTest {
     // No session opened, no daemon started, and no `accessibility.json` written for `:wear` — the
     // module isn't attempted, so it can't be reported as ATF-unavailable either.
     assertEquals(listOf(":app"), requests.map { it.module.gradlePath })
-    assertEquals(listOf("Alpha"), requests.single().previewIds)
+    assertEquals(listOf("Alpha"), requests.single().previews.map { it.entryId })
   }
 
   @Test

@@ -1997,13 +1997,27 @@ class ServeHttpServer(
    * the URL carries the bearer token, and licensing a shared proxy to keep private catalog imagery
    * for a year is not a trade a permalink is worth.
    */
-  private suspend fun RoutingContext.respondPinnedAsset(bytes: ByteArray?, missing: String) {
-    if (bytes == null) {
-      call.respondText(missing, status = HttpStatusCode.NotFound)
-      return
+  private suspend fun RoutingContext.respondPinnedAsset(
+    outcome: ServeBundleHost.PinnedOutcome?,
+    missing: String,
+  ) {
+    when (outcome) {
+      is ServeBundleHost.PinnedOutcome.Ok -> {
+        markGeneration("pinned-asset", prebakedImageCacheControl(isPublic))
+        call.respondBytes(outcome.bytes, ContentType.Image.PNG)
+      }
+      // The lane is admission-bounded, and a shed request is not a dead link. Saying so with a 503
+      // + Retry-After keeps a link checker (and a visitor) from concluding that a revision which
+      // exists is gone, and tells a well-behaved client when to come back.
+      ServeBundleHost.PinnedOutcome.Busy -> {
+        call.response.headers.append(HttpHeaders.RetryAfter, "5")
+        call.respondText(
+          "busy reading that revision from the delivery branch; try again shortly",
+          status = HttpStatusCode.ServiceUnavailable,
+        )
+      }
+      else -> call.respondText(missing, status = HttpStatusCode.NotFound)
     }
-    markGeneration("pinned-asset", prebakedImageCacheControl(isPublic))
-    call.respondBytes(bytes, ContentType.Image.PNG)
   }
 
   /** Canonical, inert PNG for a design reference. Original HTML/Figma sources are never served. */
@@ -2020,7 +2034,7 @@ class ServeHttpServer(
       // historical render — a comparison of two moments rather than of two sides.
       if (pinnedCommit != null) {
         respondPinnedAsset(
-          bytes =
+          outcome =
             catalogBundleHost(renderHost)?.let {
               withContext(Dispatchers.IO) { it.pinnedReference(pinnedCommit, referenceId) }
             },
@@ -3728,7 +3742,34 @@ class ServeHttpServer(
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
       val previewId = call.parameters["name"]
-      val preview = previewId?.let { id -> renderHost.previews.firstOrNull { it.id == id } }
+      val revisions = catalogRevisions(renderHost)
+      // Which catalog decides what this page is *about*. Unpinned it is the session's own list;
+      // under a pin it is the revision's own catalog, asked FIRST — the same authority rule the
+      // asset lanes follow, and for the same reason. Asking the tip first looks harmless while a
+      // preview merely moved, but it hands back today's metadata for an id that revision never
+      // published (whose render correctly 404s, so the page would render around a broken image),
+      // and today's component name for a route id that has since moved between components.
+      //
+      // Off the request dispatcher, because a cold lookup fetches that revision's manifests: the
+      // route takes any syntactically valid sha, so leaving it here would let concurrent requests
+      // for distinct shas hold Ktor's request threads through several round trips each.
+      val preview = previewId?.let { id ->
+        val host = catalogBundleHost(renderHost)
+        val pinnedPreview =
+          revisions.pinned?.let { pin ->
+            withContext(Dispatchers.IO) { host?.pinnedPreview(pin, id) }
+          }
+        // The fallback is for a revision whose catalog could not be READ — never for one that
+        // was read and does not list this id. [ServeBundleHost.pinnedCatalogIsAuthoritative]
+        // tells those apart; without it, "the manifest says no" would quietly become "ask the
+        // tip", which is the failure #3769 removed from the asset lanes.
+        val revisionAnswers =
+          revisions.pinned?.let { pin ->
+            withContext(Dispatchers.IO) { host?.pinnedCatalogIsAuthoritative(pin) }
+          } == true
+        pinnedPreview
+          ?: if (revisionAnswers) null else renderHost.previews.firstOrNull { it.id == id }
+      }
       if (preview == null) {
         respondNotFoundHtml("That preview does not exist in this catalog.")
         return@withLeasedSession
@@ -3944,7 +3985,7 @@ class ServeHttpServer(
           // never both.
           historyInlineJson = localHistoryJson,
           historyLocalRenders = localHistoryJson != null,
-          revisions = catalogRevisions(renderHost),
+          revisions = revisions,
         ),
         ContentType.Text.Html,
       )
@@ -4108,7 +4149,7 @@ class ServeHttpServer(
           return@withLeasedSession
         }
         respondPinnedAsset(
-          bytes =
+          outcome =
             catalogBundleHost(renderHost)?.let {
               withContext(Dispatchers.IO) { it.pinnedRender(pinnedCommit, previewId) }
             },
@@ -4699,10 +4740,14 @@ class ServeHttpServer(
   private fun RoutingContext.renderWouldReplayBakedBytes(sessionInPath: Boolean): Boolean {
     // Only a HEAD pays for this lookup; a GET is going to do the work regardless.
     if (call.request.local.method != HttpMethod.Head) return true
-    // A pinned render is answered from the delivery branch, not from published bytes on disk — a
-    // bodyless probe would spend a remote fetch. Same trade as an override-bearing render, which
-    // this route already refuses to amplify.
-    if (call.request.queryParameters[ServeCatalogRevision.PARAM] != null) return false
+    // A pinned render answers HEAD, which it did not before, and the reason it now can is that the
+    // lane became admission-bounded: a probe costs at most one permitted branch read, and the GET
+    // that follows it is served from the cache that read filled. Refusing was the wrong trade — an
+    // unfurler probes an `og:image` before fetching it, so a blanket 405 dropped the preview card
+    // on exactly the historical links this feature exists to share.
+    // Free when the bytes are already resident; otherwise one permitted branch read, which is the
+    // same thing the GET behind the probe would spend and which the cache then serves.
+    if (call.request.queryParameters[ServeCatalogRevision.PARAM] != null) return true
     val name = call.parameters["name"]?.removeSuffix(".png") ?: return false
     val host = sessions.peekHost(selectedSessionId(sessionInPath)) ?: return false
     return host.bakedRenderSize(name) != null

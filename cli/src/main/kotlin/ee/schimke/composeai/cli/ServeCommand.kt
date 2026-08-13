@@ -49,6 +49,7 @@ import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
 import ee.schimke.composeai.cli.serve.ServeModuleRef
+import ee.schimke.composeai.cli.serve.ServeParameterRows
 import ee.schimke.composeai.cli.serve.ServePerPreviewDaemonPool
 import ee.schimke.composeai.cli.serve.ServePreview
 import ee.schimke.composeai.cli.serve.ServeProjectHistory
@@ -814,20 +815,40 @@ class ServeCommand(args: List<String>) : Command(args) {
     }
 
     val (module, manifest) = outcome.manifests.single()
+    // `@PreviewParameter` fan-out (issue #3749). Discovery emits ONE entry per parameterized
+    // function, so the manifest alone would list a screen whose states come from a provider as a
+    // single card showing value 0 — the symptom the issue was filed about. The render pass above
+    // already wrote one file per value, and the daemon now accepts those `<baseId>_<row>` ids, so
+    // each on-disk row becomes its own servable preview. A preview with no provider, or whose
+    // fan-out isn't on disk, keeps exactly its old single entry.
+    val claimedOutputs = ServeParameterRows.claimedOutputs(manifest.previews)
     val previews =
-      manifest.previews
-        .filter { matches(it) }
-        .map {
-          val (focus, gestures) = detectedFeaturesOf(it)
+      manifest.previews.flatMap { info ->
+        val (focus, gestures) = detectedFeaturesOf(info)
+        fun serve(id: String, label: String) =
           ServePreview(
-            id = it.id,
-            label = it.functionName.ifBlank { it.id },
-            uiMode = it.params.uiMode,
+            id = id,
+            label = label,
+            uiMode = info.params.uiMode,
             supportsFocus = focus,
             supportsGestures = gestures,
-            fixedTheme = it.fixedTheme,
+            fixedTheme = info.fixedTheme,
           )
+        val baseLabel = info.functionName.ifBlank { info.id }
+        val rows = ServeParameterRows.rowsFor(info, module.projectDir, claimedOutputs)
+        // `--id` / `--filter` / `--preview` match the declared preview (so `--id Foo` serves all of
+        // Foo's rows, which is what asking for a parameterized preview means) OR a row id directly,
+        // so a caller can narrow to one state. The declared preview is matched as a *row of the
+        // manifest*, not as a bare id, because `--preview` also accepts `<Class>.<function>` and
+        // the
+        // bare function name — forms only the manifest row can answer. A synthetic row id has no
+        // manifest row of its own, so it is matched by id.
+        when {
+          rows.isEmpty() -> if (matches(info)) listOf(serve(info.id, baseLabel)) else emptyList()
+          matches(info) -> rows.map { serve(it.id, "$baseLabel · ${it.label}") }
+          else -> rows.filter { matches(it.id) }.map { serve(it.id, "$baseLabel · ${it.label}") }
         }
+      }
     // The module's declared @ThemeCatalog themes — the Theme selector renders them so a preview can
     // be re-rendered under Brand Dark etc. Module-global, so unaffected by the --id/--filter above.
     val declaredThemes = declaredThemesFromPreviews(manifest.previews)
@@ -2900,6 +2921,19 @@ class ServeCommand(args: List<String>) : Command(args) {
           className = preview.className,
           functionName = preview.functionName,
         )
+      else -> true
+    }
+
+  /**
+   * The same rule for something that has an id but no manifest row — a `@PreviewParameter` row id
+   * (`<baseId>_<row>`), which discovery never declared. Only the id-shaped forms can apply, so
+   * `--preview` degrades to the exact-or-substring half of [previewMatchesReference].
+   */
+  private fun matches(id: String): Boolean =
+    when {
+      exactId != null -> id == exactId
+      filter != null -> id.contains(filter, ignoreCase = true)
+      previewRef != null -> previewMatchesReference(previewRef, id)
       else -> true
     }
 
