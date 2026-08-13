@@ -72,20 +72,27 @@ The manifest type was historically named `RenderPreviewDataProduct`, which read 
 sense (1). It is now `RenderPreviewArtifact`. The Kotlin class name isn't serialized,
 so the rename is wire-neutral; the field name stays `dataProducts` for back-compat.
 
-3. **Foreign reference data** *(consumed, never produced here)* — structured design
-   data that some **other** tool emits and we only read. Today that is
-   [`PageBackdropManifest`](../api/preview-data-api/src/main/kotlin/ee/schimke/composeai/designparity/PageBackdrop.kt):
-   a design page imported from Figma with every component instance on it linked back
-   to the code that implements it, produced by design-parity's
-   `@design-parity/page-backdrop` and published to npm on its own cadence.
+3. **Imported design data** *(produced by a repo's own import, republished here)* —
+   structured design data cached out of the design tool. Today that is
+   [`DesignPagesManifest`](../api/preview-data-api/src/main/kotlin/ee/schimke/composeai/designpages/DesignPages.kt):
+   a whole page of a design file cached as SVG, with the node id of every component on
+   it linked back to the code that implements it.
 
    It is neither of the other two — not the daemon's JSON analysis of a preview, and
-   not a secondary image a render emitted. It comes from outside, and **nothing in
-   this repo should ever produce one**. Our role is consumer: we hold a hand-written
-   Kotlin mirror pinned to the producer's fixture by `PageBackdropParseTest`, and we
-   use its `previewId`s to render components ourselves at the size the design places
-   them — which is the whole reason to consume the data rather than the baked HTML
-   viewer the producer also ships.
+   not a secondary image a render emitted. **Nothing in this repo talks to the design
+   tool to make one**: a catalog repo imports its own pages on the design file's
+   cadence and commits `design/pages/`, and this repo's role is to re-key the preview
+   ids onto the published catalog (`scripts/design-artifacts/emit-design-pages.mjs`)
+   and serve it. That split is what lets a fork, a token-less run and an offline
+   republish all produce the same pages.
+
+   It used to be genuinely *foreign* — version 1 was design-parity's
+   `@design-parity/page-backdrop`, a composed screen as a flat PNG, mirrored here and
+   pinned to the producer's fixture. That was retired: a raster has nothing
+   addressable in it, and the whole point of this data is that the server can find a
+   node in the export, hide the design's own drawing of it, and put our render in its
+   place. Both ends of the contract now live here, so `DesignPagesParseTest` quotes
+   the wire format directly rather than vendoring someone else's sample.
 
 ## Don't regress this
 

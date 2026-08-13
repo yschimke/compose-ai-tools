@@ -30,13 +30,13 @@ interface ServeHost : AutoCloseable {
   fun designReferenceRaster(referenceId: String): ByteArray? = null
 
   /**
-   * Whole-screen page backdrops this session publishes (`pages/index.json`), or empty when it
-   * publishes none — the common case, and the one every host defaults to. See [ServePageBackdrops].
+   * Design pages this session publishes (`pages/index.json`), or empty when it publishes none — the
+   * common case, and the one every host defaults to. See [ServeDesignPages].
    */
-  fun pageBackdrops(): ServePageBackdropStore = ServePageBackdropStore.empty()
+  fun designPages(): ServeDesignPageStore = ServeDesignPageStore.empty()
 
-  /** PNG bytes of a previously advertised page's backdrop image. */
-  fun pageBackdropImage(pageId: String): ByteArray? = pageBackdrops().image(pageId)
+  /** Sanitized SVG markup for a previously advertised page. */
+  fun designPageSvg(pageId: String): String? = designPages().svg(pageId)
 
   /**
    * Typography / layout annotations over this preview's *rendered* frame, if the session carries

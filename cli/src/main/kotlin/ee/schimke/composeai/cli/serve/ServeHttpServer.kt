@@ -837,13 +837,13 @@ class ServeHttpServer(
         get("/reference/{name}") { handleDesignReferenceAsset(sessionInPath = false) }
         get("/{system}/reference/{name}") { handleDesignReferenceAsset(sessionInPath = true) }
 
-        // Whole-screen page backdrops (see [ServePageBackdrops]). One route per level rather than a
+        // Design pages (see [ServeDesignPages]). One route per level rather than a
         // separate asset path: `{name}` ending in `.png` is the backdrop image, anything else is
         // the screen's own view — the same suffix convention `/reference/{name}` already uses.
-        get("/pages") { handlePageBackdropIndex(sessionInPath = false) }
-        get("/{system}/pages") { handlePageBackdropIndex(sessionInPath = true) }
-        get("/pages/{name}") { handlePageBackdrop(sessionInPath = false) }
-        get("/{system}/pages/{name}") { handlePageBackdrop(sessionInPath = true) }
+        get("/pages") { handleDesignPageIndex(sessionInPath = false) }
+        get("/{system}/pages") { handleDesignPageIndex(sessionInPath = true) }
+        get("/pages/{name}") { handleDesignPage(sessionInPath = false) }
+        get("/{system}/pages/{name}") { handleDesignPage(sessionInPath = true) }
 
         // The published Remote Compose player renders + build-time diffs the compare page replays
         // (see [ServeRcCompare]). Content-addressed by lane and slot, never by a published id.
@@ -1643,8 +1643,8 @@ class ServeHttpServer(
           hasParityView =
             renderHost.parityActivity() != null ||
               renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
-          // Same condition `handlePageBackdropIndex` serves on, for the same reason.
-          screenCount = renderHost.pageBackdrops().pages.size,
+          // Same condition `handleDesignPageIndex` serves on, for the same reason.
+          pageCount = renderHost.designPages().pages.size,
           // …and name that action after the design tool the catalog is specified by, read from the
           // references it published (or from the parity feed's Figma lane when the references are
           // rasters with no provider). Null ⇒ the generic "design parity" label.
@@ -1959,8 +1959,8 @@ class ServeHttpServer(
     }
   }
 
-  /** The catalog's published screens, or a 404 when it publishes none. */
-  private suspend fun RoutingContext.handlePageBackdropIndex(sessionInPath: Boolean) {
+  /** The catalog's published design pages, or a 404 when it publishes none. */
+  private suspend fun RoutingContext.handleDesignPageIndex(sessionInPath: Boolean) {
     if (rejectBadToken()) return
     val sessionId = selectedSessionId(sessionInPath)
     val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
@@ -1968,14 +1968,14 @@ class ServeHttpServer(
       sessionId,
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
-      val pages = renderHost.pageBackdrops().pages
+      val pages = renderHost.designPages().pages
       if (pages.isEmpty()) {
-        respondNotFoundHtml("This design system publishes no screens.")
+        respondNotFoundHtml("This design system publishes no design pages.")
         return@withLeasedSession
       }
       markGeneration("static-page", pageCacheControl())
       call.respondText(
-        ServeWeb.pageBackdropIndexPage(
+        ServeWeb.designPagesIndexPage(
           moduleLabel = renderHost.label,
           pages = pages,
           token = token,
@@ -1994,17 +1994,21 @@ class ServeHttpServer(
   }
 
   /**
-   * One published screen: its view, or — when the name carries a `.png` suffix — the backdrop image
-   * itself. The image is the design's own export, inert bytes staged at catalog load; the server
-   * holds no Figma credential and never fetches it per request.
+   * One published design page: its view, or — when the name carries a `.svg` suffix — the cached
+   * export itself. The export is the design's own, staged at catalog load and sanitized once by
+   * [ServeDesignPageStore]; the server holds no Figma credential and never fetches it per request.
+   *
+   * The asset route answers the *same* sanitized markup the view inlines, deliberately. Serving the
+   * branch's raw bytes here would publish markup this server has already judged unsafe to inline,
+   * and two different answers for one URL is how a check gets bypassed.
    */
-  private suspend fun RoutingContext.handlePageBackdrop(sessionInPath: Boolean) {
+  private suspend fun RoutingContext.handleDesignPage(sessionInPath: Boolean) {
     if (rejectBadToken()) return
     val sessionId = selectedSessionId(sessionInPath)
     val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
     val name = call.parameters["name"].orEmpty()
-    val isImage = name.endsWith(".png")
-    val pageId = if (isImage) name.removeSuffix(".png") else name
+    val isImage = name.endsWith(".svg")
+    val pageId = if (isImage) name.removeSuffix(".svg") else name
     withLeasedSession(
       sessionId,
       onMissing = {
@@ -2012,31 +2016,28 @@ class ServeHttpServer(
         else respondNotFoundHtml("That design system was not found on this server.")
       },
     ) { renderHost ->
-      val backdrops = renderHost.pageBackdrops()
-      val page = backdrops.page(pageId)
-      if (page == null) {
+      val store = renderHost.designPages()
+      val page = store.page(pageId)
+      val svg = page?.let { renderHost.designPageSvg(pageId) }
+      if (page == null || svg == null) {
         if (isImage) call.respond(HttpStatusCode.NotFound)
-        else respondNotFoundHtml("That screen was not found in this design system.")
+        else respondNotFoundHtml("That page was not found in this design system.")
         return@withLeasedSession
       }
       if (isImage) {
-        val bytes = renderHost.pageBackdropImage(pageId)
-        if (bytes == null) {
-          call.respond(HttpStatusCode.NotFound)
-        } else {
-          markGeneration("page-backdrop", "private, max-age=300")
-          call.respondBytes(bytes, ContentType.Image.PNG)
-        }
+        markGeneration("design-page", "private, max-age=300")
+        call.respondText(svg, ContentType.Image.SVG)
         return@withLeasedSession
       }
       markGeneration("static-page", pageCacheControl())
       call.respondText(
-        ServeWeb.pageBackdropPage(
+        ServeWeb.designPage(
           moduleLabel = renderHost.label,
           page = page,
-          fileKey = backdrops.fileKey,
-          // Resolved against what this session actually publishes, so a placement mapped to a
-          // preview the catalog dropped renders as a plain hotspot instead of a broken image.
+          svg = svg,
+          fileKey = store.fileKey,
+          // Resolved against what this session actually publishes, so a node mapped to a preview
+          // the catalog dropped renders as a plain outline instead of a broken image.
           renderablePreviewIds = renderHost.previews.mapTo(HashSet()) { it.id },
           token = token,
           sessionId = webSessionId,

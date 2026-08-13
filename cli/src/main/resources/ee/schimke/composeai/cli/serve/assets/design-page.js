@@ -1,0 +1,243 @@
+// Design page viewer: a whole page of the design file, inlined as SVG, with this catalog's renders
+// standing in for the design's own drawing of the components it implements.
+//
+// THE SVG IS THE GEOMETRY, AND THAT IS THE WHOLE DESIGN
+//
+// The screen backdrop this replaced was a flat PNG, so its manifest had to carry a rectangle per
+// component and this file did no measuring at all. An inlined SVG is a document: the node is right
+// there, `data-node-id` names it, and its box is whatever the browser says it is. So the manifest
+// carries no geometry, and everything positional here is measured rather than declared. That is
+// strictly more accurate — a Figma export box includes effect bleed, so a recorded rectangle and
+// the drawn shape disagree by a few pixels on anything with a shadow — and it is what makes the
+// swap land exactly on the shape it replaces.
+//
+// Positions are written as percentages of the stage, so a resize only has to re-measure rather than
+// re-place, and a stale measurement degrades into a small offset rather than a wrong corner.
+(function () {
+  "use strict";
+
+  var root = document.getElementById("cp-design-page");
+  if (!root) return;
+
+  var stage = root.querySelector(".cp-page-stage");
+  var svg = stage && stage.querySelector("svg");
+  if (!stage || !svg) return;
+
+  var outlinesToggle = root.querySelector("[data-cp-page-outlines]");
+  var rendersToggle = root.querySelector("[data-cp-page-renders]");
+  var hideToggle = root.querySelector("[data-cp-page-hide]");
+  var opacity = root.querySelector("[data-cp-page-opacity]");
+  var opacityOut = root.querySelector("[data-cp-page-opacity-value]");
+  var blend = root.querySelector("[data-cp-page-blend]");
+  var unlinkedToggle = root.querySelector("[data-cp-page-unlinked]");
+
+  var nodes = [];
+  var byId = Object.create(null);
+  var overlays = stage.querySelectorAll(".cp-page-node");
+  for (var i = 0; i < overlays.length; i++) {
+    var overlay = overlays[i];
+    var id = overlay.getAttribute("data-cp-node") || "";
+    var target = findInSvg(id);
+    if (!target) {
+      // Named by the manifest, absent from the export — a layer the design tool flattened on the
+      // way out. Say so on the element rather than dropping it: the row in the list still shows the
+      // mapping, and `[data-cp-missing]` is what a test (or a person wondering where their shape
+      // went) can look for.
+      overlay.setAttribute("data-cp-missing", "");
+      continue;
+    }
+    var entry = { overlay: overlay, target: target };
+    nodes.push(entry);
+    byId[id] = entry;
+  }
+
+  // The renders are served inside an inert `<template>` and adopted the first time the toggle is
+  // switched on. A sheet can carry dozens of nodes and on a live catalog each render is a daemon
+  // render, so a visitor who never opens the swap should cost the server nothing.
+  //
+  // A template rather than a `data-src` swap, deliberately: template content is inert, so the
+  // browser parses it and loads none of its images until it is adopted — and it keeps every URL
+  // server-built and server-escaped. Reading a URL out of the DOM and assigning it to `img.src` is
+  // a taint path (CodeQL `js/xss-through-dom`), and not having the sink beats validating it.
+  var renderSource = stage.querySelector("[data-cp-page-render-source]");
+
+  function armRenders() {
+    if (!renderSource) return;
+    var images = renderSource.content.querySelectorAll(".cp-page-render");
+    for (var r = 0; r < images.length; r++) {
+      var image = images[r];
+      var entry = byId[image.getAttribute("data-cp-node") || ""];
+      // No entry means the export doesn't carry that node, so there is no box to put a render in
+      // and nothing to hide. Skipping leaves the row in the list, which is the honest state.
+      if (!entry) continue;
+      entry.overlay.appendChild(image);
+      // Marked here rather than at load: the class is what "hide the design's own" acts on, and a
+      // node with no render must keep showing the design's drawing whatever the toggles say.
+      entry.target.classList.add("cp-page-replaced");
+    }
+    renderSource.remove();
+    renderSource = null;
+    measure();
+  }
+
+  // Figma writes node ids with a colon (`58548:7249`); the same id appears hyphenated in its own
+  // URLs, and a hand-written manifest may use either. Both are looked up rather than normalised,
+  // because normalising would mean rewriting the export's attributes — far more invasive than
+  // trying the second spelling.
+  //
+  // Built with `querySelector` on an ATTRIBUTE VALUE, which needs escaping, so the id is matched by
+  // comparison instead — the same reasoning as `pair()` below. A node id is text from a design
+  // file, and interpolating it into a selector has the same shape as an HTML injection.
+  function findInSvg(id) {
+    if (!id) return null;
+    var alternate = id.indexOf(":") >= 0 ? id.replace(/:/g, "-") : id.replace(/-/g, ":");
+    var all = svg.querySelectorAll("[data-node-id]");
+    for (var j = 0; j < all.length; j++) {
+      var value = all[j].getAttribute("data-node-id");
+      if (value === id || value === alternate) return all[j];
+    }
+    return null;
+  }
+
+  function measure() {
+    var box = stage.getBoundingClientRect();
+    // A stage with no size yet (a page opened in a background tab, a font still loading) would put
+    // every overlay at 0×0 and cache that. Leave the previous placement alone and wait for the
+    // observer to fire again with a real box.
+    if (box.width <= 0 || box.height <= 0) return;
+    for (var k = 0; k < nodes.length; k++) {
+      var entry = nodes[k];
+      var rect = entry.target.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        entry.overlay.setAttribute("data-cp-missing", "");
+        continue;
+      }
+      entry.overlay.removeAttribute("data-cp-missing");
+      var style = entry.overlay.style;
+      style.left = pct(rect.left - box.left, box.width);
+      style.top = pct(rect.top - box.top, box.height);
+      style.width = pct(rect.width, box.width);
+      style.height = pct(rect.height, box.height);
+    }
+  }
+
+  function pct(value, span) {
+    return (value / span) * 100 + "%";
+  }
+
+  // An outline that is hidden or muted is also taken out of the tab order and the accessibility
+  // tree. CSS alone can't do this: `opacity: 0` + `pointer-events: none` still leaves an anchor
+  // focusable, so a keyboard user could tab onto an invisible rectangle — no focus ring, no
+  // indication of where they are — and press Enter to navigate.
+  function syncFocusability() {
+    var hidden = outlinesToggle && !outlinesToggle.checked;
+    var unlinkedOnly = unlinkedToggle && unlinkedToggle.checked;
+    for (var n = 0; n < overlays.length; n++) {
+      var spot = overlays[n];
+      var inert = hidden || (unlinkedOnly && spot.getAttribute("data-link") !== "unlinked");
+      if (inert) {
+        spot.setAttribute("tabindex", "-1");
+        spot.setAttribute("aria-hidden", "true");
+      } else {
+        spot.removeAttribute("tabindex");
+        spot.removeAttribute("aria-hidden");
+      }
+    }
+  }
+
+  function applyOutlines() {
+    if (!outlinesToggle) return;
+    stage.classList.toggle("cp-page-no-outlines", !outlinesToggle.checked);
+    syncFocusability();
+  }
+
+  function applyUnlinked() {
+    if (!unlinkedToggle) return;
+    stage.classList.toggle("cp-page-unlinked-only", unlinkedToggle.checked);
+    syncFocusability();
+  }
+
+  function applyRenders() {
+    if (!rendersToggle) return;
+    var on = rendersToggle.checked;
+    if (on) armRenders();
+    stage.classList.toggle("cp-page-swap-on", on);
+    // Hiding the design's own shape only means anything while ours is showing, so the control
+    // follows the one it depends on instead of leaving a hole in the sheet.
+    if (hideToggle) hideToggle.disabled = !on;
+    applyHide();
+  }
+
+  function applyHide() {
+    var on = rendersToggle && rendersToggle.checked && hideToggle && hideToggle.checked;
+    stage.classList.toggle("cp-page-hide-design", !!on);
+  }
+
+  function applyOpacity() {
+    if (!opacity) return;
+    var value = Number(opacity.value);
+    stage.style.setProperty("--cp-page-render-opacity", String(value / 100));
+    if (opacityOut) opacityOut.textContent = value + "%";
+  }
+
+  function applyBlend() {
+    if (!blend) return;
+    stage.style.setProperty("--cp-page-render-blend", blend.value);
+  }
+
+  // Hovering a row in the list highlights its node on the sheet, and vice versa — the cheapest way
+  // to answer "which one is that?" on a sheet with thirty-five near-identical silhouettes.
+  //
+  // Compares attribute values rather than building a selector string out of one, for the reason
+  // given on `findInSvg`.
+  function pair(nodeId, on) {
+    var all = root.querySelectorAll("[data-cp-node]");
+    for (var p = 0; p < all.length; p++) {
+      if (all[p].getAttribute("data-cp-node") === nodeId) {
+        all[p].classList.toggle("cp-page-active", on);
+      }
+    }
+  }
+
+  var linked = root.querySelectorAll("[data-cp-node]");
+  for (var q = 0; q < linked.length; q++) {
+    (function (el) {
+      var id = el.getAttribute("data-cp-node");
+      el.addEventListener("mouseenter", function () {
+        pair(id, true);
+      });
+      el.addEventListener("mouseleave", function () {
+        pair(id, false);
+      });
+      el.addEventListener("focus", function () {
+        pair(id, true);
+      });
+      el.addEventListener("blur", function () {
+        pair(id, false);
+      });
+    })(linked[q]);
+  }
+
+  if (outlinesToggle) outlinesToggle.addEventListener("change", applyOutlines);
+  if (unlinkedToggle) unlinkedToggle.addEventListener("change", applyUnlinked);
+  if (rendersToggle) rendersToggle.addEventListener("change", applyRenders);
+  if (hideToggle) hideToggle.addEventListener("change", applyHide);
+  if (opacity) opacity.addEventListener("input", applyOpacity);
+  if (blend) blend.addEventListener("change", applyBlend);
+
+  applyOutlines();
+  applyUnlinked();
+  applyRenders();
+  applyOpacity();
+  applyBlend();
+  measure();
+
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(measure).observe(stage);
+  } else {
+    window.addEventListener("resize", measure);
+  }
+  // Outlined text is the bulk of a specimen sheet and lands with the markup, but a page that also
+  // carries a webfont or an embedded raster can reflow after first paint.
+  window.addEventListener("load", measure);
+})();

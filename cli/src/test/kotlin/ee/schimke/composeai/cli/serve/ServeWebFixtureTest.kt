@@ -5,13 +5,12 @@ import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
-import ee.schimke.composeai.designparity.BackdropImage
-import ee.schimke.composeai.designparity.BackdropPage
-import ee.schimke.composeai.designparity.FrameSize
-import ee.schimke.composeai.designparity.PageRect
-import ee.schimke.composeai.designparity.Placement
-import ee.schimke.composeai.designparity.PlacementConfidence
-import ee.schimke.composeai.designparity.PlacementLink
+import ee.schimke.composeai.designpages.DesignPage
+import ee.schimke.composeai.designpages.PageFrame
+import ee.schimke.composeai.designpages.PageImage
+import ee.schimke.composeai.designpages.PageNode
+import ee.schimke.composeai.designpages.PageNodeConfidence
+import ee.schimke.composeai.designpages.PageNodeLink
 import java.awt.Color
 import java.awt.GradientPaint
 import java.awt.RenderingHints
@@ -62,23 +61,25 @@ class ServeWebFixtureTest {
 
   private fun assetText(name: String): String = ServeWebAssets.load(name)!!.bytes.decodeToString()
 
-  /** One placement of the page-backdrop fixture, in the frame's own design units. */
-  private fun backdropPlacement(
+  /**
+   * One node of the design-page fixture.
+   *
+   * No geometry: the SVG below is the geometry, and the viewer measures the `data-node-id` element
+   * rather than reading a rectangle out of the manifest.
+   */
+  private fun pageNode(
     nodeId: String,
     name: String,
-    x: Double,
-    y: Double,
-    width: Double,
-    height: Double,
     code: String? = null,
     previewId: String? = null,
-    link: PlacementLink = PlacementLink.MANIFEST,
-    confidence: PlacementConfidence? = if (code == null) null else PlacementConfidence.HIGH,
+    link: PageNodeLink = PageNodeLink.MANIFEST,
+    confidence: PageNodeConfidence? = if (code == null) null else PageNodeConfidence.HIGH,
+    depth: Int = 3,
   ) =
-    Placement(
+    PageNode(
       nodeId = nodeId,
       name = name,
-      bounds = PageRect(x = x, y = y, width = width, height = height),
+      depth = depth,
       ref = "figma:ocdacdEsnHipMJD3egzxKb/$nodeId",
       code = code,
       previewId = previewId,
@@ -566,10 +567,10 @@ class ServeWebFixtureTest {
         // "try in playground" on the summary line — the catalog-level half of the handoff, captured
         // so its placement in that run of actions is diffed like any other pixel.
         playgroundHref = "/playground?catalog=compose-m3",
-        // A published screen, so the action row's "N screens" chip is captured alongside the
+        // A published design page, so the action row's "N pages" chip is captured alongside the
         // comparison chips it sits with. Without this no golden carries one, and the chip could be
         // restyled or lost with no baseline moving.
-        screenCount = 2,
+        pageCount = 2,
       )
     // The public preview server's FRONT DOOR: an index of the published design systems, each a card
     // with a meaningful hero preview, its title + library, trust badge, and a link to /<system>/.
@@ -1372,109 +1373,88 @@ class ServeWebFixtureTest {
             ),
           ),
       )
-    // The whole-screen page backdrop: a design screen from the kit, the rectangle of every
-    // component instance on it, and this catalog's renders behind an overlay toggle. Every geometry
-    // number below is in the frame's own design units (412×954, a phone frame), because that is
-    // what the manifest carries and what the page turns into percentages — a fixture in image
-    // pixels would silently stop covering the conversion.
-    //
-    // The mix of placements is the point: two `manifest` links whose previews this catalog
-    // publishes, one `convention` (low-confidence name match), one `manifest` link to a preview
-    // that ISN'T published (hotspot, no overlay), and two `unlinked` — the OS chrome no code
-    // implements, which is the finding the surface exists to surface.
-    val backdropPage =
-      BackdropPage(
-        id = "upcoming-mobile",
-        name = "Upcoming-Mobile",
-        nodeId = "56615:48121",
-        frame = FrameSize(width = 412.0, height = 954.0),
-        image = BackdropImage(uri = "upcoming-mobile.png", scale = 2.0),
-        placements =
-          listOf(
-            backdropPlacement(
-              "1:2",
-              "Status bar",
-              0.0,
-              0.0,
-              412.0,
-              48.0,
-              link = PlacementLink.UNLINKED,
-            ),
-            backdropPlacement(
-              "1:1",
-              "App bar",
-              0.0,
-              48.0,
-              412.0,
-              64.0,
-              code = "ui/TopAppBars.kt#SmallTopAppBar",
-              previewId = "com.example.ProfileCardPreview",
-            ),
-            backdropPlacement(
-              "1:3",
-              "Carousel",
-              16.0,
-              128.0,
-              380.0,
-              180.0,
-              code = "ui/Carousel.kt#MultiBrowseCarousel",
-              previewId = "com.example.ProfileCardPreview",
-            ),
-            backdropPlacement(
-              "1:4",
-              "Button - text",
-              16.0,
-              326.0,
-              120.0,
-              24.0,
-              code = "ui/Buttons.kt#TextButton",
-              link = PlacementLink.CONVENTION,
-              confidence = PlacementConfidence.LOW,
-              previewId = "com.example.ProfileCardPreview",
-            ),
-            backdropPlacement(
-              "1:5",
-              "Icon button - standard",
-              360.0,
-              64.0,
-              32.0,
-              32.0,
-              code = "ui/IconButtons.kt#StandardIconButton",
-              previewId = "com.example.NotInThisCatalog",
-            ),
-          ) +
-            (0..4).map { index ->
-              backdropPlacement(
-                "1:1${index}0",
-                "List item",
-                16.0,
-                362.0 + index * 72.0,
-                380.0,
-                64.0,
-                code = "ui/Lists.kt#ListItemSticker",
-                previewId = "com.example.ProfileCardPreview",
-              )
-            } +
-            listOf(
-              backdropPlacement(
-                "1:9",
-                "Gesture bar",
-                0.0,
-                920.0,
-                412.0,
-                34.0,
-                link = PlacementLink.UNLINKED,
-              )
-            ),
+    // The design page's inlined export. Run through the real [SvgSanitizer] rather than pasted in
+    // whole, so the golden HTML is what the server would actually emit — including anything the
+    // sanitizer strips.
+    val designPageSvg =
+      checkNotNull(
+        SvgSanitizer.sanitize(
+          """
+          <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" fill="none">
+            <rect width="1200" height="800" fill="#F7F2FA"/>
+            <g data-node-id="1:9"><rect x="40" y="32" width="1120" height="64" rx="16" fill="#EADDFF"/></g>
+            <g data-node-id="1:1"><circle cx="180" cy="300" r="90" fill="#6750A4"/></g>
+            <g data-node-id="1:2"><rect x="330" y="210" width="180" height="180" rx="36" fill="#6750A4"/></g>
+            <g data-node-id="1:3"><path d="M690 210 L780 390 L600 390 Z" fill="#6750A4"/></g>
+            <g data-node-id="1:4"><rect x="840" y="255" width="240" height="90" rx="45" fill="#6750A4"/></g>
+            <g data-node-id="1:5"><rect x="330" y="500" width="180" height="180" rx="90" fill="#6750A4"/></g>
+            <g data-node-id="1:6"><rect x="600" y="500" width="180" height="180" fill="#6750A4"/></g>
+          </svg>
+          """
+            .trimIndent()
+        )
       )
 
-    val pageBackdrop =
-      ServeWeb.pageBackdropPage(
+    // A design page: one specimen sheet of the kit, inlined as SVG, with the node id of every
+    // component on it. The mix is the point: two `manifest` links whose previews this catalog
+    // publishes, one `convention` (low-confidence name match), one `manifest` link to a preview
+    // that ISN'T published (outline, no render), one node the manifest names that the export does
+    // not carry, and two `unlinked` — the sheet's own header and a shape no code implements, which
+    // is the finding the surface exists to surface.
+    val designPageFixture =
+      DesignPage(
+        id = "shape",
+        name = "Shape",
+        nodeId = "58548:7093",
+        frame = PageFrame(width = 1200.0, height = 800.0),
+        image = PageImage(uri = "shape.svg"),
+        nodes =
+          listOf(
+            pageNode("1:9", ".Header", link = PageNodeLink.UNLINKED, depth = 2),
+            pageNode(
+              "1:1",
+              "Shape=Circle",
+              code = "ui/Shapes.kt#CircleShape",
+              previewId = "com.example.ProfileCardPreview",
+            ),
+            pageNode(
+              "1:2",
+              "Shape=Square",
+              code = "ui/Shapes.kt#SquareShape",
+              previewId = "com.example.ProfileCardPreview",
+            ),
+            pageNode(
+              "1:3",
+              "Shape=Triangle",
+              code = "ui/Shapes.kt#TriangleShape",
+              link = PageNodeLink.CONVENTION,
+              confidence = PageNodeConfidence.LOW,
+              previewId = "com.example.ProfileCardPreview",
+            ),
+            pageNode(
+              "1:4",
+              "Shape=Pill",
+              code = "ui/Shapes.kt#PillShape",
+              previewId = "com.example.NotInThisCatalog",
+            ),
+            pageNode("1:6", "Shape=Ghost-ish", link = PageNodeLink.UNLINKED),
+            pageNode(
+              "1:404",
+              "Shape=Flattened",
+              code = "ui/Shapes.kt#FlowerShape",
+              previewId = "com.example.ProfileCardPreview",
+            ),
+          ),
+      )
+
+    val designPageHtml =
+      ServeWeb.designPage(
         moduleLabel = "compose-m3",
-        page = backdropPage,
+        page = designPageFixture,
+        svg = designPageSvg,
         fileKey = "ocdacdEsnHipMJD3egzxKb",
-        // Everything except the icon button, so the fixture covers a placement the producer mapped
-        // but this catalog cannot draw.
+        // Everything except the pill, so the fixture covers a node the producer mapped but this
+        // catalog cannot draw.
         renderablePreviewIds = setOf("com.example.ProfileCardPreview"),
         token = token,
         sessionId = "compose-m3",
@@ -1483,10 +1463,10 @@ class ServeWebFixtureTest {
         version = version,
       )
 
-    val pageBackdropIndex =
-      ServeWeb.pageBackdropIndexPage(
+    val designPageIndex =
+      ServeWeb.designPagesIndexPage(
         moduleLabel = "compose-m3",
-        pages = listOf(backdropPage),
+        pages = listOf(designPageFixture),
         token = token,
         sessionId = "compose-m3",
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
@@ -2026,8 +2006,8 @@ class ServeWebFixtureTest {
         "serve-format-compare.html" to formatComparison,
         "serve-rc-lanes.html" to rcLanesComparison,
         "serve-reference-compare.html" to referenceComparison,
-        "serve-page-backdrop.html" to pageBackdrop,
-        "serve-page-backdrop-index.html" to pageBackdropIndex,
+        "serve-design-page.html" to designPageHtml,
+        "serve-design-page-index.html" to designPageIndex,
         "serve-parity.html" to parity,
         "serve-landing-declared-themes.html" to landingDeclaredThemes,
         "serve-landing-ir-replay-themes.html" to landingIrReplayThemes,

@@ -67,7 +67,7 @@ internal object ServeFigmaSpec {
    *
    * The same literal-origin reassembly as [of], exposed for the callers that already hold the pair
    * rather than a [DesignReference] — a page backdrop's placements carry a `figma:<key>/<node>` ref
-   * each ([ServePageBackdrops]), and every one of them is third-party text.
+   * each ([ServeDesignPages]), and every one of them is third-party text.
    */
   fun url(fileKey: String, nodeId: String): String? {
     val key = fileKey.trim()

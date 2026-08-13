@@ -141,9 +141,9 @@ class ServeBundleHost(
 
   // Whole-screen backdrops, read once at load like the reference manifest above. A bundle that
   // carries none yields an empty store and the viewer never offers the surface.
-  private val pageBackdrops = ServePageBackdropStore.load(bundleDir, fileSystem)
+  private val designPages = ServeDesignPageStore.load(bundleDir, fileSystem)
 
-  override fun pageBackdrops(): ServePageBackdropStore = pageBackdrops
+  override fun designPages(): ServeDesignPageStore = designPages
 
   // The published player comparison, if the catalog's branch shipped one. Unlike the manifests
   // above this store resolves lazily: its lane PNGs land on the catalog's background fetch lane, so
