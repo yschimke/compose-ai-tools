@@ -107,6 +107,17 @@ On that hostname:
 - **A neighbour is not reachable.** `m3.preview.coo.ee/wear-m3/` is a `404`, not a second door onto
   another catalog through the wrong domain.
 
+The same catalog, served both ways. The visible difference is the header: the canonical path keeps
+the "← All design systems" button back to the front door, and the site has no front door to return
+to. The rest of the difference is in the hrefs — `/p/<id>` rather than `/meshcore-mobile/p/<id>`.
+
+| On the canonical path (`preview.coo.ee/meshcore-mobile/`) | As a top-level site (`meshcore.example/`) |
+| --- | --- |
+| ![Catalog landing served under its canonical path, with the back button to the front door](images/serve-site-canonical-path.png) | ![The same catalog as a top-level site — no back button, links rooted](images/serve-site-top-level.png) |
+
+Both are committed fixtures (`serve-landing-path`, `serve-landing-site`), so the CI visual-diff bot
+renders and diffs the site presentation on every subsequent PR.
+
 What it deliberately is **not** is a second server. There is no extra session, daemon, catalog
 fetch, hero bake or render behind a site: it is a lookup on the request's `Host` that changes which
 session the already-existing root-mounted routes resolve to, and what the pages say about
