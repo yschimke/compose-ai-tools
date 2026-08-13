@@ -13,7 +13,7 @@ class ServePinnedManifestTest {
 
   @Test
   fun `catalog images key by the id the loader serves them under`() {
-    val paths =
+    val entries =
       ServePinnedManifest.parseCatalog(
         """
         {"schema":"design-parity-catalog/v1","components":[
@@ -23,7 +23,7 @@ class ServePinnedManifestTest {
           {"componentId":"Card","images":[{"path":"images/card/ideal.png"}]}]}
         """
           .trimIndent()
-      )
+      )!!
 
     // Keyed by ServeCatalogStore.previewIdFor, so a pinned id and a served id are the same string
     // by construction — the join this whole class exists to make.
@@ -33,8 +33,12 @@ class ServePinnedManifestTest {
         "button-filled__ideal__default__light" to "images/button-filled/ideal__default__light.png",
         "card__ideal" to "images/card/ideal.png",
       ),
-      paths,
+      entries.paths,
     )
+    // The component each id belonged to, which is all a pinned page needs to name a preview the
+    // live catalog no longer lists.
+    assertEquals("Button/Filled", entries.labels["button-filled__ideal__default__dark"])
+    assertEquals("Card", entries.labels["card__ideal"])
   }
 
   @Test
@@ -64,14 +68,15 @@ class ServePinnedManifestTest {
     assertNull(ServePinnedManifest.parseCatalog("""{"components":"not-an-array"}"""))
     assertNull(ServePinnedManifest.parseReferences("nonsense"))
     // Read, and it genuinely lists none — an answer, not an absence.
-    assertEquals(emptyMap(), ServePinnedManifest.parseCatalog("""{"components":[]}"""))
+    assertEquals(emptyMap(), ServePinnedManifest.parseCatalog("""{"components":[]}""")?.paths)
     assertEquals(emptyMap(), ServePinnedManifest.parseReferences("""{"references":[]}"""))
     // A single malformed entry costs only itself, not the rest of the map.
     assertEquals(
       mapOf("card__ideal" to "images/card/ideal.png"),
       ServePinnedManifest.parseCatalog(
-        """{"components":[{"images":[{"nopath":1},{"path":"images/card/ideal.png"}]}]}"""
-      ),
+          """{"components":[{"images":[{"nopath":1},{"path":"images/card/ideal.png"}]}]}"""
+        )
+        ?.paths,
     )
   }
 
@@ -83,9 +88,10 @@ class ServePinnedManifestTest {
     assertEquals(
       mapOf("foo__bar__baz" to "images/foo/bar__baz.png"),
       ServePinnedManifest.parseCatalog(
-        """{"components":[{"images":[
+          """{"components":[{"images":[
              {"path":"images/foo__bar/baz.png"},{"path":"images/foo/bar__baz.png"}]}]}"""
-      ),
+        )
+        ?.paths,
     )
     // …but only among entries the loader would actually have served. An ineligible path (outside
     // images/, or not a PNG) never reaches the live map, so letting one win a collision here would
@@ -93,17 +99,29 @@ class ServePinnedManifestTest {
     assertEquals(
       mapOf("foo__bar__baz" to "images/foo__bar/baz.png"),
       ServePinnedManifest.parseCatalog(
-        """{"components":[{"images":[
+          """{"components":[{"images":[
              {"path":"images/foo__bar/baz.png"},{"path":"foo/bar__baz.png"}]}]}"""
-      ),
+        )
+        ?.paths,
     )
     assertEquals(
       emptyMap(),
       ServePinnedManifest.parseCatalog(
-        """{"components":[{"images":[
+          """{"components":[{"images":[
              {"path":"images/a/../../secret.png"},{"path":"images/b/c.svg"}]}]}"""
-      ),
+        )
+        ?.paths,
     )
+    // The label follows the winning path even when the winner is unnamed: leaving the loser's
+    // component behind would attribute one component's render to another.
+    val collided =
+      ServePinnedManifest.parseCatalog(
+        """{"components":[
+             {"componentId":"Named","images":[{"path":"images/foo__bar/baz.png"}]},
+             {"images":[{"path":"images/foo/bar__baz.png"}]}]}"""
+      )!!
+    assertEquals("images/foo/bar__baz.png", collided.paths["foo__bar__baz"])
+    assertNull(collided.labels["foo__bar__baz"])
     // References go the other way, because their importer discards a duplicate id rather than
     // overwriting: first wins. The asymmetry mirrors the two loaders, not one another.
     assertEquals(

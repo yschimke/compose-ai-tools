@@ -3742,7 +3742,34 @@ class ServeHttpServer(
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
       val previewId = call.parameters["name"]
-      val preview = previewId?.let { id -> renderHost.previews.firstOrNull { it.id == id } }
+      val revisions = catalogRevisions(renderHost)
+      // Which catalog decides what this page is *about*. Unpinned it is the session's own list;
+      // under a pin it is the revision's own catalog, asked FIRST — the same authority rule the
+      // asset lanes follow, and for the same reason. Asking the tip first looks harmless while a
+      // preview merely moved, but it hands back today's metadata for an id that revision never
+      // published (whose render correctly 404s, so the page would render around a broken image),
+      // and today's component name for a route id that has since moved between components.
+      //
+      // Off the request dispatcher, because a cold lookup fetches that revision's manifests: the
+      // route takes any syntactically valid sha, so leaving it here would let concurrent requests
+      // for distinct shas hold Ktor's request threads through several round trips each.
+      val preview = previewId?.let { id ->
+        val host = catalogBundleHost(renderHost)
+        val pinnedPreview =
+          revisions.pinned?.let { pin ->
+            withContext(Dispatchers.IO) { host?.pinnedPreview(pin, id) }
+          }
+        // The fallback is for a revision whose catalog could not be READ — never for one that
+        // was read and does not list this id. [ServeBundleHost.pinnedCatalogIsAuthoritative]
+        // tells those apart; without it, "the manifest says no" would quietly become "ask the
+        // tip", which is the failure #3769 removed from the asset lanes.
+        val revisionAnswers =
+          revisions.pinned?.let { pin ->
+            withContext(Dispatchers.IO) { host?.pinnedCatalogIsAuthoritative(pin) }
+          } == true
+        pinnedPreview
+          ?: if (revisionAnswers) null else renderHost.previews.firstOrNull { it.id == id }
+      }
       if (preview == null) {
         respondNotFoundHtml("That preview does not exist in this catalog.")
         return@withLeasedSession
@@ -3958,7 +3985,7 @@ class ServeHttpServer(
           // never both.
           historyInlineJson = localHistoryJson,
           historyLocalRenders = localHistoryJson != null,
-          revisions = catalogRevisions(renderHost),
+          revisions = revisions,
         ),
         ContentType.Text.Html,
       )
