@@ -880,8 +880,8 @@
     "serve-viewer-cross-product-subtree-open.dark.png": {
       "fixture": "serve-viewer-cross-product-subtree-open",
       "theme": "dark",
-      "sha256": "3b2397636592c0a37989e81ea58502526fb2f4e19531a2d72643e86dc0064fcd",
-      "size": 70973
+      "sha256": "c7e34df1f905b09ba4d76a9d372d8fac69d87424733d916e6f55a93d6a7b3081",
+      "size": 71387
     },
     "serve-viewer-cross-product-subtree-open.light.png": {
       "fixture": "serve-viewer-cross-product-subtree-open",
