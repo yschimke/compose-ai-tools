@@ -413,6 +413,30 @@ Adding a fifth region that moves the locale without going through
 `withPreviewLocale` reopens the bug; guarding only some of them is worse
 than guarding none, because it looks handled.
 
+**The gate cannot be narrowed by plumbing the locale through the
+composition**, which is the obvious-looking alternative and was the open
+question on #3721. CMP *resource* resolution does have a per-composition
+lever (`LocalComposeEnvironment`, public since 1.11.1), but it is not the
+only consumer of the global. Material resolves **its own** strings on a
+separate path — `androidx.compose.material3.internal.getString` reads
+`Locale.current` (the JVM default) from inside a composable that never
+consults its own `Composer` — against the 75 locale bundles
+`material3-desktop` ships in `androidx/compose/material3/l10n/`. So every
+built-in Material string a preview draws follows the process global, with
+no composition-scoped lever at any version. `material3`'s date-picker
+descriptions additionally use `String.format` with no `Locale`, reading
+`Locale.getDefault(Category.FORMAT)` — a *different* global that no
+composition local can reach at all.
+
+`MaterialBuiltInStringsLocaleTest` pins all three facts: that Material's
+own strings follow the JVM default (the positive control), that providing
+`LocalLocaleList` does **not** reach them while that provide demonstrably
+applies (the canary — it turns red the day upstream wires the local into
+text resolution, and says so in its failure message), and that a
+`localeTag` render localizes them end to end. The full sink inventory,
+across 6,373 classes of the pinned desktop artifacts, is in
+[yschimke/m3-catalog#54](https://github.com/yschimke/m3-catalog/issues/54).
+
 ## 9.10 v3 Android pointer
 
 Android click dispatch requires sandbox pinning: see
