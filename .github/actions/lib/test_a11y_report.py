@@ -510,11 +510,19 @@ class CopyAnnotatedTest(unittest.TestCase):
         ))
 
         findings = json.loads((out / "findings.json").read_text())
-        modules = sorted({e["module"] for e in findings["entries"]})
-        self.assertEqual(len(modules), 2, f"expected two distinct modules, got {modules}")
         # Both modules' renders survive, each under its own directory.
         surviving = sorted(p.name for p in (out / "renders").rglob("*.png"))
         self.assertEqual(surviving, ["Alpha.png", "Beta.png"])
+        dirs = sorted({e["rendersDir"] for e in findings["entries"]})
+        self.assertEqual(len(dirs), 2, f"expected two renders dirs, got {dirs}")
+        # ...while the diff key stays the module's own name, so it can't shift
+        # under the baseline when the set of modules in a run changes.
+        self.assertEqual({e["module"] for e in findings["entries"]}, {"app"})
+        for entry in findings["entries"]:
+            self.assertTrue(
+                (out / "renders" / entry["rendersDir"] / entry["cleanBasename"]).exists(),
+                entry,
+            )
 
     def test_unique_leaf_names_keep_their_plain_module_key(self):
         # The disambiguation must not fire on an ordinary run: the published
@@ -533,6 +541,12 @@ class CopyAnnotatedTest(unittest.TestCase):
         findings = json.loads((out / "findings.json").read_text())
         self.assertEqual(
             sorted({e["module"] for e in findings["entries"]}),
+            ["sample-phone", "sample-wear"],
+        )
+        # No collision, so the renders tree keeps the layout the published
+        # baseline branch already has — nothing to migrate.
+        self.assertEqual(
+            sorted({e["rendersDir"] for e in findings["entries"]}),
             ["sample-phone", "sample-wear"],
         )
 
