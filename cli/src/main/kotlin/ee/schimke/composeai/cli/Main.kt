@@ -227,15 +227,16 @@ private fun printFullUsage() {
                            a case-insensitive substring of its id (the --filter rule). It may
                            therefore match several previews — `--preview Foo` also takes
                            `FooBar`; reach for --id when exactly one is meant. Combining the
-                           three intersects them — every selector you pass has to match —
-                           everywhere, render-matrix and serve included. Narrows the Gradle
-                           render like --id / --filter on the preview render commands;
-                           show-resources filters its output only, since the resource render
-                           task is not scoped by any of the three. `record --preview` takes the
-                           same forms but must land on exactly one preview, so it tries them
-                           in order and an ambiguous reference is an error. `history
-                           --preview` is a different flag: an exact preview-id filter over
-                           archived entries.
+                           three intersects them — every selector you pass has to match — on
+                           every command that selects a *set*, render-matrix and serve
+                           included. Narrows the Gradle render like --id / --filter on the
+                           preview render commands; show-resources filters its output only,
+                           since the resource render task is not scoped by any of the three.
+                           `record` is the exception, because it needs exactly one preview:
+                           it takes the first of --id / --preview / --filter you gave and
+                           resolves that alone, in stages, erroring on an ambiguous
+                           reference. `history --preview` is a different flag again: an exact
+                           preview-id filter over archived entries.
       --json               Emit JSON (show, list, a11y, devices)
       --brief              JSON only: drop functionName/className/sourceFile/params
       --changed-only       JSON only (show, a11y): drop previews with no changed capture
