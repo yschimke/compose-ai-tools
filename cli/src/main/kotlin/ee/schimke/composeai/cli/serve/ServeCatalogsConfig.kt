@@ -181,6 +181,13 @@ data class ServeCatalogsConfig(
     fun validateEntry(entry: Entry): String? =
       when {
         !SYSTEM_RE.matches(entry.system) -> "invalid catalog system id '${entry.system}'"
+        // A slug-shaped id can still be one of the server's own top-level routes, which the
+        // registry refuses to name a session ([ServeSessionRegistry.register]) — so the entry
+        // would parse, validate, be scheduled for loading, and then fail at registration with a
+        // runtime error instead of the ordinary malformed-entry warning. Say so here, where the
+        // three callers (startup filtering, `problems()`, the admin add) all read it.
+        entry.system in ServeSites.RESERVED_SYSTEMS ->
+          "catalog system id '${entry.system}' is one of the server's own routes"
         entry.repo != null && !REPO_RE.matches(entry.repo) ->
           "catalog '${entry.system}' has an invalid repo '${entry.repo}'"
         entry.attributionRepos.any { !REPO_RE.matches(it) } ->
