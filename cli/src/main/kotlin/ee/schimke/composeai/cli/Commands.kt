@@ -1985,8 +1985,10 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
           // rest of the module's report forward and marks what it still doesn't cover as partial
           // rather than publishing a module-wide report full of silent gaps (issue #3742).
           // Coverage is measured in the *consumer's* id space so a permutation the daemon never
-          // addressed counts as uncovered rather than as a preview that came back clean.
+          // addressed counts as uncovered rather than as a preview that came back clean. Whether
+          // to merge at all is the separate question of whether the *request* narrowed the fetch.
           modulePreviewIds = consumerPreviewIds,
+          narrowed = narrowed,
         )
       when (outcome) {
         is DaemonA11yFetcher.Outcome.Ok -> {

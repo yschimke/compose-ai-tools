@@ -234,6 +234,7 @@ class DaemonA11yFetcherTest {
         moduleName = "sample",
         previewIds = listOf("AlphaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+        narrowed = true,
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
@@ -245,6 +246,32 @@ class DaemonA11yFetcherTest {
     assertEquals("keep me", report.entries[1].findings.single().message)
     // Every declared preview ended up covered, so the report speaks for the whole module again.
     assertFalse(report.partial, "merged entries cover the module")
+  }
+
+  @Test
+  fun `a partial-but-unnarrowed run still rewrites wholesale`() {
+    val projectDir = newTempFolder("module-partial-unnarrowed")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    writeExistingReport(projectDir, entry("GonePreview", finding("ERROR", "Stale", "deleted")))
+
+    // The `--permutations` shape: every *declared* preview is fetched (so nothing was skipped and
+    // there is nothing to carry forward), but the consumer id space also contains synthetic ids the
+    // daemon can't address, so the report is still partial. Deriving "should I merge?" from that
+    // coverage gap would keep a deleted preview's findings on disk forever.
+    DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+        modulePreviewIds = listOf("AlphaPreview", "AlphaPreview_dark"),
+        narrowed = false,
+      )
+
+    val report = readReport(projectDir)
+    assertEquals(listOf("AlphaPreview"), report.entries.map { it.previewId })
+    assertTrue(report.partial, "the synthetic id is still uncovered")
   }
 
   @Test
@@ -315,6 +342,7 @@ class DaemonA11yFetcherTest {
         moduleName = "sample",
         previewIds = listOf("AlphaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+        narrowed = true,
       )
 
     // `BetaPreview`'s entry records a fetch that produced nothing under a stamp saying nothing ran.
@@ -350,6 +378,7 @@ class DaemonA11yFetcherTest {
         moduleName = "sample",
         previewIds = listOf("AlphaPreview", "GammaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview", "GammaPreview"),
+        narrowed = true,
       )
 
     val report = readReport(projectDir)
@@ -409,6 +438,7 @@ class DaemonA11yFetcherTest {
         moduleName = "sample",
         previewIds = listOf("AlphaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+        narrowed = true,
       )
 
     val report = readReport(projectDir)
@@ -438,6 +468,7 @@ class DaemonA11yFetcherTest {
         moduleName = "sample",
         previewIds = listOf("AlphaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+        narrowed = true,
       )
 
     val report = readReport(projectDir)
@@ -490,6 +521,7 @@ class DaemonA11yFetcherTest {
           moduleName = "sample",
           previewIds = listOf("AlphaPreview"),
           modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+          narrowed = true,
         )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.OpenFailed)
@@ -516,6 +548,7 @@ class DaemonA11yFetcherTest {
         moduleName = "sample",
         previewIds = listOf("AlphaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+        narrowed = true,
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")

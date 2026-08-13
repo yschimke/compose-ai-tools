@@ -52,18 +52,20 @@ internal class DaemonA11yFetcher(
    * handshake; defaults to [projectDir] when the caller doesn't have a separate workspace root
    * handy (single-module projects).
    *
-   * [modulePreviewIds] is every preview the module declares, against which [previewIds] is the
-   * subset this run was asked for — they differ when `--id` / `--filter` narrowed the fan-out
-   * (issue #3742), and default to equal for a full run. Two things hang off the difference, because
-   * `accessibility.json` is a *per-module* report and a narrowed run only speaks for part of it:
-   * - entries already on disk for previews outside [previewIds] are **carried forward** rather than
-   *   dropped, the same bargain the `.cli-state.json` carry-forward strikes for previews a narrowed
-   *   render skipped (#3730) — minus the ones that never really ran, see [carryForward]. Only a
-   *   full run rewrites wholesale, which keeps it the one thing that evicts the entry of a preview
-   *   that no longer exists;
-   * - the report is stamped [AccessibilityReport.partial] when the merged entries still don't cover
-   *   [modulePreviewIds], so consumers read an absent id as "not checked" instead of folding it in
-   *   as a clean row.
+   * [narrowed] says whether [previewIds] is a subset of what the module declares — true when `--id`
+   * / `--filter` cut the fan-out down (issue #3742). It decides **merge vs. wholesale rewrite**: a
+   * narrowed run carries forward the entries of previews it didn't ask about (minus the ones that
+   * never really ran — see [carryForward]), the same bargain the `.cli-state.json` carry-forward
+   * strikes for previews a narrowed render skipped (#3730), while a full run rewrites and so stays
+   * the one thing that evicts the entry of a preview that no longer exists.
+   *
+   * [modulePreviewIds] is every id a **consumer** of this report may look up, which is a different
+   * question and deliberately a different parameter. It decides [AccessibilityReport.partial]: the
+   * report is stamped partial when the merged entries don't cover this set, so consumers read an
+   * absent id as "not checked" rather than folding it in as a clean row. The two can disagree —
+   * under `--permutations`, an unnarrowed run fetches every *declared* preview (so nothing is
+   * carried forward) and still leaves every *synthetic* id uncovered (so the report is partial).
+   * Deriving one from the other conflates them and costs the wholesale rewrite.
    */
   fun fetch(
     projectDir: File,
@@ -72,10 +74,11 @@ internal class DaemonA11yFetcher(
     previewIds: List<String>,
     workspaceRoot: File = projectDir,
     modulePreviewIds: List<String> = previewIds,
+    narrowed: Boolean = false,
   ): Outcome {
     val descriptorFile = File(projectDir, "build/compose-previews/daemon-launch.json")
     if (!descriptorFile.isFile) {
-      writeAtfUnavailableReport(projectDir, moduleName, previewIds, modulePreviewIds)
+      writeAtfUnavailableReport(projectDir, moduleName, modulePreviewIds, narrowed)
       return Outcome.DescriptorMissing(descriptorFile)
     }
 
@@ -91,7 +94,7 @@ internal class DaemonA11yFetcher(
       try {
         factory.open(config)
       } catch (e: RenderSessionException) {
-        writeAtfUnavailableReport(projectDir, moduleName, previewIds, modulePreviewIds)
+        writeAtfUnavailableReport(projectDir, moduleName, modulePreviewIds, narrowed)
         return Outcome.OpenFailed(reason = e.message ?: e.javaClass.simpleName)
       }
 
@@ -154,8 +157,8 @@ internal class DaemonA11yFetcher(
           moduleName,
           entries = entries,
           status = status,
-          fetchedIds = previewIds,
           modulePreviewIds = modulePreviewIds,
+          narrowed = narrowed,
           failedIds = failedIds,
         )
       Outcome.Ok(reportFile = reportFile, entryCount = entries.size, atfAvailable = atfAvailable)
@@ -173,16 +176,16 @@ internal class DaemonA11yFetcher(
   private fun writeAtfUnavailableReport(
     projectDir: File,
     moduleName: String,
-    fetchedIds: List<String>,
     modulePreviewIds: List<String>,
+    narrowed: Boolean,
   ) {
     writeReport(
       projectDir,
       moduleName,
       entries = emptyList(),
       status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
-      fetchedIds = fetchedIds,
       modulePreviewIds = modulePreviewIds,
+      narrowed = narrowed,
     )
   }
 
@@ -191,13 +194,12 @@ internal class DaemonA11yFetcher(
     moduleName: String,
     entries: List<AccessibilityEntry>,
     status: String?,
-    fetchedIds: List<String>,
     modulePreviewIds: List<String>,
+    narrowed: Boolean,
     failedIds: Set<String> = emptySet(),
   ): File {
     val reportFile = projectDir.resolve("build/compose-previews/accessibility.json")
     reportFile.parentFile?.mkdirs()
-    val narrowed = !fetchedIds.containsAll(modulePreviewIds)
     val existing = if (narrowed) readExistingReport(reportFile) else null
     val merged = mergeEntries(carryForward(existing), entries, failedIds)
     val covered = merged.map { it.previewId }.toSet()

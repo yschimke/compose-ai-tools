@@ -206,6 +206,31 @@ class SelectVariantsTest(unittest.TestCase):
         )
         self.assertEqual(rows[1]["findings"], [])
 
+    def test_partial_report_reports_which_previews_it_skipped(self):
+        manifest = {
+            "module": "sample",
+            "previews": [
+                _preview(id="x.Checked", function="Checked", render="a.png"),
+                _preview(id="x.Skipped", function="Skipped", render="b.png"),
+            ],
+        }
+        a11y_by_id = {"x.Checked": {"previewId": "x.Checked", "findings": []}}
+
+        unchecked: list[str] = []
+        rows = ar.select_variants(manifest, a11y_by_id, True, unchecked)
+
+        self.assertEqual([r["previewId"] for r in rows], ["x.Checked"])
+        self.assertEqual(unchecked, ["x.Skipped"])
+
+    def test_complete_report_reports_nothing_as_unchecked(self):
+        manifest = {
+            "module": "sample",
+            "previews": [_preview(id="x.A", function="A", render="a.png")],
+        }
+        unchecked: list[str] = []
+        ar.select_variants(manifest, {}, False, unchecked)
+        self.assertEqual(unchecked, [])
+
     def test_partial_report_keeps_the_variant_it_actually_checked(self):
         # `--id x.Foo_small_round` checks a variant that device priority would
         # not have picked. Choosing the preferred variant first and then
@@ -525,14 +550,14 @@ class CommentTest(unittest.TestCase):
         baseline_entries=None,
         status=None,
         baseline_status=None,
-        partial_modules=None,
+        unchecked_previews=None,
     ):
         findings_path = self.tmp / "findings.json"
         current_payload: dict = {"entries": current_entries}
         if status is not None:
             current_payload["status"] = status
-        if partial_modules is not None:
-            current_payload["partialModules"] = partial_modules
+        if unchecked_previews is not None:
+            current_payload["uncheckedPreviews"] = unchecked_previews
         findings_path.write_text(json.dumps(current_payload))
         baseline_path = None
         if baseline_entries is not None:
@@ -782,7 +807,7 @@ class CommentTest(unittest.TestCase):
         body = self._run_comment([current], baseline_entries=[baseline])
         self.assertEqual(body, "")
 
-    def test_partial_module_absence_is_not_reported_as_resolved(self):
+    def test_unchecked_preview_absence_is_not_reported_as_resolved(self):
         # A narrowed `compose-preview a11y --id Stay` run never checked `Gone`
         # (#3742). Absent-because-unchecked is not absent-because-fixed, and
         # announcing a fix nobody made is worse than saying nothing.
@@ -795,17 +820,28 @@ class CommentTest(unittest.TestCase):
         body = self._run_comment(
             [survivor],
             baseline_entries=[baseline, survivor],
-            partial_modules=["sample-wear"],
+            unchecked_previews=[{"module": "sample-wear", "previewId": "x.Gone"}],
         )
         self.assertNotIn("Resolved", body)
 
-        # A module NOT marked partial keeps the existing reading.
+    def test_deleted_preview_is_still_resolved_in_a_partial_run(self):
+        # `x.Deleted` is absent from the current manifest entirely, so the
+        # narrowed run reports it as unchecked for nobody — it was removed, and
+        # its finding really is gone. A module-wide "this module was partial"
+        # marker would have silenced this.
+        deleted = self._entry(
+            function="Deleted", preview_id="x.Deleted", findings=[_finding(level="ERROR")]
+        )
+        survivor = self._entry(
+            function="Stay", preview_id="x.Stay", findings=[_finding(level="WARNING")]
+        )
         body = self._run_comment(
             [survivor],
-            baseline_entries=[baseline, survivor],
-            partial_modules=["some-other-module"],
+            baseline_entries=[deleted, survivor],
+            unchecked_previews=[{"module": "sample-wear", "previewId": "x.Skipped"}],
         )
         self.assertIn("Resolved", body)
+        self.assertIn("`Deleted`", body)
 
     def test_resolved_preview_listed_when_removed(self):
         # A preview that carried a finding on the baseline but is gone now

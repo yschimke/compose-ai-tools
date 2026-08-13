@@ -80,7 +80,18 @@ that honest, and a new hook needs both:
    reading: `A11yReportRenderer` withholds the `dataExtensions["a11y"]` carrier for an
    unlisted preview (so `a11yEntry()` is `null` — the established "checks didn't run"
    signal) and `.github/actions/lib/a11y-report.py` drops it from the findings table,
-   the same way it already drops Wear Tiles rather than listing them as checked.
+   the same way it already drops Wear Tiles rather than listing them as checked. That
+   helper also records the skipped previews per id in `findings.json`, so the PR comment
+   can tell a preview it never checked from one that was genuinely *deleted* — the
+   second is a resolved finding and still gets reported.
+
+Coverage is measured in the **consumer's** id space (every id a `PreviewResult` may
+carry, i.e. the manifest expanded through `PreviewPermutationsCli`), while whether to
+merge at all is decided by whether the *request* narrowed the fetch. Those are two
+questions and want two parameters: under `--permutations`, an unnarrowed run fetches
+every declared preview — nothing to carry forward, so it must still rewrite wholesale
+and evict deleted previews — yet leaves every synthetic id uncovered, so the report is
+partial. Deriving either from the other silently breaks the case the other one owns.
 
 ### Seeding an environment is not producing a data product
 
