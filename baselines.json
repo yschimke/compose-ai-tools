@@ -424,14 +424,14 @@
     "serve-landing-grouped.dark.png": {
       "fixture": "serve-landing-grouped",
       "theme": "dark",
-      "sha256": "0d790cd61ea862ad4d906cd1fdd576a90bb4d7d2102c2f79f322d8dec5f83c67",
-      "size": 99545
+      "sha256": "34b75a863a73d400b6754ff60800e1b7db4362c74d237a7a99f56d959bdbdc1e",
+      "size": 102691
     },
     "serve-landing-grouped.light.png": {
       "fixture": "serve-landing-grouped",
       "theme": "light",
-      "sha256": "927b45f51356410b1e4043ed231c9272ef66cb41037d0942be940c374d4cbc2c",
-      "size": 98524
+      "sha256": "bbc5bc8e4f232501499ada446a0d855dff8590085674d99f2ccd29ff937d9bf5",
+      "size": 101674
     },
     "serve-landing-ir-replay-themes.dark.png": {
       "fixture": "serve-landing-ir-replay-themes",
@@ -874,8 +874,8 @@
     "serve-viewer-cross-product-subtree-open.light.png": {
       "fixture": "serve-viewer-cross-product-subtree-open",
       "theme": "light",
-      "sha256": "b7077743576893b0d80b1d5af6e16709590b9ead15e98864a7c87472371c6b4e",
-      "size": 70660
+      "sha256": "552da5ca6061c880b36aa1af51409fbbf40873c8e617567a0ec728f7a970f093",
+      "size": 70250
     },
     "serve-viewer-cross-product.dark.png": {
       "fixture": "serve-viewer-cross-product",
