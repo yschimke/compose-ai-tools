@@ -521,6 +521,223 @@ class DaemonA11yFetcherTest {
     assertNull(readReport(projectDir).entries.single().annotatedPath)
   }
 
+  @Test
+  fun `a permutation whose overrides collapse to the base is still forced`() {
+    val projectDir = newTempFolder("module-permutation-no-op")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    // `@Preview(fontScale = 2.0f)` expands to a `_fontscale-2x` variant whose params equal the
+    // base's, so `overridesFor` hands back null. Unforced, that fetch would serve whatever the
+    // preceding RTL render left at the shared cache path and file it under the 2× id.
+    val factory = FakeFactory(mapOf("Foo" to atfPayload(emptyList())))
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo_rtl", PreviewOverrides(localeTag = "ar-XB")),
+            ReportCommand.RequestedPreview("Foo", "Foo_fontscale-2x", overrides = null),
+          ),
+        modulePreviewIds = listOf("Foo", "Foo_rtl", "Foo_fontscale-2x"),
+        narrowed = true,
+      )
+
+    val noOp = factory.calls[1].params?.jsonObject
+    assertEquals(
+      true,
+      noOp?.get(DataFetchParams.PARAM_FORCE_RERENDER)?.jsonPrimitive?.content?.toBoolean(),
+      "a permutation with an empty override bag still needs its own render",
+    )
+    assertNull(noOp?.get(DataFetchParams.PARAM_OVERRIDES), "...at the base configuration")
+  }
+
+  @Test
+  fun `a failed restore discards the permutation's artefacts instead of filing them as the base`() {
+    val projectDir = newTempFolder("module-permutation-restore-fails")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+
+    // The permutation renders as `Foo` and leaves its artefacts — including the cached
+    // `a11y-atf.json` — under `Foo`. Then the restoring fetch errors, so nothing replaces them.
+    val factory =
+      FakeFactory(
+        payloads = emptyMap(),
+        payloadByCall = mapOf(1 to atfPayload(emptyList()), 2 to null),
+        onFetch = { _, ordinal ->
+          if (ordinal == 1) {
+            dataDir.mkdirs()
+            File(dataDir, "a11y-overlay.png").writeText("dark-pixels")
+            File(dataDir, "a11y-hierarchy.json").writeText("""{"nodes":[]}""")
+            File(dataDir, "a11y-atf.json").writeText("""{"findings":[]}""")
+          }
+        },
+      )
+
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo"),
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
+          ),
+      )
+
+    val base = readReport(projectDir).entries.single { it.previewId == "Foo" }
+    assertNull(base.annotatedPath, "the overlay left under `Foo` is the permutation's")
+    assertEquals(emptyList(), base.nodes, "so is the hierarchy")
+    // And the cached data product goes too: `FileBackedDataProductRegistry` only re-renders when
+    // the file is missing, so leaving it would serve the permutation's findings to the next run.
+    assertFalse(File(dataDir, "a11y-atf.json").exists())
+    assertFalse(File(dataDir, "a11y-overlay.png").exists())
+    // The permutation's own snapshot, taken before the failure, is untouched.
+    assertEquals(
+      "dark-pixels",
+      File(projectDir, "build/compose-previews/data/Foo_dark/a11y-overlay.png").readText(),
+    )
+  }
+
+  @Test
+  fun `artefacts survive when no permutation ever rendered`() {
+    val projectDir = newTempFolder("module-permutation-none-rendered")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+    dataDir.mkdirs()
+    File(dataDir, "a11y-overlay.png").writeText("foo-own-render")
+    File(dataDir, "a11y-atf.json").writeText("""{"findings":[]}""")
+
+    // Every fetch fails — an unavailable extension fails them all alike — so no render happened
+    // and `data/Foo/` still holds Foo's own earlier one. Discarding it here would delete a valid
+    // cache and, on a narrowed run, strand a carried-forward entry pointing at the overlay.
+    DaemonA11yFetcher(factory = FakeFactory(mapOf("Foo" to null)))
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo"),
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
+          ),
+      )
+
+    assertEquals("foo-own-render", File(dataDir, "a11y-overlay.png").readText())
+    assertTrue(File(dataDir, "a11y-atf.json").exists())
+    // The entry still shows the preview was attempted and produced nothing this run, but its own
+    // artefacts are honestly still its own, so the report may point at them.
+    val base = readReport(projectDir).entries.single { it.previewId == "Foo" }
+    assertEquals("data/Foo/a11y-overlay.png", base.annotatedPath)
+    assertEquals(emptyList(), base.findings)
+  }
+
+  @Test
+  fun `a failed restore rolls back to the base's own render, not to nothing`() {
+    val projectDir = newTempFolder("module-permutation-rollback")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+    dataDir.mkdirs()
+    File(dataDir, "a11y-overlay.png").writeText("foos-own-render")
+    File(dataDir, "a11y-atf.json").writeText("""{"findings":[]}""")
+    // `--id Foo_dark` files no fresh `Foo` entry, so the narrowed merge carries the previous one
+    // forward — `annotatedPath` included. Deleting the overlay would strand that reference.
+    writeExistingReport(
+      projectDir,
+      AccessibilityEntry(
+        previewId = "Foo",
+        findings = listOf(finding("ERROR", "TextContrast", "seen earlier")),
+        annotatedPath = "data/Foo/a11y-overlay.png",
+      ),
+    )
+
+    // The permutation renders as `Foo` and overwrites its artefacts; the restoring fetch errors.
+    val factory =
+      FakeFactory(
+        payloads = emptyMap(),
+        payloadByCall = mapOf(1 to atfPayload(emptyList()), 2 to null),
+        onFetch = { _, ordinal ->
+          if (ordinal == 1) {
+            File(dataDir, "a11y-overlay.png").writeText("dark-pixels")
+            File(dataDir, "a11y-atf.json").writeText("""{"findings":[{"level":"ERROR"}]}""")
+          }
+        },
+      )
+
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f))
+          ),
+        modulePreviewIds = listOf("Foo", "Foo_dark"),
+        narrowed = true,
+      )
+
+    assertEquals(
+      "foos-own-render",
+      File(dataDir, "a11y-overlay.png").readText(),
+      "the carried-forward entry's overlay must survive the roll-back",
+    )
+    assertEquals("""{"findings":[]}""", File(dataDir, "a11y-atf.json").readText())
+    val carried = readReport(projectDir).entries.single { it.previewId == "Foo" }
+    assertEquals("data/Foo/a11y-overlay.png", carried.annotatedPath)
+    assertEquals("seen earlier", carried.findings.single().message)
+    // The hold directory is transient — it must not survive as a stray build output.
+    assertFalse(File(projectDir, "build/compose-previews/.a11y-pre-permutation/Foo").exists())
+  }
+
+  @Test
+  fun `a render that landed but did not report is still rolled back`() {
+    val projectDir = newTempFolder("module-permutation-render-no-payload")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+    dataDir.mkdirs()
+    File(dataDir, "a11y-atf.json").writeText("""{"findings":[]}""")
+
+    // A permutation render can land and its fetch still error — an unparseable ATF payload comes
+    // back as a failure after the artefacts were written. Keying the roll-back off "did a payload
+    // come back" would skip it and leave the override's data product at this preview's cache path.
+    val factory =
+      FakeFactory(
+        payloads = emptyMap(),
+        payloadByCall = mapOf(1 to null, 2 to null),
+        onFetch = { _, ordinal ->
+          if (ordinal == 1) {
+            File(dataDir, "a11y-atf.json").writeText("""{"findings":[{"level":"ERROR"}]}""")
+          }
+        },
+      )
+
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo"),
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
+          ),
+      )
+
+    assertEquals(
+      """{"findings":[]}""",
+      File(dataDir, "a11y-atf.json").readText(),
+      "the next unforced fetch must not be served the permutation's data product",
+    )
+  }
+
   // ---------- narrowed runs merge rather than clobber (#3742) ----------
 
   @Test
