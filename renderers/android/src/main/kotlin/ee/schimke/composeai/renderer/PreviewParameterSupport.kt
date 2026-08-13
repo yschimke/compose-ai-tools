@@ -57,9 +57,9 @@ object PreviewParameterSupport {
    *   the fan-out renderer would render as `<id>_<label>`, and value 0 is the one Android Studio
    *   shows first as well.
    * - `"PARAM_<n>"` takes value `n` positionally, enumerating only as far as it must.
-   * - anything else is matched, case-insensitively, against [rowSuffixes] — the same labels the
-   *   fan-out puts in `<stem>_<label>.png`, so a row is addressed by the name a caller reads off
-   *   disk (issue #3749).
+   * - anything else is matched against [rowSuffixes] — the same labels the fan-out puts in
+   *   `<stem>_<label>.png`, so a row is addressed by the name a caller reads off disk (issue
+   *   #3749). Exact match wins; see [matchLabel] for the case-insensitive fallback.
    *
    * A [row] naming an index past the end, or a label no value carries, throws
    * [PreviewParameterLoadException] listing what IS available — silently falling back to value 0
@@ -123,9 +123,7 @@ object PreviewParameterSupport {
               null,
             )
         else ->
-          rowSuffixes(values).indexOfFirst { it.equals(requested, ignoreCase = true) }.takeIf {
-            it >= 0
-          }
+          matchLabel(rowSuffixes(values), requested)
             ?: throw PreviewParameterLoadException(
               "@PreviewParameter(provider = $providerClassName) on $functionName has no row " +
                 "named '$requested'; available rows: ${rowSuffixes(values)}",
@@ -134,6 +132,26 @@ object PreviewParameterSupport {
       }
     val args = listOf(values[index])
     return Resolved(findComposableMethodWithArgs(clazz, functionName, args).openForInvoke(), args)
+  }
+
+  /**
+   * The index of the row [requested] names within [suffixes], or `null` when nothing matches.
+   *
+   * **Exact first, case-insensitive only when unambiguous.** Label derivation is case-*sensitive*
+   * about collisions, so a provider yielding `Dark` and `dark` legitimately produces two distinct
+   * fan-out files on a case-sensitive filesystem; folding case unconditionally would map both ids
+   * onto the first value and silently render the wrong state for the second. The case-insensitive
+   * pass is still worth having as a fallback — a label comes from user data (a value's
+   * `name`/`toString()`, so `"Dark"`) while a hand-written id often spells the same axis
+   * differently (`"dark"`), and nothing reconciles the two — but it only decides when exactly one
+   * row matches. Two or more and the caller gets the "no row named …" diagnostic listing every
+   * row, which is the right answer: the request was genuinely ambiguous.
+   */
+  internal fun matchLabel(suffixes: List<String>, requested: String): Int? {
+    val exact = suffixes.indexOf(requested)
+    if (exact >= 0) return exact
+    val folded = suffixes.indices.filter { suffixes[it].equals(requested, ignoreCase = true) }
+    return folded.singleOrNull()
   }
 
   /**

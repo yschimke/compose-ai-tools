@@ -85,4 +85,27 @@ class PreviewParameterLabelsTest {
     val expected = "_" + "x".repeat(32)
     assertEquals(listOf(expected), suffixes)
   }
+
+  /**
+   * Issue #3749 — `PARAM_<digits>` is the reserved spelling for positional row addressing on the
+   * daemon, so a value whose derived label lands on that shape must NOT keep it: `<stem>_PARAM_1`
+   * would name row 0 on disk while the daemon read it as row 1. The value falls back to its own
+   * index instead, which is unambiguous under both readings.
+   */
+  @Test
+  fun `a label that looks like a positional row token falls back to its own index`() {
+    val suffixes =
+      PreviewParameterLabels.suffixesFor(listOf(Labeled("PARAM_1"), Labeled("Dark")))
+    assertEquals(listOf("_PARAM_0", "_Dark"), suffixes)
+  }
+
+  /** Only the exact `PARAM_<digits>` shape is reserved — a label merely starting with it is fine. */
+  @Test
+  fun `labels that only resemble the reserved shape are kept`() {
+    val suffixes =
+      PreviewParameterLabels.suffixesFor(
+        listOf(Labeled("PARAM_x"), Labeled("PARAM_1a"), Labeled("PARAMS_1"))
+      )
+    assertEquals(listOf("_PARAM_x", "_PARAM_1a", "_PARAMS_1"), suffixes)
+  }
 }

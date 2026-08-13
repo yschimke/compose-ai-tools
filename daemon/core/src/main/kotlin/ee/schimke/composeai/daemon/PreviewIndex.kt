@@ -351,24 +351,38 @@ internal constructor(
     get() = lock.read { byId.size }
 
   /** Lookup by `PreviewInfo.id`. `null` if the id is unknown. */
+  /** The discovered preview [id] names, or `null`. Exact match only — see [rowResolved]. */
+  fun byId(id: String): PreviewInfoDto? = lock.read { byId[id] }
+
   /**
-   * The discovered preview [id] names, or — for a **row-addressed** id (`<baseId>_Dark` /
-   * `<baseId>_PARAM_4`, issue #3749) — the parameterized base entry it is a row of.
+   * [byId], widened to accept a **row-addressed** id (`<baseId>_Dark` / `<baseId>_PARAM_4`,
+   * issue #3749): the entry it resolves to, plus the row token it named.
    *
    * The index holds base ids only, because discovery can't enumerate a `PreviewParameterProvider`
-   * (see [PreviewRowAddress]). Every caller here wants the preview's *metadata* — display name,
-   * group, source file, class/method, scroll capture — and a row shares all of it with its base, so
-   * resolving the base is strictly better than the `null` a row id used to return: without it a row
-   * render lands in history with no metadata and `recording/generateTest` emits a test with no
-   * function name.
+   * (see [PreviewRowAddress]). A row shares all of its *metadata* with its base — display name,
+   * group, source file, class/method — so a caller that wants metadata reads [Resolved.info] and
+   * gets a useful answer for a row id where plain [byId] returns null; without it a row render
+   * lands in history with no metadata and `recording/generateTest` emits a test with no function
+   * name.
+   *
+   * [Resolved.row] is the other half, and callers that *build a render* must honour it: resolving a
+   * row id to its base entry and dropping the token would compose value 0 under the row's id —
+   * silently the wrong state, which is worse than the "unknown previewId" a caller used to get.
+   * That is why the row rides out here rather than being folded invisibly into [byId].
    */
-  fun byId(id: String): PreviewInfoDto? = lock.read {
-    byId[id]
-      ?: PreviewRowAddress.split(id) { base ->
-          byId[base]?.params?.previewParameterProviderClassName?.isNotBlank() == true
-        }
-        ?.let { byId[it.baseId] }
+  fun rowResolved(id: String): Resolved? = lock.read {
+    byId[id]?.let {
+      return@read Resolved(it, null)
+    }
+    val split =
+      PreviewRowAddress.split(id) { base ->
+        byId[base]?.params?.previewParameterProviderClassName?.isNotBlank() == true
+      } ?: return@read null
+    byId[split.baseId]?.let { Resolved(it, split.row) }
   }
+
+  /** A previewId resolved by [rowResolved]: the entry, and the `@PreviewParameter` row it named. */
+  data class Resolved(val info: PreviewInfoDto, val row: String?)
 
   /**
    * Issue #1528 — resolves the [ScrollCaptureDto] for a given `(previewId, renderMode)` pair so the

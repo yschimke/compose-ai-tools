@@ -388,7 +388,7 @@ The result resolves as soon as the request is queued, **not** when rendering com
 | previewId | renders |
 | --- | --- |
 | `MyScreenPreview_Light` | the provider's value 0 (unchanged) |
-| `MyScreenPreview_Light_Dark` | the row whose derived fan-out label is `Dark` (case-insensitive) |
+| `MyScreenPreview_Light_Dark` | the row whose derived fan-out label is `Dark` (exact first; case-insensitive only when unambiguous) |
 | `MyScreenPreview_Light_PARAM_4` | value 4, positionally |
 
 The row token is exactly the `<stem>_<suffix>` spelling the fan-out renderer writes to disk (see [RENDER_FILENAMES.md](../RENDER_FILENAMES.md#previewparameter-fan-out-labels)), so what a caller reads off a rendered directory is what they can address. Both `PreviewManifestRouter`s split `<baseId>_<row>` against the manifest entries that **declare a provider** — a preview with none has no rows, so nothing can be read as a row token of it — taking the longest such prefix, which is what keeps a multi-preview annotation's own `_Light` suffix part of the base. The row render reports the requested id and writes its own `<stem>_<row>.png`, so it never clobbers the base render's artifact or data products. `interactive/start`, `recording/start` and `stream/start` accept the same ids.

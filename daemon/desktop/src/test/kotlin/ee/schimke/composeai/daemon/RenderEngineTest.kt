@@ -727,6 +727,78 @@ class RenderEngineTest {
   }
 
   @Test
+  fun previewParameterRowPrefersAnExactLabelOverCaseFolding() {
+    // Review follow-up on issue #3749: `PreviewParameterLabels` treats `Dark` and `dark` as
+    // DISTINCT labels, so a provider yielding both emits two fan-out files on a case-sensitive
+    // filesystem. Folding case unconditionally mapped both ids onto the first value, silently
+    // rendering the wrong state for the second. CaseTintProvider yields ("Dark" → green,
+    // "dark" → blue), so the lower-case id must reach the blue one.
+    val outputDir = tempFolder.newFolder("renders-preview-parameter-case")
+    val host = DesktopHost(engine = RenderEngine(outputDir = outputDir))
+    host.start()
+    try {
+      fun renderRow(row: String): Int {
+        val result =
+          host.submit(
+            RenderRequest.Render(
+              payload =
+                "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                  "functionName=CaseLabelledSquare;" +
+                  "previewParameterProvider=ee.schimke.composeai.daemon.CaseTintProvider;" +
+                  "previewParameterRow=$row;" +
+                  "widthPx=64;heightPx=64;density=1.0;" +
+                  "showBackground=true;" +
+                  "outputBaseName=case-square_$row"
+            ),
+            timeoutMs = 60_000,
+          )
+        val img = ByteArrayInputStream(File(result.pngPath!!).readBytes()).use { ImageIO.read(it) }
+        return img!!.getRGB(32, 32) and 0xFFFFFF
+      }
+
+      assertEquals("exact 'Dark' must bind the first value", 0x43A047, renderRow("Dark"))
+      assertEquals("exact 'dark' must bind the second value", 0x1E88E5, renderRow("dark"))
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun previewParameterRowRejectsAnAmbiguousCaseFoldedLabel() {
+    // With two rows differing only by case, a request that matches neither exactly is genuinely
+    // ambiguous — answer with the row list rather than picking one.
+    val outputDir = tempFolder.newFolder("renders-preview-parameter-ambiguous")
+    val host = DesktopHost(engine = RenderEngine(outputDir = outputDir))
+    host.start()
+    try {
+      val failure =
+        runCatching {
+            host.submit(
+              RenderRequest.Render(
+                payload =
+                  "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                    "functionName=CaseLabelledSquare;" +
+                    "previewParameterProvider=ee.schimke.composeai.daemon.CaseTintProvider;" +
+                    "previewParameterRow=DARK;" +
+                    "widthPx=64;heightPx=64;density=1.0;" +
+                    "outputBaseName=case-square_DARK"
+              ),
+              timeoutMs = 60_000,
+            )
+          }
+          .exceptionOrNull()
+      val message =
+        generateSequence(failure) { it.cause }.mapNotNull { it.message }.joinToString(" ")
+      assertTrue(
+        "an ambiguous case-folded row must fail with the row list; got: $message",
+        message.contains("has no row named 'DARK'") && message.contains("Dark"),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun previewParameterWithoutARowStillRendersValueZero() {
     // The unaddressed contract is unchanged, and it stays cheap: with no row token the provider is
     // enumerated with `take(1)`, so an infinite `generateSequence` provider is still safe.

@@ -16,7 +16,7 @@ import org.junit.Test
 class PreviewIndexTest {
 
   @Test
-  fun `byId resolves a row-addressed id to its parameterized base entry`() {
+  fun `rowResolved resolves a row-addressed id to its base entry and keeps the row`() {
     // Issue #3749 — the index carries base ids only (discovery can't enumerate a provider), so
     // every metadata lookup for a row id used to come back null: a row render landed in history
     // with no display name / group / source file, and `recording/generateTest` emitted a test with
@@ -49,13 +49,26 @@ class PreviewIndexTest {
     )
     val index = PreviewIndex.loadFromFile(tmp)
 
-    assertEquals("Screen", index.byId("Screen_Light_PARAM_4")?.methodName)
-    assertEquals("Screens.kt", index.byId("Screen_Light_Dark")?.sourceFile)
-    // The base id itself is untouched, and a preview with no provider has no rows — a lookup that
-    // merely shares its prefix must stay null rather than borrowing a neighbour's metadata.
+    // Metadata comes from the base entry...
+    assertEquals("Screen", index.rowResolved("Screen_Light_PARAM_4")?.info?.methodName)
+    assertEquals("Screens.kt", index.rowResolved("Screen_Light_Dark")?.info?.sourceFile)
+    // ...and the row rides alongside it. Dropping it here would let a caller that builds a render
+    // (the `previewIndexBackedSpecResolver` fallback lane) compose value 0 under the row's id.
+    assertEquals("PARAM_4", index.rowResolved("Screen_Light_PARAM_4")?.row)
+    assertEquals("Dark", index.rowResolved("Screen_Light_Dark")?.row)
+
+    // The base id itself resolves with no row.
+    assertEquals("Screen", index.rowResolved("Screen_Light")?.info?.methodName)
+    assertNull(index.rowResolved("Screen_Light")?.row)
+
+    // A preview with no provider has no rows — an id that merely shares its prefix must not
+    // borrow a neighbour's metadata.
+    assertNull(index.rowResolved("Plain_Dark"))
+    assertNull(index.rowResolved("Unrelated"))
+
+    // `byId` stays exact, so callers that never opted into rows are unaffected.
+    assertNull(index.byId("Screen_Light_PARAM_4"))
     assertEquals("Screen", index.byId("Screen_Light")?.methodName)
-    assertNull(index.byId("Plain_Dark"))
-    assertNull(index.byId("Unrelated"))
   }
 
   @Test
