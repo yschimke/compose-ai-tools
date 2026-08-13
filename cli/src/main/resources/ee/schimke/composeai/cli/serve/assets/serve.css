@@ -974,7 +974,12 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 /* The axis toggles are the drawer toggle's compact sibling: same pill, same selected language,
    but two-part — the axis it folds, then the value that axis currently holds. Four full-size
    drawer pills on the title row of a 1100px laptop wrap; at this size they don't. */
-.cp-axis-toggle { gap: 6px; min-height: 34px; padding: 6px 14px; }
+/* Both classes on one button, and `.cp-drawer-toggle` is declared further down this sheet — at
+   equal specificity the later rule wins, so a bare `.cp-axis-toggle` here set `gap`/`min-height`/
+   `padding` and then had all three taken straight back off it. Qualifying with both classes is what
+   actually makes these compact, which is what keeps four controls beside the title instead of
+   wrapping them onto a row of their own. */
+.cp-drawer-toggle.cp-axis-toggle { gap: 6px; min-height: 34px; padding: 6px 14px; }
 .cp-toggle-label { color: var(--cp-fg-faint);
   font-size: var(--md-sys-typescale-label-small-size); font-weight: 500; letter-spacing: 0.06em;
   text-transform: uppercase; }

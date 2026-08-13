@@ -228,7 +228,20 @@ class ServeViewerDisclosuresTest {
     )
     // Remembered per visitor, the same way the override groups are (`cp-grp.<id>`): putting a wide
     // axis away is a statement about the catalog, not about one preview.
-    assertTrue(script.contains("""return "cp-fold." + id;"""), script)
+    // Scoped to the catalog, as `cp-theme:<catalog>` and `cp-tab:<catalog>` are: localStorage is
+    // per-origin and one host serves many catalogs, so an unscoped key would let folding this
+    // catalog's wide axis fold a normally-inline one on every unrelated catalog beside it.
+    assertTrue(script.contains("""return "cp-fold:" + foldScope + "." + id;"""), script)
+    assertTrue(
+      ServeWeb.viewerPage(
+          ServePreview("button__ideal__default__light", "Button"),
+          token,
+          sessionId = "compose-m3",
+          basePath = "/compose-m3",
+        )
+        .contains("data-fold-scope=\"compose-m3\""),
+      "the viewer names the catalog its folds belong to",
+    )
     for (id in listOf("cp-nav-toggle", "cp-controls-toggle", "cp-axes-toggle", "cp-theme-toggle")) {
       assertTrue(script.contains("\"$id\""), "$id participates in the remembered folds: $script")
     }

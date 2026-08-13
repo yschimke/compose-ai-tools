@@ -827,6 +827,16 @@ object ServeWeb {
   }
 
   /**
+   * Stable, catalog-specific prefix for the viewer's remembered disclosures (see
+   * `viewer-drawers.js`). `localStorage` is per-ORIGIN, and one host serves many catalogs under
+   * different base paths — so an unscoped key would let "I folded this catalog's thirty-state axis"
+   * also fold a normally-inline axis on every unrelated catalog beside it. Same scoping the theme
+   * and section keys already carry, for the same reason.
+   */
+  private fun foldStorageScope(sessionId: String?, basePath: String): String =
+    WebEscaping.urlEncodeSegment(basePath.trim('/').ifBlank { sessionId ?: "default" })
+
+  /**
    * The flattened id with its theme token stripped — the key that pairs a component's light and
    * dark variants into ONE grid card. `button-filled__ideal__default__light` and `…__dark` both key
    * to `button-filled__ideal__default`, so the Light/Dark control can swap the card between the two
@@ -8031,7 +8041,7 @@ $rows
         <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
       </div>
       $historyInlineHtml
-      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
+      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs>
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml

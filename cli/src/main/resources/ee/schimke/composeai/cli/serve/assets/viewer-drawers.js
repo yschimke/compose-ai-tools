@@ -20,7 +20,12 @@
   // (`cp-grp.<id>` in viewer-groups.js) — a reader who puts the component list or a wide state axis
   // away has said so about the *catalog*, not about one preview, and re-opening it on every
   // navigation would make the toggle worthless on exactly the catalogs that need it.
-  function foldKey(id) { return "cp-fold." + id; }
+  // Scoped to the CATALOG, the way `cp-theme:<catalog>` and `cp-tab:<catalog>` already are:
+  // `localStorage` is per-origin and one host serves many catalogs under different base paths, so
+  // an unscoped key would let folding this catalog's thirty-state axis fold a normally-inline axis
+  // on every unrelated catalog beside it.
+  var foldScope = viewer.getAttribute("data-fold-scope") || "default";
+  function foldKey(id) { return "cp-fold:" + foldScope + "." + id; }
   function readFold(id) {
     try { return localStorage.getItem(foldKey(id)); } catch (e) { return null; }
   }
