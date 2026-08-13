@@ -404,7 +404,7 @@ class MissingRenderReportTest {
 
     val entries =
       collectMissingRenders(listOf(missingResult()), manifests()) { _, _ ->
-        RenderTaskEvidence.DID_NOT_RUN
+        RenderTaskState(RenderTaskEvidence.DID_NOT_RUN)
       }
     val message = formatMissingRenderReport(entries, total = 35)
 
@@ -423,13 +423,38 @@ class MissingRenderReportTest {
     writeSidecar("renders/WearAppPreview.png")
 
     val entries =
-      collectMissingRenders(listOf(missingResult()), manifests()) { _, _ -> RenderTaskEvidence.RAN }
+      collectMissingRenders(listOf(missingResult()), manifests()) { _, _ ->
+        RenderTaskState(RenderTaskEvidence.RAN)
+      }
     val message = formatMissingRenderReport(entries, total = 35)
 
     assertContains(message, "rendered and then threw")
     assertFalse(message.contains("earlier run"), message)
     assertFalse(message.contains("NO-SOURCE"), message)
   }
+
+  /**
+   * A `kind=LOTTIE` preview: Android renders it from `composePreviewRenderLottie` into its own
+   * `lottie-renders/` dir, never from the Robolectric task.
+   */
+  private fun lottieManifests() =
+    listOf(
+      PreviewModule(gradlePath = ":app", projectDir = moduleDir) to
+        PreviewManifest(
+          module = ":app",
+          variant = "debug",
+          previews =
+            listOf(
+              PreviewInfo(
+                id = previewId,
+                functionName = "WearAppPreview",
+                className = "com.example.wear.WearAppKt",
+                params = PreviewParams(kind = "LOTTIE"),
+                captures = listOf(Capture(renderOutput = "lottie-renders/Wear.png")),
+              )
+            ),
+        )
+    )
 
   private fun outcomes(vararg entries: Pair<String, GradleTaskDisposition>) =
     entries.associate { (task, disposition) ->
@@ -439,9 +464,15 @@ class MissingRenderReportTest {
   @Test
   fun `render-task evidence comes from the module's own composePreviewRender outcome`() {
     val skipped = outcomes("composePreviewRender" to GradleTaskDisposition.SKIPPED)
-    assertEquals(RenderTaskEvidence.DID_NOT_RUN, renderTaskEvidenceOf(":app", "COMPOSE", skipped))
+    val didNotRun =
+      RenderTaskState(
+        RenderTaskEvidence.DID_NOT_RUN,
+        "composePreviewRender",
+        ":app:composePreviewRender",
+      )
+    assertEquals(didNotRun, renderTaskStateOf(":app", "COMPOSE", skipped))
     // The gradle path is carried with and without its leading colon depending on the caller.
-    assertEquals(RenderTaskEvidence.DID_NOT_RUN, renderTaskEvidenceOf("app", "COMPOSE", skipped))
+    assertEquals(didNotRun, renderTaskStateOf("app", "COMPOSE", skipped))
 
     for (disposition in
       listOf(
@@ -451,16 +482,26 @@ class MissingRenderReportTest {
         GradleTaskDisposition.FAILED,
       )) {
       assertEquals(
-        RenderTaskEvidence.RAN,
-        renderTaskEvidenceOf(":app", "COMPOSE", outcomes("composePreviewRender" to disposition)),
+        RenderTaskState(
+          RenderTaskEvidence.RAN,
+          "composePreviewRender",
+          ":app:composePreviewRender",
+        ),
+        renderTaskStateOf(":app", "COMPOSE", outcomes("composePreviewRender" to disposition)),
         "$disposition",
       )
     }
 
     // Another module's skip says nothing about this one, and no evidence stays "unknown" rather
     // than being guessed either way.
-    assertEquals(RenderTaskEvidence.UNKNOWN, renderTaskEvidenceOf(":other", "COMPOSE", skipped))
-    assertEquals(RenderTaskEvidence.UNKNOWN, renderTaskEvidenceOf(":app", "COMPOSE", emptyMap()))
+    assertEquals(
+      RenderTaskEvidence.UNKNOWN,
+      renderTaskStateOf(":other", "COMPOSE", skipped).evidence,
+    )
+    assertEquals(
+      RenderTaskEvidence.UNKNOWN,
+      renderTaskStateOf(":app", "COMPOSE", emptyMap()).evidence,
+    )
   }
 
   @Test
@@ -468,19 +509,39 @@ class MissingRenderReportTest {
     // Android renders `kind=LOTTIE` / `kind=SVG` from separate tasks folded into
     // `composePreviewRenderAll` — Robolectric can inflate neither. A NO-SOURCE
     // `composePreviewRender` therefore says nothing about them: their sidecars are this run's.
+    // The owning task travels with the verdict: the report has to name the task that really
+    // skipped, not the one that happens to have a `testClassesDirs` remedy.
     val robolectricSkipped =
       outcomes(
         "composePreviewRender" to GradleTaskDisposition.SKIPPED,
         "composePreviewRenderLottie" to GradleTaskDisposition.SUCCESS,
         "composePreviewRenderSvg" to GradleTaskDisposition.SUCCESS,
       )
-    assertEquals(RenderTaskEvidence.RAN, renderTaskEvidenceOf(":app", "LOTTIE", robolectricSkipped))
-    assertEquals(RenderTaskEvidence.RAN, renderTaskEvidenceOf(":app", "SVG", robolectricSkipped))
+    assertEquals(
+      RenderTaskState(
+        RenderTaskEvidence.RAN,
+        "composePreviewRenderLottie",
+        ":app:composePreviewRenderLottie",
+      ),
+      renderTaskStateOf(":app", "LOTTIE", robolectricSkipped),
+    )
+    assertEquals(
+      RenderTaskState(
+        RenderTaskEvidence.RAN,
+        "composePreviewRenderSvg",
+        ":app:composePreviewRenderSvg",
+      ),
+      renderTaskStateOf(":app", "SVG", robolectricSkipped),
+    )
     // ...while an ordinary Compose preview in the same module *is* stale — the task that owns it
     // was the one that didn't run.
     assertEquals(
-      RenderTaskEvidence.DID_NOT_RUN,
-      renderTaskEvidenceOf(":app", "COMPOSE", robolectricSkipped),
+      RenderTaskState(
+        RenderTaskEvidence.DID_NOT_RUN,
+        "composePreviewRender",
+        ":app:composePreviewRender",
+      ),
+      renderTaskStateOf(":app", "COMPOSE", robolectricSkipped),
     )
 
     // And the converse: the Lottie task skipped while Robolectric ran.
@@ -490,18 +551,32 @@ class MissingRenderReportTest {
         "composePreviewRenderLottie" to GradleTaskDisposition.SKIPPED,
       )
     assertEquals(
-      RenderTaskEvidence.DID_NOT_RUN,
-      renderTaskEvidenceOf(":app", "LOTTIE", lottieSkipped),
+      RenderTaskState(
+        RenderTaskEvidence.DID_NOT_RUN,
+        "composePreviewRenderLottie",
+        ":app:composePreviewRenderLottie",
+      ),
+      renderTaskStateOf(":app", "LOTTIE", lottieSkipped),
     )
-    assertEquals(RenderTaskEvidence.RAN, renderTaskEvidenceOf(":app", "COMPOSE", lottieSkipped))
+    assertEquals(
+      RenderTaskState(RenderTaskEvidence.RAN, "composePreviewRender", ":app:composePreviewRender"),
+      renderTaskStateOf(":app", "COMPOSE", lottieSkipped),
+    )
 
     // The desktop backend has no kind tasks at all — `composePreviewRender` renders every kind
     // there, so it is the owner and the answer must not degrade to UNKNOWN.
     val desktop = outcomes("composePreviewRender" to GradleTaskDisposition.SUCCESS)
-    assertEquals(RenderTaskEvidence.RAN, renderTaskEvidenceOf(":app", "LOTTIE", desktop))
     assertEquals(
-      RenderTaskEvidence.DID_NOT_RUN,
-      renderTaskEvidenceOf(
+      RenderTaskState(RenderTaskEvidence.RAN, "composePreviewRender", ":app:composePreviewRender"),
+      renderTaskStateOf(":app", "LOTTIE", desktop),
+    )
+    assertEquals(
+      RenderTaskState(
+        RenderTaskEvidence.DID_NOT_RUN,
+        "composePreviewRender",
+        ":app:composePreviewRender",
+      ),
+      renderTaskStateOf(
         ":app",
         "SVG",
         outcomes("composePreviewRender" to GradleTaskDisposition.SKIPPED),
@@ -510,34 +585,51 @@ class MissingRenderReportTest {
   }
 
   @Test
+  fun `the skipped-task diagnosis names the task that actually skipped`() {
+    // The converse scenario of the test above, carried all the way to the message: the Lottie task
+    // skipped, so the sidecar beside a Lottie preview is stale — but blaming `composePreviewRender`
+    // and its `testClassesDirs` would be a precise, checkable, false statement. That task ran fine,
+    // it is not what renders Lottie, and being a `RenderPreviewsTask` it has no testClassesDirs and
+    // never reports NO-SOURCE at all.
+    val lottieManifests = lottieManifests()
+    writeSidecar("lottie-renders/Wear.png")
+
+    val message =
+      missingRenderReport(
+        missing = listOf(missingResult().copy(params = PreviewParams(kind = "LOTTIE"))),
+        manifests = lottieManifests,
+        total = 1,
+        taskOutcomes =
+          outcomes(
+            "composePreviewRender" to GradleTaskDisposition.SUCCESS,
+            "composePreviewRenderLottie" to GradleTaskDisposition.SKIPPED,
+          ),
+      )
+
+    // Qualified with the module: one task *name* is many tasks in a multi-module render.
+    assertContains(message, "`:app:composePreviewRenderLottie` did not run in this invocation")
+    assertContains(message, "earlier run — threw NoClassDefFoundError")
+    // The remedy is the one that fits the task that skipped...
+    assertContains(message, "composePreview { enabled = false }")
+    assertContains(message, "kind=LOTTIE")
+    // ...and never the Robolectric one, which would be a wrong-task diagnosis here. `NO-SOURCE` is
+    // not even a state this task can report.
+    assertFalse(message.contains("testClassesDirs"), message)
+    assertFalse(message.contains("NO-SOURCE"), message)
+    assertFalse(message.contains("`composePreviewRender` did not run"), message)
+  }
+
+  @Test
   fun `a Lottie failure is not labelled stale when Robolectric was NO-SOURCE`() {
     // End to end through the report: the Android Lottie renderer wrote this sidecar seconds ago.
     // Calling it an "earlier run" and pointing at testClassesDirs is the original bug inverted.
-    val lottieManifests =
-      listOf(
-        PreviewModule(gradlePath = ":app", projectDir = moduleDir) to
-          PreviewManifest(
-            module = ":app",
-            variant = "debug",
-            previews =
-              listOf(
-                PreviewInfo(
-                  id = previewId,
-                  functionName = "WearAppPreview",
-                  className = "com.example.wear.WearAppKt",
-                  params = PreviewParams(kind = "LOTTIE"),
-                  captures = listOf(Capture(renderOutput = "lottie-renders/Wear.png")),
-                )
-              ),
-          )
-      )
     writeSidecar("lottie-renders/Wear.png")
     val lottieResult = missingResult().copy(params = PreviewParams(kind = "LOTTIE"))
 
     val message =
       missingRenderReport(
         missing = listOf(lottieResult),
-        manifests = lottieManifests,
+        manifests = lottieManifests(),
         total = 1,
         taskOutcomes =
           outcomes(
@@ -549,6 +641,71 @@ class MissingRenderReportTest {
     assertContains(message, "rendered and then threw")
     assertFalse(message.contains("earlier run"), message)
     assertFalse(message.contains("testClassesDirs"), message)
+  }
+
+  @Test
+  fun `renderer guidance is per module, not per task name`() {
+    // Every Android module registers its own `composePreviewRenderLottie`, so a multi-module render
+    // has several tasks with one name and independently different outcomes. Grouping on the name
+    // alone merged them: one paragraph, the combined count, an unqualified task to go and inspect,
+    // and "in this module" said of two modules at once.
+    val otherDir = workspace.resolve("feature").apply { mkdirs() }
+    val otherId = "com.example.wear.FeatureKt.FeaturePreview"
+    val manifests =
+      lottieManifests() +
+        (PreviewModule(gradlePath = ":feature", projectDir = otherDir) to
+          PreviewManifest(
+            module = ":feature",
+            variant = "debug",
+            previews =
+              listOf(
+                PreviewInfo(
+                  id = otherId,
+                  functionName = "FeaturePreview",
+                  className = "com.example.wear.FeatureKt",
+                  params = PreviewParams(kind = "LOTTIE"),
+                  captures = listOf(Capture(renderOutput = "lottie-renders/Feature.png")),
+                )
+              ),
+          ))
+    // `:app`'s Lottie task skipped and left last run's sidecar behind; `:feature`'s ran and simply
+    // produced nothing.
+    writeSidecar("lottie-renders/Wear.png")
+    val taskOutcomes =
+      mapOf(
+        ":app:composePreviewRenderLottie" to
+          GradleTaskOutcome(":app:composePreviewRenderLottie", GradleTaskDisposition.SKIPPED),
+        ":feature:composePreviewRenderLottie" to
+          GradleTaskOutcome(":feature:composePreviewRenderLottie", GradleTaskDisposition.SUCCESS),
+      )
+
+    val message =
+      missingRenderReport(
+        missing =
+          listOf(
+            missingResult().copy(params = PreviewParams(kind = "LOTTIE")),
+            missingResult(id = otherId)
+              .copy(module = ":feature", params = PreviewParams(kind = "LOTTIE")),
+          ),
+        manifests = manifests,
+        total = 2,
+        taskOutcomes = taskOutcomes,
+      )
+
+    // The stale sidecar belongs to `:app`'s task alone — `:feature`'s ran.
+    assertContains(message, "`:app:composePreviewRenderLottie` did not run in this invocation")
+    assertFalse(message.contains("`:feature:composePreviewRenderLottie` did not run"), message)
+    // Two paragraphs, each naming its own module and counting only its own previews.
+    assertContains(
+      message,
+      "`:app:composePreviewRenderLottie` renders every `kind=LOTTIE` preview in :app (1 here)",
+    )
+    assertContains(
+      message,
+      "`:feature:composePreviewRenderLottie` renders every `kind=LOTTIE` preview in :feature (1 here)",
+    )
+    assertFalse(message.contains("(2 here)"), message)
+    assertFalse(message.contains("in this module"), message)
   }
 
   @Test
@@ -599,6 +756,95 @@ class MissingRenderReportTest {
     assertContains(message, "IllegalStateException")
     assertFalse(message.contains("NoSuchMethodError"), message)
     assertFalse(message.contains("long gone"), message)
+  }
+
+  @Test
+  fun `a blank capture output keeps the default stem as a candidate`() {
+    // A capture that declares no `renderOutput` is a supported manifest shape, and the Android
+    // renderer resolves it to `renders/<id>.png` — `capture.renderOutput.substringAfterLast('/')
+    // .ifEmpty { "<id>.png" }` — which is also the anchor its outer per-preview catch writes the
+    // sidecar to. With a data product declared alongside it, dropping the default stem would leave
+    // a render that died before producing the product with no sidecar found at all, and the CLI
+    // back on the NO-SOURCE wiring guess it is this whole file's job not to guess.
+    val blankCaptureWithProduct =
+      listOf(
+        PreviewModule(gradlePath = ":app", projectDir = moduleDir) to
+          PreviewManifest(
+            module = ":app",
+            variant = "debug",
+            previews =
+              listOf(
+                PreviewInfo(
+                  id = previewId,
+                  functionName = "WearAppPreview",
+                  className = "com.example.wear.WearAppKt",
+                  captures = listOf(Capture(renderOutput = "")),
+                  dataProducts =
+                    listOf(PreviewDataProduct(kind = "gif", output = "data/anim/Wear.gif")),
+                )
+              ),
+          )
+      )
+    writeSidecar("renders/$previewId.png")
+
+    val entries = collectMissingRenders(listOf(missingResult()), blankCaptureWithProduct)
+
+    assertEquals(listOf("renders/$previewId.png"), entries.single().sidecars.map { it.output })
+    val message = formatMissingRenderReport(entries, total = 1)
+    assertContains(message, "NoClassDefFoundError")
+    assertFalse(message.contains("NO-SOURCE"), message)
+  }
+
+  @Test
+  fun `a blank capture after a declared one does not reopen the default stem`() {
+    // The Android renderer anchors the preview-level sidecar on the *first* capture only
+    // (`captures.firstOrNull()`), deleting and rewriting it there; its two per-job writes need a
+    // `.gif` extension or a data-product path, so neither can land on the default stem. A blank
+    // second capture therefore cannot produce a fresh `renders/<id>.png` sidecar — anything found
+    // there is an older manifest's leftover, and quoting it as this run's finding is the stale-file
+    // trap through a narrower gap.
+    val declaredThenBlank =
+      listOf(
+        PreviewModule(gradlePath = ":app", projectDir = moduleDir) to
+          PreviewManifest(
+            module = ":app",
+            variant = "debug",
+            previews =
+              listOf(
+                PreviewInfo(
+                  id = previewId,
+                  functionName = "WearAppPreview",
+                  className = "com.example.wear.WearAppKt",
+                  captures = listOf(Capture(renderOutput = "renders/Wear_500ms.png"), Capture()),
+                )
+              ),
+          )
+      )
+    writeSidecar(
+      "renders/Wear_500ms.png",
+      simpleSidecarJson(
+        "java.lang.IllegalStateException",
+        "no theme provided",
+        "java.lang.IllegalStateException: no theme provided\n" +
+          "\tat com.example.wear.WearAppKt.WearApp(WearApp.kt:31)",
+      ),
+    )
+    writeSidecar(
+      "renders/$previewId.png",
+      simpleSidecarJson(
+        "java.lang.NoSuchMethodError",
+        "long gone",
+        "java.lang.NoSuchMethodError: long gone\n" +
+          "\tat com.example.wear.WearAppKt.Removed(WearApp.kt:9)",
+      ),
+    )
+
+    val entries = collectMissingRenders(listOf(missingResult()), declaredThenBlank)
+
+    assertEquals(listOf("renders/Wear_500ms.png"), entries.single().sidecars.map { it.output })
+    val message = formatMissingRenderReport(entries, total = 1)
+    assertContains(message, "IllegalStateException")
+    assertFalse(message.contains("NoSuchMethodError"), message)
   }
 
   @Test
