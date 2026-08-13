@@ -7,6 +7,7 @@
       "functionName": "FocusOverlayPreview",
       "module": "android-alpha",
       "previewId": "com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay",
+      "rendersDir": "android-alpha",
       "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt",
       "variant": ""
     },
@@ -17,6 +18,7 @@
       "functionName": "FocusTraversalPreview",
       "module": "android-alpha",
       "previewId": "com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal",
+      "rendersDir": "android-alpha",
       "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt",
       "variant": ""
     },
@@ -27,6 +29,7 @@
       "functionName": "InsetFocusRingFanOutPreview",
       "module": "android-alpha",
       "previewId": "com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out",
+      "rendersDir": "android-alpha",
       "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt",
       "variant": ""
     },
@@ -37,6 +40,7 @@
       "functionName": "OpacityFocusPreview",
       "module": "android-alpha",
       "previewId": "com.example.samplealpha.FocusRingPreviewsKt.OpacityFocusPreview_Opacity Focus",
+      "rendersDir": "android-alpha",
       "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt",
       "variant": ""
     },
@@ -47,6 +51,7 @@
       "functionName": "BlueLabelPreview",
       "module": "android-daemon-bench",
       "previewId": "com.example.daemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel",
+      "rendersDir": "android-daemon-bench",
       "sourceFile": "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt",
       "variant": ""
     },
@@ -57,6 +62,7 @@
       "functionName": "GreenButtonPreview",
       "module": "android-daemon-bench",
       "previewId": "com.example.daemonbench.BenchPreviewsKt.GreenButtonPreview_GreenButton",
+      "rendersDir": "android-daemon-bench",
       "sourceFile": "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt",
       "variant": ""
     },
@@ -67,6 +73,7 @@
       "functionName": "RedSquarePreview",
       "module": "android-daemon-bench",
       "previewId": "com.example.daemonbench.BenchPreviewsKt.RedSquarePreview_RedSquare",
+      "rendersDir": "android-daemon-bench",
       "sourceFile": "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt",
       "variant": ""
     },
@@ -77,6 +84,7 @@
       "functionName": "RowPreview",
       "module": "android-daemon-bench",
       "previewId": "com.example.daemonbench.BenchPreviewsKt.RowPreview_Row",
+      "rendersDir": "android-daemon-bench",
       "sourceFile": "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt",
       "variant": ""
     },
@@ -87,6 +95,7 @@
       "functionName": "StackPreview",
       "module": "android-daemon-bench",
       "previewId": "com.example.daemonbench.BenchPreviewsKt.StackPreview_Stack",
+      "rendersDir": "android-daemon-bench",
       "sourceFile": "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt",
       "variant": ""
     },
@@ -97,6 +106,7 @@
       "functionName": "HtmlShowNotesPreview",
       "module": "android-library",
       "previewId": "com.example.samplelibrary.AndroidViewPreviewsKt.HtmlShowNotesPreview_HTML show notes",
+      "rendersDir": "android-library",
       "sourceFile": "src/main/kotlin/com/example/samplelibrary/AndroidViewPreviews.kt",
       "variant": ""
     },
@@ -107,6 +117,7 @@
       "functionName": "LibraryBoxPreview",
       "module": "android-library",
       "previewId": "com.example.samplelibrary.LibraryPreviewsKt.LibraryBoxPreview_Library Box",
+      "rendersDir": "android-library",
       "sourceFile": "src/main/kotlin/com/example/samplelibrary/LibraryPreviews.kt",
       "variant": ""
     },
@@ -117,6 +128,7 @@
       "functionName": "LibraryGreetingPreview",
       "module": "android-library",
       "previewId": "com.example.samplelibrary.LibraryPreviewsKt.LibraryGreetingPreview_Library Greeting",
+      "rendersDir": "android-library",
       "sourceFile": "src/main/kotlin/com/example/samplelibrary/LibraryPreviews.kt",
       "variant": ""
     },
@@ -135,6 +147,7 @@
       "functionName": "LiveLaneCard",
       "module": "android-live-lane",
       "previewId": "com.example.androidlivelane.LiveLanePreviewsKt.LiveLaneCard_LiveLaneCard",
+      "rendersDir": "android-live-lane",
       "sourceFile": "src/main/kotlin/com/example/androidlivelane/LiveLanePreviews.kt",
       "variant": ""
     },
@@ -145,6 +158,7 @@
       "functionName": "MainSquarePreview",
       "module": "android-screenshot-test",
       "previewId": "com.example.sampleandroidscreenshot.MainPreviewsKt.MainSquarePreview_main-square",
+      "rendersDir": "android-screenshot-test",
       "sourceFile": "src/main/kotlin/com/example/sampleandroidscreenshot/MainPreviews.kt",
       "variant": ""
     },
@@ -170,6 +184,7 @@
       "functionName": "ActionsPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ActionsPreview_Actions",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -180,6 +195,7 @@
       "functionName": "AsyncImageArtworkPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.AsyncImagePreviewsKt.AsyncImageArtworkPreview_Async Image Artwork",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AsyncImagePreviews.kt",
       "variant": ""
     },
@@ -190,6 +206,7 @@
       "functionName": "AsyncImageUnreachablePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.AsyncImagePreviewsKt.AsyncImageUnreachablePreview_Async Image Unreachable",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AsyncImagePreviews.kt",
       "variant": ""
     },
@@ -215,6 +232,7 @@
       "functionName": "BadButtonPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.BadButtonPreview_Bad Button",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": ""
     },
@@ -233,6 +251,7 @@
       "functionName": "BigPictureStylePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.BigPictureStylePreview_Big picture",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -251,6 +270,7 @@
       "functionName": "BigTextVariantsPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationVariantPreviews.kt",
       "variant": ""
     },
@@ -261,6 +281,7 @@
       "functionName": "BlueBoxPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.BlueBoxPreview_Blue Box",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": ""
     },
@@ -271,6 +292,7 @@
       "functionName": "BodyTextPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt",
       "variant": ""
     },
@@ -281,6 +303,7 @@
       "functionName": "CameraPermissionDeniedPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PermissionGatedPreviewKt.CameraPermissionDeniedPreview_Camera permission \u2014 denied",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PermissionGatedPreview.kt",
       "variant": ""
     },
@@ -291,6 +314,7 @@
       "functionName": "CameraPermissionGrantedPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PermissionGatedPreviewKt.CameraPermissionGrantedPreview_Camera permission \u2014 granted",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PermissionGatedPreview.kt",
       "variant": ""
     },
@@ -301,6 +325,7 @@
       "functionName": "CircleButtonTransparentPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.TransparentBackgroundPreviewsKt.CircleButtonTransparentPreview_Circle Button Transparent",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/TransparentBackgroundPreviews.kt",
       "variant": ""
     },
@@ -319,6 +344,7 @@
       "functionName": "CollapsedSurfacePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.CollapsedSurfacePreview_Surface \u2014 collapsed",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -358,6 +384,7 @@
       "functionName": "ColorSchemeSpecimenDarkPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenDarkPreview_ColorScheme specimen \u2014 dark",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
       "variant": ""
     },
@@ -397,6 +424,7 @@
       "functionName": "ColorSchemeSpecimenLightPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenLightPreview_ColorScheme specimen \u2014 light",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
       "variant": ""
     },
@@ -407,6 +435,7 @@
       "functionName": "ConfigProbePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.ConfigProbePreview_Default",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": ""
     },
@@ -425,6 +454,7 @@
       "functionName": "DecoratedCustomViewPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated custom view",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -450,6 +480,7 @@
       "functionName": "DeviceFontFamilyShowcasePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.DeviceFontFamilyShowcasePreview_Device Font Family Showcase",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": ""
     },
@@ -460,6 +491,7 @@
       "functionName": "DividerShowBackgroundDarkPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.DividerShowBackgroundPreviewsKt.DividerShowBackgroundDarkPreview_Divider Dark",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/DividerShowBackgroundPreviews.kt",
       "variant": ""
     },
@@ -478,6 +510,7 @@
       "functionName": "EmojiCompatComparisonPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.EmojiCompatComparisonPreviewKt.EmojiCompatComparisonPreview_EmojiCompat comparison",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/EmojiCompatComparisonPreview.kt",
       "variant": ""
     },
@@ -496,6 +529,7 @@
       "functionName": "ExpandedSurfacePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ExpandedSurfacePreview_Surface \u2014 expanded",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -506,6 +540,7 @@
       "functionName": "FallbackCoverageSpecimenPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.TypographyGalleryKt.FallbackCoverageSpecimenPreview_Fallback coverage specimen",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/TypographyGallery.kt",
       "variant": ""
     },
@@ -516,6 +551,7 @@
       "functionName": "FitsInBoundsPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.TruncationPreviewsKt.FitsInBoundsPreview",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt",
       "variant": ""
     },
@@ -534,6 +570,7 @@
       "functionName": "FontFamilySpecimenPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.TypographyGalleryKt.FontFamilySpecimenPreview_FontFamily specimen",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/TypographyGallery.kt",
       "variant": ""
     },
@@ -544,6 +581,7 @@
       "functionName": "FontWrapperShowcasePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.FontPreviewShowcaseKt.FontWrapperShowcasePreview_Dark",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/FontPreviewShowcase.kt",
       "variant": ""
     },
@@ -554,6 +592,7 @@
       "functionName": "GlanceWeatherWidgetPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.GlanceWeatherWidgetPreview_Glance widget via helper API \u2014 4\u00d72",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
       "variant": ""
     },
@@ -593,6 +632,7 @@
       "functionName": "GoogleFontsShowcasePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.GoogleFontsShowcasePreview_Google Fonts Showcase",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": ""
     },
@@ -603,6 +643,7 @@
       "functionName": "GreenBoxPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.GreenBoxPreview_Green Box",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": ""
     },
@@ -613,6 +654,7 @@
       "functionName": "GreetingPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.GreetingPreview_Default",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": ""
     },
@@ -638,6 +680,7 @@
       "functionName": "GroupedSummaryPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.GroupedSummaryPreview_Edge \u2014 grouped summary",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -656,6 +699,7 @@
       "functionName": "HeadsUpSurfacePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.HeadsUpSurfacePreview_Surface \u2014 heads-up",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -666,6 +710,7 @@
       "functionName": "ImeAwareListHiddenPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SoftKeyboardImeInsetsPreviewKt.ImeAwareListHiddenPreview_IME-aware list \u2014 keyboard hidden",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SoftKeyboardImeInsetsPreview.kt",
       "variant": ""
     },
@@ -676,6 +721,7 @@
       "functionName": "ImeAwareListShownPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SoftKeyboardImeInsetsPreviewKt.ImeAwareListShownPreview_IME-aware list \u2014 keyboard up",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SoftKeyboardImeInsetsPreview.kt",
       "variant": ""
     },
@@ -701,6 +747,7 @@
       "functionName": "InboxStylePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.InboxStylePreview_Inbox style",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -711,6 +758,7 @@
       "functionName": "KeyboardDemoPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/KeyboardDemoPreview.kt",
       "variant": ""
     },
@@ -721,6 +769,7 @@
       "functionName": "LauncherModeHomeScreenPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeHomeScreenPreview_Launcher mode \u2014 4\u00d72 on home screen",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
       "variant": ""
     },
@@ -731,6 +780,7 @@
       "functionName": "LauncherModeResizePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeResizePreview_Launcher mode \u2014 resize on home screen",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
       "variant": ""
     },
@@ -741,6 +791,7 @@
       "functionName": "LauncherWidget1x1Preview",
       "module": "android",
       "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidget1x1Preview_Launcher widget \u2014 1\u00d71",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
       "variant": ""
     },
@@ -751,6 +802,7 @@
       "functionName": "LauncherWidget4x2Preview",
       "module": "android",
       "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidget4x2Preview_Launcher widget \u2014 4\u00d72",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
       "variant": ""
     },
@@ -761,6 +813,7 @@
       "functionName": "LauncherWidgetClampedPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidgetClampedPreview_Launcher widget \u2014 clamped to 4\u00d75",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
       "variant": ""
     },
@@ -771,6 +824,7 @@
       "functionName": "LauncherWidgetResize1x1To4x2Preview",
       "module": "android",
       "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher widget \u2014 resize 1\u00d71 \u2192 4\u00d72",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
       "variant": ""
     },
@@ -781,6 +835,7 @@
       "functionName": "LoadingPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.LoadingPreview_Loading Spinner",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": ""
     },
@@ -799,6 +854,7 @@
       "functionName": "LongTitlePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.LongTitlePreview_Edge \u2014 long title",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -824,6 +880,7 @@
       "functionName": "ManyActionsPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ManyActionsPreview_Edge \u2014 many actions",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -834,6 +891,7 @@
       "functionName": "MatrixBackgroundColorPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixBackgroundColorPreview_Background colour",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -844,6 +902,7 @@
       "functionName": "MatrixComponentWrapPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixComponentWrapPreview_Component wrap",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -854,6 +913,7 @@
       "functionName": "MatrixDeviceSpecPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixDeviceSpecPreview_Device spec",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": "spec:width=360dp,height=640dp,dpi=320"
     },
@@ -864,6 +924,7 @@
       "functionName": "MatrixFixedBothAxesPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFixedBothAxesPreview_Fixed both axes",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -874,6 +935,7 @@
       "functionName": "MatrixFixedWidthOnlyPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFixedWidthOnlyPreview_Fixed width only",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -884,6 +946,7 @@
       "functionName": "MatrixFoldableDevicePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFoldableDevicePreview_Foldable",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": "pixel_fold"
     },
@@ -894,6 +957,7 @@
       "functionName": "MatrixFontScaleMultiPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_100%",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -904,6 +968,7 @@
       "functionName": "MatrixFontScalePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScalePreview_Font scale 2x",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -914,6 +979,7 @@
       "functionName": "MatrixLightDarkMultiPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixLightDarkMultiPreview_Dark",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -924,6 +990,7 @@
       "functionName": "MatrixLightPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixLightPreview_Day",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -934,6 +1001,7 @@
       "functionName": "MatrixLocalePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixLocalePreview_German",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -944,6 +1012,7 @@
       "functionName": "MatrixMetaAnnotationMultiPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixMetaAnnotationMultiPreview_Meta watch",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": "wearos_small_round"
     },
@@ -954,6 +1023,7 @@
       "functionName": "MatrixNightPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixNightPreview_Night",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -964,6 +1034,7 @@
       "functionName": "MatrixParentDeviceSpecPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixParentDeviceSpecPreview_Parent device spec",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": "spec:parent=small_phone,orientation=landscape"
     },
@@ -974,6 +1045,7 @@
       "functionName": "MatrixPhoneDevicePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": "pixel_5"
     },
@@ -984,6 +1056,7 @@
       "functionName": "MatrixRotatedDeviceSpecPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixRotatedDeviceSpecPreview_Rotated device spec",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": "spec:width=1280dp,height=800dp,dpi=240,orientation=portrait"
     },
@@ -994,6 +1067,7 @@
       "functionName": "MatrixScreenSizesMultiPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixScreenSizesMultiPreview_Desktop",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": "spec:width=1920dp,height=1080dp,dpi=160"
     },
@@ -1004,6 +1078,7 @@
       "functionName": "MatrixSystemUiPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixSystemUiPreview_System UI",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -1014,6 +1089,7 @@
       "functionName": "MatrixTvDevicePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixTvDevicePreview_TV",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": "tv_1080p"
     },
@@ -1024,6 +1100,7 @@
       "functionName": "MatrixWearDevicePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixWearDevicePreview_Wear",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
       "variant": "wearos_small_round"
     },
@@ -1049,6 +1126,7 @@
       "functionName": "MediaStylePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.MediaStylePreview_Media style",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -1081,6 +1159,7 @@
       "functionName": "MessagingStylePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.MessagingStylePreview_Messaging style",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -1091,6 +1170,7 @@
       "functionName": "NamedColorPaletteSpecimenPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.ColorGalleryKt.NamedColorPaletteSpecimenPreview_Named colour palette specimen",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
       "variant": ""
     },
@@ -1101,6 +1181,7 @@
       "functionName": "NavHostHomePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NavHostPreviewKt.NavHostHomePreview_NavHost \u2014 Home",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NavHostPreview.kt",
       "variant": ""
     },
@@ -1126,6 +1207,7 @@
       "functionName": "NoLargeIconPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.NoLargeIconPreview_Edge \u2014 no large icon",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -1144,6 +1226,7 @@
       "functionName": "NoTextPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.NoTextPreview_Edge \u2014 no text",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
     },
@@ -1154,6 +1237,7 @@
       "functionName": "PhoneGreetingPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.PhoneGreetingPreview_Phone",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": "spec:width=411dp,height=891dp"
     },
@@ -1164,6 +1248,7 @@
       "functionName": "Pixel8SystemUiPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.Pixel8SystemUiPreview_Pixel 8",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": "pixel_8"
     },
@@ -1174,6 +1259,7 @@
       "functionName": "PressedButtonPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.RippleStatePreviewsKt.PressedButtonPreview_Pressed",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/RippleStatePreviews.kt",
       "variant": ""
     },
@@ -1184,6 +1270,7 @@
       "functionName": "PrivateProviderBadgePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewParameterPreviewsKt.PrivateProviderBadgePreview_Private Provider Badge",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt",
       "variant": ""
     },
@@ -1194,6 +1281,7 @@
       "functionName": "PseudoSampleAccent",
       "module": "android",
       "previewId": "com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleAccent_accent",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt",
       "variant": ""
     },
@@ -1204,6 +1292,7 @@
       "functionName": "PseudoSampleBidi",
       "module": "android",
       "previewId": "com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleBidi_bidi",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt",
       "variant": ""
     },
@@ -1214,6 +1303,7 @@
       "functionName": "PseudoSampleDefault",
       "module": "android",
       "previewId": "com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleDefault_default",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt",
       "variant": ""
     },
@@ -1224,6 +1314,7 @@
       "functionName": "RedBoxPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.RedBoxPreview_Red Box",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": ""
     },
@@ -1234,6 +1325,7 @@
       "functionName": "RedToBlueScrollGifPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/ScrollPreviews.kt",
       "variant": ""
     },
@@ -1244,6 +1336,7 @@
       "functionName": "RemoteViewsWeatherWidgetPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.RemoteViewsWeatherWidgetPreview_RemoteViews widget \u2014 4\u00d72",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
       "variant": ""
     },
@@ -1254,6 +1347,7 @@
       "functionName": "RuntimeShaderGradientBlobPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.ShaderPreviewsKt.RuntimeShaderGradientBlobPreview_Runtime Shader \u2014 Gradient Blob (AGSL)",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderPreviews.kt",
       "variant": ""
     },
@@ -1264,6 +1358,7 @@
       "functionName": "SemanticsClickableButtonPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsClickableButtonPreview",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt",
       "variant": ""
     },
@@ -1274,6 +1369,7 @@
       "functionName": "SemanticsContentDescriptionPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsContentDescriptionPreview",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt",
       "variant": ""
     },
@@ -1284,6 +1380,7 @@
       "functionName": "SemanticsMergeDescendantsPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsMergeDescendantsPreview",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt",
       "variant": ""
     },
@@ -1294,6 +1391,7 @@
       "functionName": "SemanticsTestTagPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsTestTagPreview",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt",
       "variant": ""
     },
@@ -1304,6 +1402,7 @@
       "functionName": "SettingsListScrollGifPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettingsListScrollGifPreview.kt",
       "variant": ""
     },
@@ -1314,6 +1413,7 @@
       "functionName": "ShaderFbmPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderFbmPreview_Shader Gallery \u2014 fBm Clouds (AGSL)",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt",
       "variant": ""
     },
@@ -1324,6 +1424,7 @@
       "functionName": "ShaderJuliaPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderJuliaPreview_Shader Gallery \u2014 Julia Set (AGSL)",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt",
       "variant": ""
     },
@@ -1334,6 +1435,7 @@
       "functionName": "ShaderRaymarchPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRaymarchPreview_Shader Gallery \u2014 Raymarch SDF (AGSL)",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt",
       "variant": ""
     },
@@ -1344,6 +1446,7 @@
       "functionName": "ShaderRenderEffectPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRenderEffectPreview_Shader Gallery \u2014 RenderEffect Distort (AGSL)",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt",
       "variant": ""
     },
@@ -1362,6 +1465,7 @@
       "functionName": "SharedElementFilmstripPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SharedElementFilmstripPreviewKt.SharedElementFilmstripPreview_Shared Element Filmstrip",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementFilmstripPreview.kt",
       "variant": ""
     },
@@ -1372,6 +1476,7 @@
       "functionName": "SoftKeyboardIdlePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SoftKeyboardAnimatedPreviewKt.SoftKeyboardIdlePreview_Soft Keyboard \u2014 idle",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SoftKeyboardAnimatedPreview.kt",
       "variant": ""
     },
@@ -1382,6 +1487,7 @@
       "functionName": "SpinnerTimelinePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.SpinnerTimelinePreview_Spinner Timeline",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
       "variant": ""
     },
@@ -1392,6 +1498,7 @@
       "functionName": "SplashDarkThemePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SplashScreenGalleryKt.SplashDarkThemePreview_Splash \u2014 dark theme",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt",
       "variant": ""
     },
@@ -1402,6 +1509,7 @@
       "functionName": "SplashIconOnlyPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SplashScreenGalleryKt.SplashIconOnlyPreview_Splash \u2014 icon only",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt",
       "variant": ""
     },
@@ -1412,6 +1520,7 @@
       "functionName": "SplashIconWithBackgroundPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SplashScreenGalleryKt.SplashIconWithBackgroundPreview_Splash \u2014 icon with background ring",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt",
       "variant": ""
     },
@@ -1422,6 +1531,7 @@
       "functionName": "SplashWithBrandingPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.SplashScreenGalleryKt.SplashWithBrandingPreview_Splash \u2014 icon with branding",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt",
       "variant": ""
     },
@@ -1432,6 +1542,7 @@
       "functionName": "TruncatedHeightClipPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.TruncationPreviewsKt.TruncatedHeightClipPreview",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt",
       "variant": ""
     },
@@ -1442,6 +1553,7 @@
       "functionName": "TruncatedMaxLinesEllipsisPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.TruncationPreviewsKt.TruncatedMaxLinesEllipsisPreview",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt",
       "variant": ""
     },
@@ -1452,6 +1564,7 @@
       "functionName": "TruncatedWidthNoWrapPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.TruncationPreviewsKt.TruncatedWidthNoWrapPreview",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt",
       "variant": ""
     },
@@ -1470,6 +1583,7 @@
       "functionName": "TypographySpecimenPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.TypographyGalleryKt.TypographySpecimenPreview_Typography specimen",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/TypographyGallery.kt",
       "variant": ""
     },
@@ -1480,6 +1594,7 @@
       "functionName": "UserCardPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card",
+      "rendersDir": "android",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt",
       "variant": ""
     },
@@ -1490,6 +1605,7 @@
       "functionName": "SharedBlueBoxPreview",
       "module": "cmp-shared",
       "previewId": "com.example.cmpshared.SharedPreviewsKt.SharedBlueBoxPreview_Blue",
+      "rendersDir": "cmp-shared",
       "sourceFile": "src/commonMain/kotlin/com/example/cmpshared/SharedPreviews.kt",
       "variant": ""
     },
@@ -1500,6 +1616,7 @@
       "functionName": "SharedRedBoxPreview",
       "module": "cmp-shared",
       "previewId": "com.example.cmpshared.SharedPreviewsKt.SharedRedBoxPreview",
+      "rendersDir": "cmp-shared",
       "sourceFile": "src/commonMain/kotlin/com/example/cmpshared/SharedPreviews.kt",
       "variant": ""
     },
@@ -1510,6 +1627,7 @@
       "functionName": "AppPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewsKt.AppPreview",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
       "variant": ""
     },
@@ -1520,6 +1638,7 @@
       "functionName": "BlueBoxPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewsKt.BlueBoxPreview_Blue Box",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
       "variant": ""
     },
@@ -1530,6 +1649,7 @@
       "functionName": "CmpPseudoBidi",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PseudolocalePreviewsKt.CmpPseudoBidi_bidi",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt",
       "variant": ""
     },
@@ -1540,6 +1660,7 @@
       "functionName": "CmpPseudoDefault",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PseudolocalePreviewsKt.CmpPseudoDefault_default",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt",
       "variant": ""
     },
@@ -1550,6 +1671,7 @@
       "functionName": "FontScale100Preview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.FontScalePreviewsKt.FontScale100Preview_Font scale 1.0x",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt",
       "variant": ""
     },
@@ -1560,6 +1682,7 @@
       "functionName": "FontScale150Preview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.FontScalePreviewsKt.FontScale150Preview_Font scale 1.5x",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt",
       "variant": ""
     },
@@ -1570,6 +1693,7 @@
       "functionName": "FontScale200Preview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.FontScalePreviewsKt.FontScale200Preview_Font scale 2.0x",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt",
       "variant": ""
     },
@@ -1580,6 +1704,7 @@
       "functionName": "KeyboardDemoPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/KeyboardDemoPreview.kt",
       "variant": ""
     },
@@ -1590,6 +1715,7 @@
       "functionName": "LottieSpinQuarterPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.LottiePreviewsKt.LottieSpinQuarterPreview",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/LottiePreviews.kt",
       "variant": ""
     },
@@ -1600,6 +1726,7 @@
       "functionName": "LottieSpinStartPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.LottiePreviewsKt.LottieSpinStartPreview",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/LottiePreviews.kt",
       "variant": ""
     },
@@ -1610,6 +1737,7 @@
       "functionName": "MatrixBackgroundColorPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixBackgroundColorPreview_Background colour",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -1620,6 +1748,7 @@
       "functionName": "MatrixComponentWrapPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixComponentWrapPreview_Component wrap",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -1630,6 +1759,7 @@
       "functionName": "MatrixDeviceSpecPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixDeviceSpecPreview_Device spec",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": "spec:width=360dp,height=640dp,dpi=320"
     },
@@ -1640,6 +1770,7 @@
       "functionName": "MatrixFixedBothAxesPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFixedBothAxesPreview_Fixed both axes",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -1650,6 +1781,7 @@
       "functionName": "MatrixFixedWidthOnlyPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFixedWidthOnlyPreview_Fixed width only",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -1660,6 +1792,7 @@
       "functionName": "MatrixFoldableDevicePreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFoldableDevicePreview_Foldable",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": "pixel_fold"
     },
@@ -1670,6 +1803,7 @@
       "functionName": "MatrixFontScaleMultiPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_100%",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -1680,6 +1814,7 @@
       "functionName": "MatrixFontScalePreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScalePreview_Font scale 2x",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -1690,6 +1825,7 @@
       "functionName": "MatrixLightDarkMultiPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixLightDarkMultiPreview_Dark",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -1700,6 +1836,7 @@
       "functionName": "MatrixLightPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixLightPreview_Day",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -1710,6 +1847,7 @@
       "functionName": "MatrixLocalePreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixLocalePreview_German",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -1720,6 +1858,7 @@
       "functionName": "MatrixMetaAnnotationMultiPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixMetaAnnotationMultiPreview_Meta watch",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": "wearos_small_round"
     },
@@ -1730,6 +1869,7 @@
       "functionName": "MatrixNightPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixNightPreview_Night",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": ""
     },
@@ -1740,6 +1880,7 @@
       "functionName": "MatrixParentDeviceSpecPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixParentDeviceSpecPreview_Parent device spec",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": "spec:parent=small_phone,orientation=landscape"
     },
@@ -1750,6 +1891,7 @@
       "functionName": "MatrixPhoneDevicePreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": "pixel_5"
     },
@@ -1760,6 +1902,7 @@
       "functionName": "MatrixRotatedDeviceSpecPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixRotatedDeviceSpecPreview_Rotated device spec",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": "spec:width=1280dp,height=800dp,dpi=240,orientation=portrait"
     },
@@ -1770,6 +1913,7 @@
       "functionName": "MatrixWearDevicePreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixWearDevicePreview_Wear",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
       "variant": "wearos_small_round"
     },
@@ -1780,6 +1924,7 @@
       "functionName": "MultiTouchDrawingPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.MultiTouchDrawingPreviewKt.MultiTouchDrawingPreview_Multi-Touch Drawing",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/MultiTouchDrawingPreview.kt",
       "variant": ""
     },
@@ -1790,6 +1935,7 @@
       "functionName": "MultiTouchDrawingSeededPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.MultiTouchDrawingPreviewKt.MultiTouchDrawingSeededPreview_Multi-Touch Drawing \u2014 seeded",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/MultiTouchDrawingPreview.kt",
       "variant": ""
     },
@@ -1800,6 +1946,7 @@
       "functionName": "OverridableListPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.OverridablePreviewsKt.OverridableListPreview_Overridable List",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/OverridablePreviews.kt",
       "variant": ""
     },
@@ -1810,6 +1957,7 @@
       "functionName": "PinchToZoomPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PinchToZoomPreviewKt.PinchToZoomPreview_Pinch To Zoom",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PinchToZoomPreview.kt",
       "variant": ""
     },
@@ -1820,6 +1968,7 @@
       "functionName": "Pixel8SystemUiPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewsKt.Pixel8SystemUiPreview_Pixel 8",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
       "variant": "pixel_8"
     },
@@ -1830,6 +1979,7 @@
       "functionName": "RedBoxPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewsKt.RedBoxPreview_Red Box",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
       "variant": ""
     },
@@ -1840,6 +1990,7 @@
       "functionName": "RuntimeShaderGradientBlobPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.ShaderPreviewsKt.RuntimeShaderGradientBlobPreview_Runtime Shader \u2014 Gradient Blob",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderPreviews.kt",
       "variant": ""
     },
@@ -1850,6 +2001,7 @@
       "functionName": "ScrollingListPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt",
       "variant": ""
     },
@@ -1860,6 +2012,7 @@
       "functionName": "ShaderFbmPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderFbmPreview_Shader Gallery \u2014 fBm Clouds",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt",
       "variant": ""
     },
@@ -1870,6 +2023,7 @@
       "functionName": "ShaderJuliaPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderJuliaPreview_Shader Gallery \u2014 Julia Set",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt",
       "variant": ""
     },
@@ -1880,6 +2034,7 @@
       "functionName": "ShaderRaymarchPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderRaymarchPreview_Shader Gallery \u2014 Raymarch SDF",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt",
       "variant": ""
     },
@@ -1890,6 +2045,7 @@
       "functionName": "ShaderRenderEffectPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.ShaderGalleryPreviewsKt.ShaderRenderEffectPreview_Shader Gallery \u2014 RenderEffect Distort",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderGalleryPreviews.kt",
       "variant": ""
     },
@@ -1900,6 +2056,7 @@
       "functionName": "ShowBackgroundNoSurfacePreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.ShowBackgroundNightPreviewsKt.ShowBackgroundNoSurfacePreview_Day",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/ShowBackgroundNightPreviews.kt",
       "variant": ""
     },
@@ -1910,6 +2067,7 @@
       "functionName": "SvgBadgePreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.SvgPreviewsKt.SvgBadgePreview",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/SvgPreviews.kt",
       "variant": ""
     },
@@ -1920,6 +2078,7 @@
       "functionName": "SvgStarTintedPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.SvgPreviewsKt.SvgStarTintedPreview",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/SvgPreviews.kt",
       "variant": ""
     },
@@ -1930,6 +2089,7 @@
       "functionName": "SwatchPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewParameterPreviews.kt",
       "variant": ""
     },
@@ -1940,6 +2100,7 @@
       "functionName": "WallpaperDemoPreview",
       "module": "cmp",
       "previewId": "com.example.samplecmp.PreviewsKt.WallpaperDemoPreview_Wallpaper Demo",
+      "rendersDir": "cmp",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
       "variant": ""
     },
@@ -1950,6 +2111,7 @@
       "functionName": "FilledButtonFocused",
       "module": "design-catalog-m3-android",
       "previewId": "com.example.designcatalogm3android.FocusRingKt.FilledButtonFocused_Dark",
+      "rendersDir": "design-catalog-m3-android",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3android/FocusRing.kt",
       "variant": ""
     },
@@ -1960,6 +2122,7 @@
       "functionName": "AppScaffoldTemplate",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogTemplatesKt.AppScaffoldTemplate_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogTemplates.kt",
       "variant": "pixel_8"
     },
@@ -1970,6 +2133,7 @@
       "functionName": "AssistChipSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogSelectionKt.AssistChipSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
       "variant": ""
     },
@@ -1980,6 +2144,7 @@
       "functionName": "BadgeSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.BadgeSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogCommunication.kt",
       "variant": ""
     },
@@ -1990,6 +2155,7 @@
       "functionName": "CheckboxChecked",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogSelectionKt.CheckboxChecked_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
       "variant": ""
     },
@@ -2000,6 +2166,7 @@
       "functionName": "CircularProgressSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.CircularProgressSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogCommunication.kt",
       "variant": ""
     },
@@ -2010,6 +2177,7 @@
       "functionName": "ElevatedButtonSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogButtonsKt.ElevatedButtonSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
       "variant": ""
     },
@@ -2020,6 +2188,7 @@
       "functionName": "ElevatedCardSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogContainmentKt.ElevatedCardSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
@@ -2030,6 +2199,7 @@
       "functionName": "FabSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogContainmentKt.FabSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
@@ -2040,6 +2210,7 @@
       "functionName": "FilledButton",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledButton_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
       "variant": ""
     },
@@ -2050,6 +2221,7 @@
       "functionName": "FilledButtonFocused",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonFocused_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt",
       "variant": ""
     },
@@ -2060,6 +2232,7 @@
       "functionName": "FilledButtonIconLabel",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonIconLabel_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt",
       "variant": ""
     },
@@ -2070,6 +2243,7 @@
       "functionName": "FilledButtonLargeFont",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogI18nKt.FilledButtonLargeFont_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt",
       "variant": ""
     },
@@ -2080,6 +2254,7 @@
       "functionName": "FilledButtonPressed",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogStatesKt.FilledButtonPressed_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt",
       "variant": ""
     },
@@ -2090,6 +2265,7 @@
       "functionName": "FilledCardSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogContainmentKt.FilledCardSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
@@ -2100,6 +2276,7 @@
       "functionName": "FilledTonalButtonSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogButtonsKt.FilledTonalButtonSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
       "variant": ""
     },
@@ -2110,6 +2287,7 @@
       "functionName": "FilterChipSelected",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogSelectionKt.FilterChipSelected_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
       "variant": ""
     },
@@ -2120,6 +2298,7 @@
       "functionName": "LinearProgressSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogCommunicationKt.LinearProgressSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogCommunication.kt",
       "variant": ""
     },
@@ -2130,6 +2309,7 @@
       "functionName": "OutlinedButtonSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogButtonsKt.OutlinedButtonSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
       "variant": ""
     },
@@ -2140,6 +2320,7 @@
       "functionName": "OutlinedCardSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogContainmentKt.OutlinedCardSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
@@ -2150,6 +2331,7 @@
       "functionName": "OutlinedTextFieldSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogTextFieldsKt.OutlinedTextFieldSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogTextFields.kt",
       "variant": ""
     },
@@ -2160,6 +2342,7 @@
       "functionName": "RadioSelected",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogSelectionKt.RadioSelected_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
       "variant": ""
     },
@@ -2170,6 +2353,7 @@
       "functionName": "SegmentedToggle",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogStatesKt.SegmentedToggle_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogStates.kt",
       "variant": ""
     },
@@ -2180,6 +2364,7 @@
       "functionName": "SliderMid",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SliderMid_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
       "variant": ""
     },
@@ -2190,6 +2375,7 @@
       "functionName": "SlottedCardArabic",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogI18nKt.SlottedCardArabic_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt",
       "variant": ""
     },
@@ -2200,6 +2386,7 @@
       "functionName": "SlottedCardSlotsSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSlotsSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
@@ -2210,6 +2397,7 @@
       "functionName": "SlottedCardSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogContainmentKt.SlottedCardSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogContainment.kt",
       "variant": ""
     },
@@ -2220,6 +2408,7 @@
       "functionName": "SwitchOn",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogSelectionKt.SwitchOn_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogSelection.kt",
       "variant": ""
     },
@@ -2230,6 +2419,7 @@
       "functionName": "SwitchOnLargeFont",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnLargeFont_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt",
       "variant": ""
     },
@@ -2240,6 +2430,7 @@
       "functionName": "SwitchOnPseudo",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnPseudo_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt",
       "variant": ""
     },
@@ -2250,6 +2441,7 @@
       "functionName": "SwitchOnRtl",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogI18nKt.SwitchOnRtl_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogI18n.kt",
       "variant": ""
     },
@@ -2260,6 +2452,7 @@
       "functionName": "TextBrandedSpecimen",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogTextKt.TextBrandedSpecimen_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogText.kt",
       "variant": ""
     },
@@ -2270,6 +2463,7 @@
       "functionName": "TextButtonSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogButtonsKt.TextButtonSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogButtons.kt",
       "variant": ""
     },
@@ -2280,6 +2474,7 @@
       "functionName": "TextFieldSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogTextFieldsKt.TextFieldSticker_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogTextFields.kt",
       "variant": ""
     },
@@ -2290,6 +2485,7 @@
       "functionName": "TextMaxLinesTruncated",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogTextKt.TextMaxLinesTruncated_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogText.kt",
       "variant": ""
     },
@@ -2300,6 +2496,7 @@
       "functionName": "TextMonospaceSpecimen",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogTextKt.TextMonospaceSpecimen_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogText.kt",
       "variant": ""
     },
@@ -2310,6 +2507,7 @@
       "functionName": "TextSerifSpecimen",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogTextKt.TextSerifSpecimen_Dark",
+      "rendersDir": "design-catalog-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogText.kt",
       "variant": ""
     },
@@ -2328,6 +2526,7 @@
       "functionName": "AppCardRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.AppCardRemote_width=320dp,height=240dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
@@ -2346,6 +2545,7 @@
       "functionName": "BrandedTextRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.BrandedTextRemote_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
@@ -2378,6 +2578,7 @@
       "functionName": "ButtonGroupRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ButtonGroupRemote_width=320dp,height=240dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
@@ -2396,6 +2597,7 @@
       "functionName": "CardRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CardRemote_width=320dp,height=240dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
@@ -2414,6 +2616,7 @@
       "functionName": "CircularProgressRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CircularProgressRemote_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
@@ -2432,6 +2635,7 @@
       "functionName": "ColorSchemeRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ColorSchemeRemote_width=320dp,height=240dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
@@ -2450,6 +2654,7 @@
       "functionName": "CompactRemoteButton",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CompactRemoteButton_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
@@ -2468,6 +2673,7 @@
       "functionName": "CustomShapeRemoteButton",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CustomShapeRemoteButton_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
@@ -2486,6 +2692,7 @@
       "functionName": "FilledRemoteButton",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.FilledRemoteButton_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
@@ -2504,6 +2711,7 @@
       "functionName": "IconRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemote_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
@@ -2522,6 +2730,7 @@
       "functionName": "IconRemoteButton",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemoteButton_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
@@ -2540,6 +2749,7 @@
       "functionName": "NamedLabelRemoteButton",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.NamedLabelRemoteButton_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
@@ -2558,6 +2768,7 @@
       "functionName": "OutlinedCardRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedCardRemote_width=320dp,height=240dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
@@ -2576,6 +2787,7 @@
       "functionName": "OutlinedRemoteButton",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedRemoteButton_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
@@ -2594,6 +2806,7 @@
       "functionName": "RemoteTextSticker",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.RemoteTextSticker_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
@@ -2612,6 +2825,7 @@
       "functionName": "ShaderGradientSticker",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ShaderGradientSticker_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
@@ -2630,6 +2844,7 @@
       "functionName": "TextRemoteButton",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TextRemoteButton_width=200dp,height=200dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
@@ -2648,6 +2863,7 @@
       "functionName": "TitleCardRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TitleCardRemote_width=320dp,height=240dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
@@ -2666,6 +2882,7 @@
       "functionName": "TruncatedTextRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TruncatedTextRemote_width=320dp,height=240dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
@@ -2684,6 +2901,7 @@
       "functionName": "TypefaceSpecimenRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TypefaceSpecimenRemote_width=320dp,height=240dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
@@ -2702,6 +2920,7 @@
       "functionName": "TypographyRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TypographyRemote_width=320dp,height=240dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
@@ -2720,6 +2939,7 @@
       "functionName": "VariableWeightRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWeightRemote_width=320dp,height=240dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
@@ -2738,6 +2958,7 @@
       "functionName": "VariableWidthRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWidthRemote_width=320dp,height=240dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
@@ -2756,6 +2977,7 @@
       "functionName": "WatchScreenRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.WatchScreenRemote_width=227dp,height=227dp,dpi=320",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=227dp,height=227dp,dpi=320"
     },
@@ -2774,6 +2996,7 @@
       "functionName": "WidgetContainerGradientRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerGradientRemote",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
       "variant": ""
     },
@@ -2792,6 +3015,7 @@
       "functionName": "WidgetContainerLargeRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerLargeRemote",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
       "variant": ""
     },
@@ -2810,6 +3034,7 @@
       "functionName": "WidgetContainerSmallRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerSmallRemote",
+      "rendersDir": "design-catalog-remote-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
       "variant": ""
     },
@@ -2820,6 +3045,7 @@
       "functionName": "AppCardSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.AppCardSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2830,6 +3056,7 @@
       "functionName": "ButtonFocused",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonFocused",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2840,6 +3067,7 @@
       "functionName": "ButtonGroupSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonGroupSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2850,6 +3078,7 @@
       "functionName": "ButtonPressed",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2860,6 +3089,7 @@
       "functionName": "CardScalingScrollGif",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CardScalingPreviewKt.CardScalingScrollGif_Large Round",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CardScalingPreview.kt",
       "variant": "wearos_large_round"
     },
@@ -2870,6 +3100,7 @@
       "functionName": "CardSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2880,6 +3111,7 @@
       "functionName": "CheckboxButtonChecked",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2890,6 +3122,7 @@
       "functionName": "ChildButtonSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2900,6 +3133,7 @@
       "functionName": "CircularProgressSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2910,6 +3144,7 @@
       "functionName": "ColorSchemeSpecimen",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ColorSchemeSpecimen",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2920,6 +3155,7 @@
       "functionName": "CompactButtonSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CompactButtonSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2930,6 +3166,7 @@
       "functionName": "FilledButton",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2940,6 +3177,7 @@
       "functionName": "FilledTonalButtonSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2950,6 +3188,7 @@
       "functionName": "IconButtonSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconButtonSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2960,6 +3199,7 @@
       "functionName": "IconSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IconSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2970,6 +3210,7 @@
       "functionName": "IndeterminateCircularProgressSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2980,6 +3221,7 @@
       "functionName": "ListHeaderSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ListHeaderSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2990,6 +3232,7 @@
       "functionName": "OutlinedButtonSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -3000,6 +3243,7 @@
       "functionName": "OutlinedCardSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedCardSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -3010,6 +3254,7 @@
       "functionName": "PageIndicatorScaffoldTemplate",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Large Round",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": "wearos_large_round"
     },
@@ -3020,6 +3265,7 @@
       "functionName": "ScalingListSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large Round",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": "wearos_large_round"
     },
@@ -3030,6 +3276,7 @@
       "functionName": "SwitchButtonOn",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -3040,6 +3287,7 @@
       "functionName": "TextMaxLinesTruncated",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -3050,6 +3298,7 @@
       "functionName": "TimeTextScaffoldTemplate",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Large Round",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": "wearos_large_round"
     },
@@ -3060,6 +3309,7 @@
       "functionName": "TitleCardSticker",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TitleCardSticker",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -3070,6 +3320,7 @@
       "functionName": "TypographySpecimen",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.TypographySpecimen",
+      "rendersDir": "design-catalog-wear-m3",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -3080,6 +3331,7 @@
       "functionName": "BlueLabelPreview",
       "module": "desktop-daemon-bench",
       "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel",
+      "rendersDir": "desktop-daemon-bench",
       "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
       "variant": ""
     },
@@ -3090,6 +3342,7 @@
       "functionName": "GreenButtonPreview",
       "module": "desktop-daemon-bench",
       "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.GreenButtonPreview_GreenButton",
+      "rendersDir": "desktop-daemon-bench",
       "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
       "variant": ""
     },
@@ -3100,6 +3353,7 @@
       "functionName": "RedSquarePreview",
       "module": "desktop-daemon-bench",
       "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.RedSquarePreview_RedSquare",
+      "rendersDir": "desktop-daemon-bench",
       "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
       "variant": ""
     },
@@ -3110,6 +3364,7 @@
       "functionName": "RowPreview",
       "module": "desktop-daemon-bench",
       "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.RowPreview_Row",
+      "rendersDir": "desktop-daemon-bench",
       "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
       "variant": ""
     },
@@ -3120,6 +3375,7 @@
       "functionName": "StackPreview",
       "module": "desktop-daemon-bench",
       "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.StackPreview_Stack",
+      "rendersDir": "desktop-daemon-bench",
       "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
       "variant": ""
     },
@@ -3138,6 +3394,7 @@
       "functionName": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorEmbeddedPreview",
+      "rendersDir": "remotecompose",
       "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
       "variant": ""
     },
@@ -3156,6 +3413,7 @@
       "functionName": "RemoteAnimatedCircularProgressIndicatorStandardPreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorStandardPreview",
+      "rendersDir": "remotecompose",
       "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
       "variant": ""
     },
@@ -3174,6 +3432,7 @@
       "functionName": "RemoteButtonEnabledPreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonEnabledPreview",
+      "rendersDir": "remotecompose",
       "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
       "variant": ""
     },
@@ -3192,6 +3451,7 @@
       "functionName": "RemoteButtonWithBorderPreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview",
+      "rendersDir": "remotecompose",
       "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
       "variant": ""
     },
@@ -3210,6 +3470,7 @@
       "functionName": "RemoteButtonWithNamedLabelPreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithNamedLabelPreview",
+      "rendersDir": "remotecompose",
       "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
       "variant": ""
     },
@@ -3228,6 +3489,7 @@
       "functionName": "RemoteButtonWithShapePreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithShapePreview",
+      "rendersDir": "remotecompose",
       "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
       "variant": ""
     },
@@ -3246,6 +3508,7 @@
       "functionName": "RemoteShaderGradientPreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteShaderGradientPreview",
+      "rendersDir": "remotecompose",
       "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
       "variant": ""
     },
@@ -3264,6 +3527,7 @@
       "functionName": "RemoteWidgetSquirclePreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.WearWidgetPreviewsKt.RemoteWidgetSquirclePreview_Remote Widget Squircle",
+      "rendersDir": "remotecompose",
       "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/WearWidgetPreviews.kt",
       "variant": ""
     },
@@ -3274,6 +3538,7 @@
       "functionName": "SdkMatrixPreview",
       "module": "sdk-matrix",
       "previewId": "com.example.sdkmatrix.MatrixPreviewKt.SdkMatrixPreview_SdkMatrixPreview",
+      "rendersDir": "sdk-matrix",
       "sourceFile": "src/main/kotlin/com/example/sdkmatrix/MatrixPreview.kt",
       "variant": ""
     },
@@ -3292,6 +3557,7 @@
       "functionName": "ImageWidgetFixedPreview",
       "module": "wear-widget",
       "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetFixedPreview_Image Widget Fixed",
+      "rendersDir": "wear-widget",
       "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
       "variant": ""
     },
@@ -3310,6 +3576,7 @@
       "functionName": "ImageWidgetSquircleLargePreview",
       "module": "wear-widget",
       "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large",
+      "rendersDir": "wear-widget",
       "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
       "variant": ""
     },
@@ -3328,6 +3595,7 @@
       "functionName": "ImageWidgetSquirclePreview",
       "module": "wear-widget",
       "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle",
+      "rendersDir": "wear-widget",
       "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
       "variant": ""
     },
@@ -3338,6 +3606,7 @@
       "functionName": "ActivityListDeviceMatrixPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.DeviceSpecPreviewsKt.ActivityListDeviceMatrixPreview_Activity list \u00b7 Custom Round 385dp 2.25x",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/DeviceSpecPreviews.kt",
       "variant": "spec:width=385dp,height=385dp,dpi=360,isRound=true"
     },
@@ -3348,6 +3617,7 @@
       "functionName": "ActivityListFontScalesPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListFontScalesPreview_Fonts - Large",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_small_round"
     },
@@ -3358,6 +3628,7 @@
       "functionName": "ActivityListGifPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListGifPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
     },
@@ -3368,6 +3639,7 @@
       "functionName": "ActivityListLongPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
     },
@@ -3378,6 +3650,7 @@
       "functionName": "ActivityListMotionLongPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
     },
@@ -3388,6 +3661,7 @@
       "functionName": "ActivityListPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
     },
@@ -3398,6 +3672,7 @@
       "functionName": "ActivityListRealDeviceMatrixPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.WearRealDevicePreviewsKt.ActivityListRealDeviceMatrixPreview_Galaxy Watch 5 44mm \u00b7 450px @340dpi \u00b7 211dp",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/WearRealDevicePreviews.kt",
       "variant": "spec:width=211dp,height=211dp,dpi=340,isRound=true"
     },
@@ -3408,6 +3683,7 @@
       "functionName": "AmbientStatusAmbientPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient body \u2014 ambient",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/AmbientPreviews.kt",
       "variant": "wearos_large_round"
     },
@@ -3418,6 +3694,7 @@
       "functionName": "AmbientStatusInteractivePreview",
       "module": "wear",
       "previewId": "com.example.samplewear.AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient body \u2014 interactive",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/AmbientPreviews.kt",
       "variant": "wearos_large_round"
     },
@@ -3436,6 +3713,7 @@
       "functionName": "BadWearButtonPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.BadWearButtonPreview_Devices - Small Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_small_round"
     },
@@ -3446,6 +3724,7 @@
       "functionName": "ButtonHintScreenPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.ButtonHintScreenPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": "wearos_large_round"
     },
@@ -3456,6 +3735,7 @@
       "functionName": "ButtonPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.ButtonPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
     },
@@ -3466,6 +3746,7 @@
       "functionName": "CircularProgressIndicatorPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.CircularProgressIndicatorPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
     },
@@ -3476,6 +3757,7 @@
       "functionName": "DisabledGestureScreenPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.DisabledGestureScreenPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": "wearos_large_round"
     },
@@ -3486,6 +3768,7 @@
       "functionName": "DismissActionScreenPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.DismissActionScreenPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": "wearos_large_round"
     },
@@ -3511,6 +3794,7 @@
       "functionName": "GestureGalleryPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.GestureGalleryPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": "wearos_large_round"
     },
@@ -3521,6 +3805,7 @@
       "functionName": "MediaGestureScreenHintPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GestureHintPreviewsKt.MediaGestureScreenHintPreview_Media \u2014 hints on",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/GestureHintPreviews.kt",
       "variant": "wearos_large_round"
     },
@@ -3531,6 +3816,7 @@
       "functionName": "MediaGestureScreenPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GestureHintPreviewsKt.MediaGestureScreenPreview_Media \u2014 hints off",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/GestureHintPreviews.kt",
       "variant": "wearos_large_round"
     },
@@ -3541,6 +3827,7 @@
       "functionName": "PageGestureScreenPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.PageGestureScreenPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": "wearos_large_round"
     },
@@ -3551,6 +3838,7 @@
       "functionName": "PageIndicatorStickerPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.PageIndicatorStickerPreview",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": ""
     },
@@ -3561,6 +3849,7 @@
       "functionName": "PlaceholderCardLoaded",
       "module": "wear",
       "previewId": "com.example.samplewear.PlaceholderPreviewsKt.PlaceholderCardLoaded_wearos_small_round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/PlaceholderPreviews.kt",
       "variant": "wearos_small_round"
     },
@@ -3579,6 +3868,7 @@
       "functionName": "PlaceholderCardLoading",
       "module": "wear",
       "previewId": "com.example.samplewear.PlaceholderPreviewsKt.PlaceholderCardLoading_wearos_small_round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/PlaceholderPreviews.kt",
       "variant": "wearos_small_round"
     },
@@ -3589,6 +3879,7 @@
       "functionName": "PlaceholderCardOverrideDriven",
       "module": "wear",
       "previewId": "com.example.samplewear.PlaceholderPreviewsKt.PlaceholderCardOverrideDriven_wearos_small_round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/PlaceholderPreviews.kt",
       "variant": "wearos_small_round"
     },
@@ -3599,6 +3890,7 @@
       "functionName": "PrimaryActionScreenPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.PrimaryActionScreenPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": "wearos_large_round"
     },
@@ -3609,6 +3901,7 @@
       "functionName": "PrimaryActionStickerPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.PrimaryActionStickerPreview",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": ""
     },
@@ -3619,6 +3912,7 @@
       "functionName": "ScrollGestureScreenPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.ScrollGestureScreenPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": "wearos_large_round"
     },
@@ -3629,6 +3923,7 @@
       "functionName": "ScrollIndicatorStickerPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.GesturesKt.ScrollIndicatorStickerPreview",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt",
       "variant": ""
     },
@@ -3639,6 +3934,7 @@
       "functionName": "SettingsMainScreenLongPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.SettingsMainScreenLongPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
     },
@@ -3649,6 +3945,7 @@
       "functionName": "WearAppSystemClockPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.SystemClockPreviewsKt.WearAppSystemClockPreview_Devices - Large Round",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/SystemClockPreviews.kt",
       "variant": "wearos_large_round"
     },
@@ -3659,6 +3956,7 @@
       "functionName": "WearDeviceMatrixPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.DeviceSpecPreviewsKt.WearDeviceMatrixPreview_Large Round 227dp",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/DeviceSpecPreviews.kt",
       "variant": "wearos_large_round"
     },
@@ -3669,6 +3967,7 @@
       "functionName": "WearRealDeviceMatrixPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.WearRealDevicePreviewsKt.WearRealDeviceMatrixPreview_Galaxy Watch 5 44mm \u00b7 450px @340dpi \u00b7 211dp",
+      "rendersDir": "wear",
       "sourceFile": "src/main/kotlin/com/example/samplewear/WearRealDevicePreviews.kt",
       "variant": "spec:width=211dp,height=211dp,dpi=340,isRound=true"
     },
@@ -3679,6 +3978,7 @@
       "functionName": "FocusableMenu",
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerPreviewsKt.FocusableMenu_Glimmer \u00b7 Input",
+      "rendersDir": "xr-glimmer",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt",
       "variant": "spec:width=960,height=720,dpi=160"
     },
@@ -3689,6 +3989,7 @@
       "functionName": "GlimmerListItemDefault",
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemDefault_Glimmer \u00b7 Default",
+      "rendersDir": "xr-glimmer",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
       "variant": "spec:width=960,height=720,dpi=160"
     },
@@ -3699,6 +4000,7 @@
       "functionName": "GlimmerListItemFocused",
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemFocused_Glimmer \u00b7 Focused",
+      "rendersDir": "xr-glimmer",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
       "variant": "spec:width=960,height=720,dpi=160"
     },
@@ -3709,6 +4011,7 @@
       "functionName": "GlimmerListItemPressed",
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemPressed_Glimmer \u00b7 Pressed",
+      "rendersDir": "xr-glimmer",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
       "variant": "spec:width=960,height=720,dpi=160"
     },
@@ -3719,6 +4022,7 @@
       "functionName": "GlimmerListPressedWalk",
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk",
+      "rendersDir": "xr-glimmer",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
       "variant": "spec:width=960,height=720,dpi=160"
     },
@@ -3729,6 +4033,7 @@
       "functionName": "NowPlayingCard",
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerPreviewsKt.NowPlayingCard_Glimmer \u00b7 Busy",
+      "rendersDir": "xr-glimmer",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt",
       "variant": "spec:width=960,height=720,dpi=160"
     },
@@ -3739,6 +4044,7 @@
       "functionName": "NowPlayingPanelPreview",
       "module": "xr-spatial",
       "previewId": "com.example.samplexrspatial.SpatialPreviewsKt.NowPlayingPanelPreview_Panel \u00b7 Content",
+      "rendersDir": "xr-spatial",
       "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
       "variant": "spec:width=1280,height=720,dpi=160"
     },
@@ -3749,6 +4055,7 @@
       "functionName": "OrbiterControlsPreview",
       "module": "xr-spatial",
       "previewId": "com.example.samplexrspatial.SpatialPreviewsKt.OrbiterControlsPreview_Orbiter \u00b7 TopControls",
+      "rendersDir": "xr-spatial",
       "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
       "variant": "spec:width=1280,height=720,dpi=160"
     },
@@ -3759,6 +4066,7 @@
       "functionName": "SpatialElevationPreview",
       "module": "xr-spatial",
       "previewId": "com.example.samplexrspatial.SpatialPreviewsKt.SpatialElevationPreview_SpatialElevation \u00b7 Panel",
+      "rendersDir": "xr-spatial",
       "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
       "variant": "spec:width=1280,height=720,dpi=160"
     },
@@ -3769,6 +4077,7 @@
       "functionName": "StaticPreview",
       "module": "sample-module",
       "previewId": "com.example.sample.PreviewsKt.StaticPreview",
+      "rendersDir": "sample-module",
       "sourceFile": "com/example/sample/Previews.kt",
       "variant": ""
     }
