@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.1.0](https://github.com/yschimke/compose-ai-tools/compare/v1.0.0...v1.1.0) (2026-08-12)
+
+
+### Features
+
+* **apply:** add fork-safe render/publish phase split ([#3736](https://github.com/yschimke/compose-ai-tools/issues/3736)) ([b574714](https://github.com/yschimke/compose-ai-tools/commit/b574714ea7816117639c3a1311dbf15949ee1c54))
+* **design-references:** publish variant bindings as secondary references ([#3732](https://github.com/yschimke/compose-ai-tools/issues/3732)) ([7b573ec](https://github.com/yschimke/compose-ai-tools/commit/7b573ecc31bcbe38bb47a982cb38c9e3f07ea8d3))
+* **serve:** grow the catalog tree down to components and their variants ([#3739](https://github.com/yschimke/compose-ai-tools/issues/3739)) ([95b53fd](https://github.com/yschimke/compose-ai-tools/commit/95b53fd706c8e883fdeba82132c9af0c2e932058))
+* **serve:** navigate a sectioned catalog as a tree, not a row of tabs ([#3735](https://github.com/yschimke/compose-ai-tools/issues/3735)) ([ee38eee](https://github.com/yschimke/compose-ai-tools/commit/ee38eeef2789cca2cc8d932caaf486649996c418))
+* **serve:** show whole design screens with the code laid over them ([#3714](https://github.com/yschimke/compose-ai-tools/issues/3714)) ([e9d71b1](https://github.com/yschimke/compose-ai-tools/commit/e9d71b141d9369234c99d8b012cc73c4d9ad8801))
+
+
+### Bug Fixes
+
+* **apply:** close publish-side escalation paths in the fork handoff ([#3737](https://github.com/yschimke/compose-ai-tools/issues/3737)) ([37ca1a3](https://github.com/yschimke/compose-ai-tools/commit/37ca1a308afe58210774991dd3c2123909857d46))
+* **apply:** tar the fork handoff so nested module paths can upload ([#3745](https://github.com/yschimke/compose-ai-tools/issues/3745)) ([c4d3ebf](https://github.com/yschimke/compose-ai-tools/commit/c4d3ebf3ee5ec53eefc8f500cf29cef418c2f97a))
+* **apply:** validate the handoff tarball and keep _pipelines outside it ([#3746](https://github.com/yschimke/compose-ai-tools/issues/3746)) ([10f91c7](https://github.com/yschimke/compose-ai-tools/commit/10f91c7d728cee4c9d3621f197997735becc1af9))
+* **cli:** narrow the Gradle render to the previews --id/--filter names ([#3734](https://github.com/yschimke/compose-ai-tools/issues/3734)) ([462a00c](https://github.com/yschimke/compose-ai-tools/commit/462a00ce4c0646829865450f81d0a80a9d37b97d))
+* **cli:** raise the default build timeout above what a cold render costs ([#3722](https://github.com/yschimke/compose-ai-tools/issues/3722)) ([9ffc3b9](https://github.com/yschimke/compose-ai-tools/commit/9ffc3b9cf573da2223f3a95ff5437548b88811c7))
+* **daemon:** compose recording frames under the preview's locale ([#3729](https://github.com/yschimke/compose-ai-tools/issues/3729)) ([f29f402](https://github.com/yschimke/compose-ai-tools/commit/f29f40229943cf2782eda034c702be463dd6f90e))
+* **daemon:** serialise the process-global localeTag override ([#3724](https://github.com/yschimke/compose-ai-tools/issues/3724)) ([e97bf82](https://github.com/yschimke/compose-ai-tools/commit/e97bf825eae9ba540deaf676d428a560b675315e))
+* **driver:** keep the no-arg discovery methods on the published artifact ([#3726](https://github.com/yschimke/compose-ai-tools/issues/3726)) ([d4d0303](https://github.com/yschimke/compose-ai-tools/commit/d4d0303f1d55751a7b25296e5a9b68b5fe8e54da))
+* **serve:** draw a real link-unfurl card instead of pointing at a phone render ([#3731](https://github.com/yschimke/compose-ai-tools/issues/3731)) ([b97b351](https://github.com/yschimke/compose-ai-tools/commit/b97b351db5faa3134af232df6bfbed2dac7b73e8))
+* **serve:** filter, focus and theme-lane corrections for the catalog tree ([#3740](https://github.com/yschimke/compose-ai-tools/issues/3740)) ([8d52a58](https://github.com/yschimke/compose-ai-tools/commit/8d52a5895ed6225cd845120734b823709a032ef9))
+
 ## [1.0.0](https://github.com/yschimke/compose-ai-tools/compare/v0.19.61...v1.0.0) (2026-08-12)
 
 
