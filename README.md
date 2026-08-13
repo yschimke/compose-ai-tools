@@ -634,6 +634,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-path-spec-triptych/dark](renders/serve-viewer-path-spec-triptych.dark.png) |
 | `light` | ![serve-viewer-path-spec-triptych/light](renders/serve-viewer-path-spec-triptych.light.png) |
 
+## serve-viewer-pinned-lanes
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-pinned-lanes/dark](renders/serve-viewer-pinned-lanes.dark.png) |
+| `light` | ![serve-viewer-pinned-lanes/light](renders/serve-viewer-pinned-lanes.light.png) |
+
 ## serve-viewer-rc-players
 
 | Theme | Capture |

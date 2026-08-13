@@ -1069,6 +1069,18 @@
       "sha256": "c8bf9b55a24f133418e9b82a2b07c096983db37d58a298db4a6554938445bbea",
       "size": 71657
     },
+    "serve-viewer-pinned-lanes.dark.png": {
+      "fixture": "serve-viewer-pinned-lanes",
+      "theme": "dark",
+      "sha256": "99794173058636c5ca624aefe85d6d9851210013064342bd4599dfa8e4014f8e",
+      "size": 101684
+    },
+    "serve-viewer-pinned-lanes.light.png": {
+      "fixture": "serve-viewer-pinned-lanes",
+      "theme": "light",
+      "sha256": "3af1ff93a442ccf1afefcd9727daf60eb2104f8073373d54c2ef5dd313f5db19",
+      "size": 99308
+    },
     "serve-viewer-rc-players-player-cmp-android.dark.png": {
       "fixture": "serve-viewer-rc-players-player-cmp-android",
       "theme": "dark",
