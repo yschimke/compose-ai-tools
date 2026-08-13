@@ -63,7 +63,14 @@ class PreviewManifestRouter(
     sandboxCount = sandboxCount,
     userClassloaderHolderFactory = userClassloaderHolderFactory,
     previewSpecResolver = { previewId ->
-      manifest.previews.firstOrNull { it.id == previewId }?.renderSpec()
+      // Row-addressed ids (issue #3749) resolve here too, so `interactive/start` /
+      // `recording/start` on `<baseId>_Dark` hold that row's composition rather than failing as an
+      // unknown previewId (which surfaces as MethodNotFound and drops the panel to v1).
+      val byId = manifest.previews.associateBy { it.id }
+      byId[previewId]?.renderSpec()
+        ?: PreviewRowAddress.split(previewId, isParameterized(byId))?.let { split ->
+          byId.getValue(split.baseId).renderSpec().copy(previewParameterRow = split.row)
+        }
     },
     interactiveSessionListener = interactiveSessionListener,
   ) {
@@ -82,12 +89,19 @@ class PreviewManifestRouter(
   internal fun routePayload(payload: String): String {
     val inbound = parseInboundPayload(payload)
     val previewId = inbound["previewId"]
+    // Issue #3749 — an exact manifest hit is the ordinary case; a miss may still be a `@Preview
+    // Parameter` **row** of a known base id (`<baseId>_Dark` / `<baseId>_PARAM_4`), which discovery
+    // could not have enumerated. [rowAddressed] resolves that against the entries we do have.
+    val addressed = previewId?.let(::rowAddressed)
     val entry =
-      previewId?.let { byId[it] }
+      addressed?.entry
         ?: error(
           "PreviewManifestRouter: no manifest entry for previewId='${previewId ?: "<missing>"}' " +
             "(payload='$payload'). Manifest knows: ${byId.keys}"
         )
+    // An explicit inbound token wins over the one parsed out of the id, so a caller can render a
+    // row of the bare base id without minting a row id for it.
+    val row = inbound["previewParameterRow"]?.takeIf { it.isNotBlank() } ?: addressed.row
     val resolved = entry.resolved()
     // PROTOCOL.md § 5 (`renderNow.overrides.device`) — when the inbound carries a `device=` token
     // we resolve it against the catalog and use its widthPx/heightPx/density as the BASE for this
@@ -132,6 +146,9 @@ class PreviewManifestRouter(
     val resolvedWrapWidth = if (rotated) resolved.wrapHeight else resolved.wrapWidth
     val resolvedWrapHeight = if (rotated) resolved.wrapWidth else resolved.wrapHeight
     return buildString {
+      // The *requested* id, not the base entry's — a row render is its own preview as far as
+      // every downstream consumer keyed by previewId is concerned (data products, history, the
+      // panel's card).
       append("previewId=").append(previewId).append(';')
       append("className=").append(entry.className).append(';')
       append("functionName=").append(entry.functionName).append(';')
@@ -220,10 +237,35 @@ class PreviewManifestRouter(
           if (resolved.previewParameterLimit != Int.MAX_VALUE) {
             append("previewParameterLimit=").append(resolved.previewParameterLimit).append(';')
           }
+          // Which row to bind (issue #3749). Absent means value 0, the pre-existing contract.
+          row?.let { r -> append("previewParameterRow=").append(r).append(';') }
         }
+      // A row render writes its own artifact, keyed the way the fan-out renderer keys it
+      // (`<stem>_<row>.png`), so rendering row 4 can't clobber row 0's PNG or the data products
+      // the file-backed registry resolves from it.
       append("outputBaseName=").append(resolved.outputBaseName)
+      row?.let { append('_').append(it) }
     }
   }
+
+  /**
+   * Resolves [previewId] to the manifest entry that should render it, plus the `@PreviewParameter`
+   * row it names (null for an ordinary preview).
+   *
+   * Exact hit first; on a miss, [PreviewRowAddress] splits `<baseId>_<row>` against the entries
+   * that declare a provider. Returns null when neither resolves, which is the caller's "unknown
+   * previewId" error. Wire-format twin of the desktop router's; keep both in lockstep.
+   */
+  internal fun rowAddressed(previewId: String): Addressed? {
+    byId[previewId]?.let {
+      return Addressed(it, null)
+    }
+    val split = PreviewRowAddress.split(previewId, isParameterized(byId)) ?: return null
+    return Addressed(byId.getValue(split.baseId), split.row)
+  }
+
+  /** A previewId resolved against the manifest: the entry to render, and which row of it. */
+  internal data class Addressed(val entry: PreviewManifestEntry, val row: String?)
 
   private fun parseInboundPayload(payload: String): Map<String, String> {
     val map = mutableMapOf<String, String>()
@@ -275,6 +317,16 @@ class PreviewManifestRouter(
         PreviewManifest.serializer(),
         fileSystem.read(file.path.toPath()) { readUtf8() },
       )
+    }
+
+    /**
+     * [PreviewRowAddress.split]'s predicate over a manifest: "is this base id an entry that
+     * declares a `@PreviewParameter` provider?". Gating on the provider — not merely on the id
+     * existing — is what stops an unrelated preview that happens to share a prefix from being read
+     * as a row of its neighbour.
+     */
+    internal fun isParameterized(byId: Map<String, PreviewManifestEntry>): (String) -> Boolean = {
+      byId[it]?.resolved()?.previewParameterProviderClassName?.isNotBlank() == true
     }
   }
 }

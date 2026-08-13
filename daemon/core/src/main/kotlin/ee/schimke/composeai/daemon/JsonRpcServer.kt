@@ -912,7 +912,7 @@ class JsonRpcServer(
       // Reject them cleanly here rather than falling through to the composable-method reflection
       // path, which would throw NoSuchMethodException (the "method" is the activity class itself)
       // and surface as renderFailed. Interactive daemon support is tracked as a follow-up.
-      val kind = previewIndex.byId(previewId)?.params?.kind
+      val kind = previewIndex.rowResolved(previewId)?.info?.params?.kind
       if (kind == "ACTIVITY" || kind == "APP_TOUR") {
         rejected.add(
           RejectedRender(
@@ -1352,7 +1352,7 @@ class JsonRpcServer(
         return
       }
     val previewMetadata =
-      previewIndex.byId(previewId)?.let {
+      previewIndex.rowResolved(previewId)?.info?.let {
         PreviewMetadataSnapshot(
           displayName = it.displayName,
           group = it.group,
@@ -3385,7 +3385,7 @@ class JsonRpcServer(
         return
       }
     try {
-      val info = previewIndex.byId(params.previewId)
+      val info = previewIndex.rowResolved(params.previewId)?.info
       val spec =
         RecordingTestGenerator.defaultSpec(
           previewId = params.previewId,

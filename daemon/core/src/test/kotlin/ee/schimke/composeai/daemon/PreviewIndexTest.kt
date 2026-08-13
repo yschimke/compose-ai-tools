@@ -16,6 +16,62 @@ import org.junit.Test
 class PreviewIndexTest {
 
   @Test
+  fun `rowResolved resolves a row-addressed id to its base entry and keeps the row`() {
+    // Issue #3749 — the index carries base ids only (discovery can't enumerate a provider), so
+    // every metadata lookup for a row id used to come back null: a row render landed in history
+    // with no display name / group / source file, and `recording/generateTest` emitted a test with
+    // no function name. A row shares all of that with its base.
+    val tmp = Files.createTempFile("previews-row", ".json")
+    Files.writeString(
+      tmp,
+      """
+      {
+        "module": ":samples:cmp",
+        "variant": "debug",
+        "previews": [
+          {
+            "id": "Screen_Light",
+            "className": "com.example.ScreensKt",
+            "functionName": "Screen",
+            "sourceFile": "Screens.kt",
+            "params": { "previewParameterProviderClassName": "com.example.TintProvider" }
+          },
+          {
+            "id": "Plain",
+            "className": "com.example.ScreensKt",
+            "functionName": "Plain",
+            "sourceFile": "Screens.kt"
+          }
+        ]
+      }
+      """
+        .trimIndent(),
+    )
+    val index = PreviewIndex.loadFromFile(tmp)
+
+    // Metadata comes from the base entry...
+    assertEquals("Screen", index.rowResolved("Screen_Light_PARAM_4")?.info?.methodName)
+    assertEquals("Screens.kt", index.rowResolved("Screen_Light_Dark")?.info?.sourceFile)
+    // ...and the row rides alongside it. Dropping it here would let a caller that builds a render
+    // (the `previewIndexBackedSpecResolver` fallback lane) compose value 0 under the row's id.
+    assertEquals("PARAM_4", index.rowResolved("Screen_Light_PARAM_4")?.row)
+    assertEquals("Dark", index.rowResolved("Screen_Light_Dark")?.row)
+
+    // The base id itself resolves with no row.
+    assertEquals("Screen", index.rowResolved("Screen_Light")?.info?.methodName)
+    assertNull(index.rowResolved("Screen_Light")?.row)
+
+    // A preview with no provider has no rows — an id that merely shares its prefix must not
+    // borrow a neighbour's metadata.
+    assertNull(index.rowResolved("Plain_Dark"))
+    assertNull(index.rowResolved("Unrelated"))
+
+    // `byId` stays exact, so callers that never opted into rows are unaffected.
+    assertNull(index.byId("Screen_Light_PARAM_4"))
+    assertEquals("Screen", index.byId("Screen_Light")?.methodName)
+  }
+
+  @Test
   fun `loadFromFile happy path indexes previews by id`() {
     val tmp = Files.createTempFile("previews", ".json")
     Files.writeString(

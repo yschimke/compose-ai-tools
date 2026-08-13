@@ -22,7 +22,12 @@ package ee.schimke.composeai.renderer
 internal object PreviewParameterLabels {
 
   fun suffixesFor(values: List<Any?>): List<String> {
-    val labels = values.map { rawLabel(it)?.let(::sanitize)?.takeIf { s -> s.isNotEmpty() } }
+    val labels =
+      values.map {
+        rawLabel(it)
+          ?.let(::sanitize)
+          ?.takeIf { s -> s.isNotEmpty() && !RESERVED_INDEX_LABEL.matches(s) }
+      }
     // Duplicate labels would clobber each other on disk. When any two
     // values produce the same label, fall back to `_PARAM_<idx>` for
     // every value in the fan-out (not just the colliders) so the
@@ -91,4 +96,19 @@ internal object PreviewParameterLabels {
   }
 
   private const val MAX_LABEL_LEN = 32
+
+  /**
+   * The `PARAM_<digits>` shape is **reserved** for the positional fallback below, so a value whose
+   * derived label happens to take it is treated as unlabelled and gets its own `_PARAM_<idx>`.
+   *
+   * Without this the two meanings collide and a caller can't tell them apart: the daemon addresses
+   * one row of a fan-out by this same suffix (issue #3749), reading `PARAM_<n>` as "value n". A
+   * value at index 0 labelled `PARAM_1` would emit `<stem>_PARAM_1.png` from the fan-out while the
+   * daemon resolved that id to value *1* — silently the wrong state, and an out-of-range `<n>`
+   * would fail a row that genuinely exists. Reserving the shape at generation time is what keeps
+   * the filenames the renderer writes and the ids the daemon accepts describing the same row.
+   */
+  private val RESERVED_INDEX_LABEL = Regex(INDEX_LABEL_PATTERN)
+
+  private const val INDEX_LABEL_PATTERN = "PARAM_[0-9]+"
 }

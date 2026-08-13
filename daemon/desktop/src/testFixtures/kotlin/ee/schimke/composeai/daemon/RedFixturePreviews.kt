@@ -1115,6 +1115,30 @@ fun ThemedTintedSquare(tint: Long) {
 }
 
 /**
+ * `@PreviewParameter` fixture whose two values carry labels differing **only by case** — the shape
+ * that makes row addressing's label matching subtle (issue #3749 review follow-up).
+ *
+ * [PreviewParameterLabels][ee.schimke.composeai.renderer.PreviewParameterLabels] compares labels
+ * case-*sensitively* when deciding whether a fan-out collides, so this provider legitimately emits
+ * `<stem>_Dark.png` AND `<stem>_dark.png` on a case-sensitive filesystem. A row resolver that folds
+ * case unconditionally maps both ids onto the first value; `Dark` is green (`0xFF43A047`) and
+ * `dark` is blue (`0xFF1E88E5`) so that mistake shows up as the wrong pixels rather than as a pass.
+ */
+@Suppress("unused")
+class CaseTintProvider {
+  val values: Sequence<CaseTint> =
+    sequenceOf(CaseTint("Dark", 0xFF43A047L), CaseTint("dark", 0xFF1E88E5L))
+}
+
+/** A labelled tint for [CaseTintProvider]; `name` is what the label derivation picks up. */
+data class CaseTint(val name: String, val tint: Long)
+
+@Composable
+fun CaseLabelledSquare(swatch: CaseTint) {
+  Box(modifier = Modifier.fillMaxSize().background(Color(swatch.tint)))
+}
+
+/**
  * Stands in for Wear M3's `AnimatedMorphShape`, the wrapper every `RoundButton`-family container —
  * including the `Stepper` volume buttons that exposed this — puts between its corners and the
  * modifier chain. Matches the real class field-for-field, because that is exactly what

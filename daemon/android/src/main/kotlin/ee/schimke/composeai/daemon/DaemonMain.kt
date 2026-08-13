@@ -769,7 +769,14 @@ private const val MODULE_ID_PROP = "composeai.daemon.moduleId"
  * this resolver maps it back to the class/function and display properties from `previews.json`.
  */
 private fun previewIndexBackedSpecResolver(previewIndex: PreviewIndex): ((String) -> RenderSpec?)? {
-  return { previewId -> previewIndex.byId(previewId)?.let { renderSpecFromInfo(it) } }
+  // A row-addressed id (issue #3749) resolves to its base entry plus the row token; the token has
+  // to reach the spec or the held session would compose value 0 under the row's id — silently the
+  // wrong state, and worse than the "unknown previewId" a caller used to get here.
+  return { previewId ->
+    previewIndex.rowResolved(previewId)?.let {
+      renderSpecFromInfo(it.info).copy(previewParameterRow = it.row)
+    }
+  }
 }
 
 /**

@@ -6,8 +6,9 @@ import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 /**
  * Reflective `@PreviewParameter` support shared by the two Android render bodies — `:renderer
  * -android`'s [RobolectricRenderTest] (which fans a provider out into one render per value) and
- * `:daemon:android`'s `RenderEngine` (which renders a single frame and therefore takes the first
- * value only).
+ * `:daemon:android`'s `RenderEngine` (which renders a single frame and therefore binds exactly one
+ * value — value 0 by default, or the one a `row` token names when the caller addressed a specific
+ * row; issue #3749).
  *
  * **Why the provider FQN is passed in rather than read off the method.** The upstream
  * `androidx.compose.ui.tooling.preview.PreviewParameter` annotation has `AnnotationRetention.BINARY`
@@ -30,13 +31,44 @@ object PreviewParameterSupport {
   data class Resolved(val method: ComposableMethod, val args: List<Any?>)
 
   /**
+   * Ceiling on how far a provider is enumerated to satisfy an addressed [resolve] row, and so on
+   * the highest addressable row index.
+   *
+   * A label can only be matched against the label set of the whole fan-out, so without a bound an
+   * infinite `generateSequence` provider would be driven to exhaustion. An index-addressed row
+   * (`PARAM_<n>`) needs only `n + 1` values, but `n` comes from a caller-supplied previewId and the
+   * annotation's `limit` defaults to `Int.MAX_VALUE` — so it needs the same bound, enforced *before*
+   * enumeration, or one arbitrary id could wedge the renderer.
+   *
+   * Well past any real provider; a fan-out that long is a catalog, not a preview.
+   */
+  const val MAX_ROW_SCAN: Int = 256
+
+  /**
+   * Prefix of the index-addressed row token. Mirrors
+   * [ee.schimke.composeai.daemon.PreviewRowAddress.INDEX_PREFIX] — the renderer artefacts don't
+   * depend on `:daemon:core` (the dependency runs the other way), so the spelling is duplicated
+   * here the same way [PreviewParameterLabels] is duplicated across the two renderers.
+   */
+  private const val INDEX_ROW_PREFIX: String = "PARAM_"
+
+  /**
    * Resolves the composable entrypoint for a preview, supplying `@PreviewParameter` arguments when
    * the discovery manifest recorded a provider.
    *
    * [providerClassName] `null` (the common case) is the plain parameterless lookup. When a provider
-   * is named, its first value is used: a single-frame renderer has one output file per preview id,
-   * and the daemon's manifest ids are the un-suffixed base ids the fan-out renderer would render as
-   * `<id>_<label>`. Value 0 is the one Android Studio shows first as well.
+   * is named, [row] selects which of its values to bind:
+   * - `null` (the default) takes value 0 — the daemon's manifest ids are the un-suffixed base ids
+   *   the fan-out renderer would render as `<id>_<label>`, and value 0 is the one Android Studio
+   *   shows first as well.
+   * - `"PARAM_<n>"` takes value `n` positionally, enumerating only as far as it must.
+   * - anything else is matched against [rowSuffixes] — the same labels the fan-out puts in
+   *   `<stem>_<label>.png`, so a row is addressed by the name a caller reads off disk (issue
+   *   #3749). Exact match wins; see [matchLabel] for the case-insensitive fallback.
+   *
+   * A [row] naming an index past the end, or a label no value carries, throws
+   * [PreviewParameterLoadException] listing what IS available — silently falling back to value 0
+   * would render the wrong state under the requested id.
    *
    * The returned method is always opened for reflective invocation ([openForInvoke]) — Kotlin
    * `private fun` previews are idiomatic and resolve fine, but invoking one without that throws
@@ -49,6 +81,7 @@ object PreviewParameterSupport {
     providerClassName: String?,
     limit: Int = Int.MAX_VALUE,
     classLoader: ClassLoader? = null,
+    row: String? = null,
   ): Resolved {
     if (providerClassName.isNullOrBlank()) {
       return Resolved(clazz.getDeclaredComposableMethod(functionName).openForInvoke(), emptyList())
@@ -60,18 +93,102 @@ object PreviewParameterSupport {
         null,
       )
     }
-    // Only the first value is needed; `take(1)` also keeps an infinite `generateSequence` provider
-    // from being driven to exhaustion.
-    val values = loadValues(providerClassName, limit = 1, classLoader = classLoader)
+    val requested = row?.trim()?.takeIf { it.isNotEmpty() }
+    val requestedIndex = requested?.let(::rowIndex)
+    // [MAX_ROW_SCAN] bounds the INDEX lane too, and the check comes before enumeration rather than
+    // after. `limit` is `Int.MAX_VALUE` for an un-annotated provider, so an arbitrary previewId
+    // (`Screen_PARAM_100000000` — anyone who can name a preview can name that) would otherwise ask
+    // `loadValues` to materialise a hundred million values: an infinite `generateSequence` provider
+    // spins forever and a large finite one exhausts the daemon heap. One request must not be able
+    // to wedge the renderer, so an index at or past the ceiling is rejected outright.
+    if (requestedIndex != null && requestedIndex >= MAX_ROW_SCAN) {
+      throw PreviewParameterLoadException(
+        "@PreviewParameter(provider = $providerClassName) on $functionName: row $requestedIndex is " +
+          "beyond the $MAX_ROW_SCAN-row addressing ceiling",
+        null,
+      )
+    }
+    // Enumerate the shortest prefix that can answer the request. No row still means `take(1)`,
+    // which is what keeps an infinite `generateSequence` provider from being driven to exhaustion
+    // on the overwhelmingly common unaddressed render.
+    val scan =
+      when {
+        requested == null -> 1
+        requestedIndex != null -> requestedIndex + 1
+        else -> MAX_ROW_SCAN
+      }.coerceAtMost(limit)
+    val values = loadValues(providerClassName, limit = scan, classLoader = classLoader)
     if (values.isEmpty()) {
       throw PreviewParameterLoadException(
         "@PreviewParameter(provider = $providerClassName) on $functionName produced no values",
         null,
       )
     }
-    val args = listOf(values.first())
+    val index =
+      when {
+        requested == null -> 0
+        requestedIndex != null ->
+          requestedIndex.takeIf { it < values.size }
+            // The sequence ran dry before reaching the requested index, so `values` IS the whole
+            // fan-out — list its rows. That makes an over-request (`PARAM_999`) the cheap way for a
+            // caller to discover what a provider actually offers, which is the only discovery path
+            // there is: `previews.json` carries one entry per parameterized function and can't
+            // enumerate the provider (issue #3749).
+            ?: throw PreviewParameterLoadException(
+              "@PreviewParameter(provider = $providerClassName) on $functionName has no row " +
+                "$requestedIndex — it yields ${values.size} value(s); " +
+                "available rows: ${rowSuffixes(values)}",
+              null,
+            )
+        else ->
+          matchLabel(rowSuffixes(values), requested)
+            ?: throw PreviewParameterLoadException(
+              "@PreviewParameter(provider = $providerClassName) on $functionName has no row " +
+                "named '$requested'; available rows: ${rowSuffixes(values)}",
+              null,
+            )
+      }
+    val args = listOf(values[index])
     return Resolved(findComposableMethodWithArgs(clazz, functionName, args).openForInvoke(), args)
   }
+
+  /**
+   * The index of the row [requested] names within [suffixes], or `null` when nothing matches.
+   *
+   * **Exact first, case-insensitive only when unambiguous.** Label derivation is case-*sensitive*
+   * about collisions, so a provider yielding `Dark` and `dark` legitimately produces two distinct
+   * fan-out files on a case-sensitive filesystem; folding case unconditionally would map both ids
+   * onto the first value and silently render the wrong state for the second. The case-insensitive
+   * pass is still worth having as a fallback — a label comes from user data (a value's
+   * `name`/`toString()`, so `"Dark"`) while a hand-written id often spells the same axis
+   * differently (`"dark"`), and nothing reconciles the two — but it only decides when exactly one
+   * row matches. Two or more and the caller gets the "no row named …" diagnostic listing every
+   * row, which is the right answer: the request was genuinely ambiguous.
+   */
+  internal fun matchLabel(suffixes: List<String>, requested: String): Int? {
+    val exact = suffixes.indexOf(requested)
+    if (exact >= 0) return exact
+    val folded = suffixes.indices.filter { suffixes[it].equals(requested, ignoreCase = true) }
+    return folded.singleOrNull()
+  }
+
+  /**
+   * The row tokens for [values] — the fan-out filename suffixes of `<stem>_<suffix>.<ext>` with the
+   * leading `_` stripped, so `["Dark", "Light"]` or `["PARAM_0", "PARAM_1"]`.
+   *
+   * Public passthrough over the module-internal [PreviewParameterLabels] so [resolve]'s row
+   * matching and its diagnostics report exactly the tokens the fan-out wrote, without duplicating
+   * the label-derivation rules (which are collision-sensitive across the *whole* list — see that
+   * file).
+   */
+  fun rowSuffixes(values: List<Any?>): List<String> =
+    PreviewParameterLabels.suffixesFor(values).map { it.removePrefix("_") }
+
+  /** The index a `PARAM_<n>` row token names, or `null` for a label token. */
+  private fun rowIndex(row: String): Int? =
+    if (row.startsWith(INDEX_ROW_PREFIX))
+      row.removePrefix(INDEX_ROW_PREFIX).toIntOrNull()?.takeIf { it >= 0 }
+    else null
 
   /**
    * Opens [this] method for reflective invocation. Guarded with `runCatching`: a SecurityManager or

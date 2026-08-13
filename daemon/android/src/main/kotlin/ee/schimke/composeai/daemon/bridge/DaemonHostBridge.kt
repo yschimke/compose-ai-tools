@@ -422,6 +422,13 @@ sealed interface InteractiveCommand {
     val previewParameterProviderClassName: String? = null,
     val previewParameterLimit: Int = Int.MAX_VALUE,
     /**
+     * Which `@PreviewParameter` row the held session binds — a fan-out suffix (`Dark`) or
+     * `PARAM_<idx>`, per `PreviewParameterSupport.resolve`. Threaded so an `interactive/start` on a
+     * row-addressed previewId holds the row the caller asked for rather than silently reverting to
+     * value 0 (issue #3749). Null keeps the historical first-value contract.
+     */
+    val previewParameterRow: String? = null,
+    /**
      * Optional app-declared theme `PreviewWrapperProvider` selected by a live override. Like the
      * one-shot path, a provider that resolves successfully replaces [wrapperClassName].
      */

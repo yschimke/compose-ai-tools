@@ -1194,6 +1194,9 @@ open class RobolectricHost(
           if (base.previewParameterLimit != Int.MAX_VALUE) {
             append("previewParameterLimit=").append(base.previewParameterLimit).append(';')
           }
+          base.previewParameterRow
+            ?.takeIf { row -> row.isNotBlank() }
+            ?.let { row -> append("previewParameterRow=").append(row).append(';') }
         }
       // Key the output PNG on the (unique) previewId, like [PreviewManifestRouter]; the default
       // `className-functionName` stem would collide for the multiple `@Preview` / @WearPreview*
@@ -1534,6 +1537,7 @@ open class RobolectricHost(
         // one-shot render did instead of failing on the parameterless lookup (issue #3027).
         previewParameterProviderClassName = spec.previewParameterProviderClassName,
         previewParameterLimit = spec.previewParameterLimit,
+        previewParameterRow = spec.previewParameterRow,
         // Theme providers use the same PreviewWrapperProvider machinery and replace the declared
         // wrapper when they resolve, matching the one-shot render path.
         themeProviderFqn = spec.overrides?.themeProvider,
@@ -2641,6 +2645,7 @@ open class RobolectricHost(
               functionName = start.previewFunctionName,
               providerClassName = start.previewParameterProviderClassName,
               limit = start.previewParameterLimit,
+              row = start.previewParameterRow,
               classLoader = classLoader,
             )
           } catch (t: Throwable) {
