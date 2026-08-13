@@ -139,6 +139,44 @@ class ServeViewerDisclosuresTest {
   }
 
   @Test
+  fun `a cross-product component can walk both axes from wherever it was entered`() {
+    // state × props baked as a full matrix. The canonical variant set the landing tree draws holds
+    // one axis at its default while walking the other, so from `pressed + RTL` it offers neither
+    // `default + RTL` nor `pressed`. Both axes are folded out of the grid, so a subtree built from
+    // that set alone would make the combination reachable from nowhere at all.
+    val previews =
+      listOf("default", "pressed", "disabled").flatMap { state ->
+        listOf<String?>(null, "rtl").map { direction ->
+          ServePreview(
+            "button__ideal__${state}__light" + if (direction == null) "" else "__$direction",
+            "Button",
+            state = state,
+            theme = "light",
+            props = direction?.let { jsonProps("direction" to it) },
+          )
+        }
+      }
+    val pressedRtl = previews.first { it.state == "pressed" && it.props != null }
+    val html = ServeWeb.viewerPage(pressedRtl, token, siblings = previews, basePath = "/c")
+    val tree = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
+    // Its own state axis, RTL held fixed…
+    assertTrue(
+      tree.contains("/c/p/button__ideal__default__light__rtl?") &&
+        tree.contains("/c/p/button__ideal__disabled__light__rtl?"),
+      "the other states of THIS variant are one hop away: $tree",
+    )
+    // …and its own props axis, `pressed` held fixed.
+    assertTrue(
+      tree.contains("/c/p/button__ideal__pressed__light?"),
+      "and so is the same state without the variant: $tree",
+    )
+    assertTrue(
+      tree.contains("/c/p/button__ideal__pressed__light__rtl?token=t\" aria-current=\"page\""),
+      "the render on screen is marked: $tree",
+    )
+  }
+
+  @Test
   fun `a component with no second state or variant has no axes disclosure at all`() {
     val html = viewer(listOf(ServePreview("button__ideal__default__light", "Button")))
     assertFalse(html.contains("cp-axes-toggle"), "nothing to fold, so no control to fold it")

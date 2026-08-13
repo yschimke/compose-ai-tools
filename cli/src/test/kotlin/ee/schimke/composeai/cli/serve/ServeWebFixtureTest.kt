@@ -280,7 +280,7 @@ class ServeWebFixtureTest {
   // A catalog whose components carry baked non-default STATES (checkbox checked/unchecked, radio
   // selected/unselected), each in light + dark, tagged via the `state`/`theme` metadata the
   // `previews/variants.json` manifest carries. The landing folds each component to ONE (default)
-  // card; the viewer grows the `<nav class="cp-states">` switcher to the component's other
+  // card; the viewer grows its `.cp-axes-tree` subtree reaching the component's other
   // same-theme states. Captured so the visual-diff bot covers the state toggle end-to-end.
   private val statefulPreviews =
     listOf(
@@ -477,10 +477,9 @@ class ServeWebFixtureTest {
   // render, an ar-XB pseudo-locale, and a 2× font-scale — each in light + dark, tagged via the
   // `props` metadata the `previews/variants.json` manifest now carries (the i18n/a11y axes the
   // compose-m3 catalog folds via `variants`). The landing folds each component to ONE (default)
-  // card; the viewer grows a second `<nav class="cp-states" aria-label="Component variant">`
-  // switcher to the component's other same-theme variants. Captured so the visual-diff bot covers
-  // the variant fold + switcher end-to-end (the fix for the "duplicate RTL/locale tiles" the
-  // imported M3 tabs showed).
+  // card; the viewer's `.cp-axes-tree` subtree reaches them, listing the props axis beside the
+  // state axis under one component row. Captured so the visual-diff bot covers the variant fold
+  // end-to-end (the fix for the "duplicate RTL/locale tiles" the imported M3 tabs showed).
   private val variantPreviews =
     listOf(
       ServePreview(
@@ -1628,7 +1627,7 @@ class ServeWebFixtureTest {
         declaredThemes = listOf(ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog")),
         canRenderThemeFor = { true },
       )
-    // The default-state viewer for that catalog: renders the `<nav class="cp-states">` switcher of
+    // The default-state viewer for that catalog: renders the `.cp-axes-tree` subtree of
     // links to the component's other same-theme states, the current (Default) state marked active.
     val viewerStates =
       ServeWeb.viewerPage(
@@ -2680,20 +2679,19 @@ class ServeWebFixtureTest {
         landingVariants.contains("fontscale-2.0"),
       "props variants are folded out of the variant landing grid",
     )
-    // The default-render viewer renders the variant switcher, marking Default active and linking
-    // the
-    // same-theme RTL sibling, never the dark render.
+    // The default-render viewer renders the component subtree, marking Default active and linking
+    // the same-theme RTL sibling, never the dark render.
     val variantNav =
-      viewerVariants.substringAfter("aria-label=\"Component variant\"").substringBefore("</nav>")
+      viewerVariants.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
       variantNav.contains("aria-current=\"page\">Default</a>") &&
         variantNav.contains("/p/button-filled__ideal__default__light__direction-rtl") &&
         variantNav.contains(">RTL</a>"),
-      "the viewer variant switcher marks Default active and links the same-theme RTL variant",
+      "the viewer subtree marks Default active and links the same-theme RTL variant",
     )
     assertFalse(
       variantNav.contains("__dark__direction-rtl"),
-      "the variant switcher stays within the current theme",
+      "the subtree stays within the current theme",
     )
     // A sectioned catalog renders a navigation TREE (role=tree) with one row per section, in
     // authored order (Themes → Components → Screens), each carrying its card count; a flat catalog
@@ -2855,13 +2853,14 @@ class ServeWebFixtureTest {
       landingStates.contains("unchecked") || landingStates.contains("unselected"),
       "non-default states are folded out of the state landing grid",
     )
-    // The default-state viewer renders the state switcher, marking Default active and linking the
-    // same-theme unchecked sibling.
-    val statesNav = viewerStates.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    // The default-state viewer renders the component subtree, marking Default active and linking
+    // the same-theme unchecked sibling.
+    val statesNav =
+      viewerStates.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
       statesNav.contains("aria-current=\"page\">Default</a>") &&
         statesNav.contains("/p/checkbox__ideal__unchecked__light"),
-      "the viewer state switcher marks Default active and links the same-theme sibling",
+      "the viewer subtree marks Default active and links the same-theme sibling",
     )
     // A section-less catalog gains SYNTHESIZED family sub-group dividers (as <h2 cp-group-head>)
     // over

@@ -1428,6 +1428,13 @@ object ServeWeb {
     defaultRowAttrs: String = "",
     /** Collapsed by default; the viewer's subtree opens, having only one component to show. */
     collapsed: Boolean = true,
+    /**
+     * Whether to lead the children with a synthetic **Default** row pointing at [defaultHref]. The
+     * landing needs it — its rows are the component's *variants*, and the default render is not one
+     * of them. The viewer's rows already include the default (it is a state like any other), so
+     * emitting it there would list the same render twice under one component.
+     */
+    syntheticDefaultRow: Boolean = true,
     /** The row whose href matches is `aria-current="page"` — the render on screen. */
     currentHref: String? = null,
     indent: String = "        ",
@@ -1445,7 +1452,9 @@ object ServeWeb {
     append(">")
     append(WebEscaping.htmlEscape(label))
     if (variants.isNotEmpty()) {
-      append("<span class=\"cp-tree-count\">${variants.size + 1}</span>")
+      append(
+        "<span class=\"cp-tree-count\">${variants.size + if (syntheticDefaultRow) 1 else 0}</span>"
+      )
     }
     append("</a>\n")
     if (variants.isNotEmpty()) {
@@ -1453,9 +1462,11 @@ object ServeWeb {
       append(" role=\"group\">\n")
       // The default render leads, so the list reads as "the component, then how else it renders"
       // rather than starting at an exceptional state.
-      append("$indent    <li role=\"none\"><a class=\"cp-tree-variant cp-tree-link\"")
-      append(" role=\"treeitem\" href=\"${WebEscaping.htmlEscape(defaultHref)}\"$defaultRowAttrs")
-      append("${current(defaultHref)}>Default</a></li>\n")
+      if (syntheticDefaultRow) {
+        append("$indent    <li role=\"none\"><a class=\"cp-tree-variant cp-tree-link\"")
+        append(" role=\"treeitem\" href=\"${WebEscaping.htmlEscape(defaultHref)}\"$defaultRowAttrs")
+        append("${current(defaultHref)}>Default</a></li>\n")
+      }
       variants.forEach { v ->
         // A variant is folded out of the grid, so unlike the rows above it has nowhere on the
         // landing page to jump to — its href is a real navigation, left to the browser.
@@ -1528,29 +1539,94 @@ object ServeWeb {
    * Returns "" when the component has no second render — the same silence the chip rows kept, so a
    * single-state component grows no navigation it cannot use.
    */
+  /** The component's default render in [current]'s theme lane, or [current] when it has none. */
+  private fun componentDefault(
+    current: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+  ): ServePreview {
+    val key = componentKey(current)
+    val lane = themeLane(current, darkFirst)
+    return all.firstOrNull {
+      componentKey(it) == key &&
+        themeLane(it, darkFirst) == lane &&
+        !isNonDefaultState(it) &&
+        !hasNonDefaultProps(it)
+    } ?: current
+  }
+
   /**
-   * Whether this component varies on [axis] (`"state"` or `"props"`) within the viewer's current
-   * theme lane — which is what lets the folded disclosure name the axes it put away. Derived from
-   * [primaryVariants] rather than re-deriving the axis rules, so the toggle can never claim an axis
-   * the subtree underneath it does not offer.
+   * Every render of [current]'s component reachable in ONE hop from where the reader is standing.
+   *
+   * Two sets, unioned. [primaryVariants] from the component's default is the canonical set the
+   * landing tree draws — one axis at a time, which is what keeps that tree navigable across a whole
+   * catalog. But a component may bake state × props as a CROSS-PRODUCT, and that set holds one axis
+   * at its default while walking the other: from `RTL` it offers no `pressed + RTL`, and since the
+   * grid folds both axes out, the combination would be reachable from nowhere at all. So the rows
+   * relative to [current] — its states holding its props fixed, its props holding its state fixed,
+   * exactly how the chip switchers this replaced were keyed — are unioned in, and lead, because
+   * they are the moves from *here*.
+   *
+   * Deduped by href, so a component with only one axis (nearly all of them) gets exactly the
+   * canonical list and nothing doubles up.
+   */
+  private fun componentRenderRows(
+    current: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+    href: (ServePreview) -> String,
+  ): List<TreeVariant> {
+    val lane = themeLane(current, darkFirst)
+    val rows = LinkedHashMap<String, TreeVariant>()
+    // This render's own state axis, holding its props fixed.
+    val stateKey = switcherStateKey(current)
+    val byState = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (switcherStateKey(p) != stateKey || themeLane(p, darkFirst) != lane) continue
+      byState.putIfAbsent(p.state ?: "default", p)
+    }
+    if (byState.size > 1) {
+      byState.entries
+        .sortedBy { if (it.key == "default") 0 else 1 }
+        .forEach { (state, p) ->
+          rows.putIfAbsent(href(p), TreeVariant(stateLabel(state), href(p), "state"))
+        }
+    }
+    // …and its props axis, holding its state fixed.
+    val propsKey = switcherPropsKey(current)
+    val curState = current.state ?: "default"
+    val byProps = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (switcherPropsKey(p) != propsKey || themeLane(p, darkFirst) != lane) continue
+      if ((p.state ?: "default") != curState) continue
+      byProps.putIfAbsent(propsSignature(p.props), p)
+    }
+    if (byProps.size > 1) {
+      byProps.entries
+        .sortedBy { if (it.key == "") 0 else 1 }
+        .forEach { (_, p) ->
+          rows.putIfAbsent(href(p), TreeVariant(propsLabel(p.props), href(p), "props"))
+        }
+    }
+    // Then the component's canonical set, for everything the two axes above did not already reach.
+    primaryVariants(componentDefault(current, all, darkFirst), all, darkFirst, href).forEach {
+      rows.putIfAbsent(it.href, it)
+    }
+    return rows.values.toList()
+  }
+
+  /**
+   * Whether this component varies on [axis] (`"state"` or `"props"`), which is what lets the folded
+   * disclosure name the axes it put away. Derived from [componentRenderRows] rather than
+   * re-deriving the axis rules, so the toggle can never claim an axis the subtree underneath it
+   * does not offer.
    */
   private fun componentHasAxis(
     preview: ServePreview,
     siblings: List<ServePreview>,
     darkFirst: Boolean,
     axis: String,
-  ): Boolean {
-    val key = componentKey(preview)
-    val lane = themeLane(preview, darkFirst)
-    val default =
-      siblings.firstOrNull {
-        componentKey(it) == key &&
-          themeLane(it, darkFirst) == lane &&
-          !isNonDefaultState(it) &&
-          !hasNonDefaultProps(it)
-      } ?: preview
-    return primaryVariants(default, siblings, darkFirst) { "" }.any { it.axis == axis }
-  }
+  ): Boolean = componentRenderRows(preview, siblings, darkFirst) { it.id }.any { it.axis == axis }
 
   private fun componentSubtreeHtml(
     preview: ServePreview,
@@ -1564,25 +1640,17 @@ object ServeWeb {
     // arriving on `disabled` must not re-root the tree at `disabled` and hide the rest. Held to the
     // current theme lane so navigating within a dark catalog stays dark, exactly as the chip rows
     // and the component nav already do.
-    val key = componentKey(preview)
-    val lane = themeLane(preview, darkFirst)
-    val default =
-      siblings.firstOrNull {
-        componentKey(it) == key &&
-          themeLane(it, darkFirst) == lane &&
-          !isNonDefaultState(it) &&
-          !hasNonDefaultProps(it)
-      } ?: preview
-    val primary = primaryVariants(default, siblings, darkFirst, ::href)
-    // The render ON SCREEN is always a row, even when [primaryVariants] would not have listed it.
-    // A catalog can carry a variant whose axis lives only in its id — `…__default__light__
-    // content-icon-label` with no `props` metadata — and such a render is not in its component's
-    // variant set, so a subtree built from that set alone would show the reader every render of
-    // this component except the one they are looking at, with nothing marked current. A tree that
-    // says "this component's renders" has to contain the page it is drawn on.
+    val default = componentDefault(preview, siblings, darkFirst)
+    val rows = componentRenderRows(preview, siblings, darkFirst, ::href)
+    // The render ON SCREEN is always a row, even when neither axis set would have listed it. A
+    // catalog can carry a variant whose axis lives only in its id — `…__default__light__
+    // content-icon-label` with no `props` metadata — and such a render belongs to no axis, so a
+    // subtree built from the axes alone would show the reader every render of this component
+    // except the one they are looking at, with nothing marked current. A tree that says "this
+    // component's renders" has to contain the page it is drawn on.
     val variants =
-      if (primary.any { it.href == href(preview) } || preview.id == default.id) primary
-      else primary + TreeVariant(previewDisplayName(preview), href(preview), "props")
+      if (rows.any { it.href == href(preview) } || preview.id == default.id) rows
+      else rows + TreeVariant(previewDisplayName(preview), href(preview), "props")
     if (variants.isEmpty()) return ""
     return buildString {
         append("<nav class=\"cp-tree cp-axes-tree\" aria-label=\"Component renders\">\n")
@@ -1596,6 +1664,7 @@ object ServeWeb {
           // One component, already chosen — a collapsed subtree would be a disclosure inside a
           // disclosure, and the outer one is the control that decides whether any of this shows.
           collapsed = false,
+          syntheticDefaultRow = false,
           currentHref = href(preview),
           indent = "    ",
         )
