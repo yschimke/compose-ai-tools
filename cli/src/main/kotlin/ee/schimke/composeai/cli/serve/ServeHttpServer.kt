@@ -1643,8 +1643,10 @@ class ServeHttpServer(
           hasParityView =
             renderHost.parityActivity() != null ||
               renderHost.previews.any { renderHost.designReferencesFor(it.id).isNotEmpty() },
-          // Same condition `handleDesignPageIndex` serves on, for the same reason.
-          pageCount = renderHost.designPages().pages.size,
+          // Same condition `handleDesignPageIndex` serves on, for the same reason. Listed by name
+          // in the navigation tree, so the landing has to know what they are called, not just how
+          // many there are.
+          designPages = renderHost.designPages().pages.map { ServeWeb.PageLink(it.id, it.name) },
           // …and name that action after the design tool the catalog is specified by, read from the
           // references it published (or from the parity feed's Figma lane when the references are
           // rasters with no provider). Null ⇒ the generic "design parity" label.
