@@ -23,6 +23,8 @@ shoot it again.
 
 | file | what it is |
 | --- | --- |
+| `theme-overflow-before.png` | the `serve-viewer-theme-overflow` fixture **before**: eight theme chips on a row of their own, four of them ellipsised, the drawer toggles at either end of the bar |
+| `theme-overflow-after.png` | the same page **after**: the chips fold behind `THEME · Night` on the title row, and the row they occupied is back |
 | `viewer-folded.png` | the resting state on a wide catalog: ten states and five themes folded behind `STATE · Default` / `THEME · Day`, the render starting where three chip rows used to |
 | `viewer-axes-open.png` | both folds opened — the state chips and the theme bar are one click away, and the toggles go tonal to say so |
 | `viewer-nav-closed.png` | the component list collapsed **on a desktop**, which it could not be before: the 240px column goes back to the stage |
