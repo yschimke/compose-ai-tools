@@ -30,6 +30,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "mcp" to { a -> McpCommand(a).run() },
     "update" to { a -> UpdateCommand(a).run() },
     "init-script" to { a -> InitScriptCommand(a).run() },
+    "pin" to { a -> PinCommand(a).run() },
     "version" to { _ -> println("compose-preview $BUNDLE_VERSION") },
     "help" to { a -> printUsage(full = "--all" in a) },
   )
@@ -118,7 +119,7 @@ private fun printUsage(full: Boolean = false) {
       inspect   a11y · diff-semantics · devices · extensions · history · profile
       capture   render-matrix · record · bundle
       share     serve · share-preview
-      setup     update · init-script
+      setup     update · init-script · pin
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
 
     Common options: --module <name>, --filter <pattern>, --id <exact>, --json,
@@ -196,6 +197,11 @@ private fun printFullUsage() {
                        (--path, default) or its rendered body (--print). Useful for driving
                        Gradle directly with the same `--init-script` body the CLI uses
                        internally.
+      pin              Show or set the project's compose-preview version pin — one version,
+                       honoured by the CLI, the VS Code extension and the install / apply
+                       GitHub actions. `pin` reports; `pin <version>` / `pin --cli` writes
+                       `composePreview.version` into gradle.properties; `pin --remove` clears
+                       it.
       version          Print the installed bundle version and exit
       help             Show this help message
 

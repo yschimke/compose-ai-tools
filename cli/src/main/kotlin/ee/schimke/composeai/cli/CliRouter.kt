@@ -39,7 +39,7 @@ internal object CliRouter {
         ),
       "capture" to listOf("render-matrix", "record", "bundle"),
       "share" to listOf("serve", "share-preview"),
-      "setup" to listOf("update", "init-script"),
+      "setup" to listOf("update", "init-script", "pin"),
     )
 
   /** Pseudo-commands that aren't backed by a `Command` class but are valid flat verbs. */

@@ -2,8 +2,10 @@ name: 'Install compose-preview CLI'
 description: >
   Download a release of the compose-preview CLI and add its bin/ to
   $GITHUB_PATH. The version is a literal string (e.g. "0.8.1"), the
-  word "latest" (resolved via the GitHub releases API), or the word
-  "catalog" (read from a Gradle version catalog).
+  word "latest" (resolved via the GitHub releases API), the word "pin"
+  (the project's compose-preview version pin — the same value the CLI
+  and the VS Code extension read, so one pin drives every entrypoint),
+  or the word "catalog" (a specific Gradle version-catalog key).
 
   This is the consumer-facing install action. The sibling install-cli
   action — which builds the CLI from source — is internal to this
@@ -18,19 +20,30 @@ description: >
 inputs:
   version:
     description: >
-      Literal version (e.g. "0.8.1"), "latest", or "catalog". A leading
-      "v" is stripped.
+      Literal version (e.g. "0.8.1"), "latest", "pin", or "catalog". A
+      leading "v" is stripped. "pin" reads the project's version pin —
+      `composePreview.version` in gradle.properties, else the catalog
+      key below — which is the same pin the CLI and the VS Code
+      extension read, so CI installs the version the project chose.
+      It fails (rather than falling back to "latest") when the project
+      pins nothing, since a silent fallback is the skew this prevents.
     default: 'latest'
   catalog-path:
     description: >
-      Path to the Gradle version catalog, used when version=catalog.
+      Path to the Gradle version catalog, used when version=catalog or
+      version=pin.
     default: 'gradle/libs.versions.toml'
   catalog-key:
     description: >
-      [versions] key to read, used when version=catalog. Consumers
-      pick their own key — the default matches the convention in the
-      README's Renovate snippet.
+      [versions] key to read, used when version=catalog or version=pin.
+      Consumers pick their own key — the default matches the convention
+      in the README's Renovate snippet.
     default: 'composePreviewCli'
+  properties-path:
+    description: >
+      Path to the gradle.properties read for `composePreview.version`,
+      used when version=pin.
+    default: 'gradle.properties'
   github-token:
     description: >
       Token used to authenticate the releases API call (avoids the
@@ -53,6 +66,7 @@ runs:
         INPUT_VERSION: ${{ inputs.version }}
         CATALOG_PATH: ${{ inputs.catalog-path }}
         CATALOG_KEY: ${{ inputs.catalog-key }}
+        PROPERTIES_PATH: ${{ inputs.properties-path }}
         # github-token override falls back to the workflow token so the
         # default path is "authenticated" without consumer ceremony.
         GITHUB_TOKEN: ${{ inputs.github-token != '' && inputs.github-token || github.token }}

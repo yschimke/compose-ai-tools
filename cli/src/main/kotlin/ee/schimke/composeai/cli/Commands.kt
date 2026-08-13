@@ -932,14 +932,7 @@ abstract class Command(
     }
   }
 
-  protected fun findProjectRoot(): File? {
-    var dir: File? = File(".").absoluteFile
-    while (dir != null) {
-      if (File(dir, "gradlew").exists()) return dir
-      dir = dir.parentFile
-    }
-    return null
-  }
+  protected fun findProjectRoot(): File? = findGradleProjectRoot()
 }
 
 /**
