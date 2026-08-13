@@ -247,7 +247,26 @@ class ServeCatalogStore(
     val repo = sourceRepo?.takeIf { it.isNotBlank() } ?: this.repo
     val branchPrefix = sourceBranchPrefix?.takeIf { it.isNotBlank() } ?: this.branchPrefix
     val branch = "$branchPrefix$system"
-    val base = "https://raw.githubusercontent.com/$repo/$branch/"
+
+    // The branch's publish history, read BEFORE anything else — because its head decides what the
+    // rest of this load reads. Its tail is what a visitor can pin back to. Best-effort: an empty
+    // list leaves the catalog serving exactly as before, minus the permalink affordance.
+    val revisions = fetchRevisions(repo, branch)
+    val deliveryCommit = revisions.firstOrNull()?.commit
+
+    // **A load reads one commit, not a branch.** Resolving the tip and then fetching by branch name
+    // leaves a whole load's worth of requests — catalog.json, then hundreds of assets over several
+    // minutes — free to straddle a publish landing mid-flight: the pages would advertise one
+    // revision while serving a mixture of two, and a permalink minted from that page would name a
+    // commit whose bytes the visitor never saw. Pinning the base to the sha we resolved makes the
+    // load atomic by construction. It also means the ordinary served catalog and a pin to that same
+    // revision read the identical URLs, so the two can never disagree.
+    //
+    // Falls back to the branch when the feed could not be read: an un-pinned load is what this did
+    // before permalinks existed, and it is strictly better than not serving the catalog at all.
+    val base =
+      deliveryCommit?.let { "https://raw.githubusercontent.com/$repo/$it/" }
+        ?: "https://raw.githubusercontent.com/$repo/$branch/"
 
     val catalogBytes =
       try {
@@ -255,13 +274,6 @@ class ServeCatalogStore(
       } catch (e: Exception) {
         return Result.Failed(system, "could not fetch catalog.json: ${e.message}")
       } ?: return Result.Failed(system, "could not fetch $base$CATALOG_FILE")
-    // The branch's publish history. Its head is the revision this load is reading — what a
-    // permalink pins to, and something `raw.githubusercontent.com` cannot tell us (it answers a
-    // branch name with bytes and nothing else) — and the rest is what a visitor can pin *back* to.
-    // Read once per load rather than per page view. Best-effort: an empty list leaves the catalog
-    // serving exactly as before, minus the permalink affordance.
-    val revisions = fetchRevisions(repo, branch)
-    val deliveryCommit = revisions.firstOrNull()?.commit
 
     val catalog =
       try {
