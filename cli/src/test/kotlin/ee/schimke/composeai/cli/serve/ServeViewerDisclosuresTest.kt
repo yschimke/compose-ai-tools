@@ -174,6 +174,27 @@ class ServeViewerDisclosuresTest {
       tree.contains("/c/p/button__ideal__pressed__light__rtl?token=t\" aria-current=\"page\""),
       "the render on screen is marked: $tree",
     )
+    // With both axes in play a single-axis label is ambiguous, not terse: the row that resets the
+    // state (`default + RTL`) and the row that resets the props (`pressed + default`) would BOTH
+    // read "Default", and the current render would be labelled by whichever pass reached it first
+    // — "Pressed", for something that is Pressed and RTL.
+    assertTrue(tree.contains(">Default · RTL</a>"), "the state-reset row names both axes: $tree")
+    assertTrue(tree.contains(">Pressed · Default</a>"), "…and so does the props-reset row: $tree")
+    assertTrue(tree.contains(">Pressed · RTL</a>"), "…and the render on screen: $tree")
+    assertFalse(tree.contains(">Default</a>"), "no two rows may share one name: $tree")
+  }
+
+  @Test
+  fun `a single-axis component keeps the terse label`() {
+    // The other side of the rule above: repeating "· Default" on every row of the components that
+    // vary on one axis — nearly all of them — would be noise for a distinction they cannot make.
+    val html = viewer(statePreviews(3))
+    // Scoped to the variant rows: the component row above them carries the preview's own display
+    // name, which may legitimately hold a `·` of its own.
+    val rows =
+      html.substringAfter("class=\"cp-tree-children cp-tree-variants\"").substringBefore("</ul>")
+    assertTrue(rows.contains(">Default</a>") && rows.contains(">State 1</a>"), rows)
+    assertFalse(rows.contains(" · "), "a one-axis component names one axis: $rows")
   }
 
   @Test

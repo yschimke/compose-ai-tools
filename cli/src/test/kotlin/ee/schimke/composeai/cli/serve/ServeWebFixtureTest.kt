@@ -356,6 +356,26 @@ class ServeWebFixtureTest {
         }
       }
 
+  /**
+   * A component baking state × props as a full CROSS-PRODUCT — every state also rendered RTL. This
+   * is the shape whose subtree cannot be labelled one axis at a time: the row that resets the state
+   * and the row that resets the props are both "Default" unless each names both coordinates. No
+   * committed catalog had it, which is exactly why the ambiguity reached review unseen, so it gets
+   * a fixture of its own and the visual-diff bot carries it from here.
+   */
+  private val crossProductPreviews =
+    listOf("default", "pressed", "disabled").flatMap { state ->
+      listOf<String?>(null, "rtl").map { direction ->
+        ServePreview(
+          "button-filled__ideal__${state}__light" + if (direction == null) "" else "__$direction",
+          "Button · Filled",
+          state = state,
+          theme = "light",
+          props = direction?.let { jsonProps("direction" to it) },
+        )
+      }
+    }
+
   // A trusted-catalog preview that declares author knobs (a `label` string + an accent `color`) —
   // the `compose/overrides` payload PR #2281 added across the M3 catalog. On a live catalog session
   // (ServeCatalogLiveHost) these render as LIVE controls that re-render via `/render` on edit.
@@ -1635,6 +1655,17 @@ class ServeWebFixtureTest {
             ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog"),
           ),
       )
+    // The cross-product viewer, entered on `pressed + RTL` — the render that has a non-default
+    // value on BOTH axes, and so the only one from which a single-axis label is ambiguous. Its
+    // subtree names both coordinates on every row and can walk either axis without leaving the
+    // other behind.
+    val viewerCrossProduct =
+      ServeWeb.viewerPage(
+        crossProductPreviews.first { it.state == "pressed" && it.props != null },
+        token,
+        sessionId = "compose-m3",
+        siblings = crossProductPreviews,
+      )
     // The tree at full depth. `synthesizeGroups` only divides a catalog with at least two families
     // and one family holding more than one card, and the variant/state fixtures above are each a
     // single component — so neither of them renders a tree at all, and the component and variant
@@ -2054,6 +2085,7 @@ class ServeWebFixtureTest {
         "serve-landing-sections.html" to landingSections,
         "serve-viewer-states.html" to viewerStates,
         "serve-viewer-axes-folded.html" to viewerAxesFolded,
+        "serve-viewer-cross-product.html" to viewerCrossProduct,
         "serve-status.html" to serveStatus,
         "serve-landing-variants.html" to landingVariants,
         "serve-landing-tree-depth.html" to landingTreeDepth,
