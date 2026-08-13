@@ -693,6 +693,10 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         api.resetMessages();
         const observations: Record<string, unknown> = {};
         const cmpNeedle = path.join("samples", "cmp");
+        // Read once, before any work: `budgetWithin` derives each bounded wait
+        // from what is LEFT of the Mocha ceiling, which only works if the
+        // deadline is an absolute instant rather than a fresh `this.timeout()`.
+        const deadlineAt = Date.now() + this.timeout();
 
         assertRefreshRendered(
             api,
@@ -736,17 +740,92 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 await api.triggerRefresh(cmpFile, true, "full"),
                 ":samples:cmp render",
             );
+            // Wait for the SETTLED state, not the first message that names the
+            // new preview. Discovery announces the id as soon as it has scanned
+            // the recompiled classes, which is before the renderer has written
+            // that preview's PNG — so a wait that stops at "the id is present"
+            // races the render and fails on a slow runner (issue: `B. edit a
+            // @Preview source` flaking with "capture … not on disk").
+            //
+            // This does NOT weaken invariant B1 below. The bug B1 exists to
+            // catch is a *permanent* placeholder — the panel advertising a
+            // preview whose PNG never arrives — and that still fails, as a
+            // `waitFor` timeout naming the same file. What it stops failing on
+            // is the transient moment between the two, which no user could see
+            // as anything but a card that fills in a second later.
+            const capturesOnDisk = (p: PreviewRecord, moduleDir: string) => {
+                const captures = p.captures ?? [];
+                return (
+                    captures.length > 0 &&
+                    captures.every((c) =>
+                        fs.existsSync(
+                            fullRenderPath(repoRoot, moduleDir, c.renderOutput),
+                        ),
+                    )
+                );
+            };
             const afterAdd = await waitFor(
-                `setPreviews after adding ${tag}`,
-                this.timeout(),
+                `setPreviews after adding ${tag}, with its capture on disk`,
+                // Bounded, NOT `this.timeout()`. Waiting on the settled state
+                // means a preview whose PNG never arrives no longer trips the
+                // B1 assertion immediately — so an unbounded wait would burn
+                // the whole Mocha ceiling and report a bare
+                // `Timeout of 1800000ms exceeded`, losing the one diagnostic
+                // that names the missing file. That is the trade this budget
+                // (plus `describeState` below) buys back.
+                budgetWithin(deadlineAt, PANEL_UPDATE_BUDGET_MS),
                 500,
                 () => {
                     const msgs = api.getPostedMessages();
                     return latestSetPreviewsMatching(msgs, (m) => {
                         if (m.previews.length === 0) return false;
                         if (!m.moduleDir.includes(cmpNeedle)) return false;
-                        return m.previews.some((p) => p.id.endsWith(tag));
+                        const matching = m.previews.filter((p) =>
+                            p.id.endsWith(tag),
+                        );
+                        if (matching.length === 0) return false;
+                        return matching.every((p) =>
+                            capturesOnDisk(p, m.moduleDir),
+                        );
                     });
+                },
+                // What the old immediate assertion used to say, now said by the
+                // wait that replaced it: which preview arrived, and which of its
+                // captures is not on disk. A regression here reports the same
+                // path it always did.
+                () => {
+                    const latest = latestSetPreviewsMatching(
+                        api.getPostedMessages(),
+                        (m) =>
+                            m.moduleDir.includes(cmpNeedle) &&
+                            m.previews.some((p) => p.id.endsWith(tag)),
+                    );
+                    if (!latest) {
+                        return `no setPreviews for ${cmpNeedle} ever named ${tag}`;
+                    }
+                    const matching = latest.previews.filter((p) =>
+                        p.id.endsWith(tag),
+                    );
+                    return matching
+                        .map((p) => {
+                            const captures = p.captures ?? [];
+                            if (captures.length === 0) {
+                                return `preview ${p.id} arrived with 0 captures`;
+                            }
+                            const missing = captures
+                                .map((c) =>
+                                    fullRenderPath(
+                                        repoRoot,
+                                        latest.moduleDir,
+                                        c.renderOutput,
+                                    ),
+                                )
+                                .filter((resolved) => !fs.existsSync(resolved));
+                            return missing.length === 0
+                                ? `preview ${p.id} has every capture on disk`
+                                : `preview ${p.id} capture(s) not on disk: ${missing.join(", ")}`;
+                        })
+                        .join("; ");
                 },
             );
             const matched = afterAdd.previews.filter((p) => p.id.endsWith(tag));
