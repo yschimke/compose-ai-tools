@@ -133,6 +133,12 @@ def module_identity(build_dir: Path) -> str:
     Falls back to the directory itself when it doesn't follow the
     ``<module>/build/compose-previews`` convention, which keeps this total for
     ad-hoc invocations rather than raising on them.
+
+    The result names a directory under ``renders/``, so the path is resolved
+    and stripped of ``.`` / ``..`` components first. Without that, an ad-hoc
+    ``--build-dir ../build/compose-previews`` yields ``..``, and the
+    ``shutil.rmtree(renders/<module>)`` in `copy-annotated` would take out the
+    whole output tree.
     """
     parts = build_dir.parts
     module_dir = (
@@ -140,11 +146,13 @@ def module_identity(build_dir: Path) -> str:
         if len(parts) >= 3 and parts[-2:] == ("build", "compose-previews")
         else build_dir
     )
+    module_dir = module_dir.resolve()
     try:
         module_dir = module_dir.relative_to(Path.cwd())
     except ValueError:
         pass
-    return ":".join(p for p in module_dir.parts if p not in ("/", "")) or build_dir.name
+    safe = [p for p in module_dir.parts if p not in ("/", "", ".", "..")]
+    return ":".join(safe) or build_dir.name
 
 
 def is_dynamic_preview(preview: dict) -> bool:

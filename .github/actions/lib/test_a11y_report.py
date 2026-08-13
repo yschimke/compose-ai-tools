@@ -310,6 +310,23 @@ class SelectVariantsTest(unittest.TestCase):
         self.assertFalse(partial)
 
 
+class ModuleIdentityTest(unittest.TestCase):
+    def test_translates_a_build_dir_to_a_gradle_path(self):
+        self.assertEqual(
+            ar.module_identity(Path("foo/app/build/compose-previews")), "foo:app"
+        )
+
+    def test_never_yields_a_traversal_component(self):
+        # `renders/<identity>` is rmtree'd before it is written, so an identity
+        # of `..` would delete the whole output tree.
+        for raw in ("../build/compose-previews", "./build/compose-previews",
+                    "a/../b/build/compose-previews"):
+            identity = ar.module_identity(Path(raw))
+            self.assertNotIn("..", identity.split(":"), raw)
+            self.assertNotIn(".", identity.split(":"), raw)
+            self.assertTrue(identity, raw)
+
+
 class CopyAnnotatedTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
