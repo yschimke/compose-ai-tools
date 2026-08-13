@@ -130,10 +130,10 @@ object PreviewParameterSupport {
         requestedIndex != null ->
           requestedIndex.takeIf { it < values.size }
             // The sequence ran dry before reaching the requested index, so `values` IS the whole
-            // fan-out — list its rows. That makes an over-request (`PARAM_999`) the cheap way for a
-            // caller to discover what a provider actually offers, which is the only discovery path
-            // there is: `previews.json` carries one entry per parameterized function and can't
-            // enumerate the provider (issue #3749).
+            // fan-out — list its rows. That makes an over-request (`PARAM_255`, the highest the
+            // ceiling above admits) the cheap way for a caller to discover what a provider actually
+            // offers, which is the only discovery path there is: `previews.json` carries one entry
+            // per parameterized function and can't enumerate the provider (issue #3749).
             ?: throw PreviewParameterLoadException(
               "@PreviewParameter(provider = $providerClassName) on $functionName has no row " +
                 "$requestedIndex — it yields ${values.size} value(s); " +
@@ -184,11 +184,20 @@ object PreviewParameterSupport {
   fun rowSuffixes(values: List<Any?>): List<String> =
     PreviewParameterLabels.suffixesFor(values).map { it.removePrefix("_") }
 
-  /** The index a `PARAM_<n>` row token names, or `null` for a label token. */
+  /**
+   * The index a `PARAM_<n>` row token names, or `null` for a label token.
+   *
+   * The suffix must be **digits only** — the same grammar [PreviewParameterLabels] reserves. Going
+   * through `toIntOrNull` alone would accept signed spellings that label derivation happily keeps
+   * as labels: `PARAM_-0` parses to 0 and passes a `>= 0` check, so `<stem>_PARAM_-0.png` — a real
+   * labelled row on disk — would silently bind value 0 instead. The two grammars have to be the
+   * same one or a token means different things to the writer and the reader.
+   */
   private fun rowIndex(row: String): Int? =
-    if (row.startsWith(INDEX_ROW_PREFIX))
-      row.removePrefix(INDEX_ROW_PREFIX).toIntOrNull()?.takeIf { it >= 0 }
-    else null
+    if (row.startsWith(INDEX_ROW_PREFIX)) {
+      val digits = row.removePrefix(INDEX_ROW_PREFIX)
+      if (digits.isNotEmpty() && digits.all { it in '0'..'9' }) digits.toIntOrNull() else null
+    } else null
 
   /**
    * Opens [this] method for reflective invocation. Guarded with `runCatching`: a SecurityManager or

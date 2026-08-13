@@ -399,7 +399,10 @@ internal constructor(
         "scroll-gif" -> "render/scroll/gif"
         else -> return null
       }
-    val info = byId(previewId) ?: return null
+    // A row id carries its base's scroll intent (issue #3749) — `@ScrollingPreview` annotates the
+    // function, not one provider value — so resolve through the row-aware lookup or a
+    // `<base>_Dark` scroll-long render fails with "no matching dataProducts[].scroll entry".
+    val info = rowResolved(previewId)?.info ?: return null
     return info.dataProducts.firstOrNull { it.kind == kind }?.scroll
   }
 
@@ -429,7 +432,9 @@ internal constructor(
    * a separate output rather than a rival static frame.
    */
   fun staticScrollFor(previewId: String): ScrollCaptureDto? {
-    val info = byId(previewId) ?: return null
+    // Row-aware for the same reason as [scrollCaptureFor]: without it an `END` static row silently
+    // renders at the resting top instead of the scrolled-to-end frame its base asked for.
+    val info = rowResolved(previewId)?.info ?: return null
     val scrolls = info.captures.mapNotNull { it.scroll }
     if (scrolls.isEmpty()) return null
     if (!scrolls.all { it.mode.equals("END", ignoreCase = true) }) return null
