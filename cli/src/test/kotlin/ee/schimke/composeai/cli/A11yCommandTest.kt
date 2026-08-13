@@ -257,21 +257,28 @@ class A11yCommandTest {
   }
 
   @Test
-  fun `an exact id under permutations selects only that permutation`() {
-    // `readAllManifests` hands the hook an ALREADY-expanded manifest, so the ids below are what a
-    // `--permutations accessibility` run really sees. Re-expanding them here would match `Foo`
-    // too — its own expansion contains `Foo_dark` — and fan out over a preview the user didn't ask
-    // for, at the cost of a whole extra daemon render.
+  fun `an exact permutation id resolves to the preview the daemon can address`() {
+    // `--permutations accessibility` synthesises `Foo_dark` client-side; the daemon's PreviewIndex
+    // only knows the ids the plugin discovered, and resolves them exactly. Asking it for `Foo_dark`
+    // gets "unknown preview", which on a narrowed run is the *only* fetch and so fails the command
+    // outright. Match on the expansion the user saw, address the base preview.
     val cmd = TestableReportCommand(listOf("--id", "Foo_dark", "--permutations", "accessibility"))
 
-    val request =
-      cmd
-        .requestsFor(
-          listOf(manifest("app", "Foo", "Foo_dark", "Foo_rtl", "Foo_fontscale-2x", "Bar"))
-        )
-        .single()
+    val request = cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))).single()
 
-    assertEquals(listOf("Foo_dark"), request.previewIds)
+    assertEquals(listOf("Foo"), request.previewIds)
+    assertTrue(request.narrowed, "one of two previews")
+  }
+
+  @Test
+  fun `a filter under permutations fetches each base preview once`() {
+    // The expanded view has four `Foo*` rows; fetching per row would pay four daemon renders for
+    // an id space the daemon doesn't even have.
+    val cmd = TestableReportCommand(listOf("--filter", "Foo", "--permutations", "accessibility"))
+
+    val request = cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))).single()
+
+    assertEquals(listOf("Foo"), request.previewIds)
   }
 
   @Test

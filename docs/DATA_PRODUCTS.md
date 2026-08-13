@@ -39,10 +39,19 @@ The narrowing is computed from the **request**, not from the render's `renderedI
 That set is `null` both when there was no request and when the request happened to
 select every preview (the render declines to narrow, because a filtered
 `composePreviewRender` isn't build-cacheable), so it cannot answer "what did the user
-ask about". It is also matched against the manifest `readAllManifests` returns, which
-is **already permutation-expanded** — so the ids are the same ids the results carry,
-and re-expanding them would make `--id Foo_dark` also select `Foo` (whose expansion
-contains `Foo_dark`) and pay for a render nobody asked for.
+ask about".
+
+The request is resolved in the **daemon's** id space, which is a second thing worth
+getting right. `PreviewIndex.byId` resolves against the `previews.json` the plugin
+wrote, so a preview the CLI synthesised through `PreviewPermutationsCli` — the
+`Foo_dark` a `--permutations accessibility` run shows you — is not addressable: ask
+for it and the daemon answers "unknown preview". So the hook is handed the
+**unexpanded** manifests (`PreviewResultBuilder.readAllManifests`, not `Command`'s
+expanding wrapper), matching is done against the *expanded* ids because that is what
+the user saw, and the *unexpanded* id is what gets fetched. `--id Foo_dark` therefore
+fetches `Foo`, and `--filter Foo` fetches it once instead of once per permutation.
+Getting this backwards is not a rounding error: on a narrowed run the synthetic id is
+the only fetch, so it fails the whole command.
 
 The consequence to keep in mind when adding another per-preview hook: the sidecars
 (`accessibility.json` and friends) are **per-module** reports, so a narrowed run

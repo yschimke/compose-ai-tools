@@ -876,14 +876,24 @@ abstract class Command(
    * no request. The manifest-side counterpart of [matchesRequest], for the paths that fan out per
    * preview *before* there are [PreviewResult]s to filter (issue #3742).
    *
-   * Takes a manifest as [readAllManifests] returns it, i.e. **already expanded** through
-   * [PreviewPermutationsCli] — so the ids here are the same ids the results carry, and this selects
-   * exactly the previews [matchesRequest] will keep. Re-expanding would be wrong twice over: a
-   * `--permutations accessibility` run would match `Foo` (because *its* expansion contains
-   * `Foo_dark`) on an `--id Foo_dark` request and fan out over a preview the user didn't ask for.
+   * Takes the **unexpanded** discovery manifest (`PreviewResultBuilder.readAllManifests`, *not*
+   * [readAllManifests], which layers [PreviewPermutationsCli] expansion on top) and returns
+   * unexpanded ids, because the consumer is the daemon: `PreviewIndex.byId` resolves against the
+   * `previews.json` the plugin wrote, so `Foo` is addressable and the CLI-synthesised `Foo_dark` is
+   * not. Matching still happens against the *expanded* ids, since that is what the user saw in
+   * `show` output — so `--id Foo_dark` selects `Foo`, the preview the daemon can actually render,
+   * and `--filter Foo` under `--permutations accessibility` selects it once rather than four times.
+   *
+   * The two halves have to stay on opposite sides of the expansion: matching the unexpanded ids
+   * would miss a permutation request entirely, and returning the expanded ones would hand the
+   * daemon an id it answers with "unknown preview".
    */
   protected fun requestedPreviewIds(manifest: PreviewManifest): List<String> =
-    manifest.previews.map { it.id }.filter { matchesRequest(it) }
+    manifest.previews
+      .filter { preview ->
+        PreviewPermutationsCli.expand(listOf(preview), permutations).any { matchesRequest(it.id) }
+      }
+      .map { it.id }
 
   private fun modulesMatchingPreviewRequest(
     modules: List<PreviewModule>,
@@ -1761,7 +1771,8 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
    * [RawRenderOutcome.renderedIds]: that set is `null` both when there was no request and when the
    * request happened to select every preview (the render declines to narrow in that case, because a
    * filtered `composePreviewRender` isn't build-cacheable), so it cannot answer "what did the user
-   * ask about". [requestedPreviewIds] can, and lands on exactly the previews this run will print.
+   * ask about". [requestedPreviewIds] can — in the unexpanded, daemon-addressable id space these
+   * manifests are read in.
    */
   protected fun dataProductRequests(
     manifests: List<Pair<PreviewModule, PreviewManifest>>
@@ -1808,7 +1819,11 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
         scopeToPreviewRequest = true,
       )
     val manifests = readAllManifests(raw.modules)
-    produceAdditionalDataProducts(dataProductRequests(manifests))
+    // Deliberately the *unexpanded* manifests, not `manifests` — the hook drives the daemon, which
+    // only knows the previews the plugin discovered. See [requestedPreviewIds].
+    produceAdditionalDataProducts(
+      dataProductRequests(PreviewResultBuilder.readAllManifests(raw.modules))
+    )
     // After production runs, give the subclass a chance to abort the run when its data product
     // wasn't actually available — without this, a daemon-crash in `compose-preview a11y` looks
     // identical to a clean run with zero findings (issue #1453).
