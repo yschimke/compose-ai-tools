@@ -31,11 +31,16 @@ object PreviewParameterSupport {
   data class Resolved(val method: ComposableMethod, val args: List<Any?>)
 
   /**
-   * Ceiling on how far a provider is enumerated to satisfy a **label**-addressed [resolve] row. An
-   * index-addressed row (`PARAM_<n>`) needs only `n + 1` values, but a label can only be matched
-   * against the label set of the whole fan-out, so an infinite `generateSequence` provider would
-   * otherwise be driven to exhaustion here. Well past any real provider; a fan-out that long is a
-   * catalog, not a preview.
+   * Ceiling on how far a provider is enumerated to satisfy an addressed [resolve] row, and so on
+   * the highest addressable row index.
+   *
+   * A label can only be matched against the label set of the whole fan-out, so without a bound an
+   * infinite `generateSequence` provider would be driven to exhaustion. An index-addressed row
+   * (`PARAM_<n>`) needs only `n + 1` values, but `n` comes from a caller-supplied previewId and the
+   * annotation's `limit` defaults to `Int.MAX_VALUE` — so it needs the same bound, enforced *before*
+   * enumeration, or one arbitrary id could wedge the renderer.
+   *
+   * Well past any real provider; a fan-out that long is a catalog, not a preview.
    */
   const val MAX_ROW_SCAN: Int = 256
 
@@ -90,6 +95,19 @@ object PreviewParameterSupport {
     }
     val requested = row?.trim()?.takeIf { it.isNotEmpty() }
     val requestedIndex = requested?.let(::rowIndex)
+    // [MAX_ROW_SCAN] bounds the INDEX lane too, and the check comes before enumeration rather than
+    // after. `limit` is `Int.MAX_VALUE` for an un-annotated provider, so an arbitrary previewId
+    // (`Screen_PARAM_100000000` — anyone who can name a preview can name that) would otherwise ask
+    // `loadValues` to materialise a hundred million values: an infinite `generateSequence` provider
+    // spins forever and a large finite one exhausts the daemon heap. One request must not be able
+    // to wedge the renderer, so an index at or past the ceiling is rejected outright.
+    if (requestedIndex != null && requestedIndex >= MAX_ROW_SCAN) {
+      throw PreviewParameterLoadException(
+        "@PreviewParameter(provider = $providerClassName) on $functionName: row $requestedIndex is " +
+          "beyond the $MAX_ROW_SCAN-row addressing ceiling",
+        null,
+      )
+    }
     // Enumerate the shortest prefix that can answer the request. No row still means `take(1)`,
     // which is what keeps an infinite `generateSequence` provider from being driven to exhaustion
     // on the overwhelmingly common unaddressed render.
