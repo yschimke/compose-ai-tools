@@ -791,6 +791,27 @@ class ServeCommand(args: List<String>) : Command(args) {
         catalogSourceRoot != null ||
         revisions
     if (!needsGradle) {
+      // `--id` / `--filter` / `--preview` select from a *discovered module's* manifest, and this
+      // path never discovers one — the sessions come from bundles, catalogs and uploads. Ignoring
+      // them silently is the exact shape issue #3744 was filed about: the user believes they
+      // narrowed what is exposed and the server publishes everything. Say so instead.
+      val selectors =
+        listOfNotNull(
+          exactId?.let { "--id" },
+          filter?.let { "--filter" },
+          previewRef?.let { "--preview" },
+        )
+      if (selectors.isNotEmpty()) {
+        System.err.println(
+          "serve: ${selectors.joinToString(" / ")} select previews from a discovered module, but " +
+            "this server is bundle-backed — it hosts what --bundle / --bundles / --catalogs and " +
+            "uploads provide, and no manifest to select against exists."
+        )
+        System.err.println(
+          "  Drop the selector, or pass --module <path> / --discover to serve from a module."
+        )
+        exitProcess(64)
+      }
       runBundleServer()
       return
     }
@@ -2905,24 +2926,25 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Match a preview against `--id` (exact) / `--filter` (substring) / `--preview` (loose reference,
-   * see [previewMatchesReference]); all when none is set. Checked in that order — the pre-existing
-   * `--id` beats `--filter` precedence is kept rather than switched to the render commands'
-   * intersection, so adding `--preview` here changes nothing for an invocation that didn't pass it.
+   * Match a preview against `--id` (exact) / `--filter` (substring) / `--preview` (loose reference)
+   * — the shared [previewIdMatchesRequest] rule, so every selector passed must hold; all previews
+   * when none is set.
+   *
+   * This used to be a `--id` beats `--filter` precedence ladder, which read as the safer choice but
+   * could never actually take effect: `renderAllModules` narrows the build through
+   * `modulesMatchingPreviewRequest`, which intersects, so contradictory selectors have already
+   * dropped every module by the time this runs. The ladder's only reachable outcome was to disagree
+   * with the pass that had already decided.
    */
   private fun matches(preview: PreviewInfo): Boolean =
-    when {
-      exactId != null -> preview.id == exactId
-      filter != null -> preview.id.contains(filter, ignoreCase = true)
-      previewRef != null ->
-        previewMatchesReference(
-          previewRef,
-          preview.id,
-          className = preview.className,
-          functionName = preview.functionName,
-        )
-      else -> true
-    }
+    previewIdMatchesRequest(
+      preview.id,
+      exactId = exactId,
+      filter = filter,
+      previewRef = previewRef,
+      className = preview.className,
+      functionName = preview.functionName,
+    )
 
   /**
    * The same rule for something that has an id but no manifest row — a `@PreviewParameter` row id
@@ -2930,12 +2952,7 @@ class ServeCommand(args: List<String>) : Command(args) {
    * `--preview` degrades to the exact-or-substring half of [previewMatchesReference].
    */
   private fun matches(id: String): Boolean =
-    when {
-      exactId != null -> id == exactId
-      filter != null -> id.contains(filter, ignoreCase = true)
-      previewRef != null -> previewMatchesReference(previewRef, id)
-      else -> true
-    }
+    previewIdMatchesRequest(id, exactId = exactId, filter = filter, previewRef = previewRef)
 
   private fun runDaemonStart(module: PreviewModule): Boolean {
     var ok = true
@@ -3086,7 +3103,9 @@ class ServeCommand(args: List<String>) : Command(args) {
         --filter <substr> Only serve previews whose id contains this substring.
         --preview <ref>   Only serve previews the reference selects: an id, a
                           `Class.function`, a bare function name, or a case-insensitive
-                          substring of an id. --id / --filter take precedence over it.
+                          substring of an id. Combined with --id / --filter it intersects:
+                          every selector you pass has to match. Selecting needs a module
+                          (--module / --discover) — a bundle-backed server has no manifest.
         --host <addr>     Bind address (default 127.0.0.1 — loopback only).
         --lan             Bind all interfaces (0.0.0.0) so other devices on your network can
                           connect. Prints the token-gated network URL and a security warning.

@@ -1920,7 +1920,13 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
       // is the one left on disk under its own id. See its `fetch` KDoc.
       for (expanded in PreviewPermutationsCli.expand(listOf(preview), permutations)) {
         consumerIds += expanded.id
-        if (!matchesRequest(expanded.id)) continue
+        // Matched as a manifest *row*, not as a bare id: `--preview` also accepts
+        // `<Class>.<function>` and the bare function name, and the expansion carries both through
+        // from the declared preview. The id-only overload would drop those two forms here while
+        // module selection and the Gradle narrowing — which do see the metadata — kept the module,
+        // leaving the daemon with an empty work list and the command reporting a clean run it never
+        // performed.
+        if (!matchesRequest(expanded)) continue
         requested +=
           RequestedPreview(
             previewId = preview.id,

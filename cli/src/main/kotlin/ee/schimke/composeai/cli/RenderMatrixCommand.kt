@@ -164,24 +164,25 @@ class RenderMatrixCommand(args: List<String>) : Command(args) {
       .takeIf { it.isNotEmpty() }
 
   /**
-   * Match a preview against `--id` (exact) / `--filter` (substring) / `--preview` (loose reference,
-   * see [previewMatchesReference]); all when none is set. Checked in that order because the command
-   * needs exactly one match anyway — the tightest selector the user gave is the one worth
-   * honouring.
+   * Match a preview against `--id` (exact) / `--filter` (substring) / `--preview` (loose reference)
+   * — the shared [previewIdMatchesRequest] rule, so every selector passed must hold.
+   *
+   * Deliberately **not** a precedence ladder. `renderAllModules` above already narrowed the build
+   * through `modulesMatchingPreviewRequest`, which intersects, so `--id A --filter B` has dropped
+   * every module before this predicate ever runs. A local "tightest selector wins" rule could only
+   * disagree with that by claiming to have honoured `--id A` on a candidate set the build had
+   * already emptied — one rule, applied in both passes, is the only way the two can't contradict
+   * each other.
    */
   private fun matchesPreview(preview: PreviewInfo): Boolean =
-    when {
-      exactId != null -> preview.id == exactId
-      filter != null -> preview.id.contains(filter!!, ignoreCase = true)
-      previewRef != null ->
-        previewMatchesReference(
-          previewRef!!,
-          preview.id,
-          className = preview.className,
-          functionName = preview.functionName,
-        )
-      else -> true
-    }
+    previewIdMatchesRequest(
+      preview.id,
+      exactId = exactId,
+      filter = filter,
+      previewRef = previewRef,
+      className = preview.className,
+      functionName = preview.functionName,
+    )
 
   private fun runDaemonStart(module: PreviewModule): Boolean {
     var ok = true

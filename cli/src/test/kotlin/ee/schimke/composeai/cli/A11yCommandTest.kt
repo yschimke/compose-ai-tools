@@ -258,6 +258,31 @@ class A11yCommandTest {
   }
 
   @Test
+  fun `a fully qualified preview reference reaches the daemon work list`() {
+    // The `<Class>.<function>` form is only recognisable from the manifest row — the id here
+    // carries neither the package nor the class. Module selection and the Gradle narrowing both
+    // see the row, so they keep the module; if this fan-out matched on the bare id instead, the
+    // work list would come back empty and `a11y` would report a clean run of a module it never
+    // asked the daemon about.
+    val cmd = TestableReportCommand(listOf("--preview", "com.example.PreviewsKt.Alpha"))
+
+    val request = cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta"))).single()
+
+    assertEquals(listOf("Alpha"), request.previews.map { it.entryId })
+    assertTrue(request.narrowed)
+  }
+
+  @Test
+  fun `contradictory selectors select nothing rather than letting one win`() {
+    // `--id` and `--preview` intersect, the same rule `modulesMatchingPreviewRequest` applies when
+    // it narrows the build. A precedence ladder here would claim to have honoured `--id Alpha`
+    // against a candidate set the render pass had already emptied.
+    val cmd = TestableReportCommand(listOf("--id", "Alpha", "--preview", "Beta"))
+
+    assertEquals(emptyList(), cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta"))))
+  }
+
+  @Test
   fun `an exact permutation id is addressed as its declared preview, with overrides`() {
     // `--permutations accessibility` synthesises `Foo_dark` client-side; the daemon's PreviewIndex
     // only knows the ids the plugin discovered and resolves them exactly, so asking it for
