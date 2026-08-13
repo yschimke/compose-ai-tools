@@ -198,6 +198,49 @@ class ServeTopLevelSiteTest {
   }
 
   @Test
+  fun `the header bar names the catalog on every page`() {
+    server = newServer()
+    // The bar used to say only "compose-preview" everywhere, so which design system you were
+    // looking at lived solely in the page's own <h1> and scrolled away with it.
+    for (path in listOf("/", "/p/button-filled")) {
+      val (code, body, _) = get(path, host = siteHost)
+      assertEquals(200, code, path)
+      assertTrue(
+        body.contains("<span class=\"cp-site-catalog\">Compose Material 3</span>"),
+        "the header names the catalog on $path: $body",
+      )
+    }
+    // …and on the canonical path too — this is not a site-only affordance.
+    val (_, mainBody, _) = get("/wear-m3/")
+    assertTrue(mainBody.contains("<span class=\"cp-site-catalog\">Wear M3</span>"), mainBody)
+    // The front door belongs to no catalog, so it keeps the bare brand.
+    val (_, home, _) = get("/")
+    assertFalse(home.contains("cp-site-catalog"), home)
+  }
+
+  @Test
+  fun `a site's chrome wears its catalog's skin on every page`() {
+    server = newServer()
+    // A hostname that publishes one design system should not render its /status and its 404 in the
+    // built-in chrome beside a themed landing — one hostname, one skin.
+    for (path in listOf("/status", "/no-such-page-here")) {
+      val (_, body, _) = get(path, host = siteHost)
+      assertTrue(
+        body.contains("data-cp-theme-key=\"cp-theme:compose-m3\""),
+        "the theme choice is shared across the hostname on $path: $body",
+      )
+      assertTrue(
+        body.contains("<span class=\"cp-site-catalog\">Compose Material 3</span>"),
+        "the bar names the catalog on $path: $body",
+      )
+    }
+    // The main host's /status belongs to no catalog and is unchanged.
+    val (_, mainStatus, _) = get("/status")
+    assertFalse(mainStatus.contains("cp-theme:compose-m3"), mainStatus)
+    assertFalse(mainStatus.contains("cp-site-catalog"), mainStatus)
+  }
+
+  @Test
   fun `status reports on the site's app only`() {
     server = newServer()
     val (code, body, _) = get("/status.json", host = siteHost)

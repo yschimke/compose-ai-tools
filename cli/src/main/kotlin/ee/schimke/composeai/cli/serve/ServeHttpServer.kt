@@ -1004,6 +1004,30 @@ class ServeHttpServer(
   private fun RoutingContext.siteSystem(): String? = call.siteSystem()
 
   /**
+   * The catalog identity a **top-level site**'s non-catalog pages should wear — its name, its
+   * palette, and the `localStorage` key its theme choice is remembered under. All three empty on
+   * the main host, and on a site whose catalog has not loaded yet.
+   *
+   * A site hostname publishes one design system, so `/status` and the 404 on that host are that
+   * system's pages too. Without this they rendered in the built-in chrome beside a themed landing —
+   * one hostname wearing two skins. Read through [ServeSessionRegistry.peekHost], which never
+   * resumes: a 404 must not wake a daemon to find out what colour to be.
+   */
+  private fun RoutingContext.siteSkin(): Triple<String, String, String> {
+    val system = siteSystem() ?: return Triple("", "", "")
+    val host = sessions.peekHost(system)
+    val bundle = host?.let { catalogBundleHost(it) }
+    val name =
+      bundle?.title?.takeIf { it.isNotBlank() }
+        ?: catalogMetaSeen[system]?.title
+        ?: host?.label
+        ?: system
+    // Same key the catalog's own pages use, so one choice follows a visitor across the hostname
+    // instead of `/status` and the grid each remembering their own light/dark.
+    return Triple(name, bundle?.webThemeCss.orEmpty(), "cp-theme:$system")
+  }
+
+  /**
    * Whether a GitHub sign-in started from *this* request's origin can actually come back to it.
    *
    * False on a top-level site whose box pins a callback base URL
@@ -1164,6 +1188,7 @@ class ServeHttpServer(
    * [ServeWeb.notFoundPage]. Asset/API lanes keep their bare `text/plain` 404.
    */
   private suspend fun RoutingContext.respondNotFoundHtml(message: String) {
+    val skin = siteSkin()
     call.respondText(
       ServeWeb.notFoundPage(
         message,
@@ -1171,6 +1196,9 @@ class ServeHttpServer(
         isPublic,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
         version = BUNDLE_VERSION,
+        siteName = skin.first,
+        themeCss = skin.second,
+        themeStorageKey = skin.third,
       ),
       ContentType.Text.Html,
       HttpStatusCode.NotFound,
@@ -2877,7 +2905,14 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleHeroImage() {
     if (rejectBadToken()) return
-    val hero = call.parameters["name"]?.let { heroImages.byFileName(it) }
+    // Scoped like `/wasm/<system>/…`, and for the same reason: the `{system}` segment is not the
+    // first one, so the canonical-path interceptor never inspects it. Once a neighbour's hero has
+    // been baked — loading the main index is enough — its thumbnail would stay fetchable through a
+    // hostname that publishes one catalog.
+    val site = call.siteSystem()
+    val hero =
+      if (site != null && call.parameters["system"] != site) null
+      else call.parameters["name"]?.let { heroImages.byFileName(it) }
     if (hero == null) {
       call.respondText("no such hero image", status = HttpStatusCode.NotFound)
       return
@@ -2986,6 +3021,7 @@ class ServeHttpServer(
     // the site. The same underlying snapshot is taken either way — the scoping is a filter over it,
     // not a second collection pass.
     val data = withContext(Dispatchers.IO) { buildStatusData(onlySystem = siteSystem()) }
+    val skin = siteSkin()
     if (wantJson) {
       call.respondText(
         JSON.encodeToString(StatusResponse.serializer(), data.toResponse()),
@@ -2998,6 +3034,9 @@ class ServeHttpServer(
           token,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           version = BUNDLE_VERSION,
+          siteName = skin.first,
+          themeCss = skin.second,
+          themeStorageKey = skin.third,
         ),
         ContentType.Text.Html,
       )
@@ -4192,6 +4231,10 @@ class ServeHttpServer(
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
           // …and its own colour palette, so this system's pages are framed in its colours.
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
+          // The header bar names the catalog this preview belongs to — the viewer's own <h1>
+          // is the preview, so without this the page never says which system it is from.
+          catalogName =
+            ServeWeb.catalogHeading(catalogBundleHost(renderHost)?.title, renderHost.label),
           // Why this session is snapshot-only, when it is — the banner under the header explains
           // the
           // catalog-level reason (no live bundle, unverified, …) alongside the per-control note.

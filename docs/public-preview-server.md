@@ -120,7 +120,8 @@ OAuth dance is the real fix and isn't done yet.
 
 The same catalog, served both ways. The visible difference is the header: the canonical path keeps
 the "← All design systems" button back to the front door, and the site has no front door to return
-to. The rest of the difference is in the hrefs — `/p/<id>` rather than `/meshcore-mobile/p/<id>`.
+to. Both name the catalog in the bar (see below). The rest of the difference is in the hrefs —
+`/p/<id>` rather than `/meshcore-mobile/p/<id>`.
 
 | On the canonical path (`preview.coo.ee/meshcore-mobile/`) | As a top-level site (`meshcore.example/`) |
 | --- | --- |
@@ -140,6 +141,37 @@ Two prerequisites live outside this config: DNS for the name has to point at the
 reverse proxy in front has to route it here with a certificate (Caddy preserves `Host` and sets
 `X-Forwarded-Host`, both of which the site lookup reads). Sites are read at startup, so a
 `catalogs.json` edit needs a restart — the additive `/admin/catalogs` reconcile doesn't carry them.
+
+## The header bar names the catalog you are in
+
+The site header carries the catalog's name beside the product mark — `◇ compose-preview │
+meshcore-mobile` — on every page that belongs to a catalog: its landing, its viewers, the compare
+and parity views, its design pages. Pages that belong to no catalog (the front door, a shared
+document) keep the bare brand.
+
+It used to say only "compose-preview" everywhere, so the one fact a visitor most needs — *which
+design system am I looking at* — lived solely in the page's own `<h1>` and scrolled away with it.
+The bar is pinned, so the name stays legible while you are deep in a grid or a viewer, and it tells
+two tabs open on two catalogs apart, which the mark alone never could. It is drawn in the catalog's
+own primary colour, so a themed system's bar picks up the palette its page already wears.
+
+On a **top-level site** the name is doing double duty: the hostname publishes one design system, so
+the bar is that system's masthead rather than a breadcrumb.
+
+## The whole site wears one skin
+
+A [top-level site](#top-level-sites-one-catalog-on-a-hostname-of-its-own) publishes one design
+system, so every page on that hostname is that system's page — including the ones that belong to no
+catalog on the main host. `/status` and the 404 therefore carry the site catalog's **palette** and
+its **theme storage key**, which means:
+
+- the whole hostname is one skin, rather than a themed catalog with unthemed chrome beside it;
+- the light/dark choice a visitor makes on the grid follows them to `/status` and back, because
+  every page on the host remembers it under the same `cp-theme:<system>` key rather than each
+  page keeping its own.
+
+Both are read without resuming a suspended daemon — a 404 must not wake a render process to find
+out what colour to be.
 
 ## Catalog pages navigate as a tree
 

@@ -554,16 +554,38 @@ object ServeWeb {
    * BODY, which spent a whole row — plus its margin — restating the header's own job and pushed the
    * thing the page exists to show (the render) further below the fold on every viewer.
    */
-  private fun siteHeader(navSuffix: String, action: String = "", breadcrumb: String = ""): String {
+  private fun siteHeader(
+    navSuffix: String,
+    action: String = "",
+    breadcrumb: String = "",
+    /**
+     * The catalog this page belongs to, named in the bar itself.
+     *
+     * The header used to say only "compose-preview" on every page of every system, so the one fact
+     * a visitor most needs — *which design system am I looking at* — lived solely in the page's own
+     * `<h1>` and scrolled away with it. The bar is pinned, so the name belongs here: it stays
+     * legible while you are deep in a grid or a viewer, and it distinguishes two tabs open on two
+     * catalogs, which the mark alone never could.
+     *
+     * Empty on the pages that belong to no catalog (the front door, `/status`, a shared document),
+     * which keep the bare brand.
+     */
+    siteName: String = "",
+  ): String {
     val actionHtml = action.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
     val crumb = breadcrumb.takeIf { it.isNotBlank() }?.let { "\n          $it" } ?: ""
+    val name =
+      siteName
+        .takeIf { it.isNotBlank() }
+        ?.let { "\n          <span class=\"cp-site-catalog\">${WebEscaping.htmlEscape(it)}</span>" }
+        ?: ""
     return """
       <header class="cp-site-header">
         <div class="cp-site-lead">
           <a class="cp-site-brand" href="/$navSuffix" aria-label="compose-preview home">
             <span class="cp-site-mark" aria-hidden="true">◇</span>
             <span>compose-preview</span>
-          </a>$crumb
+          </a>$name$crumb
         </div>
         <div class="cp-site-status">
           <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
@@ -3756,6 +3778,17 @@ object ServeWeb {
      * span.
      */
     version: String? = null,
+    /**
+     * The catalog whose colours and name this page wears, when it is served on a **top-level site**
+     * ([ServeSites]). A site hostname publishes one design system, so its `/status` and its 404 are
+     * that system's pages too — carrying the palette and the theme key here is what makes the
+     * *whole* hostname one skin rather than a themed catalog with unthemed chrome bolted beside it.
+     * Empty (the default) on the main host, where these pages belong to no catalog and keep the
+     * built-in chrome.
+     */
+    siteName: String = "",
+    themeCss: String = "",
+    themeStorageKey: String = "",
   ): String {
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     return document(
@@ -3764,11 +3797,17 @@ object ServeWeb {
       unfurl = unfurl,
       version = version,
       navSuffix = suffix,
+      siteName = siteName,
+      themeCss = themeCss,
+      themeStorageKey = themeStorageKey,
       body =
         """
         <h1 class="cp-head">Not found</h1>
         <p class="cp-sub">${WebEscaping.htmlEscape(message)}</p>
-        <a class="cp-back" href="/$suffix">← All design systems</a>
+        <a class="cp-back" href="/$suffix">${
+          // On a site there is no index of systems to go back to — `/` is this catalog.
+          if (siteName.isBlank()) "← All design systems" else "← Back"
+        }</a>
         """
           .trimIndent(),
     )
@@ -4836,6 +4875,17 @@ object ServeWeb {
     unfurl: UnfurlMetadata? = null,
     /** Running server version (`BUNDLE_VERSION`), shown in the minimal footer. */
     version: String? = null,
+    /**
+     * The catalog whose colours and name this page wears, when it is served on a **top-level site**
+     * ([ServeSites]). A site hostname publishes one design system, so its `/status` and its 404 are
+     * that system's pages too — carrying the palette and the theme key here is what makes the
+     * *whole* hostname one skin rather than a themed catalog with unthemed chrome bolted beside it.
+     * Empty (the default) on the main host, where these pages belong to no catalog and keep the
+     * built-in chrome.
+     */
+    siteName: String = "",
+    themeCss: String = "",
+    themeStorageKey: String = "",
   ): String {
     fun esc(s: String) = WebEscaping.htmlEscape(s)
     // Gated-link suffix: token-gated ⇒ carry the token; public ⇒ nothing (routes are open).
@@ -5033,13 +5083,19 @@ object ServeWeb {
         .trimIndent()
 
     return document(
-      title = "Server status — compose-preview",
+      // A site's status is that app's status, so its tab says so rather than naming the box.
+      title =
+        if (siteName.isBlank()) "Server status — compose-preview"
+        else "Status — ${WebEscaping.htmlEscape(siteName)}",
       body = body,
       unfurlDescription =
         "Live catalog, render-daemon, and deployment status for this compose-preview server.",
       unfurl = unfurl,
       version = version,
       navSuffix = suffix,
+      siteName = siteName,
+      themeCss = themeCss,
+      themeStorageKey = themeStorageKey,
     )
   }
 
@@ -5879,6 +5935,8 @@ object ServeWeb {
       headerBreadcrumb = back,
       version = version,
       themeCss = themeCss,
+      // The bar names the catalog you are in, from the same heading the page shows.
+      siteName = heading,
       themeStorageKey = themeStorageKey(sessionId, basePath),
       declaredThemes = declaredThemeChips,
       body =
@@ -6128,6 +6186,8 @@ object ServeWeb {
       navSuffix = navSuffix,
       headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Compare formats"),
       themeCss = themeCss,
+      // The bar names the catalog you are in, from the same heading the page shows.
+      siteName = heading,
       themeStorageKey = themeStorageKey(sessionId, basePath),
       // The PNG ↔ Remote Compose comparison plays the document in a canvas on this page and
       // *scores*
@@ -6445,6 +6505,8 @@ $rows
       navSuffix = navSuffix,
       headerBreadcrumb = crumbHtml("$basePath/compare$q", heading, "Design comparison"),
       themeCss = themeCss,
+      // The bar names the catalog you are in, from the same heading the page shows.
+      siteName = heading,
       body =
         """
         <div id="cp-reference-compare" data-reference="$raster" data-actual="$actual">
@@ -6527,6 +6589,8 @@ $rows
       navSuffix = navSuffix,
       headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Pages"),
       themeCss = themeCss,
+      // The bar names the catalog you are in, from the same heading the page shows.
+      siteName = heading,
       body =
         """
         <h1 class="cp-head cp-catalog-head">Pages${compactTrustBadge(trust)}</h1>
@@ -6688,6 +6752,8 @@ $rows
       navSuffix = navSuffix,
       headerBreadcrumb = crumbHtml("$basePath/pages$q", heading, page.name),
       themeCss = themeCss,
+      // The bar names the catalog you are in, from the same heading the page shows.
+      siteName = heading,
       body =
         """
         <div id="cp-design-page">
@@ -7197,6 +7263,8 @@ $rows
       navSuffix = navSuffix,
       headerBreadcrumb = crumbHtml("$basePath/$q", heading, "Design parity"),
       themeCss = themeCss,
+      // The bar names the catalog you are in, from the same heading the page shows.
+      siteName = heading,
       body =
         """
         <h1 class="cp-head cp-catalog-head">Design parity${compactTrustBadge(trust)}</h1>
@@ -7233,6 +7301,12 @@ $rows
     preview: ServePreview,
     token: String,
     sessionId: String? = null,
+    /**
+     * The catalog this preview belongs to, named in the header bar ([siteHeader]). The viewer
+     * computes no heading of its own — its `<h1>` is the preview — so the name is supplied by the
+     * caller, which is also the only place that knows the catalog's published title.
+     */
+    catalogName: String = "",
     canApplyOverrides: Boolean = false,
     /**
      * Whether the "Live (stream)" toggle is offered — the daemon live lane, distinct from
@@ -8628,6 +8702,7 @@ $rows
           "Component",
         ),
       themeCss = themeCss,
+      siteName = catalogName,
       themeStorageKey = themeStorageKey(sessionId, basePath),
       declaredThemes = if (overridesLive) viewerDeclaredThemes else emptyList(),
       // Only the `js` chip paints in this document's canvas, and it only exists when the preview
@@ -8748,6 +8823,8 @@ $rows
      * door, `/status`, a shared document): those never pin a scheme.
      */
     themeStorageKey: String = "",
+    /** The catalog this page belongs to, named in the header bar. See [siteHeader]. */
+    siteName: String = "",
     /**
      * Declared themes whose resolved mode lets the head script paint correctly before first draw.
      */
@@ -8839,7 +8916,7 @@ ${ServeSiteIcon.linkTags().prependIndent("        ")}
         ${pageThemeScript(themeStorageKey, declaredThemes)}
       </head>
       <body>
-        ${siteHeader(navSuffix, headerAction, headerBreadcrumb)}
+        ${siteHeader(navSuffix, headerAction, headerBreadcrumb, siteName)}
         <main class="cp-main">
         $body
         </main>$footerBlock
