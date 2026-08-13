@@ -428,9 +428,12 @@ Where enumeration runs differs by backend, and it has to. Desktop enumerates in-
 
 `serve` does not use this method — its Gradle path renders before it starts the server, so `ServeParameterRows` reads the fan-out back off disk, which is stronger evidence (the manifest says who owns which file) and needs no daemon.
 
+**Android caveat — a held interactive session blocks enumeration.** `INTERACTIVE_SLOT_INDEX` is slot 0, the same in-process sandbox enumeration needs, and slots 1..N-1 are worker JVMs with no enumeration lane. While a session is held, that slot's loop drains `interactiveCommands` and never polls the render queue, so `preview/rows` fails fast with an `Internal` error naming the holding stream rather than blocking — this call is synchronous on the reader thread, so waiting it out would also stop the `interactive/stop` that releases the slot from being read. Enumerate before starting a session, or stop the session first.
+
 Errors:
 - `InvalidParams` (-32602) — unknown `previewId`.
-- `MethodNotFound` (-32601) — the host can't enumerate at all. Clients should fall back to the bare id.
+- `MethodNotFound` (-32601) — the host can't enumerate at all (no `previewSpecResolver` wired). Clients should fall back to the bare id.
+- `Internal` (-32603) — enumeration was possible but failed or was unavailable right now: a provider that throws, a missing provider class, or the Android held-session case above. Retryable, unlike `MethodNotFound`.
 
 ### `history/list` (phase H2)
 

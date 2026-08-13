@@ -1008,23 +1008,85 @@ open class RobolectricHost(
             append("previewParameterLimit=").append(spec.previewParameterLimit)
           }
       )
-    val slotIdx = 0
+    // Only slot 0 is reachable through the bridge — slots 1..N-1 live in worker JVMs with no
+    // ParameterRows lane — and a held interactive session pins exactly that slot
+    // ([INTERACTIVE_SLOT_INDEX] is 0 since #3072). While one is held, the slot's loop is inside
+    // `runHeldInteractiveSession` draining `interactiveCommands` and never polls `requests`, so an
+    // enqueued enumeration would sit until the timeout. That is far worse here than for a render:
+    // this call is synchronous on the JSON-RPC reader thread, so blocking on it also stops the
+    // `interactive/stop` that would release the slot from ever being read — a deterministic stall
+    // rather than a slow answer. Fail immediately and tell the caller what to do instead.
+    checkNotPinnedByInteractiveSession(previewId)
+    val slotIdx = INTERACTIVE_SLOT_INDEX
     val slot = DaemonHostBridge.slot(slotIdx)
     // Same publish-then-enqueue order `submitInProcess` uses, so the enumeration reads the same
     // (possibly just-swapped) bytecode the next render would.
     publishChildLoaderForSlot(slotIdx)
-    slot.requests.put(request)
+    // Register the result queue BEFORE enqueueing, so the sandbox side can post with a plain
+    // `results[id]?.put(...)` — no `computeIfAbsent` — and a reply that arrives after this call has
+    // given up is dropped instead of resurrecting a map entry nobody will ever drain.
     val resultQueue = DaemonHostBridge.results.computeIfAbsent(request.id) { LinkedBlockingQueue() }
     val raw =
-      resultQueue.poll(PARAMETER_ROWS_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        ?: error("previewParameterRows('$previewId') timed out after ${PARAMETER_ROWS_TIMEOUT_MS}ms")
-    DaemonHostBridge.results.remove(request.id)
+      try {
+        slot.requests.put(request)
+        // Poll in slices rather than one long wait: a session can be acquired between the check
+        // above and this point, and the queued request would then never be drained. Re-checking
+        // each slice turns that race into the same fast, actionable failure instead of the full
+        // timeout. The abandoned request stays on the queue and is drained (and its reply dropped)
+        // when the held session releases the slot.
+        pollParameterRows(resultQueue, previewId)
+          ?: error(
+            "previewParameterRows('$previewId') timed out after ${PARAMETER_ROWS_TIMEOUT_MS}ms"
+          )
+      } finally {
+        DaemonHostBridge.results.remove(request.id)
+      }
     if (raw is Throwable) throw raw
     @Suppress("UNCHECKED_CAST")
     val labels = raw as? List<String> ?: error("unexpected ParameterRows reply: ${raw.javaClass}")
     return labels.mapIndexed { index, label ->
       PreviewParameterRow(index = index, label = label, id = PreviewRowAddress.rowId(baseId, label))
     }
+  }
+
+  /**
+   * Throws when a held interactive session owns [INTERACTIVE_SLOT_INDEX], which is the only slot
+   * that can answer a row enumeration. [IllegalStateException] (not
+   * [UnsupportedOperationException]) on purpose: the host *can* enumerate, it just can't right now,
+   * and `MethodNotFound` would tell a client to stop asking permanently.
+   */
+  private fun checkNotPinnedByInteractiveSession(previewId: String) {
+    val held = activeInteractiveStreamId.get() ?: return
+    throw IllegalStateException(
+      "RobolectricHost: cannot enumerate @PreviewParameter rows for previewId='$previewId' while " +
+        "interactive session '$held' holds sandbox slot $INTERACTIVE_SLOT_INDEX — enumeration " +
+        "runs inside that sandbox and the held-session loop does not serve it. Call " +
+        "interactive/stop first, or enumerate before starting the session."
+    )
+  }
+
+  /**
+   * Waits for the sandbox's reply in [PARAMETER_ROWS_POLL_SLICE_MS] slices up to
+   * [PARAMETER_ROWS_TIMEOUT_MS], aborting early if a session pins the slot mid-wait. Returns null
+   * only on a genuine timeout.
+   */
+  private fun pollParameterRows(queue: LinkedBlockingQueue<Any>, previewId: String): Any? {
+    val deadline = System.nanoTime() + PARAMETER_ROWS_TIMEOUT_MS * 1_000_000
+    while (System.nanoTime() < deadline) {
+      queue.poll(PARAMETER_ROWS_POLL_SLICE_MS, TimeUnit.MILLISECONDS)?.let {
+        return it
+      }
+      checkNotPinnedByInteractiveSession(previewId)
+    }
+    return null
+  }
+
+  /**
+   * Test seam for the held-session pin, so the [previewParameterRows] refusal can be covered
+   * without booting a sandbox and standing up a real interactive session.
+   */
+  internal fun pinInteractiveSlotForTest(streamId: String?) {
+    activeInteractiveStreamId.set(streamId)
   }
 
   /** The in-process (slot 0) half of [submit] — the pre-pool path, unchanged. */
@@ -2055,6 +2117,13 @@ open class RobolectricHost(
      * is metadata, not a render, so it must never inherit the render timeout's open-endedness.
      */
     private const val PARAMETER_ROWS_TIMEOUT_MS: Long = 30_000L
+
+    /**
+     * Slice length for [pollParameterRows]. Short enough that a session acquired mid-wait is
+     * noticed promptly, coarse enough not to spin — same trade-off [INTERACTIVE_WORKER_POLL_MS]
+     * makes on the acquire side.
+     */
+    private const val PARAMETER_ROWS_POLL_SLICE_MS: Long = 100L
   }
 
   override fun shutdown(timeoutMs: Long) {
@@ -2418,7 +2487,11 @@ open class RobolectricHost(
               } catch (t: Throwable) {
                 unwrapInvocationTarget(t)
               }
-            DaemonHostBridge.results.computeIfAbsent(id) { LinkedBlockingQueue() }.put(reply)
+            // Plain lookup, not `computeIfAbsent`: the host registers the queue before it enqueues,
+            // so a missing entry means the caller already gave up (it aborted when a held
+            // interactive session took the slot). Dropping the reply is correct there; recreating
+            // the entry would leak a queue nobody drains.
+            DaemonHostBridge.results[id]?.put(reply)
           }
           "Render" -> {
             val id = request.javaClass.getMethod("getId").invoke(request) as Long

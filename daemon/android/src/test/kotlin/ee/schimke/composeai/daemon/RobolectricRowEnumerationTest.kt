@@ -64,6 +64,40 @@ class RobolectricRowEnumerationTest {
     assertTrue(DaemonHostBridge.slot(0).requests.isEmpty())
   }
 
+  /**
+   * Review follow-up. `INTERACTIVE_SLOT_INDEX` is 0 (since #3072), the same in-process sandbox
+   * enumeration needs — and slots 1..N-1 are worker JVMs with no ParameterRows lane, so there is
+   * nowhere else to send it. While a session is held, that slot's loop sits in
+   * `runHeldInteractiveSession` draining `interactiveCommands` and never polls `requests`.
+   *
+   * Enqueueing anyway would block for the full 30s timeout, and because this call is synchronous on
+   * the JSON-RPC reader thread it would also stop the `interactive/stop` that releases the slot from
+   * being read at all — a deterministic stall, not a slow answer. So it must refuse immediately, and
+   * leave nothing on the queue for the session's loop to trip over when it resumes.
+   */
+  @Test
+  fun `a held interactive session makes enumeration refuse rather than stall`() {
+    val router = router(entry("Screen", "com.example.TintProvider"))
+    router.pinInteractiveSlotForTest("android-stream-1")
+    try {
+      val start = System.nanoTime()
+      val failure = runCatching { router.previewParameterRows("Screen") }.exceptionOrNull()
+      val elapsedMs = (System.nanoTime() - start) / 1_000_000
+
+      assertTrue(
+        "expected IllegalStateException naming the held session, got $failure",
+        failure is IllegalStateException && failure.message?.contains("android-stream-1") == true,
+      )
+      assertTrue("must fail fast, not wait out the timeout — took ${elapsedMs}ms", elapsedMs < 5_000)
+      assertTrue(
+        "a refused enumeration must not leave a request for the held loop to find",
+        DaemonHostBridge.slot(0).requests.isEmpty(),
+      )
+    } finally {
+      router.pinInteractiveSlotForTest(null)
+    }
+  }
+
   @Test
   fun `an unknown previewId is rejected before any sandbox work`() {
     val failure =
