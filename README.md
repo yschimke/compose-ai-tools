@@ -333,6 +333,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-sections-section-open/dark](renders/serve-landing-sections-section-open.dark.png) |
 | `light` | ![serve-landing-sections-section-open/light](renders/serve-landing-sections-section-open.light.png) |
 
+## serve-landing-site
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-site/dark](renders/serve-landing-site.dark.png) |
+| `light` | ![serve-landing-site/light](renders/serve-landing-site.light.png) |
+
 ## serve-landing-states
 
 | Theme | Capture |
