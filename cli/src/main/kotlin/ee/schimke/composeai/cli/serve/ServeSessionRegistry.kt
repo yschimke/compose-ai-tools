@@ -209,6 +209,22 @@ class ServeSessionRegistry(
     host: ServeHost? = null,
     pinned: Boolean = false,
   ) {
+    // A session may never take one of the server's own top-level route names. Such a session is
+    // unreachable at its own landing anyway — Ktor scores a constant segment above `/{system}` —
+    // and it breaks the [ServeSites] interceptor's invariant that a reserved first segment is
+    // always a route: `/api/` matches no constant route, so it would fall to `/{system}/` and
+    // serve that session through a hostname published as one catalog.
+    //
+    // Enforced HERE rather than at each ingestion point because there are five of those (an
+    // upload, a `--bundles` directory, a `--bundle` argument, a catalog id, a revision ref) and
+    // fixing them one at a time is how the last two review rounds went. Every session, however it
+    // is created, is named exactly once — right here.
+    if (sessionId in ServeSites.RESERVED_SYSTEMS) {
+      System.err.println(
+        "serve: refusing session '$sessionId' — that name is one of the server's own routes"
+      )
+      return
+    }
     val replaced = lock.withLock {
       check(!closed) { "ServeSessionRegistry is closed" }
       val prior = sessions[sessionId]

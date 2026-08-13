@@ -392,6 +392,24 @@ class ServeTopLevelSiteTest {
   }
 
   @Test
+  fun `no ingestion path can name a session after a route`() {
+    // The upload lane was only one of five ways a session gets named (`--bundles` directories,
+    // `--bundle`, catalog ids and revision refs are the others), and fixing them one at a time is
+    // how the previous two rounds went. The registry is where every one of them converges, so the
+    // invariant is enforced there: a session called `api` would make `/api/` — which no constant
+    // route matches — fall to `/{system}/` and serve through a site hostname.
+    server = newServer()
+    registry.register("api", host = bundle("api", listOf("sneaky"), "Sneaky"), pinned = true)
+    assertFalse(registry.isKnownSession("api"), "the registry refuses a route's name")
+    assertEquals(404, get("/api/", host = siteHost).first)
+    // …and the real /api/ routes still answer. (On the main host this fixture has no default
+    // session, so the route needs an explicit one — that is the pre-existing behaviour, not the
+    // interceptor.)
+    assertEquals(200, get("/api/previews", host = siteHost).first)
+    assertEquals(200, get("/api/previews?session=wear-m3").first)
+  }
+
+  @Test
   fun `an uploaded bundle may not take a route's name`() {
     // A session called `api` would be reachable at `/api/` — a path no constant route matches, so
     // it falls to `/{system}/` — which is how a reserved first segment could still resolve to a
