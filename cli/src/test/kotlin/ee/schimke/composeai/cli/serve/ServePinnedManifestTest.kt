@@ -87,6 +87,23 @@ class ServePinnedManifestTest {
              {"path":"images/foo__bar/baz.png"},{"path":"images/foo/bar__baz.png"}]}]}"""
       ),
     )
+    // …but only among entries the loader would actually have served. An ineligible path (outside
+    // images/, or not a PNG) never reaches the live map, so letting one win a collision here would
+    // answer a pin with bytes that revision never exposed.
+    assertEquals(
+      mapOf("foo__bar__baz" to "images/foo__bar/baz.png"),
+      ServePinnedManifest.parseCatalog(
+        """{"components":[{"images":[
+             {"path":"images/foo__bar/baz.png"},{"path":"foo/bar__baz.png"}]}]}"""
+      ),
+    )
+    assertEquals(
+      emptyMap(),
+      ServePinnedManifest.parseCatalog(
+        """{"components":[{"images":[
+             {"path":"images/a/../../secret.png"},{"path":"images/b/c.svg"}]}]}"""
+      ),
+    )
     // References go the other way, because their importer discards a duplicate id rather than
     // overwriting: first wins. The asymmetry mirrors the two loaders, not one another.
     assertEquals(

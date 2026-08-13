@@ -118,6 +118,20 @@ class ServePinnedManifest(
     private val JSON = Json { ignoreUnknownKeys = true }
 
     /**
+     * The same eligibility rule [ServeCatalogStore] plans an image by: inside `images/`, a PNG, no
+     * traversal. An entry that fails it is one the live catalog never served, so a pinned request
+     * must not resolve to it either.
+     *
+     * Deliberately *not* mirrored: the loader's `maxImages` ceiling. That is a property of the
+     * server reading the catalog, not of the revision — a box with a different cap would otherwise
+     * disagree with itself about what a commit published.
+     */
+    private fun isServable(path: String): Boolean =
+      path.startsWith("${ServeCatalogStore.IMAGES_DIR}/") &&
+        path.endsWith(".png") &&
+        ".." !in path.split("/")
+
+    /**
      * `catalog.json` → preview id → image path, keyed exactly as the loader keys the live catalog
      * ([ServeCatalogStore.previewIdFor]), so a pinned id and a served id are the same string by
      * construction rather than by coincidence.
@@ -137,11 +151,17 @@ class ServePinnedManifest(
           val path =
             runCatching { image.jsonObject["path"]?.jsonPrimitive?.content }
               .getOrNull()
-              ?.takeIf { it.isNotBlank() } ?: continue
+              ?.takeIf(::isServable) ?: continue
           // LAST declaration wins, because that is what the live loader does
           // (`bakedPathById[id] = path`). Two paths can flatten to one route id, and a pin that
           // resolved such a collision the other way would serve different pixels than the same
           // catalog served while it was current — the one thing a revision must never do.
+          //
+          // Which is also why the eligibility filter above has to run FIRST. The loader plans only
+          // the images it would serve, so an entry it rejects never reaches its map; accepting one
+          // here and then applying last-wins would let a rejected entry overwrite the served one
+          // under a shared id — a pin answering with bytes that revision never exposed, arrived at
+          // by faithfully copying half of the loader's rule.
           paths[ServeCatalogStore.previewIdFor(path)] = path
         }
       }
