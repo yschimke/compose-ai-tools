@@ -125,6 +125,25 @@ abstract class Command(
   protected val explicitModule: String? = args.flagValue("--module")
   protected val filter: String? = args.flagValue("--filter")
   protected val exactId: String? = args.flagValue("--id")
+
+  /**
+   * `--preview <ref>` — the third, *loose* selector, and the one the rest of the toolchain already
+   * calls a "preview reference": `compose-preview record --preview`, `history list --preview`, and
+   * the Gradle `composePreviewRender --preview` option all spell it this way (issue #3744). Before
+   * this it was read by `record` alone, and every other command **silently ignored** it — a `render
+   * --preview Foo` rendered the whole module while the user believed they had narrowed it.
+   *
+   * Semantics, deliberately spelled out because it is neither [exactId] nor [filter] (see
+   * [previewMatchesReference]): a preview is selected when the ref equals its id, equals
+   * `<className>.<functionName>`, equals its bare `functionName`, **or** is a case-insensitive
+   * substring of its id. Unlike `record`'s resolver, which needs exactly one preview to record,
+   * this one may select several and never fails on ambiguity — `render` / `show` / `list` are
+   * set-shaped commands.
+   *
+   * `--id` stays exact-match and `--filter` stays a case-insensitive substring; combining flags
+   * intersects them, as `--id` + `--filter` already did.
+   */
+  protected val previewRef: String? = args.flagValue("--preview")?.takeIf { it.isNotBlank() }
   protected val verbose: Boolean = "--verbose" in args || "-v" in args
   protected val progress: Boolean = verbose || "--progress" in args
   protected val timeoutSeconds: Long =
@@ -552,9 +571,14 @@ abstract class Command(
     discoveryManifests: List<Pair<PreviewModule, PreviewManifest>>,
     discoverySucceeded: Boolean,
   ): PreviewRenderScope.Scope {
-    if (exactId == null && filter == null) return PreviewRenderScope.FULL
+    if (exactId == null && filter == null && previewRef == null) return PreviewRenderScope.FULL
     if (renderModules.isEmpty()) return PreviewRenderScope.FULL
-    val flag = if (exactId != null) "--id" else "--filter"
+    val flag =
+      when {
+        exactId != null -> "--id"
+        filter != null -> "--filter"
+        else -> "--preview"
+      }
     if (!discoverySucceeded) {
       System.err.println(
         "compose-preview: preview discovery failed, so $flag could not narrow the render; " +
@@ -568,6 +592,7 @@ abstract class Command(
         manifests = discoveryManifests.filter { (module, _) -> module.gradlePath in byPath },
         exactId = exactId,
         filter = filter,
+        previewRef = previewRef,
         permutations = permutations,
       )
     scope.note?.let { System.err.println("compose-preview: $flag $it; rendering the full module.") }
@@ -867,10 +892,33 @@ abstract class Command(
         },
     )
 
-  protected fun matchesRequest(result: PreviewResult): Boolean = matchesRequest(result.id)
+  protected fun matchesRequest(result: PreviewResult): Boolean =
+    previewIdMatchesRequest(
+      result.id,
+      exactId = exactId,
+      filter = filter,
+      previewRef = previewRef,
+      className = result.className,
+      functionName = result.functionName,
+    )
 
+  protected fun matchesRequest(preview: PreviewInfo): Boolean =
+    previewIdMatchesRequest(
+      preview.id,
+      exactId = exactId,
+      filter = filter,
+      previewRef = previewRef,
+      className = preview.className,
+      functionName = preview.functionName,
+    )
+
+  /**
+   * Id-only overload, for the call sites that hold nothing but an id. `--preview` still applies,
+   * minus the forms that need the class / function metadata — prefer the [PreviewInfo] /
+   * [PreviewResult] overloads whenever the row is in hand.
+   */
   protected fun matchesRequest(id: String): Boolean =
-    previewIdMatchesRequest(id, exactId = exactId, filter = filter)
+    previewIdMatchesRequest(id, exactId = exactId, filter = filter, previewRef = previewRef)
 
   /**
    * The ids in [manifest] this invocation's `--id` / `--filter` asks about — every id when there is
@@ -892,7 +940,7 @@ abstract class Command(
   protected fun requestedPreviewIds(manifest: PreviewManifest): List<String> =
     manifest.previews
       .filter { preview ->
-        PreviewPermutationsCli.expand(listOf(preview), permutations).any { matchesRequest(it.id) }
+        PreviewPermutationsCli.expand(listOf(preview), permutations).any { matchesRequest(it) }
       }
       .map { it.id }
 
@@ -906,6 +954,7 @@ abstract class Command(
       manifests = manifests,
       exactId = exactId,
       filter = filter,
+      previewRef = previewRef,
       discoverySucceeded = discoverySucceeded,
     )
 
@@ -1050,27 +1099,94 @@ internal fun agpClassloaderGuidance(failures: List<ProjectDiscoveryFailure>): St
 
 internal val NON_PNG_PREVIEW_KINDS = setOf("XR_SUBSPACE")
 
-internal fun previewIdMatchesRequest(id: String, exactId: String?, filter: String?): Boolean {
+/**
+ * Does one preview satisfy this invocation's selection request?
+ *
+ * The three selectors are independent predicates and **intersect** (all of the ones that were
+ * passed must hold):
+ * - `--id <exact>` — the id, exactly, case-sensitively.
+ * - `--filter <substring>` — a case-insensitive substring of the id.
+ * - `--preview <ref>` — a loose *preview reference*; see [previewMatchesReference].
+ *
+ * [className] / [functionName] are optional because some call sites only hold an id (they come from
+ * a manifest or a [PreviewResult] where the metadata is available, or from an already-resolved id
+ * list where it isn't). They only affect `--preview`: without them the `Class.function` and bare
+ * function-name forms can't be recognised and the ref falls back to its id-only forms.
+ */
+internal fun previewIdMatchesRequest(
+  id: String,
+  exactId: String?,
+  filter: String?,
+  previewRef: String? = null,
+  className: String? = null,
+  functionName: String? = null,
+): Boolean {
   if (exactId != null && id != exactId) return false
   if (filter != null && !id.contains(filter, ignoreCase = true)) return false
+  if (
+    previewRef != null &&
+      !previewMatchesReference(previewRef, id, className = className, functionName = functionName)
+  ) {
+    return false
+  }
   return true
 }
+
+/**
+ * The `--preview <ref>` rule (issue #3744) — one preview, one boolean, no dependence on the rest of
+ * the candidate set.
+ *
+ * A ref matches when **any** of these holds:
+ * 1. it equals [id] exactly (case-sensitive);
+ * 2. it equals `<className>.<functionName>` — the fully-qualified form `record --preview` and the
+ *    Gradle `--preview` option both accept;
+ * 3. it equals the bare [functionName];
+ * 4. it is a case-insensitive substring of [id] — the `--filter` rule, kept last so the loose form
+ *    people already type keeps working.
+ *
+ * Because the forms are OR'ed rather than tried in stages, `--preview Foo` selects `Foo` *and*
+ * `FooBar`, exactly like `--filter Foo` would. That is the deliberate trade: a per-preview
+ * predicate stays consistent between the module-selection pass, the Gradle narrowing pass, and the
+ * row-printing pass, which a "first stage that matches anything wins" resolver could not (each pass
+ * sees a different candidate set, so the stage they landed on could disagree). Reach for `--id`
+ * when exactly one preview is meant.
+ */
+internal fun previewMatchesReference(
+  ref: String,
+  id: String,
+  className: String? = null,
+  functionName: String? = null,
+): Boolean =
+  id == ref ||
+    (className != null && functionName != null && "$className.$functionName" == ref) ||
+    functionName == ref ||
+    id.contains(ref, ignoreCase = true)
 
 internal fun modulesMatchingPreviewRequest(
   modules: List<PreviewModule>,
   manifests: List<Pair<PreviewModule, PreviewManifest>>,
   exactId: String?,
   filter: String?,
+  previewRef: String? = null,
   discoverySucceeded: Boolean = true,
 ): List<PreviewModule> {
   // The render task depends on discovery and is the authoritative retry. Do not let missing or
   // stale discovery manifests suppress that retry after the separate optimization pass fails.
   if (!discoverySucceeded) return modules
-  if (exactId == null && filter == null) return modules
+  if (exactId == null && filter == null && previewRef == null) return modules
   val matchingPaths =
     manifests
       .filter { (_, manifest) ->
-        manifest.previews.any { previewIdMatchesRequest(it.id, exactId = exactId, filter = filter) }
+        manifest.previews.any {
+          previewIdMatchesRequest(
+            it.id,
+            exactId = exactId,
+            filter = filter,
+            previewRef = previewRef,
+            className = it.className,
+            functionName = it.functionName,
+          )
+        }
       }
       .map { (module, _) -> module.gradlePath }
       .toSet()
@@ -1401,6 +1517,7 @@ class RenderCommand(args: List<String>) : Command(args) {
             discoveryManifests,
             exactId = exactId,
             filter = filter,
+            previewRef = previewRef,
             discoverySucceeded = discoverySucceeded,
           )
       if (modules.isEmpty()) {
@@ -1449,7 +1566,7 @@ class RenderCommand(args: List<String>) : Command(args) {
         if (filtered.size != 1) {
           System.err.println(
             "--output requires a single match (got ${filtered.size}). " +
-              "Narrow with --id <exact> or --filter <substring>."
+              "Narrow with --id <exact>, --filter <substring>, or --preview <ref>."
           )
           exitProcess(1)
         }
@@ -1517,7 +1634,7 @@ class RenderCommand(args: List<String>) : Command(args) {
     if (output != null && filtered.size != 1) {
       System.err.println(
         "--output requires a single match (got ${filtered.size}). " +
-          "Narrow with --id <exact> or --filter <substring>."
+          "Narrow with --id <exact>, --filter <substring>, or --preview <ref>."
       )
       exitProcess(1)
     }
@@ -1803,7 +1920,13 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
       // is the one left on disk under its own id. See its `fetch` KDoc.
       for (expanded in PreviewPermutationsCli.expand(listOf(preview), permutations)) {
         consumerIds += expanded.id
-        if (!matchesRequest(expanded.id)) continue
+        // Matched as a manifest *row*, not as a bare id: `--preview` also accepts
+        // `<Class>.<function>` and the bare function name, and the expansion carries both through
+        // from the declared preview. The id-only overload would drop those two forms here while
+        // module selection and the Gradle narrowing — which do see the metadata — kept the module,
+        // leaving the daemon with an empty work list and the command reporting a clean run it never
+        // performed.
+        if (!matchesRequest(expanded)) continue
         requested +=
           RequestedPreview(
             previewId = preview.id,

@@ -122,8 +122,9 @@ private fun printUsage(full: Boolean = false) {
       setup     update · init-script · pin
     Run `compose-preview <group>` to list a group, or `help --all` for every command + flag.
 
-    Common options: --module <name>, --filter <pattern>, --id <exact>, --json,
-      --output <path>, --verbose/-v. Full list under `help --all`.
+    Common options: --module <name>, --filter <pattern>, --id <exact>,
+      --preview <ref>, --json, --output <path>, --verbose/-v. Full list under
+      `help --all`.
     """
       .trimIndent()
   )
@@ -219,13 +220,25 @@ private fun printFullUsage() {
                            previews are rendered, and only in the modules that declare them.
                            Previews outside the match keep whatever PNG the last run wrote.
       --id <exact>         Exact match on preview id (narrows the render like --filter)
+      --preview <ref>      Preview reference — the loose selector, honoured by render, show,
+                           list, show-resources, a11y, render-matrix and serve. Selects a
+                           preview when the reference equals its id, equals
+                           `<className>.<functionName>`, equals its bare function name, or is
+                           a case-insensitive substring of its id (the --filter rule). It may
+                           therefore match several previews — `--preview Foo` also takes
+                           `FooBar`; reach for --id when exactly one is meant. Narrows the
+                           Gradle render like --id / --filter; combining the three intersects
+                           them (on render-matrix and serve, which host a single preview, the
+                           tightest of the three given wins). `record --preview` takes the
+                           same forms but must land on exactly one preview, so it tries them
+                           in order and an ambiguous reference is an error. `history
+                           --preview` is a different flag: an exact preview-id filter over
+                           archived entries.
       --json               Emit JSON (show, list, a11y, devices)
       --brief              JSON only: drop functionName/className/sourceFile/params
       --changed-only       JSON only (show, a11y): drop previews with no changed capture
       --output <path>      Copy a single matched preview to this path (render; the PNG, or the
                            .svg under --format svg)
-      --preview <ref>      record: preview to record — an id, a `Class.function` reference, or a
-                           unique substring of an id
       --script <path>      record: JSON array of RecordingScriptEvent driving the session
       --out <path>         record: write the encoded recording here (extension auto-selects the
                            format unless --format is set)

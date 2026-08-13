@@ -402,9 +402,11 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
 
   private fun applyResourceFilters(all: List<ResourcePreviewResult>): List<ResourcePreviewResult> =
     all.filter {
+      // `--preview` is honoured here too so the selector vocabulary is uniform (issue #3744), but
+      // only in its id-shaped forms: a resource capture is an XML `<vector>` / `<adaptive-icon>`,
+      // not a `@Preview` function, so there is no class or function name to reference.
       val matches =
-        (exactId == null || it.id == exactId) &&
-          (filter == null || it.id.contains(filter, ignoreCase = true))
+        previewIdMatchesRequest(it.id, exactId = exactId, filter = filter, previewRef = previewRef)
       matches && (!changedOnly || it.anyChanged())
     }
 

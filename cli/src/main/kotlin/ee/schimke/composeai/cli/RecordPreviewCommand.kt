@@ -57,7 +57,14 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
     isLenient = true
   }
 
-  private val previewRef: String? = exactId ?: args.flagValue("--preview") ?: filter
+  /**
+   * The preview to record. `--preview` is the documented spelling; `--id` and `--filter` are
+   * accepted as the same thing for the user who arrived from `render` / `show` (where all three now
+   * select previews — issue #3744). Unlike those commands, `record` needs exactly **one** preview,
+   * so the reference goes through [resolvePreviewId]'s staged resolver rather than the set-shaped
+   * [previewMatchesReference] predicate, and an ambiguous reference is an error.
+   */
+  private val recordedPreviewRef: String? = exactId ?: previewRef ?: filter
   private val scriptPath: String? = args.flagValue("--script")
   private val outPath: String? = args.flagValue("--out") ?: args.flagValue("--output")
   private val formatFlag: String? =
@@ -78,7 +85,7 @@ class RecordPreviewCommand(args: List<String>) : Command(args) {
   private val baselineDir: String? = args.flagValue("--baseline-dir")
 
   override fun run() {
-    val previewRef = requireFlag(previewRef, "--preview", "a preview reference")
+    val previewRef = requireFlag(recordedPreviewRef, "--preview", "a preview reference")
     val scriptPath = requireFlag(scriptPath, "--script", "a session-script JSON file")
     val outPath = requireFlag(outPath, "--out", "an output file path")
 

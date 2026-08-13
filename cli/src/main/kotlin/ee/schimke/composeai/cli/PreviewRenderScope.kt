@@ -1,8 +1,8 @@
 package ee.schimke.composeai.cli
 
 /**
- * Turns a `--id` / `--filter` request into the Gradle property that actually narrows the render
- * (issue #3730).
+ * Turns a `--id` / `--filter` / `--preview` request into the Gradle property that actually narrows
+ * the render (issue #3730; `--preview` joined the selectors in #3744).
  *
  * Before this, `--id` / `--filter` were applied **client-side**: the CLI drove
  * `:module:composePreviewRenderAll` at full width and then dropped the non-matching rows from its
@@ -61,7 +61,8 @@ internal object PreviewRenderScope {
   val FULL: Scope = Scope()
 
   /**
-   * Resolve [exactId] / [filter] against the discovery [manifests] of the modules about to render.
+   * Resolve [exactId] / [filter] / [previewRef] against the discovery [manifests] of the modules
+   * about to render. The three selectors intersect — see [previewIdMatchesRequest].
    *
    * [permutations] is the active `--permutations` list: the CLI matches a request against the
    * *expanded* ids a user sees in `show` output (`Foo_dark`), but forwards the *unexpanded* id
@@ -75,9 +76,10 @@ internal object PreviewRenderScope {
     manifests: List<Pair<PreviewModule, PreviewManifest>>,
     exactId: String?,
     filter: String?,
+    previewRef: String? = null,
     permutations: List<String> = emptyList(),
   ): Scope {
-    if (exactId == null && filter == null) return FULL
+    if (exactId == null && filter == null && previewRef == null) return FULL
     if (manifests.isEmpty()) return FULL
 
     val selected = linkedSetOf<String>()
@@ -87,7 +89,18 @@ internal object PreviewRenderScope {
       for (preview in manifest.previews) {
         discovered++
         val expanded = PreviewPermutationsCli.expand(listOf(preview), permutations).map { it.id }
-        if (expanded.none { previewIdMatchesRequest(it, exactId = exactId, filter = filter) })
+        if (
+          expanded.none {
+            previewIdMatchesRequest(
+              it,
+              exactId = exactId,
+              filter = filter,
+              previewRef = previewRef,
+              className = preview.className,
+              functionName = preview.functionName,
+            )
+          }
+        )
           continue
         selected += preview.id
         renderedIds += expanded

@@ -791,6 +791,27 @@ class ServeCommand(args: List<String>) : Command(args) {
         catalogSourceRoot != null ||
         revisions
     if (!needsGradle) {
+      // `--id` / `--filter` / `--preview` select from a *discovered module's* manifest, and this
+      // path never discovers one — the sessions come from bundles, catalogs and uploads. Ignoring
+      // them silently is the exact shape issue #3744 was filed about: the user believes they
+      // narrowed what is exposed and the server publishes everything. Say so instead.
+      val selectors =
+        listOfNotNull(
+          exactId?.let { "--id" },
+          filter?.let { "--filter" },
+          previewRef?.let { "--preview" },
+        )
+      if (selectors.isNotEmpty()) {
+        System.err.println(
+          "serve: ${selectors.joinToString(" / ")} select previews from a discovered module, but " +
+            "this server is bundle-backed — it hosts what --bundle / --bundles / --catalogs and " +
+            "uploads provide, and no manifest to select against exists."
+        )
+        System.err.println(
+          "  Drop the selector, or pass --module <path> / --discover to serve from a module."
+        )
+        exitProcess(64)
+      }
       runBundleServer()
       return
     }
@@ -836,12 +857,16 @@ class ServeCommand(args: List<String>) : Command(args) {
           )
         val baseLabel = info.functionName.ifBlank { info.id }
         val rows = ServeParameterRows.rowsFor(info, module.projectDir, claimedOutputs)
-        // `--id` / `--filter` match the base id (so `--id Foo` serves all of Foo's rows, which is
-        // what asking for a parameterized preview means) OR a row id directly, so a caller can
-        // narrow to one state.
+        // `--id` / `--filter` / `--preview` match the declared preview (so `--id Foo` serves all of
+        // Foo's rows, which is what asking for a parameterized preview means) OR a row id directly,
+        // so a caller can narrow to one state. The declared preview is matched as a *row of the
+        // manifest*, not as a bare id, because `--preview` also accepts `<Class>.<function>` and
+        // the
+        // bare function name — forms only the manifest row can answer. A synthetic row id has no
+        // manifest row of its own, so it is matched by id.
         when {
-          rows.isEmpty() -> if (matches(info.id)) listOf(serve(info.id, baseLabel)) else emptyList()
-          matches(info.id) -> rows.map { serve(it.id, "$baseLabel · ${it.label}") }
+          rows.isEmpty() -> if (matches(info)) listOf(serve(info.id, baseLabel)) else emptyList()
+          matches(info) -> rows.map { serve(it.id, "$baseLabel · ${it.label}") }
           else -> rows.filter { matches(it.id) }.map { serve(it.id, "$baseLabel · ${it.label}") }
         }
       }
@@ -2901,14 +2926,33 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Match a preview id against `--id` (exact) / `--filter` (substring); all when neither is set.
+   * Match a preview against `--id` (exact) / `--filter` (substring) / `--preview` (loose reference)
+   * — the shared [previewIdMatchesRequest] rule, so every selector passed must hold; all previews
+   * when none is set.
+   *
+   * This used to be a `--id` beats `--filter` precedence ladder, which read as the safer choice but
+   * could never actually take effect: `renderAllModules` narrows the build through
+   * `modulesMatchingPreviewRequest`, which intersects, so contradictory selectors have already
+   * dropped every module by the time this runs. The ladder's only reachable outcome was to disagree
+   * with the pass that had already decided.
+   */
+  private fun matches(preview: PreviewInfo): Boolean =
+    previewIdMatchesRequest(
+      preview.id,
+      exactId = exactId,
+      filter = filter,
+      previewRef = previewRef,
+      className = preview.className,
+      functionName = preview.functionName,
+    )
+
+  /**
+   * The same rule for something that has an id but no manifest row — a `@PreviewParameter` row id
+   * (`<baseId>_<row>`), which discovery never declared. Only the id-shaped forms can apply, so
+   * `--preview` degrades to the exact-or-substring half of [previewMatchesReference].
    */
   private fun matches(id: String): Boolean =
-    when {
-      exactId != null -> id == exactId
-      filter != null -> id.contains(filter, ignoreCase = true)
-      else -> true
-    }
+    previewIdMatchesRequest(id, exactId = exactId, filter = filter, previewRef = previewRef)
 
   private fun runDaemonStart(module: PreviewModule): Boolean {
     var ok = true
@@ -3057,6 +3101,11 @@ class ServeCommand(args: List<String>) : Command(args) {
                           (desktop bundles); otherwise read-only as its baked PNGs. Repeatable.
         --id <exact>      Only serve this exact preview id.
         --filter <substr> Only serve previews whose id contains this substring.
+        --preview <ref>   Only serve previews the reference selects: an id, a
+                          `Class.function`, a bare function name, or a case-insensitive
+                          substring of an id. Combined with --id / --filter it intersects:
+                          every selector you pass has to match. Selecting needs a module
+                          (--module / --discover) — a bundle-backed server has no manifest.
         --host <addr>     Bind address (default 127.0.0.1 — loopback only).
         --lan             Bind all interfaces (0.0.0.0) so other devices on your network can
                           connect. Prints the token-gated network URL and a security warning.

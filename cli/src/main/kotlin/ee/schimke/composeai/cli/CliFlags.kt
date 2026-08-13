@@ -53,6 +53,9 @@ internal object CliFlags {
       "--permutations",
       "--missing-renders",
       "--variant",
+      // Preview *reference* selector. Read by `record` and `history` from the start, and since
+      // #3744 by every command that selects previews (render / show / list / show-resources /
+      // a11y / render-matrix / serve) — see `previewMatchesReference`.
       "--preview",
       "--script",
       "--out",
