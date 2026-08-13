@@ -816,7 +816,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     val (module, manifest) = outcome.manifests.single()
     val previews =
       manifest.previews
-        .filter { matches(it.id) }
+        .filter { matches(it) }
         .map {
           val (focus, gestures) = detectedFeaturesOf(it)
           ServePreview(
@@ -2884,12 +2884,22 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Match a preview id against `--id` (exact) / `--filter` (substring); all when neither is set.
+   * Match a preview against `--id` (exact) / `--filter` (substring) / `--preview` (loose reference,
+   * see [previewMatchesReference]); all when none is set. Checked in that order — the pre-existing
+   * `--id` beats `--filter` precedence is kept rather than switched to the render commands'
+   * intersection, so adding `--preview` here changes nothing for an invocation that didn't pass it.
    */
-  private fun matches(id: String): Boolean =
+  private fun matches(preview: PreviewInfo): Boolean =
     when {
-      exactId != null -> id == exactId
-      filter != null -> id.contains(filter, ignoreCase = true)
+      exactId != null -> preview.id == exactId
+      filter != null -> preview.id.contains(filter, ignoreCase = true)
+      previewRef != null ->
+        previewMatchesReference(
+          previewRef,
+          preview.id,
+          className = preview.className,
+          functionName = preview.functionName,
+        )
       else -> true
     }
 
@@ -3040,6 +3050,9 @@ class ServeCommand(args: List<String>) : Command(args) {
                           (desktop bundles); otherwise read-only as its baked PNGs. Repeatable.
         --id <exact>      Only serve this exact preview id.
         --filter <substr> Only serve previews whose id contains this substring.
+        --preview <ref>   Only serve previews the reference selects: an id, a
+                          `Class.function`, a bare function name, or a case-insensitive
+                          substring of an id. --id / --filter take precedence over it.
         --host <addr>     Bind address (default 127.0.0.1 — loopback only).
         --lan             Bind all interfaces (0.0.0.0) so other devices on your network can
                           connect. Prints the token-gated network URL and a security warning.
