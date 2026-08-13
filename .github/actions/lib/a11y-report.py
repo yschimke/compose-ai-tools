@@ -174,8 +174,18 @@ def select_variants(
 
     rows: list[dict] = []
     for fn, group in sorted(by_fn.items()):
+        # On a partial report, choose among the variants that were actually
+        # checked. Picking the highest-priority variant first and dropping the
+        # function when *that* one is missing would lose the very variant the
+        # narrowed run was asked for (`--id Foo_small_round` while
+        # `Foo_large_round` outranks it).
+        candidates = (
+            [p for p in group if p["id"] in a11y_by_id] if partial else group
+        )
+        if not candidates:
+            continue
         chosen = min(
-            group,
+            candidates,
             key=lambda p: (
                 device_priority((p.get("params") or {}).get("device")),
                 p["id"],
@@ -188,8 +198,6 @@ def select_variants(
         captures = chosen.get("captures") or []
         render_rel = captures[0]["renderOutput"] if captures else ""
         a11y = a11y_by_id.get(chosen["id"])
-        if partial and a11y is None:
-            continue
         chosen_device = (chosen.get("params") or {}).get("device")
         rows.append({
             "module": module,
@@ -225,6 +233,10 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
     # cleanly.
     combined_status: str | None = None
     per_module_counts: list[tuple[str, int, int, bool]] = []
+    # Modules whose accessibility.json only covered part of its previews. Recorded
+    # in findings.json so a later `comment` run can tell "this preview's findings
+    # are gone" apart from "this preview was never checked." See issue #3742.
+    partial_modules: list[str] = []
 
     for raw_build_dir in build_dirs:
         build_dir = Path(raw_build_dir)
@@ -232,6 +244,8 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
         rows = select_variants(manifest, a11y_by_id, partial)
 
         module = manifest["module"]
+        if partial and module not in partial_modules:
+            partial_modules.append(module)
         renders_out = out_dir / "renders" / module
         if renders_out.exists():
             shutil.rmtree(renders_out)
@@ -292,6 +306,10 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
     summary_payload: dict = {"entries": findings_summary}
     if combined_status:
         summary_payload["status"] = combined_status
+    # Omitted entirely on a full run, so a normal report diffs cleanly against
+    # the baseline exactly as before.
+    if partial_modules:
+        summary_payload["partialModules"] = sorted(partial_modules)
     (out_dir / "findings.json").write_text(
         json.dumps(summary_payload, indent=2, sort_keys=True) + "\n"
     )
@@ -622,10 +640,16 @@ def cmd_comment(args: argparse.Namespace) -> int:
     # Previews that carried findings on the baseline but are gone now — the
     # underlying issue is no longer reachable. A clean baseline preview that
     # disappears isn't an accessibility change, so those are ignored.
+    #
+    # A preview from a module this run only partially covered is absent because
+    # it was never checked, not because anything was fixed (#3742) — calling
+    # that "resolved" would announce a fix nobody made.
+    partial_modules = set(payload.get("partialModules", []))
     resolved = [
         e
         for e in baseline_entries
         if (e["module"], e["previewId"]) not in current_keys
+        and e["module"] not in partial_modules
         and e.get("findings")
     ]
 

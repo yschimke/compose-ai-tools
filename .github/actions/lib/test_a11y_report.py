@@ -206,6 +206,30 @@ class SelectVariantsTest(unittest.TestCase):
         )
         self.assertEqual(rows[1]["findings"], [])
 
+    def test_partial_report_keeps_the_variant_it_actually_checked(self):
+        # `--id x.Foo_small_round` checks a variant that device priority would
+        # not have picked. Choosing the preferred variant first and then
+        # dropping the function would lose the one row the run produced.
+        manifest = {
+            "module": "sample-wear",
+            "previews": [
+                _preview(id="x.Foo_large_round", function="Foo",
+                         render="renders/Foo_large.png", device="id:wearos_large_round"),
+                _preview(id="x.Foo_small_round", function="Foo",
+                         render="renders/Foo_small.png", device="id:wearos_small_round"),
+            ],
+        }
+        a11y_by_id = {
+            "x.Foo_small_round": {
+                "previewId": "x.Foo_small_round",
+                "findings": [_finding()],
+            },
+        }
+
+        rows = ar.select_variants(manifest, a11y_by_id, partial=True)
+        self.assertEqual([r["previewId"] for r in rows], ["x.Foo_small_round"])
+        self.assertEqual(len(rows[0]["findings"]), 1)
+
     def test_load_previews_reads_the_partial_flag(self):
         build_dir = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, build_dir)
@@ -501,11 +525,14 @@ class CommentTest(unittest.TestCase):
         baseline_entries=None,
         status=None,
         baseline_status=None,
+        partial_modules=None,
     ):
         findings_path = self.tmp / "findings.json"
         current_payload: dict = {"entries": current_entries}
         if status is not None:
             current_payload["status"] = status
+        if partial_modules is not None:
+            current_payload["partialModules"] = partial_modules
         findings_path.write_text(json.dumps(current_payload))
         baseline_path = None
         if baseline_entries is not None:
@@ -754,6 +781,31 @@ class CommentTest(unittest.TestCase):
         current = self._entry(findings=[at("4,0,44,40"), at("0,0,40,40")])
         body = self._run_comment([current], baseline_entries=[baseline])
         self.assertEqual(body, "")
+
+    def test_partial_module_absence_is_not_reported_as_resolved(self):
+        # A narrowed `compose-preview a11y --id Stay` run never checked `Gone`
+        # (#3742). Absent-because-unchecked is not absent-because-fixed, and
+        # announcing a fix nobody made is worse than saying nothing.
+        baseline = self._entry(
+            function="Gone", preview_id="x.Gone", findings=[_finding(level="ERROR")]
+        )
+        survivor = self._entry(
+            function="Stay", preview_id="x.Stay", findings=[_finding(level="WARNING")]
+        )
+        body = self._run_comment(
+            [survivor],
+            baseline_entries=[baseline, survivor],
+            partial_modules=["sample-wear"],
+        )
+        self.assertNotIn("Resolved", body)
+
+        # A module NOT marked partial keeps the existing reading.
+        body = self._run_comment(
+            [survivor],
+            baseline_entries=[baseline, survivor],
+            partial_modules=["some-other-module"],
+        )
+        self.assertIn("Resolved", body)
 
     def test_resolved_preview_listed_when_removed(self):
         # A preview that carried a finding on the baseline but is gone now

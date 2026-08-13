@@ -58,8 +58,9 @@ internal class DaemonA11yFetcher(
    * `accessibility.json` is a *per-module* report and a narrowed run only speaks for part of it:
    * - entries already on disk for previews outside [previewIds] are **carried forward** rather than
    *   dropped, the same bargain the `.cli-state.json` carry-forward strikes for previews a narrowed
-   *   render skipped (#3730). Only a full run rewrites wholesale, which keeps it the one thing that
-   *   evicts the entry of a preview that no longer exists;
+   *   render skipped (#3730) — minus the ones that never really ran, see [carryForward]. Only a
+   *   full run rewrites wholesale, which keeps it the one thing that evicts the entry of a preview
+   *   that no longer exists;
    * - the report is stamped [AccessibilityReport.partial] when the merged entries still don't cover
    *   [modulePreviewIds], so consumers read an absent id as "not checked" instead of folding it in
    *   as a clean row.
@@ -192,26 +193,39 @@ internal class DaemonA11yFetcher(
     reportFile.parentFile?.mkdirs()
     val narrowed = !fetchedIds.containsAll(modulePreviewIds)
     val existing = if (narrowed) readExistingReport(reportFile) else null
-    val merged = if (existing == null) entries else mergeEntries(existing.entries, entries)
+    val merged = mergeEntries(carryForward(existing), entries)
     val covered = merged.map { it.previewId }.toSet()
-    // An entry this run didn't write came off a report stamped `atf-unavailable`, which means it
-    // records a fetch that never ran — clearing the stamp because *this* run's one preview came
-    // back would let the python helper read those stale empty entries as checked and clean.
-    // Carrying the stamp keeps them flagged; the next full run rewrites and clears it.
-    val carriedUnavailable =
-      existing?.status == A11Y_REPORT_STATUS_ATF_UNAVAILABLE &&
-        merged.any { it.previewId !in fetchedIds }
     val report =
       AccessibilityReport(
         module = moduleName,
         entries = merged,
-        status = status ?: A11Y_REPORT_STATUS_ATF_UNAVAILABLE.takeIf { carriedUnavailable },
+        status = status,
         partial = !covered.containsAll(modulePreviewIds),
       )
     fileSystem.write(reportFile.path.toPath()) {
       writeUtf8(json.encodeToString(AccessibilityReport.serializer(), report))
     }
     return reportFile
+  }
+
+  /**
+   * The entries of [existing] that are worth keeping — everything, unless that report was stamped
+   * [A11Y_REPORT_STATUS_ATF_UNAVAILABLE], in which case the ones carrying **neither findings nor
+   * nodes** are dropped.
+   *
+   * Those entries record a fetch that produced nothing — under that stamp, one that quite possibly
+   * never ran at all (#1453) — so keeping them would let a later narrowed success republish them
+   * with no stamp of their own and have every consumer read them as "checked, found nothing".
+   * Dropping them instead leaves those previews *uncovered*, which [AccessibilityReport.partial]
+   * already reports honestly, so the run needs no second mechanism to say "don't trust these".
+   * Entries with real findings or a node list are data whatever the report-level stamp says — a
+   * stamp can come from a failed session open on top of a previous run's genuine results — so those
+   * always carry.
+   */
+  private fun carryForward(existing: AccessibilityReport?): List<AccessibilityEntry> {
+    val entries = existing?.entries.orEmpty()
+    if (existing?.status != A11Y_REPORT_STATUS_ATF_UNAVAILABLE) return entries
+    return entries.filter { it.findings.isNotEmpty() || it.nodes.isNotEmpty() }
   }
 
   /**

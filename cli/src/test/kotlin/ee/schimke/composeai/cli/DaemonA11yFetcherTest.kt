@@ -298,7 +298,7 @@ class DaemonA11yFetcherTest {
   }
 
   @Test
-  fun `carrying entries forward from an unavailable report keeps the unavailable stamp`() {
+  fun `an empty entry from an unavailable report is not carried forward as clean`() {
     val projectDir = newTempFolder("module-merge-status")
     File(projectDir, "build/compose-previews").mkdirs()
     File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
@@ -317,22 +317,28 @@ class DaemonA11yFetcherTest {
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
       )
 
-    // `BetaPreview`'s carried-forward entry records a fetch that never ran. This run succeeding for
-    // `AlphaPreview` doesn't make it clean, so the stamp rides along until a full run rewrites.
+    // `BetaPreview`'s entry records a fetch that produced nothing under a stamp saying nothing ran.
+    // Republishing it now that this run's stamp is gone would present it as "checked, found
+    // nothing" — so it's dropped, and `partial` says out loud that Beta is uncovered.
     val report = readReport(projectDir)
-    assertEquals(listOf("AlphaPreview", "BetaPreview"), report.entries.map { it.previewId })
-    assertEquals(A11Y_REPORT_STATUS_ATF_UNAVAILABLE, report.status)
+    assertEquals(listOf("AlphaPreview"), report.entries.map { it.previewId })
+    assertNull(report.status)
+    assertTrue(report.partial, "Beta is uncovered once its uninformative entry is dropped")
   }
 
   @Test
-  fun `refetching every carried entry clears the unavailable stamp`() {
-    val projectDir = newTempFolder("module-merge-status-cleared")
+  fun `real findings under an unavailable stamp still carry forward`() {
+    val projectDir = newTempFolder("module-merge-status-real")
     File(projectDir, "build/compose-previews").mkdirs()
     File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    // A stamp can land on top of a previous run's genuine results — a failed session open stamps
+    // the report without touching the entries it carried. Those findings are data; only the empty
+    // ones are suspect.
     writeExistingReport(
       projectDir,
       status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
-      entries = arrayOf(entry("AlphaPreview")),
+      entries =
+        arrayOf(entry("AlphaPreview"), entry("BetaPreview", finding("ERROR", "Contrast", "real"))),
     )
 
     DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
@@ -344,10 +350,15 @@ class DaemonA11yFetcherTest {
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
       )
 
-    // Nothing survived from the unavailable run — every entry in the merged report came back from
-    // a successful fetch just now, so the stamp would be reporting a failure that no longer has a
-    // row to point at.
-    assertNull(readReport(projectDir).status)
+    val report = readReport(projectDir)
+    // Alpha's own empty entry was the uninformative kind, so it drops out of the carried set and
+    // comes back from this run's fetch — hence the order. Beta's findings survive untouched.
+    assertEquals(setOf("AlphaPreview", "BetaPreview"), report.entries.map { it.previewId }.toSet())
+    assertEquals(
+      "real",
+      report.entries.single { it.previewId == "BetaPreview" }.findings.single().message,
+    )
+    assertFalse(report.partial, "both previews are covered")
   }
 
   @Test
