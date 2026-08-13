@@ -736,8 +736,21 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 await api.triggerRefresh(cmpFile, true, "full"),
                 ":samples:cmp render",
             );
+            // Wait for the SETTLED state, not the first message that names the
+            // new preview. Discovery announces the id as soon as it has scanned
+            // the recompiled classes, which is before the renderer has written
+            // that preview's PNG — so a wait that stops at "the id is present"
+            // races the render and fails on a slow runner (issue: `B. edit a
+            // @Preview source` flaking with "capture … not on disk").
+            //
+            // This does NOT weaken invariant B1 below. The bug B1 exists to
+            // catch is a *permanent* placeholder — the panel advertising a
+            // preview whose PNG never arrives — and that still fails, as a
+            // `waitFor` timeout naming the same file. What it stops failing on
+            // is the transient moment between the two, which no user could see
+            // as anything but a card that fills in a second later.
             const afterAdd = await waitFor(
-                `setPreviews after adding ${tag}`,
+                `setPreviews after adding ${tag}, with its capture on disk`,
                 this.timeout(),
                 500,
                 () => {
@@ -745,7 +758,25 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                     return latestSetPreviewsMatching(msgs, (m) => {
                         if (m.previews.length === 0) return false;
                         if (!m.moduleDir.includes(cmpNeedle)) return false;
-                        return m.previews.some((p) => p.id.endsWith(tag));
+                        const matching = m.previews.filter((p) =>
+                            p.id.endsWith(tag),
+                        );
+                        if (matching.length === 0) return false;
+                        return matching.every((p) => {
+                            const captures = p.captures ?? [];
+                            return (
+                                captures.length > 0 &&
+                                captures.every((c) =>
+                                    fs.existsSync(
+                                        fullRenderPath(
+                                            repoRoot,
+                                            m.moduleDir,
+                                            c.renderOutput,
+                                        ),
+                                    ),
+                                )
+                            );
+                        });
                     });
                 },
             );
