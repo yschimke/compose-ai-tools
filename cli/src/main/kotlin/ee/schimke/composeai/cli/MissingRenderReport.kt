@@ -112,7 +112,19 @@ data class RenderTaskState(
    * for every kind on every backend except Android's Lottie / SVG split.
    */
   val task: String = RENDER_TASK_NAME,
-)
+  /**
+   * Fully qualified `:module:task` path of that same task, empty when the caller supplied no build
+   * to ask. Task *names* repeat across modules — every Android module has its own
+   * `composePreviewRenderLottie` — so the name alone can neither group entries nor be printed: a
+   * multi-module run would merge `:a:`'s outcome with `:b:`'s and then tell the reader to go
+   * inspect a task that exists in both.
+   */
+  val path: String = "",
+) {
+  /** What the report calls this task: the qualified path when known, else the bare name. */
+  val label: String
+    get() = path.ifEmpty { task }
+}
 
 /**
  * One preview that produced no PNG, paired with whatever the renderer left beside its would-be
@@ -209,28 +221,35 @@ fun collectMissingRenders(
           preview?.dataProducts?.forEach { if (it.output.isNotEmpty()) add(it.output) }
         }
         .distinct()
-    // `renders/<id>.png` is where an output the manifest leaves *blank* actually lands: the Android
-    // renderer resolves a capture to `capture.renderOutput.substringAfterLast('/').ifEmpty {
-    // "<id>.png" }` inside the renders dir, and its outer per-preview catch writes the sidecar at
-    // exactly that anchor. So the default stem is a live candidate whenever some capture declares
-    // no
-    // path of its own — including the shape where an empty capture sits beside a data product,
-    // which
-    // is the only place that preview's failure would be recorded if it died before the product.
+    // `renders/<id>.png` is where an output the manifest leaves *blank* lands, and where a failure
+    // that hits it is recorded — but only under the **first** capture. `RobolectricRenderTest`
+    // anchors the preview-level sidecar on `captures.firstOrNull()` resolved through
+    // `renderOutput.substringAfterLast('/').ifEmpty { "<id>.png" }` (or the first data product when
+    // there are no captures), deletes any stale file there before rendering, and writes the
+    // throwable there from its outer catch. Its per-job writes cover only two fall-through cases —
+    // an animated capture that produced no GIF, and a scroll product with nothing scrollable —
+    // neither of which can target the default stem: both require a `.gif` extension or a
+    // data-product path.
     //
-    // What it must NOT be is an unconditional extra: nothing ever deletes a stale `.error.json`
-    // (`cleanStaleRenders` walks `png`/`gif` only), so a preview whose captures have all since
-    // moved
-    // to a time-fanout or kind-specific directory still has its pre-move sidecar on disk, and
-    // reporting that beside the current failure claims two throws where one happened.
+    // So a *later* blank capture cannot get a fresh default-stem sidecar on Android, and probing
+    // for
+    // one would report whatever an older manifest left behind as this run's finding — the
+    // stale-file
+    // trap, re-entered through a narrower gap. The desktop backend is more permissive
+    // (`RenderPreviewsTask` resolves every blank capture to `<id>.png` and forks the renderer at
+    // that path), so this models Android deliberately: it is the stricter of the two, and the shape
+    // where they disagree — a first capture with a path followed by a blank one — is not something
+    // discovery emits. It writes a `renderOutput` for every capture, so blanks only survive in
+    // manifests old enough that *all* of their captures are blank, where the first-capture rule
+    // fires anyway.
     //
     // A preview with *no* captures at all (a `@ScrollingPreview` that declares only data products,
-    // issue #1524) is deliberately not in that set: the renderer anchors its sidecar on the first
-    // data product, which is already a declared output.
+    // issue #1524) is deliberately not in the set either: the renderer anchors its sidecar on the
+    // first data product, which is already a declared output.
     val defaultStemIsLive =
       preview == null ||
         declaredOutputs.isEmpty() ||
-        preview.captures.any { it.renderOutput.isEmpty() }
+        preview.captures.firstOrNull()?.renderOutput?.isEmpty() == true
     val relativeOutputs =
       if (defaultStemIsLive) (declaredOutputs + "renders/${result.id}.png").distinct()
       else declaredOutputs
@@ -304,11 +323,12 @@ internal fun renderTaskStateOf(
   val prefix = ":" + modulePath.trim(':') + ":"
   val kindTask = KIND_RENDER_TASKS[kind.uppercase()]
   val owner = kindTask?.takeIf { taskOutcomes.containsKey(prefix + it) } ?: RENDER_TASK_NAME
-  val outcome = taskOutcomes[prefix + owner] ?: return RenderTaskState(task = owner)
+  val path = prefix + owner
+  val outcome = taskOutcomes[path] ?: return RenderTaskState(task = owner, path = path)
   val evidence =
     if (outcome.disposition == GradleTaskDisposition.SKIPPED) RenderTaskEvidence.DID_NOT_RUN
     else RenderTaskEvidence.RAN
-  return RenderTaskState(evidence = evidence, task = owner)
+  return RenderTaskState(evidence = evidence, task = owner, path = path)
 }
 
 /**
@@ -394,10 +414,13 @@ fun formatMissingRenderReport(
       .append(RENDER_ERROR_SIDECAR_SUFFIX)
       .append("` sidecar beside each preview's would-be output.")
   }
-  // Grouped by the task that actually skipped: naming `composePreviewRender` for a preview whose
+  // Grouped by the task that actually skipped — naming `composePreviewRender` for a preview whose
   // renderer is `composePreviewRenderLottie` is a precise sentence about the wrong task, and the
-  // remedy attached to it (testClassesDirs) is one the named task doesn't even have.
-  for ((owner, entries) in stale.groupBy { it.renderTask.task }) {
+  // remedy attached to it (testClassesDirs) is one the named task doesn't even have — and by
+  // module,
+  // because one task *name* is many tasks in a multi-module render and their outcomes differ.
+  for ((key, entries) in stale.groupBy { it.module to it.renderTask }) {
+    val state = key.second
     // Never claim to have observed what this run didn't do: the renderer was skipped, so the
     // sidecar quoted above describes some earlier run and the wiring guidance below still applies.
     sb
@@ -406,9 +429,10 @@ fun formatMissingRenderReport(
       .append(" preview(s) have a `<render>.png")
       .append(RENDER_ERROR_SIDECAR_SUFFIX)
       .append("` sidecar on disk, but `")
-      .append(owner)
+      .append(state.label)
       .append("` did not run in this invocation ")
-      .append(if (owner == RENDER_TASK_NAME) "(skipped / NO-SOURCE)" else "(skipped)")
+      // NO-SOURCE is a `Test`-task state; the kind renderers cannot report it.
+      .append(if (state.task == RENDER_TASK_NAME) "(skipped / NO-SOURCE)" else "(skipped)")
       .append(" — that sidecar is left over from an earlier run and says nothing about this one.")
   }
   if (unexplained.isNotEmpty()) {
@@ -426,9 +450,14 @@ fun formatMissingRenderReport(
     // task, testClassesDirs is its input, and `composePreviewRender-reports` is its artifact. None
     // of that exists for the kind renderers, so previews they own get their own sentence instead of
     // being pointed at a fix that cannot apply to them.
-    val byOwner = unexplained.groupBy { it.renderTask.task }
+    // Keyed by module as well as owner: task *names* repeat across modules, so grouping on the name
+    // alone would fold `:a:composePreviewRenderLottie` into `:b:`'s and then quote the combined
+    // count as one module's.
+    val byOwner = unexplained.groupBy { it.module to it.renderTask }
     val paragraphs = buildList {
-      if (byOwner.containsKey(RENDER_TASK_NAME)) {
+      // The main renderer's paragraph names no module and gives the same advice everywhere, so one
+      // copy covers however many modules are in the group.
+      if (byOwner.keys.any { (_, state) -> state.task == RENDER_TASK_NAME }) {
         add(
           "Check the Gradle output above — a common cause is the `composePreviewRender` task " +
             "reporting NO-SOURCE, which means the renderer test class wasn't found on " +
@@ -437,8 +466,11 @@ fun formatMissingRenderReport(
         )
       }
       byOwner
-        .filterKeys { it != RENDER_TASK_NAME }
-        .forEach { (owner, entries) -> add(kindRendererGuidance(owner, entries.size)) }
+        .filterKeys { (_, state) -> state.task != RENDER_TASK_NAME }
+        .forEach { (key, entries) ->
+          val (module, state) = key
+          add(kindRendererGuidance(state, module, entries.size))
+        }
     }
     sb.append(paragraphs.joinToString("\n"))
   }
@@ -454,13 +486,16 @@ fun formatMissingRenderReport(
  * write no `composePreviewRender-reports` artifact. What *does* skip them is `composePreview {
  * enabled = false }` (their `onlyIf`) or a failure in something they depend on.
  */
-private fun kindRendererGuidance(task: String, count: Int): String {
-  val kind = KIND_BY_RENDER_TASK[task]
+private fun kindRendererGuidance(state: RenderTaskState, module: String, count: Int): String {
+  val kind = KIND_BY_RENDER_TASK[state.task]
   val owns = if (kind != null) "every `kind=$kind` preview" else "these previews"
+  // "in this module" was a claim about scope, and a false one as soon as two modules' previews were
+  // counted together — so the module is named from the entries themselves, or left out entirely.
+  val where = if (module.isNotBlank()) " in $module" else ""
   // Deliberately makes no claim about what that task *did* — the stale paragraph above says that,
   // and only where it was observed. `unexplained` also holds previews whose renderer ran and simply
   // produced nothing, which "it did not run" would misdescribe.
-  return "`$task` renders $owns in this module ($count here) — the Robolectric renderer skips that " +
+  return "`${state.label}` renders $owns$where ($count here) — the Robolectric renderer skips that " +
     "kind — so check its outcome in the Gradle output above: `composePreview { enabled = false }` " +
     "skips it, as does a failure in a task it depends on."
 }
