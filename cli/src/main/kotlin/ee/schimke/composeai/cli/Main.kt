@@ -226,10 +226,12 @@ private fun printFullUsage() {
                            `<className>.<functionName>`, equals its bare function name, or is
                            a case-insensitive substring of its id (the --filter rule). It may
                            therefore match several previews — `--preview Foo` also takes
-                           `FooBar`; reach for --id when exactly one is meant. Narrows the
-                           Gradle render like --id / --filter; combining the three intersects
-                           them (on render-matrix and serve, which host a single preview, the
-                           tightest of the three given wins). `record --preview` takes the
+                           `FooBar`; reach for --id when exactly one is meant. Combining the
+                           three intersects them — every selector you pass has to match —
+                           everywhere, render-matrix and serve included. Narrows the Gradle
+                           render like --id / --filter on the preview render commands;
+                           show-resources filters its output only, since the resource render
+                           task is not scoped by any of the three. `record --preview` takes the
                            same forms but must land on exactly one preview, so it tries them
                            in order and an ambiguous reference is an error. `history
                            --preview` is a different flag: an exact preview-id filter over
