@@ -223,6 +223,18 @@ input, select, textarea, progress { accent-color: var(--md-sys-color-primary); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cp-site-lead .cp-breadcrumb > a { color: var(--md-sys-color-on-surface-variant);
   overflow: hidden; text-overflow: ellipsis; }
+/* The catalog this page belongs to, named in the bar. Styled like the breadcrumb it sits beside —
+   a hairline continuation of the brand rather than a second chip — because it answers the same
+   "where am I" question and must not compete with the brand for weight. It carries the catalog's
+   own primary colour, so on a themed system the bar picks up the palette the page already wears. */
+.cp-site-catalog { min-width: 0; padding-left: 12px; border-left: 1px solid var(--cp-border);
+  color: var(--md-sys-color-primary);
+  font-size: var(--md-sys-typescale-title-small-size);
+  line-height: var(--md-sys-typescale-title-small-line);
+  font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Beside a breadcrumb the name is the parent, so the trail drops its own keyline (one separator
+   between any two items, never two). */
+.cp-site-catalog + .cp-breadcrumb { padding-left: 0; border-left: 0; }
 .cp-crumb-sep { color: var(--cp-fg-faint); }
 .cp-crumb-current { overflow: hidden; text-overflow: ellipsis; }
 /* A catalog landing's back button keeps its outlined-button shape but drops to the bar's own
@@ -1803,6 +1815,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   /* Wrapped onto its own line the crumb no longer continues the brand horizontally, so the
      keyline that stood in for the first `/` would read as a stray rule. */
   .cp-site-lead .cp-breadcrumb { padding-left: 0; border-left: 0; }
+  /* Wrapped onto its own line, the name loses the keyline that only reads inline. */
+  .cp-site-catalog { padding-left: 0; border-left: 0; }
   .cp-site-nav { justify-self: start; flex-wrap: wrap; }
   .cp-site-mark { width: 22px; height: 22px; }
   .cp-site-nav { gap: 12px; }

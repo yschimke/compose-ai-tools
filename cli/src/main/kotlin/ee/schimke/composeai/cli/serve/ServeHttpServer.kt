@@ -11,6 +11,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
@@ -22,6 +24,7 @@ import io.ktor.server.plugins.compression.gzip
 import io.ktor.server.plugins.compression.matchContentType
 import io.ktor.server.plugins.compression.minimumSize
 import io.ktor.server.plugins.origin
+import io.ktor.server.request.path
 import io.ktor.server.request.queryString
 import io.ktor.server.request.receiveStream
 import io.ktor.server.response.respond
@@ -132,6 +135,14 @@ class ServeHttpServer(
    * exists, so an app's own landing keeps a "← back" link whenever the server also lists systems.
    */
   private val appCatalogSessions: List<String> = emptyList(),
+  /**
+   * **Top-level sites** (`--sites m3.preview.coo.ee=m3-catalog`, or `catalogs.json`'s `sites`):
+   * host names that serve one already-published catalog as though it were the whole server. See
+   * [ServeSites] — it's a routing/presentation view over the same session, not a second tenant, so
+   * it costs a map lookup per request and nothing else. Empty (the default) leaves every request
+   * behaving exactly as it did before sites existed.
+   */
+  private val sites: ServeSites = ServeSites.EMPTY,
   /**
    * Configured catalog availability shared with startup + refresh. When present, `/status` includes
    * failed/pending catalogs instead of silently omitting them. Catalog loading remains best-effort:
@@ -391,6 +402,44 @@ class ServeHttpServer(
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
       install(WebSockets)
+      // Top-level sites ([ServeSites]): make the canonical `/<system>/…` spelling behave, on a site
+      // host, as though this box served only that one catalog. Registered before routing (and only
+      // when sites are configured, so an ordinary server has no interceptor at all) because it has
+      // to answer INSTEAD of the `/{system}/…` handlers, not after them.
+      //
+      // Two cases, and both cost one map lookup on a request that would otherwise be served anyway:
+      //   • this site's own system — 301 to the same page's rooted URL, so `m3.preview.coo.ee/`
+      //     and `…/m3-catalog/` don't compete as two spellings of one page in a crawler's index;
+      //   • another served catalog — 404, because a neighbour reachable through this domain is
+      //     precisely what a top-level site exists not to be. Only ids this server actually serves
+      //     are considered, so every constant route (`/p/…`, `/render/…`, `/assets/…`, `/healthz`)
+      //     falls straight through untouched.
+      if (!sites.isEmpty) {
+        intercept(ApplicationCallPipeline.Plugins) {
+          val current: ApplicationCall = context
+          val system = current.siteSystem() ?: return@intercept
+          val path = current.request.path()
+          val first = decodeSegment(path.trimStart('/').substringBefore('/'))
+          if (first.isEmpty()) return@intercept
+          if (first == system) {
+            // `trimStart` on the remainder as well as the head: `/<system>//evil.example` would
+            // otherwise build `//evil.example`, which a browser reads as a protocol-relative URL
+            // to another origin — an open redirect on every site host. The target must be exactly
+            // one leading slash, i.e. same-origin by construction.
+            val rest = path.trimStart('/').substringAfter('/', "").trimStart('/')
+            val query = current.request.queryString().prefixedQuery()
+            // 308, not 301: the canonical prefix also carries POST routes (`/{system}/refresh`,
+            // `/{system}/api/presence`, the theme-lease pair), and a 301 is re-issued as GET by
+            // most clients — the request would arrive at the rooted path with the wrong method.
+            current.response.headers.append(HttpHeaders.Location, "/$rest$query")
+            current.respond(HttpStatusCode.PermanentRedirect)
+            finish()
+          } else if (isForeignSession(first)) {
+            current.respondText("not found", status = HttpStatusCode.NotFound)
+            finish()
+          }
+        }
+      }
       // Answer HEAD everywhere GET is answered. Every route on this server is registered with
       // `get`, so without this a HEAD got 405 where a constant path segment matched and 404 where
       // routing needed a `{system}` — the whole site was un-HEAD-able.
@@ -514,7 +563,13 @@ class ServeHttpServer(
         // iframe re-renders on knob override" failure. An unknown system 404s inside the handler
         // either way, so the route costs nothing when no app is ever registered.
         get("/wasm/{system}/{path...}") {
-          val dir = call.parameters["system"]?.let { wasmCatalogs[it] }
+          val system = call.parameters["system"]
+          // A site hostname serves ONE catalog's app. `/wasm/<other>/…` is a constant-prefix route,
+          // so the canonical-path interceptor never sees it — without this check a site would hand
+          // out a neighbouring catalog's compiled Wasm app, which is the isolation contract broken
+          // by the heaviest asset on the box.
+          val site = call.siteSystem()
+          val dir = if (site != null && system != site) null else system?.let { wasmCatalogs[it] }
           if (dir == null) {
             call.respondText("not found", status = HttpStatusCode.NotFound)
             return@get
@@ -923,7 +978,77 @@ class ServeHttpServer(
    */
   private fun RoutingContext.selectedSessionId(sessionInPath: Boolean): String =
     if (sessionInPath) call.parameters["system"] ?: defaultSessionId
-    else call.request.queryParameters["session"] ?: defaultSessionId
+    // A top-level site's host OUTRANKS `?session=`. It has to: the whole guarantee is one catalog
+    // per hostname, and a query param that could re-point the session would hand a neighbour's
+    // previews out through `/api/previews?session=wear-m3` while `/wear-m3/` 404s — the isolation
+    // undone by the older spelling of the same request.
+    else siteSystem() ?: call.request.queryParameters["session"] ?: defaultSessionId
+
+  /**
+   * The catalog this request's **host** publishes as a top-level site, or null on the main host
+   * (and on every server with no sites configured, which is the fast path). See [ServeSites].
+   *
+   * Read from the same forwarded headers [externalOrigin] trusts, because the only thing in front
+   * of this server is the deployment's own reverse proxy — a request that reaches the listener
+   * direct carries its `Host` verbatim, which is what a local `curl -H 'Host: m3.preview.coo.ee'`
+   * needs.
+   */
+  private fun ApplicationCall.siteSystem(): String? {
+    if (sites.isEmpty) return null
+    val forwarded = request.headers["X-Forwarded-Host"]?.substringBefore(',')?.trim()
+    return sites.systemFor(
+      forwarded?.takeIf { it.isNotEmpty() } ?: request.headers[HttpHeaders.Host]
+    )
+  }
+
+  private fun RoutingContext.siteSystem(): String? = call.siteSystem()
+
+  /**
+   * The catalog identity a **top-level site**'s non-catalog pages should wear — its name, its
+   * palette, and the `localStorage` key its theme choice is remembered under. All three empty on
+   * the main host, and on a site whose catalog has not loaded yet.
+   *
+   * A site hostname publishes one design system, so `/status` and the 404 on that host are that
+   * system's pages too. Without this they rendered in the built-in chrome beside a themed landing —
+   * one hostname wearing two skins. Read through [ServeSessionRegistry.peekHost], which never
+   * resumes: a 404 must not wake a daemon to find out what colour to be.
+   */
+  private fun RoutingContext.siteSkin(): Triple<String, String, String> {
+    val system = siteSystem() ?: return Triple("", "", "")
+    val host = sessions.peekHost(system)
+    val bundle = host?.let { catalogBundleHost(it) }
+    val name =
+      bundle?.title?.takeIf { it.isNotBlank() }
+        ?: catalogMetaSeen[system]?.title
+        ?: host?.label
+        ?: system
+    // Same key the catalog's own pages use, so one choice follows a visitor across the hostname
+    // instead of `/status` and the grid each remembering their own light/dark.
+    // Palette from the resident bundle, else the last-known snapshot: residency, not registration,
+    // is what the idle timer takes away, and a suspended site must keep its colours.
+    val themeCss =
+      bundle?.webThemeCss?.takeIf { it.isNotBlank() }
+        ?: catalogMetaSeen[system]?.webThemeCss.orEmpty()
+    return Triple(name, themeCss, "cp-theme:$system")
+  }
+
+  /**
+   * Whether a GitHub sign-in started from *this* request's origin can actually come back to it.
+   *
+   * False on a top-level site whose box pins a callback base URL
+   * (`--github-auth-callback-base-url`, which the deployment sets): the `cp_gh_state` cookie is
+   * host-only, so it is written on the site host while GitHub returns to the pinned one — the
+   * callback then sees no state and answers 401, and its relative return URL could not have come
+   * back to the site anyway. Offering the link would advertise a dead end, so the affordance is
+   * withheld and the surface stays snapshot-only there. Sites on a box with no pinned callback are
+   * unaffected (the callback is derived from the request, so it stays on the site host and the
+   * round trip closes).
+   *
+   * The real fix is an OAuth handoff that carries the originating host through the dance; until
+   * then this keeps the failure honest rather than hidden behind a button.
+   */
+  private fun RoutingContext.oauthCanRoundTrip(): Boolean =
+    siteSystem() == null || githubAuth?.hasPinnedCallback != true
 
   /**
    * The session id to hand [ServeWeb] for nav-marking + link building, and the URL [basePath] its
@@ -935,8 +1060,49 @@ class ServeHttpServer(
    */
   private fun RoutingContext.webSessionAndBase(sessionInPath: Boolean): Pair<String?, String> {
     val system = if (sessionInPath) call.parameters["system"] else null
-    return if (system != null) system to "/" + WebEscaping.urlEncodeSegment(system)
-    else call.request.queryParameters["session"] to ""
+    if (system != null) return system to "/" + WebEscaping.urlEncodeSegment(system)
+    // A top-level site: the session is this host's catalog, and its base path is EMPTY — that empty
+    // string is the whole reason links stay on the custom domain instead of walking back to
+    // `preview.coo.ee/<system>/`. The session id is still passed so nav-marking and the engagement
+    // counters attribute to the right catalog; it is the same catalog either way, so a visit
+    // through the site host and one through the canonical path count together.
+    siteSystem()?.let {
+      return it to ""
+    }
+    return call.request.queryParameters["session"] to ""
+  }
+
+  /**
+   * The catalogs the playground may offer **this** request: every one on the main host, and only
+   * its own on a top-level site.
+   *
+   * The playground lives at constant paths (`/playground`, `/api/<v>/compiler/catalogs`), so the
+   * canonical-path interceptor never sees it — its first segment names no session. Without this, a
+   * site host would list, preselect and compile against every catalog on the box, which is the
+   * one-catalog-per-host contract broken by the one lane that runs code. The pinned "Server
+   * default" entry (empty id) is not a catalog and is kept either way.
+   */
+  private fun RoutingContext.siteScopedCatalogChoices(
+    service: PlaygroundCompileService
+  ): List<PlaygroundCatalogInfo> {
+    val choices = service.catalogChoices()
+    val site = siteSystem() ?: return choices
+    return choices.filter { it.id.isEmpty() && sitePinIsOwn(service) || it.id == site }
+  }
+
+  /**
+   * Whether the host's **pinned** playground default compiles against this site's own catalog.
+   *
+   * The pinned entry carries an empty id and reads as "Server default", which sounds catalog-less
+   * but is not: `--playground-bundle=wear-m3` on a box whose site is `compose-m3` makes that
+   * default a *neighbour's* classpath. Keeping the option, or accepting `catalog: ""`, would let a
+   * one-catalog hostname compile against another design system under a name that never says so. A
+   * pin naming no catalog at all (local files) is nobody's neighbour and stays offered.
+   */
+  private fun RoutingContext.sitePinIsOwn(service: PlaygroundCompileService): Boolean {
+    val site = siteSystem() ?: return true
+    val pinned = service.pinnedCatalogSystems
+    return pinned.isEmpty() || pinned == setOf(site)
   }
 
   /** `POST /{system}/refresh`: check the published catalog branch and reload it when newer. */
@@ -1042,6 +1208,7 @@ class ServeHttpServer(
    * [ServeWeb.notFoundPage]. Asset/API lanes keep their bare `text/plain` 404.
    */
   private suspend fun RoutingContext.respondNotFoundHtml(message: String) {
+    val skin = siteSkin()
     call.respondText(
       ServeWeb.notFoundPage(
         message,
@@ -1049,6 +1216,9 @@ class ServeHttpServer(
         isPublic,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
         version = BUNDLE_VERSION,
+        siteName = skin.first,
+        themeCss = skin.second,
+        themeStorageKey = skin.third,
       ),
       ContentType.Text.Html,
       HttpStatusCode.NotFound,
@@ -1172,7 +1342,7 @@ class ServeHttpServer(
       ServeWeb.playgroundPage(
         token = token,
         isPublic = isPublic,
-        catalogs = service.catalogChoices(),
+        catalogs = siteScopedCatalogChoices(service),
         catalogSelectorEnabled = service.catalogSelectorEnabled,
         seed = seed,
         preselectCatalog = call.request.queryParameters["catalog"],
@@ -1199,7 +1369,7 @@ class ServeHttpServer(
     call.respondText(
       JSON.encodeToString(
         PlaygroundCatalogsResponse.serializer(),
-        PlaygroundCatalogsResponse(service.catalogChoices()),
+        PlaygroundCatalogsResponse(siteScopedCatalogChoices(service)),
       ),
       ContentType.Application.Json,
     )
@@ -1343,6 +1513,22 @@ class ServeHttpServer(
         )
         return
       }
+    // Not advertising a neighbour is not the same as refusing to compile against one: the id is a
+    // request field, so a site host has to reject it outright or the selector's absence is
+    // cosmetic. Empty stays legal — that is the host's pinned default, which is not a catalog.
+    val site = siteSystem()
+    val foreignCatalog = request.catalog.isNotEmpty() && request.catalog != site
+    // An EMPTY catalog is the pinned default, which is only legitimate here when the pin is this
+    // site's own — otherwise it is a neighbour's classpath wearing the name "Server default".
+    val foreignPin = request.catalog.isEmpty() && !sitePinIsOwn(service)
+    if (site != null && (foreignCatalog || foreignPin)) {
+      call.respondText(
+        "{\"error\":\"unknown catalog\"}",
+        ContentType.Application.Json,
+        HttpStatusCode.NotFound,
+      )
+      return
+    }
     val response = withContext(Dispatchers.IO) { service.run(request, isSecurityChecked = true) }
     call.respondText(
       JSON.encodeToString(PlaygroundRunResponse.serializer(), response),
@@ -1537,8 +1723,12 @@ class ServeHttpServer(
     // than an arbitrary default module's grid. A plain `serve` (no `--catalogs`) keeps the module
     // landing. A query `?session=` or a `/<system>` path still selects that session's landing
     // below.
+    // …unless this request arrived on a top-level site host, whose `/` IS its catalog's landing.
+    // A site that opened on an index of its neighbours would be advertising exactly what it exists
+    // not to.
     if (
       !sessionInPath &&
+        siteSystem() == null &&
         (listedCatalogs().isNotEmpty() || unlistedCatalogs().isNotEmpty()) &&
         call.request.queryParameters["session"] == null
     ) {
@@ -1596,6 +1786,7 @@ class ServeHttpServer(
                   title = heading,
                   subtitle = ServeWeb.catalogCardSubtitle(renderHost.previews.size),
                   heroes = listOf(hero),
+                  system = selectedSessionId,
                 )
               )
             }
@@ -1630,7 +1821,11 @@ class ServeHttpServer(
           // A back-to-home button whenever this server publishes a front-door index — listed
           // catalogs OR unlisted app catalogs (mirrors handleLanding's home-index condition), so an
           // app-only server's landings still link home.
-          hasHomeIndex = listedCatalogs().isNotEmpty() || unlistedCatalogs().isNotEmpty(),
+          // …and never on a top-level site: there is no front door on this hostname to go back to,
+          // and a "← All design systems" button would either lie or leave the domain.
+          hasHomeIndex =
+            siteSystem() == null &&
+              (listedCatalogs().isNotEmpty() || unlistedCatalogs().isNotEmpty()),
           basePath = basePath,
           // One action per comparable format, each gated on the same condition `comparisonPage`
           // turns that format on with — so "compare SVG" and "compare RC players" only appear when
@@ -1723,12 +1918,16 @@ class ServeHttpServer(
             githubAuth
               ?.takeIf { renderHost.hasLiveStream }
               ?.takeUnless { it.isAuthenticated(call) }
+              ?.takeIf { oauthCanRoundTrip() }
               ?.loginPath(call),
           themeRenderBurstCapacity = renderHost.themeRenderBurstCapacity,
           engagement = previewEngagement(selectedSessionId, renderHost.previews),
           systemViews = systemViews,
           unfurl = unfurl,
           displayTitle = bundle?.title,
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
         ),
         ContentType.Text.Html,
       )
@@ -1857,6 +2056,9 @@ class ServeHttpServer(
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
         ),
         ContentType.Text.Html,
       )
@@ -1938,6 +2140,9 @@ class ServeHttpServer(
                 ServeWeb.designToolLabel(it.source.provider)
               }
             } ?: activity?.figma?.let { "Figma" },
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
         ),
         ContentType.Text.Html,
       )
@@ -2080,6 +2285,9 @@ class ServeHttpServer(
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
         ),
         ContentType.Text.Html,
       )
@@ -2141,6 +2349,9 @@ class ServeHttpServer(
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
         ),
         ContentType.Text.Html,
       )
@@ -2218,6 +2429,9 @@ class ServeHttpServer(
           actualAnnotations =
             if (pinned) emptyList() else renderHost.annotationsForPreview(previewId),
           revisions = revisions,
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
         ),
         ContentType.Text.Html,
       )
@@ -2424,6 +2638,57 @@ class ServeHttpServer(
       ?: appCatalogSessions
 
   /**
+   * Every catalog id this server publishes under a `/<system>/` path, listed or not. Used only by
+   * the top-level-site interceptor to tell "a first path segment that names a catalog" from "a
+   * first path segment that names a route" — so a site host's rewrite touches `/wear-m3/…` and
+   * leaves `/render/…`, `/assets/…` and the rest alone.
+   */
+  private fun servedSystems(): Set<String> = (listedCatalogs() + unlistedCatalogs()).toSet()
+
+  /**
+   * Whether [first] — a request's first path segment on a **site host** — selects some session
+   * other than this site's own, and so must 404 rather than be served through the wrong domain.
+   *
+   * Deliberately broader than [servedSystems]: a catalog row is not the only thing the generic
+   * `/{system}/…` routes can acquire. An uploaded bundle (`--accept-bundles`, `POST /bundles/<n>`)
+   * registers a session under its own name, and a revision session is addressed as `<system>@<rev>`
+   * — both would otherwise slip past a catalog-only check and serve a neighbour on a site hostname.
+   * [ServeSessionRegistry.peekHost] answers for anything registered without resuming it, and the
+   * `@` split covers a revision of a served catalog that has not been built yet, so neither needs
+   * to be enumerated ahead of time.
+   *
+   * A constant route (`render`, `p`, `api`, `assets`, …) names no session and is not a served
+   * system, so it falls through untouched — and [ServeSites] refuses a site whose id would collide
+   * with one, so the two rules cannot disagree.
+   *
+   * Membership is [ServeSessionRegistry.isKnownSession], NOT `peekHost`. `peekHost` answers
+   * "resident right now" and returns null for a **suspended** session that is still registered and
+   * resumable — so a foreign session that had merely gone idle read as "no such session", fell
+   * through to the `/{system}/…` handler, and got resumed and served through the site hostname. The
+   * gate has to be registration, not residency, or isolation lapses on exactly the timer that makes
+   * a quiet box cheap.
+   */
+  private fun isForeignSession(first: String): Boolean {
+    // …except the visitor's own redeemed playground session, which this host minted seconds ago
+    // under an unguessable token id and is redirecting them to. It is registered, so the
+    // membership check below would call it a neighbour and 404 the last step of their own run.
+    if (playgroundRedeem?.isRedeemedSession(first) == true) return false
+    return first in servedSystems() ||
+      first.substringBefore('@') in servedSystems() ||
+      sessions.isKnownSession(first)
+  }
+
+  /** `?a=b` for a non-empty query string, else `""` — for rebuilding a URL we are redirecting. */
+  private fun String.prefixedQuery(): String = if (isEmpty()) "" else "?$this"
+
+  /**
+   * One percent-decoded path segment, or the segment verbatim when it isn't valid encoding. Used to
+   * compare a first path segment against a catalog id; a bad escape simply won't match one.
+   */
+  private fun decodeSegment(raw: String): String =
+    runCatching { java.net.URLDecoder.decode(raw, Charsets.UTF_8) }.getOrDefault(raw)
+
+  /**
    * `/playground?from=<system>/<previewId>` for a preview, or null when this host would not honour
    * it — no playground lane, no source fetcher, a preview whose catalog never recorded a source
    * path, or a catalog this host cannot compile against. Checked here rather than left to the
@@ -2439,6 +2704,9 @@ class ServeHttpServer(
     sourceFile: String?,
   ): String? {
     if (playgroundService == null || playgroundSeeds == null) return null
+    // Same dead end the catalog-level handoff is withheld for: a site host whose OAuth cannot round
+    // trip would offer an editor that ends in a 401.
+    if (!playgroundReachable()) return null
     if (sourceFile.isNullOrBlank()) return null
     // The handoff is only an offer when THIS catalog is a compile target here. A serve host browses
     // far more catalogs than its playground can compile: a pin-only host compiles exactly its pin,
@@ -2465,7 +2733,20 @@ class ServeHttpServer(
    * — a landing that offers "try this in the playground" for a catalog the playground can't select
    * is the same dead affordance, one page earlier).
    */
+  /**
+   * Whether a playground handoff can complete from *this* request's origin at all.
+   *
+   * The playground is gated on GitHub auth, so on a site host whose box pins an OAuth callback the
+   * link leads into the same dance whose state cookie cannot reach the callback — a 401 at the end
+   * of a button that promised an editor. The live-preview prompts were already withheld for this;
+   * the handoff links are the same dead end and are withheld with them, rather than left as the one
+   * affordance that still walks a visitor into it.
+   */
+  private fun RoutingContext.playgroundReachable(): Boolean =
+    githubAuth == null || oauthCanRoundTrip()
+
   private fun RoutingContext.playgroundLinkForCatalog(system: String): String? {
+    if (!playgroundReachable()) return null
     if (playgroundService == null) return null
     if (!playgroundService.compilesCatalog(system)) return null
     val token = if (isPublic) "" else "&token=" + WebEscaping.urlEncodeSegment(token)
@@ -2607,8 +2888,8 @@ class ServeHttpServer(
    * it reads them straight off the resident host and falls back to whatever a previous page view
    * already remembered.
    */
-  private fun crawlableCatalogs(): List<ServeSiteIndex.CatalogEntry> =
-    listedCatalogs().mapNotNull { system ->
+  private fun crawlableCatalogs(onlySystem: String? = null): List<ServeSiteIndex.CatalogEntry> =
+    (if (onlySystem != null) listOf(onlySystem) else listedCatalogs()).mapNotNull { system ->
       val host = sessions.peekHost(system)
       val meta = catalogMetaSeen[system]
       val previewIds = host?.previews?.map { it.id } ?: meta?.previewIds ?: return@mapNotNull null
@@ -2626,8 +2907,12 @@ class ServeHttpServer(
   private suspend fun RoutingContext.handleRobotsTxt() {
     // Advertised only when there is something in it — an empty sitemap is a broken promise, and a
     // token-gated host has no crawlable pages at all.
+    // On a top-level site the sitemap covers that site's own catalog, so the advertisement is
+    // gated on the same scoped set the sitemap itself is built from.
     val sitemapUrl =
-      if (isPublic && crawlableCatalogs().isNotEmpty()) externalOrigin() + "/sitemap.xml" else null
+      if (isPublic && crawlableCatalogs(siteSystem()).isNotEmpty())
+        externalOrigin() + "/sitemap.xml"
+      else null
     markGeneration("robots", STATIC_RESOURCE_CACHE_CONTROL)
     call.respondText(ServeSiteIndex.robotsTxt(isPublic, sitemapUrl), ContentType.Text.Plain)
   }
@@ -2643,8 +2928,11 @@ class ServeHttpServer(
       return
     }
     markGeneration("sitemap", STATIC_RESOURCE_CACHE_CONTROL)
+    // A site host publishes ONE catalog, rooted: its landing is `/`, its viewers are `/p/<id>`, and
+    // its neighbours are none of a crawler's business here.
+    val site = siteSystem()
     call.respondText(
-      ServeSiteIndex.sitemapXml(externalOrigin(), crawlableCatalogs()),
+      ServeSiteIndex.sitemapXml(externalOrigin(), crawlableCatalogs(site), rootedSystem = site),
       ContentType.Application.Xml,
     )
   }
@@ -2665,7 +2953,14 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleHeroImage() {
     if (rejectBadToken()) return
-    val hero = call.parameters["name"]?.let { heroImages.byFileName(it) }
+    // Scoped like `/wasm/<system>/…`, and for the same reason: the `{system}` segment is not the
+    // first one, so the canonical-path interceptor never inspects it. Once a neighbour's hero has
+    // been baked — loading the main index is enough — its thumbnail would stay fetchable through a
+    // hostname that publishes one catalog.
+    val site = call.siteSystem()
+    val hero =
+      if (site != null && call.parameters["system"] != site) null
+      else call.parameters["name"]?.let { heroImages.byFileName(it) }
     if (hero == null) {
       call.respondText("no such hero image", status = HttpStatusCode.NotFound)
       return
@@ -2689,7 +2984,16 @@ class ServeHttpServer(
    * an image every consumer 403s on, which is the failure this whole lane exists to remove.
    */
   private suspend fun RoutingContext.handleSocialCard() {
-    val card = call.parameters["name"]?.let { socialCards.byFileName(it) }
+    val site = call.siteSystem()
+    val card =
+      call.parameters["name"]
+        ?.let { socialCards.byFileName(it) }
+        // A site hostname answers for one catalog, including in an unfurl. The file name is a
+        // content hash, so a card baked for a neighbour (and published by its `og:image` on the
+        // main host) would otherwise be fetchable back through this domain and hand a chat client
+        // that catalog's title and thumbnails under this site's name. The front door's own card
+        // (system == null) is nobody's catalog and is refused here for the same reason.
+        ?.takeIf { site == null || it.system == site }
     if (card == null) {
       call.respondText("no such card", status = HttpStatusCode.NotFound)
       return
@@ -2768,7 +3072,13 @@ class ServeHttpServer(
   private suspend fun RoutingContext.handleStatus(json: Boolean) {
     if (rejectBadToken()) return
     val wantJson = json || call.request.queryParameters["format"].equals("json", ignoreCase = true)
-    val data = withContext(Dispatchers.IO) { buildStatusData() }
+    // On a top-level site, `/status` reports on THAT app only: its catalog row, its daemons, and
+    // the startup failures that name it. A visitor to `m3.preview.coo.ee/status` has no business
+    // learning what else this box happens to run, and a monitor pointed at the site should alert on
+    // the site. The same underlying snapshot is taken either way — the scoping is a filter over it,
+    // not a second collection pass.
+    val data = withContext(Dispatchers.IO) { buildStatusData(onlySystem = siteSystem()) }
+    val skin = siteSkin()
     if (wantJson) {
       call.respondText(
         JSON.encodeToString(StatusResponse.serializer(), data.toResponse()),
@@ -2781,6 +3091,9 @@ class ServeHttpServer(
           token,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           version = BUNDLE_VERSION,
+          siteName = skin.first,
+          themeCss = skin.second,
+          themeStorageKey = skin.third,
         ),
         ContentType.Text.Html,
       )
@@ -2970,6 +3283,13 @@ class ServeHttpServer(
      */
     val heroRenderSize: Pair<Int, Int>?,
     val darkStage: Boolean,
+    /**
+     * The catalog's own web palette ([ServeThemeCss]). Remembered for the same reason the trust
+     * badge and hero are: a **site**'s `/status` and 404 wear this skin, and reading it live meant
+     * the whole hostname reverted to the default palette the moment its daemon went idle. It comes
+     * from the delivery branch, not the daemon, so a suspension cannot invalidate it.
+     */
+    val webThemeCss: String,
     val degradation: String?,
     val provenance: ServeWeb.CatalogProvenance?,
     val themeOptimization: ThemeOptimizationSnapshot?,
@@ -3007,6 +3327,7 @@ class ServeHttpServer(
         heroImage = heroId?.let { heroImages.heroFor(bundle, it, heroCrop) },
         heroRenderSize = heroId?.let { host.bakedRenderSize(it) },
         darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle.stageSurface),
+        webThemeCss = bundle.webThemeCss.orEmpty(),
         degradation = host.degradations.firstOrNull()?.detail,
         provenance = bundle.provenance,
         themeOptimization = host.themeOptimizationSnapshot(),
@@ -3022,8 +3343,31 @@ class ServeHttpServer(
     val catalogs: List<CatalogStat>,
     val running: List<ServeSessionRegistry.RunningDaemon>,
     val failures: List<DaemonStartupLog.Failure>,
+    /**
+     * The one system this snapshot is about ([ServeSites]), or null for the whole box. Carried
+     * rather than applied only to [catalogs] / [running] because a status page is more than two
+     * lists: the session count and the playground's catalog selector are box-wide reads that would
+     * have kept naming neighbours (and reporting another app's daemons) to a per-site monitor.
+     */
+    val onlySystem: String? = null,
   ) {
     val uptimeSeconds: Long = ((nowMillis - startedAtMillis) / 1000).coerceAtLeast(0)
+
+    /**
+     * Sessions known to this status view: every registered one for the box, or just this site's (0
+     * or 1 — it is registered, or it has not loaded yet).
+     */
+    val knownSessions: Int =
+      if (onlySystem == null) sessions.activeCount()
+      // Registration, not residency: `peekHost` is null for a suspended-but-registered catalog, so
+      // reading it here reported `known: 0` beside an available catalog every time the site's
+      // daemon went idle — a per-site monitor would see its session vanish on a timer.
+      else if (sessions.isKnownSession(onlySystem)) 1 else 0
+
+    /** The playground's offered catalogs, narrowed to what this view is allowed to name. */
+    fun offeredCatalogs(offered: List<String>): List<String> =
+      if (onlySystem == null) offered else offered.filter { it == onlySystem }
+
     /** Live daemons (a render daemon is up), excluding pinned static baked hosts. */
     val liveDaemons: List<ServeSessionRegistry.RunningDaemon> = running.filter { it.hasLiveStream }
     val activeStreams: Int = liveDaemons.sumOf { it.activeStreams }
@@ -3055,7 +3399,7 @@ class ServeHttpServer(
           ),
         daemons =
           DaemonSummaryDto(
-            known = sessions.activeCount(),
+            known = knownSessions,
             running = liveDaemons.size,
             activeStreams = activeStreams,
             liveSeatsTotal = if (liveSeats.unbounded) 0 else liveSeats.totalPermits,
@@ -3162,7 +3506,17 @@ class ServeHttpServer(
                 },
               catalogSelector =
                 h.catalogSelector?.invoke()?.let {
-                  CatalogSelectorDto(offered = it.offered, resolved = it.resolved, limit = it.limit)
+                  // Scoped like everything else on a site's status: the selector must not name a
+                  // neighbouring catalog through a hostname that publishes one app.
+                  CatalogSelectorDto(
+                    offered = offeredCatalogs(it.offered),
+                    // Omitted rather than carried through when scoped: `resolved` counts how many
+                    // of the BOX's catalogs hold a compile classpath, and there is no per-catalog
+                    // breakdown to narrow it with. Reporting "1 offered, 5 resolved" would be
+                    // internally inconsistent and would leak the neighbour count it exists to hide.
+                    resolved = if (onlySystem == null) it.resolved else null,
+                    limit = it.limit,
+                  )
                 },
               rateLimit =
                 playgroundRateLimiter?.let {
@@ -3200,7 +3554,7 @@ class ServeHttpServer(
         add(ServeWeb.Stat("Live daemons running", liveDaemons.size.toString()))
         add(ServeWeb.Stat("Active streams", activeStreams.toString()))
         add(ServeWeb.Stat("Live seats", seatsText))
-        add(ServeWeb.Stat("Known sessions", sessions.activeCount().toString()))
+        add(ServeWeb.Stat("Known sessions", knownSessions.toString()))
         add(ServeWeb.Stat("Uptime", formatDuration(uptimeSeconds)))
         if (renderAgg != null) {
           // One-line human roll-up; full per-daemon detail (cold counts, p50/p95, first-render
@@ -3318,13 +3672,16 @@ class ServeHttpServer(
    * reported as blank: an empty trust cell reads as "untrusted", which is a different and wrong
    * claim about a catalog that merely has an idle daemon.
    */
-  private fun buildStatusData(): StatusData {
-    val running = sessions.runningDaemons()
-    val byId = running.associateBy { it.id }
+  private fun buildStatusData(onlySystem: String? = null): StatusData {
+    val allRunning = sessions.runningDaemons()
+    val running = if (onlySystem == null) allRunning else allRunning.filter { it.id == onlySystem }
+    val byId = allRunning.associateBy { it.id }
     val tracked = catalogLoads?.snapshot()?.associateBy { it.config.system }.orEmpty()
-    val entries =
+    val allEntries =
       if (tracked.isNotEmpty()) tracked.values.map { it.config.system to it.config.listed }
       else listedCatalogs().map { it to true } + unlistedCatalogs().map { it to false }
+    val entries =
+      if (onlySystem == null) allEntries else allEntries.filter { it.first == onlySystem }
     val catalogs = entries.map { (id, listed) ->
       val load = tracked[id]
       val daemon = byId[id]
@@ -3369,7 +3726,11 @@ class ServeHttpServer(
       nowMillis = System.currentTimeMillis(),
       catalogs = catalogs,
       running = running,
-      failures = daemonLog?.recent().orEmpty(),
+      failures =
+        daemonLog?.recent().orEmpty().let { failures ->
+          if (onlySystem == null) failures else failures.filter { it.session == onlySystem }
+        },
+      onlySystem = onlySystem,
     )
   }
 
@@ -3845,6 +4206,7 @@ class ServeHttpServer(
         githubAuth
           ?.takeIf { renderHost.hasLiveStream }
           ?.takeUnless { it.isAuthenticated(call) }
+          ?.takeIf { oauthCanRoundTrip() }
           ?.let {
             ServeWeb.LiveAuthPrompt(
               loginHref = it.loginPath(call),
@@ -3937,6 +4299,10 @@ class ServeHttpServer(
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
           // …and its own colour palette, so this system's pages are framed in its colours.
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
+          // The header bar names the catalog this preview belongs to — the viewer's own <h1>
+          // is the preview, so without this the page never says which system it is from.
+          catalogName =
+            ServeWeb.catalogHeading(catalogBundleHost(renderHost)?.title, renderHost.label),
           // Why this session is snapshot-only, when it is — the banner under the header explains
           // the
           // catalog-level reason (no live bundle, unverified, …) alongside the per-control note.
@@ -3986,6 +4352,9 @@ class ServeHttpServer(
           historyInlineJson = localHistoryJson,
           historyLocalRenders = localHistoryJson != null,
           revisions = revisions,
+          // A top-level site's pages carry their session in the ORIGIN, so same-session links
+          // drop the `?session=` the rooted legacy form would add. See [ServeSites].
+          sessionInOrigin = siteSystem() != null,
         ),
         ContentType.Text.Html,
       )
@@ -4995,7 +5364,12 @@ class ServeHttpServer(
       return
     }
     val sessionId =
-      call.parameters["system"] ?: call.request.queryParameters["session"] ?: defaultSessionId
+      call.parameters["system"]
+        // Same precedence as [selectedSessionId]: on a site host the origin decides, so a
+        // `?session=` on the socket URL can't stream a catalog the site doesn't publish.
+        ?: call.siteSystem()
+        ?: call.request.queryParameters["session"]
+        ?: defaultSessionId
     // Reserve live-seat permits BEFORE opening the session: leasing resumes a suspended/forked
     // host,
     // which spawns the JVM render daemon, so a post-lease check would let an over-budget burst
@@ -5561,8 +5935,12 @@ private data class CatalogSelectorDto(
    * startup log tell those apart.
    */
   val offered: List<String>,
-  /** How many of them hold a resolved compile classpath, against [limit]. */
-  val resolved: Int,
+  /**
+   * How many of them hold a resolved compile classpath, against [limit]. Null on a
+   * [ServeSites]-scoped status: the count is box-wide with no per-catalog breakdown, so a scoped
+   * response omits it rather than pairing a filtered [offered] with a total that contradicts it.
+   */
+  val resolved: Int? = null,
   /** `--playground-catalog-limit`; at [resolved] == this, a run naming a new catalog is refused. */
   val limit: Int,
 )

@@ -4,9 +4,17 @@
 # public DNS A record pointing at the VM, Caddy provisions and renews a Let's
 # Encrypt certificate automatically — no manual cert handling.
 #
-# The app's token (?token= / X-Compose-Preview-Token) remains the auth gate; this
-# block only adds TLS and forwards to the internal server.
-{$DOMAIN} {
+# {$SITE_DOMAINS} carries the TOP-LEVEL SITE hostnames — the `sites` entries in
+# catalogs.json / --sites, e.g. `m3.preview.coo.ee`, space- or comma-separated.
+# They belong in this same block, not blocks of their own: the app decides which
+# catalog a request is for from the Host header, so every hostname proxies to the
+# one upstream and differs only in what that upstream makes of it. Listing them
+# here is what makes Caddy match the name at all AND provision its certificate —
+# without it a site is configured in the app but unreachable at the edge, which is
+# the failure this line exists to prevent. Each name still needs its own DNS
+# record pointing at the VM. Empty (the default) leaves the block exactly as it
+# was: one domain, one cert.
+{$DOMAIN} {$SITE_DOMAINS:} {
 	encode zstd gzip
 
 	# The /ws/ WebSocket frame lane (Live Compose) was 502ing: a `read_timeout` on

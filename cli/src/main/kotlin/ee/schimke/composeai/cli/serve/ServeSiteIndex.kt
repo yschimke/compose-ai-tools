@@ -222,13 +222,27 @@ internal object ServeSiteIndex {
    *
    * `changefreq` / `priority` are deliberately absent — Google has said for years that it ignores
    * both, and a field nobody reads is a field that goes stale without anyone noticing.
+   *
+   * On a **top-level site** ([ServeSites]) the one catalog it publishes is mounted at the root, so
+   * [rootedSystem] names it and its URLs drop the `/<system>` segment. There is then no front door
+   * to list either — the catalog landing *is* `/`, and emitting both would publish two URLs for one
+   * page, which is the duplicate-content problem a sitemap exists to avoid.
    */
-  fun sitemapXml(origin: String, entries: List<CatalogEntry>): String {
+  fun sitemapXml(
+    origin: String,
+    entries: List<CatalogEntry>,
+    rootedSystem: String? = null,
+  ): String {
     val urls = buildList {
-      // The front door changes whenever any catalog it indexes does.
-      add(origin + "/" to entries.mapNotNull { it.lastModified }.maxOrNull())
+      // The front door changes whenever any catalog it indexes does. A rooted site has none; its
+      // landing is emitted below as `<origin>/`.
+      if (rootedSystem == null) {
+        add(origin + "/" to entries.mapNotNull { it.lastModified }.maxOrNull())
+      }
       for (entry in entries) {
-        val base = origin + "/" + WebEscaping.urlEncodeSegment(entry.system)
+        val base =
+          if (entry.system == rootedSystem) origin
+          else origin + "/" + WebEscaping.urlEncodeSegment(entry.system)
         add("$base/" to entry.lastModified)
         for (id in entry.previewIds) {
           add("$base/p/${WebEscaping.urlEncodeSegment(id)}" to entry.lastModified)

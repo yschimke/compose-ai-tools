@@ -944,6 +944,29 @@ class ServeWebFixtureTest {
         hasParityView = true,
         designToolLabel = "Figma",
       )
+    // …and the SAME catalog as a **top-level site** ([ServeSites]): rooted on a hostname of its
+    // own, so it presents as the only thing on the server. Captured beside `landingPath` because
+    // the difference between the two IS the feature and it is entirely visual — no back button (no
+    // front door to return to on this hostname), and every link rooted rather than prefixed. One
+    // fixture keeps the site chrome under the visual-diff bot from here on, so a later change to
+    // the landing can't quietly regress the site presentation.
+    val landingSite =
+      ServeWeb.landingPage(
+        "meshcore-mobile",
+        previews,
+        token,
+        sessionId = "meshcore-mobile",
+        trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+        isPublic = true,
+        // The two lines that make it a site: no home index to link back to, no path prefix, and
+        // the session carried by the ORIGIN rather than a `?session=` on every href.
+        hasHomeIndex = false,
+        basePath = "",
+        sessionInOrigin = true,
+        version = version,
+        hasParityView = true,
+        designToolLabel = "Figma",
+      )
     val viewerPath =
       ServeWeb.viewerPage(
         previews.first { it.id.endsWith("ProfileScreenPreview") },
@@ -2189,6 +2212,7 @@ class ServeWebFixtureTest {
         "serve-viewer-exploded.html" to viewerExploded,
         "serve-viewer-gestures.html" to viewerGestures,
         "serve-landing-path.html" to landingPath,
+        "serve-landing-site.html" to landingSite,
         "serve-viewer-path.html" to viewerPath,
         "serve-viewer-rc-players.html" to viewerRcPlayers,
         "serve-viewer-wear-screen.html" to viewerWearScreen,

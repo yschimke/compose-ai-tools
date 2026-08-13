@@ -38,6 +38,10 @@ services:
       # Optional additions to that file (<system>@<owner>/<repo>, comma-separated).
       SERVE_CATALOGS: "${SERVE_CATALOGS:-}"
       SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-}"
+      # Top-level sites (<host>=<system>[,…]): serve one of the catalogs above on a hostname
+      # of its own, where it presents as the whole server. Caddy in front must route the name
+      # here; catalogs.json's "sites" is the durable form of the same setting.
+      SERVE_SITES: "${SERVE_SITES:-}"
       SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-/config/producers.json}"
       SERVE_WASM_DIR: "${SERVE_WASM_DIR:-compose-m3=samples/cmp-wasm-catalog/build/wasmDist}"
       # Live (daemon-backed) server-side re-render. Now that compose-m3 is a
@@ -80,6 +84,12 @@ services:
       - "443:443"
     environment:
       DOMAIN: "${DOMAIN:?set DOMAIN in .env}"
+      # Top-level site hostnames, matching the `sites` entries the app serves (see
+      # SERVE_SITES / catalogs.json). Caddy needs them on its site address line to
+      # match the name and provision its certificate; the app needs them to know
+      # which catalog the Host belongs to. Keep the two in step — a name in one and
+      # not the other is either an unreachable site or an unrecognised hostname.
+      SITE_DOMAINS: "${SITE_DOMAINS:-}"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

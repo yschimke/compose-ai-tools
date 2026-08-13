@@ -60,6 +60,7 @@ import ee.schimke.composeai.cli.serve.ServeSessionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import ee.schimke.composeai.cli.serve.ServeSessionState
 import ee.schimke.composeai.cli.serve.ServeSharedDaemonPool
+import ee.schimke.composeai.cli.serve.ServeSites
 import ee.schimke.composeai.cli.serve.ServeStartupBundles
 import ee.schimke.composeai.cli.serve.ServeTrustAdmin
 import ee.schimke.composeai.cli.serve.ServeTrustStoreFile
@@ -518,6 +519,14 @@ class ServeCommand(args: List<String>) : Command(args) {
    * publish but don't want on the public front door.
    */
   private val catalogsUnlistedRaw: String? = args.flagValue("--catalogs-unlisted")
+
+  /**
+   * **Top-level sites** (`--sites m3.preview.coo.ee=m3-catalog,…`; also `catalogs.json`'s `sites`):
+   * host names on which one already-served catalog is presented as the whole server — its landing
+   * at `/`, its links inside the custom domain, no front door and no neighbours. See [ServeSites];
+   * it adds no catalog and no work, only a different reading of the same request.
+   */
+  private val sitesRaw: String? = args.flagValue("--sites")
 
   /**
    * The **catalog set as config** (`--catalogs-file <path>`; env `SERVE_CATALOGS_FILE` in the
@@ -2028,12 +2037,26 @@ class ServeCommand(args: List<String>) : Command(args) {
     val configuredApps =
       catalogLoads?.snapshot()?.filter { !it.config.listed }?.map { it.config.system }
         ?: registeredUnlistedCatalogs.toList()
+    // Top-level sites: `catalogs.json`'s `sites` first (the operator config that lives beside the
+    // catalog set), then any `--sites` flag entries for a host the file didn't already claim — the
+    // same compose-don't-replace rule `--catalogs` follows. A site naming a system this server does
+    // not serve is dropped with a startup warning rather than 404ing a whole hostname silently.
+    val sites =
+      ServeSites.of(
+        catalogsConfig.sites.map { it.host to it.system } +
+          ServeSites.parse(sitesRaw, onProblem = { System.err.println("serve: $it") }).let {
+            flagSites ->
+            flagSites.hosts.map { it to flagSites.systemFor(it)!! }
+          },
+        knownSystems = (configuredCatalogs + configuredApps).toSet(),
+        onProblem = { System.err.println("serve: $it") },
+      )
     // Runtime catalog administration: only when the operator supplied an admin token AND there's a
     // catalog store to fetch through. Both halves are opt-in, so a plain `serve` has no admin
     // surface at all.
     val catalogAdmin =
       if (adminToken != null && catalogStore != null && catalogLoads != null) {
-        buildCatalogAdmin(registry, catalogStore, catalogLoads, wasmCatalogs)
+        buildCatalogAdmin(registry, catalogStore, catalogLoads, wasmCatalogs, sites)
       } else {
         null
       }
@@ -2080,6 +2103,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         // /status, and a catalog recovered by the refresher appears on the home index immediately.
         catalogSessions = configuredCatalogs,
         appCatalogSessions = configuredApps,
+        sites = sites,
         catalogLoads = catalogLoads,
         catalogRefresh = catalogRefresh,
         maxLiveSeats = liveSeats,
@@ -2584,9 +2608,12 @@ class ServeCommand(args: List<String>) : Command(args) {
     store: ServeCatalogStore,
     loads: CatalogLoadTracker,
     wasmCatalogs: MutableMap<String, File>,
+    /** So retiring a catalog a hostname is published as is refused rather than stranding it. */
+    sites: ServeSites,
   ): ServeCatalogAdmin =
     ServeCatalogAdmin(
       tracker = loads,
+      sites = sites,
       defaultRepo = catalogRepo,
       branchPrefix = catalogBranchPrefix,
       configFile = catalogsFile,
@@ -3232,7 +3259,19 @@ class ServeCommand(args: List<String>) : Command(args) {
                           "group" names a front-page section from "groups" — a claim honoured only
                           when the catalog's bytes really came from the entry's repo (or one of its
                           "attributionRepos"), so an id like compose-m3 can't buy a section. Entries
-                          here come first; --catalogs / --catalogs-unlisted add to them.
+                          here come first; --catalogs / --catalogs-unlisted add to them. May also
+                          carry "sites" (see --sites).
+        --sites <host>=<system>[,…]
+                          Top-level sites: serve an already-published catalog on a hostname of its
+                          own, where it looks like the whole server (e.g.
+                          m3.preview.coo.ee=m3-catalog serves what /m3-catalog/ serves). On that
+                          host the catalog's landing is /, every link stays inside the domain, the
+                          front-door index and the "all design systems" back link are gone, /status
+                          + /sitemap.xml cover that app only, and /<other-system>/ 404s while
+                          /<this-system>/… 301s to the rooted URL. Same sessions, same baked pixels,
+                          same daemons — a site is a view of the box, not a second one. The system
+                          must be one this server already serves; catalogs.json's "sites" says the
+                          same thing as config.
         --admin-token <value>
                           Enable the runtime admin API and gate it with this secret. Two surfaces:
                           the catalog set — GET /admin/catalogs, POST /admin/catalogs (a

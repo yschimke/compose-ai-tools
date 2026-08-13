@@ -111,6 +111,13 @@ fi
 [[ -n "${SERVE_CATALOGS:-}" && "${SERVE_CATALOGS}" != "none" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
 [[ -n "${SERVE_CATALOGS_UNLISTED:-}" && "${SERVE_CATALOGS_UNLISTED}" != "none" ]] &&
   args+=(--catalogs-unlisted "${SERVE_CATALOGS_UNLISTED}")
+# Top-level sites: <host>=<system>, comma-separated. A catalog this box already serves is ALSO
+# reachable on a hostname of its own, where it presents as the only thing here (its landing at /,
+# links inside the domain, no front door, /status scoped to it). Same sessions and same baked
+# pixels — a site is a view of this server, not a second one, so it costs no extra memory or
+# render. The reverse proxy in front must route the hostname here and hold a certificate for it;
+# catalogs.json's "sites" says the same thing as durable config.
+[[ -n "${SERVE_SITES:-}" && "${SERVE_SITES}" != "none" ]] && args+=(--sites "${SERVE_SITES}")
 # Runtime catalog administration (GET/POST /admin/catalogs, DELETE /admin/catalogs/<system>),
 # gated by its own secret — never the browse token, which a public box hands to every visitor.
 # Unset (the default) means the admin routes don't exist at all.

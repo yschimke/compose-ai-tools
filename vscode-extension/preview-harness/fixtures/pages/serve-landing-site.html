@@ -1,9 +1,9 @@
     <!doctype html>
-    <html lang="en" data-cp-theme-key="cp-theme:default">
+    <html lang="en" data-cp-theme-key="cp-theme:meshcore-mobile">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>:samples:cmp — compose-preview</title>
+        <title>meshcore-mobile — compose-preview</title>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="icon" href="/favicon.ico" sizes="32x32">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -11,23 +11,23 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:default"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:meshcore-mobile"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
   <div class="cp-site-lead">
-    <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
+    <a class="cp-site-brand" href="/" aria-label="compose-preview home">
       <span class="cp-site-mark" aria-hidden="true">◇</span>
       <span>compose-preview</span>
     </a>
-    <span class="cp-site-catalog">:samples:cmp</span>
+    <span class="cp-site-catalog">meshcore-mobile</span>
   </div>
   <div class="cp-site-status">
     <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
   </div>
   <nav class="cp-site-nav" aria-label="Primary navigation">
-    <a href="/?token=demo-token-fixture">Catalogs</a>
-    <a href="/status?token=demo-token-fixture">Status</a>
+    <a href="/">Catalogs</a>
+    <a href="/status">Status</a>
     <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
     <details class="cp-settings">
       <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
@@ -52,10 +52,11 @@
   </nav>
 </header>
         <main class="cp-main">
-                <h1 class="cp-head cp-catalog-head">:samples:cmp <span class="cp-badge cp-badge--trusted" title="producer trust: signature:compose-ai-tools-ci">✓ trusted</span></h1>
+                <h1 class="cp-head cp-catalog-head">meshcore-mobile <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile">✓ trusted</span></h1>
         <p class="cp-sub">6 preview(s)</p>
         <div class="cp-catalog-actions">
-          <a class="cp-action-chip" href="/bundle.zip?token=demo-token-fixture">download all (.zip)</a>
+          <a class="cp-action-chip" href="/bundle.zip">download all (.zip)</a>
+          <a class="cp-action-chip" href="/parity">compare to Figma</a>
         </div>
         <div class="cp-catalog-tools">
         <div class="cp-searchbar">
@@ -66,9 +67,9 @@
 </div>
 </div>
         <div class="cp-grid" id="cp-grid">
-        <a class="cp-card" id="cp-card-com-example-ButtonPreview" href="/p/com.example.ButtonPreview?token=demo-token-fixture">
+        <a class="cp-card" id="cp-card-com-example-ButtonPreview" href="/p/com.example.ButtonPreview">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Button" src="/render/com.example.ButtonPreview.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="com.example.ButtonPreview">Button</div>
@@ -76,9 +77,9 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-CardPreview" href="/p/com.example.CardPreview?token=demo-token-fixture">
+<a class="cp-card" id="cp-card-com-example-CardPreview" href="/p/com.example.CardPreview">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Card" src="/render/com.example.CardPreview.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Card" src="/render/com.example.CardPreview.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="com.example.CardPreview">Card</div>
@@ -86,9 +87,9 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-DialogPreview" href="/p/com.example.DialogPreview?token=demo-token-fixture">
+<a class="cp-card" id="cp-card-com-example-DialogPreview" href="/p/com.example.DialogPreview">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Dialog" src="/render/com.example.DialogPreview.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Dialog" src="/render/com.example.DialogPreview.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="com.example.DialogPreview">Dialog</div>
@@ -96,9 +97,9 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-ListScreenPreview" href="/p/com.example.ListScreenPreview?token=demo-token-fixture">
+<a class="cp-card" id="cp-card-com-example-ListScreenPreview" href="/p/com.example.ListScreenPreview">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="List screen" src="/render/com.example.ListScreenPreview.png?token=demo-token-fixture">
+    <img loading="lazy" alt="List screen" src="/render/com.example.ListScreenPreview.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="com.example.ListScreenPreview">List screen</div>
@@ -106,9 +107,9 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-ProfileScreenPreview" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture">
+<a class="cp-card" id="cp-card-com-example-ProfileScreenPreview" href="/p/com.example.ProfileScreenPreview">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Profile screen" src="/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Profile screen" src="/render/com.example.ProfileScreenPreview.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="com.example.ProfileScreenPreview">Profile screen</div>
@@ -116,9 +117,9 @@
     
   </div>
 </a>
-<a class="cp-card" id="cp-card-com-example-SettingsScreenPreview" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture">
+<a class="cp-card" id="cp-card-com-example-SettingsScreenPreview" href="/p/com.example.SettingsScreenPreview">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Settings screen" src="/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture">
+    <img loading="lazy" alt="Settings screen" src="/render/com.example.SettingsScreenPreview.png">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="com.example.SettingsScreenPreview">Settings screen</div>
@@ -176,10 +177,22 @@
   }
   apply();
 })();</script>
+<details class="cp-about cp-disclosure">
+  <summary>
+    <span class="cp-about-title">About this preview server</span>
+    <span class="cp-disclosure-hint">How previews run and catalogs are trusted</span>
+  </summary>
+  <div class="cp-disclosure-body">
+    <p class="cp-about-body">Compose Multiplatform components can run <strong>in your browser</strong>
+      using sandboxed Kotlin/Wasm; other previews are published as pre-rendered snapshots. The
+      server never re-runs untrusted code. Catalogs are trusted by signature or their published
+      <code>design-artifacts</code> branch, and anything unverified is badged.</p>
+  </div>
+</details>
         </main>
         <footer class="cp-site-footer">
           <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
-          <a href="/version">/version</a>
+          <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
         </footer>
         <script src="/assets/serve/fixture/page-theme.js"></script>
       </body>

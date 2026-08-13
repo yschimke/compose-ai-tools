@@ -229,6 +229,16 @@ class ServeGithubAuth(
       .getOrDefault(false)
   }
 
+  /**
+   * Whether the OAuth callback is pinned to one origin (`--github-auth-callback-base-url`) rather
+   * than derived from the request. A pinned callback means a sign-in started anywhere else cannot
+   * complete: the host-only state cookie is written on the origin the visitor was on, and GitHub
+   * returns to the pinned one. [ServeHttpServer] reads this to withhold the sign-in affordance on a
+   * top-level site instead of offering a link that 401s.
+   */
+  val hasPinnedCallback: Boolean
+    get() = !config.callbackBaseUrl.isNullOrBlank()
+
   private fun callbackUrl(call: ApplicationCall?): String =
     config.callbackBaseUrl?.trimEnd('/')?.plus(CALLBACK_PATH)
       ?: call?.let { externalOrigin(it) + CALLBACK_PATH }

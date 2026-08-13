@@ -73,6 +73,109 @@
    Every catalog's branch (whatever repo) must be in the `--trust-store` to badge `Trusted(Branch)`;
    otherwise it serves `Unverified` (the data tiers serve either way).
 
+## Top-level sites: one catalog on a hostname of its own
+
+A published catalog can additionally be served on **its own hostname**, where it presents as the
+only thing on the server. `m3.preview.coo.ee` serves what `preview.coo.ee/m3-catalog/` serves:
+
+```
+--sites m3.preview.coo.ee=m3-catalog,wear.preview.coo.ee=wear-m3
+```
+
+or, durably, beside the catalog set in `catalogs.json` (the form the deployment uses):
+
+```json
+{
+  "catalogs": [{ "system": "m3-catalog", "repo": "yschimke/m3-catalog" }],
+  "sites": [{ "host": "m3.preview.coo.ee", "system": "m3-catalog" }]
+}
+```
+
+On that hostname:
+
+- **`/` is the catalog's landing.** Not the front-door index of every system this box publishes —
+  a site opening on a list of its neighbours would defeat the point.
+- **Links stay inside the domain.** Same-session URLs are built with an empty base path and no
+  `?session=`, so a card is `/p/button-filled`, not `/m3-catalog/p/button-filled` and not a link
+  back to `preview.coo.ee`. The "← All design systems" back button is gone; there is nowhere on
+  this hostname for it to go.
+- **`/status` reports on this app only** — its catalog row, its daemons, its startup failures. A
+  monitor pointed at the site alerts on the site, and a visitor learns nothing about what else the
+  box runs. `/sitemap.xml` is scoped the same way, with the catalog rooted at `/`.
+- **The canonical path redirects.** `m3.preview.coo.ee/m3-catalog/p/<id>` → `308` to
+  `/p/<id>`, so the two spellings don't compete as duplicate URLs in a crawler's index. `308` and
+  not `301` because that prefix also carries POST routes (`/refresh`, `/api/presence`, the
+  theme-lease pair) and most clients re-issue a `301` as a GET.
+- **A neighbour is not reachable.** `m3.preview.coo.ee/wear-m3/` is a `404`, not a second door onto
+  another catalog through the wrong domain — and the host **outranks `?session=`**, so the older
+  query spelling can't reach past it either.
+
+One surface is **withheld** on a site rather than broken: when the box pins an OAuth callback origin
+(`--github-auth-callback-base-url`, which this deployment sets), a GitHub sign-in started on a site
+host cannot come back to it — the `cp_gh_state` cookie is host-only and GitHub returns to the pinned
+origin. The sign-in affordance is therefore not offered on a site host, and its live/playground
+surfaces stay snapshot-only, instead of advertising a button that 401s. A box with no pinned
+callback derives it from the request and is unaffected. Carrying the originating host through the
+OAuth dance is the real fix and isn't done yet.
+
+The same catalog, served both ways. The visible difference is the header: the canonical path keeps
+the "← All design systems" button back to the front door, and the site has no front door to return
+to. Both name the catalog in the bar (see below). The rest of the difference is in the hrefs —
+`/p/<id>` rather than `/meshcore-mobile/p/<id>`.
+
+| On the canonical path (`preview.coo.ee/meshcore-mobile/`) | As a top-level site (`meshcore.example/`) |
+| --- | --- |
+| ![Catalog landing served under its canonical path, with the back button to the front door](images/serve-site-canonical-path.png) | ![The same catalog as a top-level site — no back button, links rooted](images/serve-site-top-level.png) |
+
+Both are committed fixtures (`serve-landing-path`, `serve-landing-site`), so the CI visual-diff bot
+renders and diffs the site presentation on every subsequent PR.
+
+What it deliberately is **not** is a second server. There is no extra session, daemon, catalog
+fetch, hero bake or render behind a site: it is a lookup on the request's `Host` that changes which
+session the already-existing root-mounted routes resolve to, and what the pages say about
+themselves. Serving a catalog on ten hostnames costs what serving it on one does. A site can only
+name a catalog the server already serves — one that names anything else is dropped at startup with a
+warning rather than 404ing a whole hostname silently.
+
+Two prerequisites live outside the app's own config. DNS for the name has to point at the box, and
+the reverse proxy has to match it and hold a certificate for it: on the `deploy/vps` profile that is
+`SITE_DOMAINS`, which lands on the Caddyfile's site-address line beside `{$DOMAIN}` (Caddy preserves
+`Host` and sets `X-Forwarded-Host`, both of which the site lookup reads). Keep `SITE_DOMAINS` and
+the app's `sites` in step — a name in one and not the other is either a site nothing routes to or a
+hostname the app doesn't recognise. Sites are read at startup, so a `catalogs.json` edit needs a
+restart; the additive `/admin/catalogs` reconcile doesn't carry them.
+
+## The header bar names the catalog you are in
+
+The site header carries the catalog's name beside the product mark — `◇ compose-preview │
+meshcore-mobile` — on every page that belongs to a catalog: its landing, its viewers, the compare
+and parity views, its design pages. Pages that belong to no catalog (the front door, a shared
+document) keep the bare brand.
+
+It used to say only "compose-preview" everywhere, so the one fact a visitor most needs — *which
+design system am I looking at* — lived solely in the page's own `<h1>` and scrolled away with it.
+The bar is pinned, so the name stays legible while you are deep in a grid or a viewer, and it tells
+two tabs open on two catalogs apart, which the mark alone never could. It is drawn in the catalog's
+own primary colour, so a themed system's bar picks up the palette its page already wears.
+
+On a **top-level site** the name is doing double duty: the hostname publishes one design system, so
+the bar is that system's masthead rather than a breadcrumb.
+
+## The whole site wears one skin
+
+A [top-level site](#top-level-sites-one-catalog-on-a-hostname-of-its-own) publishes one design
+system, so every page on that hostname is that system's page — including the ones that belong to no
+catalog on the main host. `/status` and the 404 therefore carry the site catalog's **palette** and
+its **theme storage key**, which means:
+
+- the whole hostname is one skin, rather than a themed catalog with unthemed chrome beside it;
+- the light/dark choice a visitor makes on the grid follows them to `/status` and back, because
+  every page on the host remembers it under the same `cp-theme:<system>` key rather than each
+  page keeping its own.
+
+Both are read without resuming a suspended daemon — a 404 must not wake a render process to find
+out what colour to be.
+
 ## Catalog pages navigate as a tree
 
 A catalog whose components declare a **`section`** (set per group in the catalog spec — `Themes`,
@@ -2120,6 +2223,11 @@ up **right now** (backend, active streams, how long each has been up), the effec
 reason that was previously only logged to stderr). The status snapshot never wakes an idle daemon: a
 catalog's liveness is read from the resident-session snapshot, not by resuming it, so a monitor can
 poll it freely.
+
+On a [top-level site](#top-level-sites-one-catalog-on-a-hostname-of-its-own) the same page reports on
+**that app only** — its catalog row, its daemons, the startup failures naming it. It is one filter
+over the snapshot the main host already builds, not a second collection pass, so a per-site monitor
+costs the box nothing extra.
 
 ![The /status page — catalogs and their trust/liveness, the render daemons running now, the effective config, and recent daemon startup failures](images/serve-status.png)
 
