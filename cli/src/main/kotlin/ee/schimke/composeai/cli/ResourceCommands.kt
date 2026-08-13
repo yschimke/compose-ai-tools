@@ -405,6 +405,13 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
       // `--preview` is honoured here too so the selector vocabulary is uniform (issue #3744), but
       // only in its id-shaped forms: a resource capture is an XML `<vector>` / `<adaptive-icon>`,
       // not a `@Preview` function, so there is no class or function name to reference.
+      //
+      // This filters **output**, not the render. `renderModules` above runs
+      // `composePreviewRenderAndroidResources` without `scopeToPreviewRequest`, so every Android
+      // module's resources are captured whichever selector is passed — `--id` and `--filter`
+      // included; the resource task takes no id filter and there is no resource manifest to
+      // narrow against ahead of it. `help --all` says so rather than implying the render
+      // narrowing that the preview commands do get.
       val matches =
         previewIdMatchesRequest(it.id, exactId = exactId, filter = filter, previewRef = previewRef)
       matches && (!changedOnly || it.anyChanged())
