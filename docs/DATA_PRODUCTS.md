@@ -65,9 +65,16 @@ that honest, and a new hook needs both:
    carried forward and the fetched ones replace — the same bargain the `.cli-state.json`
    carry-forward strikes for previews a narrowed render skipped (issue #3730). Only an
    unnarrowed run rewrites wholesale, which keeps it the one thing that evicts an entry
-   for a preview that no longer exists. A carried-forward `status = "atf-unavailable"`
-   rides along with the entries it belongs to rather than being cleared by a later
-   narrowed success.
+   for a preview that no longer exists. One exception, and it is the interesting one:
+   an entry carried from a report stamped `status = "atf-unavailable"` that has **no
+   findings** is dropped rather than carried, because it records a fetch that produced
+   nothing — quite possibly one that never ran. Republishing it under this run's own
+   (clean) status would launder it into a "checked, found nothing" row. Dropping it
+   leaves that preview uncovered, which mechanism 2 then reports honestly, so the
+   report-level status stays a statement about *this* run and needs no carry-forward
+   rule of its own. Findings are the test because they can only come from a decoded
+   payload; a node list can't be used, since the producer reads `a11y-hierarchy.json`
+   off disk whether or not the fetch succeeded.
 2. **Declare what's still uncovered.** When the merged entries *still* don't cover the
    module, the report is stamped `partial: true`, and consumers invert the default
    reading: `A11yReportRenderer` withholds the `dataExtensions["a11y"]` carrier for an
