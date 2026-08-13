@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.daemon.protocol.ChangeType
+import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataSubscribeResult
 import ee.schimke.composeai.daemon.protocol.ExtensionsDisableResult
@@ -37,6 +38,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
@@ -45,6 +48,11 @@ import kotlinx.serialization.json.put
  * reads — one entry per preview, in input order, findings preserved.
  */
 class DaemonA11yFetcherTest {
+
+  /** Plain declared previews — no `--permutations` in play, so entry id == fetch id. */
+  private fun declared(vararg ids: String): List<ReportCommand.RequestedPreview> = ids.map {
+    ReportCommand.RequestedPreview(previewId = it, entryId = it)
+  }
 
   private fun newTempFolder(prefix: String): File =
     java.nio.file.Files.createTempDirectory(prefix).toFile().also { it.deleteOnExit() }
@@ -67,7 +75,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview", "BetaPreview"),
+        previews = declared("AlphaPreview", "BetaPreview"),
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
@@ -108,7 +116,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview"),
+        previews = declared("AlphaPreview"),
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
@@ -130,7 +138,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview"),
+        previews = declared("AlphaPreview"),
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.DescriptorMissing)
@@ -162,7 +170,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview", "BetaPreview"),
+        previews = declared("AlphaPreview", "BetaPreview"),
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
@@ -192,7 +200,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview", "BetaPreview"),
+        previews = declared("AlphaPreview", "BetaPreview"),
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
@@ -203,6 +211,314 @@ class DaemonA11yFetcherTest {
         File(projectDir, "build/compose-previews/accessibility.json").readText(),
       )
     assertNull(report.status, "partial success should not stamp a status")
+  }
+
+  // ---------- permutations are fetched at their own overrides (#3762) ----------
+
+  @Test
+  fun `a permutation is addressed as its declared preview and filed under its own id`() {
+    val projectDir = newTempFolder("module-permutation")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    val factory = FakeFactory(mapOf("Foo" to atfPayload(emptyList())))
+    val outcome =
+      DaemonA11yFetcher(factory = factory)
+        .fetch(
+          projectDir = projectDir,
+          modulePath = "",
+          moduleName = "sample",
+          previews =
+            listOf(
+              ReportCommand.RequestedPreview("Foo", "Foo"),
+              ReportCommand.RequestedPreview(
+                "Foo",
+                "Foo_dark",
+                PreviewOverrides(uiMode = ee.schimke.composeai.daemon.protocol.UiMode.DARK),
+              ),
+            ),
+        )
+
+    assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    // The daemon only knows `Foo` — `PreviewIndex.byId` is an exact lookup — so both fetches
+    // address it, and the permutation carries its configuration in the params bag instead.
+    assertEquals(listOf("Foo", "Foo"), factory.calls.map { it.previewId })
+    val overrideParams = factory.calls.first { it.params != null }.params!!.jsonObject
+    assertEquals(
+      "dark",
+      overrideParams[DataFetchParams.PARAM_OVERRIDES]
+        ?.jsonObject
+        ?.get("uiMode")
+        ?.jsonPrimitive
+        ?.content,
+    )
+    // ...and the artefact is forced fresh, since the shared per-preview file may hold the other
+    // configuration's render.
+    assertEquals(
+      true,
+      overrideParams[DataFetchParams.PARAM_FORCE_RERENDER]?.jsonPrimitive?.content?.toBoolean(),
+    )
+    // The report is keyed by what a consumer looks up.
+    assertEquals(
+      setOf("Foo", "Foo_dark"),
+      readReport(projectDir).entries.map { it.previewId }.toSet(),
+    )
+  }
+
+  @Test
+  fun `the declared preview is fetched last so its artefacts are the ones left on disk`() {
+    val projectDir = newTempFolder("module-permutation-order")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+
+    // Stand in for the daemon: every render writes the overlay to `data/<previewId>/`, keyed by the
+    // id it was asked for rather than by the overrides — which is exactly why they collide.
+    val factory =
+      FakeFactory(
+        payloads = mapOf("Foo" to atfPayload(emptyList())),
+        onFetch = { _, ordinal ->
+          dataDir.mkdirs()
+          File(dataDir, "a11y-overlay.png").writeBytes("render-$ordinal".toByteArray())
+        },
+      )
+
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo"),
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
+          ),
+      )
+
+    // The permutation kept a copy of its own render...
+    assertEquals(
+      "render-1",
+      File(projectDir, "build/compose-previews/data/Foo_dark/a11y-overlay.png").readText(),
+    )
+    // ...and `data/Foo/` ends up holding the declared preview's, because it was fetched last.
+    assertEquals("render-2", File(dataDir, "a11y-overlay.png").readText())
+    val report = readReport(projectDir)
+    assertEquals(
+      "data/Foo_dark/a11y-overlay.png",
+      report.entries.single { it.previewId == "Foo_dark" }.annotatedPath,
+    )
+    assertEquals(
+      "data/Foo/a11y-overlay.png",
+      report.entries.single { it.previewId == "Foo" }.annotatedPath,
+    )
+  }
+
+  @Test
+  fun `each permutation keeps the findings of its own render`() {
+    val projectDir = newTempFolder("module-permutation-findings")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    // Findings come back inline in the payload, so they are per-render even though every fetch
+    // addresses the same preview. Call 1 is the permutation (fetched first), call 2 the base.
+    val factory =
+      FakeFactory(
+        payloads = emptyMap(),
+        payloadByCall =
+          mapOf(
+            1 to atfPayload(listOf(finding("ERROR", "TextContrast", "dark-only"))),
+            2 to atfPayload(emptyList()),
+          ),
+      )
+
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo"),
+            ReportCommand.RequestedPreview(
+              "Foo",
+              "Foo_dark",
+              PreviewOverrides(uiMode = ee.schimke.composeai.daemon.protocol.UiMode.DARK),
+            ),
+          ),
+      )
+
+    val report = readReport(projectDir)
+    assertEquals(
+      "dark-only",
+      report.entries.single { it.previewId == "Foo_dark" }.findings.single().message,
+    )
+    assertEquals(
+      emptyList(),
+      report.entries.single { it.previewId == "Foo" }.findings,
+      "the declared preview's own render was clean",
+    )
+  }
+
+  @Test
+  fun `the declared preview is re-rendered at its own configuration after a permutation`() {
+    val projectDir = newTempFolder("module-permutation-force-base")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    val factory = FakeFactory(mapOf("Foo" to atfPayload(emptyList())))
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo"),
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
+          ),
+      )
+
+    // The permutation was rendered *as* `Foo`, so it left its data product at `Foo`'s own cache
+    // path. `FileBackedDataProductRegistry` only queues a re-render when that file is *missing*, so
+    // an unforced base fetch would serve the permutation's artefact and file it as the base.
+    val baseParams = factory.calls.last().params?.jsonObject
+    assertEquals(
+      true,
+      baseParams?.get(DataFetchParams.PARAM_FORCE_RERENDER)?.jsonPrimitive?.content?.toBoolean(),
+      "the base fetch after a permutation must force a re-render",
+    )
+    assertNull(
+      baseParams?.get(DataFetchParams.PARAM_OVERRIDES),
+      "...at default overrides, which is what makes it the base",
+    )
+  }
+
+  @Test
+  fun `a permutation-only request still restores the declared preview's render`() {
+    val projectDir = newTempFolder("module-permutation-only")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    val factory = FakeFactory(mapOf("Foo" to atfPayload(emptyList())))
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f))
+          ),
+        modulePreviewIds = listOf("Foo", "Foo_dark"),
+        narrowed = true,
+      )
+
+    // `--id Foo_dark` asks for one entry, but the render that produced it overwrote
+    // `renders/Foo.png` — which `buildResults` hashes as the declared preview. So the restore runs
+    // even though it has no entry to file.
+    assertEquals(2, factory.calls.size, "expected the permutation plus a restoring base fetch")
+    assertEquals(
+      true,
+      factory.calls
+        .last()
+        .params
+        ?.jsonObject
+        ?.get(DataFetchParams.PARAM_FORCE_RERENDER)
+        ?.jsonPrimitive
+        ?.content
+        ?.toBoolean(),
+    )
+    assertEquals(
+      listOf("Foo_dark"),
+      readReport(projectDir).entries.map { it.previewId },
+      "the restore is a side effect, not a result — it files no entry",
+    )
+  }
+
+  @Test
+  fun `a failed permutation does not inherit the previous permutation's artefacts`() {
+    val projectDir = newTempFolder("module-permutation-failed-snapshot")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+
+    // Only the first fetch renders; the second errors, so `data/Foo/` still holds the *first*
+    // permutation's overlay when it returns.
+    val factory =
+      FakeFactory(
+        payloads = emptyMap(),
+        payloadByCall =
+          mapOf(1 to atfPayload(emptyList()), 2 to null, 3 to atfPayload(emptyList())),
+        onFetch = { _, ordinal ->
+          if (ordinal != 2) {
+            dataDir.mkdirs()
+            File(dataDir, "a11y-overlay.png").writeBytes("render-$ordinal".toByteArray())
+          }
+        },
+      )
+
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
+            ReportCommand.RequestedPreview("Foo", "Foo_rtl", PreviewOverrides(localeTag = "ar-XB")),
+          ),
+        modulePreviewIds = listOf("Foo", "Foo_dark", "Foo_rtl"),
+        narrowed = true,
+      )
+
+    assertEquals(
+      "render-1",
+      File(projectDir, "build/compose-previews/data/Foo_dark/a11y-overlay.png").readText(),
+    )
+    assertFalse(
+      File(projectDir, "build/compose-previews/data/Foo_rtl/a11y-overlay.png").exists(),
+      "a failed fetch has no artefacts of its own, and must not adopt the last one's",
+    )
+    assertNull(readReport(projectDir).entries.single { it.previewId == "Foo_rtl" }.annotatedPath)
+  }
+
+  @Test
+  fun `a snapshot drops a stale artefact the latest render did not produce`() {
+    val projectDir = newTempFolder("module-permutation-stale-snapshot")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+    val darkDir = File(projectDir, "build/compose-previews/data/Foo_dark")
+    darkDir.mkdirs()
+    File(darkDir, "a11y-overlay.png").writeText("from-an-earlier-run")
+
+    // This render produces a hierarchy but no overlay (the overlay-only path is optional). The copy
+    // loop has nothing to overwrite the earlier run's PNG with, so it must remove it — otherwise
+    // `annotatedPath` points a reader at pixels from a render that isn't this one.
+    val factory =
+      FakeFactory(
+        payloads = mapOf("Foo" to atfPayload(emptyList())),
+        onFetch = { _, _ ->
+          dataDir.mkdirs()
+          File(dataDir, "a11y-hierarchy.json").writeText("""{"nodes":[]}""")
+        },
+      )
+
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f))
+          ),
+        modulePreviewIds = listOf("Foo", "Foo_dark"),
+        narrowed = true,
+      )
+
+    assertFalse(File(darkDir, "a11y-overlay.png").exists(), "stale overlay should be dropped")
+    assertNull(readReport(projectDir).entries.single().annotatedPath)
   }
 
   // ---------- narrowed runs merge rather than clobber (#3742) ----------
@@ -232,7 +548,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview"),
+        previews = declared("AlphaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
         narrowed = true,
       )
@@ -264,7 +580,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview"),
+        previews = declared("AlphaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "AlphaPreview_dark"),
         narrowed = false,
       )
@@ -286,7 +602,7 @@ class DaemonA11yFetcherTest {
       projectDir = projectDir,
       modulePath = "",
       moduleName = "sample",
-      previewIds = listOf("AlphaPreview"),
+      previews = declared("AlphaPreview"),
       modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
     )
 
@@ -318,7 +634,7 @@ class DaemonA11yFetcherTest {
       projectDir = projectDir,
       modulePath = "",
       moduleName = "sample",
-      previewIds = listOf("AlphaPreview", "BetaPreview"),
+      previews = declared("AlphaPreview", "BetaPreview"),
     )
 
     assertFalse(readReport(projectDir).partial)
@@ -340,7 +656,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview"),
+        previews = declared("AlphaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
         narrowed = true,
       )
@@ -376,7 +692,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview", "GammaPreview"),
+        previews = declared("AlphaPreview", "GammaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview", "GammaPreview"),
         narrowed = true,
       )
@@ -401,7 +717,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview"),
+        previews = declared("AlphaPreview"),
       )
 
     val report = readReport(projectDir)
@@ -436,7 +752,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview"),
+        previews = declared("AlphaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
         narrowed = true,
       )
@@ -466,7 +782,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview"),
+        previews = declared("AlphaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
         narrowed = true,
       )
@@ -495,7 +811,7 @@ class DaemonA11yFetcherTest {
       projectDir = projectDir,
       modulePath = "",
       moduleName = "sample",
-      previewIds = listOf("AlphaPreview"),
+      previews = declared("AlphaPreview"),
     )
 
     // The unnarrowed run is the only thing that ever evicts an entry for a preview that no longer
@@ -519,7 +835,7 @@ class DaemonA11yFetcherTest {
           projectDir = projectDir,
           modulePath = "",
           moduleName = "sample",
-          previewIds = listOf("AlphaPreview"),
+          previews = declared("AlphaPreview"),
           modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
           narrowed = true,
         )
@@ -546,7 +862,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview"),
+        previews = declared("AlphaPreview"),
         modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
         narrowed = true,
       )
@@ -568,7 +884,7 @@ class DaemonA11yFetcherTest {
         projectDir = projectDir,
         modulePath = "",
         moduleName = "sample",
-        previewIds = listOf("AlphaPreview"),
+        previews = declared("AlphaPreview"),
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.OpenFailed)
@@ -582,8 +898,18 @@ class DaemonA11yFetcherTest {
   // -------------------------------------------------------------------------
   // Fake factory + session
 
-  private class FakeFactory(private val payloads: Map<String, JsonElement?>) :
-    RenderSessionFactory {
+  /** One `data/fetch` the fetcher made: the id it addressed and the params bag it sent. */
+  data class FetchCall(val previewId: String, val params: JsonElement?)
+
+  private class FakeFactory(
+    private val payloads: Map<String, JsonElement?>,
+    /** Records every fetch, in order, so a test can assert on ids, order and params. */
+    val calls: MutableList<FetchCall> = mutableListOf(),
+    /** Runs before each fetch returns — lets a test simulate the daemon writing artefacts. */
+    private val onFetch: (String, Int) -> Unit = { _, _ -> },
+    /** Payload override by call ordinal, for asserting per-permutation results differ. */
+    private val payloadByCall: Map<Int, JsonElement?> = emptyMap(),
+  ) : RenderSessionFactory {
     override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
 
     override fun open(config: RenderSessionConfig): RenderSession =
@@ -591,6 +917,9 @@ class DaemonA11yFetcherTest {
         workspaceRoot = config.workspaceRoot.absolutePath,
         modulePath = ":sample",
         payloads = payloads,
+        calls = calls,
+        onFetch = onFetch,
+        payloadByCall = payloadByCall,
       )
   }
 
@@ -612,7 +941,13 @@ class DaemonA11yFetcherTest {
     override val workspaceRoot: String,
     override val modulePath: String,
     private val payloads: Map<String, JsonElement?>,
+    val calls: MutableList<FetchCall> = mutableListOf(),
+    private val onFetch: (String, Int) -> Unit = { _, _ -> },
+    private val payloadByCall: Map<Int, JsonElement?> = emptyMap(),
   ) : RenderSession {
+    fun payloadFor(previewId: String, ordinal: Int): JsonElement? =
+      if (payloadByCall.containsKey(ordinal)) payloadByCall[ordinal] else payloads[previewId]
+
     override val initializeResult: InitializeResult =
       InitializeResult(
         protocolVersion = 2,
@@ -649,8 +984,15 @@ class DaemonA11yFetcherTest {
       inline: Boolean,
       params: JsonElement?,
       timeout: kotlin.time.Duration,
-    ): DataFetchResult =
-      DataFetchResult(kind = kind, schemaVersion = 1, payload = payloads[previewId])
+    ): DataFetchResult {
+      calls += FetchCall(previewId, params)
+      onFetch(previewId, calls.size)
+      return DataFetchResult(
+        kind = kind,
+        schemaVersion = 1,
+        payload = payloadFor(previewId, calls.size),
+      )
+    }
 
     override fun subscribeData(
       previewId: String,
