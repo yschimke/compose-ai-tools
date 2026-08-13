@@ -438,6 +438,17 @@ internal class DaemonA11yFetcher(
     val hold = projectDir.resolve("build/compose-previews/.a11y-pre-permutation/$previewId")
     return try {
       hold.deleteRecursively()
+      // `deleteRecursively()` reports failure by returning false, and a hold directory that still
+      // holds an *earlier* run's files is worse than none: a file this run's base doesn't have
+      // would look held, and the roll-back would reinstate a stale overlay or ATF payload as the
+      // preview's current one. An empty directory is the only usable starting point.
+      if (PER_RENDER_FILES.any { hold.resolve(it).exists() }) {
+        onLog(
+          "could not clear the pre-permutation hold for '$previewId' at ${hold.path}; " +
+            "rolling back will discard its artefacts instead of restoring them"
+        )
+        return null
+      }
       hold.mkdirs()
       for (name in PER_RENDER_FILES) {
         val source = dir.resolve(name)
@@ -485,14 +496,21 @@ internal class DaemonA11yFetcher(
     }
   }
 
-  /** Drop the hold directory once the outcome is decided, restored from or not. */
+  /**
+   * Drop the hold directory once the outcome is decided, restored from or not. A failure here is
+   * not fatal — [holdArtifacts] re-checks that the directory is clear before trusting it — but it
+   * is worth saying, since the leftovers cost the *next* run its roll-back.
+   */
   private fun releaseHeldArtifacts(held: File?) {
     if (held == null) return
-    try {
-      held.deleteRecursively()
-    } catch (e: Exception) {
-      onLog("could not clean up ${held.path}: ${e.message}")
-    }
+    val cleared =
+      try {
+        held.deleteRecursively()
+      } catch (e: Exception) {
+        onLog("could not clean up ${held.path}: ${e.message}")
+        false
+      }
+    if (!cleared && held.exists()) onLog("could not clean up ${held.path}")
   }
 
   /**
