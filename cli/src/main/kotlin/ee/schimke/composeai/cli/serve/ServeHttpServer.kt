@@ -422,9 +422,17 @@ class ServeHttpServer(
           val first = decodeSegment(path.trimStart('/').substringBefore('/'))
           if (first.isEmpty()) return@intercept
           if (first == system) {
-            val rest = path.trimStart('/').substringAfter('/', "")
+            // `trimStart` on the remainder as well as the head: `/<system>//evil.example` would
+            // otherwise build `//evil.example`, which a browser reads as a protocol-relative URL
+            // to another origin — an open redirect on every site host. The target must be exactly
+            // one leading slash, i.e. same-origin by construction.
+            val rest = path.trimStart('/').substringAfter('/', "").trimStart('/')
             val query = current.request.queryString().prefixedQuery()
-            current.respondRedirect("/$rest$query", permanent = true)
+            // 308, not 301: the canonical prefix also carries POST routes (`/{system}/refresh`,
+            // `/{system}/api/presence`, the theme-lease pair), and a 301 is re-issued as GET by
+            // most clients — the request would arrive at the rooted path with the wrong method.
+            current.response.headers.append(HttpHeaders.Location, "/$rest$query")
+            current.respond(HttpStatusCode.PermanentRedirect)
             finish()
           } else if (first in servedSystems()) {
             current.respondText("not found", status = HttpStatusCode.NotFound)
@@ -964,7 +972,11 @@ class ServeHttpServer(
    */
   private fun RoutingContext.selectedSessionId(sessionInPath: Boolean): String =
     if (sessionInPath) call.parameters["system"] ?: defaultSessionId
-    else call.request.queryParameters["session"] ?: siteSystem() ?: defaultSessionId
+    // A top-level site's host OUTRANKS `?session=`. It has to: the whole guarantee is one catalog
+    // per hostname, and a query param that could re-point the session would hand a neighbour's
+    // previews out through `/api/previews?session=wear-m3` while `/wear-m3/` 404s — the isolation
+    // undone by the older spelling of the same request.
+    else siteSystem() ?: call.request.queryParameters["session"] ?: defaultSessionId
 
   /**
    * The catalog this request's **host** publishes as a top-level site, or null on the main host
@@ -984,6 +996,24 @@ class ServeHttpServer(
   }
 
   private fun RoutingContext.siteSystem(): String? = call.siteSystem()
+
+  /**
+   * Whether a GitHub sign-in started from *this* request's origin can actually come back to it.
+   *
+   * False on a top-level site whose box pins a callback base URL
+   * (`--github-auth-callback-base-url`, which the deployment sets): the `cp_gh_state` cookie is
+   * host-only, so it is written on the site host while GitHub returns to the pinned one — the
+   * callback then sees no state and answers 401, and its relative return URL could not have come
+   * back to the site anyway. Offering the link would advertise a dead end, so the affordance is
+   * withheld and the surface stays snapshot-only there. Sites on a box with no pinned callback are
+   * unaffected (the callback is derived from the request, so it stays on the site host and the
+   * round trip closes).
+   *
+   * The real fix is an OAuth handoff that carries the originating host through the dance; until
+   * then this keeps the failure honest rather than hidden behind a button.
+   */
+  private fun RoutingContext.oauthCanRoundTrip(): Boolean =
+    siteSystem() == null || githubAuth?.hasPinnedCallback != true
 
   /**
    * The session id to hand [ServeWeb] for nav-marking + link building, and the URL [basePath] its
@@ -1799,6 +1829,7 @@ class ServeHttpServer(
             githubAuth
               ?.takeIf { renderHost.hasLiveStream }
               ?.takeUnless { it.isAuthenticated(call) }
+              ?.takeIf { oauthCanRoundTrip() }
               ?.loginPath(call),
           themeRenderBurstCapacity = renderHost.themeRenderBurstCapacity,
           engagement = previewEngagement(selectedSessionId, renderHost.previews),
@@ -3975,6 +4006,7 @@ class ServeHttpServer(
         githubAuth
           ?.takeIf { renderHost.hasLiveStream }
           ?.takeUnless { it.isAuthenticated(call) }
+          ?.takeIf { oauthCanRoundTrip() }
           ?.let {
             ServeWeb.LiveAuthPrompt(
               loginHref = it.loginPath(call),
@@ -5128,7 +5160,12 @@ class ServeHttpServer(
       return
     }
     val sessionId =
-      call.parameters["system"] ?: call.request.queryParameters["session"] ?: defaultSessionId
+      call.parameters["system"]
+        // Same precedence as [selectedSessionId]: on a site host the origin decides, so a
+        // `?session=` on the socket URL can't stream a catalog the site doesn't publish.
+        ?: call.siteSystem()
+        ?: call.request.queryParameters["session"]
+        ?: defaultSessionId
     // Reserve live-seat permits BEFORE opening the session: leasing resumes a suspended/forked
     // host,
     // which spawns the JVM render daemon, so a post-lease check would let an over-budget burst

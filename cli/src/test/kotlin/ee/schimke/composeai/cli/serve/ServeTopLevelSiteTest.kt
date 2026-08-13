@@ -131,11 +131,11 @@ class ServeTopLevelSiteTest {
   fun `the canonical path redirects to the rooted URL on a site host`() {
     server = newServer()
     val (code, _, location) = get("/compose-m3/p/button-filled?theme=dark", host = siteHost)
-    assertEquals(301, code)
+    assertEquals(308, code)
     assertEquals("/p/button-filled?theme=dark", location)
 
     // The bare catalog path collapses to the site root.
-    assertEquals("/" to 301, get("/compose-m3", host = siteHost).let { it.third to it.first })
+    assertEquals("/" to 308, get("/compose-m3", host = siteHost).let { it.third to it.first })
 
     // …and on the main host the same URL is served, not redirected.
     assertEquals(200, get("/compose-m3/p/button-filled").first)
@@ -149,6 +149,41 @@ class ServeTopLevelSiteTest {
     // Both still serve on the main host.
     assertEquals(200, get("/wear-m3/").first)
     assertEquals(200, get("/cadence/").first)
+  }
+
+  @Test
+  fun `an explicit session query cannot reach past the site host`() {
+    server = newServer()
+    // The isolation the path 404 gives has to hold for the older `?session=` spelling of the same
+    // request, or `/api/previews?session=wear-m3` serves the neighbour `/wear-m3/` refuses.
+    val (code, body, _) = get("/api/previews?session=wear-m3", host = siteHost)
+    assertEquals(200, code)
+    assertTrue(body.contains("button-filled"), "the site's own catalog answers: $body")
+    assertFalse(body.contains("\"chip\""), "a query param must not re-point the session: $body")
+    // The landing is the site's catalog too, not the one named in the query.
+    val (_, landing, _) = get("/?session=cadence", host = siteHost)
+    assertTrue(landing.contains("Compose Material 3"), landing)
+    assertFalse(landing.contains("Cadence"), landing)
+    // On the main host `?session=` still selects, exactly as it always did.
+    val (_, mainBody, _) = get("/api/previews?session=wear-m3")
+    assertTrue(mainBody.contains("chip"), mainBody)
+  }
+
+  @Test
+  fun `the canonical redirect is same-origin and method-preserving`() {
+    server = newServer()
+    // An extra slash after the system would otherwise build `//evil.example` — read by browsers as
+    // a protocol-relative URL to another origin, i.e. an open redirect on every site host.
+    val (code, _, location) = get("/compose-m3//evil.example", host = siteHost)
+    assertEquals(308, code)
+    assertEquals("/evil.example", location)
+    assertTrue(
+      location!!.startsWith("/") && !location.startsWith("//"),
+      "the redirect target must be same-origin: $location",
+    )
+    // 308 rather than 301, because the canonical prefix also carries POST routes and a 301 is
+    // re-issued as GET by most clients.
+    assertEquals(308, get("/compose-m3/p/button-filled", host = siteHost).first)
   }
 
   @Test

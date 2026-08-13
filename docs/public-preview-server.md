@@ -102,10 +102,21 @@ On that hostname:
 - **`/status` reports on this app only** — its catalog row, its daemons, its startup failures. A
   monitor pointed at the site alerts on the site, and a visitor learns nothing about what else the
   box runs. `/sitemap.xml` is scoped the same way, with the catalog rooted at `/`.
-- **The canonical path redirects.** `m3.preview.coo.ee/m3-catalog/p/<id>` → `301` to
-  `/p/<id>`, so the two spellings don't compete as duplicate URLs in a crawler's index.
+- **The canonical path redirects.** `m3.preview.coo.ee/m3-catalog/p/<id>` → `308` to
+  `/p/<id>`, so the two spellings don't compete as duplicate URLs in a crawler's index. `308` and
+  not `301` because that prefix also carries POST routes (`/refresh`, `/api/presence`, the
+  theme-lease pair) and most clients re-issue a `301` as a GET.
 - **A neighbour is not reachable.** `m3.preview.coo.ee/wear-m3/` is a `404`, not a second door onto
-  another catalog through the wrong domain.
+  another catalog through the wrong domain — and the host **outranks `?session=`**, so the older
+  query spelling can't reach past it either.
+
+One surface is **withheld** on a site rather than broken: when the box pins an OAuth callback origin
+(`--github-auth-callback-base-url`, which this deployment sets), a GitHub sign-in started on a site
+host cannot come back to it — the `cp_gh_state` cookie is host-only and GitHub returns to the pinned
+origin. The sign-in affordance is therefore not offered on a site host, and its live/playground
+surfaces stay snapshot-only, instead of advertising a button that 401s. A box with no pinned
+callback derives it from the request and is unaffected. Carrying the originating host through the
+OAuth dance is the real fix and isn't done yet.
 
 The same catalog, served both ways. The visible difference is the header: the canonical path keeps
 the "← All design systems" button back to the front door, and the site has no front door to return
