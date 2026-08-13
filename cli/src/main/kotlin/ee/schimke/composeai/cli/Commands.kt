@@ -1808,7 +1808,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
         "${substituted.size} preview(s) only through --permutations expansion, so $extensionId " +
         "data is produced for the declared preview(s) (${substituted.joinToString(", ")}) at " +
         "their own parameters. The permutation row itself will carry no $extensionId data; " +
-        "per-permutation production is not implemented."
+        "per-permutation production is not implemented (issue #3762)."
     )
   }
 

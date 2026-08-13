@@ -236,6 +236,9 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
     # Modules whose accessibility.json only covered part of its previews. Recorded
     # in findings.json so a later `comment` run can tell "this preview's findings
     # are gone" apart from "this preview was never checked." See issue #3742.
+    # Keyed by `manifest["module"]` like every other per-module structure here;
+    # that identity is the module's leaf name and collides between same-named
+    # projects, tracked with the rest of the fallout in issue #3763.
     partial_modules: list[str] = []
 
     for raw_build_dir in build_dirs:
