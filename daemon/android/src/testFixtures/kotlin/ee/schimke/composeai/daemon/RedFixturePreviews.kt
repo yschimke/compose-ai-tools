@@ -883,6 +883,31 @@ fun ThemedTintedSquare(@PreviewParameter(SquareTintProvider::class) tint: Long) 
 }
 
 /**
+ * `@PreviewParameter` fixture whose two values carry labels differing **only by case** (issue #3749
+ * review follow-up). Android sibling of the desktop copy in this file's twin — the two
+ * `RedFixturePreviews.kt` files share a package, so the class sets must agree or the Android
+ * harness lane loads a facade referencing classes its classpath doesn't have.
+ *
+ * [PreviewParameterLabels][ee.schimke.composeai.renderer.PreviewParameterLabels] compares labels
+ * case-*sensitively* when deciding whether a fan-out collides, so this provider legitimately emits
+ * `<stem>_Dark.png` AND `<stem>_dark.png` on a case-sensitive filesystem. A row resolver that folds
+ * case unconditionally maps both ids onto the first value; `Dark` is green (`0xFF43A047`) and
+ * `dark` is blue (`0xFF1E88E5`) so that mistake shows up as the wrong pixels rather than as a pass.
+ */
+class CaseTintProvider : PreviewParameterProvider<CaseTint> {
+  override val values = sequenceOf(CaseTint("Dark", 0xFF43A047L), CaseTint("dark", 0xFF1E88E5L))
+}
+
+/** A labelled tint for [CaseTintProvider]; `name` is what the label derivation picks up. */
+data class CaseTint(val name: String, val tint: Long)
+
+@Preview
+@Composable
+fun CaseLabelledSquare(@PreviewParameter(CaseTintProvider::class) swatch: CaseTint) {
+  Box(modifier = Modifier.fillMaxSize().background(Color(swatch.tint)))
+}
+
+/**
  * Retired-slot fixture (issue #3324): a `Scaffold` + `TopAppBar` around a `LazyColumn` that scrolls
  * a few rows in before the frame is captured, so the rows that left the viewport are retired —
  * composed, still carrying their text, but **unplaced** — while the app bar stays put. Mirrors the

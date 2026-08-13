@@ -108,4 +108,11 @@ class PreviewParameterLabelsTest {
       )
     assertEquals(listOf("_PARAM_x", "_PARAM_1a", "_PARAMS_1"), suffixes)
   }
+
+  /** Only digits are reserved, so a signed spelling stays a label and remains addressable. */
+  @Test
+  fun `a signed PARAM spelling is not reserved`() {
+    val suffixes = PreviewParameterLabels.suffixesFor(listOf(Labeled("PARAM_-0"), Labeled("Dark")))
+    assertEquals(listOf("_PARAM_-0", "_Dark"), suffixes)
+  }
 }

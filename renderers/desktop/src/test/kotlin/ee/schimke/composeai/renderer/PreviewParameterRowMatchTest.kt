@@ -72,4 +72,16 @@ class PreviewParameterRowMatchTest {
       failure?.message?.contains("beyond the ${PreviewParameterSupport.MAX_ROW_SCAN}-row"),
     )
   }
+
+  /**
+   * `PARAM_-0` is a label, not a position. The reserved-label grammar is digits-only, so label
+   * derivation keeps that spelling — and `"-0".toIntOrNull()` returning 0 would otherwise make the
+   * parser bind value 0 instead of the labelled row that is actually on disk.
+   */
+  @Test
+  fun `signed and non-digit index spellings stay labels`() {
+    assertEquals(1, PreviewParameterSupport.matchLabel(listOf("Dark", "PARAM_-0"), "PARAM_-0"))
+    assertEquals(1, PreviewParameterSupport.matchLabel(listOf("Dark", "PARAM_+1"), "PARAM_+1"))
+    assertEquals(1, PreviewParameterSupport.matchLabel(listOf("Dark", "PARAM_x"), "PARAM_x"))
+  }
 }
