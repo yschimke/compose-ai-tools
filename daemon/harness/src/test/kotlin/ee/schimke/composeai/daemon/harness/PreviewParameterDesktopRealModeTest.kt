@@ -116,6 +116,87 @@ class PreviewParameterDesktopRealModeTest {
   }
 
   /**
+   * Issue #3749 — the row-addressed previewId, end to end. The harness manifest carries only the
+   * base id `tinted-square` (exactly like the `previews.json` discovery writes, which cannot
+   * enumerate a provider), so `tinted-square_PARAM_1` used to die in `PreviewManifestRouter` with
+   * *no manifest entry for previewId* — the error from the issue report. It must now route to the
+   * base entry and bind the provider's SECOND value.
+   */
+  @Test
+  fun `row addressed preview id renders that row`() {
+    Assume.assumeTrue(
+      "Skipping PreviewParameterDesktopRealModeTest — set -Pharness.host=real to enable.",
+      HarnessTestSupport.harnessHost() == "real",
+    )
+    Assume.assumeTrue(
+      "Skipping PreviewParameterDesktopRealModeTest — desktop variant; set -Ptarget=desktop " +
+        "(default).",
+      HarnessTestSupport.harnessTarget() == "desktop",
+    )
+
+    val rowId = "tinted-square_PARAM_1"
+    val paths =
+      realModeScenario(
+        name = "preview-parameter-row-desktop",
+        previews =
+          listOf(
+            RealModePreview(
+              id = "tinted-square",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "ThemedTintedSquare",
+              previewParameterProvider = "ee.schimke.composeai.daemon.SquareTintProvider",
+            )
+          ),
+      )
+
+    val client = HarnessClient.start(paths.launcher)
+    try {
+      assertEquals(2, client.initialize().protocolVersion)
+      client.sendInitialized()
+
+      val renderNowResult = client.renderNow(previews = listOf(rowId), tier = RenderTier.FAST)
+      assertEquals(listOf(rowId), renderNowResult.queued)
+      assertTrue(
+        "renderNow.rejected must be empty: ${renderNowResult.rejected}",
+        renderNowResult.rejected.isEmpty(),
+      )
+
+      val finished = client.pollRenderFinishedFor(rowId, timeout = 120.seconds)
+      val reportedPath =
+        finished["params"]?.jsonObject?.get("pngPath")?.jsonPrimitive?.contentOrNull
+      assertNotNull(
+        "renderFinished.pngPath must be present — a row-addressed previewId must render",
+        reportedPath,
+      )
+      val img = ImageIO.read(File(reportedPath!!))
+      assertNotNull("rendered PNG must decode", img)
+      // Row 1 is SquareTintProvider's blue (#1E88E5); row 0 is green. A regression that drops the
+      // row token renders green and fails here rather than passing on "something rendered".
+      val green = dominantGreenFraction(img!!)
+      assertTrue(
+        "row 1 must render the provider's SECOND value (blue #1E88E5), not its first (green) — " +
+          "dominantGreen=$green",
+        green < 0.1,
+      )
+
+      assertEquals(
+        "Daemon must exit cleanly. Stderr=\n${client.dumpStderr()}",
+        0,
+        client.shutdownAndExit(timeout = 60.seconds),
+      )
+    } catch (t: Throwable) {
+      System.err.println(
+        "PreviewParameterDesktopRealModeTest failed; stderr from daemon:\n" + client.dumpStderr()
+      )
+      throw t
+    } finally {
+      try {
+        client.close()
+      } catch (_: Throwable) {}
+    }
+  }
+
+  /**
    * Fraction of pixels whose green channel is dominant — keyed on green so it separates the
    * provider's first value (`0xFF43A047`) from its second (`0xFF1E88E5`, blue-dominant). Mirrors
    * [PreviewParameterAndroidRealModeTest.dominantGreenFraction].

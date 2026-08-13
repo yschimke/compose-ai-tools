@@ -687,6 +687,80 @@ class RenderEngineTest {
   }
 
   @Test
+  fun previewParameterRowRendersTheAddressedProviderValue() {
+    // Issue #3749: the manifest carries base ids only (discovery reads bytecode and can't
+    // instantiate a provider), so every row past 0 was unreachable — `serve` and `render_preview`
+    // showed one state for a screen whose states come from a provider. A `previewParameterRow`
+    // token now selects which value binds. Desktop twin of `:daemon:android`'s test of the same
+    // name; SquareTintProvider yields green (#43A047) then blue (#1E88E5), so row 1 must be blue.
+    val outputDir = tempFolder.newFolder("renders-preview-parameter-row")
+    val host = DesktopHost(engine = RenderEngine(outputDir = outputDir))
+    host.start()
+    try {
+      val result =
+        host.submit(
+          RenderRequest.Render(
+            payload =
+              "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                "functionName=ThemedTintedSquare;" +
+                "previewParameterProvider=ee.schimke.composeai.daemon.SquareTintProvider;" +
+                "previewParameterRow=PARAM_1;" +
+                "widthPx=64;heightPx=64;density=1.0;" +
+                "showBackground=true;" +
+                "outputBaseName=preview-parameter-square_PARAM_1"
+          ),
+          timeoutMs = 60_000,
+        )
+
+      assertNotNull("a row-addressed @PreviewParameter render must produce a PNG", result.pngPath)
+      val img = ByteArrayInputStream(File(result.pngPath!!).readBytes()).use { ImageIO.read(it) }
+      assertNotNull("PNG must decode via javax.imageio", img)
+      val matchPct = pixelMatchPct(img!!, 0x1E88E5, perChannelTolerance = 8)
+      assertTrue(
+        "expected ≥ 95% of pixels close to the provider's SECOND value #1E88E5; got " +
+          "${"%.2f".format(matchPct * 100)}%",
+        matchPct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun previewParameterWithoutARowStillRendersValueZero() {
+    // The unaddressed contract is unchanged, and it stays cheap: with no row token the provider is
+    // enumerated with `take(1)`, so an infinite `generateSequence` provider is still safe.
+    val outputDir = tempFolder.newFolder("renders-preview-parameter-base")
+    val host = DesktopHost(engine = RenderEngine(outputDir = outputDir))
+    host.start()
+    try {
+      val result =
+        host.submit(
+          RenderRequest.Render(
+            payload =
+              "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                "functionName=ThemedTintedSquare;" +
+                "previewParameterProvider=ee.schimke.composeai.daemon.SquareTintProvider;" +
+                "widthPx=64;heightPx=64;density=1.0;" +
+                "showBackground=true;" +
+                "outputBaseName=preview-parameter-square"
+          ),
+          timeoutMs = 60_000,
+        )
+
+      val img = ByteArrayInputStream(File(result.pngPath!!).readBytes()).use { ImageIO.read(it) }
+      val matchPct = pixelMatchPct(img!!, 0x43A047, perChannelTolerance = 8)
+      assertTrue(
+        "expected ≥ 95% of pixels close to the provider's FIRST value #43A047; got " +
+          "${"%.2f".format(matchPct * 100)}%",
+        matchPct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun tenSequentialRendersExposeWarmRuntime() {
     val outputDir = tempFolder.newFolder("renders-warmup")
     val engine = RenderEngine(outputDir = outputDir)

@@ -351,7 +351,24 @@ internal constructor(
     get() = lock.read { byId.size }
 
   /** Lookup by `PreviewInfo.id`. `null` if the id is unknown. */
-  fun byId(id: String): PreviewInfoDto? = lock.read { byId[id] }
+  /**
+   * The discovered preview [id] names, or — for a **row-addressed** id (`<baseId>_Dark` /
+   * `<baseId>_PARAM_4`, issue #3749) — the parameterized base entry it is a row of.
+   *
+   * The index holds base ids only, because discovery can't enumerate a `PreviewParameterProvider`
+   * (see [PreviewRowAddress]). Every caller here wants the preview's *metadata* — display name,
+   * group, source file, class/method, scroll capture — and a row shares all of it with its base, so
+   * resolving the base is strictly better than the `null` a row id used to return: without it a row
+   * render lands in history with no metadata and `recording/generateTest` emits a test with no
+   * function name.
+   */
+  fun byId(id: String): PreviewInfoDto? = lock.read {
+    byId[id]
+      ?: PreviewRowAddress.split(id) { base ->
+          byId[base]?.params?.previewParameterProviderClassName?.isNotBlank() == true
+        }
+        ?.let { byId[it.baseId] }
+  }
 
   /**
    * Issue #1528 — resolves the [ScrollCaptureDto] for a given `(previewId, renderMode)` pair so the

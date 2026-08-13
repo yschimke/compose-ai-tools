@@ -16,6 +16,49 @@ import org.junit.Test
 class PreviewIndexTest {
 
   @Test
+  fun `byId resolves a row-addressed id to its parameterized base entry`() {
+    // Issue #3749 — the index carries base ids only (discovery can't enumerate a provider), so
+    // every metadata lookup for a row id used to come back null: a row render landed in history
+    // with no display name / group / source file, and `recording/generateTest` emitted a test with
+    // no function name. A row shares all of that with its base.
+    val tmp = Files.createTempFile("previews-row", ".json")
+    Files.writeString(
+      tmp,
+      """
+      {
+        "module": ":samples:cmp",
+        "variant": "debug",
+        "previews": [
+          {
+            "id": "Screen_Light",
+            "className": "com.example.ScreensKt",
+            "functionName": "Screen",
+            "sourceFile": "Screens.kt",
+            "params": { "previewParameterProviderClassName": "com.example.TintProvider" }
+          },
+          {
+            "id": "Plain",
+            "className": "com.example.ScreensKt",
+            "functionName": "Plain",
+            "sourceFile": "Screens.kt"
+          }
+        ]
+      }
+      """
+        .trimIndent(),
+    )
+    val index = PreviewIndex.loadFromFile(tmp)
+
+    assertEquals("Screen", index.byId("Screen_Light_PARAM_4")?.methodName)
+    assertEquals("Screens.kt", index.byId("Screen_Light_Dark")?.sourceFile)
+    // The base id itself is untouched, and a preview with no provider has no rows — a lookup that
+    // merely shares its prefix must stay null rather than borrowing a neighbour's metadata.
+    assertEquals("Screen", index.byId("Screen_Light")?.methodName)
+    assertNull(index.byId("Plain_Dark"))
+    assertNull(index.byId("Unrelated"))
+  }
+
+  @Test
   fun `loadFromFile happy path indexes previews by id`() {
     val tmp = Files.createTempFile("previews", ".json")
     Files.writeString(

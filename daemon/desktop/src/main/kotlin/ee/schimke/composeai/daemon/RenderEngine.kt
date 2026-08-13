@@ -297,6 +297,7 @@ class RenderEngine(
           providerClassName = spec.previewParameterProviderClassName,
           limit = spec.previewParameterLimit,
           classLoader = classLoader,
+          row = spec.previewParameterRow,
         )
       }
     val composableMethod: ComposableMethod? = resolvedInvocation?.method
@@ -2079,13 +2080,21 @@ data class RenderSpec(
    * FQN of the `PreviewParameterProvider` from `@PreviewParameter` on the preview function's
    * parameter, when discovery recorded one. Sourced from `previews.json` (the upstream annotation
    * has `AnnotationRetention.BINARY` and is invisible to `Method.annotations` at runtime — same
-   * provenance as [wrapperClassName]). When set the render body resolves and renders the provider's
-   * *first* value under the bare id, matching `:daemon:android`'s single-frame contract; the
-   * per-value fan-out stays with the standalone renderer. Null is the plain parameterless preview.
+   * provenance as [wrapperClassName]). When set the render body resolves and renders one of the
+   * provider's values — [previewParameterRow]'s, or the first under the bare id, matching
+   * `:daemon:android`'s single-frame contract; the per-value fan-out stays with the standalone
+   * renderer. Null is the plain parameterless preview.
    */
   val previewParameterProviderClassName: String? = null,
   /** Mirrors `@PreviewParameter.limit`. `Int.MAX_VALUE` is the annotation default. */
   val previewParameterLimit: Int = Int.MAX_VALUE,
+  /**
+   * Which `@PreviewParameter` row to bind — a fan-out suffix (`Dark`) or `PARAM_<idx>`, per
+   * [ee.schimke.composeai.renderer.PreviewParameterSupport.resolve]. Set by [PreviewManifestRouter]
+   * when the inbound previewId was row-addressed as `<baseId>_<row>` (issue #3749). Null keeps the
+   * historical "render value 0 under the bare id" contract.
+   */
+  val previewParameterRow: String? = null,
 ) {
 
   enum class SpecUiMode {
@@ -2190,6 +2199,7 @@ data class RenderSpec(
           map["previewParameterProvider"]?.takeIf { it.isNotBlank() },
         previewParameterLimit =
           map["previewParameterLimit"]?.toIntOrNull() ?: defaults.previewParameterLimit,
+        previewParameterRow = map["previewParameterRow"]?.takeIf { it.isNotBlank() },
       )
     }
 

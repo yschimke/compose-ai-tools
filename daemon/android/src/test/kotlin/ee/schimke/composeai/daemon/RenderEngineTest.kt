@@ -873,6 +873,132 @@ class RenderEngineTest {
   }
 
   @Test
+  fun previewParameterRowRendersTheAddressedProviderValue() {
+    // Issue #3749: the manifest carries base ids only (discovery reads bytecode and can't
+    // instantiate a provider), so every row past 0 was unreachable — `serve` and `render_preview`
+    // showed one state for a screen whose states come from a provider. A `previewParameterRow`
+    // token now selects which value binds; here row 1 must produce the provider's SECOND value.
+    val outputDir = tempFolder.newFolder("renders-preview-parameter-row")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      val result =
+        host.submit(
+          RenderRequest.Render(
+            payload =
+              "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                "functionName=ThemedTintedSquare;" +
+                "previewParameterProvider=ee.schimke.composeai.daemon.SquareTintProvider;" +
+                "previewParameterRow=PARAM_1;" +
+                "widthPx=64;heightPx=64;density=1.0;" +
+                "showBackground=true;" +
+                "outputBaseName=preview-parameter-square_PARAM_1"
+          ),
+          timeoutMs = 120_000,
+        )
+
+      assertNotNull("a row-addressed @PreviewParameter render must produce a PNG", result.pngPath)
+      val img = ByteArrayInputStream(File(result.pngPath!!).readBytes()).use { ImageIO.read(it) }
+      assertNotNull("PNG must decode via javax.imageio", img)
+      // SquareTintProvider yields green (#43A047) then blue (#1E88E5). Row 1 is the blue one; a
+      // regression that silently falls back to value 0 fails here instead of passing on
+      // "something rendered".
+      val matchPct = pixelMatchPct(img!!, 0x1E88E5, perChannelTolerance = 8)
+      assertTrue(
+        "expected >= 95% of pixels close to the provider's SECOND value #1E88E5; got " +
+          "${"%.2f".format(matchPct * 100)}%",
+        matchPct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun previewParameterRowResolvesByLabelNotJustIndex() {
+    // A row is addressed by the same token the fan-out renderer puts in `<stem>_<label>.png`, so
+    // what a caller reads off disk is what they can render (issue #3749). SquareTintProvider's
+    // second value is the Long 0xFF1E88E5, whose derived label is its decimal `toString()`.
+    val outputDir = tempFolder.newFolder("renders-preview-parameter-label")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      val result =
+        host.submit(
+          RenderRequest.Render(
+            payload =
+              "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                "functionName=ThemedTintedSquare;" +
+                "previewParameterProvider=ee.schimke.composeai.daemon.SquareTintProvider;" +
+                "previewParameterRow=4280191205;" +
+                "widthPx=64;heightPx=64;density=1.0;" +
+                "showBackground=true;" +
+                "outputBaseName=preview-parameter-square_4280191205"
+          ),
+          timeoutMs = 120_000,
+        )
+
+      assertNotNull("a label-addressed @PreviewParameter render must produce a PNG", result.pngPath)
+      val img = ByteArrayInputStream(File(result.pngPath!!).readBytes()).use { ImageIO.read(it) }
+      assertNotNull("PNG must decode via javax.imageio", img)
+      val matchPct = pixelMatchPct(img!!, 0x1E88E5, perChannelTolerance = 8)
+      assertTrue(
+        "expected >= 95% of pixels close to the labelled row's value #1E88E5; got " +
+          "${"%.2f".format(matchPct * 100)}%",
+        matchPct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun previewParameterRowOutOfRangeReportsTheAvailableRows() {
+    // The diagnostic is the discovery path (issue #3749): with no enumeration RPC, an over-request
+    // is how a caller learns what a provider offers, so the message must carry the row list.
+    val outputDir = tempFolder.newFolder("renders-preview-parameter-row-oob")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      val failure =
+        runCatching {
+            host.submit(
+              RenderRequest.Render(
+                payload =
+                  "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                    "functionName=ThemedTintedSquare;" +
+                    "previewParameterProvider=ee.schimke.composeai.daemon.SquareTintProvider;" +
+                    "previewParameterRow=PARAM_9;" +
+                    "widthPx=64;heightPx=64;density=1.0;" +
+                    "outputBaseName=preview-parameter-square_PARAM_9"
+              ),
+              timeoutMs = 120_000,
+            )
+          }
+          .exceptionOrNull()
+      assertNotNull("an out-of-range row must fail rather than render value 0", failure)
+      val message =
+        generateSequence(failure) { it.cause }.mapNotNull { it.message }.joinToString(" ")
+      // SquareTintProvider yields two Longs, so their labels are their decimal `toString()`s —
+      // 0xFF43A047 and 0xFF1E88E5. Listing them is what makes the rows addressable by name.
+      assertTrue(
+        "failure must name the requested row and list what IS available; got: $message",
+        message.contains("has no row 9") &&
+          message.contains("4282622023") &&
+          message.contains("4280191205"),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun serifTextWritesFontsUsedDataProduct() {
     val outputDir = tempFolder.newFolder("renders-fonts")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
