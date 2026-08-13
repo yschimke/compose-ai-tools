@@ -127,6 +127,36 @@ object ServeWeb {
   private fun viewerViewCountHtml(views: Long): String =
     if (views <= 0) "" else "<span class=\"cp-viewer-engage\">${formatViews(views)}</span>"
 
+  /**
+   * A title-bar disclosure toggle: a [label] naming the axis it folds, plus the [value] that axis
+   * currently holds. Both halves matter. A bare "State" would make the reader open the row to learn
+   * what they are looking at — the very cost the fold was meant to remove — so a closed toggle
+   * reads "State · M wide" and the row underneath is genuinely optional.
+   *
+   * Shares `.cp-drawer-toggle` with the two drawer toggles it now sits beside, so the four
+   * disclosures on this page cannot drift apart visually; `aria-expanded` + `aria-controls` are
+   * what make it a disclosure rather than four buttons that happen to look alike.
+   *
+   * [valueId] labels the value span when something client-side has to keep it current (the theme,
+   * which changes without a page load).
+   */
+  private fun disclosureToggleHtml(
+    id: String,
+    controls: String,
+    label: String,
+    value: String,
+    open: Boolean,
+    valueId: String? = null,
+  ): String {
+    val valueIdAttr = valueId?.let { " id=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
+    return "<button type=\"button\" class=\"cp-drawer-toggle cp-axis-toggle\"" +
+      " id=\"${WebEscaping.htmlEscape(id)}\" aria-expanded=\"$open\"" +
+      " aria-controls=\"${WebEscaping.htmlEscape(controls)}\">" +
+      "<span class=\"cp-toggle-label\">${WebEscaping.htmlEscape(label)}</span>" +
+      "<span class=\"cp-toggle-value\"$valueIdAttr>${WebEscaping.htmlEscape(value)}</span>" +
+      "</button>"
+  }
+
   private fun formatViews(views: Long): String =
     "${formatCount(views)} ${if (views == 1L) "view" else "views"}"
 
@@ -267,6 +297,21 @@ object ServeWeb {
    * the session lapse. Cheap at this rate: one empty POST per open tab per four minutes.
    */
   internal const val PRESENCE_INTERVAL_SECONDS = 240
+
+  /**
+   * How many state/variant chips the viewer shows inline before folding the rows behind their
+   * title-bar toggle. Sized so a component's whole state axis still fits on one wrapped row at a
+   * typical width; past it the rows were costing more of the fold than the render they sit above.
+   */
+  private const val AXIS_CHIPS_INLINE = 8
+
+  /**
+   * How many theme chips the viewer bar shows inline before folding. Lower than [AXIS_CHIPS_INLINE]
+   * because the bar is capped at a single non-wrapping row: past a handful the chips ellipsise into
+   * stubs and the group scrolls within itself, which is worse than a toggle that spells the current
+   * theme out in full.
+   */
+  private const val THEME_CHIPS_INLINE = 4
 
   // android.content.res.Configuration values, kept local so the CLI has no Android dependency.
   private const val UI_MODE_NIGHT_MASK = 0x30
@@ -7558,6 +7603,15 @@ $rows
     // and every existing lane (daemon re-render, Wasm ?uiMode, URL state, the catalog-scoped sticky
     // key) keeps working untouched. Day/Night rather than Light/Dark to match the labels the select
     // used; a dark-first (Wear) system offers Night alone, as its select did.
+    // …and, like the axes rows above, the bar FOLDS once a catalog declares enough themes that the
+    // chips stop fitting. Eight chips is the published compose-m3 shape: they ellipsise to stubs
+    // ("Light Medi…", "Dark Hig…") and the group scrolls within itself, so the row is spending full
+    // width to show names it has already truncated. Behind the title-bar toggle the *current*
+    // theme's full name is always readable and the chips are one click away. Under
+    // [THEME_CHIPS_INLINE] — a plain light/dark catalog, or one with a theme or two — the bar shows
+    // as it always has.
+    val themeChipCount = (if (wearAlwaysDark) 1 else 2) + viewerDeclaredThemes.size
+    val themeOpen = themeChipCount <= THEME_CHIPS_INLINE
     val themeBarHtml =
       themeChipsHtml(
           builtIns =
@@ -7567,9 +7621,23 @@ $rows
           indent = "          ",
         )
         .let {
-          "<span class=\"cp-theme cp-theme-bar\" role=\"group\" aria-label=\"Preview theme\">\n" +
+          "<span class=\"cp-theme cp-theme-bar\" id=\"cp-theme-bar\" role=\"group\"" +
+            " aria-label=\"Preview theme\"${if (themeOpen) "" else " hidden"}>\n" +
             "          $it\n        </span>"
         }
+    // The theme toggle's *value* is seeded server-side from the lane this preview is baked in, then
+    // kept in sync client-side (viewer-drawers.js mirrors whichever chip `viewer.js` marks pressed)
+    // — the theme is picked without a page load, so a server-rendered label alone would go stale on
+    // the first click.
+    val themeToggle =
+      disclosureToggleHtml(
+        id = "cp-theme-toggle",
+        controls = "cp-theme-bar",
+        label = "Theme",
+        value = if (viewerTheme == "light") "Day" else "Night",
+        open = themeOpen,
+        valueId = "cp-theme-toggle-value",
+      )
     // Inspection layers (see inspect.js): what the frame is MADE OF, drawn client-side over the
     // pixels the server already sent — the accessibility focus map, the resolved typography, the
     // resolved theme attributes. Each is a box + numbered badge on the stage and a readable row in
@@ -7778,6 +7846,13 @@ $rows
       else
         "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-nav-toggle\" " +
           "aria-expanded=\"false\" aria-controls=\"cp-nav\">☰ Components</button>"
+    // The right-hand overrides drawer's toggle, which now sits with the other three disclosures in
+    // the title bar rather than alone at the end of the viewer bar. Server-side it is the one that
+    // starts expanded (`cp-controls-open` on .cp-viewer below); the drawer script collapses it on a
+    // phone, where the preview leads and the drawer opens as a bottom sheet.
+    val controlsToggle =
+      "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-controls-toggle\" " +
+        "aria-expanded=\"true\" aria-controls=\"cp-controls\">⚙ Overrides</button>"
     // Stage background follows the preview's theme (dark variant → dark stage), with a dark-first
     // system (Wear) defaulting to dark — see the `.cp-viewer[data-bg-theme] .cp-stage` CSS. Kept
     // separate from the filter's data-card-theme; the viewer JS re-syncs it on a Theme (uiMode)
@@ -7794,6 +7869,35 @@ $rows
     val variantSwitcher = variantSwitcherHtml(preview, siblings, basePath, q, viewerDarkFirst)
     val switchers =
       listOf(stateSwitcher, variantSwitcher).filter { it.isNotBlank() }.joinToString("\n")
+    // The axes DISCLOSURE. A component with a wide state axis (the published m3-catalog's
+    // `iconbutton-outlined` bakes ~30) spent three wrapped chip rows — most of the fold — on a set
+    // of links whose only load-bearing fact, "which one am I on", fits in the toggle's own label.
+    // So the rows fold behind one control in the title bar that names the current state, and open
+    // on demand. Collapsed by default only past [AXIS_CHIPS_INLINE]: a two- or three-state
+    // component costs one short row and reads better shown, and leaving it alone keeps every
+    // small-catalog golden (and the muscle memory that goes with it) unchanged.
+    val axisChips = switchers.split("class=\"cp-state-btn\"").size - 1
+    val axisOpen = axisChips <= AXIS_CHIPS_INLINE
+    // What the toggle says when it is closed. State leads when the component has one — it is the
+    // axis a reader navigates most — and a props-only component names its variant instead.
+    val axisName = if (stateSwitcher.isNotBlank()) "State" else "Variant"
+    val axisValue =
+      if (stateSwitcher.isNotBlank()) stateLabel(preview.state) else propsLabel(preview.props)
+    val axesToggle =
+      if (switchers.isBlank()) ""
+      else
+        disclosureToggleHtml(
+          id = "cp-axes-toggle",
+          controls = "cp-axes",
+          label = axisName,
+          value = axisValue,
+          open = axisOpen,
+        )
+    val axesBlock =
+      if (switchers.isBlank()) ""
+      else
+        "<div class=\"cp-axes\" id=\"cp-axes\"${if (axisOpen) "" else " hidden"}>\n" +
+          "$switchers\n      </div>"
     // Left to right: the chip that names the current renderer and toggles it live, the combo box of
     // alternatives, the design-spec chip (top level, not an option inside the combo), the two
     // subtle
@@ -7875,6 +7979,17 @@ $rows
         playgroundHref,
         executableBundleHref,
       )
+    // Every disclosure the page has, in one group, at the end of the identity row: the component
+    // list, the state/variant axes, the theme chips, the overrides drawer. They were scattered —
+    // two on the viewer bar, two implicit in rows that were simply always open — which is why the
+    // page had no single answer to "what can I put away". Ordered as the surfaces they own read on
+    // the page (left column, then the two rows below the title, then the right column), and each
+    // closed one still names its current value, so folding a row never costs the fact it carried.
+    val headToggles =
+      listOf(navToggle, axesToggle, themeToggle, controlsToggle).filter { it.isNotBlank() }
+    val headTogglesHtml =
+      if (headToggles.isEmpty()) ""
+      else "\n        <span class=\"cp-head-toggles\">${headToggles.joinToString("")}</span>"
     // Title, trust badge, id and the view tally on ONE baseline-aligned row. They are all
     // *identity* — three separate blocks said so three times, at the cost of ~90px above the fold.
     val body =
@@ -7882,10 +7997,10 @@ $rows
       <div class="cp-preview-head">
         <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
         <code class="cp-preview-id" title="$idText">$idText</code>
-        ${viewerViewCountHtml(engagement.views)}
+        ${viewerViewCountHtml(engagement.views)}$headTogglesHtml
       </div>
       ${degradeBanner(degradations)}
-      $switchers
+      $axesBlock
       <div class="cp-preview-primary" aria-label="Preview renderer">
       $primaryControls
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
@@ -7894,11 +8009,9 @@ $rows
         </span>
       </div>
       <div class="cp-viewer-bar">
-        $navToggle
         $themeBarHtml
         ${bgPickerHtml("Show the transparent checkerboard behind the preview")}
         <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-        <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
       $historyInlineHtml
       <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>

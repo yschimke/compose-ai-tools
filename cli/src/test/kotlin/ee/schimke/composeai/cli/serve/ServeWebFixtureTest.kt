@@ -334,6 +334,27 @@ class ServeWebFixtureTest {
       ),
     )
 
+  /**
+   * A component with a WIDE state axis — the published m3-catalog's `iconbutton-outlined` bakes one
+   * render per size × width × shape, which is what pushed the switcher past the point where showing
+   * every chip was worth the fold it cost. Past [ServeWeb]'s inline threshold the rows arrive
+   * folded behind the title bar's `State · …` toggle, so this is the fixture that captures the
+   * *collapsed* axes disclosure for the visual-diff bot; `serve-viewer-states.html` (two states)
+   * keeps the expanded case.
+   */
+  private val wideStatePreviews =
+    listOf("default", "disabled", "xs", "s", "m", "l", "xl", "m-wide", "m-square", "xl-narrow")
+      .flatMap { state ->
+        listOf("light", "dark").map { theme ->
+          ServePreview(
+            "iconbutton-outlined__ideal__${state}__$theme",
+            "Icon Button Outlined · ${state.replace('-', ' ')} ($theme)",
+            state = state,
+            theme = theme,
+          )
+        }
+      }
+
   // A trusted-catalog preview that declares author knobs (a `label` string + an accent `color`) —
   // the `compose/overrides` payload PR #2281 added across the M3 catalog. On a live catalog session
   // (ServeCatalogLiveHost) these render as LIVE controls that re-render via `/render` on edit.
@@ -1617,6 +1638,24 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         siblings = statefulPreviews,
       )
+    // Every disclosure at once, on the shape that motivated them: a state axis and a theme set both
+    // wide enough to arrive FOLDED, plus sibling components so the nav toggle is there too. The
+    // chips sit behind the title bar's `State · Default` / `Theme · Day` toggles, and the render
+    // starts where three wrapped chip rows used to.
+    val viewerAxesFolded =
+      ServeWeb.viewerPage(
+        wideStatePreviews.first(),
+        token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        siblings = wideStatePreviews + statefulPreviews,
+        declaredThemes =
+          listOf(
+            ServeTheme("Baseline Light", "com.example.BaselineLightThemeCatalog"),
+            ServeTheme("Baseline Dark", "com.example.BaselineDarkThemeCatalog"),
+            ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog"),
+          ),
+      )
     // The tree at full depth. `synthesizeGroups` only divides a catalog with at least two families
     // and one family holding more than one card, and the variant/state fixtures above are each a
     // single component — so neither of them renders a tree at all, and the component and variant
@@ -2035,6 +2074,7 @@ class ServeWebFixtureTest {
         "serve-landing-states.html" to landingStates,
         "serve-landing-sections.html" to landingSections,
         "serve-viewer-states.html" to viewerStates,
+        "serve-viewer-axes-folded.html" to viewerAxesFolded,
         "serve-status.html" to serveStatus,
         "serve-landing-variants.html" to landingVariants,
         "serve-landing-tree-depth.html" to landingTreeDepth,
@@ -3986,12 +4026,13 @@ class ServeWebFixtureTest {
         .contains(".cp-stage, .cp-controls, .cp-nav { flex: 1 1 100%; min-width: 0; }"),
       "stage/overrides/nav stack full-width and drop their min-width on a phone",
     )
-    // Usability: on mobile the two drawers become bottom sheets reachable from a sticky toggle bar
+    // Usability: on mobile the two drawers become bottom sheets reachable from a sticky toggle row
     // (so overrides + the component list are one tap away, not a long scroll below a tall preview),
-    // with a scrim behind the open sheet.
+    // with a scrim behind the open sheet. The row that sticks is the title row, which is where all
+    // four disclosures now live.
     assertTrue(
-      assetText("serve.css").contains(".cp-viewer-bar { position: sticky; top: 0;"),
-      "the drawer toggle bar is sticky on mobile",
+      assetText("serve.css").contains(".cp-preview-head { position: sticky; top: 0;"),
+      "the disclosure row is sticky on mobile",
     )
     assertTrue(
       assetText("serve.css").contains(".cp-viewer.cp-controls-open .cp-controls,") &&

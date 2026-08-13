@@ -16,17 +16,38 @@
   function toggleId(cls) {
     return cls === "cp-nav-open" ? "cp-nav-toggle" : "cp-controls-toggle";
   }
+  // Every fold on this page remembers itself per-visitor, the same way the override groups do
+  // (`cp-grp.<id>` in viewer-groups.js) — a reader who puts the component list or a wide state axis
+  // away has said so about the *catalog*, not about one preview, and re-opening it on every
+  // navigation would make the toggle worthless on exactly the catalogs that need it.
+  function foldKey(id) { return "cp-fold." + id; }
+  function readFold(id) {
+    try { return localStorage.getItem(foldKey(id)); } catch (e) { return null; }
+  }
+  function writeFold(id, open) {
+    try { localStorage.setItem(foldKey(id), open ? "1" : "0"); } catch (e) {}
+  }
+  // Desktop shows the component list by default (the CSS rule at min-width:1100px); narrower
+  // viewports don't. That default is what a null preference means.
+  function isWide() {
+    return !!(window.matchMedia && window.matchMedia("(min-width: 1100px)").matches);
+  }
   function setOpen(cls, open) {
     // On mobile, opening one sheet closes the other so they never stack.
     if (open && isMobile()) {
       var other = cls === "cp-controls-open" ? "cp-nav-open" : "cp-controls-open";
       if (viewer.classList.contains(other)) {
         viewer.classList.remove(other);
+        if (other === "cp-nav-open") viewer.classList.add("cp-nav-closed");
         var ob = document.getElementById(toggleId(other));
         if (ob) ob.setAttribute("aria-expanded", "false");
       }
     }
     viewer.classList.toggle(cls, open);
+    // The nav's closed state has to be said out loud, not merely implied by the absence of
+    // `cp-nav-open`: on a desktop the absence means *open* (see the min-width:1100px rule), so
+    // without this class the toggle would be inert at the width where the 240px column costs most.
+    if (cls === "cp-nav-open") viewer.classList.toggle("cp-nav-closed", !open);
     var b = document.getElementById(toggleId(cls));
     if (b) b.setAttribute("aria-expanded", open ? "true" : "false");
     syncScrim();
@@ -35,16 +56,34 @@
     var btn = document.getElementById(btnId);
     if (!btn) return;
     btn.addEventListener("click", function () {
-      setOpen(cls, !viewer.classList.contains(cls));
+      var open = !viewer.classList.contains(cls);
+      setOpen(cls, open);
+      writeFold(btnId, open);
     });
   }
   // Start with the overrides drawer collapsed on a phone so the preview leads; the sticky toggle
-  // bar keeps it (and the component list) one tap away as a bottom sheet.
+  // row keeps it (and the component list) one tap away as a bottom sheet.
   if (isMobile()) setOpen("cp-controls-open", false);
+  var controlsPref = readFold("cp-controls-toggle");
+  if (controlsPref !== null) setOpen("cp-controls-open", controlsPref === "1");
+  // The nav's server markup carries NEITHER class, so its resting state is the CSS default — shown
+  // on a desktop, hidden below — and `classList.contains("cp-nav-open")` would read that default as
+  // "closed" on the very width where it is open. Resolve it once, here, into an explicit class:
+  // a stored preference if there is one, else the width's default. Everything downstream (the
+  // toggle, the ×, the scrim) can then trust the class, and `aria-expanded` starts out honest.
+  var navToggleBtn = document.getElementById("cp-nav-toggle");
+  if (navToggleBtn) {
+    var navPref = readFold("cp-nav-toggle");
+    setOpen("cp-nav-open", navPref !== null ? navPref === "1" : isWide());
+  }
   bindToggle("cp-controls-toggle", "cp-controls-open");
   bindToggle("cp-nav-toggle", "cp-nav-open");
   var close = document.getElementById("cp-nav-close");
-  if (close) close.addEventListener("click", function () { setOpen("cp-nav-open", false); });
+  if (close)
+    close.addEventListener("click", function () {
+      setOpen("cp-nav-open", false);
+      writeFold("cp-nav-toggle", false);
+    });
   // Tap the scrim to dismiss whichever bottom sheet is open.
   if (scrim)
     scrim.addEventListener("click", function () {
@@ -52,6 +91,50 @@
       setOpen("cp-nav-open", false);
     });
   syncScrim();
+  // The two in-page folds — the state/variant chip rows and the theme bar. Unlike the drawers
+  // these hide with the `hidden` attribute rather than a class on .cp-viewer, because they are not
+  // columns of the viewer layout: they are rows above it, and the server has already decided
+  // whether each starts folded (it knows how many chips there are, so a busy catalog opens folded
+  // with no layout jump on load). A stored preference overrides that decision in either direction.
+  function bindFold(btnId, targetId) {
+    var btn = document.getElementById(btnId);
+    var target = document.getElementById(targetId);
+    if (!btn || !target) return;
+    function apply(open) {
+      target.hidden = !open;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    var pref = readFold(btnId);
+    if (pref !== null) apply(pref === "1");
+    btn.addEventListener("click", function () {
+      var open = target.hidden;
+      apply(open);
+      writeFold(btnId, open);
+    });
+  }
+  bindFold("cp-axes-toggle", "cp-axes");
+  bindFold("cp-theme-toggle", "cp-theme-bar");
+  // A folded theme bar must still say which theme is showing, and the theme changes without a page
+  // load — so the toggle's value half mirrors whichever chip viewer.js has marked pressed rather
+  // than the lane the server baked. Observing `aria-pressed` keeps this decoupled from viewer.js's
+  // own sync (`syncThemeBar`), which has several callers and no hook of its own.
+  var themeBar = document.getElementById("cp-theme-bar");
+  var themeValue = document.getElementById("cp-theme-toggle-value");
+  if (themeBar && themeValue) {
+    var syncThemeValue = function () {
+      var on = themeBar.querySelector('.cp-theme-btn[aria-pressed="true"]');
+      if (!on) return;
+      var name = (on.textContent || "").trim();
+      if (name) themeValue.textContent = name;
+    };
+    syncThemeValue();
+    if (window.MutationObserver)
+      new MutationObserver(syncThemeValue).observe(themeBar, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["aria-pressed"],
+      });
+  }
   var search = document.getElementById("cp-nav-search");
   if (search)
     search.addEventListener("input", function () {
