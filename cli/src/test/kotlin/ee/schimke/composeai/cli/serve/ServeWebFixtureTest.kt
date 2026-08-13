@@ -607,10 +607,12 @@ class ServeWebFixtureTest {
         // "try in playground" on the summary line — the catalog-level half of the handoff, captured
         // so its placement in that run of actions is diffed like any other pixel.
         playgroundHref = "/playground?catalog=compose-m3",
-        // A published design page, so the action row's "N pages" chip is captured alongside the
-        // comparison chips it sits with. Without this no golden carries one, and the chip could be
-        // restyled or lost with no baseline moving.
-        pageCount = 2,
+        // Published design pages on a catalog with NO navigation tree — the one shape that still
+        // offers them as a header chip, because there is no tree to list them in. Captured so that
+        // fallback keeps a baseline of its own, next to `landingGrouped`, which has a tree and so
+        // lists these by name instead.
+        designPages =
+          listOf(ServeWeb.PageLink("shape", "Shape"), ServeWeb.PageLink("type", "Typography")),
       )
     // The public preview server's FRONT DOOR: an index of the published design systems, each a card
     // with a meaningful hero preview, its title + library, trust badge, and a link to /<system>/.
@@ -1736,6 +1738,11 @@ class ServeWebFixtureTest {
         isPublic = true,
         hasHomeIndex = true,
         version = version,
+        // The design file's own pages, listed by name at the foot of the outline tree — the shape
+        // m3-catalog is in, and the surface that replaced the header's "N pages" chip. Captured
+        // here so the branch has a visual baseline of its own.
+        designPages =
+          listOf(ServeWeb.PageLink("shape", "Shape"), ServeWeb.PageLink("type", "Typography")),
       )
     // A viewer whose sibling list spans several components each with many baked variants (a
     // button-filled with RTL/locale/font variants, plus checkbox/radiobutton states). The component
@@ -2893,6 +2900,41 @@ class ServeWebFixtureTest {
         landingGrouped.contains("aria-label=\"Catalog contents\"") &&
         landingGrouped.contains("<div class=\"cp-subgroup\" id=\"cp-group-button\">"),
       "a section-less catalog renders an outline tree over its synthesized families",
+    )
+    // The design file's pages are a BRANCH OF THE TREE, not a chip in the header row: one row per
+    // page, named, under a row that leads to the index. Always open (`aria-expanded="true"` that
+    // nothing reflects) and carrying no `data-group`, because these rows navigate away rather than
+    // scrolling to something on this page — which is what the click handler's `if (!id) return`
+    // and `reflectTree`'s matching guard rely on.
+    assertTrue(
+      landingGrouped.contains(
+        "<a class=\"cp-tree-pages-row cp-tree-link\" role=\"treeitem\" href=\"/pages\"" +
+          " aria-expanded=\"true\" aria-owns=\"cp-tree-pages-list\">" +
+          "Pages<span class=\"cp-tree-count\">2</span></a>"
+      ) &&
+        landingGrouped.contains(
+          "<a class=\"cp-tree-page cp-tree-link\" role=\"treeitem\" href=\"/pages/shape\">Shape</a>"
+        ) &&
+        landingGrouped.contains(">Typography</a>"),
+      "a catalog's design pages are listed by name at the foot of its tree",
+    )
+    assertTrue(
+      !landingGrouped.contains("class=\"cp-action-chip\" href=\"/pages\""),
+      "a catalog with a tree offers its pages there, not as a header chip as well",
+    )
+    // …and the fallback: no tree to list them in (too few previews to synthesize families from)
+    // means the chip is the only route, so it stays.
+    assertTrue(
+      !landingPublic.contains("cp-tree-pages") &&
+        landingPublic.contains("class=\"cp-action-chip\" href=\"/pages\">2 pages</a>"),
+      "a catalog with no tree keeps the header chip, or its pages would be unreachable",
+    )
+    // `reflectTree` walks every expandable row on every open/close; the Pages branch is expandable
+    // and names no target, so without this guard it would be collapsed by the first component
+    // click. Asserted on the emitted script because that is the only place it exists.
+    assertTrue(
+      landingGrouped.contains("if (!id) return;"),
+      "the tree script leaves an always-open branch alone",
     )
     // The tree's two deepest levels. A component row jumps to its card (an in-page `data-group`);
     // a variant row has nowhere on the page to go — the grid folds those renders out — so it is a

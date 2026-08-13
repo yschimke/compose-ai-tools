@@ -104,6 +104,13 @@
         </li>
       </ul>
     </li>
+<li class="cp-tree-node cp-tree-pages" role="none">
+  <a class="cp-tree-pages-row cp-tree-link" role="treeitem" href="/pages" aria-expanded="true" aria-owns="cp-tree-pages-list">Pages<span class="cp-tree-count">2</span></a>
+  <ul class="cp-tree-children cp-tree-components" id="cp-tree-pages-list" role="group">
+    <li role="none"><a class="cp-tree-page cp-tree-link" role="treeitem" href="/pages/shape">Shape</a></li>
+    <li role="none"><a class="cp-tree-page cp-tree-link" role="treeitem" href="/pages/type">Typography</a></li>
+  </ul>
+</li>
 </ul>
 </nav>
 <div class="cp-grid-groups" id="cp-grid">
@@ -454,6 +461,9 @@ applyThemeChoice();
           treeLinks.forEach(function (r) {
             if (!r.hasAttribute("aria-expanded")) return;
             var id = r.getAttribute("data-group");
+            // A branch that names no in-page target is not one of the two this tracks — the Pages
+            // branch owns destinations that are elsewhere, and is written open once and left open.
+            if (!id) return;
             var on = r.classList.contains("cp-tree-group") ? id === openGroup : id === openCard;
             r.setAttribute("aria-expanded", on ? "true" : "false");
           });
@@ -557,8 +567,13 @@ applyThemeChoice();
             next = items[Math.min(at + 1, items.length - 1)];
           } else if (key === "ArrowLeft") {
             // Left closes an open branch, else climbs to the parent — the tree pattern's own rule,
-            // and the only way back up once the levels are four deep.
-            if (items[at].getAttribute("aria-expanded") === "true") {
+            // and the only way back up once the levels are four deep. The `data-group` test excludes
+            // the always-open Pages branch: closing it is not offered, and without the test Left on
+            // that row would clear `openCard` and collapse whichever component IS open.
+            if (
+              items[at].getAttribute("aria-expanded") === "true" &&
+              items[at].getAttribute("data-group")
+            ) {
               e.preventDefault();
               if (items[at].classList.contains("cp-tree-group")) openGroup = null;
               else openCard = null;

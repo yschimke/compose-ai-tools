@@ -569,6 +569,13 @@ object ServeWeb {
   data class FigmaSpec(val url: String, val label: String? = null)
 
   /**
+   * A published design page as the catalog's **navigation** needs it: what to call it, and the id
+   * its URL carries. Deliberately not the whole [DesignPage] — the landing lists these, it does not
+   * draw them, and a page's node list is megabytes of manifest the tree has no use for.
+   */
+  data class PageLink(val id: String, val name: String)
+
+  /**
    * The row under the viewer's title holding the per-preview provenance links: "source" (where the
    * preview is declared), "report an issue" (a prefilled bug against the repo that owns it), and
    * "figma spec" (the node this preview is specified by, when the catalog names one). They share
@@ -1268,6 +1275,8 @@ object ServeWeb {
   private fun catalogTreeHtml(
     sections: List<LandingSection>,
     components: (GridCard) -> TreeComponent,
+    /** The design-pages branch ([pagesBranchHtml]), appended after the sections. Empty ⇒ none. */
+    pagesBranch: String = "",
   ): String = buildString {
     append("<nav class=\"cp-tree\" id=\"cp-tabs\" aria-label=\"Catalog sections\">\n")
     append("<ul class=\"cp-tree-list\" role=\"tree\" aria-label=\"Catalog sections\">\n")
@@ -1311,6 +1320,7 @@ object ServeWeb {
       }
       append("</li>\n")
     }
+    append(pagesBranch)
     append("</ul>\n</nav>\n")
   }
 
@@ -1328,6 +1338,8 @@ object ServeWeb {
   private fun catalogOutlineTreeHtml(
     groups: List<LandingGroup>,
     components: (GridCard) -> TreeComponent,
+    /** The design-pages branch ([pagesBranchHtml]), appended after the groups. Empty ⇒ none. */
+    pagesBranch: String = "",
   ): String = buildString {
     append("<nav class=\"cp-tree\" id=\"cp-tabs\" aria-label=\"Catalog contents\">\n")
     append("<ul class=\"cp-tree-list\" role=\"tree\" aria-label=\"Catalog contents\">\n")
@@ -1337,7 +1349,50 @@ object ServeWeb {
       // <li> is not a list.
       appendGroupRow(g, null, flatGroupAnchorId(g.slug), i == 0, components, "cp-tree-node")
     }
+    append(pagesBranch)
     append("</ul>\n</nav>\n")
+  }
+
+  /**
+   * The tree's **Pages** branch: the design file's own pages, listed by name under one row that
+   * leads to the index.
+   *
+   * This used to be an action chip in the header row, beside "compare SVG" and "download all". A
+   * chip could only say *how many* pages there were — the names, which are the thing you actually
+   * choose between, were a page away — and it sat in a row of one-off actions while being the one
+   * entry there that is a place. The tree is where this catalog's places already live, so it goes
+   * in the tree, at the foot: a page is a view of the *design file*, not part of the catalog's own
+   * inventory, and it should not push that inventory down the column.
+   *
+   * Two things make it unlike every other branch, and both are deliberate:
+   * - **It carries no `data-group`.** Every other row names an id on this page and is intercepted
+   *   into a scroll; these rows are real navigations, so the click handler's `if (!id) return`
+   *   leaves them to the browser. It is the same treatment a variant row already gets.
+   * - **It is always open.** `aria-expanded="true"` is written once and never reflected — with a
+   *   handful of pages there is nothing to gain by hiding their names behind a twisty, and the open
+   *   state is what makes the branch worth having over the chip it replaces. [catalogTreeScript]
+   *   skips reflecting a row that names no target, which is what keeps it open.
+   */
+  private fun pagesBranchHtml(pages: List<PageLink>, basePath: String, q: String): String {
+    if (pages.isEmpty()) return ""
+    return buildString {
+      append("<li class=\"cp-tree-node cp-tree-pages\" role=\"none\">\n")
+      append("  <a class=\"cp-tree-pages-row cp-tree-link\" role=\"treeitem\"")
+      append(" href=\"${WebEscaping.htmlEscape("$basePath/pages$q")}\"")
+      append(" aria-expanded=\"true\" aria-owns=\"cp-tree-pages-list\">")
+      append("Pages<span class=\"cp-tree-count\">${pages.size}</span></a>\n")
+      append("  <ul class=\"cp-tree-children cp-tree-components\" id=\"cp-tree-pages-list\"")
+      append(" role=\"group\">\n")
+      pages.forEach { page ->
+        // The page id reaches the URL as one path segment, and the name is free text authored in
+        // the design file — so one is encoded and the other escaped.
+        val href = "$basePath/pages/${WebEscaping.urlEncodeSegment(page.id)}$q"
+        append("    <li role=\"none\"><a class=\"cp-tree-page cp-tree-link\" role=\"treeitem\"")
+        append(" href=\"${WebEscaping.htmlEscape(href)}\">")
+        append("${WebEscaping.htmlEscape(page.name)}</a></li>\n")
+      }
+      append("  </ul>\n</li>\n")
+    }
   }
 
   /**
@@ -2810,6 +2865,9 @@ object ServeWeb {
         treeLinks.forEach(function (r) {
           if (!r.hasAttribute("aria-expanded")) return;
           var id = r.getAttribute("data-group");
+          // A branch that names no in-page target is not one of the two this tracks — the Pages
+          // branch owns destinations that are elsewhere, and is written open once and left open.
+          if (!id) return;
           var on = r.classList.contains("cp-tree-group") ? id === openGroup : id === openCard;
           r.setAttribute("aria-expanded", on ? "true" : "false");
         });
@@ -2913,8 +2971,13 @@ object ServeWeb {
           next = items[Math.min(at + 1, items.length - 1)];
         } else if (key === "ArrowLeft") {
           // Left closes an open branch, else climbs to the parent — the tree pattern's own rule,
-          // and the only way back up once the levels are four deep.
-          if (items[at].getAttribute("aria-expanded") === "true") {
+          // and the only way back up once the levels are four deep. The `data-group` test excludes
+          // the always-open Pages branch: closing it is not offered, and without the test Left on
+          // that row would clear `openCard` and collapse whichever component IS open.
+          if (
+            items[at].getAttribute("aria-expanded") === "true" &&
+            items[at].getAttribute("data-group")
+          ) {
             e.preventDefault();
             if (items[at].classList.contains("cp-tree-group")) openGroup = null;
             else openCard = null;
@@ -5068,10 +5131,12 @@ object ServeWeb {
      */
     hasParityView: Boolean = false,
     /**
-     * How many design pages this catalog publishes ([ServeDesignPages]). Zero (the default) omits
-     * the link, so a catalog that publishes none is unchanged.
+     * The design pages this catalog publishes ([ServeDesignPages]), in publication order. Listed by
+     * name in the navigation tree ([pagesBranchHtml]); a catalog with no tree to put them in falls
+     * back to a header action chip. Empty (the default) offers neither, so a catalog that publishes
+     * no pages is unchanged.
      */
-    pageCount: Int = 0,
+    designPages: List<PageLink> = emptyList(),
     /**
      * The design tool this catalog is specified by ("Figma", …), from its references' provider or
      * its parity feed — names the parity action after the thing it compares against ("compare to
@@ -5452,10 +5517,15 @@ object ServeWeb {
         href = viewerHref(shown),
       )
     }
+    // The design file's pages, listed at the foot of whichever tree this catalog has. A catalog
+    // with no tree (too few previews to synthesize families from, and no authored sections) has
+    // nowhere to put them and keeps the header chip instead — see the action row below.
+    val hasTree = hasTabs || synthGroups != null
+    val pagesBranch = if (hasTree) pagesBranchHtml(designPages, basePath, q) else ""
     val tabBar =
       when {
-        hasTabs -> catalogTreeHtml(sections, ::treeComponent)
-        synthGroups != null -> catalogOutlineTreeHtml(synthGroups, ::treeComponent)
+        hasTabs -> catalogTreeHtml(sections, ::treeComponent, pagesBranch)
+        synthGroups != null -> catalogOutlineTreeHtml(synthGroups, ::treeComponent, pagesBranch)
         else -> ""
       }
     // The grid body: either the tabbed section panels (id=cp-grid, so the search box's
@@ -5629,12 +5699,15 @@ object ServeWeb {
                 designToolLabel?.let { tool -> "compare to $tool" } ?: "design parity",
               )
             },
-          // A design page is a view OF this catalog's components, so it sits with the
-          // comparisons rather than displacing the grid. The count is in the label because one
+          // Pages live in the navigation tree, which is where this catalog's other *places* are.
+          // This chip is the fallback for a catalog too small to have a tree at all: without it
+          // the pages would be published and unreachable. The count is in the label because one
           // page and thirty are different offers.
-          pageCount
-            .takeIf { it > 0 }
-            ?.let { actionChip("$basePath/pages$q", "$it ${if (it == 1) "page" else "pages"}") },
+          designPages
+            .takeIf { it.isNotEmpty() && !hasTree }
+            ?.let {
+              actionChip("$basePath/pages$q", "${it.size} ${if (it.size == 1) "page" else "pages"}")
+            },
           playgroundHref?.takeIf { it.isNotBlank() }?.let { actionChip(it, "try in playground") },
         )
         .joinToString("\n          ")
