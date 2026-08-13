@@ -73,6 +73,52 @@
    Every catalog's branch (whatever repo) must be in the `--trust-store` to badge `Trusted(Branch)`;
    otherwise it serves `Unverified` (the data tiers serve either way).
 
+## Top-level sites: one catalog on a hostname of its own
+
+A published catalog can additionally be served on **its own hostname**, where it presents as the
+only thing on the server. `m3.preview.coo.ee` serves what `preview.coo.ee/m3-catalog/` serves:
+
+```
+--sites m3.preview.coo.ee=m3-catalog,wear.preview.coo.ee=wear-m3
+```
+
+or, durably, beside the catalog set in `catalogs.json` (the form the deployment uses):
+
+```json
+{
+  "catalogs": [{ "system": "m3-catalog", "repo": "yschimke/m3-catalog" }],
+  "sites": [{ "host": "m3.preview.coo.ee", "system": "m3-catalog" }]
+}
+```
+
+On that hostname:
+
+- **`/` is the catalog's landing.** Not the front-door index of every system this box publishes —
+  a site opening on a list of its neighbours would defeat the point.
+- **Links stay inside the domain.** Same-session URLs are built with an empty base path and no
+  `?session=`, so a card is `/p/button-filled`, not `/m3-catalog/p/button-filled` and not a link
+  back to `preview.coo.ee`. The "← All design systems" back button is gone; there is nowhere on
+  this hostname for it to go.
+- **`/status` reports on this app only** — its catalog row, its daemons, its startup failures. A
+  monitor pointed at the site alerts on the site, and a visitor learns nothing about what else the
+  box runs. `/sitemap.xml` is scoped the same way, with the catalog rooted at `/`.
+- **The canonical path redirects.** `m3.preview.coo.ee/m3-catalog/p/<id>` → `301` to
+  `/p/<id>`, so the two spellings don't compete as duplicate URLs in a crawler's index.
+- **A neighbour is not reachable.** `m3.preview.coo.ee/wear-m3/` is a `404`, not a second door onto
+  another catalog through the wrong domain.
+
+What it deliberately is **not** is a second server. There is no extra session, daemon, catalog
+fetch, hero bake or render behind a site: it is a lookup on the request's `Host` that changes which
+session the already-existing root-mounted routes resolve to, and what the pages say about
+themselves. Serving a catalog on ten hostnames costs what serving it on one does. A site can only
+name a catalog the server already serves — one that names anything else is dropped at startup with a
+warning rather than 404ing a whole hostname silently.
+
+Two prerequisites live outside this config: DNS for the name has to point at the box, and the
+reverse proxy in front has to route it here with a certificate (Caddy preserves `Host` and sets
+`X-Forwarded-Host`, both of which the site lookup reads). Sites are read at startup, so a
+`catalogs.json` edit needs a restart — the additive `/admin/catalogs` reconcile doesn't carry them.
+
 ## Catalog pages navigate as a tree
 
 A catalog whose components declare a **`section`** (set per group in the catalog spec — `Themes`,
@@ -2120,6 +2166,11 @@ up **right now** (backend, active streams, how long each has been up), the effec
 reason that was previously only logged to stderr). The status snapshot never wakes an idle daemon: a
 catalog's liveness is read from the resident-session snapshot, not by resuming it, so a monitor can
 poll it freely.
+
+On a [top-level site](#top-level-sites-one-catalog-on-a-hostname-of-its-own) the same page reports on
+**that app only** — its catalog row, its daemons, the startup failures naming it. It is one filter
+over the snapshot the main host already builds, not a second collection pass, so a per-site monitor
+costs the box nothing extra.
 
 ![The /status page — catalogs and their trust/liveness, the render daemons running now, the effective config, and recent daemon startup failures](images/serve-status.png)
 

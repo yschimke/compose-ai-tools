@@ -38,6 +38,10 @@ services:
       # Optional additions to that file (<system>@<owner>/<repo>, comma-separated).
       SERVE_CATALOGS: "${SERVE_CATALOGS:-}"
       SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-}"
+      # Top-level sites (<host>=<system>[,…]): serve one of the catalogs above on a hostname
+      # of its own, where it presents as the whole server. Caddy in front must route the name
+      # here; catalogs.json's "sites" is the durable form of the same setting.
+      SERVE_SITES: "${SERVE_SITES:-}"
       SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-/config/producers.json}"
       SERVE_WASM_DIR: "${SERVE_WASM_DIR:-compose-m3=samples/cmp-wasm-catalog/build/wasmDist}"
       # Live (daemon-backed) server-side re-render. Now that compose-m3 is a

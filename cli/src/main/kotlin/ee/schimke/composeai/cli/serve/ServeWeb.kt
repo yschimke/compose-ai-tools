@@ -208,6 +208,11 @@ object ServeWeb {
    * are **token-only** — no `&session=`. When it's the root-mounted default/legacy `?session=` form
    * ([basePath] empty) it falls back to [queryString]. In [isPublic] mode the token is dropped
    * either way (may return empty — wrap with [querySuffix]).
+   *
+   * A **top-level site** ([ServeSites]) is the third case and needs no code here: it is rooted like
+   * the legacy form but carries its session in the ORIGIN, so its pages pass a null session id to
+   * this function (see each page's `linkSessionId`) while keeping the real one for the per-catalog
+   * storage keys and the dark-first lookup.
    */
   private fun linkQuery(
     token: String,
@@ -5414,8 +5419,19 @@ object ServeWeb {
     unfurl: UnfurlMetadata? = null,
     /** Human catalog title from catalog.json; [moduleLabel] remains the stable technical id. */
     displayTitle: String? = null,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
   ): String {
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val themeLeaseUrl =
       if (themeRenderBurstCapacity > 1) "$basePath/api/theme-render-lease$q" else ""
     val navSuffix =
@@ -5787,7 +5803,7 @@ object ServeWeb {
     val liveScript =
       catalogLiveScript(
         basePath = basePath,
-        query = linkQuery(token, sessionId, basePath, isPublic),
+        query = linkQuery(token, linkSessionId, basePath, isPublic),
         cards =
           orderedCards.map { card ->
             fun streamable(p: ServePreview) = if (canStreamLiveFor(p.id)) p.id else ""
@@ -5821,7 +5837,7 @@ object ServeWeb {
     // "compare *what*", and a catalog carrying only one of them shows only that one.
     fun compareChip(format: String, label: String): String {
       val query =
-        listOf("format=$format", linkQuery(token, sessionId, basePath, isPublic))
+        listOf("format=$format", linkQuery(token, linkSessionId, basePath, isPublic))
           .filter { it.isNotEmpty() }
           .joinToString("&")
       return actionChip("$basePath/compare?$query", label)
@@ -5929,8 +5945,19 @@ object ServeWeb {
      */
     version: String? = null,
     displayTitle: String? = null,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
   ): String {
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
@@ -5979,7 +6006,7 @@ object ServeWeb {
       val reference = preview?.let { referencesFor(it.id).firstOrNull() } ?: return ""
       val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$q"
       val detailQuery =
-        linkQuery(token, sessionId, basePath, isPublic).let { query ->
+        linkQuery(token, linkSessionId, basePath, isPublic).let { query ->
           listOf(query, "reference=${WebEscaping.urlEncodeSegment(reference.id)}")
             .filter { it.isNotEmpty() }
             .joinToString("&")
@@ -6083,7 +6110,7 @@ object ServeWeb {
         """
           .trimIndent()
     val rcLanes = rcCompare?.let {
-      rcLanesSection(it, previews, previewIdsByCard, token, sessionId, basePath, isPublic)
+      rcLanesSection(it, previews, previewIdsByCard, token, linkSessionId, basePath, isPublic)
     }
     val rootAttrs =
       "data-default-format=\"$defaultFormat\" data-default-theme=\"${if (darkFirst) "dark" else "light"}\" " +
@@ -6157,12 +6184,13 @@ object ServeWeb {
     previews: List<ServePreview>,
     previewIdsByCard: Map<String, List<String>>,
     token: String,
-    sessionId: String?,
+    /** The id links must carry as `?session=`, or null when the URL already implies it. */
+    linkSessionId: String?,
     basePath: String,
     isPublic: Boolean,
   ): String? {
     if (manifest.lanes.isEmpty() || manifest.rows.isEmpty()) return null
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val previewsById = previews.associateBy { it.id }
     fun asset(name: String): String =
       if (name.isEmpty()) "" else "$basePath/${ServeRcCompare.DIRECTORY}/$name$q"
@@ -6323,8 +6351,19 @@ $rows
      * happens to be when the link is opened.
      */
     revisions: CatalogRevisions = CatalogRevisions.NONE,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
   ): String {
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
@@ -6373,7 +6412,7 @@ $rows
     val pageHref: (String?, String) -> String = { pin, referenceId ->
       val query =
         listOfNotNull(
-            linkQuery(token, sessionId, basePath, isPublic).takeIf { it.isNotEmpty() },
+            linkQuery(token, linkSessionId, basePath, isPublic).takeIf { it.isNotEmpty() },
             "reference=${WebEscaping.urlEncodeSegment(referenceId)}",
           )
           .joinToString("&")
@@ -6450,8 +6489,19 @@ $rows
     unfurl: UnfurlMetadata? = null,
     version: String? = null,
     displayTitle: String? = null,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
   ): String {
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
@@ -6543,8 +6593,19 @@ $rows
     unfurl: UnfurlMetadata? = null,
     version: String? = null,
     displayTitle: String? = null,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
   ): String {
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
@@ -6712,9 +6773,20 @@ $rows
      * link. Null keeps the neutral "design references" wording. See [designToolLabel].
      */
     designToolLabel: String? = null,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
   ): String {
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
     fun esc(s: String) = WebEscaping.htmlEscape(s)
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
@@ -7050,7 +7122,7 @@ $rows
       if (coverage.mapped == 0) ""
       else {
         val query =
-          listOf("format=reference", linkQuery(token, sessionId, basePath, isPublic))
+          listOf("format=reference", linkQuery(token, linkSessionId, basePath, isPublic))
             .filter { it.isNotEmpty() }
             .joinToString("&")
         val against = designToolLabel?.let(::esc) ?: "the design references"
@@ -7429,7 +7501,18 @@ $rows
      * permalink exists to prevent. Empty ⇒ the viewer behaves exactly as it always has.
      */
     revisions: CatalogRevisions = CatalogRevisions.NONE,
+    /**
+     * Whether this page is served as a **top-level site** ([ServeSites]) — its catalog rooted on a
+     * hostname of its own. The session is then implied by the ORIGIN, exactly as a `/<system>`
+     * mount implies it by the path, so same-session links must not repeat it as `?session=`. False
+     * (the default) leaves every existing caller's URLs byte-identical.
+     */
+    sessionInOrigin: Boolean = false,
   ): String {
+    // The session id links may carry. Null on a rooted site (and for the default session): the
+    // URL already says which catalog this is. `sessionId` itself stays intact below — it keys the
+    // per-catalog localStorage entries and the dark-first lookup, which a site still needs.
+    val linkSessionId = if (sessionInOrigin) null else sessionId
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     // A pin turns off every lane that would *produce* something, for one reason that covers all of
     // them: they run the catalog's current code. A knob edit, a declared theme, a live stream, the
@@ -7459,7 +7542,7 @@ $rows
     @Suppress("NAME_SHADOWING") val hasDesignAnnotations = hasDesignAnnotations && pinned == null
     @Suppress("NAME_SHADOWING")
     val executableBundleHref = executableBundleHref?.takeIf { pinned == null }
-    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val q = querySuffix(linkQuery(token, linkSessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val displayName = previewDisplayName(preview)
@@ -7532,7 +7615,7 @@ $rows
           listOf(
               "format=svg",
               "preview=${WebEscaping.urlEncodeSegment(preview.id)}",
-              linkQuery(token, sessionId, basePath, isPublic),
+              linkQuery(token, linkSessionId, basePath, isPublic),
             )
             .filter { it.isNotEmpty() }
             .joinToString("&")
@@ -7589,7 +7672,7 @@ $rows
     val specCompareHref = designReference?.let { reference ->
       val query =
         listOf(
-            linkQuery(token, sessionId, basePath, isPublic),
+            linkQuery(token, linkSessionId, basePath, isPublic),
             "reference=${WebEscaping.urlEncodeSegment(reference.id)}",
           )
           .filter { it.isNotEmpty() }
@@ -7746,7 +7829,7 @@ $rows
           listOf(
               "format=rc",
               "preview=${WebEscaping.urlEncodeSegment(preview.id)}",
-              linkQuery(token, sessionId, basePath, isPublic),
+              linkQuery(token, linkSessionId, basePath, isPublic),
             )
             .filter { it.isNotEmpty() }
             .joinToString("&")

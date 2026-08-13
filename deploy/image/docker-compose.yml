@@ -41,6 +41,11 @@ services:
       # (docker compose exec preview vi /config/catalogs.json, then restart) or POST to
       # /admin/catalogs to publish a catalog — no image rebuild, no compose edit.
       SERVE_CATALOGS_FILE: "${SERVE_CATALOGS_FILE:-}"
+      # Top-level sites: <host>=<system>[,…] — serve one of those catalogs on a hostname of its
+      # own, where it looks like the whole server (e.g. m3.preview.coo.ee=m3-catalog). Same
+      # sessions, same pixels, no extra load; the proxy in front must route + terminate TLS for
+      # the hostname. catalogs.json's "sites" is the durable form of the same setting.
+      SERVE_SITES: "${SERVE_SITES:-}"
       # Runtime admin, gating BOTH surfaces: the catalog set (GET/POST /admin/catalogs, DELETE
       # /admin/catalogs/<system>) and the producer-trust store (GET/POST/DELETE /admin/trust).
       # Set a strong secret in .env to enable; unset (default) means the routes don't exist.
