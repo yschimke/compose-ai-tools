@@ -109,6 +109,34 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![remotecompose-state/dark](renders/remotecompose-state.dark.png) |
 | `light` | ![remotecompose-state/light](renders/remotecompose-state.light.png) |
 
+## serve-design-page
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page/dark](renders/serve-design-page.dark.png) |
+| `light` | ![serve-design-page/light](renders/serve-design-page.light.png) |
+
+## serve-design-page-index
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page-index/dark](renders/serve-design-page-index.dark.png) |
+| `light` | ![serve-design-page-index/light](renders/serve-design-page-index.light.png) |
+
+## serve-design-page-swap
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page-swap/dark](renders/serve-design-page-swap.dark.png) |
+| `light` | ![serve-design-page-swap/light](renders/serve-design-page-swap.light.png) |
+
+## serve-design-page-unlinked-only
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page-unlinked-only/dark](renders/serve-design-page-unlinked-only.dark.png) |
+| `light` | ![serve-design-page-unlinked-only/light](renders/serve-design-page-unlinked-only.light.png) |
+
 ## serve-doc-lottie
 
 | Theme | Capture |
@@ -346,34 +374,6 @@ rendered in dark and light themes. Updated on every push to `main`.
 | --- | --- |
 | `dark` | ![serve-notfound/dark](renders/serve-notfound.dark.png) |
 | `light` | ![serve-notfound/light](renders/serve-notfound.light.png) |
-
-## serve-page-backdrop
-
-| Theme | Capture |
-| --- | --- |
-| `dark` | ![serve-page-backdrop/dark](renders/serve-page-backdrop.dark.png) |
-| `light` | ![serve-page-backdrop/light](renders/serve-page-backdrop.light.png) |
-
-## serve-page-backdrop-index
-
-| Theme | Capture |
-| --- | --- |
-| `dark` | ![serve-page-backdrop-index/dark](renders/serve-page-backdrop-index.dark.png) |
-| `light` | ![serve-page-backdrop-index/light](renders/serve-page-backdrop-index.light.png) |
-
-## serve-page-backdrop-overlay
-
-| Theme | Capture |
-| --- | --- |
-| `dark` | ![serve-page-backdrop-overlay/dark](renders/serve-page-backdrop-overlay.dark.png) |
-| `light` | ![serve-page-backdrop-overlay/light](renders/serve-page-backdrop-overlay.light.png) |
-
-## serve-page-backdrop-unlinked-only
-
-| Theme | Capture |
-| --- | --- |
-| `dark` | ![serve-page-backdrop-unlinked-only/dark](renders/serve-page-backdrop-unlinked-only.dark.png) |
-| `light` | ![serve-page-backdrop-unlinked-only/light](renders/serve-page-backdrop-unlinked-only.light.png) |
 
 ## serve-parity
 
