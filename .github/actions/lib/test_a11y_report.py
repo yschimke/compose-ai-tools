@@ -178,6 +178,114 @@ class SelectVariantsTest(unittest.TestCase):
         )
         self.assertEqual(rows[0]["renderOutput"], "renders/Bad_small.png")
 
+    def test_partial_report_drops_previews_it_did_not_check(self):
+        # A narrowed `compose-preview a11y --id X` run only checked what it
+        # was asked for (#3742). Listing the rest with empty findings would
+        # claim they came back clean.
+        manifest = {
+            "module": "sample",
+            "previews": [
+                _preview(id="x.Checked", function="Checked",
+                         render="renders/Checked.png"),
+                _preview(id="x.Skipped", function="Skipped",
+                         render="renders/Skipped.png"),
+            ],
+        }
+        a11y_by_id = {
+            "x.Checked": {"previewId": "x.Checked", "findings": [_finding()]},
+        }
+
+        rows = ar.select_variants(manifest, a11y_by_id, partial=True)
+        self.assertEqual([r["previewId"] for r in rows], ["x.Checked"])
+
+        # A complete report keeps the "no entry means checked and clean"
+        # reading it has always had.
+        rows = ar.select_variants(manifest, a11y_by_id)
+        self.assertEqual(
+            [r["previewId"] for r in rows], ["x.Checked", "x.Skipped"]
+        )
+        self.assertEqual(rows[1]["findings"], [])
+
+    def test_partial_report_reports_which_previews_it_skipped(self):
+        manifest = {
+            "module": "sample",
+            "previews": [
+                _preview(id="x.Checked", function="Checked", render="a.png"),
+                _preview(id="x.Skipped", function="Skipped", render="b.png"),
+            ],
+        }
+        a11y_by_id = {"x.Checked": {"previewId": "x.Checked", "findings": []}}
+
+        unchecked: list[str] = []
+        rows = ar.select_variants(manifest, a11y_by_id, True, unchecked)
+
+        self.assertEqual([r["previewId"] for r in rows], ["x.Checked"])
+        self.assertEqual(unchecked, ["x.Skipped"])
+
+    def test_complete_report_reports_nothing_as_unchecked(self):
+        manifest = {
+            "module": "sample",
+            "previews": [_preview(id="x.A", function="A", render="a.png")],
+        }
+        unchecked: list[str] = []
+        ar.select_variants(manifest, {}, False, unchecked)
+        self.assertEqual(unchecked, [])
+
+    def test_partial_report_keeps_the_variant_it_actually_checked(self):
+        # `--id x.Foo_small_round` checks a variant that device priority would
+        # not have picked. Choosing the preferred variant first and then
+        # dropping the function would lose the one row the run produced.
+        manifest = {
+            "module": "sample-wear",
+            "previews": [
+                _preview(id="x.Foo_large_round", function="Foo",
+                         render="renders/Foo_large.png", device="id:wearos_large_round"),
+                _preview(id="x.Foo_small_round", function="Foo",
+                         render="renders/Foo_small.png", device="id:wearos_small_round"),
+            ],
+        }
+        a11y_by_id = {
+            "x.Foo_small_round": {
+                "previewId": "x.Foo_small_round",
+                "findings": [_finding()],
+            },
+        }
+
+        rows = ar.select_variants(manifest, a11y_by_id, partial=True)
+        self.assertEqual([r["previewId"] for r in rows], ["x.Foo_small_round"])
+        self.assertEqual(len(rows[0]["findings"]), 1)
+
+    def test_load_previews_reads_the_partial_flag(self):
+        build_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, build_dir)
+        (build_dir / "previews.json").write_text(
+            json.dumps({"module": "sample", "previews": []})
+        )
+        (build_dir / "accessibility.json").write_text(
+            json.dumps({
+                "module": "sample",
+                "entries": [],
+                "partial": True,
+            })
+        )
+
+        _, _, status, partial = ar.load_previews(build_dir)
+        self.assertIsNone(status)
+        self.assertTrue(partial)
+
+    def test_load_previews_defaults_partial_false_for_older_reports(self):
+        build_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, build_dir)
+        (build_dir / "previews.json").write_text(
+            json.dumps({"module": "sample", "previews": []})
+        )
+        (build_dir / "accessibility.json").write_text(
+            json.dumps({"module": "sample", "entries": []})
+        )
+
+        _, _, _, partial = ar.load_previews(build_dir)
+        self.assertFalse(partial)
+
 
 class CopyAnnotatedTest(unittest.TestCase):
     def setUp(self):
@@ -442,11 +550,14 @@ class CommentTest(unittest.TestCase):
         baseline_entries=None,
         status=None,
         baseline_status=None,
+        unchecked_previews=None,
     ):
         findings_path = self.tmp / "findings.json"
         current_payload: dict = {"entries": current_entries}
         if status is not None:
             current_payload["status"] = status
+        if unchecked_previews is not None:
+            current_payload["uncheckedPreviews"] = unchecked_previews
         findings_path.write_text(json.dumps(current_payload))
         baseline_path = None
         if baseline_entries is not None:
@@ -695,6 +806,42 @@ class CommentTest(unittest.TestCase):
         current = self._entry(findings=[at("4,0,44,40"), at("0,0,40,40")])
         body = self._run_comment([current], baseline_entries=[baseline])
         self.assertEqual(body, "")
+
+    def test_unchecked_preview_absence_is_not_reported_as_resolved(self):
+        # A narrowed `compose-preview a11y --id Stay` run never checked `Gone`
+        # (#3742). Absent-because-unchecked is not absent-because-fixed, and
+        # announcing a fix nobody made is worse than saying nothing.
+        baseline = self._entry(
+            function="Gone", preview_id="x.Gone", findings=[_finding(level="ERROR")]
+        )
+        survivor = self._entry(
+            function="Stay", preview_id="x.Stay", findings=[_finding(level="WARNING")]
+        )
+        body = self._run_comment(
+            [survivor],
+            baseline_entries=[baseline, survivor],
+            unchecked_previews=[{"module": "sample-wear", "previewId": "x.Gone"}],
+        )
+        self.assertNotIn("Resolved", body)
+
+    def test_deleted_preview_is_still_resolved_in_a_partial_run(self):
+        # `x.Deleted` is absent from the current manifest entirely, so the
+        # narrowed run reports it as unchecked for nobody — it was removed, and
+        # its finding really is gone. A module-wide "this module was partial"
+        # marker would have silenced this.
+        deleted = self._entry(
+            function="Deleted", preview_id="x.Deleted", findings=[_finding(level="ERROR")]
+        )
+        survivor = self._entry(
+            function="Stay", preview_id="x.Stay", findings=[_finding(level="WARNING")]
+        )
+        body = self._run_comment(
+            [survivor],
+            baseline_entries=[deleted, survivor],
+            unchecked_previews=[{"module": "sample-wear", "previewId": "x.Skipped"}],
+        )
+        self.assertIn("Resolved", body)
+        self.assertIn("`Deleted`", body)
 
     def test_resolved_preview_listed_when_removed(self):
         # A preview that carried a finding on the baseline but is gone now

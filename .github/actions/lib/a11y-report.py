@@ -87,16 +87,20 @@ def variant_label(device: str | None) -> str:
 ATF_UNAVAILABLE: str = "atf-unavailable"
 
 
-def load_previews(build_dir: Path) -> tuple[dict, dict, str | None]:
-    """Return ``(manifest, a11y_by_id, status)`` for one module's build output.
+def load_previews(build_dir: Path) -> tuple[dict, dict, str | None, bool]:
+    """Return ``(manifest, a11y_by_id, status, partial)`` for one module.
 
     ``manifest`` is the raw ``previews.json`` dict. ``a11y_by_id`` maps each
     previewId to its accessibility entry (findings + relative annotatedPath),
-    or ``None`` when ``accessibility.json`` is absent (a11y not enabled).
+    and is empty when ``accessibility.json`` is absent (a11y not enabled).
     ``status`` is the top-level ``status`` field from ``accessibility.json`` —
     typically ``None`` for a clean run, or ``"atf-unavailable"`` when the
     daemon couldn't return ATF data and the empty entries list should NOT be
     interpreted as "ran cleanly, found nothing." See issue #1453.
+    ``partial`` is the report's ``partial`` flag: ``True`` when the report
+    only covers the previews a narrowed ``--id`` / ``--filter`` run asked
+    about, so an id missing from ``a11y_by_id`` means "not checked" rather
+    than "checked, found nothing." See issue #3742.
     """
     manifest_path = build_dir / "previews.json"
     if not manifest_path.exists():
@@ -105,13 +109,15 @@ def load_previews(build_dir: Path) -> tuple[dict, dict, str | None]:
 
     a11y_by_id: dict = {}
     status: str | None = None
+    partial = False
     a11y_path = build_dir / "accessibility.json"
     if a11y_path.exists():
         report = json.loads(a11y_path.read_text())
         status = report.get("status")
+        partial = bool(report.get("partial", False))
         for entry in report.get("entries", []):
             a11y_by_id[entry["previewId"]] = entry
-    return manifest, a11y_by_id, status
+    return manifest, a11y_by_id, status, partial
 
 
 def is_dynamic_preview(preview: dict) -> bool:
@@ -133,7 +139,12 @@ def is_dynamic_preview(preview: dict) -> bool:
     return False
 
 
-def select_variants(manifest: dict, a11y_by_id: dict) -> list[dict]:
+def select_variants(
+    manifest: dict,
+    a11y_by_id: dict,
+    partial: bool = False,
+    unchecked: list[str] | None = None,
+) -> list[dict]:
     """Pick one variant per (functionName) and merge in a11y data.
 
     Returns a list of flat dicts with everything readme/comment need:
@@ -148,6 +159,17 @@ def select_variants(manifest: dict, a11y_by_id: dict) -> list[dict]:
     * Scroll / animation captures (``@ScrollingPreview`` /
       ``@AnimatedPreview``) — see [is_dynamic_preview]. Functions whose
       ONLY variants are dynamic drop out of the report entirely.
+    * Previews with no entry in a ``partial`` report — a narrowed
+      ``compose-preview a11y --id X`` run only checked what it was asked
+      for, so the rest were never checked and listing them with empty
+      findings would falsely imply they were (same reasoning as the Tile
+      exclusion above). See issue #3742.
+
+    ``unchecked``, when given, collects the previewIds dropped by that last
+    rule: previews this manifest still declares but this run never looked
+    at. The caller records them so `comment` can tell them apart from
+    previews that are absent because they were *deleted* — those really are
+    resolved findings and must still be reported.
     """
     module = manifest["module"]
     by_fn: dict[str, list[dict]] = {}
@@ -161,8 +183,31 @@ def select_variants(manifest: dict, a11y_by_id: dict) -> list[dict]:
 
     rows: list[dict] = []
     for fn, group in sorted(by_fn.items()):
+        # On a partial report, choose among the variants that were actually
+        # checked. Picking the highest-priority variant first and dropping the
+        # function when *that* one is missing would lose the very variant the
+        # narrowed run was asked for (`--id Foo_small_round` while
+        # `Foo_large_round` outranks it).
+        candidates = (
+            [p for p in group if p["id"] in a11y_by_id] if partial else group
+        )
+        if not candidates:
+            # Still declared, just never checked. Record the id the baseline
+            # would have carried for this function so the caller can exclude
+            # it from "resolved" without excluding genuine deletions.
+            if unchecked is not None:
+                unchecked.append(
+                    min(
+                        group,
+                        key=lambda p: (
+                            device_priority((p.get("params") or {}).get("device")),
+                            p["id"],
+                        ),
+                    )["id"]
+                )
+            continue
         chosen = min(
-            group,
+            candidates,
             key=lambda p: (
                 device_priority((p.get("params") or {}).get("device")),
                 p["id"],
@@ -210,13 +255,27 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
     # cleanly.
     combined_status: str | None = None
     per_module_counts: list[tuple[str, int, int, bool]] = []
+    # Previews a module still declares but this run never checked, because a
+    # narrowed `compose-preview a11y --id X` only covered part of the module.
+    # Recorded in findings.json so a later `comment` run can tell "this
+    # preview's findings are gone" apart from "this preview was never looked
+    # at" — and, unlike a module-wide marker, without also silencing a preview
+    # that really was deleted. See issue #3742.
+    # `module` here is the manifest's leaf name, which collides between
+    # same-named projects; that identity problem is tracked in issue #3763.
+    unchecked_previews: list[dict] = []
 
     for raw_build_dir in build_dirs:
         build_dir = Path(raw_build_dir)
-        manifest, a11y_by_id, status = load_previews(build_dir)
-        rows = select_variants(manifest, a11y_by_id)
+        manifest, a11y_by_id, status, partial = load_previews(build_dir)
+        module_unchecked: list[str] = []
+        rows = select_variants(manifest, a11y_by_id, partial, module_unchecked)
 
         module = manifest["module"]
+        unchecked_previews.extend(
+            {"module": module, "previewId": preview_id}
+            for preview_id in module_unchecked
+        )
         renders_out = out_dir / "renders" / module
         if renders_out.exists():
             shutil.rmtree(renders_out)
@@ -277,6 +336,12 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
     summary_payload: dict = {"entries": findings_summary}
     if combined_status:
         summary_payload["status"] = combined_status
+    # Omitted entirely on a full run, so a normal report diffs cleanly against
+    # the baseline exactly as before.
+    if unchecked_previews:
+        summary_payload["uncheckedPreviews"] = sorted(
+            unchecked_previews, key=lambda e: (e["module"], e["previewId"])
+        )
     (out_dir / "findings.json").write_text(
         json.dumps(summary_payload, indent=2, sort_keys=True) + "\n"
     )
@@ -607,10 +672,21 @@ def cmd_comment(args: argparse.Namespace) -> int:
     # Previews that carried findings on the baseline but are gone now — the
     # underlying issue is no longer reachable. A clean baseline preview that
     # disappears isn't an accessibility change, so those are ignored.
+    #
+    # A preview this run never checked is absent because nothing looked at it,
+    # not because anything was fixed (#3742) — calling that "resolved" would
+    # announce a fix nobody made. Keyed per preview rather than per module, so
+    # a preview that really was *deleted* while its module was partially
+    # checked still reports as resolved, which it is.
+    unchecked_keys = {
+        (e["module"], e["previewId"])
+        for e in payload.get("uncheckedPreviews", [])
+    }
     resolved = [
         e
         for e in baseline_entries
         if (e["module"], e["previewId"]) not in current_keys
+        and (e["module"], e["previewId"]) not in unchecked_keys
         and e.get("findings")
     ]
 

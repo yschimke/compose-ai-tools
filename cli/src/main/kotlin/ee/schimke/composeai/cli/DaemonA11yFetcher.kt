@@ -51,6 +51,21 @@ internal class DaemonA11yFetcher(
    * [workspaceRoot] is the repository root the daemon reports back through the initialize
    * handshake; defaults to [projectDir] when the caller doesn't have a separate workspace root
    * handy (single-module projects).
+   *
+   * [narrowed] says whether [previewIds] is a subset of what the module declares — true when `--id`
+   * / `--filter` cut the fan-out down (issue #3742). It decides **merge vs. wholesale rewrite**: a
+   * narrowed run carries forward the entries of previews it didn't ask about (minus the ones that
+   * never really ran — see [carryForward]), the same bargain the `.cli-state.json` carry-forward
+   * strikes for previews a narrowed render skipped (#3730), while a full run rewrites and so stays
+   * the one thing that evicts the entry of a preview that no longer exists.
+   *
+   * [modulePreviewIds] is every id a **consumer** of this report may look up, which is a different
+   * question and deliberately a different parameter. It decides [AccessibilityReport.partial]: the
+   * report is stamped partial when the merged entries don't cover this set, so consumers read an
+   * absent id as "not checked" rather than folding it in as a clean row. The two can disagree —
+   * under `--permutations`, an unnarrowed run fetches every *declared* preview (so nothing is
+   * carried forward) and still leaves every *synthetic* id uncovered (so the report is partial).
+   * Deriving one from the other conflates them and costs the wholesale rewrite.
    */
   fun fetch(
     projectDir: File,
@@ -58,10 +73,12 @@ internal class DaemonA11yFetcher(
     moduleName: String,
     previewIds: List<String>,
     workspaceRoot: File = projectDir,
+    modulePreviewIds: List<String> = previewIds,
+    narrowed: Boolean = false,
   ): Outcome {
     val descriptorFile = File(projectDir, "build/compose-previews/daemon-launch.json")
     if (!descriptorFile.isFile) {
-      writeAtfUnavailableReport(projectDir, moduleName)
+      writeAtfUnavailableReport(projectDir, moduleName, modulePreviewIds, narrowed)
       return Outcome.DescriptorMissing(descriptorFile)
     }
 
@@ -77,7 +94,7 @@ internal class DaemonA11yFetcher(
       try {
         factory.open(config)
       } catch (e: RenderSessionException) {
-        writeAtfUnavailableReport(projectDir, moduleName)
+        writeAtfUnavailableReport(projectDir, moduleName, modulePreviewIds, narrowed)
         return Outcome.OpenFailed(reason = e.message ?: e.javaClass.simpleName)
       }
 
@@ -93,6 +110,10 @@ internal class DaemonA11yFetcher(
         onLog("extensions/enable for 'a11y' failed: ${e.message}")
       }
       val entries = mutableListOf<AccessibilityEntry>()
+      // Ids whose `a11y/atf` fetch produced nothing this run. They still get an entry — a full run
+      // has to show that the preview was attempted (#1453) — but that entry is not an observation,
+      // so it must not overwrite what a previous run actually found. See [mergeEntries].
+      val failedIds = mutableSetOf<String>()
       var anyFetchOk = false
       for (previewId in previewIds) {
         val payload =
@@ -112,7 +133,7 @@ internal class DaemonA11yFetcher(
             onLog("a11y fetch for '$previewId' transport error: ${e.message}")
             null
           }
-        if (payload != null) anyFetchOk = true
+        if (payload != null) anyFetchOk = true else failedIds += previewId
         val findings = payload?.let(::parseFindings).orEmpty()
         entries.add(
           AccessibilityEntry(
@@ -130,23 +151,41 @@ internal class DaemonA11yFetcher(
       // to report on either way, so leave `status` null.
       val atfAvailable = anyFetchOk || previewIds.isEmpty()
       val status = if (atfAvailable) null else A11Y_REPORT_STATUS_ATF_UNAVAILABLE
-      val reportFile = writeReport(projectDir, moduleName, entries = entries, status = status)
+      val reportFile =
+        writeReport(
+          projectDir,
+          moduleName,
+          entries = entries,
+          status = status,
+          modulePreviewIds = modulePreviewIds,
+          narrowed = narrowed,
+          failedIds = failedIds,
+        )
       Outcome.Ok(reportFile = reportFile, entryCount = entries.size, atfAvailable = atfAvailable)
     }
   }
 
   /**
-   * Write an `accessibility.json` stamped with `status = "atf-unavailable"` and no entries, for
-   * cases where we can't even open a render session (descriptor missing / open failed). Lets the
-   * python PR-comment helper see the same signal it gets on a per-preview-failure run instead of
-   * silently finding nothing on disk.
+   * Write an `accessibility.json` stamped with `status = "atf-unavailable"` and no entries of its
+   * own, for cases where we can't even open a render session (descriptor missing / open failed).
+   * Lets the python PR-comment helper see the same signal it gets on a per-preview-failure run
+   * instead of silently finding nothing on disk. On a narrowed run the entries already on disk
+   * survive — a run that couldn't reach the daemon has learned nothing about the previews it wasn't
+   * going to fetch either — and the stamped status still fails the CLI.
    */
-  private fun writeAtfUnavailableReport(projectDir: File, moduleName: String) {
+  private fun writeAtfUnavailableReport(
+    projectDir: File,
+    moduleName: String,
+    modulePreviewIds: List<String>,
+    narrowed: Boolean,
+  ) {
     writeReport(
       projectDir,
       moduleName,
       entries = emptyList(),
       status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
+      modulePreviewIds = modulePreviewIds,
+      narrowed = narrowed,
     )
   }
 
@@ -155,14 +194,98 @@ internal class DaemonA11yFetcher(
     moduleName: String,
     entries: List<AccessibilityEntry>,
     status: String?,
+    modulePreviewIds: List<String>,
+    narrowed: Boolean,
+    failedIds: Set<String> = emptySet(),
   ): File {
     val reportFile = projectDir.resolve("build/compose-previews/accessibility.json")
     reportFile.parentFile?.mkdirs()
-    val report = AccessibilityReport(module = moduleName, entries = entries, status = status)
+    val existing = if (narrowed) readExistingReport(reportFile) else null
+    val merged = mergeEntries(carryForward(existing), entries, failedIds)
+    val covered = merged.map { it.previewId }.toSet()
+    val report =
+      AccessibilityReport(
+        module = moduleName,
+        entries = merged,
+        status = status,
+        partial = !covered.containsAll(modulePreviewIds),
+      )
     fileSystem.write(reportFile.path.toPath()) {
       writeUtf8(json.encodeToString(AccessibilityReport.serializer(), report))
     }
     return reportFile
+  }
+
+  /**
+   * The entries of [existing] that are worth keeping — everything, unless that report was stamped
+   * [A11Y_REPORT_STATUS_ATF_UNAVAILABLE], in which case only the ones **carrying findings** do.
+   *
+   * An entry with no findings under that stamp records a fetch that produced nothing — quite
+   * possibly one that never ran at all (#1453) — so keeping it would let a later narrowed success
+   * republish it with no stamp of its own and have every consumer read it as "checked, found
+   * nothing". Dropping it instead leaves that preview *uncovered*, which
+   * [AccessibilityReport.partial] already reports honestly, so the run needs no second mechanism to
+   * say "don't trust these". Findings are the only sound proof: they can only come from a decoded
+   * `a11y/atf` payload, and an entry that has them is data whatever the report-level stamp says (a
+   * stamp can come from a failed session open landing on top of a previous run's genuine results).
+   *
+   * **Not `nodes`** — tempting, and wrong. [readNodes] reads `a11y-hierarchy.json` off disk for
+   * every preview whether or not its ATF fetch succeeded, and that file can be left over from an
+   * earlier render, so a node list says nothing about whether ATF ran. The cost of the strict rule
+   * is that a genuinely clean preview carried through a stamped report reads as "not checked" until
+   * the next full run — an understatement of coverage, which is the safe direction to be wrong in.
+   */
+  private fun carryForward(existing: AccessibilityReport?): List<AccessibilityEntry> {
+    val entries = existing?.entries.orEmpty()
+    if (existing?.status != A11Y_REPORT_STATUS_ATF_UNAVAILABLE) return entries
+    return entries.filter { it.findings.isNotEmpty() }
+  }
+
+  /**
+   * The `accessibility.json` a previous run left at [reportFile], or `null` when there is none / it
+   * can't be parsed. A report we can't read is one we can't preserve, and refusing to write over it
+   * would leave the run with no report at all — so an unreadable file degrades to the non-merging
+   * behaviour rather than failing the fetch.
+   */
+  private fun readExistingReport(reportFile: File): AccessibilityReport? {
+    if (!reportFile.isFile) return null
+    return try {
+      val text = fileSystem.read(reportFile.path.toPath()) { readUtf8() }
+      json.decodeFromString(AccessibilityReport.serializer(), text)
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  /**
+   * [fresh] layered over [existing], keyed by `previewId`: a preview this run fetched takes the new
+   * entry, one it didn't keeps the old, and each id appears once. Existing order is preserved (new
+   * ids append) so consecutive narrowed runs produce a stable file rather than reshuffling it.
+   *
+   * An id in [failedIds] is the exception: its fresh entry records a fetch that produced nothing,
+   * so letting it win would delete findings a previous run really observed — and, if some *other*
+   * preview in the same run succeeded, republish the deleted one as checked-and-clean under this
+   * run's null status. Those entries only land where there is nothing to keep, which is what makes
+   * a full run still show every attempted preview.
+   */
+  private fun mergeEntries(
+    existing: List<AccessibilityEntry>,
+    fresh: List<AccessibilityEntry>,
+    failedIds: Set<String>,
+  ): List<AccessibilityEntry> {
+    if (existing.isEmpty()) return fresh
+    val freshById = fresh.associateBy { it.previewId }
+    val emitted = mutableSetOf<String>()
+    val out = mutableListOf<AccessibilityEntry>()
+    for (entry in existing) {
+      if (!emitted.add(entry.previewId)) continue
+      val replacement = freshById[entry.previewId]?.takeIf { it.previewId !in failedIds }
+      out += replacement ?: entry
+    }
+    for (entry in fresh) {
+      if (emitted.add(entry.previewId)) out += entry
+    }
+    return out
   }
 
   /**

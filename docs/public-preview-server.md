@@ -1035,8 +1035,14 @@ Everything above is per component. A catalog that publishes **design pages** als
 sheet-level question: *here is the kit's own Shape page — which of these 35 shapes do we implement,
 and does our render sit exactly where the design drew it?*
 
-The landing links `N pages` beside "design parity" when the catalog publishes any; a catalog that
-publishes none is unchanged and the route 404s rather than serving an empty stage.
+The landing lists them **in its navigation tree**, at the foot: one always-open `Pages` branch with
+a row per page, named. That is where this catalog's other places already are, and a name is what you
+actually choose between — the header chip it replaces could only say how many there were. A catalog
+too small to have a tree at all (no authored sections, too few previews to synthesize families from)
+keeps that chip, or its pages would be published and unreachable. A catalog that publishes none is
+unchanged either way, and the route 404s rather than serving an empty stage.
+
+![The Pages branch at the foot of the navigation tree, beside the chip it replaces](design/evidence/serve-catalog-tree-pages/compare.png)
 
 ![A design page with an outline over every component node, coloured by how it was linked](design/evidence/serve-design-page/serve-design-page.light.png)
 

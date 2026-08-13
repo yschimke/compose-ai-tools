@@ -1043,6 +1043,19 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The cross-product subtree OPENED. Its whole claim is the row LABELS: with both axes in
+        // play, the row that resets the state and the row that resets the props are both "Default"
+        // unless each names both coordinates, and the render on screen is labelled by whichever
+        // axis reached it first. That is invisible while the subtree is folded — and it arrives
+        // folded, being six rows — so without this shot the naming rule is diffed by nothing.
+        fixture: "serve-viewer-cross-product",
+        suffix: "subtree-open",
+        apply: async (page) => {
+            await page.click("#cp-axes-toggle");
+            await page.waitForSelector("#cp-axes:not([hidden])");
+        },
+    },
+    {
         // …and the component list CLOSED, which is new: above 1100px the list used to be nailed
         // open by CSS with its toggle hidden, so "the stage with the 240px column given back" is a
         // layout no baseline has ever held. Widened past that breakpoint first — the harness runs

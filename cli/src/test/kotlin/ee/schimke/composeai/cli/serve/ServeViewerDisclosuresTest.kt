@@ -82,6 +82,21 @@ class ServeViewerDisclosuresTest {
   }
 
   @Test
+  fun `the fold threshold counts the component row, which is itself a render`() {
+    // Four renders — the default in the component row plus three children — is the last shape that
+    // shows inline. Five folds. Counting only the CHILDREN would have moved that line by one the
+    // moment the default was folded up into the component row, so a five-render component would
+    // have started opening where it used to fold, for no reason a reader could see.
+    val four = viewer(statePreviews(4))
+    assertTrue(four.contains("<div class=\"cp-axes\" id=\"cp-axes\">"), "four renders show: $four")
+    val five = viewer(statePreviews(5))
+    assertTrue(
+      five.contains("<div class=\"cp-axes\" id=\"cp-axes\" hidden>"),
+      "…and five fold, the component row counting as the render it is: $five",
+    )
+  }
+
+  @Test
   fun `a narrow state axis stays inline and a wide one arrives folded`() {
     val narrow = viewer(statePreviews(3))
     assertTrue(narrow.contains("<div class=\"cp-axes\" id=\"cp-axes\">"), "three states show")
@@ -174,6 +189,30 @@ class ServeViewerDisclosuresTest {
       tree.contains("/c/p/button__ideal__pressed__light__rtl?token=t\" aria-current=\"page\""),
       "the render on screen is marked: $tree",
     )
+    // With both axes in play a single-axis label is ambiguous, not terse: the row that resets the
+    // state (`default + RTL`) and the row that resets the props (`pressed + default`) would BOTH
+    // read "Default", and the current render would be labelled by whichever pass reached it first
+    // — "Pressed", for something that is Pressed and RTL.
+    assertTrue(tree.contains(">Default · RTL</a>"), "the state-reset row names both axes: $tree")
+    assertTrue(tree.contains(">Pressed · Default</a>"), "…and so does the props-reset row: $tree")
+    assertTrue(tree.contains(">Pressed · RTL</a>"), "…and the render on screen: $tree")
+    assertFalse(tree.contains(">Default</a>"), "no two rows may share one name: $tree")
+  }
+
+  @Test
+  fun `a single-axis component keeps the terse label`() {
+    // The other side of the rule above: repeating "· Default" on every row of the components that
+    // vary on one axis — nearly all of them — would be noise for a distinction they cannot make.
+    val html = viewer(statePreviews(3))
+    // Scoped to the child rows: the component row above them carries the preview's own display
+    // name, which may legitimately hold a `·` of its own.
+    val rows =
+      html.substringAfter("class=\"cp-tree-children cp-tree-variants\"").substringBefore("</ul>")
+    assertTrue(rows.contains(">State 1</a>") && rows.contains(">State 2</a>"), rows)
+    assertFalse(rows.contains(" · "), "a one-axis component names one axis: $rows")
+    // …and the default is NOT among them: it is the component row, which is where the reader
+    // already is. Two rows for one render, one line apart, is what folding it up removed.
+    assertFalse(rows.contains(">Default</a>"), "the default is the parent row, not a child: $rows")
   }
 
   @Test

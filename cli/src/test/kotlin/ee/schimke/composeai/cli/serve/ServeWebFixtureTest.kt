@@ -338,13 +338,38 @@ class ServeWebFixtureTest {
   /**
    * A component with a WIDE state axis — the published m3-catalog's `iconbutton-outlined` bakes one
    * render per size × width × shape, which is what pushed the switcher past the point where showing
-   * every chip was worth the fold it cost. Past [ServeWeb]'s inline threshold the rows arrive
-   * folded behind the title bar's `State · …` toggle, so this is the fixture that captures the
-   * *collapsed* axes disclosure for the visual-diff bot; `serve-viewer-states.html` (two states)
-   * keeps the expanded case.
+   * every chip was worth the fold it cost. Sized to that real shape (22 states) rather than a token
+   * few, so the capture shows what the OPEN subtree actually costs on the catalog that motivated
+   * this — the case a smaller fixture would have flattered. Past [ServeWeb]'s inline threshold the
+   * rows arrive folded behind the title bar's `State · …` toggle, so this is the fixture that
+   * captures the *collapsed* axes disclosure for the visual-diff bot; `serve-viewer-states.html`
+   * (two states) keeps the expanded case.
    */
   private val wideStatePreviews =
-    listOf("default", "disabled", "xs", "s", "m", "l", "xl", "m-wide", "m-square", "xl-narrow")
+    listOf(
+        "default",
+        "disabled",
+        "xs",
+        "xs-narrow",
+        "xs-square",
+        "xs-wide",
+        "s",
+        "s-narrow",
+        "s-square",
+        "s-wide",
+        "m",
+        "m-narrow",
+        "m-square",
+        "m-wide",
+        "l",
+        "l-narrow",
+        "l-square",
+        "l-wide",
+        "xl",
+        "xl-narrow",
+        "xl-square",
+        "xl-wide",
+      )
       .flatMap { state ->
         listOf("light", "dark").map { theme ->
           ServePreview(
@@ -355,6 +380,26 @@ class ServeWebFixtureTest {
           )
         }
       }
+
+  /**
+   * A component baking state × props as a full CROSS-PRODUCT — every state also rendered RTL. This
+   * is the shape whose subtree cannot be labelled one axis at a time: the row that resets the state
+   * and the row that resets the props are both "Default" unless each names both coordinates. No
+   * committed catalog had it, which is exactly why the ambiguity reached review unseen, so it gets
+   * a fixture of its own and the visual-diff bot carries it from here.
+   */
+  private val crossProductPreviews =
+    listOf("default", "pressed", "disabled").flatMap { state ->
+      listOf<String?>(null, "rtl").map { direction ->
+        ServePreview(
+          "button-filled__ideal__${state}__light" + if (direction == null) "" else "__$direction",
+          "Button · Filled",
+          state = state,
+          theme = "light",
+          props = direction?.let { jsonProps("direction" to it) },
+        )
+      }
+    }
 
   // A trusted-catalog preview that declares author knobs (a `label` string + an accent `color`) —
   // the `compose/overrides` payload PR #2281 added across the M3 catalog. On a live catalog session
@@ -587,10 +632,12 @@ class ServeWebFixtureTest {
         // "try in playground" on the summary line — the catalog-level half of the handoff, captured
         // so its placement in that run of actions is diffed like any other pixel.
         playgroundHref = "/playground?catalog=compose-m3",
-        // A published design page, so the action row's "N pages" chip is captured alongside the
-        // comparison chips it sits with. Without this no golden carries one, and the chip could be
-        // restyled or lost with no baseline moving.
-        pageCount = 2,
+        // Published design pages on a catalog with NO navigation tree — the one shape that still
+        // offers them as a header chip, because there is no tree to list them in. Captured so that
+        // fallback keeps a baseline of its own, next to `landingGrouped`, which has a tree and so
+        // lists these by name instead.
+        designPages =
+          listOf(ServeWeb.PageLink("shape", "Shape"), ServeWeb.PageLink("type", "Typography")),
       )
     // The public preview server's FRONT DOOR: an index of the published design systems, each a card
     // with a meaningful hero preview, its title + library, trust badge, and a link to /<system>/.
@@ -1635,6 +1682,17 @@ class ServeWebFixtureTest {
             ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog"),
           ),
       )
+    // The cross-product viewer, entered on `pressed + RTL` — the render that has a non-default
+    // value on BOTH axes, and so the only one from which a single-axis label is ambiguous. Its
+    // subtree names both coordinates on every row and can walk either axis without leaving the
+    // other behind.
+    val viewerCrossProduct =
+      ServeWeb.viewerPage(
+        crossProductPreviews.first { it.state == "pressed" && it.props != null },
+        token,
+        sessionId = "compose-m3",
+        siblings = crossProductPreviews,
+      )
     // The tree at full depth. `synthesizeGroups` only divides a catalog with at least two families
     // and one family holding more than one card, and the variant/state fixtures above are each a
     // single component — so neither of them renders a tree at all, and the component and variant
@@ -1705,6 +1763,11 @@ class ServeWebFixtureTest {
         isPublic = true,
         hasHomeIndex = true,
         version = version,
+        // The design file's own pages, listed by name at the foot of the outline tree — the shape
+        // m3-catalog is in, and the surface that replaced the header's "N pages" chip. Captured
+        // here so the branch has a visual baseline of its own.
+        designPages =
+          listOf(ServeWeb.PageLink("shape", "Shape"), ServeWeb.PageLink("type", "Typography")),
       )
     // A viewer whose sibling list spans several components each with many baked variants (a
     // button-filled with RTL/locale/font variants, plus checkbox/radiobutton states). The component
@@ -2054,6 +2117,7 @@ class ServeWebFixtureTest {
         "serve-landing-sections.html" to landingSections,
         "serve-viewer-states.html" to viewerStates,
         "serve-viewer-axes-folded.html" to viewerAxesFolded,
+        "serve-viewer-cross-product.html" to viewerCrossProduct,
         "serve-status.html" to serveStatus,
         "serve-landing-variants.html" to landingVariants,
         "serve-landing-tree-depth.html" to landingTreeDepth,
@@ -2664,7 +2728,8 @@ class ServeWebFixtureTest {
     val variantNav =
       viewerVariants.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
-      variantNav.contains("aria-current=\"page\">Default</a>") &&
+      variantNav.contains("cp-tree-component cp-tree-link\" role=\"treeitem\"") &&
+        variantNav.contains("aria-current=\"page\">Button") &&
         variantNav.contains("/p/button-filled__ideal__default__light__direction-rtl") &&
         variantNav.contains(">RTL</a>"),
       "the viewer subtree marks Default active and links the same-theme RTL variant",
@@ -2838,7 +2903,7 @@ class ServeWebFixtureTest {
     val statesNav =
       viewerStates.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
-      statesNav.contains("aria-current=\"page\">Default</a>") &&
+      statesNav.contains("aria-current=\"page\">Checkbox") &&
         statesNav.contains("/p/checkbox__ideal__unchecked__light"),
       "the viewer subtree marks Default active and links the same-theme sibling",
     )
@@ -2861,6 +2926,41 @@ class ServeWebFixtureTest {
         landingGrouped.contains("aria-label=\"Catalog contents\"") &&
         landingGrouped.contains("<div class=\"cp-subgroup\" id=\"cp-group-button\">"),
       "a section-less catalog renders an outline tree over its synthesized families",
+    )
+    // The design file's pages are a BRANCH OF THE TREE, not a chip in the header row: one row per
+    // page, named, under a row that leads to the index. Always open (`aria-expanded="true"` that
+    // nothing reflects) and carrying no `data-group`, because these rows navigate away rather than
+    // scrolling to something on this page — which is what the click handler's `if (!id) return`
+    // and `reflectTree`'s matching guard rely on.
+    assertTrue(
+      landingGrouped.contains(
+        "<a class=\"cp-tree-pages-row cp-tree-link\" role=\"treeitem\" href=\"/pages\"" +
+          " aria-expanded=\"true\" aria-owns=\"cp-tree-pages-list\">" +
+          "Pages<span class=\"cp-tree-count\">2</span></a>"
+      ) &&
+        landingGrouped.contains(
+          "<a class=\"cp-tree-page cp-tree-link\" role=\"treeitem\" href=\"/pages/shape\">Shape</a>"
+        ) &&
+        landingGrouped.contains(">Typography</a>"),
+      "a catalog's design pages are listed by name at the foot of its tree",
+    )
+    assertTrue(
+      !landingGrouped.contains("class=\"cp-action-chip\" href=\"/pages\""),
+      "a catalog with a tree offers its pages there, not as a header chip as well",
+    )
+    // …and the fallback: no tree to list them in (too few previews to synthesize families from)
+    // means the chip is the only route, so it stays.
+    assertTrue(
+      !landingPublic.contains("cp-tree-pages") &&
+        landingPublic.contains("class=\"cp-action-chip\" href=\"/pages\">2 pages</a>"),
+      "a catalog with no tree keeps the header chip, or its pages would be unreachable",
+    )
+    // `reflectTree` walks every expandable row on every open/close; the Pages branch is expandable
+    // and names no target, so without this guard it would be collapsed by the first component
+    // click. Asserted on the emitted script because that is the only place it exists.
+    assertTrue(
+      landingGrouped.contains("if (!id) return;"),
+      "the tree script leaves an always-open branch alone",
     )
     // The tree's two deepest levels. A component row jumps to its card (an in-page `data-group`);
     // a variant row has nowhere on the page to go — the grid folds those renders out — so it is a

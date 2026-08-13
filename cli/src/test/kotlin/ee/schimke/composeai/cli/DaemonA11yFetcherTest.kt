@@ -205,6 +205,356 @@ class DaemonA11yFetcherTest {
     assertNull(report.status, "partial success should not stamp a status")
   }
 
+  // ---------- narrowed runs merge rather than clobber (#3742) ----------
+
+  @Test
+  fun `a narrowed fetch carries forward the entries it did not refetch`() {
+    val projectDir = newTempFolder("module-merge")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    writeExistingReport(
+      projectDir,
+      entry("AlphaPreview", finding("ERROR", "TouchTargetSize", "stale")),
+      entry("BetaPreview", finding("WARNING", "TextContrast", "keep me")),
+    )
+
+    val fetcher =
+      DaemonA11yFetcher(
+        factory =
+          FakeFactory(
+            mapOf(
+              "AlphaPreview" to atfPayload(listOf(finding("ERROR", "TouchTargetSize", "fresh")))
+            )
+          )
+      )
+    val outcome =
+      fetcher.fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+        modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+        narrowed = true,
+      )
+
+    assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    val report = readReport(projectDir)
+    // `accessibility.json` is a per-module report: `a11y --id AlphaPreview` must not delete the
+    // module's other findings on its way to printing one row.
+    assertEquals(listOf("AlphaPreview", "BetaPreview"), report.entries.map { it.previewId })
+    assertEquals("fresh", report.entries[0].findings.single().message)
+    assertEquals("keep me", report.entries[1].findings.single().message)
+    // Every declared preview ended up covered, so the report speaks for the whole module again.
+    assertFalse(report.partial, "merged entries cover the module")
+  }
+
+  @Test
+  fun `a partial-but-unnarrowed run still rewrites wholesale`() {
+    val projectDir = newTempFolder("module-partial-unnarrowed")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    writeExistingReport(projectDir, entry("GonePreview", finding("ERROR", "Stale", "deleted")))
+
+    // The `--permutations` shape: every *declared* preview is fetched (so nothing was skipped and
+    // there is nothing to carry forward), but the consumer id space also contains synthetic ids the
+    // daemon can't address, so the report is still partial. Deriving "should I merge?" from that
+    // coverage gap would keep a deleted preview's findings on disk forever.
+    DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+        modulePreviewIds = listOf("AlphaPreview", "AlphaPreview_dark"),
+        narrowed = false,
+      )
+
+    val report = readReport(projectDir)
+    assertEquals(listOf("AlphaPreview"), report.entries.map { it.previewId })
+    assertTrue(report.partial, "the synthetic id is still uncovered")
+  }
+
+  @Test
+  fun `a first-ever narrowed fetch marks the report partial`() {
+    val projectDir = newTempFolder("module-partial-flag")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    val fetcher =
+      DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+    fetcher.fetch(
+      projectDir = projectDir,
+      modulePath = "",
+      moduleName = "sample",
+      previewIds = listOf("AlphaPreview"),
+      modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+    )
+
+    // Nothing on disk to merge with, so the report genuinely covers one of two previews. Without
+    // the flag, a consumer reads `BetaPreview`'s absence as "checked, found nothing" — the module
+    // -wide report would quietly certify a preview ATF never looked at.
+    val report = readReport(projectDir)
+    assertEquals(listOf("AlphaPreview"), report.entries.map { it.previewId })
+    assertTrue(report.partial, "a report covering 1 of 2 previews is partial")
+  }
+
+  @Test
+  fun `a full fetch clears the partial flag`() {
+    val projectDir = newTempFolder("module-partial-cleared")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    val fetcher =
+      DaemonA11yFetcher(
+        factory =
+          FakeFactory(
+            mapOf(
+              "AlphaPreview" to atfPayload(emptyList()),
+              "BetaPreview" to atfPayload(emptyList()),
+            )
+          )
+      )
+    fetcher.fetch(
+      projectDir = projectDir,
+      modulePath = "",
+      moduleName = "sample",
+      previewIds = listOf("AlphaPreview", "BetaPreview"),
+    )
+
+    assertFalse(readReport(projectDir).partial)
+  }
+
+  @Test
+  fun `an empty entry from an unavailable report is not carried forward as clean`() {
+    val projectDir = newTempFolder("module-merge-status")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    writeExistingReport(
+      projectDir,
+      status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
+      entries = arrayOf(entry("AlphaPreview"), entry("BetaPreview")),
+    )
+
+    DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+        modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+        narrowed = true,
+      )
+
+    // `BetaPreview`'s entry records a fetch that produced nothing under a stamp saying nothing ran.
+    // Republishing it now that this run's stamp is gone would present it as "checked, found
+    // nothing" — so it's dropped, and `partial` says out loud that Beta is uncovered.
+    val report = readReport(projectDir)
+    assertEquals(listOf("AlphaPreview"), report.entries.map { it.previewId })
+    assertNull(report.status)
+    assertTrue(report.partial, "Beta is uncovered once its uninformative entry is dropped")
+  }
+
+  @Test
+  fun `a failed refetch keeps what the last run found`() {
+    val projectDir = newTempFolder("module-refetch-fails")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    writeExistingReport(
+      projectDir,
+      entry("AlphaPreview", finding("ERROR", "TouchTargetSize", "observed")),
+      entry("BetaPreview"),
+    )
+
+    // Alpha is requested again and its fetch errors; Gamma succeeds, so the run as a whole is
+    // "available" and stamps no status. Letting Alpha's empty entry win would delete a real
+    // finding and republish the preview as checked-and-clean in the same move.
+    DaemonA11yFetcher(
+        factory =
+          FakeFactory(mapOf("AlphaPreview" to null, "GammaPreview" to atfPayload(emptyList())))
+      )
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview", "GammaPreview"),
+        modulePreviewIds = listOf("AlphaPreview", "BetaPreview", "GammaPreview"),
+        narrowed = true,
+      )
+
+    val report = readReport(projectDir)
+    assertNull(report.status, "one fetch succeeded, so the run is not unavailable")
+    assertEquals(
+      "observed",
+      report.entries.single { it.previewId == "AlphaPreview" }.findings.single().message,
+    )
+  }
+
+  @Test
+  fun `a failed first fetch still records the attempt`() {
+    val projectDir = newTempFolder("module-first-fetch-fails")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    // Nothing on disk to protect, so #1453's "the preview was attempted" entry still lands.
+    DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to null)))
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+      )
+
+    val report = readReport(projectDir)
+    assertEquals(listOf("AlphaPreview"), report.entries.map { it.previewId })
+    assertEquals(A11Y_REPORT_STATUS_ATF_UNAVAILABLE, report.status)
+  }
+
+  @Test
+  fun `hierarchy nodes are not proof that ATF ran`() {
+    val projectDir = newTempFolder("module-merge-nodes")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    // `readNodes` populates `nodes` off `a11y-hierarchy.json` for every preview whether or not its
+    // ATF fetch succeeded, and that file survives from earlier renders — so a failed entry can
+    // carry a full node list. Treating that as evidence would launder it into a clean row.
+    writeExistingReport(
+      projectDir,
+      status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
+      entries =
+        arrayOf(
+          entry("AlphaPreview"),
+          AccessibilityEntry(
+            previewId = "BetaPreview",
+            findings = emptyList(),
+            nodes = listOf(AccessibilityNode(label = "Submit", boundsInScreen = "0,0,10,10")),
+          ),
+        ),
+    )
+
+    DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+        modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+        narrowed = true,
+      )
+
+    val report = readReport(projectDir)
+    assertEquals(listOf("AlphaPreview"), report.entries.map { it.previewId })
+    assertTrue(report.partial, "Beta is uncovered — its node list proves nothing about ATF")
+  }
+
+  @Test
+  fun `real findings under an unavailable stamp still carry forward`() {
+    val projectDir = newTempFolder("module-merge-status-real")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    // A stamp can land on top of a previous run's genuine results — a failed session open stamps
+    // the report without touching the entries it carried. Those findings are data; only the empty
+    // ones are suspect.
+    writeExistingReport(
+      projectDir,
+      status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
+      entries =
+        arrayOf(entry("AlphaPreview"), entry("BetaPreview", finding("ERROR", "Contrast", "real"))),
+    )
+
+    DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+        modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+        narrowed = true,
+      )
+
+    val report = readReport(projectDir)
+    // Alpha's own empty entry was the uninformative kind, so it drops out of the carried set and
+    // comes back from this run's fetch — hence the order. Beta's findings survive untouched.
+    assertEquals(setOf("AlphaPreview", "BetaPreview"), report.entries.map { it.previewId }.toSet())
+    assertEquals(
+      "real",
+      report.entries.single { it.previewId == "BetaPreview" }.findings.single().message,
+    )
+    assertFalse(report.partial, "both previews are covered")
+  }
+
+  @Test
+  fun `a full fetch still replaces the report wholesale`() {
+    val projectDir = newTempFolder("module-no-merge")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    writeExistingReport(projectDir, entry("GonePreview", finding("ERROR", "Stale", "deleted")))
+
+    val fetcher =
+      DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+    fetcher.fetch(
+      projectDir = projectDir,
+      modulePath = "",
+      moduleName = "sample",
+      previewIds = listOf("AlphaPreview"),
+    )
+
+    // The unnarrowed run is the only thing that ever evicts an entry for a preview that no longer
+    // exists — so it keeps clobbering.
+    assertEquals(listOf("AlphaPreview"), readReport(projectDir).entries.map { it.previewId })
+  }
+
+  @Test
+  fun `a narrowed run that cannot open the session keeps the existing entries and flags itself`() {
+    val projectDir = newTempFolder("module-merge-open-fails")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    writeExistingReport(
+      projectDir,
+      entry("BetaPreview", finding("WARNING", "TextContrast", "keep")),
+    )
+
+    val outcome =
+      DaemonA11yFetcher(factory = OpenFailFactory())
+        .fetch(
+          projectDir = projectDir,
+          modulePath = "",
+          moduleName = "sample",
+          previewIds = listOf("AlphaPreview"),
+          modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+          narrowed = true,
+        )
+
+    assertTrue(outcome is DaemonA11yFetcher.Outcome.OpenFailed)
+    val report = readReport(projectDir)
+    // Failing to reach the daemon teaches us nothing about the previews we weren't going to fetch,
+    // so they survive — but the run still stamps itself unavailable so the CLI exits 2.
+    assertEquals(listOf("BetaPreview"), report.entries.map { it.previewId })
+    assertEquals(A11Y_REPORT_STATUS_ATF_UNAVAILABLE, report.status)
+  }
+
+  @Test
+  fun `an unreadable existing report degrades to a plain write`() {
+    val projectDir = newTempFolder("module-merge-corrupt")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    File(projectDir, "build/compose-previews/accessibility.json").writeText("{ not json")
+
+    val fetcher =
+      DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+    val outcome =
+      fetcher.fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+        modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+        narrowed = true,
+      )
+
+    assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertEquals(listOf("AlphaPreview"), readReport(projectDir).entries.map { it.previewId })
+  }
+
   @Test
   fun `OpenFailed writes atf-unavailable sidecar`() {
     val projectDir = newTempFolder("module-open-fails")
@@ -390,6 +740,29 @@ class DaemonA11yFetcherTest {
 
   private fun finding(level: String, type: String, message: String) =
     AccessibilityFinding(level = level, type = type, message = message)
+
+  private fun entry(previewId: String, vararg findings: AccessibilityFinding) =
+    AccessibilityEntry(previewId = previewId, findings = findings.toList())
+
+  private fun writeExistingReport(
+    projectDir: File,
+    vararg entries: AccessibilityEntry,
+    status: String? = null,
+  ) {
+    File(projectDir, "build/compose-previews/accessibility.json")
+      .writeText(
+        Companion.json.encodeToString(
+          AccessibilityReport.serializer(),
+          AccessibilityReport(module = "sample", entries = entries.toList(), status = status),
+        )
+      )
+  }
+
+  private fun readReport(projectDir: File): AccessibilityReport =
+    Companion.json.decodeFromString(
+      AccessibilityReport.serializer(),
+      File(projectDir, "build/compose-previews/accessibility.json").readText(),
+    )
 
   companion object {
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }

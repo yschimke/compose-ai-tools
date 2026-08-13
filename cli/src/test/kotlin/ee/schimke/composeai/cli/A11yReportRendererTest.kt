@@ -107,6 +107,34 @@ class A11yReportRendererTest {
   }
 
   @Test
+  fun `a partial report does not certify the previews it never checked`() {
+    // What a narrowed `compose-preview a11y --id Foo` leaves on disk (#3742). The empty-entry
+    // fallback above is the right answer for a report that covers the module; here it would
+    // manufacture a clean row for a preview ATF never rendered.
+    writeReport(
+      """
+      {
+        "module": "sample",
+        "partial": true,
+        "entries": [{"previewId": "Foo", "findings": []}]
+      }
+      """
+        .trimIndent()
+    )
+
+    val renderer = A11yReportRenderer()
+    renderer.load(listOf(module() to manifest()), verbose = false)
+
+    val foo = renderer.annotate(previewResult("Foo"), module())
+    assertEquals(emptyList(), foo.a11yEntry()?.findings, "the fetched preview still reads clean")
+    assertTrue(renderer.hasData(foo))
+
+    val bar = renderer.annotate(previewResult("Bar"), module())
+    assertNull(bar.dataExtensions["a11y"], "an unchecked preview gets no carrier")
+    assertFalse(renderer.hasData(bar), "null a11yEntry is the established 'checks didn't run'")
+  }
+
+  @Test
   fun `module without a11y pointer is not annotated`() {
     val renderer = A11yReportRenderer()
     renderer.load(listOf(module() to manifest(reportsView = emptyMap())), verbose = false)

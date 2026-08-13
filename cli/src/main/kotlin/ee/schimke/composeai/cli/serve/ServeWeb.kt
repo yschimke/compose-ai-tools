@@ -300,7 +300,8 @@ object ServeWeb {
 
   /**
    * How many rows the viewer's component subtree shows inline before folding behind its title-bar
-   * toggle. Lower than the chip rows this replaced needed, because a tree spends a whole line per
+   * toggle — counting the component row, which is itself a render (the default one), not just its
+   * children. Lower than the chip rows this replaced needed, because a tree spends a whole line per
    * render where a chip row wrapped several onto one: four rows is about the point past which the
    * list costs more of the fold than the render it sits above.
    */
@@ -567,6 +568,13 @@ object ServeWeb {
    * names *which* spec the link opens when a producer publishes several.
    */
   data class FigmaSpec(val url: String, val label: String? = null)
+
+  /**
+   * A published design page as the catalog's **navigation** needs it: what to call it, and the id
+   * its URL carries. Deliberately not the whole [DesignPage] — the landing lists these, it does not
+   * draw them, and a page's node list is megabytes of manifest the tree has no use for.
+   */
+  data class PageLink(val id: String, val name: String)
 
   /**
    * The row under the viewer's title holding the per-preview provenance links: "source" (where the
@@ -1268,6 +1276,8 @@ object ServeWeb {
   private fun catalogTreeHtml(
     sections: List<LandingSection>,
     components: (GridCard) -> TreeComponent,
+    /** The design-pages branch ([pagesBranchHtml]), appended after the sections. Empty ⇒ none. */
+    pagesBranch: String = "",
   ): String = buildString {
     append("<nav class=\"cp-tree\" id=\"cp-tabs\" aria-label=\"Catalog sections\">\n")
     append("<ul class=\"cp-tree-list\" role=\"tree\" aria-label=\"Catalog sections\">\n")
@@ -1311,6 +1321,7 @@ object ServeWeb {
       }
       append("</li>\n")
     }
+    append(pagesBranch)
     append("</ul>\n</nav>\n")
   }
 
@@ -1328,6 +1339,8 @@ object ServeWeb {
   private fun catalogOutlineTreeHtml(
     groups: List<LandingGroup>,
     components: (GridCard) -> TreeComponent,
+    /** The design-pages branch ([pagesBranchHtml]), appended after the groups. Empty ⇒ none. */
+    pagesBranch: String = "",
   ): String = buildString {
     append("<nav class=\"cp-tree\" id=\"cp-tabs\" aria-label=\"Catalog contents\">\n")
     append("<ul class=\"cp-tree-list\" role=\"tree\" aria-label=\"Catalog contents\">\n")
@@ -1337,7 +1350,50 @@ object ServeWeb {
       // <li> is not a list.
       appendGroupRow(g, null, flatGroupAnchorId(g.slug), i == 0, components, "cp-tree-node")
     }
+    append(pagesBranch)
     append("</ul>\n</nav>\n")
+  }
+
+  /**
+   * The tree's **Pages** branch: the design file's own pages, listed by name under one row that
+   * leads to the index.
+   *
+   * This used to be an action chip in the header row, beside "compare SVG" and "download all". A
+   * chip could only say *how many* pages there were — the names, which are the thing you actually
+   * choose between, were a page away — and it sat in a row of one-off actions while being the one
+   * entry there that is a place. The tree is where this catalog's places already live, so it goes
+   * in the tree, at the foot: a page is a view of the *design file*, not part of the catalog's own
+   * inventory, and it should not push that inventory down the column.
+   *
+   * Two things make it unlike every other branch, and both are deliberate:
+   * - **It carries no `data-group`.** Every other row names an id on this page and is intercepted
+   *   into a scroll; these rows are real navigations, so the click handler's `if (!id) return`
+   *   leaves them to the browser. It is the same treatment a variant row already gets.
+   * - **It is always open.** `aria-expanded="true"` is written once and never reflected — with a
+   *   handful of pages there is nothing to gain by hiding their names behind a twisty, and the open
+   *   state is what makes the branch worth having over the chip it replaces. [catalogTreeScript]
+   *   skips reflecting a row that names no target, which is what keeps it open.
+   */
+  private fun pagesBranchHtml(pages: List<PageLink>, basePath: String, q: String): String {
+    if (pages.isEmpty()) return ""
+    return buildString {
+      append("<li class=\"cp-tree-node cp-tree-pages\" role=\"none\">\n")
+      append("  <a class=\"cp-tree-pages-row cp-tree-link\" role=\"treeitem\"")
+      append(" href=\"${WebEscaping.htmlEscape("$basePath/pages$q")}\"")
+      append(" aria-expanded=\"true\" aria-owns=\"cp-tree-pages-list\">")
+      append("Pages<span class=\"cp-tree-count\">${pages.size}</span></a>\n")
+      append("  <ul class=\"cp-tree-children cp-tree-components\" id=\"cp-tree-pages-list\"")
+      append(" role=\"group\">\n")
+      pages.forEach { page ->
+        // The page id reaches the URL as one path segment, and the name is free text authored in
+        // the design file — so one is encoded and the other escaped.
+        val href = "$basePath/pages/${WebEscaping.urlEncodeSegment(page.id)}$q"
+        append("    <li role=\"none\"><a class=\"cp-tree-page cp-tree-link\" role=\"treeitem\"")
+        append(" href=\"${WebEscaping.htmlEscape(href)}\">")
+        append("${WebEscaping.htmlEscape(page.name)}</a></li>\n")
+      }
+      append("  </ul>\n</li>\n")
+    }
   }
 
   /**
@@ -1429,10 +1485,12 @@ object ServeWeb {
     /** Collapsed by default; the viewer's subtree opens, having only one component to show. */
     collapsed: Boolean = true,
     /**
-     * Whether to lead the children with a synthetic **Default** row pointing at [defaultHref]. The
-     * landing needs it — its rows are the component's *variants*, and the default render is not one
-     * of them. The viewer's rows already include the default (it is a state like any other), so
-     * emitting it there would list the same render twice under one component.
+     * Whether to lead the children with a synthetic **Default** row pointing at [defaultHref].
+     *
+     * The landing needs it: there the component row is an in-page jump to a card, not a render, so
+     * without this row the default has no entry of its own. The viewer does not, because there the
+     * component row IS the default render — a `Default` child beneath it would be a second row with
+     * the same href and the same destination, which is the duplication this flag exists to avoid.
      */
     syntheticDefaultRow: Boolean = true,
     /** The row whose href matches is `aria-current="page"` — the render on screen. */
@@ -1440,21 +1498,22 @@ object ServeWeb {
     indent: String = "        ",
   ) {
     fun current(target: String) = if (target == currentHref) " aria-current=\"page\"" else ""
-    // Only the VARIANT rows can be current. The component row and the synthetic Default row share
-    // an href — the component's default render — so marking both would put two "you are here"
-    // pills in a three-row list. The component row names the component; the rows under it are the
-    // renders, and one of those is the page.
+    // The component row can itself be current — in the viewer it IS the default render, the rows
+    // under it being the other ones. Nothing double-marks, because a caller that folds the default
+    // into this row also drops it from [variants]; a caller that keeps a synthetic Default row
+    // (the landing) passes no [currentHref] at all.
     append("$indent<li role=\"none\"><a class=\"cp-tree-component cp-tree-link\"")
     append(" role=\"treeitem\" href=\"${WebEscaping.htmlEscape(href)}\"$rowAttrs")
     if (variants.isNotEmpty()) {
       append(" aria-expanded=\"${!collapsed}\" aria-owns=\"$variantsId\"")
     }
+    append(current(href))
     append(">")
     append(WebEscaping.htmlEscape(label))
     if (variants.isNotEmpty()) {
-      append(
-        "<span class=\"cp-tree-count\">${variants.size + if (syntheticDefaultRow) 1 else 0}</span>"
-      )
+      // +1 for the default render either way: the landing lists it as the synthetic child row
+      // below, the viewer folds it into this row.
+      append("<span class=\"cp-tree-count\">${variants.size + 1}</span>")
     }
     append("</a>\n")
     if (variants.isNotEmpty()) {
@@ -1577,20 +1636,16 @@ object ServeWeb {
     href: (ServePreview) -> String,
   ): List<TreeVariant> {
     val lane = themeLane(current, darkFirst)
-    val rows = LinkedHashMap<String, TreeVariant>()
+    // Collected as previews, not as finished rows: whether a row can be labelled by ONE axis is a
+    // property of the whole set (see [variantLabel]), so nothing can be named until both passes
+    // have run.
+    val rows = LinkedHashMap<String, Pair<ServePreview, String>>()
     // This render's own state axis, holding its props fixed.
     val stateKey = switcherStateKey(current)
     val byState = LinkedHashMap<String, ServePreview>()
     for (p in all) {
       if (switcherStateKey(p) != stateKey || themeLane(p, darkFirst) != lane) continue
       byState.putIfAbsent(p.state ?: "default", p)
-    }
-    if (byState.size > 1) {
-      byState.entries
-        .sortedBy { if (it.key == "default") 0 else 1 }
-        .forEach { (state, p) ->
-          rows.putIfAbsent(href(p), TreeVariant(stateLabel(state), href(p), "state"))
-        }
     }
     // …and its props axis, holding its state fixed.
     val propsKey = switcherPropsKey(current)
@@ -1601,18 +1656,28 @@ object ServeWeb {
       if ((p.state ?: "default") != curState) continue
       byProps.putIfAbsent(propsSignature(p.props), p)
     }
+    if (byState.size > 1) {
+      byState.entries
+        .sortedBy { if (it.key == "default") 0 else 1 }
+        .forEach { (_, p) -> rows.putIfAbsent(href(p), p to "state") }
+    }
     if (byProps.size > 1) {
       byProps.entries
         .sortedBy { if (it.key == "") 0 else 1 }
-        .forEach { (_, p) ->
-          rows.putIfAbsent(href(p), TreeVariant(propsLabel(p.props), href(p), "props"))
-        }
+        .forEach { (_, p) -> rows.putIfAbsent(href(p), p to "props") }
     }
     // Then the component's canonical set, for everything the two axes above did not already reach.
-    primaryVariants(componentDefault(current, all, darkFirst), all, darkFirst, href).forEach {
-      rows.putIfAbsent(it.href, it)
+    primaryVariantPreviews(componentDefault(current, all, darkFirst), all, darkFirst).forEach {
+      (p, axis) ->
+      rows.putIfAbsent(href(p), p to axis)
     }
-    return rows.values.toList()
+    // Both axes in play ⇒ every row names both coordinates. Otherwise a row that resets the state
+    // and a row that resets the props are both "Default", and the render on screen is labelled by
+    // whichever pass reached it first — `Pressed` for something that is Pressed AND RTL.
+    val crossProduct = byState.size > 1 && byProps.size > 1
+    return rows.values.map { (p, axis) ->
+      TreeVariant(variantLabel(p, axis, crossProduct), href(p), axis)
+    }
   }
 
   /**
@@ -1648,9 +1713,14 @@ object ServeWeb {
     // subtree built from the axes alone would show the reader every render of this component
     // except the one they are looking at, with nothing marked current. A tree that says "this
     // component's renders" has to contain the page it is drawn on.
-    val variants =
+    val withCurrent =
       if (rows.any { it.href == href(preview) } || preview.id == default.id) rows
       else rows + TreeVariant(previewDisplayName(preview), href(preview), "props")
+    // The DEFAULT render is the component row, not a child of it. Both pointed at the same href —
+    // the same page, reached two ways, one line apart — and the child said "Default" directly under
+    // a row already naming that render. Folding it up leaves the tree saying each render once: the
+    // component, then the ways it differs.
+    val variants = withCurrent.filterNot { it.href == href(default) }
     if (variants.isEmpty()) return ""
     return buildString {
         append("<nav class=\"cp-tree cp-axes-tree\" aria-label=\"Component renders\">\n")
@@ -1692,10 +1762,19 @@ object ServeWeb {
     all: List<ServePreview>,
     darkFirst: Boolean,
     href: (ServePreview) -> String,
-  ): List<TreeVariant> {
+  ): List<TreeVariant> =
+    primaryVariantRows(default, all, darkFirst).map { (p, axis) ->
+      TreeVariant(variantLabel(p, axis, crossProduct = false), href(p), axis)
+    }
+
+  private fun primaryVariantRows(
+    default: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+  ): List<Pair<ServePreview, String>> {
     val lane = themeLane(default, darkFirst)
     val defaultState = default.state ?: "default"
-    val rows = mutableListOf<TreeVariant>()
+    val rows = mutableListOf<Pair<ServePreview, String>>()
     // States first: the axis a component varies on most, and the one a reviewer looks for.
     val stateKey = switcherStateKey(default)
     val seenStates = LinkedHashMap<String, ServePreview>()
@@ -1706,7 +1785,7 @@ object ServeWeb {
         seenStates.putIfAbsent(p.state!!, p)
       }
     }
-    seenStates.forEach { (state, p) -> rows.add(TreeVariant(stateLabel(state), href(p), "state")) }
+    seenStates.forEach { (_, p) -> rows.add(p to "state") }
     // Then the props axis, held at the component's default state so a row never crosses two axes.
     val propsKey = switcherPropsKey(default)
     val seenProps = LinkedHashMap<String, ServePreview>()
@@ -1716,9 +1795,29 @@ object ServeWeb {
       if ((p.state ?: "default") != defaultState) continue
       if (hasNonDefaultProps(p)) seenProps.putIfAbsent(propsSignature(p.props), p)
     }
-    seenProps.forEach { (_, p) -> rows.add(TreeVariant(propsLabel(p.props), href(p), "props")) }
+    seenProps.forEach { (_, p) -> rows.add(p to "props") }
     return rows
   }
+
+  /**
+   * A row's label. Normally it names only the axis the row moves along — a component varies on one
+   * axis and repeating the other's default on every row would be noise. But when BOTH axes are in
+   * play the single label is ambiguous rather than terse: from `pressed + RTL`, the row resetting
+   * the state (`default + RTL`) and the row resetting the props (`pressed + default`) are both
+   * "Default", two different renders wearing one name. Naming both coordinates is what tells them
+   * apart, and it also stops a cross-product row being labelled by whichever axis pass happened to
+   * reach it first.
+   */
+  private fun variantLabel(p: ServePreview, axis: String, crossProduct: Boolean): String =
+    if (!crossProduct) if (axis == "state") stateLabel(p.state) else propsLabel(p.props)
+    else "${stateLabel(p.state)} · ${propsLabel(p.props)}"
+
+  /** [primaryVariants] as previews paired with the axis each varies, before they are labelled. */
+  private fun primaryVariantPreviews(
+    default: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+  ): List<Pair<ServePreview, String>> = primaryVariantRows(default, all, darkFirst)
 
   /** Prettier display names for a few component families whose bare title-case reads badly. */
   private val FAMILY_DISPLAY_NAMES =
@@ -2775,6 +2874,9 @@ object ServeWeb {
         treeLinks.forEach(function (r) {
           if (!r.hasAttribute("aria-expanded")) return;
           var id = r.getAttribute("data-group");
+          // A branch that names no in-page target is not one of the two this tracks — the Pages
+          // branch owns destinations that are elsewhere, and is written open once and left open.
+          if (!id) return;
           var on = r.classList.contains("cp-tree-group") ? id === openGroup : id === openCard;
           r.setAttribute("aria-expanded", on ? "true" : "false");
         });
@@ -2878,8 +2980,13 @@ object ServeWeb {
           next = items[Math.min(at + 1, items.length - 1)];
         } else if (key === "ArrowLeft") {
           // Left closes an open branch, else climbs to the parent — the tree pattern's own rule,
-          // and the only way back up once the levels are four deep.
-          if (items[at].getAttribute("aria-expanded") === "true") {
+          // and the only way back up once the levels are four deep. The `data-group` test excludes
+          // the always-open Pages branch: closing it is not offered, and without the test Left on
+          // that row would clear `openCard` and collapse whichever component IS open.
+          if (
+            items[at].getAttribute("aria-expanded") === "true" &&
+            items[at].getAttribute("data-group")
+          ) {
             e.preventDefault();
             if (items[at].classList.contains("cp-tree-group")) openGroup = null;
             else openCard = null;
@@ -5033,10 +5140,12 @@ object ServeWeb {
      */
     hasParityView: Boolean = false,
     /**
-     * How many design pages this catalog publishes ([ServeDesignPages]). Zero (the default) omits
-     * the link, so a catalog that publishes none is unchanged.
+     * The design pages this catalog publishes ([ServeDesignPages]), in publication order. Listed by
+     * name in the navigation tree ([pagesBranchHtml]); a catalog with no tree to put them in falls
+     * back to a header action chip. Empty (the default) offers neither, so a catalog that publishes
+     * no pages is unchanged.
      */
-    pageCount: Int = 0,
+    designPages: List<PageLink> = emptyList(),
     /**
      * The design tool this catalog is specified by ("Figma", …), from its references' provider or
      * its parity feed — names the parity action after the thing it compares against ("compare to
@@ -5417,10 +5526,15 @@ object ServeWeb {
         href = viewerHref(shown),
       )
     }
+    // The design file's pages, listed at the foot of whichever tree this catalog has. A catalog
+    // with no tree (too few previews to synthesize families from, and no authored sections) has
+    // nowhere to put them and keeps the header chip instead — see the action row below.
+    val hasTree = hasTabs || synthGroups != null
+    val pagesBranch = if (hasTree) pagesBranchHtml(designPages, basePath, q) else ""
     val tabBar =
       when {
-        hasTabs -> catalogTreeHtml(sections, ::treeComponent)
-        synthGroups != null -> catalogOutlineTreeHtml(synthGroups, ::treeComponent)
+        hasTabs -> catalogTreeHtml(sections, ::treeComponent, pagesBranch)
+        synthGroups != null -> catalogOutlineTreeHtml(synthGroups, ::treeComponent, pagesBranch)
         else -> ""
       }
     // The grid body: either the tabbed section panels (id=cp-grid, so the search box's
@@ -5594,12 +5708,15 @@ object ServeWeb {
                 designToolLabel?.let { tool -> "compare to $tool" } ?: "design parity",
               )
             },
-          // A design page is a view OF this catalog's components, so it sits with the
-          // comparisons rather than displacing the grid. The count is in the label because one
+          // Pages live in the navigation tree, which is where this catalog's other *places* are.
+          // This chip is the fallback for a catalog too small to have a tree at all: without it
+          // the pages would be published and unreachable. The count is in the label because one
           // page and thirty are different offers.
-          pageCount
-            .takeIf { it > 0 }
-            ?.let { actionChip("$basePath/pages$q", "$it ${if (it == 1) "page" else "pages"}") },
+          designPages
+            .takeIf { it.isNotEmpty() && !hasTree }
+            ?.let {
+              actionChip("$basePath/pages$q", "${it.size} ${if (it.size == 1) "page" else "pages"}")
+            },
           playgroundHref?.takeIf { it.isNotBlank() }?.let { actionChip(it, "try in playground") },
         )
         .joinToString("\n          ")
@@ -7989,7 +8106,11 @@ $rows
     // control in the title bar that names the current render, and opens on demand. Inline up to
     // [AXIS_ROWS_INLINE] rows: a two- or three-render component is a short list that reads better
     // shown than hidden behind a click.
-    val axisRows = axesTree.split("class=\"cp-tree-variant cp-tree-link\"").size - 1
+    // `+ 1` for the component row, which is itself a render — the default one. Counting only the
+    // children would make the threshold drift the moment the default was folded up into that row:
+    // a five-render component would count four and open, having counted five and folded the day
+    // before, for no reason a reader could see.
+    val axisRows = axesTree.split("class=\"cp-tree-variant cp-tree-link\"").size
     val axisOpen = axisRows <= AXIS_ROWS_INLINE
     // What the toggle says when it is closed. The subtree folds BOTH axes, so it names both the
     // axes it folded and the values they hold — a component that varies on state *and* props (RTL,

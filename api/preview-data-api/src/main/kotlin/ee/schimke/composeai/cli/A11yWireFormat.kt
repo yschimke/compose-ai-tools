@@ -97,6 +97,20 @@ data class AccessibilityReport(
    * clean run.
    */
   val status: String? = null,
+  /**
+   * `false` (the default, and how every report written before #3742 reads) when this report speaks
+   * for the module's **whole** preview set: an id missing from [entries] was not declared, and a
+   * consumer may treat any id it does find as checked.
+   *
+   * `true` when the producer only covered part of the module — `compose-preview a11y --id X` fans
+   * out over the requested previews rather than paying a per-preview daemon render for all of them.
+   * Then an id absent from [entries] means **"not checked"**, not "checked, found nothing", and a
+   * consumer must not fold it in as a clean row. `A11yReportRenderer` withholds the
+   * `dataExtensions["a11y"]` carrier for those previews (so `a11yEntry()` reads `null` — the
+   * established "checks didn't run" signal) and `.github/actions/lib/a11y-report.py` drops them
+   * from the findings table.
+   */
+  val partial: Boolean = false,
 )
 
 /**

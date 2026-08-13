@@ -539,13 +539,14 @@ html.cp-js .cp-tree-link[aria-expanded="false"] + .cp-tree-children { display: n
 .cp-card { scroll-margin-top: calc(var(--cp-sticky-tools, 64px) + 12px); }
 .cp-tree-components { margin: 2px 0 4px 12px;
   border-left: 1px solid var(--md-sys-color-outline-variant); }
-.cp-tree-component { display: flex; align-items: center; gap: 6px; min-height: 30px;
+.cp-tree-component, .cp-tree-page { display: flex; align-items: center; gap: 6px; min-height: 30px;
   padding: 4px 10px; border-radius: 0 var(--md-sys-shape-corner-full)
     var(--md-sys-shape-corner-full) 0;
   font-size: var(--md-sys-typescale-label-medium-size);
   color: var(--cp-fg-muted); text-decoration: none;
   transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
-.cp-tree-component:hover { color: var(--md-sys-color-on-surface); text-decoration: none;
+.cp-tree-component:hover, .cp-tree-page:hover { color: var(--md-sys-color-on-surface);
+  text-decoration: none;
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
 .cp-tree-component[aria-expanded="true"] { color: var(--md-sys-color-on-surface);
   font-weight: 500; }
@@ -557,19 +558,27 @@ html.cp-js .cp-tree-link[aria-expanded="false"] + .cp-tree-children { display: n
   font-size: var(--md-sys-typescale-label-small-size);
   color: var(--cp-fg-faint); text-decoration: none; }
 .cp-tree-variant:hover { color: var(--md-sys-color-primary); text-decoration: underline; }
-.cp-tree-component:focus-visible, .cp-tree-variant:focus-visible {
+.cp-tree-component:focus-visible, .cp-tree-variant:focus-visible,
+.cp-tree-page:focus-visible, .cp-tree-pages-row:focus-visible {
   outline: 3px solid var(--md-sys-color-secondary); outline-offset: -2px; }
+/* The design file's own PAGES, at the foot of the tree. A page is a view of the specification
+   rather than a part of this catalog's inventory, and its rows leave the page instead of jumping
+   within it — so the branch sits below the components behind a hairline, wearing the group row's
+   shape so it still reads as one of the tree's top-level destinations. */
+.cp-tree-node.cp-tree-pages { margin-top: 10px; padding-top: 8px;
+  border-top: 1px solid var(--md-sys-color-outline-variant); }
 /* A section's sub-groups, indented under one guide line. */
 .cp-tree-children { margin: 2px 0 8px 22px;
   border-left: 1px solid var(--md-sys-color-outline-variant); }
-.cp-tree-group { display: flex; align-items: center; gap: 8px; min-height: 32px;
+.cp-tree-group, .cp-tree-pages-row { display: flex; align-items: center; gap: 8px; min-height: 32px;
   padding: 5px 12px; border-radius: 0 var(--md-sys-shape-corner-full)
     var(--md-sys-shape-corner-full) 0;
   font-size: var(--md-sys-typescale-label-large-size);
   letter-spacing: var(--md-sys-typescale-label-large-tracking);
   color: var(--cp-fg-muted); text-decoration: none;
   transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard); }
-.cp-tree-group:hover { color: var(--md-sys-color-on-surface); text-decoration: none;
+.cp-tree-group:hover, .cp-tree-pages-row:hover { color: var(--md-sys-color-on-surface);
+  text-decoration: none;
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
 /* Where you ARE — set by the scroll-spy as the grid moves under you, and on click. */
 .cp-tree-group[aria-current="true"] { color: var(--md-sys-color-primary); font-weight: 500;
@@ -997,7 +1006,15 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    grid, so both the stickiness and the outer margin are undone. Overriding rather than minting a
    parallel class is the point: a change to how a tree row looks has to reach both places. */
 .cp-axes-tree { position: static; max-height: none; overflow: visible; margin: 0 0 10px;
-  max-width: 420px; }
+  max-width: 760px; }
+/* A long axis FLOWS into columns rather than running down the page. On the landing the tree lives
+   in a 216px sidebar, where one column is the only option; here it sits full-width above the stage
+   with the whole right-hand side empty, and `iconbutton-outlined`'s 22 size × width × shape renders
+   became a 550px ladder of two-word labels — half the fold, to say what fits in four short columns.
+   `column-width` rather than a column count so the browser picks the number that fits, and the
+   rows stay one-per-line at any width. */
+.cp-axes-tree .cp-tree-variants { columns: 11em; column-gap: 20px; }
+.cp-axes-tree .cp-tree-variants li { break-inside: avoid; }
 /* The subtree's ROOT is the component itself, so it hangs off nothing and needs no rail or indent
    of its own; the variants keep theirs, which is what still reads as a tree rather than a list. */
 .cp-axes-tree > .cp-tree-list > li > .cp-tree-component { padding-left: 0; }

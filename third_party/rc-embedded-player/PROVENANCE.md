@@ -57,11 +57,12 @@ done
 ## Version skew
 
 Upstream builds this player against the **in-tree** `remote-core` / `remote-player-core`. We build
-it against the published alphas the version catalog pins (`compose-remote = 1.0.0-alpha15`). The
+it against the published alphas the version catalog pins (`compose-remote = 1.0.0-alpha17`). The
 player reaches a number of `@RestrictTo(LIBRARY_GROUP)` members, and `CoreDataAccessors.kt` reaches
 private `CoreDocument` state **reflectively** (upstream guards those names with its own
-`CoreReflectionGuardTest`). Both are sensitive to the gap between `androidx-main` and alpha15, so a
-snapshot refresh should be paired with a render of the `rc-compare` lane, not just a compile.
+`CoreReflectionGuardTest`). Both are sensitive to the gap between `androidx-main` and the pinned
+alpha, so a snapshot refresh should be paired with a render of the `rc-compare` lane, not just a
+compile.
 
 ## Local modifications
 
@@ -84,6 +85,13 @@ androidx tree against the published alphas".
   `CapturedDocument` overload). `CapturedDocument` in alpha15 carries neither a `lambdas` nor a
   `pendingIntents` property. Same reasoning; that overload is for live capture, which this vendored
   copy does not use.
+
+**Both deltas are now revertable and awaiting a snapshot refresh.** As of `compose-remote`
+1.0.0-alpha17 (the current pin) `LambdaAction` and `PendingIntentAction` are public with public
+`Companion.parseId`, and `CapturedDocument` carries `lambdas` + `pendingIntents`. Restoring the two
+blocks verbatim means re-adding the upstream `lambdas` / `pendingIntents` parameters to `RcPlayer`,
+so it belongs with the next re-vendor from `androidx-main`, not with a version-catalog bump. Neither
+delta is on the draw path, so the `rc-compare` lane is unaffected until then.
 
 Neither delta is on the draw path. If a future alpha exposes the two action types, both blocks
 revert to upstream verbatim.

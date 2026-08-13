@@ -24,6 +24,75 @@ needs structured data it spins up a short-lived daemon (as `compose-preview a11y
 does) rather than teaching the Test task to produce it. That split is deliberate:
 it keeps the cold render path lean and free of the daemon's dependency surface.
 
+### A narrowed request narrows the production, and the report it writes is partial
+
+Structured production fans out **per preview** — each `data/fetch` is its own daemon
+render — so it is the dominant cost of a command like `compose-preview a11y`, not a
+rounding error on top of the Gradle render. `--id` / `--filter` therefore has to reach
+it: on a 66-preview module, `a11y --filter Foo` fetches ATF for the one preview it is
+going to print, not for all 66 (issue #3742). `ReportCommand` resolves the request
+against each module's discovery manifest and hands its `produceAdditionalDataProducts`
+hook a per-module `DataProductRequest` carrying exactly the ids to fan out over;
+modules the request doesn't touch never open a session at all.
+
+The narrowing is computed from the **request**, not from the render's `renderedIds`.
+That set is `null` both when there was no request and when the request happened to
+select every preview (the render declines to narrow, because a filtered
+`composePreviewRender` isn't build-cacheable), so it cannot answer "what did the user
+ask about".
+
+The request is resolved in the **daemon's** id space, which is a second thing worth
+getting right. `PreviewIndex.byId` resolves against the `previews.json` the plugin
+wrote, so a preview the CLI synthesised through `PreviewPermutationsCli` — the
+`Foo_dark` a `--permutations accessibility` run shows you — is not addressable: ask
+for it and the daemon answers "unknown preview". So the hook is handed the
+**unexpanded** manifests (`PreviewResultBuilder.readAllManifests`, not `Command`'s
+expanding wrapper), matching is done against the *expanded* ids because that is what
+the user saw, and the *unexpanded* id is what gets fetched. `--id Foo_dark` therefore
+fetches `Foo`, and `--filter Foo` fetches it once instead of once per permutation.
+Getting this backwards is not a rounding error: on a narrowed run the synthetic id is
+the only fetch, so it fails the whole command.
+
+The consequence to keep in mind when adding another per-preview hook: the sidecars
+(`accessibility.json` and friends) are **per-module** reports, so a narrowed run
+produces a partial one, and a partial report is dangerous in a specific way — every
+consumer reads "module has a report, but this preview isn't in it" as *checks ran and
+found nothing*. Publishing a module-wide report covering three of sixty-six previews
+would therefore certify sixty-three previews ATF never looked at. Two mechanisms keep
+that honest, and a new hook needs both:
+
+1. **Merge, don't clobber.** Entries on disk for previews outside this run's ids are
+   carried forward and the fetched ones replace — the same bargain the `.cli-state.json`
+   carry-forward strikes for previews a narrowed render skipped (issue #3730). Only an
+   unnarrowed run rewrites wholesale, which keeps it the one thing that evicts an entry
+   for a preview that no longer exists. One exception, and it is the interesting one:
+   an entry carried from a report stamped `status = "atf-unavailable"` that has **no
+   findings** is dropped rather than carried, because it records a fetch that produced
+   nothing — quite possibly one that never ran. Republishing it under this run's own
+   (clean) status would launder it into a "checked, found nothing" row. Dropping it
+   leaves that preview uncovered, which mechanism 2 then reports honestly, so the
+   report-level status stays a statement about *this* run and needs no carry-forward
+   rule of its own. Findings are the test because they can only come from a decoded
+   payload; a node list can't be used, since the producer reads `a11y-hierarchy.json`
+   off disk whether or not the fetch succeeded.
+2. **Declare what's still uncovered.** When the merged entries *still* don't cover the
+   module, the report is stamped `partial: true`, and consumers invert the default
+   reading: `A11yReportRenderer` withholds the `dataExtensions["a11y"]` carrier for an
+   unlisted preview (so `a11yEntry()` is `null` — the established "checks didn't run"
+   signal) and `.github/actions/lib/a11y-report.py` drops it from the findings table,
+   the same way it already drops Wear Tiles rather than listing them as checked. That
+   helper also records the skipped previews per id in `findings.json`, so the PR comment
+   can tell a preview it never checked from one that was genuinely *deleted* — the
+   second is a resolved finding and still gets reported.
+
+Coverage is measured in the **consumer's** id space (every id a `PreviewResult` may
+carry, i.e. the manifest expanded through `PreviewPermutationsCli`), while whether to
+merge at all is decided by whether the *request* narrowed the fetch. Those are two
+questions and want two parameters: under `--permutations`, an unnarrowed run fetches
+every declared preview — nothing to carry forward, so it must still rewrite wholesale
+and evict deleted previews — yet leaves every synthetic id uncovered, so the report is
+partial. Deriving either from the other silently breaks the case the other one owns.
+
 ### Seeding an environment is not producing a data product
 
 The rule above is about *reading analysis out of* a render, not about *pushing state

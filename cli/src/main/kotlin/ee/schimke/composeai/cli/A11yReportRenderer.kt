@@ -45,12 +45,21 @@ class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) 
   /** Set of module gradle-paths whose manifest claims a11y is enabled (pointer non-null). */
   private var enabledModules: Set<String> = emptySet()
 
+  /**
+   * Module gradle-paths whose report declared itself [AccessibilityReport.partial] — it covers only
+   * the previews a narrowed `--id` / `--filter` run asked about (issue #3742). For these the
+   * "module enabled ⇒ an unlisted preview was checked and came back clean" shortcut in [annotate]
+   * is a lie, so those previews get no carrier at all.
+   */
+  private var partialModules: Set<String> = emptySet()
+
   override fun load(
     manifests: List<Pair<PreviewModule, PreviewManifest>>,
     verbose: Boolean,
   ): Set<String> {
     val out = mutableMapOf<String, AccessibilityEntry>()
     val enabled = mutableSetOf<String>()
+    val partial = mutableSetOf<String>()
     for ((module, manifest) in manifests) {
       // Prefer the manifest pointer when a producer stamped one (legacy gradle-aggregated reports,
       // future daemon-stamped pointer); fall back to the conventional `accessibility.json`
@@ -74,6 +83,7 @@ class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) 
           }
           continue
         }
+      if (report.partial) partial += module.gradlePath
       val reportDir = reportFile.parentFile
       for (entry in report.entries) {
         val annotatedAbs =
@@ -89,16 +99,20 @@ class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) 
     }
     a11yByKey = out
     enabledModules = enabled
+    partialModules = partial
     return enabled
   }
 
   override fun annotate(result: PreviewResult, module: PreviewModule): PreviewResult {
     if (module.gradlePath !in enabledModules) return result
+    val listed = a11yByKey["${module.gradlePath}/${result.id}"]
+    // A preview the report doesn't list, in a module whose report only covers part of its previews,
+    // was never checked — leave the carrier off so `a11yEntry()` reads null ("checks didn't run")
+    // rather than manufacturing a clean row for a preview ATF never saw (issue #3742).
+    if (listed == null && module.gradlePath in partialModules) return result
     // Module had a11y enabled but no findings for this preview: empty entry (not null) tells
     // downstream consumers "checks ran and found nothing" vs "feature off."
-    val entry =
-      a11yByKey["${module.gradlePath}/${result.id}"]
-        ?: AccessibilityEntry(previewId = result.id, findings = emptyList())
+    val entry = listed ?: AccessibilityEntry(previewId = result.id, findings = emptyList())
     val payload =
       ExtensionPayload(
         schema = A11Y_PAYLOAD_SCHEMA_V1,
