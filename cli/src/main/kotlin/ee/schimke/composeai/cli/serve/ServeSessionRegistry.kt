@@ -217,8 +217,9 @@ class ServeSessionRegistry(
     //
     // Enforced HERE rather than at each ingestion point because there are five of those (an
     // upload, a `--bundles` directory, a `--bundle` argument, a catalog id, a revision ref) and
-    // fixing them one at a time is how the last two review rounds went. Every session, however it
-    // is created, is named exactly once — right here.
+    // fixing them one at a time is how the last two review rounds went. This is one of the two
+    // places a session id is ever bound to an entry — [entryFor] is the other (a ref forked on
+    // demand by [factory], which never passes through here), and it carries the same guard.
     if (sessionId in ServeSites.RESERVED_SYSTEMS) {
       System.err.println(
         "serve: refusing session '$sessionId' — that name is one of the server's own routes"
@@ -462,11 +463,20 @@ class ServeSessionRegistry(
     hosts.forEach { runCatching { it.close() } }
   }
 
-  /** Existing entry, or one forked via [factory]. Caller holds [lock]. */
+  /**
+   * Existing entry, or one forked via [factory]. Caller holds [lock].
+   *
+   * The reserved-name guard from [register] applies here too: a `--revisions` ref named after one
+   * of the server's own routes (`api`, `status`, …) would otherwise be forked on first request,
+   * never having passed through [register], and would then be served by `/{system}/` on a top-level
+   * site host — the exact leak the guard exists to prevent. Refusing the fork keeps the invariant
+   * "no session is ever named after a rooted route" true for every entry in [sessions].
+   */
   private fun entryFor(sessionId: String): Entry? {
     sessions[sessionId]?.let {
       return it
     }
+    if (sessionId in ServeSites.RESERVED_SYSTEMS) return null
     // Hold the lock across the build so racing first-callers for one id can't build twice. A build
     // is
     // slow, but a shared dev/CI server has few tenants and correctness beats build concurrency.

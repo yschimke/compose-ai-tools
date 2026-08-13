@@ -140,6 +140,27 @@ class ServeSessionRegistryTest {
   }
 
   @Test
+  fun `a reserved route name is never bound to a session`() {
+    // No entry in `sessions` may be named after one of the server's own top-level routes — a
+    // session called `api` is unreachable at `/api/` on the main host (Ktor scores the constant
+    // segment above `/{system}`) but WOULD be served by `/{system}/` on a top-level site host,
+    // which is the isolation leak [ServeSites] exists to prevent. There are two places an id is
+    // bound: `register` (checked) and the on-demand fork in `entryFor` — with `--revisions`, a
+    // permitted ref named `api` reaches only the latter, so both have to refuse it.
+    val opener = Opener()
+    val factory = CountingFactory()
+    ServeSessionRegistry(open = opener, factory = factory, reaperIntervalMillis = 0).use { reg ->
+      for (reserved in listOf("api", "status", "render", "p", "rc-fonts")) {
+        assertNull(reg.acquire(reserved), "'$reserved' must not be forked into a session")
+        assertNull(reg.peekHost(reserved))
+        assertTrue(!reg.isKnownSession(reserved), "'$reserved' must not enter the registry")
+      }
+      assertEquals(0, factory.built.get(), "a reserved name never reaches the factory at all")
+      assertNotNull(reg.acquire("main"), "an ordinary ref still forks")
+    }
+  }
+
+  @Test
   fun `acquire builds once, opens once, and caches the live host`() {
     val opener = Opener()
     val factory = CountingFactory()

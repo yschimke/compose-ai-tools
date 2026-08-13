@@ -397,7 +397,9 @@ class ServeTopLevelSiteTest {
     // `--bundle`, catalog ids and revision refs are the others), and fixing them one at a time is
     // how the previous two rounds went. The registry is where every one of them converges, so the
     // invariant is enforced there: a session called `api` would make `/api/` — which no constant
-    // route matches — fall to `/{system}/` and serve through a site hostname.
+    // route matches — fall to `/{system}/` and serve through a site hostname. "There" is two
+    // methods, not one: `register` (below) and the on-demand fork in `entryFor`, covered by
+    // `ServeSessionRegistryTest.a reserved route name is never bound to a session`.
     server = newServer()
     registry.register("api", host = bundle("api", listOf("sneaky"), "Sneaky"), pinned = true)
     assertFalse(registry.isKnownSession("api"), "the registry refuses a route's name")
