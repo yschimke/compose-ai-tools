@@ -1686,12 +1686,19 @@ class ServeCatalogStoreTest {
     val result = store.load("meshcore-mobile", sourceRepo = "yschimke/meshcore-mobile")
     val fetchedUrls = synchronized(urls) { urls.toList() }
 
-    // Every fetch went to the override repo's design-artifacts/<system> branch, not the default.
+    // Every fetch went to the override repo's design-artifacts/<system> branch, not the default —
+    // its assets off the raw host, and its publish history off the branch's own commit feed
+    // (github.com, the one fetch this load makes that isn't an asset).
     assertTrue(
       fetchedUrls.all {
         it.startsWith(
           "https://raw.githubusercontent.com/yschimke/meshcore-mobile/design-artifacts/meshcore-mobile/"
-        )
+        ) ||
+          it ==
+            ServeCatalogRevision.commitsFeedUrl(
+              "yschimke/meshcore-mobile",
+              "design-artifacts/meshcore-mobile",
+            )
       },
       "fetched from the override repo: $fetchedUrls",
     )

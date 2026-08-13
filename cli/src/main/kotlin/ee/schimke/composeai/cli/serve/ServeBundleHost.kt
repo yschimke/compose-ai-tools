@@ -122,6 +122,33 @@ class ServeBundleHost(
    * path free of any network dependency.
    */
   private val fetchBakedPng: ((String) -> ByteArray?)? = null,
+  /**
+   * Each declared preview's path on the delivery branch (`images/<slug>/<variant>.png`), which is
+   * what a **pinned** request resolves against: the same tree, read at an older commit. Empty for a
+   * plain uploaded bundle (nothing to pin to) and for any host with no delivery branch behind it.
+   */
+  private val bakedBranchPaths: Map<String, String> = emptyMap(),
+  /**
+   * The delivery branch's published revisions, newest first — the catalog's own version history,
+   * read from the branch when it was loaded ([ServeCatalogStore.fetchRevisions]). Its head is the
+   * revision being served; the rest are what a page offers as pinnable destinations. Empty for an
+   * uploaded bundle, and for a catalog whose branch history couldn't be read.
+   */
+  val revisions: List<ServeCatalogRevision.Revision> = emptyList(),
+  /**
+   * Each design reference's path **on the delivery branch**, which is not the path the served
+   * manifest carries: catalog import rewrites every raster to a server-owned `references/<id>.png`.
+   * That rewrite is what contains the lane, and it is also why the branch path has to be handed
+   * over separately — it is the only string that addresses the raster at an older commit.
+   */
+  private val referenceBranchPaths: Map<String, String> = emptyMap(),
+  /**
+   * Fetch one published asset from the delivery branch **at a given commit**, or null when it can't
+   * be had. Supplied by [ServeCatalogStore] for the same reason [fetchBakedPng] is: this host names
+   * a commit and a path, and the store owns URL assembly, the size cap and the test seam. Null ⇒
+   * the host serves no pinned revisions ([supportsPinnedRevisions]).
+   */
+  private val fetchPinnedAsset: ((commit: String, path: String) -> ByteArray?)? = null,
   private val fileSystem: FileSystem = SystemFileSystem,
 ) : ServeHost {
 
@@ -544,6 +571,58 @@ class ServeBundleHost(
     }
   }
 
+  /**
+   * Whether this host can answer a `?at=<sha>` pin — it has a delivery branch to read older commits
+   * from. False for a plain uploaded bundle, whose bytes exist nowhere but this disk.
+   */
+  val supportsPinnedRevisions: Boolean
+    get() = fetchPinnedAsset != null
+
+  /**
+   * [previewId]'s baked render **as published at [commit]**, or null when there is no such thing.
+   *
+   * Null is the only honest answer to a pin this host can't satisfy — an id the catalog never
+   * baked, a commit predating the preview, a fetch that failed. It must never fall back to the
+   * current bytes: a permalink that silently answers with today's render is the bug this whole
+   * feature exists to fix, and it would be undetectable from the outside.
+   */
+  fun pinnedRender(commit: String, previewId: String): ByteArray? =
+    pinnedAsset(commit, bakedBranchPaths[previewId])
+
+  /** [referenceId]'s canonical reference raster as published at [commit]. See [pinnedRender]. */
+  fun pinnedReference(commit: String, referenceId: String): ByteArray? =
+    pinnedAsset(commit, referenceBranchPaths[referenceId])
+
+  /**
+   * One published asset at one commit, memoised.
+   *
+   * `(commit, path)` addresses immutable bytes — that is what makes the whole feature work — so a
+   * hit never has to be revalidated, and the cache is what keeps a pinned page from re-fetching the
+   * branch on every reload. Its value is in the same link being opened twice (a page and its
+   * reload, a chat unfurl and the click that follows) rather than in holding a working set, so at
+   * capacity it simply drops an arbitrary entry: with a long tail of one-off links there is no
+   * recency order worth maintaining, and the cost of a miss is one small fetch.
+   */
+  private fun pinnedAsset(commit: String, path: String?): ByteArray? {
+    val fetch = fetchPinnedAsset ?: return null
+    val safePath = ServeCatalogRevision.normalizePath(path) ?: return null
+    val pin = ServeCatalogRevision.normalize(commit) ?: return null
+    val key = "$pin/$safePath"
+    pinnedCache[key]?.let {
+      return it
+    }
+    val bytes = runCatching { fetch(pin, safePath) }.getOrNull() ?: return null
+    synchronized(pinnedCache) {
+      if (pinnedCache.size >= MAX_PINNED_CACHE_ENTRIES) {
+        pinnedCache.keys.firstOrNull()?.let(pinnedCache::remove)
+      }
+      pinnedCache[key] = bytes
+    }
+    return bytes
+  }
+
+  private val pinnedCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+
   /** [previewId]'s baked PNG only if it is already local — never fetches. */
   private fun localBakedPng(previewId: String): okio.Path? =
     previewFile(previewId, PNG_SUFFIX)?.toOkioPath()?.takeIf(fileSystem::exists)
@@ -786,6 +865,14 @@ class ServeBundleHost(
     private const val RENDER_ERROR_SCHEMA = "compose-preview-error/v1"
     /** Suffix of the sibling a lazy fill writes before moving it into place atomically. */
     private const val PARTIAL_SUFFIX = ".partial"
+
+    /**
+     * How many pinned (`?at=<sha>`) assets one catalog host keeps resident. Small on purpose: this
+     * is a de-duplicator for the same permalink being opened again, not a working set — a pinned
+     * URL is by nature a one-off link into the past, and holding hundreds of historical renders
+     * would trade a real memory cost against traffic that mostly never repeats.
+     */
+    private const val MAX_PINNED_CACHE_ENTRIES = 32
 
     // Fallback render density for a cmp-jvm render when `previews.json` declares none — the desktop
     // renderer's own default (a 200dp preview bakes to 525px), so an unspecified preview still

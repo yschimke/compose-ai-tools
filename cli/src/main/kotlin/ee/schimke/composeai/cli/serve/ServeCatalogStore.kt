@@ -255,6 +255,14 @@ class ServeCatalogStore(
       } catch (e: Exception) {
         return Result.Failed(system, "could not fetch catalog.json: ${e.message}")
       } ?: return Result.Failed(system, "could not fetch $base$CATALOG_FILE")
+    // The branch's publish history. Its head is the revision this load is reading — what a
+    // permalink pins to, and something `raw.githubusercontent.com` cannot tell us (it answers a
+    // branch name with bytes and nothing else) — and the rest is what a visitor can pin *back* to.
+    // Read once per load rather than per page view. Best-effort: an empty list leaves the catalog
+    // serving exactly as before, minus the permalink affordance.
+    val revisions = fetchRevisions(repo, branch)
+    val deliveryCommit = revisions.firstOrNull()?.commit
+
     val catalog =
       try {
         json.decodeFromString(Catalog.serializer(), catalogBytes.toString(Charsets.UTF_8))
@@ -521,7 +529,8 @@ class ServeCatalogStore(
     // never fetched here: an HTML/Figma reference cannot turn catalog refresh into code execution
     // or an authenticated remote request.
     val manifestReferences = fetchDesignReferences(base)
-    writeDesignReferences(manifestReferences + catalog.references, base, staging)
+    val referenceBranchPaths =
+      writeDesignReferences(manifestReferences + catalog.references, base, staging)
     writeAnnotations(base, staging)
     writeParityActivity(base, staging)
     writeDesignPages(base, staging)
@@ -610,6 +619,10 @@ class ServeCatalogStore(
             ServeWeb.CatalogProvenance(
               repo = repo,
               branch = branch,
+              // The branch tip this catalog was fetched at — what a permalink pins to. Resolved
+              // once per load (never per request), and null when the advertisement couldn't be
+              // read, which only costs the pages their "permalink" affordance.
+              commit = deliveryCommit,
               generatedAt = catalog.generatedAt?.takeIf { it.isNotBlank() },
               // `renderer` is `compose-preview <version>`; show just the version.
               toolVersion =
@@ -635,6 +648,16 @@ class ServeCatalogStore(
           // host never builds a URL or applies a fetch policy, it just asks for an id it declared.
           fetchBakedPng = { id ->
             bakedPathById[id]?.let { path -> fetchCatalogAsset(base + path) }
+          },
+          // The branch path of every baked render, so a pinned (`?at=<sha>`) request can be
+          // answered out of the same tree at an older commit — see [ServeCatalogRevision].
+          bakedBranchPaths = bakedPathById.toMap(),
+          referenceBranchPaths = referenceBranchPaths,
+          revisions = revisions,
+          // Same seam as `fetchBakedPng`: the host names a commit and a published path, the store
+          // builds the URL and applies the fetch policy. Null repo ⇒ no pinned lane at all.
+          fetchPinnedAsset = { commit, path ->
+            ServeCatalogRevision.assetUrl(repo, commit, path)?.let { fetchCatalogAsset(it) }
           },
         )
       }
@@ -1591,18 +1614,28 @@ class ServeCatalogStore(
       )
   }
 
+  /**
+   * Stage the accepted references and return **reference id → its path on the delivery branch**.
+   *
+   * The returned map is what a pinned (`?at=<sha>`) reference request resolves against. It cannot
+   * be recovered from the staged manifest, which deliberately rewrites every raster to a
+   * server-owned `references/<id>.png`: that rewrite is what contains the reference lane, and it
+   * also erases the producer's own path — the only thing that addresses the raster on the branch,
+   * at any commit.
+   */
   private fun writeDesignReferences(
     references: List<DesignReference>,
     base: String,
     staging: File,
-  ) {
-    if (references.isEmpty()) return
+  ): Map<String, String> {
+    if (references.isEmpty()) return emptyMap()
     val seen = HashSet<String>()
     // Rasters are the one lane that genuinely needs the bytes in hand — a reference is accepted
     // only if its declared dimensions and optional sha256 check out ([ServeDesignReferenceStore]) —
     // so this keeps the byte-returning fetch, run one bounded wave at a time. Peak memory is a
     // wave,
     // not the catalog's whole reference set.
+    val branchPaths = LinkedHashMap<String, String>()
     val accepted =
       references
         .filter { ServeDesignReferenceStore.isSafeRelativePath(it.raster.path) }
@@ -1617,10 +1650,11 @@ class ServeCatalogStore(
             val file = File(staging, localPath)
             file.parentFile?.mkdirs()
             file.writeBytes(bytes)
+            branchPaths[reference.id] = reference.raster.path
             reference.copy(raster = reference.raster.copy(path = localPath))
           }
         }
-    if (accepted.isEmpty()) return
+    if (accepted.isEmpty()) return emptyMap()
     val referenceDir = File(staging, ServeDesignReferenceStore.DIRECTORY)
     referenceDir.mkdirs()
     File(referenceDir, ServeDesignReferenceStore.INDEX_FILE)
@@ -1630,6 +1664,7 @@ class ServeCatalogStore(
           DesignReferenceManifest(references = accepted),
         )
       )
+    return branchPaths
   }
 
   /**
@@ -2024,6 +2059,13 @@ class ServeCatalogStore(
     private const val MAX_FETCH_BYTES = 25L * 1024 * 1024 // 25 MB per catalog asset
 
     /**
+     * Cap on a delivery branch's commit feed ([fetchRevisions]). Deliberately far smaller than a
+     * catalog asset: the feed is ~20 commit entries and measures in tens of kilobytes. A body that
+     * doesn't fit here is not one worth scanning.
+     */
+    private const val MAX_FEED_FETCH_BYTES = 1L * 1024 * 1024
+
+    /**
      * How many catalog assets to fetch at once ([fetchCatalogAssets]). Twelve measured as the knee
      * against `raw.githubusercontent.com` — it takes the largest published catalog's 197 images
      * from ~92 s to ~8 s — while staying far short of anything a single origin would consider a
@@ -2101,6 +2143,29 @@ class ServeCatalogStore(
 
   /** Current generation per system; see [scheduleFigmaSvgFetch]. */
   private val generations = ConcurrentHashMap<String, Int>()
+
+  /**
+   * The delivery branch's published revisions, newest first — its commit history, read from the
+   * branch's own Atom feed ([ServeCatalogRevision.commitsFeedUrl]).
+   *
+   * This is the whole substrate the permalink feature stands on: the branch already carries one
+   * commit per publish, so the versions exist and only need addressing. The head of this list is
+   * the revision this load is reading (what a permalink pins to); the tail is what a visitor can go
+   * back to.
+   *
+   * Runs through the same injected [fetch] seam as every other network call here, so a test stubs
+   * it like any catalog asset. Best-effort by construction: every failure — an unreachable host, a
+   * repository that publishes no feed, a branch with no history — returns an empty list, which
+   * costs the catalog's pages their permalink affordance and nothing else.
+   */
+  private fun fetchRevisions(repo: String, branch: String): List<ServeCatalogRevision.Revision> =
+    runCatching {
+        val url = ServeCatalogRevision.commitsFeedUrl(repo, branch)
+        val body = if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_FEED_FETCH_BYTES)
+        body?.toString(Charsets.UTF_8)?.let { ServeCatalogRevision.parseCommitsFeed(it) }
+      }
+      .getOrNull()
+      .orEmpty()
 
   /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
   private fun fetchCatalogAsset(url: String): ByteArray? =
