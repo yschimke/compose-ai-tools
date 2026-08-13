@@ -281,4 +281,102 @@ class MissingPreviewMessageTest {
     // Before the per-preview list, which is where it was previously buried.
     assertThat(msg.indexOf(rootCause)).isLessThan(msg.indexOf("Per-preview render errors"))
   }
+
+  /**
+   * Issue #3741's sidecar, in shape: the renderer invokes the preview reflectively, so the
+   * sidecar's own `exception` is a content-free `InvocationTargetException` and its `topAppFrame`
+   * points at the tooling frame that did the invoking. Everything a reader needs is in the trace.
+   */
+  private val reflectiveWrapperTrace =
+    """
+    java.lang.reflect.InvocationTargetException
+    	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+    	at ee.schimke.composeai.renderer.KeyboardDataProduct.AroundComposable${'$'}lambda${'$'}2(KeyboardDataProduct.kt:148)
+    Caused by: java.lang.NoClassDefFoundError: com/google/wear/services/ambient/AmbientComponentState
+    	at com.example.wear.ambient.AmbientAwareActivity.rememberAmbientState(AmbientAwareActivity.kt:76)
+    	at com.example.wear.WearAppKt.WearApp(WearApp.kt:31)
+    	at androidx.compose.runtime.ComposerImpl.doCompose(Composer.kt:3300)
+    """
+      .trimIndent()
+
+  private val reflectiveWrapperSidecar =
+    ComposePreviewTasks.ErrorSidecar(
+      exception = "java.lang.reflect.InvocationTargetException",
+      message = "",
+      topAppFrame =
+        ComposePreviewTasks.ErrorSidecar.TopAppFrame(
+          file = "KeyboardDataProduct.kt",
+          line = 148,
+          function = "AroundComposable${'$'}lambda${'$'}2",
+        ),
+      stackTrace = reflectiveWrapperTrace,
+    )
+
+  @Test
+  fun `formatMissingPreviewsMessage leads with the Caused by root, not the reflective wrapper`() {
+    val manifest =
+      PreviewManifest(
+        module = "wear",
+        variant = "debug",
+        previews =
+          listOf(
+            previewWithCapture("WearAppPreview_Devices - Large Round", "renders/WearApp.png")
+              .copy(className = "com.example.wear.WearAppKt")
+          ),
+      )
+
+    val msg =
+      ComposePreviewTasks.formatMissingPreviewsMessage(
+        manifest = manifest,
+        missingIds = listOf("WearAppPreview_Devices - Large Round"),
+        sidecars = mapOf("WearAppPreview_Devices - Large Round" to reflectiveWrapperSidecar),
+      )
+
+    // The wrapper alone ("InvocationTargetException at KeyboardDataProduct.kt:148") named neither
+    // the failure nor a file the reader owns — both live in the cause chain.
+    assertThat(msg).contains("NoClassDefFoundError")
+    assertThat(msg).contains("com/google/wear/services/ambient/AmbientComponentState")
+    assertThat(msg).contains("chain: InvocationTargetException → NoClassDefFoundError")
+    assertThat(msg).contains("AmbientAwareActivity.kt:76")
+    assertThat(msg).doesNotContain("KeyboardDataProduct.kt")
+    assertThat(msg).doesNotContain("NO-SOURCE")
+  }
+
+  @Test
+  fun `renderErrorInsight falls back to the sidecar fields without a stack trace`() {
+    // Sidecars written by an older renderer carry no `stackTrace`; nothing about the message may
+    // depend on it.
+    val insight =
+      ComposePreviewTasks.renderErrorInsight(
+        ComposePreviewTasks.ErrorSidecar(
+          exception = "java.lang.IllegalStateException",
+          message = "missing state",
+          topAppFrame = ComposePreviewTasks.ErrorSidecar.TopAppFrame("A.kt", 10, "APreview"),
+        ),
+        previewClassName = "com.example.PreviewsKt",
+      )
+
+    assertThat(insight.exception).isEqualTo("java.lang.IllegalStateException")
+    assertThat(insight.message).isEqualTo("missing state")
+    assertThat(insight.frame?.file).isEqualTo("A.kt")
+    assertThat(insight.chain).isEmpty()
+  }
+
+  @Test
+  fun `renderErrorInsight prefers the deepest frame in the preview's own package`() {
+    val insight =
+      ComposePreviewTasks.renderErrorInsight(
+        reflectiveWrapperSidecar,
+        previewClassName = "com.example.wear.WearAppKt",
+      )
+
+    assertThat(insight.frame?.file).isEqualTo("AmbientAwareActivity.kt")
+    assertThat(insight.frame?.line).isEqualTo(76)
+    assertThat(insight.frame?.function).isEqualTo("rememberAmbientState")
+
+    // A preview from an unrelated package matches no frame, so the sidecar's own stays.
+    val unrelated =
+      ComposePreviewTasks.renderErrorInsight(reflectiveWrapperSidecar, "zz.other.PreviewsKt")
+    assertThat(unrelated.frame?.file).isEqualTo("KeyboardDataProduct.kt")
+  }
 }

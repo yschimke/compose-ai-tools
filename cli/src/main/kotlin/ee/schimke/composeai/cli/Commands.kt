@@ -1252,26 +1252,16 @@ class ShowCommand(args: List<String>) : Command(args) {
       val policy = missingRendersPolicy?.lowercase()
       val prefix =
         if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
-      System.err.println(
-        "${prefix}Render task completed but produced no PNG for ${missing.size} of " +
-          "${filtered.size} preview(s):"
-      )
       // List the offenders so the CI log is self-diagnosing — no need to download the
-      // `composePreviewRender-reports` artifact just to learn *which* previews failed.
-      for (r in missing) {
-        val nullCoords =
-          r.captures
-            .filter { it.pngPath == null && !it.optional }
-            .joinToString(", ") { captureCoordLabel(it) }
-            .ifEmpty { "default" }
-        val moduleTag = if (r.module.isNotBlank()) " (${r.module})" else ""
-        System.err.println("  - ${r.id}$moduleTag — no PNG for: $nullCoords")
-      }
+      // `composePreviewRender-reports` artifact just to learn *which* previews failed — and read
+      // the renderer's `.error.json` sidecar beside each one so a preview that rendered and *threw*
+      // reports its exception instead of the NO-SOURCE build-wiring guess (issue #3741).
       System.err.println(
-        "Check the Gradle output above — a common cause is the `composePreviewRender` task " +
-          "reporting NO-SOURCE, which means the renderer test class wasn't found on " +
-          "testClassesDirs. Per-preview stack traces are in the `composePreviewRender-reports` " +
-          "artifact attached to the run."
+        formatMissingRenderReport(
+          collectMissingRenders(missing, outcome.manifests),
+          total = filtered.size,
+          prefix = prefix,
+        )
       )
       System.out.flush()
       if (shouldFailOnMissingRenders()) exitProcess(2)
@@ -1478,10 +1468,15 @@ class RenderCommand(args: List<String>) : Command(args) {
           val policy = missingRendersPolicy?.lowercase()
           val prefix =
             if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
+          // Same report `show` prints: the `.error.json` sidecar beside each would-be output tells
+          // "the preview threw" apart from "the render task never ran" (issue #3741).
           System.err.println(
-            "${prefix}Render task completed but produced no PNG for ${missing.size} preview(s):"
+            formatMissingRenderReport(
+              collectMissingRenders(missing, manifests),
+              total = filtered.size,
+              prefix = prefix,
+            )
           )
-          for (r in missing) System.err.println("  ${r.id}")
           if (shouldFailOnMissingRenders()) exitProcess(2)
         }
       }
