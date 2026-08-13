@@ -189,12 +189,15 @@ class ServeViewerDisclosuresTest {
     // The other side of the rule above: repeating "· Default" on every row of the components that
     // vary on one axis — nearly all of them — would be noise for a distinction they cannot make.
     val html = viewer(statePreviews(3))
-    // Scoped to the variant rows: the component row above them carries the preview's own display
+    // Scoped to the child rows: the component row above them carries the preview's own display
     // name, which may legitimately hold a `·` of its own.
     val rows =
       html.substringAfter("class=\"cp-tree-children cp-tree-variants\"").substringBefore("</ul>")
-    assertTrue(rows.contains(">Default</a>") && rows.contains(">State 1</a>"), rows)
+    assertTrue(rows.contains(">State 1</a>") && rows.contains(">State 2</a>"), rows)
     assertFalse(rows.contains(" · "), "a one-axis component names one axis: $rows")
+    // …and the default is NOT among them: it is the component row, which is where the reader
+    // already is. Two rows for one render, one line apart, is what folding it up removed.
+    assertFalse(rows.contains(">Default</a>"), "the default is the parent row, not a child: $rows")
   }
 
   @Test

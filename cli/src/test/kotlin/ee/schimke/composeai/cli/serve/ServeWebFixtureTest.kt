@@ -338,13 +338,38 @@ class ServeWebFixtureTest {
   /**
    * A component with a WIDE state axis — the published m3-catalog's `iconbutton-outlined` bakes one
    * render per size × width × shape, which is what pushed the switcher past the point where showing
-   * every chip was worth the fold it cost. Past [ServeWeb]'s inline threshold the rows arrive
-   * folded behind the title bar's `State · …` toggle, so this is the fixture that captures the
-   * *collapsed* axes disclosure for the visual-diff bot; `serve-viewer-states.html` (two states)
-   * keeps the expanded case.
+   * every chip was worth the fold it cost. Sized to that real shape (22 states) rather than a token
+   * few, so the capture shows what the OPEN subtree actually costs on the catalog that motivated
+   * this — the case a smaller fixture would have flattered. Past [ServeWeb]'s inline threshold the
+   * rows arrive folded behind the title bar's `State · …` toggle, so this is the fixture that
+   * captures the *collapsed* axes disclosure for the visual-diff bot; `serve-viewer-states.html`
+   * (two states) keeps the expanded case.
    */
   private val wideStatePreviews =
-    listOf("default", "disabled", "xs", "s", "m", "l", "xl", "m-wide", "m-square", "xl-narrow")
+    listOf(
+        "default",
+        "disabled",
+        "xs",
+        "xs-narrow",
+        "xs-square",
+        "xs-wide",
+        "s",
+        "s-narrow",
+        "s-square",
+        "s-wide",
+        "m",
+        "m-narrow",
+        "m-square",
+        "m-wide",
+        "l",
+        "l-narrow",
+        "l-square",
+        "l-wide",
+        "xl",
+        "xl-narrow",
+        "xl-square",
+        "xl-wide",
+      )
       .flatMap { state ->
         listOf("light", "dark").map { theme ->
           ServePreview(
@@ -2696,7 +2721,8 @@ class ServeWebFixtureTest {
     val variantNav =
       viewerVariants.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
-      variantNav.contains("aria-current=\"page\">Default</a>") &&
+      variantNav.contains("cp-tree-component cp-tree-link\" role=\"treeitem\"") &&
+        variantNav.contains("aria-current=\"page\">Button") &&
         variantNav.contains("/p/button-filled__ideal__default__light__direction-rtl") &&
         variantNav.contains(">RTL</a>"),
       "the viewer subtree marks Default active and links the same-theme RTL variant",
@@ -2870,7 +2896,7 @@ class ServeWebFixtureTest {
     val statesNav =
       viewerStates.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
-      statesNav.contains("aria-current=\"page\">Default</a>") &&
+      statesNav.contains("aria-current=\"page\">Checkbox") &&
         statesNav.contains("/p/checkbox__ideal__unchecked__light"),
       "the viewer subtree marks Default active and links the same-theme sibling",
     )
