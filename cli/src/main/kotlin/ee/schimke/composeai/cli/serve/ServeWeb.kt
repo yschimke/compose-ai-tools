@@ -1577,20 +1577,16 @@ object ServeWeb {
     href: (ServePreview) -> String,
   ): List<TreeVariant> {
     val lane = themeLane(current, darkFirst)
-    val rows = LinkedHashMap<String, TreeVariant>()
+    // Collected as previews, not as finished rows: whether a row can be labelled by ONE axis is a
+    // property of the whole set (see [variantLabel]), so nothing can be named until both passes
+    // have run.
+    val rows = LinkedHashMap<String, Pair<ServePreview, String>>()
     // This render's own state axis, holding its props fixed.
     val stateKey = switcherStateKey(current)
     val byState = LinkedHashMap<String, ServePreview>()
     for (p in all) {
       if (switcherStateKey(p) != stateKey || themeLane(p, darkFirst) != lane) continue
       byState.putIfAbsent(p.state ?: "default", p)
-    }
-    if (byState.size > 1) {
-      byState.entries
-        .sortedBy { if (it.key == "default") 0 else 1 }
-        .forEach { (state, p) ->
-          rows.putIfAbsent(href(p), TreeVariant(stateLabel(state), href(p), "state"))
-        }
     }
     // …and its props axis, holding its state fixed.
     val propsKey = switcherPropsKey(current)
@@ -1601,18 +1597,28 @@ object ServeWeb {
       if ((p.state ?: "default") != curState) continue
       byProps.putIfAbsent(propsSignature(p.props), p)
     }
+    if (byState.size > 1) {
+      byState.entries
+        .sortedBy { if (it.key == "default") 0 else 1 }
+        .forEach { (_, p) -> rows.putIfAbsent(href(p), p to "state") }
+    }
     if (byProps.size > 1) {
       byProps.entries
         .sortedBy { if (it.key == "") 0 else 1 }
-        .forEach { (_, p) ->
-          rows.putIfAbsent(href(p), TreeVariant(propsLabel(p.props), href(p), "props"))
-        }
+        .forEach { (_, p) -> rows.putIfAbsent(href(p), p to "props") }
     }
     // Then the component's canonical set, for everything the two axes above did not already reach.
-    primaryVariants(componentDefault(current, all, darkFirst), all, darkFirst, href).forEach {
-      rows.putIfAbsent(it.href, it)
+    primaryVariantPreviews(componentDefault(current, all, darkFirst), all, darkFirst).forEach {
+      (p, axis) ->
+      rows.putIfAbsent(href(p), p to axis)
     }
-    return rows.values.toList()
+    // Both axes in play ⇒ every row names both coordinates. Otherwise a row that resets the state
+    // and a row that resets the props are both "Default", and the render on screen is labelled by
+    // whichever pass reached it first — `Pressed` for something that is Pressed AND RTL.
+    val crossProduct = byState.size > 1 && byProps.size > 1
+    return rows.values.map { (p, axis) ->
+      TreeVariant(variantLabel(p, axis, crossProduct), href(p), axis)
+    }
   }
 
   /**
@@ -1692,10 +1698,19 @@ object ServeWeb {
     all: List<ServePreview>,
     darkFirst: Boolean,
     href: (ServePreview) -> String,
-  ): List<TreeVariant> {
+  ): List<TreeVariant> =
+    primaryVariantRows(default, all, darkFirst).map { (p, axis) ->
+      TreeVariant(variantLabel(p, axis, crossProduct = false), href(p), axis)
+    }
+
+  private fun primaryVariantRows(
+    default: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+  ): List<Pair<ServePreview, String>> {
     val lane = themeLane(default, darkFirst)
     val defaultState = default.state ?: "default"
-    val rows = mutableListOf<TreeVariant>()
+    val rows = mutableListOf<Pair<ServePreview, String>>()
     // States first: the axis a component varies on most, and the one a reviewer looks for.
     val stateKey = switcherStateKey(default)
     val seenStates = LinkedHashMap<String, ServePreview>()
@@ -1706,7 +1721,7 @@ object ServeWeb {
         seenStates.putIfAbsent(p.state!!, p)
       }
     }
-    seenStates.forEach { (state, p) -> rows.add(TreeVariant(stateLabel(state), href(p), "state")) }
+    seenStates.forEach { (_, p) -> rows.add(p to "state") }
     // Then the props axis, held at the component's default state so a row never crosses two axes.
     val propsKey = switcherPropsKey(default)
     val seenProps = LinkedHashMap<String, ServePreview>()
@@ -1716,9 +1731,29 @@ object ServeWeb {
       if ((p.state ?: "default") != defaultState) continue
       if (hasNonDefaultProps(p)) seenProps.putIfAbsent(propsSignature(p.props), p)
     }
-    seenProps.forEach { (_, p) -> rows.add(TreeVariant(propsLabel(p.props), href(p), "props")) }
+    seenProps.forEach { (_, p) -> rows.add(p to "props") }
     return rows
   }
+
+  /**
+   * A row's label. Normally it names only the axis the row moves along — a component varies on one
+   * axis and repeating the other's default on every row would be noise. But when BOTH axes are in
+   * play the single label is ambiguous rather than terse: from `pressed + RTL`, the row resetting
+   * the state (`default + RTL`) and the row resetting the props (`pressed + default`) are both
+   * "Default", two different renders wearing one name. Naming both coordinates is what tells them
+   * apart, and it also stops a cross-product row being labelled by whichever axis pass happened to
+   * reach it first.
+   */
+  private fun variantLabel(p: ServePreview, axis: String, crossProduct: Boolean): String =
+    if (!crossProduct) if (axis == "state") stateLabel(p.state) else propsLabel(p.props)
+    else "${stateLabel(p.state)} · ${propsLabel(p.props)}"
+
+  /** [primaryVariants] as previews paired with the axis each varies, before they are labelled. */
+  private fun primaryVariantPreviews(
+    default: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+  ): List<Pair<ServePreview, String>> = primaryVariantRows(default, all, darkFirst)
 
   /** Prettier display names for a few component families whose bare title-case reads badly. */
   private val FAMILY_DISPLAY_NAMES =
