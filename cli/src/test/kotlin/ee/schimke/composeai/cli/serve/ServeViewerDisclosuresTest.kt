@@ -237,16 +237,26 @@ class ServeViewerDisclosuresTest {
   @Test
   fun `the phone's component sheet is transient, and the desktop default stays responsive`() {
     val script = ServeWebAssets.load("viewer-drawers.js")!!.bytes.decodeToString()
-    // Below 640px the list is a MODAL bottom sheet over the preview, opened to pick the next
-    // component and dismissed by that pick. Remembering it open would restore the sheet on the page
-    // you just navigated to, so every selection would arrive covered.
+    // Below 640px BOTH drawers are modal bottom sheets over the preview, opened for one thing and
+    // dismissed. Remembering either open would restore the sheet on the page you navigate to next,
+    // so every component you pick would arrive covered — and since the drawers close each other
+    // there, it would store a state the visitor never chose.
     assertTrue(
-      script.contains("""if (cls === "cp-nav-open" && isMobile()) return;"""),
-      "a phone's sheet must store nothing: $script",
+      script.contains("if (isMobile()) return;"),
+      "a phone's sheets must store nothing: $script",
     )
     assertTrue(
       script.contains("if (isMobile()) return false;"),
-      "…and must not be restored from a desktop visit's preference: $script",
+      "…and the list must not be restored from a desktop visit's preference: $script",
+    )
+    // The overrides drawer's own restore is the same rule, phrased where it is applied: the phone
+    // branch collapses it and stops, rather than collapsing it and then reading a preference back.
+    assertTrue(
+      script.contains("""if (isMobile()) setOpen("cp-controls-open", false);""") &&
+        script.contains(
+          """    if (controlsPref !== null) setOpen("cp-controls-open", controlsPref === "1");"""
+        ),
+      "the stored overrides state is honoured only off the phone: $script",
     )
     // Making the state explicit cost the CSS default its own responsiveness, so the resolution has
     // to re-run when the viewport crosses a breakpoint — otherwise a window opened wide and then

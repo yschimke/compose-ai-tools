@@ -58,19 +58,25 @@
     btn.addEventListener("click", function () {
       var open = !viewer.classList.contains(cls);
       setOpen(cls, open);
-      // A phone's component list is a MODAL bottom sheet over the preview, not a column beside it:
-      // it is opened to pick the next component and is dismissed by that pick. Remembering it open
-      // would restore the sheet on the page you just navigated to, so every selection would arrive
-      // covered and need dismissing. The sheet is transient by nature, so nothing is stored for it.
-      if (cls === "cp-nav-open" && isMobile()) return;
+      // BOTH drawers are MODAL bottom sheets on a phone, not columns beside the preview — opened
+      // for one thing and dismissed. Remembering either one open would restore the sheet on the
+      // page you navigate to next, so every component you pick would arrive covered and need
+      // dismissing (and the drawers close each other there, which would store a state the visitor
+      // never chose). A sheet is transient by nature, so a phone stores nothing about them; the
+      // in-page folds below are ordinary rows, not sheets, and keep their memory at every width.
+      if (isMobile()) return;
       writeFold(btnId, open);
     });
   }
   // Start with the overrides drawer collapsed on a phone so the preview leads; the sticky toggle
-  // row keeps it (and the component list) one tap away as a bottom sheet.
+  // row keeps it (and the component list) one tap away as a bottom sheet. A stored preference is
+  // honoured only OFF the phone — restoring it there would put a sheet back over the preview, and
+  // "the preview leads" is the rule this breakpoint exists to state.
   if (isMobile()) setOpen("cp-controls-open", false);
-  var controlsPref = readFold("cp-controls-toggle");
-  if (controlsPref !== null) setOpen("cp-controls-open", controlsPref === "1");
+  else {
+    var controlsPref = readFold("cp-controls-toggle");
+    if (controlsPref !== null) setOpen("cp-controls-open", controlsPref === "1");
+  }
   // The nav's server markup carries NEITHER class, so its resting state is the CSS default — shown
   // on a desktop, hidden below — and `classList.contains("cp-nav-open")` would read that default as
   // "closed" on the very width where it is open. Resolve it into an explicit class so everything
