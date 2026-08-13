@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
@@ -886,6 +887,25 @@ fun LocaleAwareSquare() {
       else -> Color(0xFFEF5350) // red (base / English)
     }
   Box(modifier = Modifier.fillMaxSize().background(bg))
+}
+
+/**
+ * A Material 3 [RangeSlider], whose two thumbs carry **Material's own** built-in strings as content
+ * descriptions — `Strings.SliderRangeStart` / `SliderRangeEnd`, "Range start" / "Range end" in
+ * English and "Bereichsstart" / "Bereichsende" in German, from the 75 locale bundles
+ * `material3-desktop` ships in `androidx/compose/material3/l10n/`.
+ *
+ * Distinct from [LocaleAwareSquare], and the distinction is the point. That fixture covers CMP
+ * *resource* resolution — the previewed app's own `composeResources`, which has a per-composition
+ * lever (`LocalComposeEnvironment`). This one covers strings Material resolves for itself through
+ * `androidx.compose.material3.internal.getString`, which reads
+ * `androidx.compose.ui.text.intl.Locale.current` — the JVM default — from inside a composable that
+ * never consults its own `Composer`, and for which no per-composition lever exists at any version.
+ * Used by [MaterialBuiltInStringsLocaleTest].
+ */
+@Composable
+fun MaterialBuiltInStringsSlider() {
+  RangeSlider(value = 0.2f..0.8f, onValueChange = {})
 }
 
 /**
