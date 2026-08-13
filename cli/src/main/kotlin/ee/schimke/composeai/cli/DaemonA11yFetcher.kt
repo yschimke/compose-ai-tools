@@ -158,9 +158,17 @@ internal class DaemonA11yFetcher(
       for ((previewId, group) in previews.groupBy { it.previewId }) {
         val permutations = group.filter { it.isPermutation }
         val base = group.firstOrNull { !it.isPermutation }
+        // Whether any permutation of this preview actually rendered — i.e. whether the artefacts in
+        // `data/<previewId>/` describe an override rather than the declared preview. A permutation
+        // whose fetch failed never reached a render, so it left the directory exactly as it found
+        // it. See the discard below, which this gates.
+        var overridden = false
         for (preview in permutations) {
           val payload = fetchOne(previewId, preview.entryId, fetchParams(preview))
-          if (payload != null) anyFetchOk = true else failedIds += preview.entryId
+          if (payload != null) {
+            anyFetchOk = true
+            overridden = true
+          } else failedIds += preview.entryId
           // Copy this render's artefacts out before the next fetch of the same preview replaces
           // them — but only when the fetch produced something. On a failure the directory still
           // holds the *previous* configuration's files, and snapshotting those would file another
@@ -213,17 +221,25 @@ internal class DaemonA11yFetcher(
           // unforced fetch would happily serve as the base's findings. Delete them: absent is the
           // one state that reads correctly here, both for this report (no overlay, no nodes) and
           // for that next fetch, which sees a missing file and re-renders.
-          discardArtifacts(projectDir, previewId)
+          //
+          // Only when a permutation genuinely rendered, though. If every fetch of this preview
+          // failed — an unavailable extension fails them all alike — then nothing overwrote the
+          // directory and what's there is the base's own earlier render, which is still true of
+          // the preview and may be what a carried-forward entry points at.
+          if (overridden) discardArtifacts(projectDir, previewId)
         }
         if (base == null) continue
         if (payload != null) anyFetchOk = true else failedIds += base.entryId
+        // Artefacts are only this preview's if this fetch rendered, or if no permutation ever
+        // displaced them — the same condition the discard above turns on.
+        val artefactsAreOurs = payload != null || !overridden
         entries.add(
           AccessibilityEntry(
             previewId = base.entryId,
             findings = payload?.let(::parseFindings).orEmpty(),
-            nodes = if (payload != null) readNodes(projectDir, base.entryId) else emptyList(),
+            nodes = if (artefactsAreOurs) readNodes(projectDir, base.entryId) else emptyList(),
             annotatedPath =
-              if (payload != null) relativeOverlayPath(projectDir, base.entryId) else null,
+              if (artefactsAreOurs) relativeOverlayPath(projectDir, base.entryId) else null,
           )
         )
       }
@@ -412,10 +428,24 @@ internal class DaemonA11yFetcher(
   private fun discardArtifacts(projectDir: File, previewId: String) {
     val dir = projectDir.resolve("build/compose-previews/data/$previewId")
     for (name in PER_RENDER_FILES) {
-      try {
-        dir.resolve(name).delete()
-      } catch (e: Exception) {
-        onLog("could not discard stale $name for '$previewId': ${e.message}")
+      val file = dir.resolve(name)
+      // `File.delete()` returns false rather than throwing when the file is locked or the
+      // directory isn't writable, so re-check existence: a silently surviving `a11y-atf.json` is
+      // exactly what the next unforced fetch would serve as this preview's findings, which is the
+      // failure this call exists to prevent. Say so rather than assume the delete worked.
+      val gone =
+        try {
+          file.delete()
+          !file.exists()
+        } catch (e: Exception) {
+          onLog("could not discard stale $name for '$previewId': ${e.message}")
+          false
+        }
+      if (!gone && file.exists()) {
+        onLog(
+          "could not discard stale $name for '$previewId'; a later fetch of that preview may " +
+            "serve a permutation's render"
+        )
       }
     }
   }

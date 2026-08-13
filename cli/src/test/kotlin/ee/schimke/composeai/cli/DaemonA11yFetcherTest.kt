@@ -603,6 +603,40 @@ class DaemonA11yFetcherTest {
     )
   }
 
+  @Test
+  fun `artefacts survive when no permutation ever rendered`() {
+    val projectDir = newTempFolder("module-permutation-none-rendered")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+    dataDir.mkdirs()
+    File(dataDir, "a11y-overlay.png").writeText("foo-own-render")
+    File(dataDir, "a11y-atf.json").writeText("""{"findings":[]}""")
+
+    // Every fetch fails — an unavailable extension fails them all alike — so no render happened
+    // and `data/Foo/` still holds Foo's own earlier one. Discarding it here would delete a valid
+    // cache and, on a narrowed run, strand a carried-forward entry pointing at the overlay.
+    DaemonA11yFetcher(factory = FakeFactory(mapOf("Foo" to null)))
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo"),
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
+          ),
+      )
+
+    assertEquals("foo-own-render", File(dataDir, "a11y-overlay.png").readText())
+    assertTrue(File(dataDir, "a11y-atf.json").exists())
+    // The entry still shows the preview was attempted and produced nothing this run, but its own
+    // artefacts are honestly still its own, so the report may point at them.
+    val base = readReport(projectDir).entries.single { it.previewId == "Foo" }
+    assertEquals("data/Foo/a11y-overlay.png", base.annotatedPath)
+    assertEquals(emptyList(), base.findings)
+  }
+
   // ---------- narrowed runs merge rather than clobber (#3742) ----------
 
   @Test
