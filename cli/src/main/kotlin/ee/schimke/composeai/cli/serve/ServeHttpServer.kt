@@ -435,10 +435,22 @@ class ServeHttpServer(
             current.respond(HttpStatusCode.PermanentRedirect)
             finish()
           } else if (!isRootedRoute(first)) {
-            // The site's OWN styled 404, not a bare string. This refusal is the most likely 404 on
-            // a site hostname (every mistyped path lands here), so answering it in plain text
-            // would undo the one-skin-per-hostname property for exactly the page a visitor is
-            // most likely to see.
+            // The site's OWN styled 404 — every mistyped path on a site hostname lands here, so a
+            // plain string would undo the one-skin-per-hostname property for the page a visitor is
+            // most likely to meet.
+            //
+            // …but ONLY for a caller who is already allowed to see this server. This interceptor
+            // runs BEFORE the routes' own `rejectBadToken`, and `notFoundPage` threads the access
+            // token through its links — so on a token-gated box the styled page would have handed
+            // the secret to any unauthenticated request for a made-up path, which is every scanner.
+            // An unauthorized caller gets the same bare 404 the token gate itself answers with.
+            val provided =
+              current.request.queryParameters["token"] ?: current.request.headers[TOKEN_HEADER]
+            if (!isAuthorized(token, provided, isPublic)) {
+              current.respondText("not found", status = HttpStatusCode.NotFound)
+              finish()
+              return@intercept
+            }
             val skin = current.siteSkin()
             current.respondText(
               ServeWeb.notFoundPage(
@@ -2679,8 +2691,14 @@ class ServeHttpServer(
    *
    * The cost is that a top-level route missing from that list 404s on a site host. That is a
    * visible, tested failure rather than a silent leak, which is the right way round for a feature
-   * whose whole promise is that the hostname publishes one catalog. [ServeSites] also refuses a
-   * site whose id would collide with a route, so the two rules cannot disagree.
+   * whose whole promise is that the hostname publishes one catalog.
+   *
+   * Letting a reserved segment through is only safe while **no session can be named one**, because
+   * Ktor matches whole paths and this matches a prefix: a bundle uploaded as `api` would make
+   * `/api/` (which no constant route matches) fall to `/{system}/` and serve that bundle. So the
+   * invariant is enforced at the two places a session gets its name —
+   * [ServeBundleStore.sanitizeName] refuses a reserved upload name, and [ServeSites] refuses a site
+   * whose catalog id is one.
    */
   private fun isRootedRoute(first: String): Boolean {
     // The visitor's own redeemed playground session is the one session a site host must let

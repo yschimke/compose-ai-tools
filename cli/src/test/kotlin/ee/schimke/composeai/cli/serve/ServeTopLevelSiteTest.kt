@@ -332,23 +332,75 @@ class ServeTopLevelSiteTest {
   }
 
   @Test
-  fun `every constant route still works on a site host`() {
-    // The site gate is an ALLOWLIST of the server's own routes, so a route missing from
-    // ServeSites.RESERVED_SYSTEMS would 404 on every site hostname. Walk the whole list against a
-    // live server: no entry may be swallowed by the canonical-path redirect (308) or the
-    // neighbour refusal (404 from the interceptor rather than the handler).
+  fun `real routes reach their handlers on a site host`() {
+    // Written OUT independently of ServeSites.RESERVED_SYSTEMS, and asserting each path reaches its
+    // handler — not merely that it wasn't redirected. Iterating the allowlist could never catch an
+    // omission from the allowlist (a missing route is missing from the loop too), and "not a 308"
+    // passes on the interceptor's own 404, which is precisely the failure a missing entry causes.
     server = newServer()
-    for (route in ServeSites.RESERVED_SYSTEMS) {
-      val (code, _, location) = get("/$route", host = siteHost)
-      assertFalse(
-        code == 308,
-        "'/$route' was mistaken for the canonical catalog prefix and redirected to $location",
+    val routes =
+      mapOf(
+        "/healthz" to "ok",
+        "/version" to "\"public\"",
+        "/robots.txt" to "User-agent",
+        "/sitemap.xml" to "<urlset",
+        "/status.json" to "compose-preview-serve/status",
+        "/api/previews" to "button-filled",
+        "/p/button-filled" to "<!doctype html>",
+        "/render/button-filled.png" to "",
+        "/assets/serve/serve.css" to "",
       )
+    for ((path, marker) in routes) {
+      val (code, body, location) = get(path, host = siteHost)
+      assertEquals(200, code, "'$path' should reach its handler (Location: $location)")
+      if (marker.isNotEmpty()) {
+        assertTrue(body.contains(marker), "'$path' answered something else: ${body.take(200)}")
+      }
     }
-    // Spot-check the ones with a real body, which must answer identically on both hosts.
-    assertEquals(200, get("/healthz", host = siteHost).first)
-    assertEquals(200, get("/version", host = siteHost).first)
-    assertEquals(200, get("/robots.txt", host = siteHost).first)
+  }
+
+  @Test
+  fun `an unauthenticated refusal never carries the access token`() {
+    // The interceptor runs BEFORE the routes' own token gate, and the styled 404 threads the access
+    // token through its links — so on a token-gated box a made-up path would have handed the secret
+    // to any unauthenticated caller, which is every scanner.
+    registry.register(
+      "compose-m3",
+      host = bundle("compose-m3", listOf("button-filled"), "Compose Material 3"),
+      pinned = true,
+    )
+    val secret = "s3cret-token"
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = secret,
+          sessions = registry,
+          defaultSessionId = "",
+          isPublic = false,
+          catalogSessions = listOf("compose-m3"),
+          sites = ServeSites.of(listOf(siteHost to "compose-m3")),
+        )
+        .also { it.start() }
+    val (code, body, _) = get("/not-a-catalog/", host = siteHost)
+    assertEquals(404, code)
+    assertFalse(body.contains(secret), "the refusal must not disclose the access token: $body")
+    // With the token it is the site's own styled 404 again.
+    val (okCode, okBody, _) = get("/not-a-catalog/?token=$secret", host = siteHost)
+    assertEquals(404, okCode)
+    assertTrue(okBody.contains("<!doctype html>"), okBody.take(200))
+  }
+
+  @Test
+  fun `an uploaded bundle may not take a route's name`() {
+    // A session called `api` would be reachable at `/api/` — a path no constant route matches, so
+    // it falls to `/{system}/` — which is how a reserved first segment could still resolve to a
+    // foreign session on a site host. The invariant the interceptor rests on is that no session
+    // can be named a route.
+    for (reserved in listOf("api", "render", "p", "status", "rc-fonts")) {
+      assertNull(ServeBundleStore.sanitizeName(reserved), "'$reserved' must be refused as a name")
+    }
+    assertEquals("my-bundle", ServeBundleStore.sanitizeName("my-bundle"))
   }
 
   @Test
