@@ -179,6 +179,11 @@ data class ServeSites(private val byHost: Map<String, String>) {
      * These are the constant routes registered alongside `/{system}/…`; Ktor scores a constant
      * segment above the parameter, so a catalog with one of these ids is unreachable at its
      * canonical path on ANY host — a site just makes the collision visible.
+     *
+     * Enumerated from [ServeHttpServer]'s routing block — every `get("/x…` / `post("/x…` /
+     * `webSocket("/x…` whose first segment is a literal. Re-derive it the same way when a new
+     * top-level route is added; a missing entry lets a site claim that prefix and swallow the route
+     * (`pg` did exactly that, breaking playground redemption on a site host).
      */
     private val RESERVED_SYSTEMS =
       setOf(
@@ -207,6 +212,8 @@ data class ServeSites(private val byHost: Map<String, String>) {
         "docs",
         "d",
         "playground",
+        // `GET /pg/<token>` — Stage-2 playground redemption.
+        "pg",
         "api",
         "ws",
         "p",

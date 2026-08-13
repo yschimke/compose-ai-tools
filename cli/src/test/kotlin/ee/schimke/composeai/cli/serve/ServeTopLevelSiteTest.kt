@@ -275,6 +275,60 @@ class ServeTopLevelSiteTest {
   }
 
   @Test
+  fun `a site cannot claim any constant route as its system`() {
+    // `pg` was missing from the reserved set, so a catalog named `pg` could be a site and swallow
+    // `/pg/<token>` — every playground redemption on that hostname redirecting to `/<token>`.
+    for (reserved in listOf("pg", "render", "p", "api", "wasm", "playground", "status")) {
+      val problems = mutableListOf<String>()
+      val sites =
+        ServeSites.of(
+          listOf("x.example.test" to reserved),
+          knownSystems = setOf(reserved),
+          onProblem = problems::add,
+        )
+      assertTrue(sites.isEmpty, "'$reserved' must be refused as a site system")
+      assertTrue(problems.single().contains("built-in route"), problems.toString())
+    }
+  }
+
+  @Test
+  fun `retiring a catalog a site is published as is refused`() {
+    // Retiring it would strand the hostname: its root 404s at once, and after a restart the now
+    // unserved mapping is dropped so the host falls through to the global front door — a domain
+    // published as one app quietly becoming an index of every other.
+    val tracker =
+      CatalogLoadTracker(
+        listOf(
+          CatalogLoadTracker.Config(
+            system = "compose-m3",
+            listed = true,
+            repo = "yschimke/compose-ai-tools",
+            branch = "design-artifacts/compose-m3",
+          )
+        )
+      )
+    tracker.recordSuccess("compose-m3")
+    val admin =
+      ServeCatalogAdmin(
+        tracker = tracker,
+        defaultRepo = "yschimke/compose-ai-tools",
+        branchPrefix = "design-artifacts/",
+        configFile = null,
+        load = { _, _ -> null },
+        unload = {},
+        sites = ServeSites.of(listOf(siteHost to "compose-m3")),
+      )
+    val result = admin.unregister("compose-m3")
+    assertTrue(result is ServeCatalogAdmin.Result.Conflict, "$result")
+    assertTrue(
+      (result as ServeCatalogAdmin.Result.Conflict).reason.contains(siteHost),
+      result.reason,
+    )
+    // A catalog no site names retires as before.
+    assertTrue(admin.unregister("not-a-site") is ServeCatalogAdmin.Result.Conflict)
+  }
+
+  @Test
   fun `a site cannot claim a built-in route as its system`() {
     // `/render/<id>.png` on a site mapped to `render` would be read as a canonical prefixed URL and
     // redirected to `/<id>.png`, breaking every image. Such an id is already unreachable at its

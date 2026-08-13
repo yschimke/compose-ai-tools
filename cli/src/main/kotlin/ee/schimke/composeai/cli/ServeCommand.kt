@@ -2031,7 +2031,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // surface at all.
     val catalogAdmin =
       if (adminToken != null && catalogStore != null && catalogLoads != null) {
-        buildCatalogAdmin(registry, catalogStore, catalogLoads, wasmCatalogs)
+        buildCatalogAdmin(registry, catalogStore, catalogLoads, wasmCatalogs, sites)
       } else {
         null
       }
@@ -2583,9 +2583,12 @@ class ServeCommand(args: List<String>) : Command(args) {
     store: ServeCatalogStore,
     loads: CatalogLoadTracker,
     wasmCatalogs: MutableMap<String, File>,
+    /** So retiring a catalog a hostname is published as is refused rather than stranding it. */
+    sites: ServeSites,
   ): ServeCatalogAdmin =
     ServeCatalogAdmin(
       tracker = loads,
+      sites = sites,
       defaultRepo = catalogRepo,
       branchPrefix = catalogBranchPrefix,
       configFile = catalogsFile,

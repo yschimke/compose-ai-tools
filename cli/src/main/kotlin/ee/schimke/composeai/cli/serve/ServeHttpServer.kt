@@ -563,7 +563,13 @@ class ServeHttpServer(
         // iframe re-renders on knob override" failure. An unknown system 404s inside the handler
         // either way, so the route costs nothing when no app is ever registered.
         get("/wasm/{system}/{path...}") {
-          val dir = call.parameters["system"]?.let { wasmCatalogs[it] }
+          val system = call.parameters["system"]
+          // A site hostname serves ONE catalog's app. `/wasm/<other>/…` is a constant-prefix route,
+          // so the canonical-path interceptor never sees it — without this check a site would hand
+          // out a neighbouring catalog's compiled Wasm app, which is the isolation contract broken
+          // by the heaviest asset on the box.
+          val site = call.siteSystem()
+          val dir = if (site != null && system != site) null else system?.let { wasmCatalogs[it] }
           if (dir == null) {
             call.respondText("not found", status = HttpStatusCode.NotFound)
             return@get
@@ -2602,10 +2608,15 @@ class ServeHttpServer(
    * system, so it falls through untouched — and [ServeSites] refuses a site whose id would collide
    * with one, so the two rules cannot disagree.
    */
-  private fun isForeignSession(first: String): Boolean =
-    first in servedSystems() ||
+  private fun isForeignSession(first: String): Boolean {
+    // …except the visitor's own redeemed playground session, which this host minted seconds ago
+    // under an unguessable token id and is redirecting them to. It is registered, so the
+    // peekHost check below would call it a neighbour and 404 the last step of their own run.
+    if (playgroundRedeem?.isRedeemedSession(first) == true) return false
+    return first in servedSystems() ||
       first.substringBefore('@') in servedSystems() ||
       sessions.peekHost(first) != null
+  }
 
   /** `?a=b` for a non-empty query string, else `""` — for rebuilding a URL we are redirecting. */
   private fun String.prefixedQuery(): String = if (isEmpty()) "" else "?$this"
@@ -3392,7 +3403,11 @@ class ServeHttpServer(
                   // neighbouring catalog through a hostname that publishes one app.
                   CatalogSelectorDto(
                     offered = offeredCatalogs(it.offered),
-                    resolved = it.resolved,
+                    // Omitted rather than carried through when scoped: `resolved` counts how many
+                    // of the BOX's catalogs hold a compile classpath, and there is no per-catalog
+                    // breakdown to narrow it with. Reporting "1 offered, 5 resolved" would be
+                    // internally inconsistent and would leak the neighbour count it exists to hide.
+                    resolved = if (onlySystem == null) it.resolved else null,
                     limit = it.limit,
                   )
                 },
@@ -5809,8 +5824,12 @@ private data class CatalogSelectorDto(
    * startup log tell those apart.
    */
   val offered: List<String>,
-  /** How many of them hold a resolved compile classpath, against [limit]. */
-  val resolved: Int,
+  /**
+   * How many of them hold a resolved compile classpath, against [limit]. Null on a
+   * [ServeSites]-scoped status: the count is box-wide with no per-catalog breakdown, so a scoped
+   * response omits it rather than pairing a filtered [offered] with a total that contradicts it.
+   */
+  val resolved: Int? = null,
   /** `--playground-catalog-limit`; at [resolved] == this, a run naming a new catalog is refused. */
   val limit: Int,
 )
