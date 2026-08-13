@@ -190,8 +190,13 @@ internal fun readCatalogPin(
  *
  * Line-based rather than [Properties]-based on purpose: `Properties.store` drops every comment and
  * reorders the file, and `gradle.properties` is a hand-maintained, comment-heavy file in most
- * projects. An existing pin line is rewritten in place (keeping its position); otherwise the pin is
- * appended with a short comment explaining what reads it. A missing file is created.
+ * projects. The first existing pin line is rewritten in place (keeping its position); otherwise the
+ * pin is appended with a short comment explaining what reads it. A missing file is created.
+ *
+ * **Duplicate assignments are collapsed, not left behind.** A properties file may legally assign
+ * the same key twice, and `Properties.load` resolves the *last* one — so rewriting only the first
+ * would report a new pin while [readGradlePropertiesPin] kept resolving the old one. Every
+ * assignment after the first is dropped so what we wrote is what the file then resolves to.
  */
 internal fun writeGradlePropertiesPin(
   projectRoot: File,
@@ -209,7 +214,10 @@ internal fun writeGradlePropertiesPin(
       val lines = existing.lines()
       val idx = lines.indexOfFirst { it.isPinAssignment() }
       if (idx >= 0) {
-        lines.toMutableList().apply { this[idx] = line }.joinToString("\n")
+        lines
+          .filterIndexed { i, l -> i == idx || !l.isPinAssignment() }
+          .mapIndexed { i, l -> if (i == idx) line else l }
+          .joinToString("\n")
       } else {
         val body = existing.trimEnd('\n')
         val prefix = if (body.isEmpty()) "" else "$body\n\n"
@@ -221,8 +229,13 @@ internal fun writeGradlePropertiesPin(
 }
 
 /**
- * Removes the `composePreview.version` line (and the comment block this file wrote above it) from
- * [projectRoot]`/gradle.properties`. Returns true when a pin line was actually removed.
+ * Removes **every** `composePreview.version` assignment (and the comment block this file wrote
+ * above the first one) from [projectRoot]`/gradle.properties`. Returns true when at least one pin
+ * line was removed.
+ *
+ * All of them, not just the first: a properties file may legally assign the same key twice, and
+ * `Properties.load` takes the last — so leaving a later duplicate behind would report the pin as
+ * removed while the project stayed pinned.
  */
 internal fun removeGradlePropertiesPin(
   projectRoot: File,
@@ -232,12 +245,12 @@ internal fun removeGradlePropertiesPin(
   val path = file.path.toPath()
   val existing = runCatching { fileSystem.read(path) { readUtf8() } }.getOrNull() ?: return false
   val lines = existing.lines()
-  val idx = lines.indexOfFirst { it.isPinAssignment() }
-  if (idx < 0) return false
-  val drop = mutableSetOf(idx)
+  val first = lines.indexOfFirst { it.isPinAssignment() }
+  if (first < 0) return false
+  val drop = lines.indices.filterTo(mutableSetOf()) { lines[it].isPinAssignment() }
   // Also drop the comment block we wrote above the pin, so a set/unset round-trip leaves the file
   // as it found it. Only our own marker lines — a user's own comment is left alone.
-  var above = idx - 1
+  var above = first - 1
   while (above >= 0 && lines[above].trimStart().startsWith("#") && lines[above] in PIN_COMMENT) {
     drop += above
     above--
@@ -247,12 +260,26 @@ internal fun removeGradlePropertiesPin(
   return true
 }
 
-/** True for a (non-comment) line assigning [VERSION_PIN_PROPERTY], in either `=` or `:` form. */
+/**
+ * True for a (non-comment) line assigning [VERSION_PIN_PROPERTY].
+ *
+ * Accepts all three separators a Java properties file allows — `key=v`, `key:v`, and bare `key v` —
+ * because [readGradlePropertiesPin] reads the file through [Properties], which accepts all three. A
+ * writer that recognised fewer forms than the reader would append a second assignment next to a
+ * space-separated one it failed to see. The same grammar is mirrored in the extension's
+ * `versionPin.ts` and both action scripts, which parse by regex rather than through [Properties].
+ */
 private fun String.isPinAssignment(): Boolean {
   val trimmed = trimStart()
   if (trimmed.startsWith("#") || trimmed.startsWith("!")) return false
-  return Regex("""^${Regex.escape(VERSION_PIN_PROPERTY)}\s*[=:]""").containsMatchIn(trimmed)
+  return PIN_ASSIGNMENT_RE.containsMatchIn(trimmed)
 }
+
+/**
+ * `composePreview.version` followed by `=`, `:`, or whitespace — the properties-file separators.
+ */
+private val PIN_ASSIGNMENT_RE =
+  Regex("""^${Regex.escape(VERSION_PIN_PROPERTY)}(?:[ \t]*[=:]|[ \t]|$)""")
 
 private val PIN_COMMENT =
   listOf(

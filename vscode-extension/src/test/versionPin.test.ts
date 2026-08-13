@@ -91,6 +91,39 @@ describe("versionPin", () => {
         );
     });
 
+    it("accepts a bare whitespace separator", () => {
+        // `key value` is a legal properties assignment that the CLI's
+        // Properties.load reads. Missing it here would leave the extension on
+        // its bundled version while the CLI injected the pin.
+        withProject(
+            { gradleProperties: "composePreview.version 1.2.3\n" },
+            (dir) => {
+                assert.strictEqual(readGradlePropertiesPin(dir), "1.2.3");
+            },
+        );
+    });
+
+    it("does not match a similarly named key", () => {
+        withProject(
+            { gradleProperties: "composePreview.versionCode=42\n" },
+            (dir) => {
+                assert.strictEqual(readGradlePropertiesPin(dir), undefined);
+            },
+        );
+    });
+
+    it("resolves duplicate assignments to the last, as Properties does", () => {
+        withProject(
+            {
+                gradleProperties:
+                    "composePreview.version=1.0.0\ncomposePreview.version=2.0.0\n",
+            },
+            (dir) => {
+                assert.strictEqual(readGradlePropertiesPin(dir), "2.0.0");
+            },
+        );
+    });
+
     it("reads the pin from the version catalog", () => {
         withProject(
             {

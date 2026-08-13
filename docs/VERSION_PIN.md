@@ -86,7 +86,7 @@ pin existed. An unpinned project is a legitimate state, not a misconfiguration �
 | `compose-preview doctor` | Reports `project.version-pin`: the pin, its source, and whether this CLI matches. `warning` on a mismatch between clean releases, `ok` otherwise. |
 | VS Code extension | Auto-injects the pinned version and logs the pin + source at startup. |
 | `install` action | `version: pin` resolves the project's pin. Fails when nothing is pinned, rather than silently falling back to `latest`. |
-| `apply` action | `cli-version: auto` (the default) now checks the pin **first**, ahead of its existing catalog / build-script sniffing — so a pinned project is skew-proof in CI with no workflow change. |
+| `apply` action | `cli-version: auto` (the default) falls back to the pin when nothing declares a plugin version — the auto-inject project, which previously landed on `latest`. An explicit declaration still wins (see below), and a declaration that disagrees with the pin is surfaced as a `::warning::`. |
 
 ## Scope: the pin governs auto-inject
 
@@ -106,6 +106,16 @@ and two tools editing the same declaration is worse than one.
 `doctor` still reports both: `project.version-pin` (what the project pins) and
 `project.plugin-version` (what is actually on the classpath), so a mixed project — some
 modules declaring the plugin, others auto-injected — can see the two numbers side by side.
+
+**A declared version outranks the pin wherever CI has to pick one number.** `apply`'s
+`cli-version: auto` and its skew guard both ask "which plugin will this build apply", and
+for a module that declares the plugin the answer is the declaration, not the pin — so
+those two keep reading the catalog `[plugins]` entry and build scripts first, exactly as
+they did before the pin existed. The pin fills in the case they never had an answer for:
+the auto-inject project, where nothing is declared anywhere and `auto` previously fell
+back to `latest`. When a project has both and they disagree, neither number describes the
+whole build, so the guard emits a `::warning::` naming both rather than letting either win
+silently.
 
 ### The one thing a pin can't do
 
@@ -172,4 +182,16 @@ implementation for exactly that reason.
 
 Writes only ever touch `gradle.properties`. A pin expressed in a version catalog is
 *read* as a pin but never rewritten: catalogs are Renovate-managed, and editing one
-behind the bot's back is how a pin and its update automation start fighting.
+behind the bot's back is how a pin and its update automation start fighting. `pin
+--remove` therefore says so when a catalog entry keeps the project pinned after the
+`gradle.properties` line is gone, instead of reporting a successful unpin.
+
+Two grammar details the four implementations agree on, because disagreeing would
+recreate the skew:
+
+- **All three properties separators.** `key=v`, `key : v`, and bare `key v` are each a
+  legal assignment. The CLI reads the file through `java.util.Properties`, which accepts
+  all three, so the three regex parsers do too.
+- **Duplicates resolve to the last.** `Properties.load` takes the final assignment, so
+  every reader does — and `compose-preview pin <version>` collapses duplicates when it
+  writes, so what it wrote is what the file then resolves to.

@@ -91,6 +91,22 @@ class PinCommandTest {
   }
 
   @Test
+  fun `--remove says so when a catalog pin still keeps the project pinned`() {
+    // `pin` never rewrites a catalog, so "removed" alone would be a lie the next command exposes.
+    val root = tempDir()
+    File(root, "gradle.properties").writeText("composePreview.version=1.0.5\n")
+    File(root, "gradle").mkdirs()
+    File(root, "gradle/libs.versions.toml").writeText("[versions]\ncomposePreviewCli = \"1.0.0\"\n")
+    val sink = run(listOf("--remove"), root)
+    assertEquals(null, readGradlePropertiesPin(root))
+    val err = sink.err.joinToString("\n")
+    assertTrue(err.contains("still pinned to 1.0.0"), err)
+    assertTrue(err.contains("by hand"), err)
+    // …and the report agrees rather than claiming the project is unpinned.
+    assertTrue(sink.out.joinToString("\n").contains("1.0.0"), "${sink.out}")
+  }
+
+  @Test
   fun `--json reports the resolved state`() {
     val root = tempDir()
     File(root, "gradle.properties").writeText("composePreview.version=1.0.5\n")

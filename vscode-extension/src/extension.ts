@@ -1093,8 +1093,15 @@ export async function activate(
             // exactly as before.
             const pin = resolveVersionPin(workspaceRoot);
             const pluginVersion = pin?.version ?? BUNDLED_PLUGIN_VERSION;
+            // Per-version storage directory, mirroring the CLI's
+            // `defaultInitScriptStorageDir(version)`. `globalStorageUri` is
+            // extension-wide, and the script filename is fixed — so with the
+            // pin in play two windows on differently pinned projects would
+            // materialise into the same path, and whichever activated last
+            // would silently re-point the other window's already-captured
+            // `--init-script` argument at its own version.
             const initScriptPath = materializeInitScript(
-                context.globalStorageUri.fsPath,
+                path.join(context.globalStorageUri.fsPath, pluginVersion),
                 pluginVersion,
             );
             initScriptArgs = ["--init-script", initScriptPath];

@@ -71,6 +71,21 @@ class PinCommand(
         val removed = removeGradlePropertiesPin(root, fileSystem)
         if (removed) stderr("compose-preview: removed the version pin from gradle.properties.")
         else stderr("compose-preview: no $VERSION_PIN_PROPERTY pin in gradle.properties.")
+        // Removing the gradle.properties line does not necessarily unpin the project: a catalog
+        // `[versions] composePreviewCli` entry is a pin too, and we deliberately don't rewrite
+        // catalogs. Saying "removed" and stopping there would be a lie the very next command
+        // exposes, so name what is still pinning and where.
+        val remaining =
+          resolveVersionPin(root, args = emptyList(), env = env, fileSystem = fileSystem)
+        if (remaining != null) {
+          stderr(
+            "compose-preview: still pinned to ${remaining.version} via ${remaining.source.display}. " +
+              (if (remaining.source == VersionPinSource.VERSION_CATALOG)
+                "`pin` never edits a version catalog (Renovate owns it) — remove the " +
+                  "$VERSION_PIN_CATALOG_KEY entry by hand to fully unpin."
+              else "Unset it to fully unpin.")
+          )
+        }
         report(root, json, warnSkew = false)
       }
       useCli || positional != null -> {

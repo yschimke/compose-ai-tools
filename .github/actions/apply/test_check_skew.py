@@ -181,7 +181,29 @@ class PropertiesPinDetectionTests(unittest.TestCase):
     def test_missing_file(self):
         self.assertIsNone(cs.pin_from_properties(self._workspace()))
 
-    def test_pin_outranks_catalog_and_build_scripts(self):
+    def test_bare_whitespace_separator(self):
+        # `key value` is a legal properties assignment and the CLI's
+        # Properties.load reads it, so this parser must too — otherwise the CLI
+        # injects the pin while CI reports the project unpinned.
+        ws = self._workspace()
+        Path(os.path.join(ws, "gradle.properties")).write_text(
+            "composePreview.version 1.2.3\n", encoding="utf-8"
+        )
+        self.assertEqual(cs.pin_from_properties(ws), "1.2.3")
+
+    def test_duplicate_assignments_take_the_last(self):
+        # Properties.load resolves the last assignment; so must we.
+        ws = self._workspace()
+        Path(os.path.join(ws, "gradle.properties")).write_text(
+            "composePreview.version=1.0.0\ncomposePreview.version=2.0.0\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(cs.pin_from_properties(ws), "2.0.0")
+
+    def test_declared_version_outranks_the_pin(self):
+        # Auto-inject SKIPS a module that declares the plugin, so the declared
+        # version is what that module actually applies — the guard has to reason
+        # about that one, not the pin.
         ws = self._workspace()
         Path(os.path.join(ws, "gradle.properties")).write_text(
             "composePreview.version=1.2.3\n", encoding="utf-8"
@@ -191,8 +213,15 @@ class PropertiesPinDetectionTests(unittest.TestCase):
             '[plugins]\ncp = { id = "ee.schimke.composeai.preview", version = "0.15.8" }\n',
             encoding="utf-8",
         )
-        Path(os.path.join(ws, "build.gradle.kts")).write_text(
-            'id("ee.schimke.composeai.preview") version "0.14.0"\n', encoding="utf-8"
+        self.assertEqual(
+            cs.detect_plugin_version(ws, "gradle/libs.versions.toml"), "0.15.8"
+        )
+
+    def test_pin_fills_the_auto_inject_gap(self):
+        # Nothing declared anywhere — previously None (→ `latest`); now the pin.
+        ws = self._workspace()
+        Path(os.path.join(ws, "gradle.properties")).write_text(
+            "composePreview.version=1.2.3\n", encoding="utf-8"
         )
         self.assertEqual(
             cs.detect_plugin_version(ws, "gradle/libs.versions.toml"), "1.2.3"
@@ -208,6 +237,35 @@ class PropertiesPinDetectionTests(unittest.TestCase):
         self.assertEqual(
             cs.detect_plugin_version(ws, "gradle/libs.versions.toml"), "0.15.8"
         )
+
+    def test_conflicting_declaration_and_pin_is_reported(self):
+        ws = self._workspace()
+        Path(os.path.join(ws, "gradle.properties")).write_text(
+            "composePreview.version=1.2.3\n", encoding="utf-8"
+        )
+        Path(os.path.join(ws, "build.gradle.kts")).write_text(
+            'id("ee.schimke.composeai.preview") version "0.14.0"\n', encoding="utf-8"
+        )
+        self.assertEqual(
+            cs.conflicting_pin(ws, "gradle/libs.versions.toml"), ("0.14.0", "1.2.3")
+        )
+
+    def test_agreeing_declaration_and_pin_is_not_a_conflict(self):
+        ws = self._workspace()
+        Path(os.path.join(ws, "gradle.properties")).write_text(
+            "composePreview.version=0.14.0\n", encoding="utf-8"
+        )
+        Path(os.path.join(ws, "build.gradle.kts")).write_text(
+            'id("ee.schimke.composeai.preview") version "0.14.0"\n', encoding="utf-8"
+        )
+        self.assertIsNone(cs.conflicting_pin(ws, "gradle/libs.versions.toml"))
+
+    def test_pin_alone_is_not_a_conflict(self):
+        ws = self._workspace()
+        Path(os.path.join(ws, "gradle.properties")).write_text(
+            "composePreview.version=1.2.3\n", encoding="utf-8"
+        )
+        self.assertIsNone(cs.conflicting_pin(ws, "gradle/libs.versions.toml"))
 
 
 class DetectPluginCliTests(unittest.TestCase):

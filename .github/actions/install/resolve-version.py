@@ -215,13 +215,18 @@ def catalog_version(required: bool = True) -> str | None:
 # the CLI's `VERSION_PIN_PROPERTY` and the extension's `versionPin.ts`.
 PIN_PROPERTY = "composePreview.version"
 
-# Matches a non-comment `composePreview.version = 1.2.3` / `… : 1.2.3` line.
-# `gradle.properties` is a Java properties file; a full parse would need escape
-# and continuation handling, but a version pin is a bare token on one line, and
-# a scan that only accepts that shape can't silently misread anything exotic —
-# it just doesn't find it, and we fall through to the catalog.
+# Matches a non-comment `composePreview.version` assignment, in all three forms a
+# Java properties file allows: `key=v`, `key : v`, and bare `key v`. The CLI reads
+# this file through `java.util.Properties`, which accepts all three — recognising
+# fewer of them here is exactly the cross-entrypoint skew the pin exists to
+# eliminate (the CLI would inject the pin while CI reported the project unpinned).
+# A full properties parse would also need escape and continuation handling, but a
+# version pin is a bare token on one line, so this stays a scan. Kept in lockstep
+# with `VersionPin.kt`, `versionPin.ts` and `check-skew.py`.
 _PIN_RE = re.compile(
-    r"^[ \t]*" + re.escape(PIN_PROPERTY) + r"[ \t]*[=:][ \t]*(\S+)[ \t]*$",
+    r"^[ \t]*"
+    + re.escape(PIN_PROPERTY)
+    + r"(?:[ \t]*[=:][ \t]*|[ \t]+)(\S+)[ \t]*$",
     re.MULTILINE,
 )
 
@@ -231,6 +236,9 @@ def properties_version() -> str | None:
 
     Returns None (not a failure) when the file or the key is absent — the pin
     has a documented fallback chain, and "not pinned here" is an ordinary state.
+
+    Takes the **last** assignment when the file has duplicates, matching what
+    `Properties.load` resolves on the CLI side.
     """
     path = os.environ.get("PROPERTIES_PATH") or "gradle.properties"
     try:
@@ -238,10 +246,10 @@ def properties_version() -> str | None:
             text = fh.read()
     except OSError:
         return None
-    match = _PIN_RE.search(text)
-    if not match:
+    matches = _PIN_RE.findall(text)
+    if not matches:
         return None
-    return match.group(1).strip().lstrip("v") or None
+    return matches[-1].strip().lstrip("v") or None
 
 
 def pin_version() -> str:

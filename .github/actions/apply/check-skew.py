@@ -172,8 +172,14 @@ def plugin_version_from_build_scripts(workspace: str) -> str | None:
 # and the install action's `resolve-version.py`.
 PIN_PROPERTY = "composePreview.version"
 
+# All three separators a Java properties file allows — `key=v`, `key : v`, bare
+# `key v` — because the CLI reads this file through `java.util.Properties`, which
+# accepts all three. Kept in lockstep with `VersionPin.kt`, `versionPin.ts` and
+# the install action's `resolve-version.py`.
 _PIN_RE = re.compile(
-    r"^[ \t]*" + re.escape(PIN_PROPERTY) + r"[ \t]*[=:][ \t]*(\S+)[ \t]*$",
+    r"^[ \t]*"
+    + re.escape(PIN_PROPERTY)
+    + r"(?:[ \t]*[=:][ \t]*|[ \t]+)(\S+)[ \t]*$",
     re.MULTILINE,
 )
 
@@ -183,10 +189,13 @@ def pin_from_properties(workspace: str) -> str | None:
 
     The project version pin (issue #3738): one value the CLI, the VS Code
     extension and this action all read, so the version a developer renders
-    against locally is the version CI renders against. When it is set, the CLI
-    auto-injects *that* plugin version — which makes it the most authoritative
-    answer to "which plugin will this build apply", ahead of the catalog and
-    build-script scans below.
+    against locally is the version CI renders against. It governs the plugin
+    the CLI **auto-injects** — which is what makes it a usable answer to "which
+    plugin will this build apply" for the auto-inject / zero-code project, the
+    one shape where the scans below find nothing at all.
+
+    Takes the last assignment when the file has duplicates, matching
+    `Properties.load` on the CLI side.
     """
     path = os.path.join(workspace, "gradle.properties")
     try:
@@ -194,20 +203,31 @@ def pin_from_properties(workspace: str) -> str | None:
             text = fh.read()
     except OSError:
         return None
-    match = _PIN_RE.search(text)
-    if not match:
+    matches = _PIN_RE.findall(text)
+    if not matches:
         return None
-    return match.group(1).strip().lstrip("v") or None
+    return matches[-1].strip().lstrip("v") or None
 
 
 def detect_plugin_version(workspace: str, catalog_path: str) -> str | None:
     """Best-effort applied-plugin version for [workspace].
 
-    The explicit version pin first (`gradle.properties` → `composePreview.version`,
-    which is what auto-inject actually applies), then the catalog's `[plugins]`
-    entry (the older Renovate-friendly pin), then a literal declaration in a
-    build script. ``None`` when none is found — the signal to stay silent rather
-    than guess.
+    Catalog `[plugins]` entry first, then a literal declaration in a build
+    script, then the `gradle.properties` version pin. ``None`` when none is
+    found — the signal to stay silent rather than guess.
+
+    **An explicit declaration outranks the pin, deliberately.** The pin decides
+    what auto-inject applies, but auto-inject *skips* a module that declares the
+    plugin itself, so in a project that has both, the declared version is the one
+    actually on that module's classpath — and it is what this function's two
+    consumers (`cli-version: auto` resolution and the skew guard) must reason
+    about, or the guard would certify a setup as skew-proof while the declared
+    module still failed discovery. The pin therefore fills in exactly the gap it
+    was added for: the auto-inject project, where nothing is declared anywhere
+    and this previously returned ``None`` and fell back to ``latest``.
+
+    When both exist and disagree, [conflicting_pin] surfaces it rather than
+    letting either win silently.
     """
     catalog_file = (
         catalog_path
@@ -215,10 +235,33 @@ def detect_plugin_version(workspace: str, catalog_path: str) -> str | None:
         else os.path.join(workspace, catalog_path)
     )
     return (
-        pin_from_properties(workspace)
-        or plugin_version_from_catalog(catalog_file)
+        plugin_version_from_catalog(catalog_file)
         or plugin_version_from_build_scripts(workspace)
+        or pin_from_properties(workspace)
     )
+
+
+def conflicting_pin(workspace: str, catalog_path: str) -> tuple[str, str] | None:
+    """`(declared, pinned)` when both exist and disagree, else ``None``.
+
+    A project that declares `id("…") version "X"` in a module *and* pins
+    `composePreview.version=Y` is telling us two different things: the declared
+    module renders against X, every auto-injected module against Y. Neither
+    number describes the whole build, so the useful move is to say so — the
+    resolution above stays deterministic, and the caller warns.
+    """
+    catalog_file = (
+        catalog_path
+        if os.path.isabs(catalog_path)
+        else os.path.join(workspace, catalog_path)
+    )
+    declared = plugin_version_from_catalog(
+        catalog_file
+    ) or plugin_version_from_build_scripts(workspace)
+    pinned = pin_from_properties(workspace)
+    if declared and pinned and declared != pinned:
+        return (declared, pinned)
+    return None
 
 
 _SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
@@ -280,6 +323,23 @@ def main() -> int:
         return 0
 
     workspace, catalog_path = _workspace_and_catalog()
+
+    # A declared version and a project pin that disagree describe two different
+    # builds — the declared module renders against one, every auto-injected
+    # module against the other. Neither number covers the whole build, so say so
+    # rather than let the comparison below imply the whole project is aligned.
+    # Always a warning, never fatal: it is a configuration smell, not the
+    # discovery failure this guard blocks on.
+    conflict = conflicting_pin(workspace, catalog_path)
+    if conflict:
+        declared, pinned = conflict
+        print(
+            f"::warning::compose-preview: this project declares the plugin at "
+            f"v{declared} and pins `composePreview.version={pinned}`. Modules that "
+            f"declare the plugin apply v{declared}; auto-injected modules apply "
+            f"v{pinned} (auto-inject skips declared modules). The check below "
+            f"compares against v{declared}. Align the two, or drop one."
+        )
 
     plugin_raw = detect_plugin_version(workspace, catalog_path)
     if not plugin_raw:

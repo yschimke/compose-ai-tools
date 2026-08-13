@@ -71,6 +71,29 @@ class VersionPinTest {
   }
 
   @Test
+  fun `a bare whitespace separator is a legal properties assignment`() {
+    // `key value` is legal and Properties.load reads it. The regex parsers in
+    // versionPin.ts / resolve-version.py / check-skew.py accept the same three
+    // separators — a reader that saw fewer forms than this one would report a
+    // pinned project as unpinned, which is the skew the pin exists to prevent.
+    val root = projectWith(gradleProperties = "composePreview.version 1.2.3\n")
+    assertEquals("1.2.3", resolveVersionPin(root, env = { null })?.version)
+  }
+
+  @Test
+  fun `a similarly named key is not the pin`() {
+    val root = projectWith(gradleProperties = "composePreview.versionCode=42\n")
+    assertNull(resolveVersionPin(root, env = { null }))
+  }
+
+  @Test
+  fun `duplicate assignments resolve to the last, as Properties does`() {
+    val root =
+      projectWith(gradleProperties = "composePreview.version=1.0.0\ncomposePreview.version=2.0.0\n")
+    assertEquals("2.0.0", resolveVersionPin(root, env = { null })?.version)
+  }
+
+  @Test
   fun `version catalog supplies the pin when gradle properties does not`() {
     val root =
       projectWith(
@@ -208,6 +231,41 @@ class VersionPinTest {
     assertTrue(removeGradlePropertiesPin(root))
     assertEquals(original, File(root, "gradle.properties").readText())
     assertNull(resolveVersionPin(root, env = { null }))
+  }
+
+  @Test
+  fun `re-pinning collapses duplicate assignments so the write is what resolves`() {
+    // Properties.load takes the LAST assignment, so rewriting only the first would report a new
+    // pin while the reader kept resolving the old one.
+    val root =
+      projectWith(
+        gradleProperties = "a=1\ncomposePreview.version=1.0.0\nb=2\ncomposePreview.version=1.5.0\n"
+      )
+    writeGradlePropertiesPin(root, "2.0.0")
+    val text = File(root, "gradle.properties").readText()
+    assertEquals(1, text.lines().count { it.startsWith("composePreview.version") }, text)
+    assertEquals("2.0.0", readGradlePropertiesPin(root))
+    assertTrue(text.contains("a=1") && text.contains("b=2"), text)
+  }
+
+  @Test
+  fun `re-pinning replaces a whitespace-separated assignment rather than appending`() {
+    val root = projectWith(gradleProperties = "composePreview.version 1.0.0\n")
+    writeGradlePropertiesPin(root, "2.0.0")
+    val text = File(root, "gradle.properties").readText()
+    assertEquals(1, text.lines().count { it.startsWith("composePreview.version") }, text)
+    assertEquals("2.0.0", readGradlePropertiesPin(root))
+  }
+
+  @Test
+  fun `remove drops every assignment, not just the first`() {
+    val root =
+      projectWith(
+        gradleProperties = "composePreview.version=1.0.0\na=1\ncomposePreview.version=1.5.0\n"
+      )
+    assertTrue(removeGradlePropertiesPin(root))
+    assertNull(readGradlePropertiesPin(root))
+    assertEquals("a=1\n", File(root, "gradle.properties").readText())
   }
 
   @Test

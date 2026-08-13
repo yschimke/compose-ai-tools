@@ -62,12 +62,26 @@ function normalize(raw: string | undefined): string | undefined {
 }
 
 /**
+ * Matches a `composePreview.version` assignment on an already-trimmed line.
+ *
+ * All three separators a Java properties file allows — `key=v`, `key : v`, and
+ * bare `key v` — because the CLI reads this file through `java.util.Properties`,
+ * which accepts all three. Recognising fewer forms here than the CLI does is
+ * precisely the cross-entrypoint skew this feature exists to eliminate: the CLI
+ * would inject the pin while the extension fell back to its bundled version.
+ * Kept in lockstep with `VersionPin.kt`, `resolve-version.py` and `check-skew.py`.
+ */
+const PIN_ASSIGNMENT_RE =
+    /^composePreview\.version(?:[ \t]*[=:][ \t]*|[ \t]+)(.*?)[ \t]*$/;
+
+/**
  * Reads `composePreview.version` out of `<workspaceRoot>/gradle.properties`.
  *
- * A small hand-rolled properties reader rather than a dependency: we need the
- * `key=value` and `key : value` forms and comment lines, and nothing else in a
- * `gradle.properties` pin is exotic enough to justify pulling a parser into the
- * VSIX. Unreadable file → `undefined`, never a throw.
+ * A small hand-rolled properties reader rather than a dependency: a version pin
+ * is a bare token on one line, and nothing about it is exotic enough to justify
+ * pulling a properties parser into the VSIX. Takes the **last** assignment, as
+ * `Properties.load` does, so a file with duplicates resolves the same way in
+ * both. Unreadable file → `undefined`, never a throw.
  */
 export function readGradlePropertiesPin(
     workspaceRoot: string,
@@ -81,19 +95,18 @@ export function readGradlePropertiesPin(
     } catch {
         return undefined;
     }
+    let found: string | undefined;
     for (const line of text.split(/\r?\n/)) {
         const trimmed = line.trimStart();
         if (trimmed.startsWith("#") || trimmed.startsWith("!")) {
             continue;
         }
-        const match = trimmed.match(
-            /^composePreview\.version\s*[=:]\s*(.*?)\s*$/,
-        );
+        const match = trimmed.match(PIN_ASSIGNMENT_RE);
         if (match) {
-            return normalize(match[1]);
+            found = normalize(match[1]);
         }
     }
-    return undefined;
+    return found;
 }
 
 /**

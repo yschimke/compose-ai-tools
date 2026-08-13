@@ -73,6 +73,24 @@ class PropertiesPinTests(ResolverTestCase):
     def test_missing_file_is_absent(self) -> None:
         self.assertIsNone(resolve_version.properties_version())
 
+    def test_bare_whitespace_separator(self) -> None:
+        # `key value` is a legal properties assignment that the CLI's
+        # Properties.load reads; a parser that missed it would report an
+        # actually-pinned project as unpinned — the skew this feature prevents.
+        self.write_properties("composePreview.version 1.2.3\n")
+        self.assertEqual(resolve_version.properties_version(), "1.2.3")
+
+    def test_duplicate_assignments_take_the_last(self) -> None:
+        # Properties.load resolves the last assignment; so must we.
+        self.write_properties(
+            "composePreview.version=1.0.0\ncomposePreview.version=2.0.0\n"
+        )
+        self.assertEqual(resolve_version.properties_version(), "2.0.0")
+
+    def test_a_similarly_named_key_is_not_the_pin(self) -> None:
+        self.write_properties("composePreview.versionCode=42\n")
+        self.assertIsNone(resolve_version.properties_version())
+
     def test_other_keys_are_untouched(self) -> None:
         self.write_properties(
             "org.gradle.caching=true\ncomposePreview.variant=demoDebug\n"
