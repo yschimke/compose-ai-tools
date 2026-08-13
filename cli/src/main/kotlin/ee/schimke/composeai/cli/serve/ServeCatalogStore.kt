@@ -659,6 +659,16 @@ class ServeCatalogStore(
           fetchPinnedAsset = { commit, path ->
             ServeCatalogRevision.assetUrl(repo, commit, path)?.let { fetchCatalogAsset(it) }
           },
+          // Ids are stable across publishes; the paths under them are not. So a pinned request
+          // resolves its path from the manifests AT that commit, with the tip's maps above as the
+          // fallback. Same seam again: the host names a commit and one of two declared manifest
+          // files, the store builds the URL and applies the fetch policy.
+          pinnedManifest =
+            ServePinnedManifest(
+              fetch = { commit, file ->
+                ServeCatalogRevision.manifestUrl(repo, commit, file)?.let { fetchCatalogAsset(it) }
+              }
+            ),
         )
       }
 
