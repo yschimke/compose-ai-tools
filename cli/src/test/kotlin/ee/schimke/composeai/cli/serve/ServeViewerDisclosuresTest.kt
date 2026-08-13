@@ -82,6 +82,21 @@ class ServeViewerDisclosuresTest {
   }
 
   @Test
+  fun `the fold threshold counts the component row, which is itself a render`() {
+    // Four renders — the default in the component row plus three children — is the last shape that
+    // shows inline. Five folds. Counting only the CHILDREN would have moved that line by one the
+    // moment the default was folded up into the component row, so a five-render component would
+    // have started opening where it used to fold, for no reason a reader could see.
+    val four = viewer(statePreviews(4))
+    assertTrue(four.contains("<div class=\"cp-axes\" id=\"cp-axes\">"), "four renders show: $four")
+    val five = viewer(statePreviews(5))
+    assertTrue(
+      five.contains("<div class=\"cp-axes\" id=\"cp-axes\" hidden>"),
+      "…and five fold, the component row counting as the render it is: $five",
+    )
+  }
+
+  @Test
   fun `a narrow state axis stays inline and a wide one arrives folded`() {
     val narrow = viewer(statePreviews(3))
     assertTrue(narrow.contains("<div class=\"cp-axes\" id=\"cp-axes\">"), "three states show")

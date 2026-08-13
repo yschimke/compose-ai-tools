@@ -300,7 +300,8 @@ object ServeWeb {
 
   /**
    * How many rows the viewer's component subtree shows inline before folding behind its title-bar
-   * toggle. Lower than the chip rows this replaced needed, because a tree spends a whole line per
+   * toggle — counting the component row, which is itself a render (the default one), not just its
+   * children. Lower than the chip rows this replaced needed, because a tree spends a whole line per
    * render where a chip row wrapped several onto one: four rows is about the point past which the
    * list costs more of the fold than the render it sits above.
    */
@@ -8032,7 +8033,11 @@ $rows
     // control in the title bar that names the current render, and opens on demand. Inline up to
     // [AXIS_ROWS_INLINE] rows: a two- or three-render component is a short list that reads better
     // shown than hidden behind a click.
-    val axisRows = axesTree.split("class=\"cp-tree-variant cp-tree-link\"").size - 1
+    // `+ 1` for the component row, which is itself a render — the default one. Counting only the
+    // children would make the threshold drift the moment the default was folded up into that row:
+    // a five-render component would count four and open, having counted five and folded the day
+    // before, for no reason a reader could see.
+    val axisRows = axesTree.split("class=\"cp-tree-variant cp-tree-link\"").size
     val axisOpen = axisRows <= AXIS_ROWS_INLINE
     // What the toggle says when it is closed. The subtree folds BOTH axes, so it names both the
     // axes it folded and the values they hold — a component that varies on state *and* props (RTL,
