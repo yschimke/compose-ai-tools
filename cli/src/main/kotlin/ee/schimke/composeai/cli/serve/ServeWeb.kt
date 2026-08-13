@@ -7431,18 +7431,34 @@ $rows
     revisions: CatalogRevisions = CatalogRevisions.NONE,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
-    // A pin turns every live lane off, for one reason that covers all of them: they render the
-    // catalog's *current* code. A knob edit, a declared theme, a live stream or the in-browser Wasm
-    // app would each answer a request for an old publish with today's pixels — under a URL whose
-    // entire promise is that they cannot change. The names are shadowed rather than threaded
-    // through the hundred-odd uses below so the rule holds by construction: there is no path
-    // through this function where a pinned page reads the un-pinned flag.
+    // A pin turns off every lane that would *produce* something, for one reason that covers all of
+    // them: they run the catalog's current code. A knob edit, a declared theme, a live stream, the
+    // in-browser Wasm app, the SVG export, a Remote Compose player, the inspection layers, a
+    // full-page scroll capture, the downloadable bundle — each would answer a request for an old
+    // publish with today's output, under a URL whose entire promise is that it cannot change.
+    //
+    // The line is "produced on demand" vs. "published bytes", not "interactive" vs. "static": a
+    // baked PNG and a published design reference are both files on the branch at that commit, so
+    // both pin (see `specRasterUrl` below, which takes the pin rather than being dropped). An SVG
+    // is not — it is exported by the daemon per request — so it goes, however static it looks.
+    //
+    // The names are shadowed rather than threaded through the hundred-odd uses below so the rule
+    // holds by construction: there is no path through this function where a pinned page reads the
+    // un-pinned flag.
+    val pinned = revisions.pinned
+    @Suppress("NAME_SHADOWING") val canApplyOverrides = canApplyOverrides && pinned == null
+    @Suppress("NAME_SHADOWING") val canRenderOverrides = canRenderOverrides && pinned == null
+    @Suppress("NAME_SHADOWING") val hasLiveStream = hasLiveStream && pinned == null
+    @Suppress("NAME_SHADOWING") val wasmSrc = wasmSrc?.takeIf { pinned == null }
+    @Suppress("NAME_SHADOWING") val hasSvgExport = hasSvgExport && pinned == null
+    @Suppress("NAME_SHADOWING") val hasScrollExport = hasScrollExport && pinned == null
+    @Suppress("NAME_SHADOWING") val hasRemoteComposeDoc = hasRemoteComposeDoc && pinned == null
     @Suppress("NAME_SHADOWING")
-    val canApplyOverrides = canApplyOverrides && revisions.pinned == null
+    val enabledRcPlayers = if (pinned == null) enabledRcPlayers else emptyList()
+    @Suppress("NAME_SHADOWING") val hasA11yOverlay = hasA11yOverlay && pinned == null
+    @Suppress("NAME_SHADOWING") val hasDesignAnnotations = hasDesignAnnotations && pinned == null
     @Suppress("NAME_SHADOWING")
-    val canRenderOverrides = canRenderOverrides && revisions.pinned == null
-    @Suppress("NAME_SHADOWING") val hasLiveStream = hasLiveStream && revisions.pinned == null
-    @Suppress("NAME_SHADOWING") val wasmSrc = wasmSrc?.takeIf { revisions.pinned == null }
+    val executableBundleHref = executableBundleHref?.takeIf { pinned == null }
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
@@ -7561,8 +7577,12 @@ $rows
         null -> null
         else -> "Spec"
       }
+    // Pinned, not dropped: a design reference is a published file on the delivery branch like the
+    // baked render is, so the spec lane is one of the few produced-on-demand-looking surfaces that
+    // genuinely has a historical answer. Comparing this publish's render against this publish's
+    // spec is also the comparison a pinned page is *for*.
     val specRasterUrl = designReference?.let {
-      "$basePath/reference/${WebEscaping.urlEncodeSegment(it.id)}.png$q"
+      "$basePath/reference/${WebEscaping.urlEncodeSegment(it.id)}.png${withPin(q, pinned)}"
     }
     // The focused Reference / Diff / Actual page for this exact mapping — the same link the
     // comparison grid offers, so the picker's neighbour steps from "look at the spec" to "diff it".
@@ -7574,7 +7594,9 @@ $rows
           )
           .filter { it.isNotEmpty() }
           .joinToString("&")
-      "$basePath/compare/$idSeg${querySuffix(query)}"
+      // Carries the pin, so stepping out to the focused comparison keeps the publish you were
+      // reading rather than silently landing on the live one.
+      withPin("$basePath/compare/$idSeg${querySuffix(query)}", pinned)
     }
     // The four ways to look at the render/spec pair, offered on the stage itself the moment the
     // spec lane is up. The lane used to be a flip — spec on the stage instead of the render — which

@@ -100,13 +100,18 @@ class ServePinnedRevisionTest {
     server?.stop()
   }
 
-  private fun start(): ServeHttpServer {
+  private fun start(): ServeHttpServer = startServer(fetch)
+
+  /** A server over a branch stub that overlays [branch] on the default one. */
+  private fun startWith(branch: (String) -> ByteArray?): Int = startServer(branch).port
+
+  private fun startServer(branchFetch: (String) -> ByteArray?): ServeHttpServer {
     val store =
       ServeCatalogStore(
         root = tempRoot(),
         register = { name, host -> registry.register(name, host = host, pinned = true) },
         trust = { TrustStore.EMPTY },
-        fetch = fetch,
+        fetch = branchFetch,
       )
     assertTrue(store.load(system) is ServeCatalogStore.Result.Ok)
     return ServeHttpServer(
@@ -204,13 +209,100 @@ class ServePinnedRevisionTest {
   }
 
   @Test
-  fun `a pinned viewer turns off every lane that would render today's code`() {
+  fun `a daemon-produced lane is refused under a pin rather than answered from today`() {
+    val port = start().port
+
+    // The branch publishes one product per revision: the baked PNG. Everything else on this route
+    // is made on demand from the catalog's current code, so a pin has nothing historical to serve —
+    // and answering with today's export under a URL naming an old publish is the failure the whole
+    // feature exists to prevent.
+    for (suffix in listOf(".svg", ".slots", ".a11y", ".annotations", ".rc")) {
+      val (code, _) = get("http://127.0.0.1:$port/$system/render/$previewId$suffix?at=$oldCommit")
+      assertEquals(404, code, suffix)
+    }
+  }
+
+  @Test
+  fun `a pinned viewer offers no lane whose output the daemon would make now`() {
     val port = start().port
 
     val page = text("http://127.0.0.1:$port/$system/p/$previewId?at=$oldCommit")
 
     assertTrue(page.contains("data-pinned-at=\"$oldCommit\""), page)
     assertTrue(page.contains("data-can-render-overrides=\"false\""), page)
+    // The SVG export is the one that looks static and isn't: it is produced per request, so the
+    // toggle and the download link both go while the pin is in force.
+    assertFalse(page.contains("cp-fmt-svg"), page)
+    assertFalse(page.contains("$previewId.svg"), page)
+    // The spec lane is the opposite case and stays — a design reference is a published file, so it
+    // has a real answer at that commit — but it must be *asked* for at that commit.
+    if (page.contains("/reference/$referenceId.png")) {
+      assertTrue(page.contains("/reference/$referenceId.png?at=$oldCommit"), page)
+    }
+  }
+
+  @Test
+  fun `a preview the catalog has since dropped still resolves at the revision that had it`() {
+    // A preview id present at the older commit and gone from the tip — renamed, retired, or
+    // reorganised since. It is exactly the case a permalink exists for (the link was made while it
+    // existed) and exactly the one the tip's map cannot answer: that id is not in today's catalog
+    // at all, so resolving through it is an unconditional 404 on an asset the commit really has.
+    val retiredPath = "images/button-filled-legacy/ideal__default__dark.png"
+    val retiredId = "button-filled-legacy__ideal__default__dark"
+    val retiredCatalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+        {"componentId":"Button/Filled","images":[{"path":"$retiredPath","theme":"dark"}]}]}
+      """
+        .trimIndent()
+    val retired = png(9)
+    val port = startWith { url ->
+      val old = "https://raw.githubusercontent.com/$repo/$oldCommit/"
+      when (url) {
+        "${old}catalog.json" -> retiredCatalog.encodeToByteArray()
+        "$old$retiredPath" -> retired
+        else -> fetch(url)
+      }
+    }
+
+    assertContentEquals(
+      retired,
+      bytes("http://127.0.0.1:$port/$system/render/$retiredId.png?at=$oldCommit"),
+    )
+    // …and the id is genuinely absent from the live catalog, so this is not the tip's map quietly
+    // answering: without the pinned manifest the request above has nowhere to resolve.
+    assertEquals(404, get("http://127.0.0.1:$port/$system/render/$retiredId.png").first)
+  }
+
+  @Test
+  fun `a reference raster that moved between publishes resolves at its own revision`() {
+    // A design reference carries its id and its raster path independently, so unlike a render the
+    // id can survive a path change. The tip's map then points at a path that commit never had.
+    val movedPath = "references/legacy/button.png"
+    val movedManifest =
+      """
+      {"schema":"compose-preview-references/v1","references":[{
+         "id":"$referenceId","previewId":"$previewId","label":"Figma button",
+         "raster":{"path":"$movedPath","width":2,"height":2},
+         "source":{"provider":"figma"}}]}
+      """
+        .trimIndent()
+    val moved = png(8)
+    val port = startWith { url ->
+      val old = "https://raw.githubusercontent.com/$repo/$oldCommit/"
+      when (url) {
+        "${old}references/index.json" -> movedManifest.encodeToByteArray()
+        "$old$movedPath" -> moved
+        // The path the TIP knows this reference by does not exist at that commit.
+        "${old}references/button.png" -> null
+        else -> fetch(url)
+      }
+    }
+
+    assertContentEquals(
+      moved,
+      bytes("http://127.0.0.1:$port/$system/reference/$referenceId.png?at=$oldCommit"),
+    )
   }
 
   private fun get(url: String): Pair<Int, ByteArray> =

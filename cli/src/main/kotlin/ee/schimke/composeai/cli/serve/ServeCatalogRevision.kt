@@ -97,6 +97,27 @@ object ServeCatalogRevision {
     return p
   }
 
+  /** The catalog manifest, as published on a delivery branch. */
+  const val CATALOG_FILE: String = "catalog.json"
+
+  /** The design-reference manifest, as published on a delivery branch. */
+  const val REFERENCES_FILE: String = "references/index.json"
+
+  /**
+   * URL for one of the two **manifests** a pinned read resolves paths from ([ServePinnedManifest]).
+   *
+   * Separate from [assetUrl] rather than a relaxation of it, and the separation is the safety
+   * argument: [assetUrl] takes a path out of a manifest and so must assume the string is untrusted,
+   * while this takes one of exactly two names this codebase declares. Anything else resolves to no
+   * URL, so widening the pinned lane to JSON cannot widen what it can be pointed at.
+   */
+  fun manifestUrl(repo: String?, commit: String?, file: String?): String? {
+    val r = repo?.trim()?.trim('/')?.takeIf { REPO.matches(it) } ?: return null
+    val c = normalize(commit) ?: return null
+    val f = file?.takeIf { it == CATALOG_FILE || it == REFERENCES_FILE } ?: return null
+    return "https://raw.githubusercontent.com/$r/$c/$f"
+  }
+
   /** GitHub's tree view for a pinned revision — where the sha on a banner links to. */
   fun treeUrl(repo: String?, commit: String?): String? {
     val r = repo?.trim()?.trim('/')?.takeIf { REPO.matches(it) } ?: return null

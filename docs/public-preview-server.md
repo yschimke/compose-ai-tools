@@ -252,9 +252,28 @@ The rules the lane holds to, each of which exists because its opposite would mak
 - **A comparison pins both panels.** The reference raster is republished with everything else, so
   pinning only the render would score one moment against another rather than two sides against each
   other.
-- **A pinned viewer has no live lanes.** Knobs, declared themes, the live stream and the in-browser
-  Wasm tier all render the catalog's *current* code, so they are off while a pin is in force — the
-  page is a reader of one publish.
+- **A pinned page offers nothing that is made on demand.** The line is *published bytes* vs.
+  *produced per request*, not static vs. interactive. Knobs, declared themes, the live stream, the
+  in-browser Wasm tier, the SVG export, the Remote Compose players, the inspection layers, a
+  full-page scroll capture and the downloadable bundle all run the catalog's **current** code, so a
+  pin takes them off the page — an SVG looks as static as a PNG and is not. The baked render and a
+  published **design reference** are files on the branch at that commit, so both stay and both take
+  the pin; the spec lane is therefore still there, comparing that publish's render against that
+  publish's spec.
+
+  | Live — every lane on offer | Pinned — only what the branch published |
+  | --- | --- |
+  | ![The viewer with its renderer combo, SVG toggle and Remote Compose players](images/serve-revision-live-lanes.png) | ![The same viewer pinned: the produced-on-demand lanes are gone](images/serve-revision-pinned-lanes.png) |
+
+  The lanes that have no historical answer refuse rather than fall through: `/render/<id>.svg?at=…`
+  (and the `.slots` / `.a11y` / `.annotations` / `.rc` products) is a `404` naming the reason, so a
+  hand-typed URL cannot get today's export under an old sha either.
+- **A revision resolves its paths from its own manifests.** The `catalog.json` and
+  `references/index.json` *at the pinned commit* decide where an asset lived, not the tip's map. The
+  two lanes need it for opposite reasons: a render's id is derived from its path, so a rename
+  retires the id a permalink names and today's map cannot resolve it under any path; a reference's
+  id survives a path change, so today's map resolves it confidently to a path that commit never had.
+  Both manifests are memoised per commit, and an unreadable one falls back to the tip's map.
 - **The response is `immutable`** (on a public box — a token-gated one keeps `no-store` like every
   other private response), because `(commit, path)` is immutable by construction.
 

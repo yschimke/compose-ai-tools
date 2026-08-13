@@ -4064,7 +4064,20 @@ class ServeHttpServer(
       // be invisible to whoever followed the link.
       val pinnedCommit =
         ServeCatalogRevision.normalize(call.request.queryParameters[ServeCatalogRevision.PARAM])
-      if (pinnedCommit != null && !wantSvg && !wantSlots && !wantA11y && !wantAnnotations) {
+      if (pinnedCommit != null) {
+        // The non-raster products are made on demand by the daemon — an SVG export, a slot tree,
+        // an a11y or annotation pass, a captured Remote Compose document. The branch publishes
+        // none of them per revision, so there is nothing historical to serve, and *falling through*
+        // would be the worst of the three options: `/render/<id>.svg?at=<sha>` would answer with
+        // today's export under a URL that names an old publish. Refusing says so.
+        if (wantSvg || wantSlots || wantA11y || wantAnnotations || wantRcDoc) {
+          call.respondText(
+            "only the baked render is published per revision; drop " +
+              "'${ServeCatalogRevision.PARAM}' to ask the daemon for this product",
+            status = HttpStatusCode.NotFound,
+          )
+          return@withLeasedSession
+        }
         respondPinnedAsset(
           bytes =
             catalogBundleHost(renderHost)?.let {

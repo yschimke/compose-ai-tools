@@ -149,6 +149,12 @@ class ServeBundleHost(
    * the host serves no pinned revisions ([supportsPinnedRevisions]).
    */
   private val fetchPinnedAsset: ((commit: String, path: String) -> ByteArray?)? = null,
+  /**
+   * Resolves ids to branch paths **as they were at a given commit** ([ServePinnedManifest]). Null
+   * for a host with no delivery branch; when present it takes precedence over the tip's maps below,
+   * which remain the fallback for a commit whose manifests can't be read.
+   */
+  private val pinnedManifest: ServePinnedManifest? = null,
   private val fileSystem: FileSystem = SystemFileSystem,
 ) : ServeHost {
 
@@ -587,11 +593,34 @@ class ServeBundleHost(
    * feature exists to fix, and it would be undetectable from the outside.
    */
   fun pinnedRender(commit: String, previewId: String): ByteArray? =
-    pinnedAsset(commit, bakedBranchPaths[previewId])
+    pinnedAsset(commit, branchPath(commit, previewId, bakedBranchPaths) { it.renders })
 
   /** [referenceId]'s canonical reference raster as published at [commit]. See [pinnedRender]. */
   fun pinnedReference(commit: String, referenceId: String): ByteArray? =
-    pinnedAsset(commit, referenceBranchPaths[referenceId])
+    pinnedAsset(commit, branchPath(commit, referenceId, referenceBranchPaths) { it.references })
+
+  /**
+   * Where [id]'s asset lived **at [commit]**, preferring that commit's own manifest over the tip's
+   * map.
+   *
+   * The order is the whole point: the tip's map answers a historical question with a current
+   * answer. What that costs differs by lane, and both are real:
+   * - a **render** id is *derived* from its path, so a moved file is a different id — and the id a
+   *   permalink names is then one the live catalog no longer contains at all. The tip's map cannot
+   *   resolve it under any path, so every link made before a rename 404s;
+   * - a **reference** carries its id and its raster path independently, so the id survives while
+   *   the path moves. The tip's map then resolves confidently to a path that commit never had.
+   *
+   * The tip's map stays as the fallback because it is right in the common case and costs no fetch,
+   * so a commit whose manifests can't be read degrades to the behaviour that existed before rather
+   * than to nothing.
+   */
+  private fun branchPath(
+    commit: String,
+    id: String,
+    tip: Map<String, String>,
+    select: (ServePinnedManifest.Paths) -> Map<String, String>,
+  ): String? = pinnedManifest?.forCommit(commit)?.let(select)?.get(id) ?: tip[id]
 
   /**
    * One published asset at one commit, memoised.
