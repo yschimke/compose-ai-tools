@@ -637,6 +637,107 @@ class DaemonA11yFetcherTest {
     assertEquals(emptyList(), base.findings)
   }
 
+  @Test
+  fun `a failed restore rolls back to the base's own render, not to nothing`() {
+    val projectDir = newTempFolder("module-permutation-rollback")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+    dataDir.mkdirs()
+    File(dataDir, "a11y-overlay.png").writeText("foos-own-render")
+    File(dataDir, "a11y-atf.json").writeText("""{"findings":[]}""")
+    // `--id Foo_dark` files no fresh `Foo` entry, so the narrowed merge carries the previous one
+    // forward — `annotatedPath` included. Deleting the overlay would strand that reference.
+    writeExistingReport(
+      projectDir,
+      AccessibilityEntry(
+        previewId = "Foo",
+        findings = listOf(finding("ERROR", "TextContrast", "seen earlier")),
+        annotatedPath = "data/Foo/a11y-overlay.png",
+      ),
+    )
+
+    // The permutation renders as `Foo` and overwrites its artefacts; the restoring fetch errors.
+    val factory =
+      FakeFactory(
+        payloads = emptyMap(),
+        payloadByCall = mapOf(1 to atfPayload(emptyList()), 2 to null),
+        onFetch = { _, ordinal ->
+          if (ordinal == 1) {
+            File(dataDir, "a11y-overlay.png").writeText("dark-pixels")
+            File(dataDir, "a11y-atf.json").writeText("""{"findings":[{"level":"ERROR"}]}""")
+          }
+        },
+      )
+
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f))
+          ),
+        modulePreviewIds = listOf("Foo", "Foo_dark"),
+        narrowed = true,
+      )
+
+    assertEquals(
+      "foos-own-render",
+      File(dataDir, "a11y-overlay.png").readText(),
+      "the carried-forward entry's overlay must survive the roll-back",
+    )
+    assertEquals("""{"findings":[]}""", File(dataDir, "a11y-atf.json").readText())
+    val carried = readReport(projectDir).entries.single { it.previewId == "Foo" }
+    assertEquals("data/Foo/a11y-overlay.png", carried.annotatedPath)
+    assertEquals("seen earlier", carried.findings.single().message)
+    // The hold directory is transient — it must not survive as a stray build output.
+    assertFalse(File(projectDir, "build/compose-previews/.a11y-pre-permutation/Foo").exists())
+  }
+
+  @Test
+  fun `a render that landed but did not report is still rolled back`() {
+    val projectDir = newTempFolder("module-permutation-render-no-payload")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+    dataDir.mkdirs()
+    File(dataDir, "a11y-atf.json").writeText("""{"findings":[]}""")
+
+    // A permutation render can land and its fetch still error — an unparseable ATF payload comes
+    // back as a failure after the artefacts were written. Keying the roll-back off "did a payload
+    // come back" would skip it and leave the override's data product at this preview's cache path.
+    val factory =
+      FakeFactory(
+        payloads = emptyMap(),
+        payloadByCall = mapOf(1 to null, 2 to null),
+        onFetch = { _, ordinal ->
+          if (ordinal == 1) {
+            File(dataDir, "a11y-atf.json").writeText("""{"findings":[{"level":"ERROR"}]}""")
+          }
+        },
+      )
+
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo"),
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
+          ),
+      )
+
+    assertEquals(
+      """{"findings":[]}""",
+      File(dataDir, "a11y-atf.json").readText(),
+      "the next unforced fetch must not be served the permutation's data product",
+    )
+  }
+
   // ---------- narrowed runs merge rather than clobber (#3742) ----------
 
   @Test

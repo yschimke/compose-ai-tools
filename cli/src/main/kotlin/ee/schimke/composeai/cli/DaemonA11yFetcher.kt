@@ -158,17 +158,15 @@ internal class DaemonA11yFetcher(
       for ((previewId, group) in previews.groupBy { it.previewId }) {
         val permutations = group.filter { it.isPermutation }
         val base = group.firstOrNull { !it.isPermutation }
-        // Whether any permutation of this preview actually rendered — i.e. whether the artefacts in
-        // `data/<previewId>/` describe an override rather than the declared preview. A permutation
-        // whose fetch failed never reached a render, so it left the directory exactly as it found
-        // it. See the discard below, which this gates.
-        var overridden = false
+        // Take a copy of whatever `data/<previewId>/` holds *before* any override renders as this
+        // preview, so the state can be put back if the restoring fetch below fails. Held rather
+        // than reconstructed: what's there now is this preview's own last render, which is true of
+        // it and may be what an existing report entry points at.
+        val heldArtifacts =
+          if (permutations.isEmpty()) null else holdArtifacts(projectDir, previewId)
         for (preview in permutations) {
           val payload = fetchOne(previewId, preview.entryId, fetchParams(preview))
-          if (payload != null) {
-            anyFetchOk = true
-            overridden = true
-          } else failedIds += preview.entryId
+          if (payload != null) anyFetchOk = true else failedIds += preview.entryId
           // Copy this render's artefacts out before the next fetch of the same preview replaces
           // them — but only when the fetch produced something. On a failure the directory still
           // holds the *previous* configuration's files, and snapshotting those would file another
@@ -216,30 +214,28 @@ internal class DaemonA11yFetcher(
             "could not restore the default render of '$previewId' after its permutations; " +
               "renders/$previewId.png may still hold a permutation's pixels"
           )
-          // Everything under `data/<previewId>/` is still the last permutation's, including the
-          // `a11y-atf.json` sitting at this preview's own cache path — which the *next* run's
-          // unforced fetch would happily serve as the base's findings. Delete them: absent is the
-          // one state that reads correctly here, both for this report (no overlay, no nodes) and
-          // for that next fetch, which sees a missing file and re-renders.
+          // Nothing replaced the permutation's files, so `data/<previewId>/` still describes an
+          // override — including the `a11y-atf.json` at this preview's own cache path, which the
+          // *next* run's unforced fetch would serve as the base's findings. Roll the directory
+          // back to what it held before the permutations ran.
           //
-          // Only when a permutation genuinely rendered, though. If every fetch of this preview
-          // failed — an unavailable extension fails them all alike — then nothing overwrote the
-          // directory and what's there is the base's own earlier render, which is still true of
-          // the preview and may be what a carried-forward entry points at.
-          if (overridden) discardArtifacts(projectDir, previewId)
+          // Rolling back rather than deleting matters for the entry that isn't rewritten: on
+          // `--id Foo_dark` there is no fresh `Foo` entry, so a narrowed run carries the previous
+          // one forward — `annotatedPath` and all. Deleting would leave that carried entry
+          // pointing at a file this run had just removed.
+          restoreArtifacts(projectDir, previewId, heldArtifacts)
         }
+        releaseHeldArtifacts(heldArtifacts)
         if (base == null) continue
         if (payload != null) anyFetchOk = true else failedIds += base.entryId
-        // Artefacts are only this preview's if this fetch rendered, or if no permutation ever
-        // displaced them — the same condition the discard above turns on.
-        val artefactsAreOurs = payload != null || !overridden
+        // Read unconditionally: this fetch either rendered, or the roll-back put this preview's own
+        // previous render back, so either way the directory is the declared preview's.
         entries.add(
           AccessibilityEntry(
             previewId = base.entryId,
             findings = payload?.let(::parseFindings).orEmpty(),
-            nodes = if (artefactsAreOurs) readNodes(projectDir, base.entryId) else emptyList(),
-            annotatedPath =
-              if (artefactsAreOurs) relativeOverlayPath(projectDir, base.entryId) else null,
+            nodes = readNodes(projectDir, base.entryId),
+            annotatedPath = relativeOverlayPath(projectDir, base.entryId),
           )
         )
       }
@@ -425,28 +421,77 @@ internal class DaemonA11yFetcher(
    * **missing**, so leaving a permutation's copy behind would hand the next unforced fetch of this
    * preview the override's findings. Deleting makes that next fetch a real render.
    */
-  private fun discardArtifacts(projectDir: File, previewId: String) {
+  /**
+   * Copy `data/[previewId]/`'s per-render artefacts aside, before any permutation renders as this
+   * preview, and return the directory holding them. [restoreArtifacts] puts them back.
+   *
+   * A file that was absent is recorded by its absence in the hold directory, so a roll-back deletes
+   * it — the permutation created it, and this preview had nothing there.
+   *
+   * A file that can't be copied is recorded the same way, deliberately: after a failed hold we no
+   * longer know what this preview's own artefact was, and rolling back to "absent" costs a
+   * re-render on the next fetch, while rolling back to "whatever the override left" would serve
+   * another configuration's findings under this id. The re-render is the cheaper mistake.
+   */
+  private fun holdArtifacts(projectDir: File, previewId: String): File? {
+    val dir = projectDir.resolve("build/compose-previews/data/$previewId")
+    val hold = projectDir.resolve("build/compose-previews/.a11y-pre-permutation/$previewId")
+    return try {
+      hold.deleteRecursively()
+      hold.mkdirs()
+      for (name in PER_RENDER_FILES) {
+        val source = dir.resolve(name)
+        if (source.isFile) source.copyTo(hold.resolve(name), overwrite = true)
+      }
+      hold
+    } catch (e: Exception) {
+      onLog("could not hold the pre-permutation artefacts of '$previewId': ${e.message}")
+      null
+    }
+  }
+
+  /**
+   * Put `data/[previewId]/` back to what [holdArtifacts] captured: each held file copied in, each
+   * file it did not hold deleted.
+   *
+   * With no [held] directory — the hold itself failed — every per-render file is deleted instead.
+   * The directory then reads as "nothing rendered", which the registry answers with a real
+   * re-render; leaving the override's files would answer it with the wrong configuration's cache.
+   */
+  private fun restoreArtifacts(projectDir: File, previewId: String, held: File?) {
     val dir = projectDir.resolve("build/compose-previews/data/$previewId")
     for (name in PER_RENDER_FILES) {
-      val file = dir.resolve(name)
-      // `File.delete()` returns false rather than throwing when the file is locked or the
-      // directory isn't writable, so re-check existence: a silently surviving `a11y-atf.json` is
-      // exactly what the next unforced fetch would serve as this preview's findings, which is the
-      // failure this call exists to prevent. Say so rather than assume the delete worked.
-      val gone =
-        try {
-          file.delete()
-          !file.exists()
-        } catch (e: Exception) {
-          onLog("could not discard stale $name for '$previewId': ${e.message}")
-          false
+      val target = dir.resolve(name)
+      val source = held?.resolve(name)?.takeIf { it.isFile }
+      try {
+        if (source != null) {
+          dir.mkdirs()
+          source.copyTo(target, overwrite = true)
+          continue
         }
-      if (!gone && file.exists()) {
+        target.delete()
+      } catch (e: Exception) {
+        onLog("could not roll back $name for '$previewId': ${e.message}")
+      }
+      // `File.delete()` returns false rather than throwing when the file is locked or its directory
+      // isn't writable, so check rather than assume: a surviving `a11y-atf.json` is exactly what a
+      // later unforced fetch would serve as this preview's findings.
+      if (source == null && target.exists()) {
         onLog(
-          "could not discard stale $name for '$previewId'; a later fetch of that preview may " +
-            "serve a permutation's render"
+          "could not roll back $name for '$previewId'; a later fetch of that preview may serve " +
+            "a permutation's render"
         )
       }
+    }
+  }
+
+  /** Drop the hold directory once the outcome is decided, restored from or not. */
+  private fun releaseHeldArtifacts(held: File?) {
+    if (held == null) return
+    try {
+      held.deleteRecursively()
+    } catch (e: Exception) {
+      onLog("could not clean up ${held.path}: ${e.message}")
     }
   }
 
@@ -556,8 +601,8 @@ internal class DaemonA11yFetcher(
      * Everything `AccessibilityDataProducer.writeArtifacts` puts under `data/<previewId>/` for one
      * render — the two [SNAPSHOT_FILES] plus the cached data product and the touch-target
      * derivation, neither of which this report reads but both of which describe the render that
-     * produced them. [discardArtifacts] removes the set, so nothing is left claiming to be a
-     * configuration it isn't.
+     * produced them. [holdArtifacts] / [restoreArtifacts] move the set as a unit, so the directory
+     * is never left half-describing one configuration and half another.
      */
     private val PER_RENDER_FILES =
       listOf("a11y-atf.json", "a11y-hierarchy.json", "a11y-touchTargets.json", "a11y-overlay.png")
