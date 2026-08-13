@@ -233,9 +233,11 @@ private fun printFullUsage() {
                            preview render commands; show-resources filters its output only,
                            since the resource render task is not scoped by any of the three.
                            `record` is the exception, because it needs exactly one preview:
-                           it takes the first of --id / --preview / --filter you gave and
-                           resolves that alone, in stages, erroring on an ambiguous
-                           reference. `history --preview` is a different flag again: an exact
+                           --id beats --preview beats --filter — a fixed order, not the order
+                           you typed them — and it resolves that one alone, in stages,
+                           erroring on an ambiguous reference. So `record --filter Foo --id
+                           Bar` records Bar. `history --preview` is a different flag again: an
+                           exact
                            preview-id filter over archived entries.
       --json               Emit JSON (show, list, a11y, devices)
       --brief              JSON only: drop functionName/className/sourceFile/params
