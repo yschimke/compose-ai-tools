@@ -332,6 +332,38 @@ class ServeTopLevelSiteTest {
   }
 
   @Test
+  fun `every constant route still works on a site host`() {
+    // The site gate is an ALLOWLIST of the server's own routes, so a route missing from
+    // ServeSites.RESERVED_SYSTEMS would 404 on every site hostname. Walk the whole list against a
+    // live server: no entry may be swallowed by the canonical-path redirect (308) or the
+    // neighbour refusal (404 from the interceptor rather than the handler).
+    server = newServer()
+    for (route in ServeSites.RESERVED_SYSTEMS) {
+      val (code, _, location) = get("/$route", host = siteHost)
+      assertFalse(
+        code == 308,
+        "'/$route' was mistaken for the canonical catalog prefix and redirected to $location",
+      )
+    }
+    // Spot-check the ones with a real body, which must answer identically on both hosts.
+    assertEquals(200, get("/healthz", host = siteHost).first)
+    assertEquals(200, get("/version", host = siteHost).first)
+    assertEquals(200, get("/robots.txt", host = siteHost).first)
+  }
+
+  @Test
+  fun `an unknown first segment is refused rather than resolved`() {
+    // With --revisions a raw ref like `main` is not a registered session until the generic route
+    // leases it and the factory BUILDS it, so no enumeration of existing sessions can catch it in
+    // time. The gate is an allowlist for exactly that reason: anything that is neither this site's
+    // system nor one of the server's routes is refused before it can be created.
+    server = newServer()
+    for (unknown in listOf("main", "some-ref", "not-a-catalog", "wear-m3@abc123")) {
+      assertEquals(404, get("/$unknown/", host = siteHost).first, "'/$unknown/' must be refused")
+    }
+  }
+
+  @Test
   fun `a neighbour's social card is not served through a site host`() {
     server = newServer()
     // Bake the neighbour's card the way the main host does — by rendering its landing — then take

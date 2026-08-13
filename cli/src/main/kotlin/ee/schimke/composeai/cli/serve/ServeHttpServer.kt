@@ -434,8 +434,25 @@ class ServeHttpServer(
             current.response.headers.append(HttpHeaders.Location, "/$rest$query")
             current.respond(HttpStatusCode.PermanentRedirect)
             finish()
-          } else if (isForeignSession(first)) {
-            current.respondText("not found", status = HttpStatusCode.NotFound)
+          } else if (!isRootedRoute(first)) {
+            // The site's OWN styled 404, not a bare string. This refusal is the most likely 404 on
+            // a site hostname (every mistyped path lands here), so answering it in plain text
+            // would undo the one-skin-per-hostname property for exactly the page a visitor is
+            // most likely to see.
+            val skin = current.siteSkin()
+            current.respondText(
+              ServeWeb.notFoundPage(
+                "That page was not found on this site.",
+                token,
+                isPublic,
+                version = BUNDLE_VERSION,
+                siteName = skin.first,
+                themeCss = skin.second,
+                themeStorageKey = skin.third,
+              ),
+              ContentType.Text.Html,
+              HttpStatusCode.NotFound,
+            )
             finish()
           }
         }
@@ -1013,7 +1030,10 @@ class ServeHttpServer(
    * one hostname wearing two skins. Read through [ServeSessionRegistry.peekHost], which never
    * resumes: a 404 must not wake a daemon to find out what colour to be.
    */
-  private fun RoutingContext.siteSkin(): Triple<String, String, String> {
+  private fun RoutingContext.siteSkin(): Triple<String, String, String> = call.siteSkin()
+
+  /** As [siteSkin], from the call alone — the site interceptor has no [RoutingContext]. */
+  private fun ApplicationCall.siteSkin(): Triple<String, String, String> {
     val system = siteSystem() ?: return Triple("", "", "")
     val host = sessions.peekHost(system)
     val bundle = host?.let { catalogBundleHost(it) }
@@ -1331,7 +1351,14 @@ class ServeHttpServer(
       call.request.queryParameters["from"]?.let { raw ->
         val system = raw.substringBefore('/')
         val previewId = raw.substringAfter('/', "")
+        // `?from=` is supplied by the caller, not by the selector this page renders — so narrowing
+        // the selector does not narrow this. On a site host a `from` naming a neighbour would
+        // otherwise seed the editor with that catalog's Kotlin source, which is the one-catalog
+        // contract broken by a query parameter. Ignored rather than refused: the playground still
+        // opens, on its sample.
+        val siteSystem = siteSystem()
         if (system.isBlank() || previewId.isBlank()) null
+        else if (siteSystem != null && system != siteSystem) null
         // On the IO dispatcher: an uncached seed is a synchronous GitHub GET with 10 s connect +
         // 10 s read, and running that on the routing dispatcher lets a handful of concurrent
         // handoffs during GitHub latency stall every other route on this host.
@@ -2638,44 +2665,29 @@ class ServeHttpServer(
       ?: appCatalogSessions
 
   /**
-   * Every catalog id this server publishes under a `/<system>/` path, listed or not. Used only by
-   * the top-level-site interceptor to tell "a first path segment that names a catalog" from "a
-   * first path segment that names a route" — so a site host's rewrite touches `/wear-m3/…` and
-   * leaves `/render/…`, `/assets/…` and the rest alone.
+   * Whether [first] — a request's first path segment on a **site host** — names one of the server's
+   * own routes, and so is not a session at all. Everything else 404s there.
+   *
+   * This is an **allowlist**, deliberately. The gate used to enumerate what was *foreign* — catalog
+   * ids, then registered sessions, then `<system>@<rev>` — and each review round found another way
+   * for a session to exist that the enumeration had not met: an uploaded bundle, a suspended entry
+   * that `peekHost` reports as absent, and finally a `--revisions` ref like `main`, which is not
+   * registered at all until the generic route leases it and the factory *builds* it. A list of
+   * things to refuse can only ever chase that. The set of constant first segments is closed and
+   * already written down ([ServeSites.RESERVED_SYSTEMS]), so a site host now serves its own system,
+   * serves the routes, and refuses everything else — including whatever the next session kind is.
+   *
+   * The cost is that a top-level route missing from that list 404s on a site host. That is a
+   * visible, tested failure rather than a silent leak, which is the right way round for a feature
+   * whose whole promise is that the hostname publishes one catalog. [ServeSites] also refuses a
+   * site whose id would collide with a route, so the two rules cannot disagree.
    */
-  private fun servedSystems(): Set<String> = (listedCatalogs() + unlistedCatalogs()).toSet()
-
-  /**
-   * Whether [first] — a request's first path segment on a **site host** — selects some session
-   * other than this site's own, and so must 404 rather than be served through the wrong domain.
-   *
-   * Deliberately broader than [servedSystems]: a catalog row is not the only thing the generic
-   * `/{system}/…` routes can acquire. An uploaded bundle (`--accept-bundles`, `POST /bundles/<n>`)
-   * registers a session under its own name, and a revision session is addressed as `<system>@<rev>`
-   * — both would otherwise slip past a catalog-only check and serve a neighbour on a site hostname.
-   * [ServeSessionRegistry.peekHost] answers for anything registered without resuming it, and the
-   * `@` split covers a revision of a served catalog that has not been built yet, so neither needs
-   * to be enumerated ahead of time.
-   *
-   * A constant route (`render`, `p`, `api`, `assets`, …) names no session and is not a served
-   * system, so it falls through untouched — and [ServeSites] refuses a site whose id would collide
-   * with one, so the two rules cannot disagree.
-   *
-   * Membership is [ServeSessionRegistry.isKnownSession], NOT `peekHost`. `peekHost` answers
-   * "resident right now" and returns null for a **suspended** session that is still registered and
-   * resumable — so a foreign session that had merely gone idle read as "no such session", fell
-   * through to the `/{system}/…` handler, and got resumed and served through the site hostname. The
-   * gate has to be registration, not residency, or isolation lapses on exactly the timer that makes
-   * a quiet box cheap.
-   */
-  private fun isForeignSession(first: String): Boolean {
-    // …except the visitor's own redeemed playground session, which this host minted seconds ago
-    // under an unguessable token id and is redirecting them to. It is registered, so the
-    // membership check below would call it a neighbour and 404 the last step of their own run.
-    if (playgroundRedeem?.isRedeemedSession(first) == true) return false
-    return first in servedSystems() ||
-      first.substringBefore('@') in servedSystems() ||
-      sessions.isKnownSession(first)
+  private fun isRootedRoute(first: String): Boolean {
+    // The visitor's own redeemed playground session is the one session a site host must let
+    // through: this server minted it seconds ago under an unguessable token id and is redirecting
+    // them to it, so refusing it would 404 the last step of their own run.
+    if (playgroundRedeem?.isRedeemedSession(first) == true) return true
+    return first in ServeSites.RESERVED_SYSTEMS
   }
 
   /** `?a=b` for a non-empty query string, else `""` — for rebuilding a URL we are redirecting. */
@@ -2993,7 +3005,7 @@ class ServeHttpServer(
         // main host) would otherwise be fetchable back through this domain and hand a chat client
         // that catalog's title and thumbnails under this site's name. The front door's own card
         // (system == null) is nobody's catalog and is refused here for the same reason.
-        ?.takeIf { site == null || it.system == site }
+        ?.takeIf { site == null || site in it.systems }
     if (card == null) {
       call.respondText("no such card", status = HttpStatusCode.NotFound)
       return
