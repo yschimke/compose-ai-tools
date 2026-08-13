@@ -96,6 +96,17 @@ class SharedNativeRuntimeLoaderTest {
       )
       assertTrue(first.parent.fileName.toString().startsWith("jvm-"))
       assertEquals(sharedRoot, first.parent.parent)
+
+      // The owning token must not be reachable from outside this process. The daemon's
+      // SandboxProcessPool forwards every `composeai.*` system property to the worker JVMs it
+      // spawns, and it boots its in-process slot 0 first — so a token published as a system
+      // property would be inherited by every worker, putting them all back in one shared
+      // directory and reintroducing the race this test exists to prevent.
+      val token = first.parent.fileName.toString().removePrefix("jvm-")
+      assertTrue(
+        "the sandbox-library token is exposed as a system property, which worker JVMs inherit",
+        System.getProperties().none { (_, value) -> value.toString().contains(token) },
+      )
     } finally {
       SharedNativeRuntimeLoader.deleteAtExit = previousRegistrar
       if (previousRoot == null) {

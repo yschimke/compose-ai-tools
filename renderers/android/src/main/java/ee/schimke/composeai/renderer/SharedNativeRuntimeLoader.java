@@ -60,8 +60,14 @@ public final class SharedNativeRuntimeLoader extends DefaultNativeRuntimeLoader 
   private static final String HYPHEN_DATA_DIR = "hyphen-data";
   private static final String SANDBOX_LIBRARY_DIR = "sandbox-libraries";
   private static final String PROCESS_DIR_PREFIX = "jvm-";
-  private static final String PROCESS_TOKEN_PROPERTY =
-      "composeai.robolectric.nativeRuntimeJvmToken";
+
+  /**
+   * Identifies the directory this loader stages sandbox library copies in.
+   *
+   * <p>Deliberately a static field — see {@link #sandboxLibraryDirectory} for why nothing a child
+   * process can inherit will do.
+   */
+  private static final String OWNER_TOKEN = UUID.randomUUID().toString().replace("-", "");
 
   /**
    * Registers a path for best-effort deletion at JVM exit.
@@ -318,32 +324,29 @@ public final class SharedNativeRuntimeLoader extends DefaultNativeRuntimeLoader 
    * the directory as well as its contents. A worker killed hard enough to skip shutdown hooks
    * leaves its directory behind, exactly as it already left copies behind in the shared one.
    *
-   * <p>The token identifying this JVM lives in a system property rather than a static field:
-   * Robolectric builds a classloader per sandbox, so a static is per-sandbox, while {@code System}
-   * resolves to the platform class for all of them. {@code Properties} extends {@code Hashtable},
-   * whose {@code putIfAbsent} is synchronized, so the first sandbox to ask wins and the rest join
-   * it. ({@code ProcessHandle} would be the obvious source of a process identity, but this module
-   * compiles against {@code android.jar}, which does not have it.)
+   * <p>{@link #OWNER_TOKEN} must stay a static field rather than something reachable from outside
+   * the process. A system property looks like the tidier home for it — it would give every
+   * Robolectric sandbox classloader in a JVM one shared directory instead of one apiece — but the
+   * daemon's {@code SandboxProcessPool} forwards every {@code composeai.*} property to the worker
+   * JVMs it spawns, and {@code RobolectricHost.start()} boots its in-process slot 0 (populating the
+   * property) before spawning them. Every worker would inherit the parent's token and stage its
+   * copies in the parent's directory, putting several processes back in one directory and
+   * reintroducing exactly the race above. A static cannot cross a process boundary, so a child
+   * always generates its own. The cost is a directory per sandbox classloader rather than per JVM,
+   * which is a handful of empty directories that exit deletion then removes.
    */
   private static Path sandboxLibraryDirectory(Path cacheDirectory) throws IOException {
     Path owned =
         cacheRoot()
             .resolve(SANDBOX_LIBRARY_DIR)
             .resolve(cacheDirectory.getFileName())
-            .resolve(PROCESS_DIR_PREFIX + processToken());
+            .resolve(PROCESS_DIR_PREFIX + OWNER_TOKEN);
     if (Files.isDirectory(owned)) {
       return owned;
     }
     Files.createDirectories(owned);
     deleteAtExit.accept(owned);
     return owned;
-  }
-
-  private static String processToken() {
-    Object claimed =
-        System.getProperties()
-            .putIfAbsent(PROCESS_TOKEN_PROPERTY, UUID.randomUUID().toString().replace("-", ""));
-    return claimed != null ? claimed.toString() : System.getProperty(PROCESS_TOKEN_PROPERTY);
   }
 
   private static void deleteSandboxLibraryCopy(Path copy) {
