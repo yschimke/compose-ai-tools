@@ -35,6 +35,19 @@ data class AccessibilityReport(
    * `"atf-unavailable"` constant.
    */
   val status: String? = null,
+  /**
+   * `false` when this report speaks for the module's whole preview set — always the case for a
+   * report this renderer writes, and how every report written before #3742 reads.
+   *
+   * `true` only on a CLI-produced report that covered part of a module (`compose-preview a11y --id
+   * X` fans out over the requested previews rather than all of them), where an id absent from
+   * [entries] means "not checked" rather than "checked, found nothing". Mirrored here — even though
+   * this producer never sets it — because this module is published as the decode model for
+   * `accessibility.json`, and a consumer using it with a strict kotlinx-serialization config would
+   * otherwise fail on the unknown key. `:preview-data-api`'s `A11yWireFormat.kt` is the canonical
+   * definition; keep the two in step.
+   */
+  val partial: Boolean = false,
 )
 
 @Serializable

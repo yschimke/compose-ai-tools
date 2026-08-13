@@ -271,6 +271,27 @@ class A11yCommandTest {
   }
 
   @Test
+  fun `substituting a permutation for its declared preview says so on stderr`() {
+    // The substitution is correct (it's the only id the daemon can serve) but it means the row the
+    // user asked about carries no a11y data. Silence there reads as a clean result.
+    val cmd = TestableReportCommand(listOf("--id", "Foo_dark", "--permutations", "accessibility"))
+
+    val err = captureStderr { cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))) }
+
+    assertTrue("--permutations expansion" in err, "expected a substitution warning, got: $err")
+    assertTrue("Foo" in err, "expected the declared preview named, got: $err")
+  }
+
+  @Test
+  fun `an ordinary request says nothing about permutations`() {
+    val cmd = TestableReportCommand(listOf("--id", "Foo"))
+
+    val err = captureStderr { cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))) }
+
+    assertEquals("", err.trim())
+  }
+
+  @Test
   fun `a filter under permutations fetches each base preview once`() {
     // The expanded view has four `Foo*` rows; fetching per row would pay four daemon renders for
     // an id space the daemon doesn't even have.
@@ -327,6 +348,18 @@ class A11yCommandTest {
     fun requestsFor(
       manifests: List<Pair<PreviewModule, PreviewManifest>>
     ): List<DataProductRequest> = dataProductRequests(manifests)
+  }
+
+  private fun captureStderr(block: () -> Unit): String {
+    val buffer = java.io.ByteArrayOutputStream()
+    val saved = System.err
+    System.setErr(java.io.PrintStream(buffer))
+    try {
+      block()
+    } finally {
+      System.setErr(saved)
+    }
+    return buffer.toString()
   }
 
   private fun manifest(path: String, vararg ids: String): Pair<PreviewModule, PreviewManifest> {

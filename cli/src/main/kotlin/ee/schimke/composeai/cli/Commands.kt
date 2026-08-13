@@ -868,7 +868,7 @@ abstract class Command(
 
   protected fun matchesRequest(result: PreviewResult): Boolean = matchesRequest(result.id)
 
-  private fun matchesRequest(id: String): Boolean =
+  protected fun matchesRequest(id: String): Boolean =
     previewIdMatchesRequest(id, exactId = exactId, filter = filter)
 
   /**
@@ -1779,13 +1779,37 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
   ): List<DataProductRequest> = manifests.mapNotNull { (module, manifest) ->
     val requested = requestedPreviewIds(manifest)
     if (requested.isEmpty()) null
-    else
+    else {
+      warnAboutPermutationSubstitution(module, requested)
       DataProductRequest(
         module = module,
         manifest = manifest,
         previewIds = requested,
         narrowed = requested.size < manifest.previews.size,
       )
+    }
+  }
+
+  /**
+   * Say out loud when the request only matched through `--permutations` expansion, so this run
+   * fetched the *declared* preview instead (see [requestedPreviewIds]).
+   *
+   * Data products are produced for the declared preview at its own parameters: the daemon has no
+   * per-permutation lane, and its artefacts are keyed by preview id
+   * (`build/compose-previews/data/<id>/`), so several permutations of one preview would overwrite
+   * each other's overlay and hierarchy files. What the user sees is that the permutation row they
+   * asked about carries no data — and without this line, that reads as a clean result.
+   */
+  private fun warnAboutPermutationSubstitution(module: PreviewModule, requested: List<String>) {
+    val substituted = requested.filterNot { matchesRequest(it) }
+    if (substituted.isEmpty()) return
+    System.err.println(
+      "compose-preview $extensionId: ${module.gradlePath} — the request matched " +
+        "${substituted.size} preview(s) only through --permutations expansion, so $extensionId " +
+        "data is produced for the declared preview(s) (${substituted.joinToString(", ")}) at " +
+        "their own parameters. The permutation row itself will carry no $extensionId data; " +
+        "per-permutation production is not implemented."
+    )
   }
 
   /**
