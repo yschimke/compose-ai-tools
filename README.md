@@ -515,6 +515,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-connecting/dark](renders/serve-viewer-connecting.dark.png) |
 | `light` | ![serve-viewer-connecting/light](renders/serve-viewer-connecting.light.png) |
 
+## serve-viewer-cross-product
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-cross-product/dark](renders/serve-viewer-cross-product.dark.png) |
+| `light` | ![serve-viewer-cross-product/light](renders/serve-viewer-cross-product.light.png) |
+
+## serve-viewer-cross-product-subtree-open
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-cross-product-subtree-open/dark](renders/serve-viewer-cross-product-subtree-open.dark.png) |
+| `light` | ![serve-viewer-cross-product-subtree-open/light](renders/serve-viewer-cross-product-subtree-open.light.png) |
+
 ## serve-viewer-exploded
 
 | Theme | Capture |
