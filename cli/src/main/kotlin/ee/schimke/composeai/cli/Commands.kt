@@ -1736,6 +1736,13 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
    * per-preview daemon render instead of the module's full set (issue #3742). A module none of
    * whose previews the request selects never becomes a request at all.
    *
+   * [consumerPreviewIds] is every id a *consumer* of the sidecar may look up — the manifest
+   * expanded through [PreviewPermutationsCli], which is the id space `PreviewResult`s carry and so
+   * the one the extension renderers annotate against. Coverage is measured against this, not
+   * against [previewIds]: a `--permutations accessibility` run can produce data for every declared
+   * preview and still leave `Foo_dark` unaddressed, and a report that called itself complete there
+   * would let the renderer synthesise a clean row for a permutation nobody rendered.
+   *
    * [narrowed] is true exactly when [previewIds] is a strict subset of the module's previews, i.e.
    * when whatever this hook writes covers only part of the module. The sidecars are *per-module*
    * reports, so a narrowed run that writes one wholesale discards the findings for previews the
@@ -1746,6 +1753,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
     val module: PreviewModule,
     val manifest: PreviewManifest,
     val previewIds: List<String>,
+    val consumerPreviewIds: List<String>,
     val narrowed: Boolean,
   )
 
@@ -1785,6 +1793,8 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
         module = module,
         manifest = manifest,
         previewIds = requested,
+        consumerPreviewIds =
+          PreviewPermutationsCli.expand(manifest.previews, permutations).map { it.id },
         narrowed = requested.size < manifest.previews.size,
       )
     }
@@ -1956,7 +1966,7 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
     }
     val fetcher = DaemonA11yFetcher(onLog = { System.err.println("[daemon a11y] $it") })
     for (request in requests) {
-      val (module, manifest, previewIds, narrowed) = request
+      val (module, manifest, previewIds, consumerPreviewIds, narrowed) = request
       attemptedAnyModule = true
       if (verbose && narrowed) {
         System.err.println(
@@ -1974,7 +1984,9 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
           // A narrowed run only speaks for the previews it fetched, so the fetcher carries the
           // rest of the module's report forward and marks what it still doesn't cover as partial
           // rather than publishing a module-wide report full of silent gaps (issue #3742).
-          modulePreviewIds = manifest.previews.map { it.id },
+          // Coverage is measured in the *consumer's* id space so a permutation the daemon never
+          // addressed counts as uncovered rather than as a preview that came back clean.
+          modulePreviewIds = consumerPreviewIds,
         )
       when (outcome) {
         is DaemonA11yFetcher.Outcome.Ok -> {

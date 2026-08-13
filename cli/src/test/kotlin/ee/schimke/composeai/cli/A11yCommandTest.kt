@@ -271,6 +271,32 @@ class A11yCommandTest {
   }
 
   @Test
+  fun `coverage is measured against the ids a consumer will look up`() {
+    // The trap: a one-preview module where the request substitutes to the only declared preview.
+    // Measured against the manifest, the report covers everything and would call itself complete —
+    // and `A11yReportRenderer` would then synthesise a clean row for `Foo_dark`, the exact variant
+    // nobody rendered. Coverage has to be measured in the id space the results carry.
+    val cmd = TestableReportCommand(listOf("--id", "Foo_dark", "--permutations", "accessibility"))
+
+    val request = cmd.requestsFor(listOf(manifest("app", "Foo"))).single()
+
+    assertEquals(listOf("Foo"), request.previewIds)
+    assertEquals(
+      listOf("Foo", "Foo_dark", "Foo_rtl", "Foo_fontscale-2x"),
+      request.consumerPreviewIds,
+    )
+  }
+
+  @Test
+  fun `without permutations the two id spaces are the same`() {
+    val cmd = TestableReportCommand(emptyList())
+
+    val request = cmd.requestsFor(listOf(manifest("app", "Foo", "Bar"))).single()
+
+    assertEquals(request.previewIds, request.consumerPreviewIds)
+  }
+
+  @Test
   fun `substituting a permutation for its declared preview says so on stderr`() {
     // The substitution is correct (it's the only id the daemon can serve) but it means the row the
     // user asked about carries no a11y data. Silence there reads as a clean result.

@@ -327,6 +327,60 @@ class DaemonA11yFetcherTest {
   }
 
   @Test
+  fun `a failed refetch keeps what the last run found`() {
+    val projectDir = newTempFolder("module-refetch-fails")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    writeExistingReport(
+      projectDir,
+      entry("AlphaPreview", finding("ERROR", "TouchTargetSize", "observed")),
+      entry("BetaPreview"),
+    )
+
+    // Alpha is requested again and its fetch errors; Gamma succeeds, so the run as a whole is
+    // "available" and stamps no status. Letting Alpha's empty entry win would delete a real
+    // finding and republish the preview as checked-and-clean in the same move.
+    DaemonA11yFetcher(
+        factory =
+          FakeFactory(mapOf("AlphaPreview" to null, "GammaPreview" to atfPayload(emptyList())))
+      )
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview", "GammaPreview"),
+        modulePreviewIds = listOf("AlphaPreview", "BetaPreview", "GammaPreview"),
+      )
+
+    val report = readReport(projectDir)
+    assertNull(report.status, "one fetch succeeded, so the run is not unavailable")
+    assertEquals(
+      "observed",
+      report.entries.single { it.previewId == "AlphaPreview" }.findings.single().message,
+    )
+  }
+
+  @Test
+  fun `a failed first fetch still records the attempt`() {
+    val projectDir = newTempFolder("module-first-fetch-fails")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    // Nothing on disk to protect, so #1453's "the preview was attempted" entry still lands.
+    DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to null)))
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+      )
+
+    val report = readReport(projectDir)
+    assertEquals(listOf("AlphaPreview"), report.entries.map { it.previewId })
+    assertEquals(A11Y_REPORT_STATUS_ATF_UNAVAILABLE, report.status)
+  }
+
+  @Test
   fun `hierarchy nodes are not proof that ATF ran`() {
     val projectDir = newTempFolder("module-merge-nodes")
     File(projectDir, "build/compose-previews").mkdirs()

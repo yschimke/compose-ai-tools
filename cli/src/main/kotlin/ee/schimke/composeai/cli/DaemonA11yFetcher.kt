@@ -107,6 +107,10 @@ internal class DaemonA11yFetcher(
         onLog("extensions/enable for 'a11y' failed: ${e.message}")
       }
       val entries = mutableListOf<AccessibilityEntry>()
+      // Ids whose `a11y/atf` fetch produced nothing this run. They still get an entry — a full run
+      // has to show that the preview was attempted (#1453) — but that entry is not an observation,
+      // so it must not overwrite what a previous run actually found. See [mergeEntries].
+      val failedIds = mutableSetOf<String>()
       var anyFetchOk = false
       for (previewId in previewIds) {
         val payload =
@@ -126,7 +130,7 @@ internal class DaemonA11yFetcher(
             onLog("a11y fetch for '$previewId' transport error: ${e.message}")
             null
           }
-        if (payload != null) anyFetchOk = true
+        if (payload != null) anyFetchOk = true else failedIds += previewId
         val findings = payload?.let(::parseFindings).orEmpty()
         entries.add(
           AccessibilityEntry(
@@ -152,6 +156,7 @@ internal class DaemonA11yFetcher(
           status = status,
           fetchedIds = previewIds,
           modulePreviewIds = modulePreviewIds,
+          failedIds = failedIds,
         )
       Outcome.Ok(reportFile = reportFile, entryCount = entries.size, atfAvailable = atfAvailable)
     }
@@ -188,12 +193,13 @@ internal class DaemonA11yFetcher(
     status: String?,
     fetchedIds: List<String>,
     modulePreviewIds: List<String>,
+    failedIds: Set<String> = emptySet(),
   ): File {
     val reportFile = projectDir.resolve("build/compose-previews/accessibility.json")
     reportFile.parentFile?.mkdirs()
     val narrowed = !fetchedIds.containsAll(modulePreviewIds)
     val existing = if (narrowed) readExistingReport(reportFile) else null
-    val merged = mergeEntries(carryForward(existing), entries)
+    val merged = mergeEntries(carryForward(existing), entries, failedIds)
     val covered = merged.map { it.previewId }.toSet()
     val report =
       AccessibilityReport(
@@ -253,10 +259,17 @@ internal class DaemonA11yFetcher(
    * [fresh] layered over [existing], keyed by `previewId`: a preview this run fetched takes the new
    * entry, one it didn't keeps the old, and each id appears once. Existing order is preserved (new
    * ids append) so consecutive narrowed runs produce a stable file rather than reshuffling it.
+   *
+   * An id in [failedIds] is the exception: its fresh entry records a fetch that produced nothing,
+   * so letting it win would delete findings a previous run really observed — and, if some *other*
+   * preview in the same run succeeded, republish the deleted one as checked-and-clean under this
+   * run's null status. Those entries only land where there is nothing to keep, which is what makes
+   * a full run still show every attempted preview.
    */
   private fun mergeEntries(
     existing: List<AccessibilityEntry>,
     fresh: List<AccessibilityEntry>,
+    failedIds: Set<String>,
   ): List<AccessibilityEntry> {
     if (existing.isEmpty()) return fresh
     val freshById = fresh.associateBy { it.previewId }
@@ -264,7 +277,8 @@ internal class DaemonA11yFetcher(
     val out = mutableListOf<AccessibilityEntry>()
     for (entry in existing) {
       if (!emitted.add(entry.previewId)) continue
-      out += freshById[entry.previewId] ?: entry
+      val replacement = freshById[entry.previewId]?.takeIf { it.previewId !in failedIds }
+      out += replacement ?: entry
     }
     for (entry in fresh) {
       if (emitted.add(entry.previewId)) out += entry
