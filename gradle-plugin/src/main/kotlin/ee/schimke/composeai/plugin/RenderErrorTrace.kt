@@ -19,6 +19,7 @@ package ee.schimke.composeai.plugin
 internal object RenderErrorTrace {
 
   private const val CAUSED_BY_PREFIX = "Caused by:"
+  private const val SUPPRESSED_PREFIX = "Suppressed:"
 
   /**
    * `at [<module>/]<class>.<method>(<file>:<line>)`. The optional leading group swallows the module
@@ -30,10 +31,17 @@ internal object RenderErrorTrace {
   /** One `Caused by:` entry. */
   data class Cause(val exception: String, val message: String)
 
-  /** Every `Caused by:` entry of [stackTrace], outermost cause first. */
+  /**
+   * Every `Caused by:` entry of [stackTrace]'s **primary** chain, outermost cause first.
+   *
+   * `Suppressed:` branches are excluded. A suppressed throwable that has a cause of its own — the
+   * ordinary shape for a `use {}` body that threw and then failed to close — is printed by
+   * `printStackTrace()` as an *indented* `Caused by:`, so trimming every line first made it
+   * indistinguishable from the real chain and, being printed last, it won the `lastOrNull()` that
+   * picks the root cause. See [primaryLines].
+   */
   fun causeChain(stackTrace: String): List<Cause> =
-    stackTrace
-      .lineSequence()
+    primaryLines(stackTrace)
       .map { it.trim() }
       .filter { it.startsWith(CAUSED_BY_PREFIX) }
       .map { header ->
@@ -76,10 +84,45 @@ internal object RenderErrorTrace {
     return null
   }
 
-  /** The throwable sections of a printed trace: outermost first, then one per `Caused by:`. */
+  /**
+   * [stackTrace]'s lines with every `Suppressed:` branch removed, indentation preserved.
+   *
+   * `printStackTrace()` nests by indentation and nothing else: a suppressed throwable's caption,
+   * frames, **and its own `Caused by:` chain** are printed one tab deeper than the throwable that
+   * suppressed it (`printEnclosedStackTrace` passes `prefix + "\t"` for suppressed and the
+   * unchanged `prefix` for causes), so a block that starts at indent *n* runs until the first
+   * non-blank line indented less than *n*. Mirrors `MissingRenderReport.primaryTraceLines` in
+   * `:cli`.
+   */
+  private fun primaryLines(stackTrace: String): List<String> {
+    val out = mutableListOf<String>()
+    var suppressedIndent: Int? = null
+    for (line in stackTrace.lineSequence()) {
+      if (line.isBlank()) {
+        if (suppressedIndent == null) out += line
+        continue
+      }
+      val indent = line.takeWhile { it == ' ' || it == '\t' }.length
+      suppressedIndent?.let { if (indent < it) suppressedIndent = null }
+      if (line.trimStart().startsWith(SUPPRESSED_PREFIX)) {
+        // An outer block's bound wins: a suppressed-of-a-suppressed stays inside the outer one.
+        suppressedIndent = minOf(suppressedIndent ?: indent, indent)
+        continue
+      }
+      if (suppressedIndent != null) continue
+      out += line
+    }
+    return out
+  }
+
+  /**
+   * The throwable sections of a printed trace: outermost first, then one per `Caused by:`.
+   * `Suppressed:` branches are dropped (see [primaryLines]) so the frame this picks belongs to the
+   * failure the message names.
+   */
   private fun sections(stackTrace: String): List<List<String>> {
     val out = mutableListOf<MutableList<String>>(mutableListOf())
-    for (line in stackTrace.lineSequence()) {
+    for (line in primaryLines(stackTrace)) {
       if (line.trim().startsWith(CAUSED_BY_PREFIX)) out += mutableListOf<String>()
       out.last() += line
     }

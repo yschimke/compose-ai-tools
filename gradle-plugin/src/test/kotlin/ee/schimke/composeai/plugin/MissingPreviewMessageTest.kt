@@ -379,4 +379,47 @@ class MissingPreviewMessageTest {
       ComposePreviewTasks.renderErrorInsight(reflectiveWrapperSidecar, "zz.other.PreviewsKt")
     assertThat(unrelated.frame?.file).isEqualTo("KeyboardDataProduct.kt")
   }
+
+  /**
+   * A `use {}` body that threw and then failed to close. `printStackTrace()` prints the suppressed
+   * throwable's own `Caused by:` indented under it and *after* the primary chain's deepest cause —
+   * verbatim JDK output shape (`Throwable.printEnclosedStackTrace`).
+   */
+  private val suppressedTrace =
+    """
+    java.lang.reflect.InvocationTargetException
+    	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+    Caused by: java.lang.IllegalStateException: body failed
+    	at com.example.wear.WearAppKt.WearApp(WearApp.kt:31)
+    Caused by: java.io.IOException: disk gone
+    	at com.example.wear.ambient.AmbientAwareActivity.rememberAmbientState(AmbientAwareActivity.kt:76)
+    	Suppressed: java.lang.RuntimeException: close failed
+    		at com.example.wear.io.Closer.close(Closer.kt:12)
+    	Caused by: java.net.SocketException: connection reset by peer
+    		at com.example.wear.io.Socket.reset(Socket.kt:99)
+    """
+      .trimIndent()
+
+  @Test
+  fun `a suppressed exception's own cause never becomes the root cause`() {
+    // Trimming every line before matching made the indented `Caused by:` of the suppressed close
+    // failure indistinguishable from the primary chain — and, printed last, it won `lastOrNull()`.
+    assertThat(RenderErrorTrace.causeChain(suppressedTrace).map { it.exception })
+      .containsExactly("java.lang.IllegalStateException", "java.io.IOException")
+      .inOrder()
+    assertThat(RenderErrorTrace.rootCause(suppressedTrace)?.exception)
+      .isEqualTo("java.io.IOException")
+    assertThat(RenderErrorTrace.rootCause(suppressedTrace)?.message).isEqualTo("disk gone")
+  }
+
+  @Test
+  fun `the preferred frame never comes from a suppressed branch`() {
+    // The deepest *primary* section is the IOException's; the suppressed branch's frames live in
+    // `com.example.wear.io` and would otherwise win the reversed section scan by being printed
+    // last.
+    val frame = RenderErrorTrace.preferredAppFrame(suppressedTrace, "com.example.wear.WearAppKt")
+
+    assertThat(frame?.file).isEqualTo("AmbientAwareActivity.kt")
+    assertThat(frame?.line).isEqualTo(76)
+  }
 }
