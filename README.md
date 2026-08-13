@@ -466,6 +466,27 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer/dark](renders/serve-viewer.dark.png) |
 | `light` | ![serve-viewer/light](renders/serve-viewer.light.png) |
 
+## serve-viewer-axes-folded
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-axes-folded/dark](renders/serve-viewer-axes-folded.dark.png) |
+| `light` | ![serve-viewer-axes-folded/light](renders/serve-viewer-axes-folded.light.png) |
+
+## serve-viewer-axes-folded-disclosures-open
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-axes-folded-disclosures-open/dark](renders/serve-viewer-axes-folded-disclosures-open.dark.png) |
+| `light` | ![serve-viewer-axes-folded-disclosures-open/light](renders/serve-viewer-axes-folded-disclosures-open.light.png) |
+
+## serve-viewer-axes-folded-nav-closed
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-axes-folded-nav-closed/dark](renders/serve-viewer-axes-folded-nav-closed.dark.png) |
+| `light` | ![serve-viewer-axes-folded-nav-closed/light](renders/serve-viewer-axes-folded-nav-closed.light.png) |
+
 ## serve-viewer-catalog-knobs
 
 | Theme | Capture |
