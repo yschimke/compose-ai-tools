@@ -452,6 +452,13 @@ abstract class Command(
     val results: List<PreviewResult>,
     val discoveredPreviewCount: Int,
     /**
+     * Per-task dispositions captured from the Tooling API during this invocation. Carried on the
+     * outcome because reporting has to distinguish "the renderer ran and the preview threw" from
+     * "the renderer was skipped and that `.error.json` is last week's" — see
+     * [renderTaskEvidenceOf].
+     */
+    val taskOutcomes: Map<String, GradleTaskOutcome> = emptyMap(),
+    /**
      * Preview ids this run rendered, or `null` when it rendered everything the modules declare.
      * Non-null means the Gradle drive was narrowed to the `--id` / `--filter` request
      * (issue #3730), so the previews outside it carry whatever the *previous* run left on disk —
@@ -633,6 +640,7 @@ abstract class Command(
       results = results,
       discoveredPreviewCount =
         raw.discoveredPreviewCount.takeIf { it > 0 } ?: manifests.sumOf { it.second.previews.size },
+      taskOutcomes = raw.taskOutcomes,
       renderedIds = raw.renderedIds,
     )
   }
@@ -1372,11 +1380,15 @@ class ShowCommand(args: List<String>) : Command(args) {
       // List the offenders so the CI log is self-diagnosing — no need to download the
       // `composePreviewRender-reports` artifact just to learn *which* previews failed — and read
       // the renderer's `.error.json` sidecar beside each one so a preview that rendered and *threw*
-      // reports its exception instead of the NO-SOURCE build-wiring guess (issue #3741).
+      // reports its exception instead of the NO-SOURCE build-wiring guess (issue #3741). The task
+      // outcomes go along so a sidecar left by an earlier run isn't quoted as this run's finding
+      // when `composePreviewRender` was skipped (NO-SOURCE) this time.
       System.err.println(
-        formatMissingRenderReport(
-          collectMissingRenders(missing, outcome.manifests),
+        missingRenderReport(
+          missing = missing,
+          manifests = outcome.manifests,
           total = filtered.size,
+          taskOutcomes = outcome.taskOutcomes,
           prefix = prefix,
         )
       )
@@ -1572,7 +1584,22 @@ class RenderCommand(args: List<String>) : Command(args) {
         }
         val one = filtered.single()
         if (one.pngPath == null) {
-          System.err.println("Render produced no PNG for: ${one.id}")
+          // This branch used to exit with a bare "Render produced no PNG", throwing away the very
+          // sidecar issue #3741 exists to surface — so it goes through the same report `show` and
+          // the no-`--output` path below print. `missing` is empty only when the absent PNG is by
+          // design (an XR_SUBSPACE preview, an `optional` capture); `--output` still can't produce
+          // the file, so say so plainly. No policy prefix here: `--missing-renders warn` opts the
+          // *gate* down, and this exit is `--output` failing to deliver the file it was asked for.
+          System.err.println(
+            if (missing.isEmpty()) "Render produced no PNG for: ${one.id}"
+            else
+              missingRenderReport(
+                missing = missing,
+                manifests = manifests,
+                total = filtered.size,
+                taskOutcomes = gradle.lastTaskOutcomes(),
+              )
+          )
           exitProcess(2)
         }
         File(one.pngPath).copyTo(File(output), overwrite = true)
@@ -1587,11 +1614,14 @@ class RenderCommand(args: List<String>) : Command(args) {
           val prefix =
             if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
           // Same report `show` prints: the `.error.json` sidecar beside each would-be output tells
-          // "the preview threw" apart from "the render task never ran" (issue #3741).
+          // "the preview threw" apart from "the render task never ran" (issue #3741), and the task
+          // outcomes keep a sidecar left by an earlier run from being quoted as this run's finding.
           System.err.println(
-            formatMissingRenderReport(
-              collectMissingRenders(missing, manifests),
+            missingRenderReport(
+              missing = missing,
+              manifests = manifests,
               total = filtered.size,
+              taskOutcomes = gradle.lastTaskOutcomes(),
               prefix = prefix,
             )
           )
