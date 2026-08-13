@@ -165,11 +165,12 @@ def select_variants(
       findings would falsely imply they were (same reasoning as the Tile
       exclusion above). See issue #3742.
 
-    ``unchecked``, when given, collects the previewIds dropped by that last
-    rule: previews this manifest still declares but this run never looked
-    at. The caller records them so `comment` can tell them apart from
-    previews that are absent because they were *deleted* — those really are
-    resolved findings and must still be reported.
+    ``unchecked``, when given, collects every previewId this manifest still
+    declares that the run never looked at — including a variant whose
+    *sibling* was checked, since the baseline may have selected the sibling
+    (issue #3764). The caller records them so `comment` can tell them apart
+    from previews that are absent because they were *deleted* — those really
+    are resolved findings and must still be reported.
     """
     module = manifest["module"]
     by_fn: dict[str, list[dict]] = {}
@@ -191,20 +192,15 @@ def select_variants(
         candidates = (
             [p for p in group if p["id"] in a11y_by_id] if partial else group
         )
+        # Every declared variant this run didn't look at, not just the ones
+        # whose whole function went unchecked. A baseline row can name a
+        # *sibling* of the variant checked here — `Foo_large_round` outranks
+        # `Foo_small_round`, so a run narrowed to the small one leaves the
+        # large one absent from the current keys — and without recording it,
+        # `comment` reads that absence as a fixed finding (issue #3764).
+        if partial and unchecked is not None:
+            unchecked.extend(p["id"] for p in group if p["id"] not in a11y_by_id)
         if not candidates:
-            # Still declared, just never checked. Record the id the baseline
-            # would have carried for this function so the caller can exclude
-            # it from "resolved" without excluding genuine deletions.
-            if unchecked is not None:
-                unchecked.append(
-                    min(
-                        group,
-                        key=lambda p: (
-                            device_priority((p.get("params") or {}).get("device")),
-                            p["id"],
-                        ),
-                    )["id"]
-                )
             continue
         chosen = min(
             candidates,

@@ -222,6 +222,29 @@ class SelectVariantsTest(unittest.TestCase):
         self.assertEqual([r["previewId"] for r in rows], ["x.Checked"])
         self.assertEqual(unchecked, ["x.Skipped"])
 
+    def test_partial_report_records_an_unchecked_sibling_variant(self):
+        # `Foo_large_round` outranks `Foo_small_round`, so a baseline row for
+        # this function names the large one. A run narrowed to the small one
+        # leaves the large one unchecked — and if that isn't recorded, the
+        # comment step reads its absence as a resolved finding (#3764).
+        manifest = {
+            "module": "sample-wear",
+            "previews": [
+                _preview(id="x.Foo_large_round", function="Foo",
+                         render="large.png", device="id:wearos_large_round"),
+                _preview(id="x.Foo_small_round", function="Foo",
+                         render="small.png", device="id:wearos_small_round"),
+            ],
+        }
+        a11y_by_id = {"x.Foo_small_round": {"previewId": "x.Foo_small_round",
+                                            "findings": []}}
+
+        unchecked: list[str] = []
+        rows = ar.select_variants(manifest, a11y_by_id, True, unchecked)
+
+        self.assertEqual([r["previewId"] for r in rows], ["x.Foo_small_round"])
+        self.assertEqual(unchecked, ["x.Foo_large_round"])
+
     def test_complete_report_reports_nothing_as_unchecked(self):
         manifest = {
             "module": "sample",
@@ -821,6 +844,23 @@ class CommentTest(unittest.TestCase):
             [survivor],
             baseline_entries=[baseline, survivor],
             unchecked_previews=[{"module": "sample-wear", "previewId": "x.Gone"}],
+        )
+        self.assertNotIn("Resolved", body)
+
+    def test_unchecked_sibling_variant_is_not_reported_as_resolved(self):
+        # End of the same path as the select_variants test above: the baseline
+        # carried a finding on the variant this run never checked.
+        baseline = self._entry(
+            function="Foo", preview_id="x.Foo_large_round",
+            findings=[_finding(level="ERROR")],
+        )
+        current = self._entry(function="Foo", preview_id="x.Foo_small_round")
+        body = self._run_comment(
+            [current],
+            baseline_entries=[baseline],
+            unchecked_previews=[
+                {"module": "sample-wear", "previewId": "x.Foo_large_round"}
+            ],
         )
         self.assertNotIn("Resolved", body)
 
