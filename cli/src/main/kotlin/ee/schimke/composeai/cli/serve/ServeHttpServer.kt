@@ -2635,15 +2635,22 @@ class ServeHttpServer(
    * A constant route (`render`, `p`, `api`, `assets`, …) names no session and is not a served
    * system, so it falls through untouched — and [ServeSites] refuses a site whose id would collide
    * with one, so the two rules cannot disagree.
+   *
+   * Membership is [ServeSessionRegistry.isKnownSession], NOT `peekHost`. `peekHost` answers
+   * "resident right now" and returns null for a **suspended** session that is still registered and
+   * resumable — so a foreign session that had merely gone idle read as "no such session", fell
+   * through to the `/{system}/…` handler, and got resumed and served through the site hostname. The
+   * gate has to be registration, not residency, or isolation lapses on exactly the timer that makes
+   * a quiet box cheap.
    */
   private fun isForeignSession(first: String): Boolean {
     // …except the visitor's own redeemed playground session, which this host minted seconds ago
     // under an unguessable token id and is redirecting them to. It is registered, so the
-    // peekHost check below would call it a neighbour and 404 the last step of their own run.
+    // membership check below would call it a neighbour and 404 the last step of their own run.
     if (playgroundRedeem?.isRedeemedSession(first) == true) return false
     return first in servedSystems() ||
       first.substringBefore('@') in servedSystems() ||
-      sessions.peekHost(first) != null
+      sessions.isKnownSession(first)
   }
 
   /** `?a=b` for a non-empty query string, else `""` — for rebuilding a URL we are redirecting. */
@@ -3294,7 +3301,10 @@ class ServeHttpServer(
      */
     val knownSessions: Int =
       if (onlySystem == null) sessions.activeCount()
-      else if (sessions.peekHost(onlySystem) != null) 1 else 0
+      // Registration, not residency: `peekHost` is null for a suspended-but-registered catalog, so
+      // reading it here reported `known: 0` beside an available catalog every time the site's
+      // daemon went idle — a per-site monitor would see its session vanish on a timer.
+      else if (sessions.isKnownSession(onlySystem)) 1 else 0
 
     /** The playground's offered catalogs, narrowed to what this view is allowed to name. */
     fun offeredCatalogs(offered: List<String>): List<String> =

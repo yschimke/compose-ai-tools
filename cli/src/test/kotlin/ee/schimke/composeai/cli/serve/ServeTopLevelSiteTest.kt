@@ -307,6 +307,31 @@ class ServeTopLevelSiteTest {
   }
 
   @Test
+  fun `a suspended session still counts as known to its site`() {
+    // `peekHost` answers "resident right now" and goes null for a session that has been suspended
+    // while its registry entry stays, registered and resumable. Both the site's status count and
+    // the foreign-session gate read membership now, not residency — reading residency reported
+    // `known: 0` beside an available catalog, and let an idle neighbour fall through the gate to
+    // the `/{system}/…` handler that would resume and serve it.
+    server = newServer()
+    // Re-register the site's catalog as known-but-not-resident: the shape a suspended session has.
+    registry.register(
+      "compose-m3",
+      state =
+        ServeSessionState(
+          descriptor = File("daemon-launch.json"),
+          workspaceRoot = File("."),
+          workspaceName = "w",
+          previews = emptyList(),
+          label = "compose-m3",
+        ),
+    )
+    val (code, body, _) = get("/status.json", host = siteHost)
+    assertEquals(200, code)
+    assertTrue(body.contains("\"known\":1"), "a suspended catalog has not disappeared: $body")
+  }
+
+  @Test
   fun `status aggregates are scoped, not just the catalog list`() {
     server = newServer()
     val (_, body, _) = get("/status.json", host = siteHost)

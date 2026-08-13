@@ -137,10 +137,13 @@ themselves. Serving a catalog on ten hostnames costs what serving it on one does
 name a catalog the server already serves — one that names anything else is dropped at startup with a
 warning rather than 404ing a whole hostname silently.
 
-Two prerequisites live outside this config: DNS for the name has to point at the box, and the
-reverse proxy in front has to route it here with a certificate (Caddy preserves `Host` and sets
-`X-Forwarded-Host`, both of which the site lookup reads). Sites are read at startup, so a
-`catalogs.json` edit needs a restart — the additive `/admin/catalogs` reconcile doesn't carry them.
+Two prerequisites live outside the app's own config. DNS for the name has to point at the box, and
+the reverse proxy has to match it and hold a certificate for it: on the `deploy/vps` profile that is
+`SITE_DOMAINS`, which lands on the Caddyfile's site-address line beside `{$DOMAIN}` (Caddy preserves
+`Host` and sets `X-Forwarded-Host`, both of which the site lookup reads). Keep `SITE_DOMAINS` and
+the app's `sites` in step — a name in one and not the other is either a site nothing routes to or a
+hostname the app doesn't recognise. Sites are read at startup, so a `catalogs.json` edit needs a
+restart; the additive `/admin/catalogs` reconcile doesn't carry them.
 
 ## The header bar names the catalog you are in
 
