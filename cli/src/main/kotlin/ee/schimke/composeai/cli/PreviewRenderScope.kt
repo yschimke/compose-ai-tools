@@ -89,17 +89,29 @@ internal object PreviewRenderScope {
       for (preview in manifest.previews) {
         discovered++
         val expanded = PreviewPermutationsCli.expand(listOf(preview), permutations).map { it.id }
+        // Issue #3786 — a `@PreviewParameter` row selector (`Foo_PARAM_1`) names an id that only
+        // comes into existence once the fan-out is on disk, so it can never match a manifest entry
+        // here. Selecting its *base* keeps the #3730 narrowing working for row requests instead of
+        // falling through to `selected.isEmpty() -> FULL` and rendering the whole module.
+        val rowAddressed =
+          previewMatchesRequestIncludingRows(
+            preview,
+            exactId = exactId,
+            filter = filter,
+            previewRef = previewRef,
+          )
         if (
-          expanded.none {
-            previewIdMatchesRequest(
-              it,
-              exactId = exactId,
-              filter = filter,
-              previewRef = previewRef,
-              className = preview.className,
-              functionName = preview.functionName,
-            )
-          }
+          !rowAddressed &&
+            expanded.none {
+              previewIdMatchesRequest(
+                it,
+                exactId = exactId,
+                filter = filter,
+                previewRef = previewRef,
+                className = preview.className,
+                functionName = preview.functionName,
+              )
+            }
         )
           continue
         selected += preview.id

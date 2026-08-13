@@ -1141,6 +1141,68 @@ internal fun previewIdMatchesRequest(
 }
 
 /**
+ * Like [previewIdMatchesRequest], but a selector naming one of [preview]'s **`@PreviewParameter`
+ * rows** also counts as a match (issue #3786).
+ *
+ * Discovery emits one manifest entry per parameterized *function* — it reads bytecode and cannot
+ * instantiate a `PreviewParameterProvider` — so the manifest holds `Foo` and has never heard of
+ * `Foo_PARAM_1`. `serve` synthesises the row ids later, from the fan-out on disk
+ * ([ServeParameterRows][ee.schimke.composeai.cli.serve.ServeParameterRows]), but module selection
+ * and render narrowing both run *before* that, against the manifest. Matching on the manifest alone
+ * therefore dropped the module and the command exited with "no previews discovered" — precisely
+ * when the caller had been most specific.
+ *
+ * **Why a prefix test is safe here**, where a bare `substringBeforeLast('_')` would not be: this
+ * doesn't guess at the id grammar. It anchors on a real manifest id that *declares a provider*, so
+ * the only previews whose rows we admit are the ones that genuinely have rows. A declared preview
+ * whose id ends in `_1` is in the manifest under its own name and matches directly; the worst case
+ * for a false positive is a selector that happens to start with a parameterized preview's id — and
+ * that costs only the render narrowing, never a wrong answer.
+ *
+ * The row lane is deliberately per-selector rather than "any selector looks like a row": the three
+ * selectors intersect ([previewIdMatchesRequest]), so `--id Foo_PARAM_1 --filter Foo` has to keep
+ * holding. When no selector is a row address this reduces exactly to [previewIdMatchesRequest].
+ */
+internal fun previewMatchesRequestIncludingRows(
+  preview: PreviewInfo,
+  exactId: String?,
+  filter: String?,
+  previewRef: String? = null,
+): Boolean {
+  val id = preview.id
+  val parameterized = !preview.params.previewParameterProviderClassName.isNullOrBlank()
+  fun rowOf(selector: String) = parameterized && isRowAddressOf(id, selector)
+  if (exactId != null && id != exactId && !rowOf(exactId)) return false
+  if (filter != null && !id.contains(filter, ignoreCase = true) && !rowOf(filter)) return false
+  if (
+    previewRef != null &&
+      !previewMatchesReference(
+        previewRef,
+        id,
+        className = preview.className,
+        functionName = preview.functionName,
+      ) &&
+      !rowOf(previewRef)
+  ) {
+    return false
+  }
+  return true
+}
+
+/**
+ * Whether [selector] spells a row of [baseId] — `<baseId>_<row>` with a non-empty row token, the
+ * same `<stem>_<suffix>` shape the fan-out renderer writes to disk (docs/RENDER_FILENAMES.md) and
+ * the daemon accepts on `renderNow`.
+ *
+ * Only ever called for a preview that declares a provider, so "looks like a row of a preview that
+ * has rows" is the whole claim being made.
+ */
+private fun isRowAddressOf(baseId: String, selector: String): Boolean =
+  selector.length > baseId.length + 1 &&
+    selector.startsWith(baseId) &&
+    selector[baseId.length] == '_'
+
+/**
  * The `--preview <ref>` rule (issue #3744) — one preview, one boolean, no dependence on the rest of
  * the candidate set.
  *
@@ -1185,14 +1247,15 @@ internal fun modulesMatchingPreviewRequest(
   val matchingPaths =
     manifests
       .filter { (_, manifest) ->
+        // Row-aware (issue #3786): a module whose only match is `Foo_PARAM_1` must survive, because
+        // the row ids don't exist until `serve` reads the rendered fan-out back off disk — long
+        // after this narrowing ran.
         manifest.previews.any {
-          previewIdMatchesRequest(
-            it.id,
+          previewMatchesRequestIncludingRows(
+            it,
             exactId = exactId,
             filter = filter,
             previewRef = previewRef,
-            className = it.className,
-            functionName = it.functionName,
           )
         }
       }
