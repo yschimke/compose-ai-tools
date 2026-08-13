@@ -64,6 +64,8 @@ internal class ServeSocialCard {
     /** Content hash + `.png`; the `/social/{name}` segment and the ETag. */
     val fileName: String,
     val etag: String,
+    /** The catalog this card depicts; null for the front door's. See [Spec.system]. */
+    val system: String? = null,
   ) {
     /** Always [WIDTH] — declared so callers fill `og:image:width` from the card, not a constant. */
     val width: Int = WIDTH
@@ -94,6 +96,17 @@ internal class ServeSocialCard {
     val title: String,
     val subtitle: String,
     val heroes: List<ServeHeroImages.Hero> = emptyList(),
+    /**
+     * The catalog this card depicts, or null for the front door's whole-server card.
+     *
+     * Recorded so a **top-level site** ([ServeSites]) can refuse a neighbour's card. `/social/` is
+     * deliberately ungated — a link unfurler never replays a page's token — and the file name is a
+     * content hash, so a hash published by one catalog's `og:image` on the main host could be
+     * fetched back through a one-catalog hostname and answer with that other catalog's title and
+     * thumbnails. Ownership travels with the card rather than being re-derived at request time,
+     * because by then the bytes are all that is left.
+     */
+    val system: String? = null,
   )
 
   private val byFileName = ConcurrentHashMap<String, Card>()
@@ -125,7 +138,8 @@ internal class ServeSocialCard {
    * can be confused with another's.
    */
   private fun cacheKey(spec: Spec): String =
-    (listOf(spec.title, spec.subtitle) + spec.heroes.take(MAX_HEROES).map { it.fileName })
+    (listOf(spec.system.orEmpty(), spec.title, spec.subtitle) +
+        spec.heroes.take(MAX_HEROES).map { it.fileName })
       .joinToString(FIELD_SEPARATOR)
 
   /** Draw [spec] and register it under its content hash. Visible only for tests. */
@@ -149,7 +163,7 @@ internal class ServeSocialCard {
     }
     val bytes = ServeBrand.encodePng(image) ?: return null
     val hash = sha256Hex(bytes).take(HASH_CHARS)
-    val card = Card(bytes = bytes, fileName = "$hash.png", etag = "\"$hash\"")
+    val card = Card(bytes = bytes, fileName = "$hash.png", etag = "\"$hash\"", system = spec.system)
     // putIfAbsent, not put: two specs that draw to identical bytes share the URL, and the first
     // registration is already the right answer.
     return byFileName.putIfAbsent(card.fileName, card) ?: card

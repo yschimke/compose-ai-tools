@@ -342,6 +342,10 @@ services:
       - "443:443"
     environment:
       DOMAIN: "${DOMAIN:?set DOMAIN in .env}"
+      # Top-level site hostnames, matching SERVE_SITES / catalogs.json's `sites` on the
+      # preview service above. Caddy needs them to match the name and get a certificate;
+      # the app needs them to know which catalog a Host belongs to. Keep the two in step.
+      SITE_DOMAINS: "${SITE_DOMAINS:-}"
     volumes:
       - caddy_data:/data
       - caddy_config:/config

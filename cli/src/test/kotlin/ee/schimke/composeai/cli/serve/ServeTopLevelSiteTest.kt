@@ -332,6 +332,21 @@ class ServeTopLevelSiteTest {
   }
 
   @Test
+  fun `a neighbour's social card is not served through a site host`() {
+    server = newServer()
+    // Bake the neighbour's card the way the main host does — by rendering its landing — then take
+    // the hash out of its og:image, which is public there. `/social/` is ungated by design (an
+    // unfurler never replays a token), so ownership is the only thing standing between that hash
+    // and this hostname answering with another catalog's title.
+    val (_, wearLanding, _) = get("/wear-m3/")
+    val hash =
+      Regex("/social/([a-z0-9]+\\.png)").find(wearLanding)?.groupValues?.get(1)
+        ?: error("no social card on the neighbour's landing: $wearLanding")
+    assertEquals(200, get("/social/$hash").first, "it serves on the main host")
+    assertEquals(404, get("/social/$hash", host = siteHost).first, "but never through the site")
+  }
+
+  @Test
   fun `status aggregates are scoped, not just the catalog list`() {
     server = newServer()
     val (_, body, _) = get("/status.json", host = siteHost)

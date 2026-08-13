@@ -1024,7 +1024,12 @@ class ServeHttpServer(
         ?: system
     // Same key the catalog's own pages use, so one choice follows a visitor across the hostname
     // instead of `/status` and the grid each remembering their own light/dark.
-    return Triple(name, bundle?.webThemeCss.orEmpty(), "cp-theme:$system")
+    // Palette from the resident bundle, else the last-known snapshot: residency, not registration,
+    // is what the idle timer takes away, and a suspended site must keep its colours.
+    val themeCss =
+      bundle?.webThemeCss?.takeIf { it.isNotBlank() }
+        ?: catalogMetaSeen[system]?.webThemeCss.orEmpty()
+    return Triple(name, themeCss, "cp-theme:$system")
   }
 
   /**
@@ -1082,7 +1087,22 @@ class ServeHttpServer(
   ): List<PlaygroundCatalogInfo> {
     val choices = service.catalogChoices()
     val site = siteSystem() ?: return choices
-    return choices.filter { it.id.isEmpty() || it.id == site }
+    return choices.filter { it.id.isEmpty() && sitePinIsOwn(service) || it.id == site }
+  }
+
+  /**
+   * Whether the host's **pinned** playground default compiles against this site's own catalog.
+   *
+   * The pinned entry carries an empty id and reads as "Server default", which sounds catalog-less
+   * but is not: `--playground-bundle=wear-m3` on a box whose site is `compose-m3` makes that
+   * default a *neighbour's* classpath. Keeping the option, or accepting `catalog: ""`, would let a
+   * one-catalog hostname compile against another design system under a name that never says so. A
+   * pin naming no catalog at all (local files) is nobody's neighbour and stays offered.
+   */
+  private fun RoutingContext.sitePinIsOwn(service: PlaygroundCompileService): Boolean {
+    val site = siteSystem() ?: return true
+    val pinned = service.pinnedCatalogSystems
+    return pinned.isEmpty() || pinned == setOf(site)
   }
 
   /** `POST /{system}/refresh`: check the published catalog branch and reload it when newer. */
@@ -1497,7 +1517,11 @@ class ServeHttpServer(
     // request field, so a site host has to reject it outright or the selector's absence is
     // cosmetic. Empty stays legal — that is the host's pinned default, which is not a catalog.
     val site = siteSystem()
-    if (site != null && request.catalog.isNotEmpty() && request.catalog != site) {
+    val foreignCatalog = request.catalog.isNotEmpty() && request.catalog != site
+    // An EMPTY catalog is the pinned default, which is only legitimate here when the pin is this
+    // site's own — otherwise it is a neighbour's classpath wearing the name "Server default".
+    val foreignPin = request.catalog.isEmpty() && !sitePinIsOwn(service)
+    if (site != null && (foreignCatalog || foreignPin)) {
       call.respondText(
         "{\"error\":\"unknown catalog\"}",
         ContentType.Application.Json,
@@ -1762,6 +1786,7 @@ class ServeHttpServer(
                   title = heading,
                   subtitle = ServeWeb.catalogCardSubtitle(renderHost.previews.size),
                   heroes = listOf(hero),
+                  system = selectedSessionId,
                 )
               )
             }
@@ -2679,6 +2704,9 @@ class ServeHttpServer(
     sourceFile: String?,
   ): String? {
     if (playgroundService == null || playgroundSeeds == null) return null
+    // Same dead end the catalog-level handoff is withheld for: a site host whose OAuth cannot round
+    // trip would offer an editor that ends in a 401.
+    if (!playgroundReachable()) return null
     if (sourceFile.isNullOrBlank()) return null
     // The handoff is only an offer when THIS catalog is a compile target here. A serve host browses
     // far more catalogs than its playground can compile: a pin-only host compiles exactly its pin,
@@ -2705,7 +2733,20 @@ class ServeHttpServer(
    * — a landing that offers "try this in the playground" for a catalog the playground can't select
    * is the same dead affordance, one page earlier).
    */
+  /**
+   * Whether a playground handoff can complete from *this* request's origin at all.
+   *
+   * The playground is gated on GitHub auth, so on a site host whose box pins an OAuth callback the
+   * link leads into the same dance whose state cookie cannot reach the callback — a 401 at the end
+   * of a button that promised an editor. The live-preview prompts were already withheld for this;
+   * the handoff links are the same dead end and are withheld with them, rather than left as the one
+   * affordance that still walks a visitor into it.
+   */
+  private fun RoutingContext.playgroundReachable(): Boolean =
+    githubAuth == null || oauthCanRoundTrip()
+
   private fun RoutingContext.playgroundLinkForCatalog(system: String): String? {
+    if (!playgroundReachable()) return null
     if (playgroundService == null) return null
     if (!playgroundService.compilesCatalog(system)) return null
     val token = if (isPublic) "" else "&token=" + WebEscaping.urlEncodeSegment(token)
@@ -2943,7 +2984,16 @@ class ServeHttpServer(
    * an image every consumer 403s on, which is the failure this whole lane exists to remove.
    */
   private suspend fun RoutingContext.handleSocialCard() {
-    val card = call.parameters["name"]?.let { socialCards.byFileName(it) }
+    val site = call.siteSystem()
+    val card =
+      call.parameters["name"]
+        ?.let { socialCards.byFileName(it) }
+        // A site hostname answers for one catalog, including in an unfurl. The file name is a
+        // content hash, so a card baked for a neighbour (and published by its `og:image` on the
+        // main host) would otherwise be fetchable back through this domain and hand a chat client
+        // that catalog's title and thumbnails under this site's name. The front door's own card
+        // (system == null) is nobody's catalog and is refused here for the same reason.
+        ?.takeIf { site == null || it.system == site }
     if (card == null) {
       call.respondText("no such card", status = HttpStatusCode.NotFound)
       return
@@ -3233,6 +3283,13 @@ class ServeHttpServer(
      */
     val heroRenderSize: Pair<Int, Int>?,
     val darkStage: Boolean,
+    /**
+     * The catalog's own web palette ([ServeThemeCss]). Remembered for the same reason the trust
+     * badge and hero are: a **site**'s `/status` and 404 wear this skin, and reading it live meant
+     * the whole hostname reverted to the default palette the moment its daemon went idle. It comes
+     * from the delivery branch, not the daemon, so a suspension cannot invalidate it.
+     */
+    val webThemeCss: String,
     val degradation: String?,
     val provenance: ServeWeb.CatalogProvenance?,
     val themeOptimization: ThemeOptimizationSnapshot?,
@@ -3270,6 +3327,7 @@ class ServeHttpServer(
         heroImage = heroId?.let { heroImages.heroFor(bundle, it, heroCrop) },
         heroRenderSize = heroId?.let { host.bakedRenderSize(it) },
         darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle.stageSurface),
+        webThemeCss = bundle.webThemeCss.orEmpty(),
         degradation = host.degradations.firstOrNull()?.detail,
         provenance = bundle.provenance,
         themeOptimization = host.themeOptimizationSnapshot(),
