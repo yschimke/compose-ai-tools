@@ -218,6 +218,64 @@ class A11yCommandTest {
     assertNull(filtered.singleOrNull()?.takeIf { it.id != "Bar" })
   }
 
+  // ---------- per-preview data-product fan-out (#3742) ----------
+
+  @Test
+  fun `unfiltered run asks about every preview in the module`() {
+    val cmd = TestableReportCommand(emptyList())
+
+    val requests = cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta", "Gamma")))
+
+    val request = requests.single()
+    assertEquals(listOf("Alpha", "Beta", "Gamma"), request.previewIds)
+    assertFalse(request.narrowed, "a full module is not a partial report")
+  }
+
+  @Test
+  fun `filter narrows the per-preview fan-out and marks the report partial`() {
+    // The bug: `a11y --filter Alpha` used to fetch ATF for all three previews — a per-preview
+    // daemon render each — to print one row. The render half was narrowed in #3734; this is the
+    // daemon half.
+    val cmd = TestableReportCommand(listOf("--filter", "alpha"))
+
+    val request = cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta", "Gamma"))).single()
+
+    assertEquals(listOf("Alpha"), request.previewIds)
+    assertTrue(request.narrowed, "a subset of the module must merge into the module's report")
+  }
+
+  @Test
+  fun `a request that selects every preview is not treated as partial`() {
+    // `renderedIds` is null both here and for an unfiltered run, which is why the fan-out asks the
+    // request rather than the render what it covers.
+    val cmd = TestableReportCommand(listOf("--filter", "Preview"))
+
+    val request = cmd.requestsFor(listOf(manifest("app", "AlphaPreview", "BetaPreview"))).single()
+
+    assertEquals(listOf("AlphaPreview", "BetaPreview"), request.previewIds)
+    assertFalse(request.narrowed)
+  }
+
+  @Test
+  fun `modules the request does not touch drop out of the work list`() {
+    val cmd = TestableReportCommand(listOf("--id", "Alpha"))
+
+    val requests =
+      cmd.requestsFor(listOf(manifest("app", "Alpha", "Beta"), manifest("wear", "TilePreview")))
+
+    // No session opened, no daemon started, and no `accessibility.json` written for `:wear` — the
+    // module isn't attempted, so it can't be reported as ATF-unavailable either.
+    assertEquals(listOf(":app"), requests.map { it.module.gradlePath })
+    assertEquals(listOf("Alpha"), requests.single().previewIds)
+  }
+
+  @Test
+  fun `a module with no previews is never attempted`() {
+    val cmd = TestableReportCommand(emptyList())
+
+    assertEquals(emptyList(), cmd.requestsFor(listOf(manifest("app"))))
+  }
+
   // ---------- helpers ----------
 
   /**
@@ -233,6 +291,35 @@ class A11yCommandTest {
     ): String = encodeResponse(results, countsScope)
 
     fun applyFiltersFor(results: List<PreviewResult>): List<PreviewResult> = applyFilters(results)
+  }
+
+  /**
+   * Test-only [ReportCommand] subclass exposing the per-module work list its
+   * `produceAdditionalDataProducts` hook receives, so the `--id` / `--filter` narrowing can be
+   * exercised without a Gradle build or a daemon. `run()` is never called.
+   */
+  private class TestableReportCommand(args: List<String>) : ReportCommand(args, "a11y") {
+    fun requestsFor(
+      manifests: List<Pair<PreviewModule, PreviewManifest>>
+    ): List<DataProductRequest> = dataProductRequests(manifests)
+  }
+
+  private fun manifest(path: String, vararg ids: String): Pair<PreviewModule, PreviewManifest> {
+    val module = PreviewModule(":$path", java.io.File("/tmp/compose-preview-test/$path"))
+    return module to
+      PreviewManifest(
+        module = module.gradlePath,
+        variant = "debug",
+        previews =
+          ids.map { id ->
+            PreviewInfo(
+              id = id,
+              functionName = id,
+              className = "com.example.PreviewsKt",
+              params = PreviewParams(kind = "COMPOSE"),
+            )
+          },
+      )
   }
 
   private fun previewResult(

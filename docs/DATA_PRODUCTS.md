@@ -24,6 +24,32 @@ needs structured data it spins up a short-lived daemon (as `compose-preview a11y
 does) rather than teaching the Test task to produce it. That split is deliberate:
 it keeps the cold render path lean and free of the daemon's dependency surface.
 
+### A narrowed request narrows the production, and the report it writes is partial
+
+Structured production fans out **per preview** — each `data/fetch` is its own daemon
+render — so it is the dominant cost of a command like `compose-preview a11y`, not a
+rounding error on top of the Gradle render. `--id` / `--filter` therefore has to reach
+it: on a 66-preview module, `a11y --filter Foo` fetches ATF for the one preview it is
+going to print, not for all 66 (issue #3742). `ReportCommand` resolves the request
+against each module's discovery manifest and hands its `produceAdditionalDataProducts`
+hook a per-module `DataProductRequest` carrying exactly the ids to fan out over;
+modules the request doesn't touch never open a session at all.
+
+The narrowing is computed from the **request**, not from the render's `renderedIds`.
+That set is `null` both when there was no request and when the request happened to
+select every preview (the render declines to narrow, because a filtered
+`composePreviewRender` isn't build-cacheable), so it cannot answer "what did the user
+ask about" — `PreviewRenderScope.selectedPreviewIds` does.
+
+The consequence to keep in mind when adding another per-preview hook: the sidecars
+(`accessibility.json` and friends) are **per-module** reports, so a narrowed run
+produces a partial one. Writing it wholesale would silently delete the findings for
+every preview the user didn't ask about. `DaemonA11yFetcher` merges instead — entries
+on disk for previews outside this run's ids are carried forward, fetched ones are
+replaced — the same bargain the `.cli-state.json` carry-forward strikes for previews a
+narrowed render skipped (issue #3730). Only an unnarrowed run rewrites the report, so
+that stays the one thing that evicts an entry for a preview that no longer exists.
+
 ### Seeding an environment is not producing a data product
 
 The rule above is about *reading analysis out of* a render, not about *pushing state

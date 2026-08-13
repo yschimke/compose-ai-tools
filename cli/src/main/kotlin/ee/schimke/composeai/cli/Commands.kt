@@ -870,6 +870,19 @@ abstract class Command(
     return previewIdMatchesRequest(result.id, exactId = exactId, filter = filter)
   }
 
+  /**
+   * The ids in [manifest] this invocation's `--id` / `--filter` asks about — every declared id when
+   * there is no request. The manifest-side counterpart of [matchesRequest], for the paths that fan
+   * out per preview *before* there are [PreviewResult]s to filter (issue #3742).
+   */
+  protected fun requestedPreviewIds(manifest: PreviewManifest): List<String> =
+    PreviewRenderScope.selectedPreviewIds(
+      manifest = manifest,
+      exactId = exactId,
+      filter = filter,
+      permutations = permutations,
+    )
+
   private fun modulesMatchingPreviewRequest(
     modules: List<PreviewModule>,
     manifests: List<Pair<PreviewModule, PreviewManifest>>,
@@ -1704,20 +1717,62 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
   override fun implicitExtensions(): List<String> = listOf(extensionId)
 
   /**
+   * One module's share of the work [produceAdditionalDataProducts] has to do.
+   *
+   * [previewIds] is **already narrowed** to the invocation's `--id` / `--filter` — implementations
+   * fan out over it rather than over `manifest.previews`, so `a11y --filter Foo` pays for one
+   * per-preview daemon render instead of the module's full set (issue #3742). A module none of
+   * whose previews the request selects never becomes a request at all.
+   *
+   * [narrowed] is true exactly when [previewIds] is a strict subset of the module's previews, i.e.
+   * when whatever this hook writes covers only part of the module. The sidecars are *per-module*
+   * reports, so a narrowed run that writes one wholesale discards the findings for previews the
+   * user didn't ask about — the analogue of the `.cli-state.json` problem #3730 had to solve.
+   * Implementations must merge into whatever is already on disk when this is set, not clobber it.
+   */
+  data class DataProductRequest(
+    val module: PreviewModule,
+    val manifest: PreviewManifest,
+    val previewIds: List<String>,
+    val narrowed: Boolean,
+  )
+
+  /**
    * Subclass hook called between the gradle build and the result-building / reporting step.
    * Subclasses use this to spin up additional production paths (the daemon-driven a11y fetch in
    * [A11yCommand]) that write sidecar JSON the extension renderer's `load` pass then picks up when
    * [buildResults] runs. Default no-op.
    *
    * At the point this is called, the standard `composePreviewRenderAll` gradle task has already run
-   * and each module's `previews.json` is on disk. Implementations iterate the manifests for preview
-   * ids, drive any out-of-band production, and write the resulting sidecars to the conventional
+   * and each module's `previews.json` is on disk. Implementations walk [requests] — one per module
+   * with at least one requested preview — drive any out-of-band production for
+   * [DataProductRequest.previewIds], and write the resulting sidecars to the conventional
    * `build/compose-previews/<extension>.json` locations the renderers read.
    */
-  protected open fun produceAdditionalDataProducts(
-    modules: List<PreviewModule>,
-    manifests: List<Pair<PreviewModule, PreviewManifest>>,
-  ) {}
+  protected open fun produceAdditionalDataProducts(requests: List<DataProductRequest>) {}
+
+  /**
+   * Resolve the per-module work list for [produceAdditionalDataProducts]: each module's manifest
+   * narrowed to the `--id` / `--filter` request, dropping the modules the request leaves empty.
+   *
+   * The narrowing is computed from the request itself rather than from
+   * [RawRenderOutcome.renderedIds], because that set is `null` both when there was no request and
+   * when the request happened to select every preview — see
+   * [PreviewRenderScope.selectedPreviewIds].
+   */
+  protected fun dataProductRequests(
+    manifests: List<Pair<PreviewModule, PreviewManifest>>
+  ): List<DataProductRequest> = manifests.mapNotNull { (module, manifest) ->
+    val requested = requestedPreviewIds(manifest)
+    if (requested.isEmpty()) null
+    else
+      DataProductRequest(
+        module = module,
+        manifest = manifest,
+        previewIds = requested,
+        narrowed = requested.size < manifest.previews.size,
+      )
+  }
 
   /**
    * Optional subclass hook for "the data product we just tried to produce wasn't actually
@@ -1750,7 +1805,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
         scopeToPreviewRequest = true,
       )
     val manifests = readAllManifests(raw.modules)
-    produceAdditionalDataProducts(raw.modules, manifests)
+    produceAdditionalDataProducts(dataProductRequests(manifests))
     // After production runs, give the subclass a chance to abort the run when its data product
     // wasn't actually available — without this, a daemon-crash in `compose-preview a11y` looks
     // identical to a clean run with zero findings (issue #1453).
@@ -1807,11 +1862,17 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
  *
  * Production of a11y data products moved entirely to the preview daemon, so this command opens a
  * short-lived [ee.schimke.composeai.render.session.RenderSession] per module after the standard
- * `composePreviewRenderAll` build completes, walks every preview through `data/fetch` for
+ * `composePreviewRenderAll` build completes, walks the requested previews through `data/fetch` for
  * `a11y/atf`, aggregates the findings into the canonical
  * `build/compose-previews/accessibility.json` shape that [A11yReportRenderer] then loads through
  * its disk-fallback path, and closes the session. The daemon is short-lived — spawned, drained,
  * shut down — so there's no persistent server for the agent / CI script to manage.
+ *
+ * "The requested previews" is load-bearing: each `a11y/atf` fetch is a per-preview daemon render,
+ * so fanning out over the whole module would make `a11y --id Foo` cost 66 renders on a 66-preview
+ * module to print one row (issue #3742). [ReportCommand.DataProductRequest] hands this hook the ids
+ * the `--id` / `--filter` request actually selects, and the resulting partial report merges into
+ * the module's existing `accessibility.json` rather than replacing it.
  *
  * The session is opened via the public `:render-session-api` / `:render-session-subprocess`
  * library; everything the CLI does here is reachable from any third-party tooling that compiles
@@ -1828,43 +1889,48 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
   private var anyModuleAtfOk: Boolean = false
   private val unavailableModules: MutableList<String> = mutableListOf()
 
-  override fun produceAdditionalDataProducts(
-    modules: List<PreviewModule>,
-    manifests: List<Pair<PreviewModule, PreviewManifest>>,
-  ) {
-    if (modules.isEmpty()) return
+  override fun produceAdditionalDataProducts(requests: List<DataProductRequest>) {
+    if (requests.isEmpty()) return
     // The daemon launch descriptor (`daemon-launch.json`) is written by
     // `composePreviewDaemonStart`, which the standalone `composePreviewRenderAll` task does not
     // depend
     // on. Run it in a second gradle invocation so the descriptor is fresh against the
     // consumer's current classpath. Gradle's daemon reuses the warm JVM started by the first
     // invocation, so the cold-start cost is paid once per CLI run, not once per gradle task.
-    val daemonStartOk = runDaemonStartTasks(modules)
+    val daemonStartOk = runDaemonStartTasks(requests.map { it.module })
     if (!daemonStartOk) {
       System.err.println(
         "compose-preview a11y: composePreviewDaemonStart failed; skipping daemon-driven a11y " +
           "fetch."
       )
-      // Treat a failed daemon-start as ATF-unavailable for every module that has previews — the
-      // user needs to see the run fail rather than receive a misleading "no findings" report.
-      for ((module, manifest) in manifests) {
-        if (manifest.previews.isEmpty()) continue
+      // Treat a failed daemon-start as ATF-unavailable for every module we were going to ask
+      // about — the user needs to see the run fail rather than receive a misleading "no findings"
+      // report.
+      for (request in requests) {
         attemptedAnyModule = true
-        unavailableModules += module.gradlePath
+        unavailableModules += request.module.gradlePath
       }
       return
     }
     val fetcher = DaemonA11yFetcher(onLog = { System.err.println("[daemon a11y] $it") })
-    for ((module, manifest) in manifests) {
-      val previewIds = manifest.previews.map { it.id }
-      if (previewIds.isEmpty()) continue
+    for (request in requests) {
+      val (module, manifest, previewIds, narrowed) = request
       attemptedAnyModule = true
+      if (verbose && narrowed) {
+        System.err.println(
+          "compose-preview a11y: ${module.gradlePath} fetching ATF for ${previewIds.size} of " +
+            "${manifest.previews.size} preview(s); the rest keep the findings the last run wrote."
+        )
+      }
       val outcome =
         fetcher.fetch(
           projectDir = module.projectDir,
           modulePath = module.gradlePath,
           moduleName = manifest.module,
           previewIds = previewIds,
+          // A narrowed run only speaks for the previews it fetched — carry the rest of the
+          // module's report forward instead of dropping it (issue #3742).
+          mergeWithExisting = narrowed,
         )
       when (outcome) {
         is DaemonA11yFetcher.Outcome.Ok -> {

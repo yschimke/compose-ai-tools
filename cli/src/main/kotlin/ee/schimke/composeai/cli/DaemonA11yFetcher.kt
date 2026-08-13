@@ -51,6 +51,14 @@ internal class DaemonA11yFetcher(
    * [workspaceRoot] is the repository root the daemon reports back through the initialize
    * handshake; defaults to [projectDir] when the caller doesn't have a separate workspace root
    * handy (single-module projects).
+   *
+   * [mergeWithExisting] tells the fetcher that [previewIds] is only part of the module — set it
+   * when a `--id` / `--filter` request narrowed the fan-out (issue #3742). `accessibility.json` is
+   * a *per-module* report, so writing a narrowed one wholesale would silently drop the findings for
+   * every preview the user didn't ask about; with this set, entries already on disk for previews
+   * outside [previewIds] are carried forward, the same bargain the `.cli-state.json` carry-forward
+   * strikes for skipped renders (#3730). A full run leaves it false and rewrites the report, which
+   * is the only way stale entries ever get cleaned out.
    */
   fun fetch(
     projectDir: File,
@@ -58,10 +66,11 @@ internal class DaemonA11yFetcher(
     moduleName: String,
     previewIds: List<String>,
     workspaceRoot: File = projectDir,
+    mergeWithExisting: Boolean = false,
   ): Outcome {
     val descriptorFile = File(projectDir, "build/compose-previews/daemon-launch.json")
     if (!descriptorFile.isFile) {
-      writeAtfUnavailableReport(projectDir, moduleName)
+      writeAtfUnavailableReport(projectDir, moduleName, mergeWithExisting)
       return Outcome.DescriptorMissing(descriptorFile)
     }
 
@@ -77,7 +86,7 @@ internal class DaemonA11yFetcher(
       try {
         factory.open(config)
       } catch (e: RenderSessionException) {
-        writeAtfUnavailableReport(projectDir, moduleName)
+        writeAtfUnavailableReport(projectDir, moduleName, mergeWithExisting)
         return Outcome.OpenFailed(reason = e.message ?: e.javaClass.simpleName)
       }
 
@@ -130,23 +139,37 @@ internal class DaemonA11yFetcher(
       // to report on either way, so leave `status` null.
       val atfAvailable = anyFetchOk || previewIds.isEmpty()
       val status = if (atfAvailable) null else A11Y_REPORT_STATUS_ATF_UNAVAILABLE
-      val reportFile = writeReport(projectDir, moduleName, entries = entries, status = status)
+      val reportFile =
+        writeReport(
+          projectDir,
+          moduleName,
+          entries = entries,
+          status = status,
+          mergeWithExisting = mergeWithExisting,
+        )
       Outcome.Ok(reportFile = reportFile, entryCount = entries.size, atfAvailable = atfAvailable)
     }
   }
 
   /**
-   * Write an `accessibility.json` stamped with `status = "atf-unavailable"` and no entries, for
-   * cases where we can't even open a render session (descriptor missing / open failed). Lets the
-   * python PR-comment helper see the same signal it gets on a per-preview-failure run instead of
-   * silently finding nothing on disk.
+   * Write an `accessibility.json` stamped with `status = "atf-unavailable"` and no entries of its
+   * own, for cases where we can't even open a render session (descriptor missing / open failed).
+   * Lets the python PR-comment helper see the same signal it gets on a per-preview-failure run
+   * instead of silently finding nothing on disk. Under [mergeWithExisting] the entries already on
+   * disk survive — a narrowed run that couldn't reach the daemon has learned nothing about the
+   * previews it wasn't going to fetch either, and the stamped status still fails the CLI.
    */
-  private fun writeAtfUnavailableReport(projectDir: File, moduleName: String) {
+  private fun writeAtfUnavailableReport(
+    projectDir: File,
+    moduleName: String,
+    mergeWithExisting: Boolean = false,
+  ) {
     writeReport(
       projectDir,
       moduleName,
       entries = emptyList(),
       status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
+      mergeWithExisting = mergeWithExisting,
     )
   }
 
@@ -155,14 +178,56 @@ internal class DaemonA11yFetcher(
     moduleName: String,
     entries: List<AccessibilityEntry>,
     status: String?,
+    mergeWithExisting: Boolean = false,
   ): File {
     val reportFile = projectDir.resolve("build/compose-previews/accessibility.json")
     reportFile.parentFile?.mkdirs()
-    val report = AccessibilityReport(module = moduleName, entries = entries, status = status)
+    val merged =
+      if (mergeWithExisting) mergeEntries(readExistingEntries(reportFile), entries) else entries
+    val report = AccessibilityReport(module = moduleName, entries = merged, status = status)
     fileSystem.write(reportFile.path.toPath()) {
       writeUtf8(json.encodeToString(AccessibilityReport.serializer(), report))
     }
     return reportFile
+  }
+
+  /**
+   * Entries from the `accessibility.json` a previous run left at [reportFile], or empty when there
+   * is none / it can't be parsed. A report we can't read is one we can't preserve, and refusing to
+   * write over it would leave the run with no report at all — so an unreadable file degrades to the
+   * non-merging behaviour rather than failing the fetch.
+   */
+  private fun readExistingEntries(reportFile: File): List<AccessibilityEntry> {
+    if (!reportFile.isFile) return emptyList()
+    return try {
+      val text = fileSystem.read(reportFile.path.toPath()) { readUtf8() }
+      json.decodeFromString(AccessibilityReport.serializer(), text).entries
+    } catch (_: Exception) {
+      emptyList()
+    }
+  }
+
+  /**
+   * [fresh] layered over [existing], keyed by `previewId`: a preview this run fetched takes the new
+   * entry, one it didn't keeps the old, and each id appears once. Existing order is preserved (new
+   * ids append) so consecutive narrowed runs produce a stable file rather than reshuffling it.
+   */
+  private fun mergeEntries(
+    existing: List<AccessibilityEntry>,
+    fresh: List<AccessibilityEntry>,
+  ): List<AccessibilityEntry> {
+    if (existing.isEmpty()) return fresh
+    val freshById = fresh.associateBy { it.previewId }
+    val emitted = mutableSetOf<String>()
+    val out = mutableListOf<AccessibilityEntry>()
+    for (entry in existing) {
+      if (!emitted.add(entry.previewId)) continue
+      out += freshById[entry.previewId] ?: entry
+    }
+    for (entry in fresh) {
+      if (emitted.add(entry.previewId)) out += entry
+    }
+    return out
   }
 
   /**
