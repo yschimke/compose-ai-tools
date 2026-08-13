@@ -56,6 +56,7 @@
         <h1 class="cp-head cp-preview-title">Profile screen</h1>
         <code class="cp-preview-id" title="com.example.ProfileScreenPreview">com.example.ProfileScreenPreview</code>
 
+        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="false" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Night</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
       </div>
 
 
@@ -71,8 +72,7 @@
         </span>
       </div>
       <div class="cp-viewer-bar">
-
-        <span class="cp-theme cp-theme-bar" role="group" aria-label="Preview theme">
+        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme" hidden>
           <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
           <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
           <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandLightThemeCatalog" data-theme-mode="light" title="Brand · Brand Light">Brand Light</button>
@@ -81,10 +81,9 @@
         </span>
         <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind the preview">Transparent</button>
         <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-        <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
 
-      <div class="cp-viewer cp-controls-open" data-bg-theme="dark" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
+      <div class="cp-viewer cp-controls-open" data-bg-theme="dark" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3">
 
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 

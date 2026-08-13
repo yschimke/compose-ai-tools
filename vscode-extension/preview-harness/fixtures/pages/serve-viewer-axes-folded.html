@@ -1,9 +1,9 @@
     <!doctype html>
-    <html lang="en" data-cp-theme-key="cp-theme:default">
+    <html lang="en" data-cp-theme-key="cp-theme:compose-m3">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Profile screen — compose-preview</title>
+        <title>Icon Button Outlined · default (light) — compose-preview</title>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="icon" href="/favicon.ico" sizes="32x32">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -11,7 +11,7 @@
         <!-- Apply the Transparent choice before first paint (no checkerboard flash).
              A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
         <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
-        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:default"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode")||localStorage.getItem("cp-theme:compose-m3"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
@@ -20,7 +20,7 @@
       <span class="cp-site-mark" aria-hidden="true">◇</span>
       <span>compose-preview</span>
     </a>
-    <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/?token=demo-token-fixture">Previews</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Component</span></nav>
+    <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/?token=demo-token-fixture&amp;session=compose-m3">Previews</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Component</span></nav>
   </div>
   <div class="cp-site-status">
     <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
@@ -53,13 +53,32 @@
 </header>
         <main class="cp-main">
               <div class="cp-preview-head">
-        <h1 class="cp-head cp-preview-title">Profile screen <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ unverified</span></h1>
-        <code class="cp-preview-id" title="com.example.ProfileScreenPreview">com.example.ProfileScreenPreview</code>
+        <h1 class="cp-head cp-preview-title">Icon Button Outlined · default (light) <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
+        <code class="cp-preview-id" title="iconbutton-outlined__ideal__default__light">iconbutton-outlined__ideal__default__light</code>
 
-        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="true" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
+        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-axes-toggle" aria-expanded="false" aria-controls="cp-axes"><span class="cp-toggle-label">State</span><span class="cp-toggle-value">Default</span></button><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="false" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
       </div>
 
-
+      <div class="cp-axes" id="cp-axes" hidden>
+<nav class="cp-tree cp-axes-tree" aria-label="Component renders">
+  <ul class="cp-tree-list" role="tree">
+    <li role="none"><a class="cp-tree-component cp-tree-link" role="treeitem" href="/p/iconbutton-outlined__ideal__default__light?token=demo-token-fixture&amp;session=compose-m3" aria-expanded="true" aria-owns="cp-axes-tree-variants">Icon Button Outlined · default (light)<span class="cp-tree-count">10</span></a>
+      <ul class="cp-tree-children cp-tree-variants" id="cp-axes-tree-variants" role="group">
+        <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/iconbutton-outlined__ideal__default__light?token=demo-token-fixture&amp;session=compose-m3" aria-current="page">Default</a></li>
+        <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/iconbutton-outlined__ideal__disabled__light?token=demo-token-fixture&amp;session=compose-m3">Disabled</a></li>
+        <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/iconbutton-outlined__ideal__xs__light?token=demo-token-fixture&amp;session=compose-m3">Xs</a></li>
+        <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/iconbutton-outlined__ideal__s__light?token=demo-token-fixture&amp;session=compose-m3">S</a></li>
+        <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/iconbutton-outlined__ideal__m__light?token=demo-token-fixture&amp;session=compose-m3">M</a></li>
+        <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/iconbutton-outlined__ideal__l__light?token=demo-token-fixture&amp;session=compose-m3">L</a></li>
+        <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/iconbutton-outlined__ideal__xl__light?token=demo-token-fixture&amp;session=compose-m3">Xl</a></li>
+        <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/iconbutton-outlined__ideal__m-wide__light?token=demo-token-fixture&amp;session=compose-m3">M wide</a></li>
+        <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/iconbutton-outlined__ideal__m-square__light?token=demo-token-fixture&amp;session=compose-m3">M square</a></li>
+        <li role="none"><a class="cp-tree-variant cp-tree-link" role="treeitem" href="/p/iconbutton-outlined__ideal__xl-narrow__light?token=demo-token-fixture&amp;session=compose-m3">Xl narrow</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+      </div>
       <div class="cp-preview-primary" aria-label="Preview renderer">
       <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" data-default-lane-label="Live preview" title="Static snapshot — this session has no live lane to switch to" disabled>
             <span class="cp-live-dot" aria-hidden="true"></span>
@@ -72,29 +91,29 @@
         </span>
       </div>
       <div class="cp-viewer-bar">
-        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
+        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme" hidden>
           <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
           <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BaselineLightThemeCatalog" data-theme-mode="light">Baseline Light</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BaselineDarkThemeCatalog" data-theme-mode="dark">Baseline Dark</button>
+          <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandDarkThemeCatalog" data-theme-mode="dark">Brand Dark</button>
         </span>
         <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind the preview">Transparent</button>
         <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
       </div>
 
-      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="default">
+      <div class="cp-viewer cp-controls-open" data-bg-theme="light" data-preview-id="iconbutton-outlined__ideal__default__light" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3">
               <aside class="cp-nav" id="cp-nav" aria-label="Components">
         <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
         <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
         <ul class="cp-nav-list" id="cp-nav-list">
-        <li><a class="cp-nav-item" href="/p/com.example.ButtonPreview?token=demo-token-fixture" title="com.example.ButtonPreview" data-search="Button com.example.ButtonPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Button</span></a></li>
-<li><a class="cp-nav-item" href="/p/com.example.CardPreview?token=demo-token-fixture" title="com.example.CardPreview" data-search="Card com.example.CardPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.CardPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Card</span></a></li>
-<li><a class="cp-nav-item" href="/p/com.example.DialogPreview?token=demo-token-fixture" title="com.example.DialogPreview" data-search="Dialog com.example.DialogPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.DialogPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Dialog</span></a></li>
-<li><a class="cp-nav-item" href="/p/com.example.ListScreenPreview?token=demo-token-fixture" title="com.example.ListScreenPreview" data-search="List screen com.example.ListScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ListScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">List screen</span></a></li>
-<li><a class="cp-nav-item" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture" aria-current="page" title="com.example.ProfileScreenPreview" data-search="Profile screen com.example.ProfileScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Profile screen</span></a></li>
-<li><a class="cp-nav-item" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture" title="com.example.SettingsScreenPreview" data-search="Settings screen com.example.SettingsScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Settings screen</span></a></li>
+        <li><a class="cp-nav-item" href="/p/iconbutton-outlined__ideal__default__light?token=demo-token-fixture&session=compose-m3" aria-current="page" title="iconbutton-outlined__ideal__default__light" data-search="Icon Button Outlined · default (light) iconbutton-outlined__ideal__default__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/iconbutton-outlined__ideal__default__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Icon Button Outlined · default (light)</span></a></li>
+<li><a class="cp-nav-item" href="/p/checkbox__ideal__default__light?token=demo-token-fixture&session=compose-m3" title="checkbox__ideal__default__light" data-search="Checkbox · Checked (light) checkbox__ideal__default__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/checkbox__ideal__default__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Checkbox · Checked (light)</span></a></li>
+<li><a class="cp-nav-item" href="/p/radiobutton__ideal__default__light?token=demo-token-fixture&session=compose-m3" title="radiobutton__ideal__default__light" data-search="Radio · Selected (light) radiobutton__ideal__default__light"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/radiobutton__ideal__default__light.png?token=demo-token-fixture&session=compose-m3"><span class="cp-nav-name">Radio · Selected (light)</span></a></li>
         </ul>
         <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>
       </aside>
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Icon Button Outlined · default (light)"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 
         <div class="cp-controls" id="cp-controls">
           <!-- No "Appearance" group. Its only ever-visible control was a Background select
@@ -113,31 +132,41 @@
                of the tab order, but it is the Theme axis's single state holder — viewer.js reads
                it on every render and Back/Forward hydration writes to it — so it has to remain in
                the DOM. The visible Theme control is the chip row on the viewer bar. -->
-          <span class="cp-modes-inputs" aria-hidden="true">
-  <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" data-fixed-theme="false" tabindex="-1" disabled>
-    <option value="light" selected>Day (Default)</option>
-    <option value="dark">Night (Default)</option>
-  </select>
-</span>
+                  <span class="cp-modes-inputs" aria-hidden="true">
+          <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="true" data-fixed-theme="false" tabindex="-1" disabled>
+            <option value="light" selected>Day (Default)</option>
+            <option value="dark">Night (Default)</option>
+            <option value="theme:com.example.BaselineLightThemeCatalog" data-theme-mode="light" disabled>Baseline Light</option>
+<option value="theme:com.example.BaselineDarkThemeCatalog" data-theme-mode="dark" disabled>Baseline Dark</option>
+<option value="theme:com.example.BrandDarkThemeCatalog" data-theme-mode="dark" disabled>Brand Dark</option>
+          </select>
+        </span>
           <details class="cp-group" data-cp-group="size">
             <summary>Size</summary>
             <div class="cp-group-body">
-              <label>Device size
-                <select id="cp-device" disabled>
-                  <option value="">(preview default)</option>
-                  <option value="id:pixel_5">Pixel 5 · compact phone (393 × 851 dp)</option>
-                  <option value="id:pixel_7">Pixel 7 · standard phone (411 × 914 dp)</option>
-                  <option value="id:pixel_fold">Pixel Fold · foldable (841 × 701 dp)</option>
-                  <option value="id:pixel_tablet">Pixel Tablet · tablet (1280 × 800 dp)</option>
-                </select>
-              </label>
-              <label>Orientation
-                <select id="cp-orientation" disabled>
-                  <option value="">(device default)</option>
-                  <option value="portrait">Portrait</option>
-                  <option value="landscape">Landscape</option>
-                </select>
-              </label>
+              <div class="cp-size">
+                <label>Size mode
+                  <select id="cp-sizeMode" disabled>
+                    <option value="">(default)</option>
+                    <option value="fixed">Fixed size</option>
+                    <option value="max">Max</option>
+                    <option value="min">Min</option>
+                    <option value="within">Within (min–max)</option>
+                  </select>
+                </label>
+                <div class="cp-size-row" id="cp-size-fixed" hidden>
+                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-min" hidden>
+                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-max" hidden>
+                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                </div>
+              </div>
             </div>
           </details>
 
@@ -189,58 +218,7 @@
            column rather than a child: the note is prose and reads better at `.cp-below`'s measure,
            while the bar has to run the full content width to stay on one line. -->
       <div class="cp-below">
-        <div class="cp-note">Pre-rendered snapshot — overrides (device size, locale, font scale, orientation) need the live server, not a published catalog. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
-      </div>
-      <div class="cp-preview-links">
-      <p class="cp-source"><a class="cp-source-link" href="https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/ProfileScreen.kt" title="src/main/kotlin/com/example/ProfileScreen.kt"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a></p>
-      <p class="cp-source"><a class="cp-source-link" href="/playground?from=compose-m3/com.example.ProfileScreenPreview" title="Open this preview's source in the playground">▶ playground</a></p>
-      <form class="cp-report" id="cp-report" method="get" target="_blank" rel="noopener" action="https://github.com/yschimke/compose-ai-tools/issues/new"><input type="hidden" name="title" value="Preview issue: Profile screen (compose-m3)"><input type="hidden" name="body" id="cp-report-body" value="### What&#39;s wrong
-
-&lt;!-- What did you expect to see, and what did you get? --&gt;
-
-
-### Screenshot
-
-![Profile screen](https://preview.coo.ee/compose-m3/render/com.example.ProfileScreenPreview.png)
-
-&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. For a copy that stays put, use Copy PNG in the viewer&#39;s &quot;Export &amp; direct links&quot; panel and paste it here — GitHub then hosts the pixels itself. --&gt;
-
-
-### Which preview
-
-| | |
-| --- | --- |
-| Design system | `compose-m3` |
-| Preview | `com.example.ProfileScreenPreview` |
-| Source | https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/ProfileScreen.kt |
-| Catalog | `yschimke/compose-ai-tools@design-artifacts/compose-m3` |
-| Rendered by | compose-ai-tools 0.16.54 |
-
-[Open this preview](https://preview.coo.ee/compose-m3/p/com.example.ProfileScreenPreview)
-" data-report-template="### What&#39;s wrong
-
-&lt;!-- What did you expect to see, and what did you get? --&gt;
-
-
-### Screenshot
-
-![Profile screen]({{render}})
-
-&lt;!-- That image is a LIVE render: it re-renders if the catalog changes, so it may stop showing what you saw. For a copy that stays put, use Copy PNG in the viewer&#39;s &quot;Export &amp; direct links&quot; panel and paste it here — GitHub then hosts the pixels itself. --&gt;
-
-
-### Which preview
-
-| | |
-| --- | --- |
-| Design system | `compose-m3` |
-| Preview | `com.example.ProfileScreenPreview` |
-| Source | https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/ProfileScreen.kt |
-| Catalog | `yschimke/compose-ai-tools@design-artifacts/compose-m3` |
-| Rendered by | compose-ai-tools 0.16.54 |
-
-[Open this preview](https://preview.coo.ee/compose-m3/p/com.example.ProfileScreenPreview)
-"><button type="submit" class="cp-report-link" title="File an issue on yschimke/compose-ai-tools as @yschimke"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> report an issue</button></form>
+        <div class="cp-note">Pre-rendered snapshot — overrides (size, locale, font scale) need the live server, not a published catalog. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
       </div>
             <div class="cp-export" aria-label="Export the current view">
         <span class="cp-export-head" id="cp-export-head">Export</span>
@@ -287,7 +265,7 @@
     el.setAttribute("data-theme-active", "1");
   }
   try {
-    var stored = localStorage.getItem("cp-theme:default");
+    var stored = localStorage.getItem("cp-theme:compose-m3");
     var declared = stored && stored.indexOf("theme:") === 0;
     var option = null;
     Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
@@ -318,7 +296,7 @@
   // Round-trip every unified choice, including `theme:<provider>`, to the catalog page.
   el.addEventListener("change", function () {
     el.setAttribute("data-theme-active", "1");
-    try { localStorage.setItem("cp-theme:default", el.value); } catch (e) {}
+    try { localStorage.setItem("cp-theme:compose-m3", el.value); } catch (e) {}
     syncBg();
     // …and the page around the stage, when the Page theme setting says to follow the choice.
     if (window.cpPageTheme) window.cpPageTheme.follow(el.value);
@@ -330,7 +308,7 @@
         </main>
         <footer class="cp-site-footer">
           <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
-          <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
+          <a href="/version">/version</a>
         </footer>
         <script src="/assets/serve/fixture/page-theme.js"></script>
       </body>

@@ -127,6 +127,36 @@ object ServeWeb {
   private fun viewerViewCountHtml(views: Long): String =
     if (views <= 0) "" else "<span class=\"cp-viewer-engage\">${formatViews(views)}</span>"
 
+  /**
+   * A title-bar disclosure toggle: a [label] naming the axis it folds, plus the [value] that axis
+   * currently holds. Both halves matter. A bare "State" would make the reader open the row to learn
+   * what they are looking at — the very cost the fold was meant to remove — so a closed toggle
+   * reads "State · M wide" and the row underneath is genuinely optional.
+   *
+   * Shares `.cp-drawer-toggle` with the two drawer toggles it now sits beside, so the four
+   * disclosures on this page cannot drift apart visually; `aria-expanded` + `aria-controls` are
+   * what make it a disclosure rather than four buttons that happen to look alike.
+   *
+   * [valueId] labels the value span when something client-side has to keep it current (the theme,
+   * which changes without a page load).
+   */
+  private fun disclosureToggleHtml(
+    id: String,
+    controls: String,
+    label: String,
+    value: String,
+    open: Boolean,
+    valueId: String? = null,
+  ): String {
+    val valueIdAttr = valueId?.let { " id=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
+    return "<button type=\"button\" class=\"cp-drawer-toggle cp-axis-toggle\"" +
+      " id=\"${WebEscaping.htmlEscape(id)}\" aria-expanded=\"$open\"" +
+      " aria-controls=\"${WebEscaping.htmlEscape(controls)}\">" +
+      "<span class=\"cp-toggle-label\">${WebEscaping.htmlEscape(label)}</span>" +
+      "<span class=\"cp-toggle-value\"$valueIdAttr>${WebEscaping.htmlEscape(value)}</span>" +
+      "</button>"
+  }
+
   private fun formatViews(views: Long): String =
     "${formatCount(views)} ${if (views == 1L) "view" else "views"}"
 
@@ -267,6 +297,22 @@ object ServeWeb {
    * the session lapse. Cheap at this rate: one empty POST per open tab per four minutes.
    */
   internal const val PRESENCE_INTERVAL_SECONDS = 240
+
+  /**
+   * How many rows the viewer's component subtree shows inline before folding behind its title-bar
+   * toggle. Lower than the chip rows this replaced needed, because a tree spends a whole line per
+   * render where a chip row wrapped several onto one: four rows is about the point past which the
+   * list costs more of the fold than the render it sits above.
+   */
+  private const val AXIS_ROWS_INLINE = 4
+
+  /**
+   * How many theme chips the viewer bar shows inline before folding. Lower than [AXIS_CHIPS_INLINE]
+   * because the bar is capped at a single non-wrapping row: past a handful the chips ellipsise into
+   * stubs and the group scrolls within itself, which is worse than a toggle that spells the current
+   * theme out in full.
+   */
+  private const val THEME_CHIPS_INLINE = 4
 
   // android.content.res.Configuration values, kept local so the CLI has no Android dependency.
   private const val UI_MODE_NIGHT_MASK = 0x30
@@ -782,6 +828,16 @@ object ServeWeb {
   }
 
   /**
+   * Stable, catalog-specific prefix for the viewer's remembered disclosures (see
+   * `viewer-drawers.js`). `localStorage` is per-ORIGIN, and one host serves many catalogs under
+   * different base paths — so an unscoped key would let "I folded this catalog's thirty-state axis"
+   * also fold a normally-inline axis on every unrelated catalog beside it. Same scoping the theme
+   * and section keys already carry, for the same reason.
+   */
+  private fun foldStorageScope(sessionId: String?, basePath: String): String =
+    WebEscaping.urlEncodeSegment(basePath.trim('/').ifBlank { sessionId ?: "default" })
+
+  /**
    * The flattened id with its theme token stripped — the key that pairs a component's light and
    * dark variants into ONE grid card. `button-filled__ideal__default__light` and `…__dark` both key
    * to `button-filled__ideal__default`, so the Light/Dark control can swap the card between the two
@@ -820,9 +876,9 @@ object ServeWeb {
   /**
    * Whether [p] is a **non-default** component state render (`unchecked`, `pressed`, `disabled`,
    * `unselected`, …) — a render the grid folds out so each component shows a single (default) card,
-   * with its other states reachable via the viewer's [state switcher][stateSwitcherHtml]. Keyed off
-   * the catalog's `state` metadata (from `variants.json`), not the id: a stateless preview / plain
-   * bundle screen has `state == null` and is treated as default (always shown).
+   * with its other states reachable via the viewer's [component subtree][componentSubtreeHtml].
+   * Keyed off the catalog's `state` metadata (from `variants.json`), not the id: a stateless
+   * preview / plain bundle screen has `state == null` and is treated as default (always shown).
    */
   private fun isNonDefaultState(p: ServePreview): Boolean = p.state != null && p.state != "default"
 
@@ -831,7 +887,7 @@ object ServeWeb {
    * (`{"locale":"ar-XB"}`, `{"direction":"rtl"}`, `{"fontScale":"2.0"}`,
    * `{"content":"icon+label"}`, …) the grid folds out so a component shows ONE card (its default
    * render) instead of a card per variant, with the folded variants reachable via the viewer's
-   * [variant switcher] [variantSwitcherHtml]. Keyed off the catalog's `props` metadata (from
+   * [component subtree][componentSubtreeHtml]. Keyed off the catalog's `props` metadata (from
    * `variants.json`), not the id: a propless preview (a plain bundle screen, or a design-system
    * default) has empty props and is treated as default (always shown).
    */
@@ -931,53 +987,6 @@ object ServeWeb {
     p.theme ?: cardTheme(stateInvariantKey(p)) ?: if (darkFirst) "dark" else "light"
 
   /**
-   * The viewer's **state switcher**: a `<nav>` of plain links from [current] to each of its
-   * component's baked states *in the same theme* (one link per distinct state, the default state
-   * first, the current one marked `aria-current="page"`). No daemon, no JS state machine — each
-   * link is a normal navigation to a sibling `/p/<id>` page, so it works with scripting off.
-   *
-   * Siblings are drawn from [all] (the host's whole preview list, which still carries the
-   * non-default states the grid folds out) by [switcherStateKey] + [themeLane]: renders that differ
-   * *only* in state, holding the theme and any other variant axis (content / size / props) fixed,
-   * so a component that also varies on a non-state axis doesn't cross-link its axes. Returns the
-   * empty string when fewer than two states share this key — nothing to toggle.
-   */
-  private fun stateSwitcherHtml(
-    current: ServePreview,
-    all: List<ServePreview>,
-    basePath: String,
-    q: String,
-    darkFirst: Boolean,
-  ): String {
-    val key = switcherStateKey(current)
-    val lane = themeLane(current, darkFirst)
-    // One preview per distinct state, first appearance wins, restricted to the current variant
-    // (same
-    // key) and theme so the switcher never jumps the visitor across a non-state axis or light/dark.
-    val byState = LinkedHashMap<String, ServePreview>()
-    for (p in all) {
-      if (switcherStateKey(p) != key || themeLane(p, darkFirst) != lane) continue
-      byState.putIfAbsent(p.state ?: "default", p)
-    }
-    if (byState.size < 2) return ""
-    // Default state leads; the rest keep catalog order (a stable sort preserves first appearance).
-    val ordered = byState.entries.sortedBy { if (it.key == "default") 0 else 1 }
-    val links =
-      ordered.joinToString("\n") { (_, p) ->
-        val href = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
-        val active = if (p.id == current.id) " aria-current=\"page\"" else ""
-        "<a class=\"cp-state-btn\" href=\"$href\"$active>${WebEscaping.htmlEscape(stateLabel(p.state))}</a>"
-      }
-    return """
-      <nav class="cp-states" aria-label="Component state">
-        <span class="cp-axis-label">State</span>
-        $links
-      </nav>
-      """
-      .trimIndent()
-  }
-
-  /**
    * Canonical JSON for a props value. Objects sort their keys recursively, while arrays preserve
    * their authored order. This keeps the variant identity stable even when two producers emit an
    * equivalent object with a different property order, and it keeps JSON types distinct (`true` is
@@ -1051,56 +1060,6 @@ object ServeWeb {
    */
   private fun comparisonCardKey(p: ServePreview): String =
     baseKey(stateInvariantKey(propsFamilyKey(p), p.state))
-
-  /**
-   * The viewer's **variant switcher**: a `<nav>` of plain links from [current] to its component's
-   * baked props-axis variants (an RTL render, a pseudo-locale, a large-font render, an icon+label
-   * render) in the SAME theme and state, the default first, the current one marked
-   * `aria-current="page"`. The props analogue of [stateSwitcherHtml]: the grid folds these variants
-   * out ([hasNonDefaultProps]) so a component shows one card, and this keeps them reachable. Drawn
-   * from [all] (the host's whole preview list) by [propsFamilyKey] + [themeLane] + state so a
-   * component that also varies on state or theme doesn't cross those axes. Empty when fewer than
-   * two variants share the family — nothing to switch.
-   */
-  private fun variantSwitcherHtml(
-    current: ServePreview,
-    all: List<ServePreview>,
-    basePath: String,
-    q: String,
-    darkFirst: Boolean,
-  ): String {
-    val key = switcherPropsKey(current)
-    val curState = current.state ?: "default"
-    val lane = themeLane(current, darkFirst)
-    // One preview per distinct props signature, first appearance wins, restricted to the current
-    // family + theme + state so the switcher never jumps the visitor across a non-props axis.
-    // Theme is compared as a resolved lane for the same reason the state switcher does it: a
-    // catalog that leaves its primary-mode renders untagged must not strand them in a lane of
-    // their own.
-    val byVariant = LinkedHashMap<String, ServePreview>()
-    for (p in all) {
-      if (switcherPropsKey(p) != key) continue
-      if (themeLane(p, darkFirst) != lane) continue
-      if ((p.state ?: "default") != curState) continue
-      byVariant.putIfAbsent(propsSignature(p.props), p)
-    }
-    if (byVariant.size < 2) return ""
-    // The default (empty props) leads; the rest keep catalog order (a stable sort preserves it).
-    val ordered = byVariant.entries.sortedBy { if (it.key == "") 0 else 1 }
-    val links =
-      ordered.joinToString("\n") { (_, p) ->
-        val href = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
-        val active = if (p.id == current.id) " aria-current=\"page\"" else ""
-        "<a class=\"cp-state-btn\" href=\"$href\"$active>${WebEscaping.htmlEscape(propsLabel(p.props))}</a>"
-      }
-    return """
-      <nav class="cp-states" aria-label="Component variant">
-        <span class="cp-axis-label">Variant</span>
-        $links
-      </nav>
-      """
-      .trimIndent()
-  }
 
   /**
    * One grid card: a component that may carry a baked `light` and/or `dark` variant (a pair the
@@ -1432,38 +1391,93 @@ object ServeWeb {
     append(" role=\"group\">\n")
     group.cards.forEach { card ->
       val c = components(card)
-      val varsId = "cp-tree-of-${c.anchorId}"
-      append("        <li role=\"none\"><a class=\"cp-tree-component cp-tree-link\"")
-      append(" role=\"treeitem\" href=\"#${c.anchorId}\"$tabAttr data-group=\"${c.anchorId}\"")
-      if (c.variants.isNotEmpty()) append(" aria-expanded=\"false\" aria-owns=\"$varsId\"")
-      append(">")
-      append(WebEscaping.htmlEscape(c.label))
-      if (c.variants.isNotEmpty()) {
-        append("<span class=\"cp-tree-count\">${c.variants.size + 1}</span>")
-      }
-      append("</a>\n")
-      if (c.variants.isNotEmpty()) {
-        append("          <ul class=\"cp-tree-children cp-tree-variants\" id=\"$varsId\"")
-        append(" role=\"group\">\n")
-        // The default render leads, so the list reads as "the component, then how else it renders"
-        // rather than starting at an exceptional state. It points at the same card the component
-        // row does, which is what the grid is already showing.
-        append("            <li role=\"none\"><a class=\"cp-tree-variant cp-tree-link\"")
-        append(" role=\"treeitem\" href=\"#${c.anchorId}\"$tabAttr")
-        append(" data-group=\"${c.anchorId}\">Default</a></li>\n")
-        c.variants.forEach { v ->
-          // A variant is folded out of the grid, so unlike every other row it has nowhere on this
-          // page to jump to — its href is a real navigation to the viewer, left to the browser.
-          append("            <li role=\"none\"><a class=\"cp-tree-variant cp-tree-link\"")
-          append(" role=\"treeitem\" href=\"${WebEscaping.htmlEscape(v.href)}\">")
-          append(WebEscaping.htmlEscape(v.label))
-          append("</a></li>\n")
-        }
-        append("          </ul>\n")
-      }
-      append("        </li>\n")
+      appendComponentRow(
+        label = c.label,
+        // On the landing every row is an in-page jump: the component row and the synthetic Default
+        // row both target the card the grid is already showing, which is what `data-group` drives.
+        href = "#${c.anchorId}",
+        rowAttrs = "$tabAttr data-group=\"${c.anchorId}\"",
+        defaultHref = "#${c.anchorId}",
+        defaultRowAttrs = "$tabAttr data-group=\"${c.anchorId}\"",
+        variants = c.variants,
+        variantsId = "cp-tree-of-${c.anchorId}",
+        indent = "        ",
+      )
     }
     append("      </ul>\n    </li>\n")
+  }
+
+  /**
+   * One component row plus its variant children — the tree's leaf shape, shared by the landing's
+   * whole-catalog tree and the viewer's single-component subtree so the two cannot drift into
+   * looking like different things.
+   *
+   * What differs between the two callers is only where the rows *point* and whether they start
+   * open. On the landing they are in-page jumps to a card in the grid beside them, and a component
+   * ships collapsed because eighty-four of them are on screen at once. In the viewer each row is a
+   * real navigation to that render's own page, the list is open (there is exactly one component),
+   * and [currentHref] marks the render being viewed.
+   */
+  private fun StringBuilder.appendComponentRow(
+    label: String,
+    href: String,
+    variants: List<TreeVariant>,
+    variantsId: String,
+    defaultHref: String,
+    rowAttrs: String = "",
+    defaultRowAttrs: String = "",
+    /** Collapsed by default; the viewer's subtree opens, having only one component to show. */
+    collapsed: Boolean = true,
+    /**
+     * Whether to lead the children with a synthetic **Default** row pointing at [defaultHref]. The
+     * landing needs it — its rows are the component's *variants*, and the default render is not one
+     * of them. The viewer's rows already include the default (it is a state like any other), so
+     * emitting it there would list the same render twice under one component.
+     */
+    syntheticDefaultRow: Boolean = true,
+    /** The row whose href matches is `aria-current="page"` — the render on screen. */
+    currentHref: String? = null,
+    indent: String = "        ",
+  ) {
+    fun current(target: String) = if (target == currentHref) " aria-current=\"page\"" else ""
+    // Only the VARIANT rows can be current. The component row and the synthetic Default row share
+    // an href — the component's default render — so marking both would put two "you are here"
+    // pills in a three-row list. The component row names the component; the rows under it are the
+    // renders, and one of those is the page.
+    append("$indent<li role=\"none\"><a class=\"cp-tree-component cp-tree-link\"")
+    append(" role=\"treeitem\" href=\"${WebEscaping.htmlEscape(href)}\"$rowAttrs")
+    if (variants.isNotEmpty()) {
+      append(" aria-expanded=\"${!collapsed}\" aria-owns=\"$variantsId\"")
+    }
+    append(">")
+    append(WebEscaping.htmlEscape(label))
+    if (variants.isNotEmpty()) {
+      append(
+        "<span class=\"cp-tree-count\">${variants.size + if (syntheticDefaultRow) 1 else 0}</span>"
+      )
+    }
+    append("</a>\n")
+    if (variants.isNotEmpty()) {
+      append("$indent  <ul class=\"cp-tree-children cp-tree-variants\" id=\"$variantsId\"")
+      append(" role=\"group\">\n")
+      // The default render leads, so the list reads as "the component, then how else it renders"
+      // rather than starting at an exceptional state.
+      if (syntheticDefaultRow) {
+        append("$indent    <li role=\"none\"><a class=\"cp-tree-variant cp-tree-link\"")
+        append(" role=\"treeitem\" href=\"${WebEscaping.htmlEscape(defaultHref)}\"$defaultRowAttrs")
+        append("${current(defaultHref)}>Default</a></li>\n")
+      }
+      variants.forEach { v ->
+        // A variant is folded out of the grid, so unlike the rows above it has nowhere on the
+        // landing page to jump to — its href is a real navigation, left to the browser.
+        append("$indent    <li role=\"none\"><a class=\"cp-tree-variant cp-tree-link\"")
+        append(" role=\"treeitem\" href=\"${WebEscaping.htmlEscape(v.href)}\"${current(v.href)}>")
+        append(WebEscaping.htmlEscape(v.label))
+        append("</a></li>\n")
+      }
+      append("$indent  </ul>\n")
+    }
+    append("$indent</li>\n")
   }
 
   /** The id of the sub-group divider a tree row jumps to — its section's slug, then its own. */
@@ -1508,7 +1522,156 @@ object ServeWeb {
   }
 
   /** One **primary-axis** variant of a component: a distinct state or props render. */
-  private class TreeVariant(val label: String, val href: String)
+  /** [axis] is `"state"` or `"props"` — which of the two primary axes this row varies. */
+  private class TreeVariant(val label: String, val href: String, val axis: String = "state")
+
+  /**
+   * The viewer's **component subtree**: the same tree the catalog navigates by, filtered to the one
+   * component on screen.
+   *
+   * This replaced two rows of chips — a `State` row and a `Variant` row — that were the viewer's
+   * own second opinion about the component's axes. They keyed identically to [primaryVariants], so
+   * they always listed the same renders the tree does; they simply said it in a different shape, in
+   * a different place, with the two axes torn apart into rows that never named their relationship.
+   * A subtree says it once, in the shape the reader already learned on the landing page: the
+   * component, then every render under it, the current one marked.
+   *
+   * Returns "" when the component has no second render — the same silence the chip rows kept, so a
+   * single-state component grows no navigation it cannot use.
+   */
+  /** The component's default render in [current]'s theme lane, or [current] when it has none. */
+  private fun componentDefault(
+    current: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+  ): ServePreview {
+    val key = componentKey(current)
+    val lane = themeLane(current, darkFirst)
+    return all.firstOrNull {
+      componentKey(it) == key &&
+        themeLane(it, darkFirst) == lane &&
+        !isNonDefaultState(it) &&
+        !hasNonDefaultProps(it)
+    } ?: current
+  }
+
+  /**
+   * Every render of [current]'s component reachable in ONE hop from where the reader is standing.
+   *
+   * Two sets, unioned. [primaryVariants] from the component's default is the canonical set the
+   * landing tree draws — one axis at a time, which is what keeps that tree navigable across a whole
+   * catalog. But a component may bake state × props as a CROSS-PRODUCT, and that set holds one axis
+   * at its default while walking the other: from `RTL` it offers no `pressed + RTL`, and since the
+   * grid folds both axes out, the combination would be reachable from nowhere at all. So the rows
+   * relative to [current] — its states holding its props fixed, its props holding its state fixed,
+   * exactly how the chip switchers this replaced were keyed — are unioned in, and lead, because
+   * they are the moves from *here*.
+   *
+   * Deduped by href, so a component with only one axis (nearly all of them) gets exactly the
+   * canonical list and nothing doubles up.
+   */
+  private fun componentRenderRows(
+    current: ServePreview,
+    all: List<ServePreview>,
+    darkFirst: Boolean,
+    href: (ServePreview) -> String,
+  ): List<TreeVariant> {
+    val lane = themeLane(current, darkFirst)
+    val rows = LinkedHashMap<String, TreeVariant>()
+    // This render's own state axis, holding its props fixed.
+    val stateKey = switcherStateKey(current)
+    val byState = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (switcherStateKey(p) != stateKey || themeLane(p, darkFirst) != lane) continue
+      byState.putIfAbsent(p.state ?: "default", p)
+    }
+    if (byState.size > 1) {
+      byState.entries
+        .sortedBy { if (it.key == "default") 0 else 1 }
+        .forEach { (state, p) ->
+          rows.putIfAbsent(href(p), TreeVariant(stateLabel(state), href(p), "state"))
+        }
+    }
+    // …and its props axis, holding its state fixed.
+    val propsKey = switcherPropsKey(current)
+    val curState = current.state ?: "default"
+    val byProps = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (switcherPropsKey(p) != propsKey || themeLane(p, darkFirst) != lane) continue
+      if ((p.state ?: "default") != curState) continue
+      byProps.putIfAbsent(propsSignature(p.props), p)
+    }
+    if (byProps.size > 1) {
+      byProps.entries
+        .sortedBy { if (it.key == "") 0 else 1 }
+        .forEach { (_, p) ->
+          rows.putIfAbsent(href(p), TreeVariant(propsLabel(p.props), href(p), "props"))
+        }
+    }
+    // Then the component's canonical set, for everything the two axes above did not already reach.
+    primaryVariants(componentDefault(current, all, darkFirst), all, darkFirst, href).forEach {
+      rows.putIfAbsent(it.href, it)
+    }
+    return rows.values.toList()
+  }
+
+  /**
+   * Whether this component varies on [axis] (`"state"` or `"props"`), which is what lets the folded
+   * disclosure name the axes it put away. Derived from [componentRenderRows] rather than
+   * re-deriving the axis rules, so the toggle can never claim an axis the subtree underneath it
+   * does not offer.
+   */
+  private fun componentHasAxis(
+    preview: ServePreview,
+    siblings: List<ServePreview>,
+    darkFirst: Boolean,
+    axis: String,
+  ): Boolean = componentRenderRows(preview, siblings, darkFirst) { it.id }.any { it.axis == axis }
+
+  private fun componentSubtreeHtml(
+    preview: ServePreview,
+    siblings: List<ServePreview>,
+    basePath: String,
+    q: String,
+    darkFirst: Boolean,
+  ): String {
+    fun href(p: ServePreview) = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
+    // The subtree hangs off the component's DEFAULT render, whichever of its renders is on screen:
+    // arriving on `disabled` must not re-root the tree at `disabled` and hide the rest. Held to the
+    // current theme lane so navigating within a dark catalog stays dark, exactly as the chip rows
+    // and the component nav already do.
+    val default = componentDefault(preview, siblings, darkFirst)
+    val rows = componentRenderRows(preview, siblings, darkFirst, ::href)
+    // The render ON SCREEN is always a row, even when neither axis set would have listed it. A
+    // catalog can carry a variant whose axis lives only in its id — `…__default__light__
+    // content-icon-label` with no `props` metadata — and such a render belongs to no axis, so a
+    // subtree built from the axes alone would show the reader every render of this component
+    // except the one they are looking at, with nothing marked current. A tree that says "this
+    // component's renders" has to contain the page it is drawn on.
+    val variants =
+      if (rows.any { it.href == href(preview) } || preview.id == default.id) rows
+      else rows + TreeVariant(previewDisplayName(preview), href(preview), "props")
+    if (variants.isEmpty()) return ""
+    return buildString {
+        append("<nav class=\"cp-tree cp-axes-tree\" aria-label=\"Component renders\">\n")
+        append("  <ul class=\"cp-tree-list\" role=\"tree\">\n")
+        appendComponentRow(
+          label = previewDisplayName(default),
+          href = href(default),
+          variants = variants,
+          variantsId = "cp-axes-tree-variants",
+          defaultHref = href(default),
+          // One component, already chosen — a collapsed subtree would be a disclosure inside a
+          // disclosure, and the outer one is the control that decides whether any of this shows.
+          collapsed = false,
+          syntheticDefaultRow = false,
+          currentHref = href(preview),
+          indent = "    ",
+        )
+        append("  </ul>\n</nav>")
+      }
+      .trimEnd()
+  }
 
   /**
    * A component's primary-axis variants — the renders the grid folds out so a component shows one
@@ -1521,9 +1684,8 @@ object ServeWeb {
    * theme because the card already swaps it in place, the rest because they multiply every row by a
    * matrix nobody navigates by.
    *
-   * Keyed exactly as the viewer's own [state][stateSwitcherHtml] and [variant][variantSwitcherHtml]
-   * switchers key: same family, same theme lane, and for props the same state — so a row offers the
-   * same set the viewer would, rather than a second opinion about what belongs together.
+   * The viewer's own subtree ([componentSubtreeHtml]) is built from this same function, so the two
+   * cannot offer different sets: one definition of what a component's renders are, drawn twice.
    */
   private fun primaryVariants(
     default: ServePreview,
@@ -1544,7 +1706,7 @@ object ServeWeb {
         seenStates.putIfAbsent(p.state!!, p)
       }
     }
-    seenStates.forEach { (state, p) -> rows.add(TreeVariant(stateLabel(state), href(p))) }
+    seenStates.forEach { (state, p) -> rows.add(TreeVariant(stateLabel(state), href(p), "state")) }
     // Then the props axis, held at the component's default state so a row never crosses two axes.
     val propsKey = switcherPropsKey(default)
     val seenProps = LinkedHashMap<String, ServePreview>()
@@ -1554,7 +1716,7 @@ object ServeWeb {
       if ((p.state ?: "default") != defaultState) continue
       if (hasNonDefaultProps(p)) seenProps.putIfAbsent(propsSignature(p.props), p)
     }
-    seenProps.forEach { (_, p) -> rows.add(TreeVariant(propsLabel(p.props), href(p))) }
+    seenProps.forEach { (_, p) -> rows.add(TreeVariant(propsLabel(p.props), href(p), "props")) }
     return rows
   }
 
@@ -7554,6 +7716,15 @@ $rows
     // and every existing lane (daemon re-render, Wasm ?uiMode, URL state, the catalog-scoped sticky
     // key) keeps working untouched. Day/Night rather than Light/Dark to match the labels the select
     // used; a dark-first (Wear) system offers Night alone, as its select did.
+    // …and, like the axes rows above, the bar FOLDS once a catalog declares enough themes that the
+    // chips stop fitting. Eight chips is the published compose-m3 shape: they ellipsise to stubs
+    // ("Light Medi…", "Dark Hig…") and the group scrolls within itself, so the row is spending full
+    // width to show names it has already truncated. Behind the title-bar toggle the *current*
+    // theme's full name is always readable and the chips are one click away. Under
+    // [THEME_CHIPS_INLINE] — a plain light/dark catalog, or one with a theme or two — the bar shows
+    // as it always has.
+    val themeChipCount = (if (wearAlwaysDark) 1 else 2) + viewerDeclaredThemes.size
+    val themeOpen = themeChipCount <= THEME_CHIPS_INLINE
     val themeBarHtml =
       themeChipsHtml(
           builtIns =
@@ -7563,9 +7734,28 @@ $rows
           indent = "          ",
         )
         .let {
-          "<span class=\"cp-theme cp-theme-bar\" role=\"group\" aria-label=\"Preview theme\">\n" +
+          "<span class=\"cp-theme cp-theme-bar\" id=\"cp-theme-bar\" role=\"group\"" +
+            " aria-label=\"Preview theme\"${if (themeOpen) "" else " hidden"}>\n" +
             "          $it\n        </span>"
         }
+    // The theme toggle's *value* is seeded server-side from the lane this preview is baked in, then
+    // kept in sync client-side (viewer-drawers.js mirrors whichever chip `viewer.js` marks pressed)
+    // — the theme is picked without a page load, so a server-rendered label alone would go stale on
+    // the first click.
+    val themeToggle =
+      disclosureToggleHtml(
+        id = "cp-theme-toggle",
+        controls = "cp-theme-bar",
+        label = "Theme",
+        // Exactly the select's own default rule (`daySelected = viewerTheme != "dark"`), not its
+        // inverse: a preview with neither a uiMode nor a light/dark id token has a null
+        // [viewerTheme] and opens on Day, so anything other than an explicit dark lane is Day here
+        // too. Testing for "light" instead would label every untagged preview Night, contradicting
+        // the selected option beside it until the mutation observer got round to fixing it.
+        value = if (viewerTheme == "dark") "Night" else "Day",
+        open = themeOpen,
+        valueId = "cp-theme-toggle-value",
+      )
     // Inspection layers (see inspect.js): what the frame is MADE OF, drawn client-side over the
     // pixels the server already sent — the accessibility focus map, the resolved typography, the
     // resolved theme attributes. Each is a box + numbered badge on the stage and a readable row in
@@ -7774,22 +7964,66 @@ $rows
       else
         "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-nav-toggle\" " +
           "aria-expanded=\"false\" aria-controls=\"cp-nav\">☰ Components</button>"
+    // The right-hand overrides drawer's toggle, which now sits with the other three disclosures in
+    // the title bar rather than alone at the end of the viewer bar. Server-side it is the one that
+    // starts expanded (`cp-controls-open` on .cp-viewer below); the drawer script collapses it on a
+    // phone, where the preview leads and the drawer opens as a bottom sheet.
+    val controlsToggle =
+      "<button type=\"button\" class=\"cp-drawer-toggle\" id=\"cp-controls-toggle\" " +
+        "aria-expanded=\"true\" aria-controls=\"cp-controls\">⚙ Overrides</button>"
     // Stage background follows the preview's theme (dark variant → dark stage), with a dark-first
     // system (Wear) defaulting to dark — see the `.cp-viewer[data-bg-theme] .cp-stage` CSS. Kept
     // separate from the filter's data-card-theme; the viewer JS re-syncs it on a Theme (uiMode)
     // change so a re-render in the opposite theme doesn't clash with a stale backing color.
     val bgThemeAttr = viewerTheme?.let { " data-bg-theme=\"$it\"" } ?: ""
-    // The component-state switcher: plain links to this component's other baked states (same
-    // theme).
-    // Empty for a single-state component / a stateless preview, so nothing renders there.
-    val stateSwitcher = stateSwitcherHtml(preview, siblings, basePath, q, viewerDarkFirst)
-    // The variant switcher: links to this component's props-axis variants (RTL / locale / fontScale
-    // / content) folded out of the grid, in the same theme + state. Empty when the component has no
-    // such variants, so a plain / state-only catalog is unchanged. Concatenated after the state
-    // switcher (both empty ⇒ the interpolation stays "", preserving the section-less golden).
-    val variantSwitcher = variantSwitcherHtml(preview, siblings, basePath, q, viewerDarkFirst)
-    val switchers =
-      listOf(stateSwitcher, variantSwitcher).filter { it.isNotBlank() }.joinToString("\n")
+    // The component's renders, as a SUBTREE of the catalog tree filtered to this component: the
+    // component row and every primary-axis render under it, the one on screen marked. This replaced
+    // two rows of chips — a `State` row and a `Variant` row — that keyed identically to the tree's
+    // own [primaryVariants] and so always listed the same renders, only in a second shape, in a
+    // second place, with the two axes torn apart into rows that never named their relationship.
+    // Empty for a component with no second render, exactly as the chip rows were.
+    val axesTree = componentSubtreeHtml(preview, siblings, basePath, q, viewerDarkFirst)
+    // The axes DISCLOSURE. A component with a wide axis (the published m3-catalog's
+    // `iconbutton-outlined` bakes ~30 states) is a long list, and its only load-bearing fact —
+    // "which render am I on" — fits in the toggle's own label. So the subtree folds behind one
+    // control in the title bar that names the current render, and opens on demand. Inline up to
+    // [AXIS_ROWS_INLINE] rows: a two- or three-render component is a short list that reads better
+    // shown than hidden behind a click.
+    val axisRows = axesTree.split("class=\"cp-tree-variant cp-tree-link\"").size - 1
+    val axisOpen = axisRows <= AXIS_ROWS_INLINE
+    // What the toggle says when it is closed. The subtree folds BOTH axes, so it names both the
+    // axes it folded and the values they hold — a component that varies on state *and* props (RTL,
+    // a locale, a font scale) would otherwise lose the variant it is on the moment the tree went
+    // away, which is exactly the cost this fold is not allowed to have. State leads, as the axis a
+    // reader navigates most; either half drops out when the component does not vary on it.
+    val hasStateAxis =
+      axesTree.isNotBlank() && componentHasAxis(preview, siblings, viewerDarkFirst, "state")
+    val hasPropsAxis =
+      axesTree.isNotBlank() && componentHasAxis(preview, siblings, viewerDarkFirst, "props")
+    val axisName =
+      listOfNotNull("State".takeIf { hasStateAxis }, "Variant".takeIf { hasPropsAxis })
+        .joinToString(" · ")
+    val axisValue =
+      listOfNotNull(
+          stateLabel(preview.state).takeIf { hasStateAxis },
+          propsLabel(preview.props).takeIf { hasPropsAxis },
+        )
+        .joinToString(" · ")
+    val axesToggle =
+      if (axesTree.isBlank()) ""
+      else
+        disclosureToggleHtml(
+          id = "cp-axes-toggle",
+          controls = "cp-axes",
+          label = axisName,
+          value = axisValue,
+          open = axisOpen,
+        )
+    val axesBlock =
+      if (axesTree.isBlank()) ""
+      else
+        "<div class=\"cp-axes\" id=\"cp-axes\"${if (axisOpen) "" else " hidden"}>\n" +
+          "$axesTree\n      </div>"
     // Left to right: the chip that names the current renderer and toggles it live, the combo box of
     // alternatives, the design-spec chip (top level, not an option inside the combo), the two
     // subtle
@@ -7871,6 +8105,17 @@ $rows
         playgroundHref,
         executableBundleHref,
       )
+    // Every disclosure the page has, in one group, at the end of the identity row: the component
+    // list, the state/variant axes, the theme chips, the overrides drawer. They were scattered —
+    // two on the viewer bar, two implicit in rows that were simply always open — which is why the
+    // page had no single answer to "what can I put away". Ordered as the surfaces they own read on
+    // the page (left column, then the two rows below the title, then the right column), and each
+    // closed one still names its current value, so folding a row never costs the fact it carried.
+    val headToggles =
+      listOf(navToggle, axesToggle, themeToggle, controlsToggle).filter { it.isNotBlank() }
+    val headTogglesHtml =
+      if (headToggles.isEmpty()) ""
+      else "\n        <span class=\"cp-head-toggles\">${headToggles.joinToString("")}</span>"
     // Title, trust badge, id and the view tally on ONE baseline-aligned row. They are all
     // *identity* — three separate blocks said so three times, at the cost of ~90px above the fold.
     val body =
@@ -7878,10 +8123,10 @@ $rows
       <div class="cp-preview-head">
         <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
         <code class="cp-preview-id" title="$idText">$idText</code>
-        ${viewerViewCountHtml(engagement.views)}
+        ${viewerViewCountHtml(engagement.views)}$headTogglesHtml
       </div>
       ${degradeBanner(degradations)}
-      $switchers
+      $axesBlock
       <div class="cp-preview-primary" aria-label="Preview renderer">
       $primaryControls
         <span class="cp-mode-hint" id="cp-mode-hint"></span>
@@ -7890,14 +8135,12 @@ $rows
         </span>
       </div>
       <div class="cp-viewer-bar">
-        $navToggle
         $themeBarHtml
         ${bgPickerHtml("Show the transparent checkerboard behind the preview")}
         <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-        <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
       $historyInlineHtml
-      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr$historyAttrs>
+      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs>
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml

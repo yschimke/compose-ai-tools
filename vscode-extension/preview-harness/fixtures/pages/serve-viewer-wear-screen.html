@@ -56,6 +56,7 @@
         <h1 class="cp-head cp-preview-title">Settings Complication <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/home-assistant-wear@design-artifacts/home-assistant-wear">✓ trusted</span></h1>
         <code class="cp-preview-id" title="settings-complication">settings-complication</code>
 
+        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="true" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Night</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
       </div>
 
 
@@ -71,16 +72,14 @@
         </span>
       </div>
       <div class="cp-viewer-bar">
-
-        <span class="cp-theme cp-theme-bar" role="group" aria-label="Preview theme">
+        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
           <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
         </span>
         <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind the preview">Transparent</button>
         <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-        <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
 
-      <div class="cp-viewer cp-controls-open" data-bg-theme="dark" data-always-dark="1" data-preview-id="settings-complication" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
+      <div class="cp-viewer cp-controls-open" data-bg-theme="dark" data-always-dark="1" data-preview-id="settings-complication" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="false" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="home-assistant-wear">
 
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Settings Complication"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 

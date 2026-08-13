@@ -42,7 +42,8 @@ class ServeViewerThemeBarTest {
     val html = viewer(ServePreview("plain.Button", "Button"))
     assertTrue(
       html.contains(
-        "<span class=\"cp-theme cp-theme-bar\" role=\"group\" aria-label=\"Preview theme\">"
+        "<span class=\"cp-theme cp-theme-bar\" id=\"cp-theme-bar\" role=\"group\"" +
+          " aria-label=\"Preview theme\">"
       ),
       html,
     )

@@ -56,6 +56,7 @@
         <h1 class="cp-head cp-preview-title">Button · Filled (light) <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
         <code class="cp-preview-id" title="button-filled__ideal__default__light">button-filled__ideal__default__light</code>
 
+        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="true" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
       </div>
 
 
@@ -76,8 +77,7 @@
         </span>
       </div>
       <div class="cp-viewer-bar">
-
-        <span class="cp-theme cp-theme-bar" role="group" aria-label="Preview theme">
+        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
           <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
           <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
           <button type="button" class="cp-theme-btn" data-theme-choice="theme:com.example.BrandLightThemeCatalog" data-theme-mode="light" title="Brand · Brand Light">Brand Light</button>
@@ -85,10 +85,9 @@
         </span>
         <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind the preview">Transparent</button>
         <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-        <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
 
-      <div class="cp-viewer cp-controls-open" data-bg-theme="light" data-preview-id="button-filled__ideal__default__light" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="true" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-wasm-src="/wasm/compose-m3/?id=button-filled">
+      <div class="cp-viewer cp-controls-open" data-bg-theme="light" data-preview-id="button-filled__ideal__default__light" data-mode="snapshot" data-modes="snapshot" data-static-snapshot="true" data-can-render-overrides="true" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="compose-m3" data-wasm-src="/wasm/compose-m3/?id=button-filled">
 
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Button · Filled (light)"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts allow-same-origin" title="Button · Filled (light) (Wasm)"></iframe><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 

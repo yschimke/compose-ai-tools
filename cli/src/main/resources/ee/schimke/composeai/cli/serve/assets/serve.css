@@ -963,6 +963,58 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   font-size: var(--md-sys-typescale-body-small-size);
   letter-spacing: var(--md-sys-typescale-body-small-tracking);
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The four disclosures — Components, State/Variant, Theme, Overrides — ride at the end of that
+   same identity row, pushed to the trailing edge by the auto margin. They are the page's controls
+   over what is *shown*, so grouping them buys one place to look; keeping them on the title row
+   rather than a strip of their own is what makes the fold they buy back a net gain. `align-self`
+   overrides the row's baseline alignment: a 34px pill sitting on a headline's baseline hangs below
+   the row it belongs to. */
+.cp-head-toggles { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-left: auto; align-self: center; }
+/* The axis toggles are the drawer toggle's compact sibling: same pill, same selected language,
+   but two-part — the axis it folds, then the value that axis currently holds. Four full-size
+   drawer pills on the title row of a 1100px laptop wrap; at this size they don't. */
+/* Both classes on one button, and `.cp-drawer-toggle` is declared further down this sheet — at
+   equal specificity the later rule wins, so a bare `.cp-axis-toggle` here set `gap`/`min-height`/
+   `padding` and then had all three taken straight back off it. Qualifying with both classes is what
+   actually makes these compact, which is what keeps four controls beside the title instead of
+   wrapping them onto a row of their own. */
+.cp-drawer-toggle.cp-axis-toggle { gap: 6px; min-height: 34px; padding: 6px 14px; }
+.cp-toggle-label { color: var(--cp-fg-faint);
+  font-size: var(--md-sys-typescale-label-small-size); font-weight: 500; letter-spacing: 0.06em;
+  text-transform: uppercase; }
+.cp-axis-toggle[aria-expanded="true"] .cp-toggle-label {
+  color: var(--md-sys-color-on-secondary-container); }
+/* The value is the fact the folded row would otherwise have carried, so it is the emphasised half
+   and it never ellipsises away to nothing. */
+.cp-toggle-value { max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The folded component subtree. A plain block wrapper so `hidden` is all the toggle has to set;
+   the `<nav class="cp-tree">` inside keeps the tree's own layout. */
+.cp-axes[hidden] { display: none; }
+/* The viewer's subtree is the catalog tree's markup, so it inherits the rails, the twisty and the
+   row shapes for free — but NOT the sidebar geometry. `.cp-tree` is a sticky 216px column inside
+   `.cp-catalog-body` above 960px; here it is a block above the stage, on a page that has no such
+   grid, so both the stickiness and the outer margin are undone. Overriding rather than minting a
+   parallel class is the point: a change to how a tree row looks has to reach both places. */
+.cp-axes-tree { position: static; max-height: none; overflow: visible; margin: 0 0 10px;
+  max-width: 420px; }
+/* The subtree's ROOT is the component itself, so it hangs off nothing and needs no rail or indent
+   of its own; the variants keep theirs, which is what still reads as a tree rather than a list. */
+.cp-axes-tree > .cp-tree-list > li > .cp-tree-component { padding-left: 0; }
+.cp-axes-tree .cp-tree-variants { margin-left: 10px; }
+/* Where you ARE. The landing tree marks a row it scroll-spied to with `aria-current="true"`; here
+   every row is a real navigation, so the render on screen is `aria-current="page"` — the same
+   distinction the component nav drawer already draws, and the same tonal pill it uses. */
+.cp-axes-tree .cp-tree-link[aria-current="page"] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); font-weight: 500;
+  border-radius: var(--md-sys-shape-corner-full); }
+.cp-axes-tree .cp-tree-variant[aria-current="page"] { text-decoration: none; }
+/* `inline-block`, not the landing tree's `block`: on the landing a variant row is one line in a
+   216px column, but here the marker is a filled pill in a 420px block, and a block-level pill
+   stretches the full width — a bar the length of the panel to say "this one", which reads as a
+   heading rather than a selection. Shrunk to its label it reads as the chip it replaced. */
+.cp-axes-tree .cp-tree-variant { display: inline-block; }
 .cp-preview-primary { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
 /* The stage is the viewer's hero surface — an M3 elevated card at the large corner. */
@@ -1252,6 +1304,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-nav-empty[hidden] { display: none; }
 .cp-viewer:not(.cp-nav-open) .cp-nav { display: none; }
 .cp-viewer:not(.cp-controls-open) .cp-controls { display: none; }
+/* `.cp-theme` is inline-flex, which would out-specify the UA's `[hidden]` rule, so the folded
+   theme bar needs saying explicitly. */
+.cp-theme-bar[hidden] { display: none; }
 /* Mobile drawer backdrop — hidden by default; shown (below) only while a drawer is open on a
    narrow viewport, where the drawers render as bottom sheets. */
 .cp-scrim { display: none; }
@@ -1674,9 +1729,14 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   background: light-dark(#ffdfb0, #4a3000); color: light-dark(#573100, #ffd8a3); border: 0; }
 
 @media (min-width: 1100px) {
-  /* Component discovery is part of the desktop workspace; drawers remain opt-in below this. */
-  .cp-viewer:not(.cp-nav-open) .cp-nav { display: flex; }
-  #cp-nav-toggle, .cp-nav-close { display: none; }
+  /* Component discovery is part of the desktop workspace, so the list still *opens* by default
+     here — but it is no longer nailed open. `cp-nav-closed` is the explicit "the reader put this
+     away" class the drawer script sets, and it is what lets a 240px column be reclaimed for the
+     render on a desktop too; without it the toggle in the title bar would be a control that did
+     nothing at exactly the width where the column costs the most. Three states, not two: no class
+     (open here, closed below), `cp-nav-open` (open everywhere), `cp-nav-closed` (closed
+     everywhere), so a no-JS desktop keeps today's list. */
+  .cp-viewer:not(.cp-nav-open):not(.cp-nav-closed) .cp-nav { display: flex; }
 }
 /* Mobile / narrow viewports. The viewer is a flex row of stage + overrides (+ optional nav);
    on a phone we collapse it to a single stacked column and — crucially for usability on a tall
@@ -1710,12 +1770,21 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   /* The trust badge can carry a long branch string; constrain it to the viewport and let it
      wrap instead of forcing a horizontal scroll. */
   .cp-badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-  /* Sticky toggle bar so ⚙ Overrides / ☰ Components stay one tap away without scrolling. */
-  .cp-viewer-bar { position: sticky; top: 0; z-index: 20; margin: 0 0 10px; padding: 6px 0;
-    background: var(--cp-bg); }
-  /* The four fixed controls alone fill a phone's width, so the bar wraps again here. The theme
-     group keeps its own single scrolling row — that is its own axis, not the bar's. */
-  .cp-viewer-bar { flex-wrap: wrap; }
+  /* Sticky disclosure row so ⚙ Overrides / ☰ Components — and now the State and Theme folds —
+     stay one tap away without scrolling past a tall preview. The row that sticks is the title row,
+     because that is where all four toggles live; the opaque preview id goes, since it is the one
+     thing on that row a phone was already ellipsising into a stub and it is in the URL, the export
+     links and the title attribute regardless. */
+  .cp-preview-head { position: sticky; top: 0; z-index: 21; margin: 0 0 8px; padding: 6px 0;
+    background: var(--cp-bg); row-gap: 6px; }
+  .cp-preview-head .cp-preview-id { display: none; }
+  /* The name is NOT clamped to one line here, though it would buy a row back: the trust verdict is
+     a `<span>` inside the `<h1>`, so an ellipsis on the headline eats the badge — and "is this
+     render trustworthy" is not a fact to drop for 24px of a sticky row. */
+  .cp-head-toggles { margin-left: 0; }
+  /* The bar's controls alone fill a phone's width, so it wraps again here. The theme group keeps
+     its own single scrolling row — that is its own axis, not the bar's. */
+  .cp-viewer-bar { margin: 0 0 10px; flex-wrap: wrap; }
   .cp-theme-bar { flex-basis: 100%; }
   .cp-viewer { gap: 16px; }
   /* Stage, overrides and nav each stack full-width; min-width:0 lets the flex items (and their

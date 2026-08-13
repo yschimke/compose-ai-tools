@@ -300,6 +300,18 @@ const SERVE_ASSETS = [
 // instead of the lane label. There's no daemon in the harness, so we set the attribute the same way
 // the viewer JS does and let the page's own `MutationObserver` paint the badge — the badge text and
 // accent under test are produced by the real `backendBadgeScript`, not faked here.
+// The viewer's theme bar FOLDS behind its title-bar toggle once a catalog declares more themes
+// than the single-row bar can show, so a chip on such a page is behind one click before it is
+// clickable. Drive it the way a visitor does — open the disclosure, then press the chip — rather
+// than reaching past the fold with a forced click, which would keep passing if the toggle stopped
+// opening anything. A no-op on a viewer whose bar is already inline, and on the landing grid,
+// whose theme picker is a wrapping row that never folds.
+async function openThemeBar(page) {
+    const bar = page.locator("#cp-theme-bar");
+    if ((await bar.count()) && (await bar.isHidden()))
+        await page.click("#cp-theme-toggle");
+}
+
 const FIXTURE_STATES = [
     {
         // The design page with this catalog's renders standing IN PLACE OF the design's own
@@ -541,6 +553,7 @@ const FIXTURE_STATES = [
         apply: async (page) => {
             // Light, because this fixture's baked default is already dark: picking dark is a no-op
             // the bar handler drops, and would shoot the page that was there anyway.
+            await openThemeBar(page);
             await page.click('[data-theme-choice="light"]');
             await page.waitForFunction(() =>
                 document.documentElement.classList.contains("cp-scheme-light"),
@@ -1015,6 +1028,37 @@ const FIXTURE_STATES = [
             );
         },
     },
+    {
+        // The viewer's two in-page folds OPENED. The committed fixture captures the resting state
+        // — a wide state axis and a crowded theme bar both folded behind the title bar — so the
+        // rows themselves, which are what the toggles exist to reveal, would be diffed by nothing.
+        // This is also the only shot in which the toggles carry their expanded (tonal) treatment.
+        fixture: "serve-viewer-axes-folded",
+        suffix: "disclosures-open",
+        apply: async (page) => {
+            await page.click("#cp-axes-toggle");
+            await page.click("#cp-theme-toggle");
+            await page.waitForSelector("#cp-axes:not([hidden])");
+            await page.waitForSelector("#cp-theme-bar:not([hidden])");
+        },
+    },
+    {
+        // …and the component list CLOSED, which is new: above 1100px the list used to be nailed
+        // open by CSS with its toggle hidden, so "the stage with the 240px column given back" is a
+        // layout no baseline has ever held. Widened past that breakpoint first — the harness runs
+        // at 1024 by default, where the list is already hidden and closing it would prove nothing.
+        // States run in order against the SAME page, so this one re-folds what the state above
+        // opened; otherwise it would shoot two changes at once and diff neither cleanly.
+        fixture: "serve-viewer-axes-folded",
+        suffix: "nav-closed",
+        apply: async (page) => {
+            await page.click("#cp-axes-toggle");
+            await page.click("#cp-theme-toggle");
+            await page.setViewportSize({ width: 1280, height: 900 });
+            await page.click("#cp-nav-toggle");
+            await page.waitForSelector(".cp-viewer.cp-nav-closed");
+        },
+    },
 ];
 
 /** Page fixtures = `fixtures/pages/*.html`, honouring the `HARNESS_FIXTURE` narrow. */
@@ -1267,7 +1311,9 @@ test("contract · snapshot overrides stay composed with a declared theme", async
 
     // Through the viewer bar's theme chip, which is the visible control now — `#cp-theme` is still
     // the state it writes, but a test that drives the hidden select would pass even if the chips
-    // were wired to nothing.
+    // were wired to nothing. This fixture declares enough themes that the bar arrives folded, so
+    // the chip is one disclosure click away.
+    await openThemeBar(page);
     await change(
         () =>
             page
@@ -1471,6 +1517,7 @@ test("contract · Back to an unthemed entry hands the chrome back to the OS", as
     // no-op the handler drops. It pushes a history entry and pins the chrome, the working half.
     // Driven through the visible chip rather than `#cp-theme`: the select is in the DOM but
     // visually removed (the bar is its face), so it is the chip a visitor can actually click.
+    await openThemeBar(page);
     await page.click('[data-theme-choice="light"]');
     await expect.poll(scheme).toBe("cp-scheme-light");
 

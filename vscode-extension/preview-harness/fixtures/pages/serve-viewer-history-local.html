@@ -56,6 +56,7 @@
         <h1 class="cp-head cp-preview-title">Profile screen</h1>
         <code class="cp-preview-id" title="com.example.ProfileScreenPreview">com.example.ProfileScreenPreview</code>
 
+        <span class="cp-head-toggles"><button type="button" class="cp-drawer-toggle cp-axis-toggle" id="cp-theme-toggle" aria-expanded="true" aria-controls="cp-theme-bar"><span class="cp-toggle-label">Theme</span><span class="cp-toggle-value" id="cp-theme-toggle-value">Day</span></button><button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button></span>
       </div>
 
 
@@ -71,14 +72,12 @@
         </span>
       </div>
       <div class="cp-viewer-bar">
-
-        <span class="cp-theme cp-theme-bar" role="group" aria-label="Preview theme">
+        <span class="cp-theme cp-theme-bar" id="cp-theme-bar" role="group" aria-label="Preview theme">
           <button type="button" class="cp-theme-btn" data-theme-choice="light">Day</button>
           <button type="button" class="cp-theme-btn" data-theme-choice="dark">Night</button>
         </span>
         <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind the preview">Transparent</button>
         <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
-        <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
       <script type="application/json" id="cp-history-data">{"formatVersion":"compose-preview-history/v1","generatedFrom":"df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80",
  "previews":{"com.example.ProfileScreenPreview":{
@@ -87,7 +86,7 @@
      {"blob":"1c9a3f6b2d4e5f708192a3b4c5d6e7f809a1b2c3","commit":"df4aa9c00fcc8b1747e159b71d3fbc75cdc27b80","date":"2026-05-22T11:08:37+00:00","sourceSha":"57ac24f3","commits":1},
      {"blob":"2d8b4a7c3e5f60718293a4b5c6d7e8f90a1b2c3d","commit":"8b9f6f2bc953756edcb13963e09cd57c54866570","date":"2026-05-07T08:34:51+00:00","sourceSha":"cf69a4a0","commits":3},
      {"blob":"3e7c5b8d4f60718293a4b5c6d7e8f90a1b2c3d4e","commit":"1f10ff93dcb1a0f5e6c7b8a9d0e1f2a3b4c5d6e7","date":"2026-04-19T09:12:00+00:00","sourceSha":"03ecb679","commits":1}]}}}</script>
-      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-history-blob-url="/history/render/{blob}.png?token=demo-token-fixture">
+      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-fold-scope="default" data-history-blob-url="/history/render/{blob}.png?token=demo-token-fixture">
 
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
 
