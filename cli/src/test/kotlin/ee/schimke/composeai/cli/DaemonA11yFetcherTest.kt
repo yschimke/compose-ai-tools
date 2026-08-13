@@ -738,6 +738,48 @@ class DaemonA11yFetcherTest {
     )
   }
 
+  @Test
+  fun `a hold left by an earlier run is not reinstated`() {
+    val projectDir = newTempFolder("module-permutation-stale-hold")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+    dataDir.mkdirs()
+    File(dataDir, "a11y-atf.json").writeText("""{"findings":[]}""")
+    // An earlier run's hold, carrying an overlay this run's base does not have. If the hold were
+    // reused rather than cleared, the roll-back would treat that image as the preview's current
+    // one and reinstate a render from two runs ago.
+    val hold = File(projectDir, "build/compose-previews/.a11y-pre-permutation/Foo")
+    hold.mkdirs()
+    File(hold, "a11y-overlay.png").writeText("from-two-runs-ago")
+
+    DaemonA11yFetcher(
+        factory =
+          FakeFactory(
+            payloads = emptyMap(),
+            payloadByCall = mapOf(1 to atfPayload(emptyList()), 2 to null),
+          )
+      )
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo"),
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
+          ),
+      )
+
+    assertFalse(
+      File(dataDir, "a11y-overlay.png").exists(),
+      "the stale hold must not be reinstated as this preview's overlay",
+    )
+    // What this run actually held is restored, so the base keeps its own data product.
+    assertEquals("""{"findings":[]}""", File(dataDir, "a11y-atf.json").readText())
+    assertFalse(hold.exists(), "and the hold is released either way")
+  }
+
   // ---------- narrowed runs merge rather than clobber (#3742) ----------
 
   @Test
