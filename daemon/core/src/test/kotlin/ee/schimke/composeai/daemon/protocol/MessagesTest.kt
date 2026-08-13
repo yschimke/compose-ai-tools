@@ -46,6 +46,12 @@ class MessagesTest {
 
   @Test fun roundTripRenderNowResult() = roundTrip<RenderNowResult>("daemon-renderNowResult.json")
 
+  // Issue #3749 — `preview/rows`, the `@PreviewParameter` row enumeration surface.
+  @Test fun roundTripPreviewRowsParams() = roundTrip<PreviewRowsParams>("client-previewRows.json")
+
+  @Test
+  fun roundTripPreviewRowsResult() = roundTrip<PreviewRowsResult>("daemon-previewRowsResult.json")
+
   @Test
   fun roundTripDiscoveryUpdatedParams() =
     roundTrip<DiscoveryUpdatedParams>("daemon-discoveryUpdated.json")
@@ -140,6 +146,8 @@ class MessagesTest {
         "client-renderNow.json",
         "client-renderNow-overrides.json",
         "daemon-renderNowResult.json",
+        "client-previewRows.json",
+        "daemon-previewRowsResult.json",
         "daemon-discoveryUpdated.json",
         "daemon-renderStarted.json",
         "daemon-renderFinished.json",

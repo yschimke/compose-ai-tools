@@ -975,6 +975,58 @@ open class RobolectricHost(
     }
   }
 
+  /**
+   * Issue #3749 — enumerate [previewId]'s `@PreviewParameter` rows inside the sandbox.
+   *
+   * Two-stage on purpose. The **metadata gate** comes first: the spec resolver already knows
+   * whether the preview declares a provider, and an ordinary preview has no rows — so the
+   * overwhelmingly common call returns here without allocating a request, waking a sandbox, or
+   * loading a class. Only a declared provider pays for the round-trip below, which has to happen
+   * inside the sandbox because the provider lives on the slot's child classloader and its values
+   * routinely touch Android APIs that are only real under Robolectric.
+   */
+  override fun previewParameterRows(previewId: String): List<PreviewParameterRow> {
+    val spec =
+      previewSpecResolver?.invoke(previewId)
+        ?: throw IllegalArgumentException("no preview spec for previewId='$previewId'")
+    val provider =
+      spec.previewParameterProviderClassName?.takeIf { it.isNotBlank() } ?: return emptyList()
+    // A row-addressed id resolves too, and answers with the whole row set — a client holding
+    // `Foo_Dark` is asking "what else is there". Both spec resolvers set `previewParameterRow` when
+    // they split one, so the base id comes back off the suffix rather than being re-derived here
+    // (where the longest-parameterized-prefix rule isn't available).
+    val baseId =
+      spec.previewParameterRow
+        ?.let { previewId.removeSuffix("_$it").takeIf { base -> base != previewId } } ?: previewId
+
+    val request =
+      RenderRequest.ParameterRows(
+        payload =
+          buildString {
+            append("className=").append(spec.className).append(';')
+            append("previewParameterProvider=").append(provider).append(';')
+            append("previewParameterLimit=").append(spec.previewParameterLimit)
+          }
+      )
+    val slotIdx = 0
+    val slot = DaemonHostBridge.slot(slotIdx)
+    // Same publish-then-enqueue order `submitInProcess` uses, so the enumeration reads the same
+    // (possibly just-swapped) bytecode the next render would.
+    publishChildLoaderForSlot(slotIdx)
+    slot.requests.put(request)
+    val resultQueue = DaemonHostBridge.results.computeIfAbsent(request.id) { LinkedBlockingQueue() }
+    val raw =
+      resultQueue.poll(PARAMETER_ROWS_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        ?: error("previewParameterRows('$previewId') timed out after ${PARAMETER_ROWS_TIMEOUT_MS}ms")
+    DaemonHostBridge.results.remove(request.id)
+    if (raw is Throwable) throw raw
+    @Suppress("UNCHECKED_CAST")
+    val labels = raw as? List<String> ?: error("unexpected ParameterRows reply: ${raw.javaClass}")
+    return labels.mapIndexed { index, label ->
+      PreviewParameterRow(index = index, label = label, id = PreviewRowAddress.rowId(baseId, label))
+    }
+  }
+
   /** The in-process (slot 0) half of [submit] — the pre-pool path, unchanged. */
   private fun submitInProcess(typed: RenderRequest.Render, timeoutMs: Long): RenderResult {
     val slotIdx = 0
@@ -1996,6 +2048,13 @@ open class RobolectricHost(
      * doesn't feel gated, coarse enough not to spin.
      */
     private const val INTERACTIVE_WORKER_POLL_MS: Long = 100L
+
+    /**
+     * Deadline for the sandbox round-trip in [previewParameterRows]. Generous because the *first*
+     * enumeration on a cold slot pays the same class-loading cost a first render does — but this
+     * is metadata, not a render, so it must never inherit the render timeout's open-endedness.
+     */
+    private const val PARAMETER_ROWS_TIMEOUT_MS: Long = 30_000L
   }
 
   override fun shutdown(timeoutMs: Long) {
@@ -2325,6 +2384,42 @@ open class RobolectricHost(
         // silent skip.
         when (request.javaClass.simpleName) {
           "Shutdown" -> return
+          // Issue #3749 — enumerate a `@PreviewParameter` provider's rows. This has to run HERE,
+          // inside the sandbox: the provider class lives on the slot's child classloader and its
+          // values routinely touch Android APIs that are only real under Robolectric. The reply is
+          // a plain `java.util.List<String>` of row labels, because that is what crosses the
+          // sandbox classloader boundary intact (same `java.*`-only rule the bridge package
+          // documents).
+          "ParameterRows" -> {
+            val id = request.javaClass.getMethod("getId").invoke(request) as Long
+            val payload = request.javaClass.getMethod("getPayload").invoke(request) as String
+            val reply: Any =
+              try {
+                val map = parseKeyValuePayload(payload)
+                val provider = map["previewParameterProvider"].orEmpty()
+                val limit =
+                  map["previewParameterLimit"]?.toIntOrNull()
+                    ?: ee.schimke.composeai.renderer.PreviewParameterSupport.MAX_ROW_SCAN
+                val values =
+                  ee.schimke.composeai.renderer.PreviewParameterSupport.loadValues(
+                    providerFqn = provider,
+                    limit =
+                      limit.coerceAtMost(
+                        ee.schimke.composeai.renderer.PreviewParameterSupport.MAX_ROW_SCAN
+                      ),
+                    classLoader =
+                      slot.childLoaderRef.get()
+                        ?: Thread.currentThread().contextClassLoader
+                        ?: javaClass.classLoader,
+                  )
+                ArrayList(
+                  ee.schimke.composeai.renderer.PreviewParameterSupport.rowSuffixes(values)
+                )
+              } catch (t: Throwable) {
+                unwrapInvocationTarget(t)
+              }
+            DaemonHostBridge.results.computeIfAbsent(id) { LinkedBlockingQueue() }.put(reply)
+          }
           "Render" -> {
             val id = request.javaClass.getMethod("getId").invoke(request) as Long
             val payload = request.javaClass.getMethod("getPayload").invoke(request) as String
@@ -2490,9 +2585,11 @@ open class RobolectricHost(
       )
     }
 
-    private data class ForensicPayload(val outPath: String, val survey: List<String>)
-
-    private fun parseForensicPayload(payload: String): ForensicPayload {
+    /**
+     * `;`-delimited `key=value` payload → map — the shape every sandbox-bound request uses. Shared
+     * by the forensic-dump and `@PreviewParameter` row-enumeration lanes.
+     */
+    private fun parseKeyValuePayload(payload: String): Map<String, String> {
       val map = mutableMapOf<String, String>()
       for (entry in payload.split(';')) {
         val trimmed = entry.trim()
@@ -2501,6 +2598,13 @@ open class RobolectricHost(
         if (eq <= 0) continue
         map[trimmed.substring(0, eq).trim()] = trimmed.substring(eq + 1).trim()
       }
+      return map
+    }
+
+    private data class ForensicPayload(val outPath: String, val survey: List<String>)
+
+    private fun parseForensicPayload(payload: String): ForensicPayload {
+      val map = parseKeyValuePayload(payload)
       val outPath =
         map[FORENSIC_DUMP_KEY] ?: error("forensic-dump payload missing $FORENSIC_DUMP_KEY=")
       val survey =

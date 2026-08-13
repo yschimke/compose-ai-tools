@@ -1,0 +1,15 @@
+{
+  "previewId": "com.example.HomeKt#HomePreview",
+  "rows": [
+    {
+      "index": 0,
+      "label": "Crimson",
+      "id": "com.example.HomeKt#HomePreview_Crimson"
+    },
+    {
+      "index": 1,
+      "label": "PARAM_1",
+      "id": "com.example.HomeKt#HomePreview_PARAM_1"
+    }
+  ]
+}

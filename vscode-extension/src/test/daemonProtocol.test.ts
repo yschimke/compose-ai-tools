@@ -26,6 +26,8 @@ import {
     InitializeParams,
     InitializeResult,
     PROTOCOL_VERSION,
+    PreviewRowsParams,
+    PreviewRowsResult,
     RenderFailedParams,
     RenderFinishedParams,
     RenderNowParams,
@@ -171,6 +173,30 @@ describe("daemon protocol — golden fixtures", () => {
         assert.ok(Array.isArray(result.queued));
         assert.ok(Array.isArray(result.rejected));
         assert.strictEqual(result.rejected[0].reason, "unknown preview ID");
+    });
+
+    it("parses preview/rows fixtures — enumerated rows are addressable ids", () => {
+        // PROTOCOL.md § 5 / issue #3749. The row `id` is what a client hands
+        // back to renderNow, so the contract worth pinning is that it is the
+        // base id plus the row's own label, for BOTH row spellings.
+        const params = readFixture<PreviewRowsParams>(
+            "client-previewRows.json",
+        );
+        const result = readFixture<PreviewRowsResult>(
+            "daemon-previewRowsResult.json",
+        );
+        assert.strictEqual(result.previewId, params.previewId);
+        assert.deepStrictEqual(
+            result.rows.map((r) => r.index),
+            [0, 1],
+        );
+        assert.deepStrictEqual(
+            result.rows.map((r) => r.id),
+            result.rows.map((r) => `${result.previewId}_${r.label}`),
+        );
+        // A derived label and the positional fallback, so neither lane rots.
+        assert.strictEqual(result.rows[0].label, "Crimson");
+        assert.strictEqual(result.rows[1].label, "PARAM_1");
     });
 
     it("parses client-renderNow.json with tier=fast", () => {

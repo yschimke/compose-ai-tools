@@ -26,6 +26,8 @@ import ee.schimke.composeai.daemon.protocol.InteractiveStartResult
 import ee.schimke.composeai.daemon.protocol.InteractiveStopParams
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
 import ee.schimke.composeai.daemon.protocol.JsonRpcRequest
+import ee.schimke.composeai.daemon.protocol.PreviewRowsParams
+import ee.schimke.composeai.daemon.protocol.PreviewRowsResult
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptParams
 import ee.schimke.composeai.daemon.protocol.RecordingStartParams
@@ -454,6 +456,27 @@ private constructor(
       response["result"]
         ?: error("recording/stop: no result — error=${response["error"]}, full=$response")
     return json.decodeFromJsonElement(RecordingStopResult.serializer(), resultElem)
+  }
+
+  /**
+   * Drives `preview/rows` — the `@PreviewParameter` rows of [previewId] (issue #3749). An ordinary
+   * preview answers with an empty list, which the daemon derives from discovery metadata without
+   * enumerating anything.
+   */
+  fun previewRows(previewId: String): PreviewRowsResult {
+    val id = nextId.getAndIncrement()
+    val request =
+      JsonRpcRequest(
+        id = id,
+        method = "preview/rows",
+        params =
+          json.encodeToJsonElement(PreviewRowsParams.serializer(), PreviewRowsParams(previewId)),
+      )
+    val response = sendAndPoll(id, request, 120.seconds)
+    val resultElem =
+      response["result"]
+        ?: error("preview/rows: no result — error=${response["error"]}, full=$response")
+    return json.decodeFromJsonElement(PreviewRowsResult.serializer(), resultElem)
   }
 
   /** Drives `renderNow` for the given preview ids at the given [tier]. */

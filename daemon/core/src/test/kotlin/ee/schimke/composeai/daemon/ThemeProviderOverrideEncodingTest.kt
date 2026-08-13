@@ -230,6 +230,9 @@ private class PayloadCapturingThemeProviderHost : RenderHost {
                   )
                 )
               }
+              // Never enqueued here: `submit` only accepts a Render. Present so the `when` stays
+              // exhaustive over `RenderRequest` (issue #3749 added ParameterRows).
+              is RenderRequest.ParameterRows -> {}
               RenderRequest.Shutdown -> return@Thread
             }
           }

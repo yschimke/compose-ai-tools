@@ -245,6 +245,41 @@ class PreviewManifestRouter(
   /** A previewId resolved against the manifest: the entry to render, and which row of it. */
   internal data class Addressed(val entry: PreviewManifestEntry, val row: String?)
 
+  override fun previewParameterRows(previewId: String): List<PreviewParameterRow> {
+    // Row-addressed ids resolve too, and answer with the *whole* row set: a client holding
+    // `Foo_Dark` is asking "what else is there", and making it strip the suffix itself would hand
+    // back the same longest-base ambiguity `rowAddressed` exists to resolve.
+    val entry =
+      rowAddressed(previewId)?.entry
+        ?: throw IllegalArgumentException(
+          "no manifest entry for previewId='$previewId'. Manifest knows: ${byId.keys}"
+        )
+    val baseId = entry.id
+    val resolved = entry.resolved()
+    // Metadata gate (issue #3749): an ordinary preview has no rows, and answering that from
+    // discovery alone keeps the common call off the classloader entirely. Only a declared provider
+    // earns the reflective enumeration below.
+    val provider =
+      resolved.previewParameterProviderClassName?.takeIf { it.isNotBlank() } ?: return emptyList()
+    val limit =
+      resolved.previewParameterLimit.coerceAtMost(
+        ee.schimke.composeai.renderer.PreviewParameterSupport.MAX_ROW_SCAN
+      )
+    // Enumerate on the same disposable child loader a render would use, so a provider edited since
+    // the daemon started is read fresh rather than off the bytecode it booted with.
+    val values =
+      ee.schimke.composeai.renderer.PreviewParameterSupport.loadValues(
+        providerFqn = provider,
+        limit = limit,
+        classLoader = userClassloaderHolder?.currentChildLoader() ?: javaClass.classLoader,
+      )
+    return ee.schimke.composeai.renderer.PreviewParameterSupport.rowSuffixes(values).mapIndexed {
+      index,
+      label ->
+      PreviewParameterRow(index = index, label = label, id = PreviewRowAddress.rowId(baseId, label))
+    }
+  }
+
   private fun parseInboundPayload(payload: String): Map<String, String> {
     val map = mutableMapOf<String, String>()
     for (entry in payload.split(';')) {

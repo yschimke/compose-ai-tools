@@ -664,6 +664,20 @@ open class DesktopHost(
         }
       when (request) {
         is RenderRequest.Shutdown -> return
+        // Desktop answers `preview/rows` on the caller's thread — there is no sandbox to cross, so
+        // enumeration never needs the render thread and never reaches this queue (issue #3749).
+        // Post the failure onto the result queue rather than throwing: an unexpected request must
+        // not kill the worker and time out every later submit.
+        is RenderRequest.ParameterRows -> {
+          results
+            .computeIfAbsent(request.id) { LinkedBlockingQueue() }
+            .put(
+              IllegalStateException(
+                "DesktopHost does not dispatch ParameterRows through the render queue; " +
+                  "call previewParameterRows() instead"
+              )
+            )
+        }
         is RenderRequest.Render -> {
           // Two failure modes are routed differently:
           //   1. Spec-payload-not-recognised (legacy `payload="render-N"` from DesktopHostTest):

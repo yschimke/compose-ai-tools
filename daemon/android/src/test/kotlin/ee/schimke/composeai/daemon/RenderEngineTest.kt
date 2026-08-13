@@ -958,8 +958,10 @@ class RenderEngineTest {
 
   @Test
   fun previewParameterRowOutOfRangeReportsTheAvailableRows() {
-    // The diagnostic is the discovery path (issue #3749): with no enumeration RPC, an over-request
-    // is how a caller learns what a provider offers, so the message must carry the row list.
+    // `preview/rows` is the way to *discover* a provider's rows (issue #3749), but a caller can
+    // still name a row that doesn't exist — a stale id, a hand-written one. The failure has to say
+    // what the provider actually offers rather than silently falling back to value 0, so the
+    // message carries the row list.
     val outputDir = tempFolder.newFolder("renders-preview-parameter-row-oob")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
