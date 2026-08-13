@@ -97,6 +97,42 @@ class PreviewManifestRowEnumerationTest {
     assertEquals(listOf("Screen_Dark", "Screen_dark"), rows.map { it.id })
   }
 
+  /**
+   * Review follow-up: the implementation must live on [DesktopHost], not on the router.
+   * [PreviewManifestRouter] is harness-only (`-Dcomposeai.harness.previewsManifest`); every
+   * production desktop launch mounts a plain [DesktopHost] with a `PreviewIndex`-backed resolver
+   * (`DaemonMain`). A router-only override answered `MethodNotFound` on the path real users take —
+   * and the harness tests couldn't see it, because the harness is exactly the path that *does*
+   * mount a router.
+   */
+  @Test
+  fun `a plain DesktopHost with a resolver enumerates too`() {
+    val spec =
+      RenderSpec(
+        className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+        functionName = "CaseLabelledSquare",
+        previewParameterProviderClassName = "ee.schimke.composeai.daemon.CaseTintProvider",
+      )
+    val host = DesktopHost(previewSpecResolver = { id -> spec.takeIf { id == "Screen" } })
+
+    assertEquals(
+      listOf("Screen_Dark", "Screen_dark"),
+      host.previewParameterRows("Screen").map { it.id },
+    )
+  }
+
+  /**
+   * No resolver at all is the one case that genuinely can't enumerate — MethodNotFound is right.
+   */
+  @Test
+  fun `a DesktopHost with no resolver reports the capability as unsupported`() {
+    val failure = runCatching { DesktopHost().previewParameterRows("Screen") }.exceptionOrNull()
+    assertTrue(
+      "expected UnsupportedOperationException, got $failure",
+      failure is UnsupportedOperationException,
+    )
+  }
+
   @Test
   fun `an unknown previewId is rejected as an argument error`() {
     val failure =

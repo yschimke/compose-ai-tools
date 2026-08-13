@@ -323,6 +323,63 @@ open class DesktopHost(
   }
 
   /**
+   * Issue #3749 — enumerate [previewId]'s `@PreviewParameter` rows.
+   *
+   * Lives on [DesktopHost] rather than on [PreviewManifestRouter] because the router is a
+   * harness-only subclass: production desktop daemons mount a plain [DesktopHost] with a
+   * `PreviewIndex`-backed [previewSpecResolver] (see `DaemonMain`), and an implementation on the
+   * router alone would answer `MethodNotFound` on every real launch. Both resolvers already carry
+   * the provider FQN and, for a row-addressed id, the row token — so one implementation serves
+   * both.
+   *
+   * The **metadata gate** comes first: a preview that declares no provider has no rows, and
+   * answering that from the resolver alone keeps the common call — which a client makes for every
+   * preview it lists — off the classloader entirely.
+   */
+  override fun previewParameterRows(previewId: String): List<PreviewParameterRow> {
+    val resolver =
+      previewSpecResolver
+        ?: throw UnsupportedOperationException(
+          "DesktopHost has no previewSpecResolver; pass one at construction time to enable " +
+            "@PreviewParameter row enumeration"
+        )
+    val spec =
+      resolver(previewId)
+        ?: throw IllegalArgumentException(
+          "DesktopHost.previewSpecResolver returned null for previewId='$previewId'"
+        )
+    val provider =
+      spec.previewParameterProviderClassName?.takeIf { it.isNotBlank() } ?: return emptyList()
+    // A row-addressed id resolves too and answers with the whole row set — a client holding
+    // `Foo_Dark` is asking "what else is there". Both resolvers set `previewParameterRow` when they
+    // split one, so the base id comes back off the suffix rather than being re-derived here (where
+    // the longest-parameterized-prefix rule isn't available).
+    val baseId =
+      spec.previewParameterRow?.let {
+        previewId.removeSuffix("_$it").takeIf { base -> base != previewId }
+      } ?: previewId
+    val limit =
+      spec.previewParameterLimit.coerceAtMost(
+        ee.schimke.composeai.renderer.PreviewParameterSupport.MAX_ROW_SCAN
+      )
+    // Enumerate on the same disposable child loader a render would use, so a provider edited since
+    // the daemon started is read fresh rather than off the bytecode it booted with. A fresh
+    // provider instance is constructed per call (`PreviewParameterSupport.loadValues` news it up),
+    // so this shares no state with a concurrent render's own enumeration.
+    val values =
+      ee.schimke.composeai.renderer.PreviewParameterSupport.loadValues(
+        providerFqn = provider,
+        limit = limit,
+        classLoader = userClassloaderHolder?.currentChildLoader() ?: javaClass.classLoader,
+      )
+    return ee.schimke.composeai.renderer.PreviewParameterSupport.rowSuffixes(values).mapIndexed {
+      index,
+      label ->
+      PreviewParameterRow(index = index, label = label, id = PreviewRowAddress.rowId(baseId, label))
+    }
+  }
+
+  /**
    * v2 — allocate a [DesktopInteractiveSession] holding a long-lived
    * [androidx.compose.ui.ImageComposeScene] for [previewId]. The session resolves [previewId] to a
    * [RenderSpec] via the [previewSpecResolver] supplied at construction; if no resolver is wired,
