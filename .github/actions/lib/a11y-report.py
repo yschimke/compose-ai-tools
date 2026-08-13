@@ -34,6 +34,7 @@ import argparse
 import json
 import shutil
 import sys
+from collections import Counter
 from pathlib import Path
 
 
@@ -118,6 +119,50 @@ def load_previews(build_dir: Path) -> tuple[dict, dict, str | None, bool]:
         for entry in report.get("entries", []):
             a11y_by_id[entry["previewId"]] = entry
     return manifest, a11y_by_id, status, partial
+
+
+def module_identity(build_dir: Path) -> str:
+    """Gradle-path-ish *directory name* for the module whose outputs live in
+    ``build_dir``.
+
+    Used only to disambiguate the ``renders/`` subdirectory of modules whose
+    ``previews.json`` ``module`` field collides — that field is
+    ``project.name``, the leaf, so ``:foo:app`` and ``:bar:app`` are both
+    ``app`` (issue #3763). Mirrors the translation the a11y pipeline already
+    does in shell to match its skip list:
+    ``foo/bar/build/compose-previews`` → ``foo:bar``.
+
+    Deliberately *not* the module's identity for diffing: the report keys stay
+    `manifest["module"]` so they never depend on which other modules happened
+    to take part in a run.
+
+    Falls back to the directory itself when it doesn't follow the
+    ``<module>/build/compose-previews`` convention, which keeps this total for
+    ad-hoc invocations rather than raising on them.
+
+    The result names a directory under ``renders/``, so the path is resolved
+    and stripped of ``.`` / ``..`` components first. Without that, an ad-hoc
+    ``--build-dir ../build/compose-previews`` yields ``..``, and the
+    ``shutil.rmtree(renders/<module>)`` in `copy-annotated` would take out the
+    whole output tree.
+    """
+    parts = build_dir.parts
+    module_dir = (
+        Path(*parts[:-2])
+        if len(parts) >= 3 and parts[-2:] == ("build", "compose-previews")
+        else build_dir
+    )
+    resolved = module_dir.resolve()
+    relative = resolved
+    try:
+        relative = resolved.relative_to(Path.cwd())
+    except ValueError:
+        pass
+    safe = [p for p in relative.parts if p not in ("/", "", ".", "..")]
+    # Never empty: `--build-dir .` relativizes to nothing, and an empty name
+    # would make `renders/<dir>` the shared `renders/` root — which is rmtree'd
+    # per module, so it would delete every other module's PNGs.
+    return ":".join(safe) or resolved.name or "module"
 
 
 def is_dynamic_preview(preview: dict) -> bool:
@@ -261,18 +306,30 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
     # same-named projects; that identity problem is tracked in issue #3763.
     unchecked_previews: list[dict] = []
 
-    for raw_build_dir in build_dirs:
-        build_dir = Path(raw_build_dir)
-        manifest, a11y_by_id, status, partial = load_previews(build_dir)
+    # Load every module up front so a leaf-name collision is visible before the
+    # first render is copied. `module` is `project.name`, so `:foo:app` and
+    # `:bar:app` both report `app` — and the per-module renders dir below is
+    # rmtree'd before it is written, so the second module would delete the
+    # first one's PNGs (issue #3763).
+    loaded = [(Path(raw), *load_previews(Path(raw))) for raw in build_dirs]
+    leaf_counts = Counter(manifest["module"] for _, manifest, _, _, _ in loaded)
+
+    for build_dir, manifest, a11y_by_id, status, partial in loaded:
         module_unchecked: list[str] = []
         rows = select_variants(manifest, a11y_by_id, partial, module_unchecked)
 
+        # `module` stays the manifest's name — it is the diff key `comment`
+        # matches against the published baseline, so it must be a property of
+        # the module alone and never depend on which *other* modules took part
+        # in this run. Only the directory the renders land in is disambiguated,
+        # and only when it would otherwise be shared.
         module = manifest["module"]
+        renders_dir = module if leaf_counts[module] == 1 else module_identity(build_dir)
         unchecked_previews.extend(
             {"module": module, "previewId": preview_id}
             for preview_id in module_unchecked
         )
-        renders_out = out_dir / "renders" / module
+        renders_out = out_dir / "renders" / renders_dir
         if renders_out.exists():
             shutil.rmtree(renders_out)
         renders_out.mkdir(parents=True, exist_ok=True)
@@ -304,6 +361,11 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
                     shutil.copy2(src, renders_out / annotated_basename)
             findings_summary.append({
                 "module": row["module"],
+                # Where this row's images live under `renders/`. Normally the
+                # module name; disambiguated when two modules share one. Absent
+                # from baselines written before #3763, which is why every
+                # reader falls back to `module`.
+                "rendersDir": renders_dir,
                 "functionName": row["functionName"],
                 "sourceFile": row["sourceFile"],
                 "previewId": row["previewId"],
@@ -408,7 +470,10 @@ def _findings_table(findings: list[dict]) -> list[str]:
 
 def _entry_block(entry: dict, ref: str, repo: str, image_width: int) -> list[str]:
     fn = entry["functionName"]
-    module = entry["module"]
+    # Images live under the row's renders dir, which is the module name unless
+    # two modules shared it (#3763). Baselines written before that carry no
+    # `rendersDir`, and for them the module name is exactly where it was.
+    module = entry.get("rendersDir") or entry["module"]
     variant = entry["variant"]
     findings = entry["findings"]
 

@@ -310,6 +310,23 @@ class SelectVariantsTest(unittest.TestCase):
         self.assertFalse(partial)
 
 
+class ModuleIdentityTest(unittest.TestCase):
+    def test_translates_a_build_dir_to_a_gradle_path(self):
+        self.assertEqual(
+            ar.module_identity(Path("foo/app/build/compose-previews")), "foo:app"
+        )
+
+    def test_never_yields_a_traversal_component(self):
+        # `renders/<identity>` is rmtree'd before it is written, so an identity
+        # of `..` would delete the whole output tree.
+        for raw in ("../build/compose-previews", "./build/compose-previews",
+                    "a/../b/build/compose-previews"):
+            identity = ar.module_identity(Path(raw))
+            self.assertNotIn("..", identity.split(":"), raw)
+            self.assertNotIn(".", identity.split(":"), raw)
+            self.assertTrue(identity, raw)
+
+
 class CopyAnnotatedTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -459,6 +476,79 @@ class CopyAnnotatedTest(unittest.TestCase):
         ))
         findings = json.loads((out / "findings.json").read_text())
         self.assertEqual(findings["status"], "atf-unavailable")
+
+    def _sibling_module(self, dirname: str, module: str, fn: str) -> Path:
+        """A second build dir whose manifest reports `module` as its name."""
+        other = self.tmp / dirname
+        (other / "renders").mkdir(parents=True)
+        (other / "renders" / f"{fn}.png").write_bytes(b"clean-" + fn.encode())
+        (other / "previews.json").write_text(json.dumps({
+            "module": module,
+            "variant": "debug",
+            "previews": [
+                _preview(id=f"p.{fn}", function=fn, render=f"renders/{fn}.png"),
+            ],
+            "dataExtensionReports": {"a11y": "accessibility.json"},
+        }))
+        (other / "accessibility.json").write_text(json.dumps({
+            "module": module,
+            "entries": [{"previewId": f"p.{fn}", "findings": []}],
+        }))
+        return other
+
+    def test_same_leaf_named_modules_do_not_delete_each_others_renders(self):
+        # `module` is `project.name`, so `:foo:app` and `:bar:app` both say
+        # `app` — and `renders/<module>/` is rmtree'd before it's written, so
+        # the second module used to wipe the first one's PNGs (#3763).
+        first = self._sibling_module("foo/app/build/compose-previews", "app", "Alpha")
+        second = self._sibling_module("bar/app/build/compose-previews", "app", "Beta")
+
+        out = self.tmp / "out"
+        import argparse
+        ar.cmd_copy_annotated(argparse.Namespace(
+            build_dir=[str(first), str(second)], output_dir=str(out),
+        ))
+
+        findings = json.loads((out / "findings.json").read_text())
+        # Both modules' renders survive, each under its own directory.
+        surviving = sorted(p.name for p in (out / "renders").rglob("*.png"))
+        self.assertEqual(surviving, ["Alpha.png", "Beta.png"])
+        dirs = sorted({e["rendersDir"] for e in findings["entries"]})
+        self.assertEqual(len(dirs), 2, f"expected two renders dirs, got {dirs}")
+        # ...while the diff key stays the module's own name, so it can't shift
+        # under the baseline when the set of modules in a run changes.
+        self.assertEqual({e["module"] for e in findings["entries"]}, {"app"})
+        for entry in findings["entries"]:
+            self.assertTrue(
+                (out / "renders" / entry["rendersDir"] / entry["cleanBasename"]).exists(),
+                entry,
+            )
+
+    def test_unique_leaf_names_keep_their_plain_module_key(self):
+        # The disambiguation must not fire on an ordinary run: the published
+        # baseline's findings.json is keyed by these names, and renaming them
+        # would make every preview look new on the next comparison.
+        other = self._sibling_module(
+            "elsewhere/phone/build/compose-previews", "sample-phone", "Phone"
+        )
+
+        out = self.tmp / "out"
+        import argparse
+        ar.cmd_copy_annotated(argparse.Namespace(
+            build_dir=[str(self.build), str(other)], output_dir=str(out),
+        ))
+
+        findings = json.loads((out / "findings.json").read_text())
+        self.assertEqual(
+            sorted({e["module"] for e in findings["entries"]}),
+            ["sample-phone", "sample-wear"],
+        )
+        # No collision, so the renders tree keeps the layout the published
+        # baseline branch already has — nothing to migrate.
+        self.assertEqual(
+            sorted({e["rendersDir"] for e in findings["entries"]}),
+            ["sample-phone", "sample-wear"],
+        )
 
     def test_propagates_atf_unavailable_status_to_findings(self):
         # Simulate the daemon-failure shape `DaemonA11yFetcher` writes when no
