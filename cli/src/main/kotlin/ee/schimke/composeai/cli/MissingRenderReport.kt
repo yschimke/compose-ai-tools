@@ -74,7 +74,7 @@ data class MissingRenderSidecar(
 /**
  * Whether the renderer task that **owns a missing preview's outputs** ran in *this* invocation —
  * which task that is depends on the preview's kind and the module's backend, see
- * [renderTaskEvidenceOf].
+ * [renderTaskStateOf].
  *
  * An `.error.json` on disk is only evidence about this run if that renderer had a chance to rewrite
  * it. It deletes the previous sidecar at the start of every render attempt, so when it runs, what's
@@ -97,6 +97,24 @@ enum class RenderTaskEvidence {
 }
 
 /**
+ * Which renderer task owns a preview's outputs, and what this invocation did with it.
+ *
+ * [task] travels with [evidence] because the *report* needs it as much as the freshness decision
+ * does: "`composePreviewRender` did not run, check its testClassesDirs" is a precise, actionable
+ * sentence — and a false one when the task that actually skipped was `composePreviewRenderLottie`,
+ * which is not a `Test` task, has no `testClassesDirs`, and cannot report NO-SOURCE at all. Naming
+ * the task that was really skipped is the difference between a diagnosis and a misdirection.
+ */
+data class RenderTaskState(
+  val evidence: RenderTaskEvidence = RenderTaskEvidence.UNKNOWN,
+  /**
+   * Gradle task *name* (not path) of the owner. Defaults to the main renderer, which is the owner
+   * for every kind on every backend except Android's Lottie / SVG split.
+   */
+  val task: String = RENDER_TASK_NAME,
+)
+
+/**
  * One preview that produced no PNG, paired with whatever the renderer left beside its would-be
  * outputs. [sidecars] is empty when no `.error.json` was found — the "render was skipped" case.
  */
@@ -108,8 +126,8 @@ data class MissingRender(
   /** The preview's own class FQN — used to pick a stack frame in the *user's* package. */
   val className: String = "",
   val sidecars: List<MissingRenderSidecar> = emptyList(),
-  /** Whether the renderer ran this invocation — see [RenderTaskEvidence]. */
-  val renderTask: RenderTaskEvidence = RenderTaskEvidence.UNKNOWN,
+  /** Which renderer task owns this preview, and whether it ran — see [RenderTaskState]. */
+  val renderTask: RenderTaskState = RenderTaskState(),
 ) {
   /** First sidecar found, if any. Convenience for callers that only want "did it throw at all". */
   val sidecar: RenderErrorSidecar?
@@ -117,11 +135,11 @@ data class MissingRender(
 
   /** Sidecars this run is entitled to present as its own findings. */
   val threwThisRun: Boolean
-    get() = sidecars.isNotEmpty() && renderTask != RenderTaskEvidence.DID_NOT_RUN
+    get() = sidecars.isNotEmpty() && renderTask.evidence != RenderTaskEvidence.DID_NOT_RUN
 
   /** Sidecars that survive from an earlier run because the renderer never ran this time. */
   val hasStaleSidecars: Boolean
-    get() = sidecars.isNotEmpty() && renderTask == RenderTaskEvidence.DID_NOT_RUN
+    get() = sidecars.isNotEmpty() && renderTask.evidence == RenderTaskEvidence.DID_NOT_RUN
 }
 
 /** One `Caused by:` entry of a stack trace. */
@@ -174,8 +192,8 @@ fun collectMissingRenders(
   missing: List<PreviewResult>,
   manifests: List<Pair<PreviewModule, PreviewManifest>>,
   fileSystem: FileSystem = SystemFileSystem,
-  renderTaskEvidence: (module: String, kind: String) -> RenderTaskEvidence = { _, _ ->
-    RenderTaskEvidence.UNKNOWN
+  renderTaskEvidence: (module: String, kind: String) -> RenderTaskState = { _, _ ->
+    RenderTaskState()
   },
 ): List<MissingRender> {
   val moduleByPath = manifests.associate { (module, _) -> module.gradlePath to module }
@@ -191,13 +209,31 @@ fun collectMissingRenders(
           preview?.dataProducts?.forEach { if (it.output.isNotEmpty()) add(it.output) }
         }
         .distinct()
-    // The default stem is a *fallback*, not an extra candidate: manifests written before
-    // `renderOutput` was mandatory, and previews the manifest doesn't describe at all, still render
-    // to `renders/<id>.png`. Probing it alongside a declared output resurrects the dead — nothing
-    // deletes a stale `.error.json` (`cleanStaleRenders` walks `png`/`gif` only), so a preview that
-    // has since moved to a time-fanout or kind-specific directory still has its pre-move sidecar on
-    // disk, and reporting it beside the current failure claims two throws where one happened.
-    val relativeOutputs = declaredOutputs.ifEmpty { listOf("renders/${result.id}.png") }
+    // `renders/<id>.png` is where an output the manifest leaves *blank* actually lands: the Android
+    // renderer resolves a capture to `capture.renderOutput.substringAfterLast('/').ifEmpty {
+    // "<id>.png" }` inside the renders dir, and its outer per-preview catch writes the sidecar at
+    // exactly that anchor. So the default stem is a live candidate whenever some capture declares
+    // no
+    // path of its own — including the shape where an empty capture sits beside a data product,
+    // which
+    // is the only place that preview's failure would be recorded if it died before the product.
+    //
+    // What it must NOT be is an unconditional extra: nothing ever deletes a stale `.error.json`
+    // (`cleanStaleRenders` walks `png`/`gif` only), so a preview whose captures have all since
+    // moved
+    // to a time-fanout or kind-specific directory still has its pre-move sidecar on disk, and
+    // reporting that beside the current failure claims two throws where one happened.
+    //
+    // A preview with *no* captures at all (a `@ScrollingPreview` that declares only data products,
+    // issue #1524) is deliberately not in that set: the renderer anchors its sidecar on the first
+    // data product, which is already a declared output.
+    val defaultStemIsLive =
+      preview == null ||
+        declaredOutputs.isEmpty() ||
+        preview.captures.any { it.renderOutput.isEmpty() }
+    val relativeOutputs =
+      if (defaultStemIsLive) (declaredOutputs + "renders/${result.id}.png").distinct()
+      else declaredOutputs
     val sidecars =
       module?.let { m ->
         relativeOutputs.mapNotNull { rel ->
@@ -219,7 +255,7 @@ fun collectMissingRenders(
 /**
  * The renderer task every backend registers — Robolectric on Android, the JVM renderer on desktop.
  */
-private const val RENDER_TASK_NAME = "composePreviewRender"
+internal const val RENDER_TASK_NAME: String = "composePreviewRender"
 
 /**
  * Preview kinds the **Android** backend renders from their own task rather than from
@@ -235,15 +271,18 @@ private const val RENDER_TASK_NAME = "composePreviewRender"
  * send the reader off to fix `testClassesDirs` — the original bug, pointed the other way.
  *
  * The desktop backend has no such split (`RenderPreviewsTask` renders every kind), which is exactly
- * how [renderTaskEvidenceOf] tells the two apart: no kind task in the graph ⇒ no split ⇒
+ * how [renderTaskStateOf] tells the two apart: no kind task in the graph ⇒ no split ⇒
  * [RENDER_TASK_NAME] owns the output.
  */
 private val KIND_RENDER_TASKS =
   mapOf("LOTTIE" to "composePreviewRenderLottie", "SVG" to "composePreviewRenderSvg")
 
+/** The kind each entry of [KIND_RENDER_TASKS] renders, for messages that name the task. */
+private val KIND_BY_RENDER_TASK = KIND_RENDER_TASKS.entries.associate { (k, v) -> v to k }
+
 /**
- * What [taskOutcomes] says about the task that owns a [kind] preview's outputs in module
- * [modulePath], for this invocation.
+ * Which task owns a [kind] preview's outputs in module [modulePath], and what [taskOutcomes] says
+ * it did this invocation.
  *
  * `SKIPPED` is the case that matters: Gradle reports NO-SOURCE that way, and NO-SOURCE is precisely
  * the wiring bug the historical guidance was written for — a run where the sidecar on disk cannot
@@ -257,19 +296,19 @@ private val KIND_RENDER_TASKS =
  * no such task at all, i.e. the non-Android backend, where [RENDER_TASK_NAME] is the owner — so the
  * lookup falls back to it rather than reporting `UNKNOWN` for every desktop Lottie preview.
  */
-internal fun renderTaskEvidenceOf(
+internal fun renderTaskStateOf(
   modulePath: String,
   kind: String,
   taskOutcomes: Map<String, GradleTaskOutcome>,
-): RenderTaskEvidence {
+): RenderTaskState {
   val prefix = ":" + modulePath.trim(':') + ":"
   val kindTask = KIND_RENDER_TASKS[kind.uppercase()]
-  val outcome =
-    kindTask?.let { taskOutcomes[prefix + it] }
-      ?: taskOutcomes[prefix + RENDER_TASK_NAME]
-      ?: return RenderTaskEvidence.UNKNOWN
-  return if (outcome.disposition == GradleTaskDisposition.SKIPPED) RenderTaskEvidence.DID_NOT_RUN
-  else RenderTaskEvidence.RAN
+  val owner = kindTask?.takeIf { taskOutcomes.containsKey(prefix + it) } ?: RENDER_TASK_NAME
+  val outcome = taskOutcomes[prefix + owner] ?: return RenderTaskState(task = owner)
+  val evidence =
+    if (outcome.disposition == GradleTaskDisposition.SKIPPED) RenderTaskEvidence.DID_NOT_RUN
+    else RenderTaskEvidence.RAN
+  return RenderTaskState(evidence = evidence, task = owner)
 }
 
 /**
@@ -287,7 +326,7 @@ internal fun missingRenderReport(
 ): String =
   formatMissingRenderReport(
     collectMissingRenders(missing, manifests) { module, kind ->
-      renderTaskEvidenceOf(module, kind, taskOutcomes)
+      renderTaskStateOf(module, kind, taskOutcomes)
     },
     total = total,
     prefix = prefix,
@@ -355,17 +394,22 @@ fun formatMissingRenderReport(
       .append(RENDER_ERROR_SIDECAR_SUFFIX)
       .append("` sidecar beside each preview's would-be output.")
   }
-  if (stale.isNotEmpty()) {
+  // Grouped by the task that actually skipped: naming `composePreviewRender` for a preview whose
+  // renderer is `composePreviewRenderLottie` is a precise sentence about the wrong task, and the
+  // remedy attached to it (testClassesDirs) is one the named task doesn't even have.
+  for ((owner, entries) in stale.groupBy { it.renderTask.task }) {
     // Never claim to have observed what this run didn't do: the renderer was skipped, so the
     // sidecar quoted above describes some earlier run and the wiring guidance below still applies.
     sb
       .append("\n")
-      .append(stale.size)
+      .append(entries.size)
       .append(" preview(s) have a `<render>.png")
       .append(RENDER_ERROR_SIDECAR_SUFFIX)
-      .append("` sidecar on disk, but `composePreviewRender` did not run in this invocation ")
-      .append("(skipped / NO-SOURCE) — that sidecar is left over from an earlier run and says ")
-      .append("nothing about this one.")
+      .append("` sidecar on disk, but `")
+      .append(owner)
+      .append("` did not run in this invocation ")
+      .append(if (owner == RENDER_TASK_NAME) "(skipped / NO-SOURCE)" else "(skipped)")
+      .append(" — that sidecar is left over from an earlier run and says nothing about this one.")
   }
   if (unexplained.isNotEmpty()) {
     if (threw.isNotEmpty()) {
@@ -378,14 +422,47 @@ fun formatMissingRenderReport(
     } else {
       sb.append("\n")
     }
-    sb.append(
-      "Check the Gradle output above — a common cause is the `composePreviewRender` task " +
-        "reporting NO-SOURCE, which means the renderer test class wasn't found on " +
-        "testClassesDirs. Per-preview stack traces are in the `composePreviewRender-reports` " +
-        "artifact attached to the run."
-    )
+    // The historical NO-SOURCE guidance is about the main renderer specifically — it is a `Test`
+    // task, testClassesDirs is its input, and `composePreviewRender-reports` is its artifact. None
+    // of that exists for the kind renderers, so previews they own get their own sentence instead of
+    // being pointed at a fix that cannot apply to them.
+    val byOwner = unexplained.groupBy { it.renderTask.task }
+    val paragraphs = buildList {
+      if (byOwner.containsKey(RENDER_TASK_NAME)) {
+        add(
+          "Check the Gradle output above — a common cause is the `composePreviewRender` task " +
+            "reporting NO-SOURCE, which means the renderer test class wasn't found on " +
+            "testClassesDirs. Per-preview stack traces are in the `composePreviewRender-reports` " +
+            "artifact attached to the run."
+        )
+      }
+      byOwner
+        .filterKeys { it != RENDER_TASK_NAME }
+        .forEach { (owner, entries) -> add(kindRendererGuidance(owner, entries.size)) }
+    }
+    sb.append(paragraphs.joinToString("\n"))
   }
   return sb.toString()
+}
+
+/**
+ * The guidance for previews rendered by one of Android's kind-specific renderers.
+ *
+ * Deliberately not the NO-SOURCE paragraph: `composePreviewRenderLottie` /
+ * `composePreviewRenderSvg` are `RenderPreviewsTask`s, not `Test` tasks — they have no
+ * `testClassesDirs`, declare no `@SkipWhenEmpty` input (so they never report NO-SOURCE at all), and
+ * write no `composePreviewRender-reports` artifact. What *does* skip them is `composePreview {
+ * enabled = false }` (their `onlyIf`) or a failure in something they depend on.
+ */
+private fun kindRendererGuidance(task: String, count: Int): String {
+  val kind = KIND_BY_RENDER_TASK[task]
+  val owns = if (kind != null) "every `kind=$kind` preview" else "these previews"
+  // Deliberately makes no claim about what that task *did* — the stale paragraph above says that,
+  // and only where it was observed. `unexplained` also holds previews whose renderer ran and simply
+  // produced nothing, which "it did not run" would misdescribe.
+  return "`$task` renders $owns in this module ($count here) — the Robolectric renderer skips that " +
+    "kind — so check its outcome in the Gradle output above: `composePreview { enabled = false }` " +
+    "skips it, as does a failure in a task it depends on."
 }
 
 /**
