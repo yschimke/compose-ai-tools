@@ -185,7 +185,11 @@ class ServePinnedManifest(
           // by faithfully copying half of the loader's rule.
           val id = ServeCatalogStore.previewIdFor(path)
           paths[id] = path
-          componentId?.let { labels[id] = it }
+          // The label follows the winning path, including when the winner has no component name —
+          // otherwise a collision resolved in favour of an unnamed entry leaves the *loser's*
+          // component behind, and the page attributes one component's render to another. Whichever
+          // declaration owns the pixels owns the name, even when that name is nothing.
+          if (componentId != null) labels[id] = componentId else labels.remove(id)
         }
       }
       return CatalogEntries(paths, labels)

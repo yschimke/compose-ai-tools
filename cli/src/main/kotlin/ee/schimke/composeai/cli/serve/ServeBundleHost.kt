@@ -619,6 +619,17 @@ class ServeBundleHost(
     return ServePreview(id = previewId, label = paths.labels[previewId] ?: previewId)
   }
 
+  /**
+   * Whether [commit]'s own catalog could be read — i.e. whether it is entitled to answer for what
+   * that revision published.
+   *
+   * The page lookup needs this separately from [pinnedPreview], because "no such preview then" and
+   * "I could not ask" must lead to different pages: the first is a 404, the second falls back to
+   * the tip. Returning null from [pinnedPreview] alone cannot say which happened.
+   */
+  fun pinnedCatalogIsAuthoritative(commit: String): Boolean =
+    pinnedManifest?.forCommit(commit)?.catalogRead == true
+
   /** [referenceId]'s canonical reference raster as published at [commit]. See [pinnedRender]. */
   fun pinnedReference(commit: String, referenceId: String): PinnedOutcome =
     pinnedAsset(

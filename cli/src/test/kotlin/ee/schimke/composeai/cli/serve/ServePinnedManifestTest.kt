@@ -112,6 +112,16 @@ class ServePinnedManifestTest {
         )
         ?.paths,
     )
+    // The label follows the winning path even when the winner is unnamed: leaving the loser's
+    // component behind would attribute one component's render to another.
+    val collided =
+      ServePinnedManifest.parseCatalog(
+        """{"components":[
+             {"componentId":"Named","images":[{"path":"images/foo__bar/baz.png"}]},
+             {"images":[{"path":"images/foo/bar__baz.png"}]}]}"""
+      )!!
+    assertEquals("images/foo/bar__baz.png", collided.paths["foo__bar__baz"])
+    assertNull(collided.labels["foo__bar__baz"])
     // References go the other way, because their importer discards a duplicate id rather than
     // overwriting: first wins. The asymmetry mirrors the two loaders, not one another.
     assertEquals(

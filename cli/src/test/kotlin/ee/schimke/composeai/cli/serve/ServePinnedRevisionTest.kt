@@ -392,7 +392,12 @@ class ServePinnedRevisionTest {
 
   @Test
   fun `a load reads one commit rather than a moving branch`() {
-    val asked = java.util.Collections.synchronizedList(mutableListOf<String>())
+    // CopyOnWriteArrayList, not a synchronized list: a catalog load keeps background threads
+    // fetching (vectors, rc-compare) after it returns, so they are still appending while the
+    // assertions below read. A synchronized list needs the caller to hold its monitor to iterate —
+    // `any {}` and even `toList()` do not — and the miss is a ConcurrentModificationException that
+    // shows up as a CI flake rather than on the run that wrote it.
+    val asked = java.util.concurrent.CopyOnWriteArrayList<String>()
     startWith { url ->
       asked += url
       fetch(url)
@@ -411,7 +416,12 @@ class ServePinnedRevisionTest {
 
   @Test
   fun `a branch with no readable history still loads, by name`() {
-    val asked = java.util.Collections.synchronizedList(mutableListOf<String>())
+    // CopyOnWriteArrayList, not a synchronized list: a catalog load keeps background threads
+    // fetching (vectors, rc-compare) after it returns, so they are still appending while the
+    // assertions below read. A synchronized list needs the caller to hold its monitor to iterate —
+    // `any {}` and even `toList()` do not — and the miss is a ConcurrentModificationException that
+    // shows up as a CI flake rather than on the run that wrote it.
+    val asked = java.util.concurrent.CopyOnWriteArrayList<String>()
     val port = startWith { url ->
       asked += url
       if (url == ServeCatalogRevision.commitsFeedUrl(repo, branch)) null else fetch(url)
@@ -460,6 +470,43 @@ class ServePinnedRevisionTest {
     // exactly the historical links this feature exists to share; the lane is admission-bounded now,
     // so the probe costs at most one permitted read and the GET behind it is served from cache.
     assertEquals(200, head)
+  }
+
+  @Test
+  fun `a preview the pinned revision never had has no page either`() {
+    // The mirror image of the retired case: an id today's catalog lists but that revision did not
+    // publish — a preview ADDED since. Its render already 404s, so serving a page built from
+    // today's metadata would wrap a broken image in a banner claiming the pixels cannot change.
+    val olderCatalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+        {"componentId":"Legacy","images":[{"path":"images/legacy/ideal.png"}]}]}
+      """
+        .trimIndent()
+    val port = startWith { url ->
+      val old = "https://raw.githubusercontent.com/$repo/$oldCommit/"
+      if (url == "${old}catalog.json") olderCatalog.encodeToByteArray() else fetch(url)
+    }
+
+    assertEquals(404, get("http://127.0.0.1:$port/$system/p/$previewId?at=$oldCommit").first)
+    assertEquals(
+      404,
+      get("http://127.0.0.1:$port/$system/render/$previewId.png?at=$oldCommit").first,
+    )
+    // Unpinned it is an ordinary preview of the live catalog, untouched by any of this.
+    assertEquals(200, get("http://127.0.0.1:$port/$system/p/$previewId").first)
+  }
+
+  @Test
+  fun `a revision whose catalog cannot be read leaves the page to the live catalog`() {
+    // "I could not ask that revision" is not "that revision says no". The page falls back to the
+    // session's own preview rather than 404ing a link that may well be good.
+    val port = startWith { url ->
+      val old = "https://raw.githubusercontent.com/$repo/$oldCommit/"
+      if (url == "${old}catalog.json") null else fetch(url)
+    }
+
+    assertEquals(200, get("http://127.0.0.1:$port/$system/p/$previewId?at=$oldCommit").first)
   }
 
   private fun get(url: String): Pair<Int, ByteArray> =
