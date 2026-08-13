@@ -403,7 +403,9 @@ class MissingRenderReportTest {
     writeSidecar("renders/WearAppPreview.png")
 
     val entries =
-      collectMissingRenders(listOf(missingResult()), manifests()) { RenderTaskEvidence.DID_NOT_RUN }
+      collectMissingRenders(listOf(missingResult()), manifests()) { _, _ ->
+        RenderTaskEvidence.DID_NOT_RUN
+      }
     val message = formatMissingRenderReport(entries, total = 35)
 
     assertFalse(message.contains("rendered and then threw"), message)
@@ -421,7 +423,7 @@ class MissingRenderReportTest {
     writeSidecar("renders/WearAppPreview.png")
 
     val entries =
-      collectMissingRenders(listOf(missingResult()), manifests()) { RenderTaskEvidence.RAN }
+      collectMissingRenders(listOf(missingResult()), manifests()) { _, _ -> RenderTaskEvidence.RAN }
     val message = formatMissingRenderReport(entries, total = 35)
 
     assertContains(message, "rendered and then threw")
@@ -429,16 +431,17 @@ class MissingRenderReportTest {
     assertFalse(message.contains("NO-SOURCE"), message)
   }
 
+  private fun outcomes(vararg entries: Pair<String, GradleTaskDisposition>) =
+    entries.associate { (task, disposition) ->
+      ":app:$task" to GradleTaskOutcome(":app:$task", disposition)
+    }
+
   @Test
   fun `render-task evidence comes from the module's own composePreviewRender outcome`() {
-    val skipped =
-      mapOf(
-        ":app:composePreviewRender" to
-          GradleTaskOutcome(":app:composePreviewRender", GradleTaskDisposition.SKIPPED)
-      )
-    assertEquals(RenderTaskEvidence.DID_NOT_RUN, renderTaskEvidenceOf(":app", skipped))
+    val skipped = outcomes("composePreviewRender" to GradleTaskDisposition.SKIPPED)
+    assertEquals(RenderTaskEvidence.DID_NOT_RUN, renderTaskEvidenceOf(":app", "COMPOSE", skipped))
     // The gradle path is carried with and without its leading colon depending on the caller.
-    assertEquals(RenderTaskEvidence.DID_NOT_RUN, renderTaskEvidenceOf("app", skipped))
+    assertEquals(RenderTaskEvidence.DID_NOT_RUN, renderTaskEvidenceOf("app", "COMPOSE", skipped))
 
     for (disposition in
       listOf(
@@ -447,17 +450,190 @@ class MissingRenderReportTest {
         GradleTaskDisposition.FROM_CACHE,
         GradleTaskDisposition.FAILED,
       )) {
-      val outcomes =
-        mapOf(
-          ":app:composePreviewRender" to GradleTaskOutcome(":app:composePreviewRender", disposition)
-        )
-      assertEquals(RenderTaskEvidence.RAN, renderTaskEvidenceOf(":app", outcomes), "$disposition")
+      assertEquals(
+        RenderTaskEvidence.RAN,
+        renderTaskEvidenceOf(":app", "COMPOSE", outcomes("composePreviewRender" to disposition)),
+        "$disposition",
+      )
     }
 
     // Another module's skip says nothing about this one, and no evidence stays "unknown" rather
     // than being guessed either way.
-    assertEquals(RenderTaskEvidence.UNKNOWN, renderTaskEvidenceOf(":other", skipped))
-    assertEquals(RenderTaskEvidence.UNKNOWN, renderTaskEvidenceOf(":app", emptyMap()))
+    assertEquals(RenderTaskEvidence.UNKNOWN, renderTaskEvidenceOf(":other", "COMPOSE", skipped))
+    assertEquals(RenderTaskEvidence.UNKNOWN, renderTaskEvidenceOf(":app", "COMPOSE", emptyMap()))
+  }
+
+  @Test
+  fun `Lottie and SVG evidence comes from their own renderer task, not Robolectric`() {
+    // Android renders `kind=LOTTIE` / `kind=SVG` from separate tasks folded into
+    // `composePreviewRenderAll` — Robolectric can inflate neither. A NO-SOURCE
+    // `composePreviewRender` therefore says nothing about them: their sidecars are this run's.
+    val robolectricSkipped =
+      outcomes(
+        "composePreviewRender" to GradleTaskDisposition.SKIPPED,
+        "composePreviewRenderLottie" to GradleTaskDisposition.SUCCESS,
+        "composePreviewRenderSvg" to GradleTaskDisposition.SUCCESS,
+      )
+    assertEquals(RenderTaskEvidence.RAN, renderTaskEvidenceOf(":app", "LOTTIE", robolectricSkipped))
+    assertEquals(RenderTaskEvidence.RAN, renderTaskEvidenceOf(":app", "SVG", robolectricSkipped))
+    // ...while an ordinary Compose preview in the same module *is* stale — the task that owns it
+    // was the one that didn't run.
+    assertEquals(
+      RenderTaskEvidence.DID_NOT_RUN,
+      renderTaskEvidenceOf(":app", "COMPOSE", robolectricSkipped),
+    )
+
+    // And the converse: the Lottie task skipped while Robolectric ran.
+    val lottieSkipped =
+      outcomes(
+        "composePreviewRender" to GradleTaskDisposition.SUCCESS,
+        "composePreviewRenderLottie" to GradleTaskDisposition.SKIPPED,
+      )
+    assertEquals(
+      RenderTaskEvidence.DID_NOT_RUN,
+      renderTaskEvidenceOf(":app", "LOTTIE", lottieSkipped),
+    )
+    assertEquals(RenderTaskEvidence.RAN, renderTaskEvidenceOf(":app", "COMPOSE", lottieSkipped))
+
+    // The desktop backend has no kind tasks at all — `composePreviewRender` renders every kind
+    // there, so it is the owner and the answer must not degrade to UNKNOWN.
+    val desktop = outcomes("composePreviewRender" to GradleTaskDisposition.SUCCESS)
+    assertEquals(RenderTaskEvidence.RAN, renderTaskEvidenceOf(":app", "LOTTIE", desktop))
+    assertEquals(
+      RenderTaskEvidence.DID_NOT_RUN,
+      renderTaskEvidenceOf(
+        ":app",
+        "SVG",
+        outcomes("composePreviewRender" to GradleTaskDisposition.SKIPPED),
+      ),
+    )
+  }
+
+  @Test
+  fun `a Lottie failure is not labelled stale when Robolectric was NO-SOURCE`() {
+    // End to end through the report: the Android Lottie renderer wrote this sidecar seconds ago.
+    // Calling it an "earlier run" and pointing at testClassesDirs is the original bug inverted.
+    val lottieManifests =
+      listOf(
+        PreviewModule(gradlePath = ":app", projectDir = moduleDir) to
+          PreviewManifest(
+            module = ":app",
+            variant = "debug",
+            previews =
+              listOf(
+                PreviewInfo(
+                  id = previewId,
+                  functionName = "WearAppPreview",
+                  className = "com.example.wear.WearAppKt",
+                  params = PreviewParams(kind = "LOTTIE"),
+                  captures = listOf(Capture(renderOutput = "lottie-renders/Wear.png")),
+                )
+              ),
+          )
+      )
+    writeSidecar("lottie-renders/Wear.png")
+    val lottieResult = missingResult().copy(params = PreviewParams(kind = "LOTTIE"))
+
+    val message =
+      missingRenderReport(
+        missing = listOf(lottieResult),
+        manifests = lottieManifests,
+        total = 1,
+        taskOutcomes =
+          outcomes(
+            "composePreviewRender" to GradleTaskDisposition.SKIPPED,
+            "composePreviewRenderLottie" to GradleTaskDisposition.SUCCESS,
+          ),
+      )
+
+    assertContains(message, "rendered and then threw")
+    assertFalse(message.contains("earlier run"), message)
+    assertFalse(message.contains("testClassesDirs"), message)
+  }
+
+  @Test
+  fun `the legacy default stem is only probed when the manifest declares no output`() {
+    // The preview used to render to `renders/<id>.png` and now declares a fanout output. Nothing
+    // deletes the old sidecar — `cleanStaleRenders` walks `png`/`gif` only — so probing the default
+    // stem alongside the declared one reports a years-old exception as if it happened just now.
+    writeSidecar(
+      "renders/Wear_500ms.png",
+      simpleSidecarJson(
+        "java.lang.IllegalStateException",
+        "no theme provided",
+        "java.lang.IllegalStateException: no theme provided\n" +
+          "\tat com.example.wear.WearAppKt.WearApp(WearApp.kt:31)",
+      ),
+    )
+    writeSidecar(
+      "renders/$previewId.png",
+      simpleSidecarJson(
+        "java.lang.NoSuchMethodError",
+        "long gone",
+        "java.lang.NoSuchMethodError: long gone\n" +
+          "\tat com.example.wear.WearAppKt.Removed(WearApp.kt:9)",
+      ),
+    )
+    val declared =
+      listOf(
+        PreviewModule(gradlePath = ":app", projectDir = moduleDir) to
+          PreviewManifest(
+            module = ":app",
+            variant = "debug",
+            previews =
+              listOf(
+                PreviewInfo(
+                  id = previewId,
+                  functionName = "WearAppPreview",
+                  className = "com.example.wear.WearAppKt",
+                  captures = listOf(Capture(renderOutput = "renders/Wear_500ms.png")),
+                )
+              ),
+          )
+      )
+
+    val entries = collectMissingRenders(listOf(missingResult()), declared)
+    assertEquals(listOf("renders/Wear_500ms.png"), entries.single().sidecars.map { it.output })
+
+    val message = formatMissingRenderReport(entries, total = 1)
+    assertContains(message, "IllegalStateException")
+    assertFalse(message.contains("NoSuchMethodError"), message)
+    assertFalse(message.contains("long gone"), message)
+  }
+
+  @Test
+  fun `the default stem still answers for a preview the manifest does not describe`() {
+    // The fallback's actual job: a manifest predating `renderOutput`, or a preview globbed away
+    // entirely, still renders to `renders/<id>.png` and its sidecar must be found there.
+    writeSidecar("renders/$previewId.png")
+
+    val bare =
+      listOf(
+        PreviewModule(gradlePath = ":app", projectDir = moduleDir) to
+          PreviewManifest(
+            module = ":app",
+            variant = "debug",
+            previews =
+              listOf(
+                PreviewInfo(
+                  id = previewId,
+                  functionName = "WearAppPreview",
+                  className = "com.example.wear.WearAppKt",
+                  captures = listOf(Capture(renderOutput = "")),
+                )
+              ),
+          )
+      )
+
+    assertNotNull(collectMissingRenders(listOf(missingResult()), bare).single().sidecar)
+
+    // ...and for a preview the manifest doesn't describe at all — `manifests()` knows only
+    // `previewId`, so this one falls back to its own default stem.
+    val unknownId = "com.example.wear.WearAppKt.OtherPreview"
+    writeSidecar("renders/$unknownId.png")
+    assertNotNull(
+      collectMissingRenders(listOf(missingResult(id = unknownId)), manifests()).single().sidecar
+    )
   }
 
   @Test
