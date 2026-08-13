@@ -286,6 +286,123 @@ object ServeWeb {
       .trimIndent() + "\n"
   }
 
+  /**
+   * What a page knows about the **published revisions** of the catalog it is showing: which one it
+   * is pinned to (null ⇒ the current one), the branch's recent history, and the repo those commits
+   * live in.
+   *
+   * Carried as data rather than as prebuilt HTML because each page addresses itself differently — a
+   * viewer link is `/p/<id>`, a comparison's is `/compare/<id>?reference=…` — so the page that owns
+   * the URL shape is the one that must build the destinations. See [revisionsHtml].
+   */
+  data class CatalogRevisions(
+    val pinned: String? = null,
+    val revisions: List<ServeCatalogRevision.Revision> = emptyList(),
+    val repo: String? = null,
+  ) {
+    /** Nothing to say: no history to offer and no pin to announce. */
+    val isEmpty: Boolean
+      get() = pinned == null && revisions.isEmpty()
+
+    companion object {
+      val NONE = CatalogRevisions()
+    }
+  }
+
+  /**
+   * The revision control: the pin banner (when the page is showing an older publish) above the list
+   * of publishes it can move between.
+   *
+   * This is the whole answer to "a published URL keeps changing under me" (issue #3723). The
+   * delivery branch carries one commit per publish, so the versions already exist — what was
+   * missing was a way to *name* one from the page and a way to *reach* the others. [hrefFor] builds
+   * this same page at a given pin (null ⇒ the live one), which is what makes both halves one
+   * control rather than a banner and an unrelated menu.
+   *
+   * A revision is shown by its publish date and the **source** commit it was rendered from where
+   * the subject recorded one, falling back to the delivery sha. That ordering is deliberate: the
+   * delivery sha is a publish marker, while the source sha is the change someone is actually
+   * looking for when they go back a version.
+   */
+  internal fun revisionsHtml(revisions: CatalogRevisions, hrefFor: (String?) -> String): String {
+    if (revisions.isEmpty) return ""
+    val pinned = revisions.pinned
+    val current = revisions.revisions.firstOrNull()?.commit
+    val banner =
+      if (pinned == null) ""
+      else {
+        val entry = revisions.revisions.firstOrNull { it.commit == pinned }
+        val shaLink =
+          ServeCatalogRevision.treeUrl(revisions.repo, pinned)?.let { url ->
+            "<a href=\"${WebEscaping.htmlEscape(url)}\" target=\"_blank\" rel=\"noopener noreferrer\">" +
+              "<code>${WebEscaping.htmlEscape(ServeCatalogRevision.short(pinned))}</code></a>"
+          } ?: "<code>${WebEscaping.htmlEscape(ServeCatalogRevision.short(pinned))}</code>"
+        val published =
+          entry
+            ?.date
+            ?.takeIf { it.isNotBlank() }
+            ?.let { ", published ${WebEscaping.htmlEscape(prettyDate(it))}" }
+            .orEmpty()
+        """
+        <section class="cp-pinned" role="note" aria-label="Pinned revision">
+          <span class="cp-pinned-icon" aria-hidden="true">⚓</span>
+          <span>Pinned to catalog revision $shaLink$published — these pixels cannot change.</span>
+          <a class="cp-pinned-current" href="${WebEscaping.htmlEscape(hrefFor(null))}">view current</a>
+        </section>
+        """
+          .trimIndent()
+      }
+    if (revisions.revisions.isEmpty()) return "$banner\n"
+    val rows =
+      revisions.revisions.joinToString("\n          ") { revision ->
+        val isCurrent = revision.commit == current
+        // A pin is what the page URL says; with no pin the page is showing the branch tip, so that
+        // is the row marked. One row is marked either way, and never two.
+        val selected = if (pinned == null) isCurrent else revision.commit == pinned
+        val href = hrefFor(revision.commit.takeUnless { isCurrent })
+        val date =
+          revision.date.takeIf { it.isNotBlank() }?.let { prettyDate(it) } ?: revision.short
+        val label = revision.sourceSha ?: revision.short
+        val mark = if (selected) " aria-current=\"true\"" else ""
+        val currentTag = if (isCurrent) "<span class=\"cp-revision-tag\">current</span>" else ""
+        // `nofollow` because these are the same page over and over: a crawler that walked them
+        // would index a dozen near-duplicates of every preview, and the version worth indexing is
+        // the live one. The pages stay perfectly shareable — a link someone pastes is followed by
+        // a person and unfurled by a fetcher, neither of which is a crawl.
+        "<a class=\"cp-revision\" rel=\"nofollow\" href=\"${WebEscaping.htmlEscape(href)}\"$mark>" +
+          "<span class=\"cp-revision-date\">${WebEscaping.htmlEscape(date)}</span>" +
+          "<code class=\"cp-revision-sha\">${WebEscaping.htmlEscape(label)}</code>$currentTag</a>"
+      }
+    val summary =
+      if (pinned == null) "Revisions"
+      else "Revisions · pinned ${ServeCatalogRevision.short(pinned)}"
+    return banner +
+      """
+      <details class="cp-revisions"${if (pinned == null) "" else " open"}>
+        <summary>${WebEscaping.htmlEscape(summary)}</summary>
+        <div class="cp-revision-list">
+          $rows
+        </div>
+        <p class="cp-revision-note">Every publish of this design system is a commit on its delivery
+        branch. Opening one pins this page — and the pixels on it — to that publish for good.</p>
+      </details>
+      """
+        .trimIndent() +
+      "\n"
+  }
+
+  /**
+   * Add `at=<sha>` to a link's query suffix (either empty or already `?…`), or return it unchanged
+   * when the page carries no pin. One helper because a pinned page has to pin *everything* it links
+   * — the render, the reference, its sibling variants — and a single missed suffix is a panel
+   * quietly showing the present next to the past.
+   */
+  private fun withPin(querySuffix: String, pinned: String?): String {
+    val pin = pinned?.takeIf { it.isNotBlank() } ?: return querySuffix
+    val param = "${ServeCatalogRevision.PARAM}=${WebEscaping.urlEncodeSegment(pin)}"
+    return if (querySuffix.isEmpty()) "?$param" else "$querySuffix&$param"
+  }
+
   /** Canonical source repo, used for the "source" / branch / workflow links. */
   private const val SOURCE_REPO = "yschimke/compose-ai-tools"
 
@@ -669,6 +786,13 @@ object ServeWeb {
   data class CatalogProvenance(
     val repo: String,
     val branch: String,
+    /**
+     * The delivery-branch commit this catalog was fetched at, when the store could resolve it — the
+     * revision every permalink on this catalog's pages pins to ([ServeCatalogRevision]). Null for
+     * an uploaded bundle, and for a catalog whose branch advertisement couldn't be read; the pages
+     * then simply offer no permalink.
+     */
+    val commit: String? = null,
     val generatedAt: String? = null,
     val toolVersion: String? = null,
     val designParityVersion: String? = null,
@@ -708,6 +832,16 @@ object ServeWeb {
         "<span class=\"cp-prov-item\"><span class=\"cp-prov-key\">catalog</span> " +
           "<a href=\"$branchUrl\">$GITHUB_ICON $repo@$branch</a></span>"
       )
+      // Which publish is on screen. The branch link above names a moving target by construction, so
+      // without this the strip could say where a catalog came from but not *when* — and a visitor
+      // reading a rendering they want to cite had nothing to cite it by.
+      ServeCatalogRevision.treeUrl(prov.repo, prov.commit)?.let { url ->
+        add(
+          "<span class=\"cp-prov-item\"><span class=\"cp-prov-key\">revision</span> " +
+            "<a href=\"${WebEscaping.htmlEscape(url)}\"><code>" +
+            "${WebEscaping.htmlEscape(ServeCatalogRevision.short(prov.commit!!))}</code></a></span>"
+        )
+      }
       prov.generatedAt
         ?.takeIf { it.isNotBlank() }
         ?.let {
@@ -6182,13 +6316,23 @@ $rows
      */
     referenceAnnotations: List<DesignAnnotation> = emptyList(),
     actualAnnotations: List<DesignAnnotation> = emptyList(),
+    /**
+     * The catalog's published revisions and which one this page is pinned to. This is the page the
+     * permalink feature was raised against (issue #3723): a comparison URL names a preview and a
+     * reference, both of which are republished, so without a pin it describes whatever the pair
+     * happens to be when the link is opened.
+     */
+    revisions: CatalogRevisions = CatalogRevisions.NONE,
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     val heading = catalogHeading(displayTitle, moduleLabel)
-    val actual = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$q"
-    val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$q"
+    // Both panels take the pin, or neither does. A pinned render scored against the current mock
+    // would be a comparison across time rather than between the two sides.
+    val assetQuery = withPin(q, revisions.pinned)
+    val actual = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$assetQuery"
+    val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$assetQuery"
     // One toggle per kind, offered only when some panel actually carries that kind — a control that
     // reveals nothing is worse than no control. The payload rides inline rather than behind a fetch
     // so the layers are there on first paint, like the rest of this page's data.
@@ -6223,23 +6367,25 @@ $rows
         ?.let { " · revision ${WebEscaping.htmlEscape(it)}" }
         .orEmpty()
     val referenceChoices = (references + reference).distinctBy { it.id }
+    // This page at a given pin (null ⇒ the live catalog), keeping the reference it is showing. Both
+    // the revision control and the sibling-reference picker below build their links through it, so
+    // moving between revisions and moving between references never drop each other.
+    val pageHref: (String?, String) -> String = { pin, referenceId ->
+      val query =
+        listOfNotNull(
+            linkQuery(token, sessionId, basePath, isPublic).takeIf { it.isNotEmpty() },
+            "reference=${WebEscaping.urlEncodeSegment(referenceId)}",
+          )
+          .joinToString("&")
+      withPin("$basePath/compare/${WebEscaping.urlEncodeSegment(preview.id)}?$query", pin)
+    }
+    val revisionsBlock = revisionsHtml(revisions) { pin -> pageHref(pin, reference.id) }
     val referencePicker =
       if (referenceChoices.size <= 1) ""
       else {
-        val baseQuery = linkQuery(token, sessionId, basePath, isPublic)
         val links =
           referenceChoices.joinToString("\n") { choice ->
-            val query =
-              listOf(
-                  baseQuery.takeIf { it.isNotEmpty() },
-                  "reference=${WebEscaping.urlEncodeSegment(choice.id)}",
-                )
-                .filterNotNull()
-                .joinToString("&")
-            val href =
-              WebEscaping.htmlEscape(
-                "$basePath/compare/${WebEscaping.urlEncodeSegment(preview.id)}?${query}"
-              )
+            val href = WebEscaping.htmlEscape(pageHref(revisions.pinned, choice.id))
             val current = if (choice.id == reference.id) " aria-current=\"page\"" else ""
             "<a class=\"cp-reference-choice\" href=\"$href\"$current>${WebEscaping.htmlEscape(choice.label)}</a>"
           }
@@ -6265,6 +6411,7 @@ $rows
         <div id="cp-reference-compare" data-reference="$raster" data-actual="$actual">
           <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(reference.label)}${compactTrustBadge(trust)}</h1>
           <p class="cp-sub">${WebEscaping.htmlEscape(previewDisplayName(preview))} · ${WebEscaping.htmlEscape(preview.id)}</p>
+          $revisionsBlock
           $referencePicker
           <div class="cp-reference-meta"><strong>Source:</strong> $source$revision</div>
           <div class="cp-reference-grid">
@@ -7273,8 +7420,29 @@ $rows
      * Only honoured alongside [historyInlineJson]: with no payload there is nothing to link.
      */
     historyLocalRenders: Boolean = false,
+    /**
+     * The catalog's published revisions and which one this page is pinned to ([CatalogRevisions]).
+     *
+     * A pin makes the viewer a **reader of one publish**: the stage shows that revision's baked
+     * pixels and every control that would re-render is refused, because the daemon renders today's
+     * code and answering a request for the past with the present is precisely the failure a
+     * permalink exists to prevent. Empty ⇒ the viewer behaves exactly as it always has.
+     */
+    revisions: CatalogRevisions = CatalogRevisions.NONE,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
+    // A pin turns every live lane off, for one reason that covers all of them: they render the
+    // catalog's *current* code. A knob edit, a declared theme, a live stream or the in-browser Wasm
+    // app would each answer a request for an old publish with today's pixels — under a URL whose
+    // entire promise is that they cannot change. The names are shadowed rather than threaded
+    // through the hundred-odd uses below so the rule holds by construction: there is no path
+    // through this function where a pinned page reads the un-pinned flag.
+    @Suppress("NAME_SHADOWING")
+    val canApplyOverrides = canApplyOverrides && revisions.pinned == null
+    @Suppress("NAME_SHADOWING")
+    val canRenderOverrides = canRenderOverrides && revisions.pinned == null
+    @Suppress("NAME_SHADOWING") val hasLiveStream = hasLiveStream && revisions.pinned == null
+    @Suppress("NAME_SHADOWING") val wasmSrc = wasmSrc?.takeIf { revisions.pinned == null }
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     val navSuffix =
       querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
@@ -8178,6 +8346,12 @@ $rows
           WebEscaping.htmlEscape("$basePath/history/render/{blob}.png$q") +
           "\""
       } else ""
+    // The revision control, and the attribute that makes the pin reach the pixels: `viewer.js`
+    // appends `at=<sha>` to every render request it builds, so the stage, the export links and the
+    // Copy PNG button all read the same publish the banner names.
+    val revisionsBlock = revisionsHtml(revisions) { pin -> withPin("$basePath/p/$idSeg$q", pin) }
+    val pinnedAttr =
+      revisions.pinned?.let { " data-pinned-at=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
     // `</script>` inside a JSON payload would end the element early, so the only sequence that can
     // break out is neutralised. The payload itself is server-built from the catalog's own manifest.
     val historyInlineHtml =
@@ -8246,7 +8420,7 @@ $rows
         <code class="cp-preview-id" title="$idText">$idText</code>
         ${viewerViewCountHtml(engagement.views)}$headTogglesHtml
       </div>
-      ${degradeBanner(degradations)}
+      $revisionsBlock${degradeBanner(degradations)}
       $axesBlock
       <div class="cp-preview-primary" aria-label="Preview renderer">
       $primaryControls
@@ -8261,7 +8435,7 @@ $rows
         <button type="button" class="cp-bg-btn cp-zoom-toggle" aria-pressed="false" title="Show the preview at full width instead of fitting it to the screen">Fit width</button>
       </div>
       $historyInlineHtml
-      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs>
+      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr$irReplayAttr$replayThemesAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY" data-fold-scope="${foldStorageScope(sessionId, basePath)}"$wasmAttr$rcAttr$historyAttrs$pinnedAttr>
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame$specImg$specCompare$inspectLayerHtml<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         $inspectLegendHtml

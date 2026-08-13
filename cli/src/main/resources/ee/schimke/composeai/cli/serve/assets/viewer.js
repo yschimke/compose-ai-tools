@@ -128,6 +128,13 @@
   // trusted-catalog live session: its carried daemon re-renders author-declared knob edits on
   // demand). When true, a knob edit re-points the snapshot /render URL rather than sitting dead.
   var canRenderOverrides = root.getAttribute("data-can-render-overrides") === "true";
+  // The delivery-branch commit this page is pinned to, when it is a historical permalink
+  // (`?at=<sha>`). Every render URL built here carries it, so the stage, the export links and Copy
+  // PNG all read the same publish — a page where only some of those were pinned would be worse
+  // than one that wasn't pinned at all. Validated rather than trusted: it is DOM text that ends up
+  // in a request URL, and only a sha shape can reach one.
+  var pinnedAt = (root.getAttribute("data-pinned-at") || "").toLowerCase();
+  if (!/^[0-9a-f]{7,40}$/.test(pinnedAt)) pinnedAt = "";
   var previewId = root.getAttribute("data-preview-id");
   // The session path prefix ("/<system>") when this viewer is served under a path — it sits at
   // "<base>/p/<id>", so stripping the trailing "/p/<id>" recovers the base ("" for the root
@@ -368,6 +375,11 @@
     var parts = [];
     if (token) parts.push("token=" + encodeURIComponent(token));
     if (session) parts.push("session=" + encodeURIComponent(session));
+    // The pin rides with the request rather than being applied per route server-side, because the
+    // server cannot tell the viewer's own snapshot request from any other /render call. A pinned
+    // page has every re-rendering control disabled, so the overrides below are empty in practice —
+    // the pin is what this URL is for.
+    if (pinnedAt) parts.push("at=" + encodeURIComponent(pinnedAt));
     Object.keys(o).forEach(function (k) { parts.push(k + "=" + encodeURIComponent(o[k])); });
     // Author-declared knobs: knob.<key>=<value>. The server infers the type from the preview's
     // declaration, so no <kind>: prefix. A knob still at its declared default is omitted — that

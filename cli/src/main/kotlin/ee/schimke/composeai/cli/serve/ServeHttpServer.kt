@@ -1944,13 +1944,90 @@ class ServeHttpServer(
     }
   }
 
+  /**
+   * Refuse a request whose `at=` is present but is not a commit sha.
+   *
+   * The alternative — ignoring it — is the one behaviour this feature must never have: it would
+   * answer a request that explicitly asked for a particular publish with whatever is current, under
+   * a URL whose whole promise is the opposite, and nothing about the response would say so. A
+   * `?at=main` is a mistake worth naming rather than quietly satisfying (see
+   * [ServeCatalogRevision.normalize] for why a ref is not a pin).
+   */
+  private suspend fun RoutingContext.rejectMalformedPin(): Boolean {
+    val raw = call.request.queryParameters[ServeCatalogRevision.PARAM] ?: return false
+    if (ServeCatalogRevision.normalize(raw) != null) return false
+    call.respondText(
+      "'${ServeCatalogRevision.PARAM}' must be a commit sha (7-40 hex), not a branch or tag",
+      status = HttpStatusCode.BadRequest,
+    )
+    return true
+  }
+
+  /**
+   * The revision state for a catalog page: the pin the request carries, and the delivery branch's
+   * recent publishes to offer as destinations ([ServeWeb.CatalogRevisions]).
+   *
+   * A pin is honoured whether or not it appears in that list. The list is the tail of a feed —
+   * about the last dozen publishes — while a permalink is meant to outlive them; refusing a sha
+   * just because it has scrolled off would make every link expire on a schedule nobody chose. What
+   * decides a pin is whether the branch still answers for it, which the asset lanes find out by
+   * asking.
+   *
+   * A session with no delivery branch behind it (an uploaded bundle, a local project) gets no
+   * revision surface at all rather than an empty control.
+   */
+  private fun RoutingContext.catalogRevisions(renderHost: ServeHost): ServeWeb.CatalogRevisions {
+    val host = catalogBundleHost(renderHost) ?: return ServeWeb.CatalogRevisions.NONE
+    if (!host.supportsPinnedRevisions) return ServeWeb.CatalogRevisions.NONE
+    return ServeWeb.CatalogRevisions(
+      pinned =
+        ServeCatalogRevision.normalize(call.request.queryParameters[ServeCatalogRevision.PARAM]),
+      revisions = host.revisions,
+      repo = host.provenance?.repo,
+    )
+  }
+
+  /**
+   * Answer one **pinned** image request: the published bytes at a delivery-branch commit, or a 404
+   * naming why there are none.
+   *
+   * `(commit, path)` is immutable, so the response is `immutable` too — a pinned page reloads and a
+   * shared link re-opens without touching the branch again — under exactly the same public/private
+   * split the other content-addressed lanes use ([prebakedImageCacheControl]): on a token-gated box
+   * the URL carries the bearer token, and licensing a shared proxy to keep private catalog imagery
+   * for a year is not a trade a permalink is worth.
+   */
+  private suspend fun RoutingContext.respondPinnedAsset(bytes: ByteArray?, missing: String) {
+    if (bytes == null) {
+      call.respondText(missing, status = HttpStatusCode.NotFound)
+      return
+    }
+    markGeneration("pinned-asset", prebakedImageCacheControl(isPublic))
+    call.respondBytes(bytes, ContentType.Image.PNG)
+  }
+
   /** Canonical, inert PNG for a design reference. Original HTML/Figma sources are never served. */
   private suspend fun RoutingContext.handleDesignReferenceAsset(sessionInPath: Boolean) {
-    if (rejectBadToken()) return
+    if (rejectBadToken() || rejectMalformedPin()) return
     val sessionId = selectedSessionId(sessionInPath)
     val referenceId = call.parameters["name"]?.removeSuffix(".png").orEmpty()
+    val pinnedCommit =
+      ServeCatalogRevision.normalize(call.request.queryParameters[ServeCatalogRevision.PARAM])
     withLeasedSession(sessionId, onMissing = { call.respond(HttpStatusCode.NotFound) }) { renderHost
       ->
+      // A pinned comparison has to pin BOTH panels. A reference is republished with the catalog
+      // like everything else, so leaving this lane on the tip would score today's mock against a
+      // historical render — a comparison of two moments rather than of two sides.
+      if (pinnedCommit != null) {
+        respondPinnedAsset(
+          bytes =
+            catalogBundleHost(renderHost)?.let {
+              withContext(Dispatchers.IO) { it.pinnedReference(pinnedCommit, referenceId) }
+            },
+          missing = "no published design reference at that revision",
+        )
+        return@withLeasedSession
+      }
       val bytes = renderHost.designReferenceRaster(referenceId)
       if (bytes == null) {
         call.respond(HttpStatusCode.NotFound)
@@ -2079,7 +2156,7 @@ class ServeHttpServer(
 
   /** Focused Reference / Diff / Actual comparison for one exact preview-reference mapping. */
   private suspend fun RoutingContext.handleReferenceComparison(sessionInPath: Boolean) {
-    if (rejectBadToken()) return
+    if (rejectBadToken() || rejectMalformedPin()) return
     val sessionId = selectedSessionId(sessionInPath)
     val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
     val previewId = call.parameters["name"].orEmpty()
@@ -2117,6 +2194,7 @@ class ServeHttpServer(
           displayTitle = catalogBundleHost(renderHost)?.title,
           referenceAnnotations = renderHost.annotationsForReference(reference.id),
           actualAnnotations = renderHost.annotationsForPreview(previewId),
+          revisions = catalogRevisions(renderHost),
         ),
         ContentType.Text.Html,
       )
@@ -2634,6 +2712,10 @@ class ServeHttpServer(
         key == "scroll" ||
         key == "rcPlayer" ||
         key == "mode" ||
+        // A pin asks for a *different* version of the render, which the in-memory thumbnail is by
+        // definition not — it is baked from the catalog on disk. Same rule as the overrides above:
+        // anything that changes which pixels are being asked for leaves this lane.
+        key == ServeCatalogRevision.PARAM ||
         key in ServeExplodedSvg.PARAMS
     }
 
@@ -3629,7 +3711,7 @@ class ServeHttpServer(
 
   /** `GET /p/{name}` (query) and `GET /{system}/p/{name}` (path): one preview's viewer page. */
   private suspend fun RoutingContext.handleViewer(sessionInPath: Boolean) {
-    if (rejectBadToken()) return
+    if (rejectBadToken() || rejectMalformedPin()) return
     val sessionId = selectedSessionId(sessionInPath)
     val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
     withLeasedSession(
@@ -3853,6 +3935,7 @@ class ServeHttpServer(
           // never both.
           historyInlineJson = localHistoryJson,
           historyLocalRenders = localHistoryJson != null,
+          revisions = catalogRevisions(renderHost),
         ),
         ContentType.Text.Html,
       )
@@ -3896,7 +3979,7 @@ class ServeHttpServer(
    * carries `ir/` sidecars (each 404s where unavailable).
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
-    if (rejectBadToken()) return
+    if (rejectBadToken() || rejectMalformedPin()) return
     // A bare `/render/<id>.png` replays a baked file and IS what an unfurler probes for `og:image`,
     // so it must keep answering HEAD. Everything else on this route reaches a daemon or a bundle
     // host, and amplifying a bodyless probe into one is the same trade as `/bundle.zip` at smaller
@@ -3967,6 +4050,29 @@ class ServeHttpServer(
           respondGridThumb(thumb)
           return@withLeasedSession
         }
+      }
+      // A **pinned** render (`?at=<sha>`): the bytes this preview had at that delivery-branch
+      // commit, read from the branch rather than from the catalog on disk. This is what makes a
+      // published URL a permalink (issue #3723) — see [ServeCatalogRevision].
+      //
+      // It short-circuits ahead of everything below because a pin and a live render are mutually
+      // exclusive by definition: the daemon renders today's code, so honouring an override here
+      // would answer a request for the past with the present. Only the raster product is pinnable
+      // (the branch publishes PNGs, not slot trees or `.rc` documents), and a pin the branch cannot
+      // answer is a 404 rather than a fall-through to the current bytes — silently serving today's
+      // render under a permalink is the exact failure this feature exists to prevent, and it would
+      // be invisible to whoever followed the link.
+      val pinnedCommit =
+        ServeCatalogRevision.normalize(call.request.queryParameters[ServeCatalogRevision.PARAM])
+      if (pinnedCommit != null && !wantSvg && !wantSlots && !wantA11y && !wantAnnotations) {
+        respondPinnedAsset(
+          bytes =
+            catalogBundleHost(renderHost)?.let {
+              withContext(Dispatchers.IO) { it.pinnedRender(pinnedCommit, previewId) }
+            },
+          missing = "no published render for that preview at that revision",
+        )
+        return@withLeasedSession
       }
       // The `.rc` lane serves the captured Remote Compose document bytes verbatim (no override
       // pass — the in-browser player replays the doc and applies knob edits client-side), so it
@@ -4551,6 +4657,10 @@ class ServeHttpServer(
   private fun RoutingContext.renderWouldReplayBakedBytes(sessionInPath: Boolean): Boolean {
     // Only a HEAD pays for this lookup; a GET is going to do the work regardless.
     if (call.request.local.method != HttpMethod.Head) return true
+    // A pinned render is answered from the delivery branch, not from published bytes on disk — a
+    // bodyless probe would spend a remote fetch. Same trade as an override-bearing render, which
+    // this route already refuses to amplify.
+    if (call.request.queryParameters[ServeCatalogRevision.PARAM] != null) return false
     val name = call.parameters["name"]?.removeSuffix(".png") ?: return false
     val host = sessions.peekHost(selectedSessionId(sessionInPath)) ?: return false
     return host.bakedRenderSize(name) != null

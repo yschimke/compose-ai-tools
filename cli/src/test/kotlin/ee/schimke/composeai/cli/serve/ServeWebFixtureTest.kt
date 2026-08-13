@@ -1440,6 +1440,66 @@ class ServeWebFixtureTest {
             ),
           ),
       )
+    // The delivery branch's publish history, as the store reads it off the branch's commit feed.
+    // Shaped like the real thing: several regenerations a day, each stamping the source commit it
+    // was rendered from, newest first.
+    val catalogRevisions =
+      listOf(
+        ServeCatalogRevision.Revision(
+          "46440dd86c24b2da6054ccab587e59fba4b15c7e",
+          "2026-08-13T09:42:57Z",
+          "0b0c2063",
+        ),
+        ServeCatalogRevision.Revision(
+          "41c7a15fd21f52e7c6a959a0c441eb600ca46d4f",
+          "2026-08-13T07:10:54Z",
+          "b34eff53",
+        ),
+        ServeCatalogRevision.Revision(
+          "421350e5cae04212a193cc8137be1c337a9d5396",
+          "2026-08-12T15:42:44Z",
+          "7b573ecc",
+        ),
+        ServeCatalogRevision.Revision(
+          "4f7c1ae06b177603984734dc4fa3c0ea365e71e0",
+          "2026-08-12T09:05:11Z",
+          null,
+        ),
+      )
+    // The same comparison, PINNED to an older publish (issue #3723) — the state a shared permalink
+    // opens in. Captured because it is where the feature is visible: the banner naming the
+    // revision and the way back to the live catalog, above a revision list opened on the publish
+    // being shown.
+    val referenceComparisonPinned =
+      ServeWeb.referenceComparisonPage(
+        moduleLabel = "compose-m3",
+        preview = themedPreviews.first(),
+        reference = comparisonReferences.first(),
+        references = comparisonReferences,
+        token = token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        version = version,
+        revisions =
+          ServeWeb.CatalogRevisions(
+            pinned = catalogRevisions[2].commit,
+            revisions = catalogRevisions,
+            repo = "yschimke/compose-ai-tools",
+          ),
+      )
+    // The unpinned twin, on the viewer: the revision list folded away, which is all an ordinary
+    // page view of a catalog with a publish history shows.
+    val viewerRevisions =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        token,
+        revisions =
+          ServeWeb.CatalogRevisions(
+            revisions = catalogRevisions,
+            repo = "yschimke/compose-ai-tools",
+          ),
+      )
     // The design page's inlined export. Run through the real [SvgSanitizer] rather than pasted in
     // whole, so the golden HTML is what the server would actually emit — including anything the
     // sanitizer strips.
@@ -2107,6 +2167,8 @@ class ServeWebFixtureTest {
         "serve-format-compare.html" to formatComparison,
         "serve-rc-lanes.html" to rcLanesComparison,
         "serve-reference-compare.html" to referenceComparison,
+        "serve-reference-compare-pinned.html" to referenceComparisonPinned,
+        "serve-viewer-revisions.html" to viewerRevisions,
         "serve-design-page.html" to designPageHtml,
         "serve-design-page-index.html" to designPageIndex,
         "serve-parity.html" to parity,
