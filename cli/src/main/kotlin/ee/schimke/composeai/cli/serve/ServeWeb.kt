@@ -7634,7 +7634,12 @@ $rows
         id = "cp-theme-toggle",
         controls = "cp-theme-bar",
         label = "Theme",
-        value = if (viewerTheme == "light") "Day" else "Night",
+        // Exactly the select's own default rule (`daySelected = viewerTheme != "dark"`), not its
+        // inverse: a preview with neither a uiMode nor a light/dark id token has a null
+        // [viewerTheme] and opens on Day, so anything other than an explicit dark lane is Day here
+        // too. Testing for "light" instead would label every untagged preview Night, contradicting
+        // the selected option beside it until the mutation observer got round to fixing it.
+        value = if (viewerTheme == "dark") "Night" else "Day",
         open = themeOpen,
         valueId = "cp-theme-toggle-value",
       )
@@ -7878,11 +7883,23 @@ $rows
     // small-catalog golden (and the muscle memory that goes with it) unchanged.
     val axisChips = switchers.split("class=\"cp-state-btn\"").size - 1
     val axisOpen = axisChips <= AXIS_CHIPS_INLINE
-    // What the toggle says when it is closed. State leads when the component has one — it is the
-    // axis a reader navigates most — and a props-only component names its variant instead.
-    val axisName = if (stateSwitcher.isNotBlank()) "State" else "Variant"
+    // What the toggle says when it is closed. One toggle folds BOTH rows, so it has to name both
+    // axes it folded and both values they held — a component that varies on state *and* props
+    // (RTL, a locale, a font scale) would otherwise lose the variant it is on the moment the rows
+    // went away, which is exactly the cost this fold is not allowed to have. State leads, as the
+    // axis a reader navigates most; either half drops out when that switcher isn't there.
+    val axisName =
+      listOfNotNull(
+          "State".takeIf { stateSwitcher.isNotBlank() },
+          "Variant".takeIf { variantSwitcher.isNotBlank() },
+        )
+        .joinToString(" · ")
     val axisValue =
-      if (stateSwitcher.isNotBlank()) stateLabel(preview.state) else propsLabel(preview.props)
+      listOfNotNull(
+          stateLabel(preview.state).takeIf { stateSwitcher.isNotBlank() },
+          propsLabel(preview.props).takeIf { variantSwitcher.isNotBlank() },
+        )
+        .joinToString(" · ")
     val axesToggle =
       if (switchers.isBlank()) ""
       else

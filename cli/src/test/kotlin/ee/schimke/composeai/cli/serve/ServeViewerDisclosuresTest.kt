@@ -3,6 +3,9 @@ package ee.schimke.composeai.cli.serve
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 
 /**
  * The viewer's four **disclosures** — the component list, the state/variant axes, the theme chips
@@ -21,6 +24,10 @@ import kotlin.test.assertTrue
 class ServeViewerDisclosuresTest {
 
   private val token = "t"
+
+  private fun jsonProps(vararg entries: Pair<String, String>): JsonObject = buildJsonObject {
+    for ((key, value) in entries) put(key, JsonPrimitive(value))
+  }
 
   /** A component with `n` baked states, in one theme lane. */
   private fun statePreviews(n: Int): List<ServePreview> =
@@ -105,6 +112,33 @@ class ServeViewerDisclosuresTest {
   }
 
   @Test
+  fun `one toggle folding two axes names both of them`() {
+    // A component that varies on state AND props: ten chips between them, so both rows fold — and
+    // a toggle that named only the state would drop the variant the reader is actually on.
+    val previews =
+      listOf("default", "xs", "s", "m", "l", "xl", "wide", "narrow").flatMap { state ->
+        listOf(null, "rtl").map { direction ->
+          ServePreview(
+            "button__ideal__${state}__light" + if (direction == null) "" else "__$direction",
+            "Button · $state",
+            state = state,
+            props = direction?.let { jsonProps("direction" to it) },
+          )
+        }
+      }
+    val rtl = previews.first { it.state == "m" && it.props != null }
+    val html = ServeWeb.viewerPage(rtl, token, siblings = previews)
+    assertTrue(html.contains("<div class=\"cp-axes\" id=\"cp-axes\" hidden>"), "both rows fold")
+    assertTrue(
+      html.contains(
+        "<span class=\"cp-toggle-label\">State · Variant</span>" +
+          "<span class=\"cp-toggle-value\">M · RTL</span>"
+      ),
+      "a fold of two axes must carry both values: $html",
+    )
+  }
+
+  @Test
   fun `a component with no second state or variant has no axes disclosure at all`() {
     val html = viewer(listOf(ServePreview("button__ideal__default__light", "Button")))
     assertFalse(html.contains("cp-axes-toggle"), "nothing to fold, so no control to fold it")
@@ -155,6 +189,18 @@ class ServeViewerDisclosuresTest {
       light.contains("<span class=\"cp-toggle-value\" id=\"cp-theme-toggle-value\">Day</span>"),
       light,
     )
+    // The label has to agree with the SELECT, which is the axis's state holder: a preview with no
+    // uiMode and no light/dark id token opens on Day, so the toggle beside it must say Day rather
+    // than contradicting the selected option until the observer catches up.
+    val untagged = viewer(listOf(ServePreview("com.example.ButtonPreview", "Button")))
+    assertTrue(
+      untagged.contains("<option value=\"light\" selected>Day (Default)</option>"),
+      untagged,
+    )
+    assertTrue(
+      untagged.contains("<span class=\"cp-toggle-value\" id=\"cp-theme-toggle-value\">Day</span>"),
+      "an untagged preview opens on Day; the toggle must not say Night: $untagged",
+    )
     // The theme is picked without a page load, so the server-rendered label would go stale on the
     // first click; the drawer script mirrors whichever chip viewer.js marks pressed.
     val script = ServeWebAssets.load("viewer-drawers.js")!!.bytes.decodeToString()
@@ -186,5 +232,29 @@ class ServeViewerDisclosuresTest {
     for (id in listOf("cp-nav-toggle", "cp-controls-toggle", "cp-axes-toggle", "cp-theme-toggle")) {
       assertTrue(script.contains("\"$id\""), "$id participates in the remembered folds: $script")
     }
+  }
+
+  @Test
+  fun `the phone's component sheet is transient, and the desktop default stays responsive`() {
+    val script = ServeWebAssets.load("viewer-drawers.js")!!.bytes.decodeToString()
+    // Below 640px the list is a MODAL bottom sheet over the preview, opened to pick the next
+    // component and dismissed by that pick. Remembering it open would restore the sheet on the page
+    // you just navigated to, so every selection would arrive covered.
+    assertTrue(
+      script.contains("""if (cls === "cp-nav-open" && isMobile()) return;"""),
+      "a phone's sheet must store nothing: $script",
+    )
+    assertTrue(
+      script.contains("if (isMobile()) return false;"),
+      "…and must not be restored from a desktop visit's preference: $script",
+    )
+    // Making the state explicit cost the CSS default its own responsiveness, so the resolution has
+    // to re-run when the viewport crosses a breakpoint — otherwise a window opened wide and then
+    // narrowed keeps `cp-nav-open`, which below 640px drops a sheet and a scrim over the viewer.
+    assertTrue(script.contains("""setOpen("cp-nav-open", resolvedNavOpen());"""), script)
+    assertTrue(
+      script.contains("""query.addEventListener("change", function () {"""),
+      "the width default has to be re-resolved on a breakpoint change: $script",
+    )
   }
 }

@@ -58,6 +58,11 @@
     btn.addEventListener("click", function () {
       var open = !viewer.classList.contains(cls);
       setOpen(cls, open);
+      // A phone's component list is a MODAL bottom sheet over the preview, not a column beside it:
+      // it is opened to pick the next component and is dismissed by that pick. Remembering it open
+      // would restore the sheet on the page you just navigated to, so every selection would arrive
+      // covered and need dismissing. The sheet is transient by nature, so nothing is stored for it.
+      if (cls === "cp-nav-open" && isMobile()) return;
       writeFold(btnId, open);
     });
   }
@@ -68,13 +73,31 @@
   if (controlsPref !== null) setOpen("cp-controls-open", controlsPref === "1");
   // The nav's server markup carries NEITHER class, so its resting state is the CSS default — shown
   // on a desktop, hidden below — and `classList.contains("cp-nav-open")` would read that default as
-  // "closed" on the very width where it is open. Resolve it once, here, into an explicit class:
-  // a stored preference if there is one, else the width's default. Everything downstream (the
-  // toggle, the ×, the scrim) can then trust the class, and `aria-expanded` starts out honest.
+  // "closed" on the very width where it is open. Resolve it into an explicit class so everything
+  // downstream (the toggle, the ×, the scrim) can trust it and `aria-expanded` starts out honest.
+  // On a phone the answer is always CLOSED, whatever a desktop visit stored: an open bottom sheet
+  // is a modal over the preview, never a resting state to restore.
+  function resolvedNavOpen() {
+    if (isMobile()) return false;
+    var pref = readFold("cp-nav-toggle");
+    return pref !== null ? pref === "1" : isWide();
+  }
   var navToggleBtn = document.getElementById("cp-nav-toggle");
   if (navToggleBtn) {
-    var navPref = readFold("cp-nav-toggle");
-    setOpen("cp-nav-open", navPref !== null ? navPref === "1" : isWide());
+    setOpen("cp-nav-open", resolvedNavOpen());
+    // …and re-resolve it when the viewport crosses a breakpoint. Making the state explicit is what
+    // lost the CSS default's own responsiveness: a page opened wide and then narrowed to a phone
+    // would otherwise keep `cp-nav-open`, which below 640px is a fixed bottom sheet and a scrim
+    // dropped over a viewer nobody asked to cover.
+    [
+      window.matchMedia && window.matchMedia("(min-width: 1100px)"),
+      window.matchMedia && window.matchMedia("(max-width: 640px)"),
+    ].forEach(function (query) {
+      if (!query || !query.addEventListener) return;
+      query.addEventListener("change", function () {
+        setOpen("cp-nav-open", resolvedNavOpen());
+      });
+    });
   }
   bindToggle("cp-controls-toggle", "cp-controls-open");
   bindToggle("cp-nav-toggle", "cp-nav-open");
@@ -82,7 +105,9 @@
   if (close)
     close.addEventListener("click", function () {
       setOpen("cp-nav-open", false);
-      writeFold("cp-nav-toggle", false);
+      // Same rule as the toggle: dismissing the phone's bottom sheet is not a statement about the
+      // desktop column, so it stores nothing.
+      if (!isMobile()) writeFold("cp-nav-toggle", false);
     });
   // Tap the scrim to dismiss whichever bottom sheet is open.
   if (scrim)
