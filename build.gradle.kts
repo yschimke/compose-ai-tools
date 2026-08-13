@@ -136,6 +136,8 @@ tasks.register("functionalTestWithAndroid") {
 //       api :data-preview-overrides-core
 //     implementation :data-deviceframe-connector (device-art bezel compositing — post-capture)
 //       api :data-deviceframe-core
+//     implementation :data-focus-connector-desktop (drives @FocusedPreview focus/press on desktop)
+//       api :data-focus-core
 //     implementation :lottie-preview-runtime (Compottie-backed kind=LOTTIE render path)
 //     implementation :svg-preview-runtime (Skia loadSvgPainter kind=SVG render path)
 //   plus :common-io (the Okio file-IO foundation those modules read/write through).
@@ -150,6 +152,8 @@ val bundleRenderFunctionalTestPublishTargets =
     ":data-displayfilter-core",
     ":data-deviceframe-connector",
     ":data-deviceframe-core",
+    ":data-focus-connector-desktop",
+    ":data-focus-core",
     ":daemon:core",
     ":renderer-xr-client",
     ":data-layoutinspector-core",
