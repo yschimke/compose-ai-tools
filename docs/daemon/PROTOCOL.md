@@ -393,13 +393,44 @@ The result resolves as soon as the request is queued, **not** when rendering com
 
 The row token is exactly the `<stem>_<suffix>` spelling the fan-out renderer writes to disk (see [RENDER_FILENAMES.md](../RENDER_FILENAMES.md#previewparameter-fan-out-labels)), so what a caller reads off a rendered directory is what they can address. Both `PreviewManifestRouter`s split `<baseId>_<row>` against the manifest entries that **declare a provider** — a preview with none has no rows, so nothing can be read as a row token of it — taking the longest such prefix, which is what keeps a multi-preview annotation's own `_Light` suffix part of the base. The row render reports the requested id and writes its own `<stem>_<row>.png`, so it never clobbers the base render's artifact or data products. `interactive/start`, `recording/start` and `stream/start` accept the same ids.
 
-An unknown row fails the render rather than silently falling back to value 0, and the failure lists the provider's actual rows — with no enumeration RPC yet, asking for one past the end (`PARAM_255`) is how a client discovers what a provider offers. Cost is bounded: an unaddressed render still enumerates with `take(1)`, an index request stops at `n + 1`, and both addressed lanes are capped by `PreviewParameterSupport.MAX_ROW_SCAN` (256) — which is also the highest addressable index, rejected *before* enumeration, so neither an infinite `generateSequence` provider nor an arbitrarily large `PARAM_<n>` in a caller-supplied previewId can wedge the renderer.
+An unknown row fails the render rather than silently falling back to value 0, and the failure lists the provider's actual rows. To *discover* the rows rather than probe for them, call [`preview/rows`](#previewrows) below. Cost is bounded: an unaddressed render still enumerates with `take(1)`, an index request stops at `n + 1`, and both addressed lanes are capped by `PreviewParameterSupport.MAX_ROW_SCAN` (256) — which is also the highest addressable index, rejected *before* enumeration, so neither an infinite `generateSequence` provider nor an arbitrarily large `PARAM_<n>` in a caller-supplied previewId can wedge the renderer.
 
 **Coalescing.** When `overrides` is non-null and a prior override-bearing render is still in-flight for the same `previewId`, the new request is rejected with `reason = "coalesced: …"` rather than queued. The client (panel, MCP, etc.) is responsible for resubmitting on the next `renderFinished` if the latest override values still differ from what was rendered. Plain (no-overrides) `renderNow` is unaffected — the existing save-debounce loop continues to coalesce upstream.
 
 Errors:
 - `ClasspathDirty` (-32002) — daemon will not render until restarted.
 - `SandboxRecycling` (-32003) — retry after the next `daemonReady` notification.
+
+### `preview/rows`
+
+Enumerates a preview's `@PreviewParameter` rows — the ids `renderNow` (and `interactive/start`, `recording/start`, `stream/start`) can then address. Issue #3749.
+
+```ts
+// params
+{ previewId: string }              // base id, or a row id — a row id answers with its siblings
+
+// result
+{
+  previewId: string;               // echoed as requested
+  rows: {
+    index: number;                 // 0-based position in the provider's value sequence
+    label: string;                 // the row token: a derived label ("Dark") or "PARAM_<index>"
+    id: string;                    // `<baseId>_<label>` — hand straight back to renderNow
+  }[];
+}
+```
+
+Only the daemon can answer this: `previews.json` carries base ids only, because discovery reads bytecode and cannot instantiate a `PreviewParameterProvider`. The daemon holds the consumer classpath, so it can.
+
+**`rows: []` is a normal answer, not an error** — it means the preview declares no provider, so a client renders the bare id. That case is also the reason this method is cheap enough to call on everything a client lists: the host resolves the discovery metadata **first** and returns empty without touching a classloader, and on Android without a Robolectric sandbox round-trip. Only a preview that actually declares a provider pays for enumeration.
+
+Where enumeration runs differs by backend, and it has to. Desktop enumerates in-process on the same disposable child classloader a render would use, so a provider edited since the daemon started is read fresh. Android enumerates *inside* the sandbox — the provider class lives on the slot's child classloader and provider values routinely touch Android APIs that are only real under Robolectric — as a `RenderRequest.ParameterRows` on the same queue renders ride, replying with a `java.util.List<String>` of labels (the only shape that crosses the sandbox classloader boundary intact). Either way the enumeration is capped at `PreviewParameterSupport.MAX_ROW_SCAN` (256), so an infinite `generateSequence` provider yields a truncated list rather than hanging the daemon.
+
+`serve` does not use this method — its Gradle path renders before it starts the server, so `ServeParameterRows` reads the fan-out back off disk, which is stronger evidence (the manifest says who owns which file) and needs no daemon.
+
+Errors:
+- `InvalidParams` (-32602) — unknown `previewId`.
+- `MethodNotFound` (-32601) — the host can't enumerate at all. Clients should fall back to the bare id.
 
 ### `history/list` (phase H2)
 
