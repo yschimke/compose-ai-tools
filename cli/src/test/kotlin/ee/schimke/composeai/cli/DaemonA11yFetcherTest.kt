@@ -359,6 +359,168 @@ class DaemonA11yFetcherTest {
     )
   }
 
+  @Test
+  fun `the declared preview is re-rendered at its own configuration after a permutation`() {
+    val projectDir = newTempFolder("module-permutation-force-base")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    val factory = FakeFactory(mapOf("Foo" to atfPayload(emptyList())))
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo"),
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
+          ),
+      )
+
+    // The permutation was rendered *as* `Foo`, so it left its data product at `Foo`'s own cache
+    // path. `FileBackedDataProductRegistry` only queues a re-render when that file is *missing*, so
+    // an unforced base fetch would serve the permutation's artefact and file it as the base.
+    val baseParams = factory.calls.last().params?.jsonObject
+    assertEquals(
+      true,
+      baseParams?.get(DataFetchParams.PARAM_FORCE_RERENDER)?.jsonPrimitive?.content?.toBoolean(),
+      "the base fetch after a permutation must force a re-render",
+    )
+    assertNull(
+      baseParams?.get(DataFetchParams.PARAM_OVERRIDES),
+      "...at default overrides, which is what makes it the base",
+    )
+  }
+
+  @Test
+  fun `a permutation-only request still restores the declared preview's render`() {
+    val projectDir = newTempFolder("module-permutation-only")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    val factory = FakeFactory(mapOf("Foo" to atfPayload(emptyList())))
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f))
+          ),
+        modulePreviewIds = listOf("Foo", "Foo_dark"),
+        narrowed = true,
+      )
+
+    // `--id Foo_dark` asks for one entry, but the render that produced it overwrote
+    // `renders/Foo.png` — which `buildResults` hashes as the declared preview. So the restore runs
+    // even though it has no entry to file.
+    assertEquals(2, factory.calls.size, "expected the permutation plus a restoring base fetch")
+    assertEquals(
+      true,
+      factory.calls
+        .last()
+        .params
+        ?.jsonObject
+        ?.get(DataFetchParams.PARAM_FORCE_RERENDER)
+        ?.jsonPrimitive
+        ?.content
+        ?.toBoolean(),
+    )
+    assertEquals(
+      listOf("Foo_dark"),
+      readReport(projectDir).entries.map { it.previewId },
+      "the restore is a side effect, not a result — it files no entry",
+    )
+  }
+
+  @Test
+  fun `a failed permutation does not inherit the previous permutation's artefacts`() {
+    val projectDir = newTempFolder("module-permutation-failed-snapshot")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+
+    // Only the first fetch renders; the second errors, so `data/Foo/` still holds the *first*
+    // permutation's overlay when it returns.
+    val factory =
+      FakeFactory(
+        payloads = emptyMap(),
+        payloadByCall =
+          mapOf(1 to atfPayload(emptyList()), 2 to null, 3 to atfPayload(emptyList())),
+        onFetch = { _, ordinal ->
+          if (ordinal != 2) {
+            dataDir.mkdirs()
+            File(dataDir, "a11y-overlay.png").writeBytes("render-$ordinal".toByteArray())
+          }
+        },
+      )
+
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f)),
+            ReportCommand.RequestedPreview("Foo", "Foo_rtl", PreviewOverrides(localeTag = "ar-XB")),
+          ),
+        modulePreviewIds = listOf("Foo", "Foo_dark", "Foo_rtl"),
+        narrowed = true,
+      )
+
+    assertEquals(
+      "render-1",
+      File(projectDir, "build/compose-previews/data/Foo_dark/a11y-overlay.png").readText(),
+    )
+    assertFalse(
+      File(projectDir, "build/compose-previews/data/Foo_rtl/a11y-overlay.png").exists(),
+      "a failed fetch has no artefacts of its own, and must not adopt the last one's",
+    )
+    assertNull(readReport(projectDir).entries.single { it.previewId == "Foo_rtl" }.annotatedPath)
+  }
+
+  @Test
+  fun `a snapshot drops a stale artefact the latest render did not produce`() {
+    val projectDir = newTempFolder("module-permutation-stale-snapshot")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    val dataDir = File(projectDir, "build/compose-previews/data/Foo")
+    val darkDir = File(projectDir, "build/compose-previews/data/Foo_dark")
+    darkDir.mkdirs()
+    File(darkDir, "a11y-overlay.png").writeText("from-an-earlier-run")
+
+    // This render produces a hierarchy but no overlay (the overlay-only path is optional). The copy
+    // loop has nothing to overwrite the earlier run's PNG with, so it must remove it — otherwise
+    // `annotatedPath` points a reader at pixels from a render that isn't this one.
+    val factory =
+      FakeFactory(
+        payloads = mapOf("Foo" to atfPayload(emptyList())),
+        onFetch = { _, _ ->
+          dataDir.mkdirs()
+          File(dataDir, "a11y-hierarchy.json").writeText("""{"nodes":[]}""")
+        },
+      )
+
+    DaemonA11yFetcher(factory = factory)
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previews =
+          listOf(
+            ReportCommand.RequestedPreview("Foo", "Foo_dark", PreviewOverrides(fontScale = 2.0f))
+          ),
+        modulePreviewIds = listOf("Foo", "Foo_dark"),
+        narrowed = true,
+      )
+
+    assertFalse(File(darkDir, "a11y-overlay.png").exists(), "stale overlay should be dropped")
+    assertNull(readReport(projectDir).entries.single().annotatedPath)
+  }
+
   // ---------- narrowed runs merge rather than clobber (#3742) ----------
 
   @Test

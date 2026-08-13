@@ -132,41 +132,93 @@ internal class DaemonA11yFetcher(
       // so it must not overwrite what a previous run actually found. See [mergeEntries].
       val failedIds = mutableSetOf<String>()
       var anyFetchOk = false
-      // Permutations first, the declared preview last. Every fetch writes its artefacts to
-      // `data/<previewId>/`, so the last render of a given preview is the one left there — and that
-      // should be the preview's own, since its entry is the one keyed by that id.
-      for (preview in previews.sortedBy { !it.isPermutation }) {
-        val previewId = preview.previewId
-        val entryId = preview.entryId
-        val payload =
-          try {
-            live
-              .fetchData(
-                previewId = previewId,
-                kind = ATF_KIND,
-                inline = true,
-                params = fetchParams(preview),
-                timeout = 120.seconds,
-              )
-              .payload
-          } catch (e: DataProductException) {
-            onLog("a11y fetch for '$entryId' failed: code=${e.code} ${e.wireMessage}")
-            null
-          } catch (e: RenderSessionException) {
-            onLog("a11y fetch for '$entryId' transport error: ${e.message}")
-            null
+
+      fun fetchOne(previewId: String, entryId: String, params: JsonElement?): JsonElement? =
+        try {
+          live
+            .fetchData(
+              previewId = previewId,
+              kind = ATF_KIND,
+              inline = true,
+              params = params,
+              timeout = 120.seconds,
+            )
+            .payload
+        } catch (e: DataProductException) {
+          onLog("a11y fetch for '$entryId' failed: code=${e.code} ${e.wireMessage}")
+          null
+        } catch (e: RenderSessionException) {
+          onLog("a11y fetch for '$entryId' transport error: ${e.message}")
+          null
+        }
+
+      // Group by the id the daemon is addressed with, because everything that needs care here is
+      // per *declared* preview: its permutations share one artefact directory, one cached
+      // data-product file, and one `renders/<id>.png`.
+      for ((previewId, group) in previews.groupBy { it.previewId }) {
+        val permutations = group.filter { it.isPermutation }
+        val base = group.firstOrNull { !it.isPermutation }
+        for (preview in permutations) {
+          val payload = fetchOne(previewId, preview.entryId, fetchParams(preview))
+          if (payload != null) anyFetchOk = true else failedIds += preview.entryId
+          // Copy this render's artefacts out before the next fetch of the same preview replaces
+          // them — but only when the fetch produced something. On a failure the directory still
+          // holds the *previous* configuration's files, and snapshotting those would file another
+          // permutation's overlay and hierarchy under this one's id.
+          if (payload != null) snapshotArtifacts(projectDir, from = previewId, to = preview.entryId)
+          entries.add(
+            AccessibilityEntry(
+              previewId = preview.entryId,
+              findings = payload?.let(::parseFindings).orEmpty(),
+              nodes = if (payload != null) readNodes(projectDir, preview.entryId) else emptyList(),
+              annotatedPath =
+                if (payload != null) relativeOverlayPath(projectDir, preview.entryId) else null,
+            )
+          )
+        }
+
+        if (permutations.isEmpty()) {
+          // Nothing overrode this preview, so the ordinary cached path is fine — this is the narrow
+          // fast fetch #3742 exists to keep.
+          val preview = base ?: continue
+          val payload = fetchOne(previewId, preview.entryId, null)
+          if (payload != null) anyFetchOk = true else failedIds += preview.entryId
+          entries.add(
+            AccessibilityEntry(
+              previewId = preview.entryId,
+              findings = payload?.let(::parseFindings).orEmpty(),
+              nodes = readNodes(projectDir, preview.entryId),
+              annotatedPath = relativeOverlayPath(projectDir, preview.entryId),
+            )
+          )
+          continue
+        }
+
+        // A permutation is rendered *as* this preview, so once one has run, two things under the
+        // declared id describe the override rather than the preview: the data product it wrote sits
+        // at this preview's own cache path — and an unforced fetch serves that existing file rather
+        // than re-rendering, since `FileBackedDataProductRegistry` only queues a re-render when the
+        // file is *missing* — and `renders/<previewId>.png`, which `buildResults` hashes as this
+        // preview, holds the override's pixels. One forced fetch at default overrides fixes both,
+        // so it runs even when the declared preview has no entry to file (`--id Foo_dark`): the
+        // report gains nothing, but the render on disk stops lying about which configuration it is.
+        val payload = fetchOne(previewId, base?.entryId ?: previewId, forcedDefaultParams())
+        if (base == null) {
+          if (payload == null) {
+            onLog(
+              "could not restore the default render of '$previewId' after its permutations; " +
+                "renders/$previewId.png may still hold a permutation's pixels"
+            )
           }
-        if (payload != null) anyFetchOk = true else failedIds += entryId
-        // Take the artefacts this render just produced before the next fetch of the same preview
-        // overwrites them.
-        if (preview.isPermutation) snapshotArtifacts(projectDir, from = previewId, to = entryId)
-        val findings = payload?.let(::parseFindings).orEmpty()
+          continue
+        }
+        if (payload != null) anyFetchOk = true else failedIds += base.entryId
         entries.add(
           AccessibilityEntry(
-            previewId = entryId,
-            findings = findings,
-            nodes = readNodes(projectDir, entryId),
-            annotatedPath = relativeOverlayPath(projectDir, entryId),
+            previewId = base.entryId,
+            findings = payload?.let(::parseFindings).orEmpty(),
+            nodes = readNodes(projectDir, base.entryId),
+            annotatedPath = relativeOverlayPath(projectDir, base.entryId),
           )
         )
       }
@@ -332,6 +384,15 @@ internal class DaemonA11yFetcher(
   }
 
   /**
+   * The `params` bag for the declared preview's fetch when a permutation of it already ran: a
+   * forced re-render carrying **no** overrides, so the daemon rebuilds this preview at its own
+   * configuration instead of serving the file the override left at the shared cache path.
+   */
+  private fun forcedDefaultParams(): JsonElement = buildJsonObject {
+    put(DataFetchParams.PARAM_FORCE_RERENDER, JsonPrimitive(true))
+  }
+
+  /**
    * Copy the artefacts the daemon just wrote for [from] into [to]'s own directory, so a permutation
    * keeps the overlay and hierarchy of *its* render.
    *
@@ -340,17 +401,24 @@ internal class DaemonA11yFetcher(
    * preview replaces them. `fetchData` returns only after the render completes, so copying here is
    * safe. Best-effort: a permutation whose artefacts can't be copied still keeps its findings,
    * which came back inline in the payload rather than through the filesystem.
+   *
+   * A file the latest render *didn't* produce is deleted from [to] rather than left alone: the
+   * target directory may hold an earlier run's copy, and keeping it would let [readNodes] and
+   * [relativeOverlayPath] hand this permutation a hierarchy or overlay from a render it isn't.
    */
   private fun snapshotArtifacts(projectDir: File, from: String, to: String) {
     val sourceDir = projectDir.resolve("build/compose-previews/data/$from")
-    if (!sourceDir.isDirectory) return
     val targetDir = projectDir.resolve("build/compose-previews/data/$to")
     for (name in SNAPSHOT_FILES) {
       val source = sourceDir.resolve(name)
-      if (!source.isFile) continue
+      val target = targetDir.resolve(name)
       try {
+        if (!source.isFile) {
+          target.delete()
+          continue
+        }
         targetDir.mkdirs()
-        source.copyTo(targetDir.resolve(name), overwrite = true)
+        source.copyTo(target, overwrite = true)
       } catch (e: Exception) {
         onLog("could not snapshot $name for '$to': ${e.message}")
       }
