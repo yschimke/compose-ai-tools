@@ -300,7 +300,8 @@ object ServeWeb {
 
   /**
    * How many rows the viewer's component subtree shows inline before folding behind its title-bar
-   * toggle. Lower than the chip rows this replaced needed, because a tree spends a whole line per
+   * toggle — counting the component row, which is itself a render (the default one), not just its
+   * children. Lower than the chip rows this replaced needed, because a tree spends a whole line per
    * render where a chip row wrapped several onto one: four rows is about the point past which the
    * list costs more of the fold than the render it sits above.
    */
@@ -1484,10 +1485,12 @@ object ServeWeb {
     /** Collapsed by default; the viewer's subtree opens, having only one component to show. */
     collapsed: Boolean = true,
     /**
-     * Whether to lead the children with a synthetic **Default** row pointing at [defaultHref]. The
-     * landing needs it — its rows are the component's *variants*, and the default render is not one
-     * of them. The viewer's rows already include the default (it is a state like any other), so
-     * emitting it there would list the same render twice under one component.
+     * Whether to lead the children with a synthetic **Default** row pointing at [defaultHref].
+     *
+     * The landing needs it: there the component row is an in-page jump to a card, not a render, so
+     * without this row the default has no entry of its own. The viewer does not, because there the
+     * component row IS the default render — a `Default` child beneath it would be a second row with
+     * the same href and the same destination, which is the duplication this flag exists to avoid.
      */
     syntheticDefaultRow: Boolean = true,
     /** The row whose href matches is `aria-current="page"` — the render on screen. */
@@ -1495,21 +1498,22 @@ object ServeWeb {
     indent: String = "        ",
   ) {
     fun current(target: String) = if (target == currentHref) " aria-current=\"page\"" else ""
-    // Only the VARIANT rows can be current. The component row and the synthetic Default row share
-    // an href — the component's default render — so marking both would put two "you are here"
-    // pills in a three-row list. The component row names the component; the rows under it are the
-    // renders, and one of those is the page.
+    // The component row can itself be current — in the viewer it IS the default render, the rows
+    // under it being the other ones. Nothing double-marks, because a caller that folds the default
+    // into this row also drops it from [variants]; a caller that keeps a synthetic Default row
+    // (the landing) passes no [currentHref] at all.
     append("$indent<li role=\"none\"><a class=\"cp-tree-component cp-tree-link\"")
     append(" role=\"treeitem\" href=\"${WebEscaping.htmlEscape(href)}\"$rowAttrs")
     if (variants.isNotEmpty()) {
       append(" aria-expanded=\"${!collapsed}\" aria-owns=\"$variantsId\"")
     }
+    append(current(href))
     append(">")
     append(WebEscaping.htmlEscape(label))
     if (variants.isNotEmpty()) {
-      append(
-        "<span class=\"cp-tree-count\">${variants.size + if (syntheticDefaultRow) 1 else 0}</span>"
-      )
+      // +1 for the default render either way: the landing lists it as the synthetic child row
+      // below, the viewer folds it into this row.
+      append("<span class=\"cp-tree-count\">${variants.size + 1}</span>")
     }
     append("</a>\n")
     if (variants.isNotEmpty()) {
@@ -1709,9 +1713,14 @@ object ServeWeb {
     // subtree built from the axes alone would show the reader every render of this component
     // except the one they are looking at, with nothing marked current. A tree that says "this
     // component's renders" has to contain the page it is drawn on.
-    val variants =
+    val withCurrent =
       if (rows.any { it.href == href(preview) } || preview.id == default.id) rows
       else rows + TreeVariant(previewDisplayName(preview), href(preview), "props")
+    // The DEFAULT render is the component row, not a child of it. Both pointed at the same href —
+    // the same page, reached two ways, one line apart — and the child said "Default" directly under
+    // a row already naming that render. Folding it up leaves the tree saying each render once: the
+    // component, then the ways it differs.
+    val variants = withCurrent.filterNot { it.href == href(default) }
     if (variants.isEmpty()) return ""
     return buildString {
         append("<nav class=\"cp-tree cp-axes-tree\" aria-label=\"Component renders\">\n")
@@ -8097,7 +8106,11 @@ $rows
     // control in the title bar that names the current render, and opens on demand. Inline up to
     // [AXIS_ROWS_INLINE] rows: a two- or three-render component is a short list that reads better
     // shown than hidden behind a click.
-    val axisRows = axesTree.split("class=\"cp-tree-variant cp-tree-link\"").size - 1
+    // `+ 1` for the component row, which is itself a render — the default one. Counting only the
+    // children would make the threshold drift the moment the default was folded up into that row:
+    // a five-render component would count four and open, having counted five and folded the day
+    // before, for no reason a reader could see.
+    val axisRows = axesTree.split("class=\"cp-tree-variant cp-tree-link\"").size
     val axisOpen = axisRows <= AXIS_ROWS_INLINE
     // What the toggle says when it is closed. The subtree folds BOTH axes, so it names both the
     // axes it folded and the values they hold — a component that varies on state *and* props (RTL,

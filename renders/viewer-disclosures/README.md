@@ -30,7 +30,7 @@ shoot it again.
 | `theme-overflow-before.png` | the `serve-viewer-theme-overflow` fixture **before**: eight theme chips on a row of their own, four of them ellipsised, the drawer toggles at either end of the bar |
 | `theme-overflow-after.png` | the same page **after**: the chips fold behind `THEME · Night` on the title row, and the row they occupied is back |
 | `viewer-folded.png` | the resting state on a wide catalog: ten states and five themes folded behind `STATE · Default` / `THEME · Day`, the render starting where three chip rows used to |
-| `viewer-axes-open.png` | both folds opened — the component's **subtree** (the catalog tree filtered to this component, current render marked) and the theme bar are one click away, and the toggles go tonal to say so |
+| `viewer-axes-open.png` | both folds opened on the real 22-render shape — the component's **subtree** (the catalog tree filtered to this component) flowing into columns rather than a 550px ladder, the default folded into the component row and marked current |
 | `viewer-nav-closed.png` | the component list collapsed **on a desktop**, which it could not be before: the 240px column goes back to the stage |
 | `cross-product-labels.png` | a component baking state × props as a matrix, entered on `pressed + RTL` with its subtree open: every row names both coordinates, so the state-reset row and the props-reset row are told apart instead of both reading "Default" |
 | `viewer-mobile.png` | a phone, scrolled past the top: the title row is sticky, so all four disclosures stay one tap away over a tall preview |

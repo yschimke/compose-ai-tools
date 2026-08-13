@@ -1006,7 +1006,15 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    grid, so both the stickiness and the outer margin are undone. Overriding rather than minting a
    parallel class is the point: a change to how a tree row looks has to reach both places. */
 .cp-axes-tree { position: static; max-height: none; overflow: visible; margin: 0 0 10px;
-  max-width: 420px; }
+  max-width: 760px; }
+/* A long axis FLOWS into columns rather than running down the page. On the landing the tree lives
+   in a 216px sidebar, where one column is the only option; here it sits full-width above the stage
+   with the whole right-hand side empty, and `iconbutton-outlined`'s 22 size × width × shape renders
+   became a 550px ladder of two-word labels — half the fold, to say what fits in four short columns.
+   `column-width` rather than a column count so the browser picks the number that fits, and the
+   rows stay one-per-line at any width. */
+.cp-axes-tree .cp-tree-variants { columns: 11em; column-gap: 20px; }
+.cp-axes-tree .cp-tree-variants li { break-inside: avoid; }
 /* The subtree's ROOT is the component itself, so it hangs off nothing and needs no rail or indent
    of its own; the variants keep theirs, which is what still reads as a tree rather than a list. */
 .cp-axes-tree > .cp-tree-list > li > .cp-tree-component { padding-left: 0; }
