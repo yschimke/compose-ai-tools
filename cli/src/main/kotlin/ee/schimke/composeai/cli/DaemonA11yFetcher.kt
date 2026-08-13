@@ -52,13 +52,17 @@ internal class DaemonA11yFetcher(
    * handshake; defaults to [projectDir] when the caller doesn't have a separate workspace root
    * handy (single-module projects).
    *
-   * [mergeWithExisting] tells the fetcher that [previewIds] is only part of the module — set it
-   * when a `--id` / `--filter` request narrowed the fan-out (issue #3742). `accessibility.json` is
-   * a *per-module* report, so writing a narrowed one wholesale would silently drop the findings for
-   * every preview the user didn't ask about; with this set, entries already on disk for previews
-   * outside [previewIds] are carried forward, the same bargain the `.cli-state.json` carry-forward
-   * strikes for skipped renders (#3730). A full run leaves it false and rewrites the report, which
-   * is the only way stale entries ever get cleaned out.
+   * [modulePreviewIds] is every preview the module declares, against which [previewIds] is the
+   * subset this run was asked for — they differ when `--id` / `--filter` narrowed the fan-out
+   * (issue #3742), and default to equal for a full run. Two things hang off the difference, because
+   * `accessibility.json` is a *per-module* report and a narrowed run only speaks for part of it:
+   * - entries already on disk for previews outside [previewIds] are **carried forward** rather than
+   *   dropped, the same bargain the `.cli-state.json` carry-forward strikes for previews a narrowed
+   *   render skipped (#3730). Only a full run rewrites wholesale, which keeps it the one thing that
+   *   evicts the entry of a preview that no longer exists;
+   * - the report is stamped [AccessibilityReport.partial] when the merged entries still don't cover
+   *   [modulePreviewIds], so consumers read an absent id as "not checked" instead of folding it in
+   *   as a clean row.
    */
   fun fetch(
     projectDir: File,
@@ -66,11 +70,11 @@ internal class DaemonA11yFetcher(
     moduleName: String,
     previewIds: List<String>,
     workspaceRoot: File = projectDir,
-    mergeWithExisting: Boolean = false,
+    modulePreviewIds: List<String> = previewIds,
   ): Outcome {
     val descriptorFile = File(projectDir, "build/compose-previews/daemon-launch.json")
     if (!descriptorFile.isFile) {
-      writeAtfUnavailableReport(projectDir, moduleName, mergeWithExisting)
+      writeAtfUnavailableReport(projectDir, moduleName, previewIds, modulePreviewIds)
       return Outcome.DescriptorMissing(descriptorFile)
     }
 
@@ -86,7 +90,7 @@ internal class DaemonA11yFetcher(
       try {
         factory.open(config)
       } catch (e: RenderSessionException) {
-        writeAtfUnavailableReport(projectDir, moduleName, mergeWithExisting)
+        writeAtfUnavailableReport(projectDir, moduleName, previewIds, modulePreviewIds)
         return Outcome.OpenFailed(reason = e.message ?: e.javaClass.simpleName)
       }
 
@@ -145,7 +149,8 @@ internal class DaemonA11yFetcher(
           moduleName,
           entries = entries,
           status = status,
-          mergeWithExisting = mergeWithExisting,
+          fetchedIds = previewIds,
+          modulePreviewIds = modulePreviewIds,
         )
       Outcome.Ok(reportFile = reportFile, entryCount = entries.size, atfAvailable = atfAvailable)
     }
@@ -155,21 +160,23 @@ internal class DaemonA11yFetcher(
    * Write an `accessibility.json` stamped with `status = "atf-unavailable"` and no entries of its
    * own, for cases where we can't even open a render session (descriptor missing / open failed).
    * Lets the python PR-comment helper see the same signal it gets on a per-preview-failure run
-   * instead of silently finding nothing on disk. Under [mergeWithExisting] the entries already on
-   * disk survive — a narrowed run that couldn't reach the daemon has learned nothing about the
-   * previews it wasn't going to fetch either, and the stamped status still fails the CLI.
+   * instead of silently finding nothing on disk. On a narrowed run the entries already on disk
+   * survive — a run that couldn't reach the daemon has learned nothing about the previews it wasn't
+   * going to fetch either — and the stamped status still fails the CLI.
    */
   private fun writeAtfUnavailableReport(
     projectDir: File,
     moduleName: String,
-    mergeWithExisting: Boolean = false,
+    fetchedIds: List<String>,
+    modulePreviewIds: List<String>,
   ) {
     writeReport(
       projectDir,
       moduleName,
       entries = emptyList(),
       status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
-      mergeWithExisting = mergeWithExisting,
+      fetchedIds = fetchedIds,
+      modulePreviewIds = modulePreviewIds,
     )
   }
 
@@ -178,13 +185,29 @@ internal class DaemonA11yFetcher(
     moduleName: String,
     entries: List<AccessibilityEntry>,
     status: String?,
-    mergeWithExisting: Boolean = false,
+    fetchedIds: List<String>,
+    modulePreviewIds: List<String>,
   ): File {
     val reportFile = projectDir.resolve("build/compose-previews/accessibility.json")
     reportFile.parentFile?.mkdirs()
-    val merged =
-      if (mergeWithExisting) mergeEntries(readExistingEntries(reportFile), entries) else entries
-    val report = AccessibilityReport(module = moduleName, entries = merged, status = status)
+    val narrowed = !fetchedIds.containsAll(modulePreviewIds)
+    val existing = if (narrowed) readExistingReport(reportFile) else null
+    val merged = if (existing == null) entries else mergeEntries(existing.entries, entries)
+    val covered = merged.map { it.previewId }.toSet()
+    // An entry this run didn't write came off a report stamped `atf-unavailable`, which means it
+    // records a fetch that never ran — clearing the stamp because *this* run's one preview came
+    // back would let the python helper read those stale empty entries as checked and clean.
+    // Carrying the stamp keeps them flagged; the next full run rewrites and clears it.
+    val carriedUnavailable =
+      existing?.status == A11Y_REPORT_STATUS_ATF_UNAVAILABLE &&
+        merged.any { it.previewId !in fetchedIds }
+    val report =
+      AccessibilityReport(
+        module = moduleName,
+        entries = merged,
+        status = status ?: A11Y_REPORT_STATUS_ATF_UNAVAILABLE.takeIf { carriedUnavailable },
+        partial = !covered.containsAll(modulePreviewIds),
+      )
     fileSystem.write(reportFile.path.toPath()) {
       writeUtf8(json.encodeToString(AccessibilityReport.serializer(), report))
     }
@@ -192,18 +215,18 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * Entries from the `accessibility.json` a previous run left at [reportFile], or empty when there
-   * is none / it can't be parsed. A report we can't read is one we can't preserve, and refusing to
-   * write over it would leave the run with no report at all — so an unreadable file degrades to the
-   * non-merging behaviour rather than failing the fetch.
+   * The `accessibility.json` a previous run left at [reportFile], or `null` when there is none / it
+   * can't be parsed. A report we can't read is one we can't preserve, and refusing to write over it
+   * would leave the run with no report at all — so an unreadable file degrades to the non-merging
+   * behaviour rather than failing the fetch.
    */
-  private fun readExistingEntries(reportFile: File): List<AccessibilityEntry> {
-    if (!reportFile.isFile) return emptyList()
+  private fun readExistingReport(reportFile: File): AccessibilityReport? {
+    if (!reportFile.isFile) return null
     return try {
       val text = fileSystem.read(reportFile.path.toPath()) { readUtf8() }
-      json.decodeFromString(AccessibilityReport.serializer(), text).entries
+      json.decodeFromString(AccessibilityReport.serializer(), text)
     } catch (_: Exception) {
-      emptyList()
+      null
     }
   }
 

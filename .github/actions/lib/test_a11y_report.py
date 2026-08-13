@@ -178,6 +178,65 @@ class SelectVariantsTest(unittest.TestCase):
         )
         self.assertEqual(rows[0]["renderOutput"], "renders/Bad_small.png")
 
+    def test_partial_report_drops_previews_it_did_not_check(self):
+        # A narrowed `compose-preview a11y --id X` run only checked what it
+        # was asked for (#3742). Listing the rest with empty findings would
+        # claim they came back clean.
+        manifest = {
+            "module": "sample",
+            "previews": [
+                _preview(id="x.Checked", function="Checked",
+                         render="renders/Checked.png"),
+                _preview(id="x.Skipped", function="Skipped",
+                         render="renders/Skipped.png"),
+            ],
+        }
+        a11y_by_id = {
+            "x.Checked": {"previewId": "x.Checked", "findings": [_finding()]},
+        }
+
+        rows = ar.select_variants(manifest, a11y_by_id, partial=True)
+        self.assertEqual([r["previewId"] for r in rows], ["x.Checked"])
+
+        # A complete report keeps the "no entry means checked and clean"
+        # reading it has always had.
+        rows = ar.select_variants(manifest, a11y_by_id)
+        self.assertEqual(
+            [r["previewId"] for r in rows], ["x.Checked", "x.Skipped"]
+        )
+        self.assertEqual(rows[1]["findings"], [])
+
+    def test_load_previews_reads_the_partial_flag(self):
+        build_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, build_dir)
+        (build_dir / "previews.json").write_text(
+            json.dumps({"module": "sample", "previews": []})
+        )
+        (build_dir / "accessibility.json").write_text(
+            json.dumps({
+                "module": "sample",
+                "entries": [],
+                "partial": True,
+            })
+        )
+
+        _, _, status, partial = ar.load_previews(build_dir)
+        self.assertIsNone(status)
+        self.assertTrue(partial)
+
+    def test_load_previews_defaults_partial_false_for_older_reports(self):
+        build_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, build_dir)
+        (build_dir / "previews.json").write_text(
+            json.dumps({"module": "sample", "previews": []})
+        )
+        (build_dir / "accessibility.json").write_text(
+            json.dumps({"module": "sample", "entries": []})
+        )
+
+        _, _, _, partial = ar.load_previews(build_dir)
+        self.assertFalse(partial)
+
 
 class CopyAnnotatedTest(unittest.TestCase):
     def setUp(self):

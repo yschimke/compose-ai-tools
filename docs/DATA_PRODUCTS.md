@@ -39,16 +39,32 @@ The narrowing is computed from the **request**, not from the render's `renderedI
 That set is `null` both when there was no request and when the request happened to
 select every preview (the render declines to narrow, because a filtered
 `composePreviewRender` isn't build-cacheable), so it cannot answer "what did the user
-ask about" — `PreviewRenderScope.selectedPreviewIds` does.
+ask about". It is also matched against the manifest `readAllManifests` returns, which
+is **already permutation-expanded** — so the ids are the same ids the results carry,
+and re-expanding them would make `--id Foo_dark` also select `Foo` (whose expansion
+contains `Foo_dark`) and pay for a render nobody asked for.
 
 The consequence to keep in mind when adding another per-preview hook: the sidecars
 (`accessibility.json` and friends) are **per-module** reports, so a narrowed run
-produces a partial one. Writing it wholesale would silently delete the findings for
-every preview the user didn't ask about. `DaemonA11yFetcher` merges instead — entries
-on disk for previews outside this run's ids are carried forward, fetched ones are
-replaced — the same bargain the `.cli-state.json` carry-forward strikes for previews a
-narrowed render skipped (issue #3730). Only an unnarrowed run rewrites the report, so
-that stays the one thing that evicts an entry for a preview that no longer exists.
+produces a partial one, and a partial report is dangerous in a specific way — every
+consumer reads "module has a report, but this preview isn't in it" as *checks ran and
+found nothing*. Publishing a module-wide report covering three of sixty-six previews
+would therefore certify sixty-three previews ATF never looked at. Two mechanisms keep
+that honest, and a new hook needs both:
+
+1. **Merge, don't clobber.** Entries on disk for previews outside this run's ids are
+   carried forward and the fetched ones replace — the same bargain the `.cli-state.json`
+   carry-forward strikes for previews a narrowed render skipped (issue #3730). Only an
+   unnarrowed run rewrites wholesale, which keeps it the one thing that evicts an entry
+   for a preview that no longer exists. A carried-forward `status = "atf-unavailable"`
+   rides along with the entries it belongs to rather than being cleared by a later
+   narrowed success.
+2. **Declare what's still uncovered.** When the merged entries *still* don't cover the
+   module, the report is stamped `partial: true`, and consumers invert the default
+   reading: `A11yReportRenderer` withholds the `dataExtensions["a11y"]` carrier for an
+   unlisted preview (so `a11yEntry()` is `null` — the established "checks didn't run"
+   signal) and `.github/actions/lib/a11y-report.py` drops it from the findings table,
+   the same way it already drops Wear Tiles rather than listing them as checked.
 
 ### Seeding an environment is not producing a data product
 

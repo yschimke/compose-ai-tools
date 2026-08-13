@@ -87,16 +87,20 @@ def variant_label(device: str | None) -> str:
 ATF_UNAVAILABLE: str = "atf-unavailable"
 
 
-def load_previews(build_dir: Path) -> tuple[dict, dict, str | None]:
-    """Return ``(manifest, a11y_by_id, status)`` for one module's build output.
+def load_previews(build_dir: Path) -> tuple[dict, dict, str | None, bool]:
+    """Return ``(manifest, a11y_by_id, status, partial)`` for one module.
 
     ``manifest`` is the raw ``previews.json`` dict. ``a11y_by_id`` maps each
     previewId to its accessibility entry (findings + relative annotatedPath),
-    or ``None`` when ``accessibility.json`` is absent (a11y not enabled).
+    and is empty when ``accessibility.json`` is absent (a11y not enabled).
     ``status`` is the top-level ``status`` field from ``accessibility.json`` —
     typically ``None`` for a clean run, or ``"atf-unavailable"`` when the
     daemon couldn't return ATF data and the empty entries list should NOT be
     interpreted as "ran cleanly, found nothing." See issue #1453.
+    ``partial`` is the report's ``partial`` flag: ``True`` when the report
+    only covers the previews a narrowed ``--id`` / ``--filter`` run asked
+    about, so an id missing from ``a11y_by_id`` means "not checked" rather
+    than "checked, found nothing." See issue #3742.
     """
     manifest_path = build_dir / "previews.json"
     if not manifest_path.exists():
@@ -105,13 +109,15 @@ def load_previews(build_dir: Path) -> tuple[dict, dict, str | None]:
 
     a11y_by_id: dict = {}
     status: str | None = None
+    partial = False
     a11y_path = build_dir / "accessibility.json"
     if a11y_path.exists():
         report = json.loads(a11y_path.read_text())
         status = report.get("status")
+        partial = bool(report.get("partial", False))
         for entry in report.get("entries", []):
             a11y_by_id[entry["previewId"]] = entry
-    return manifest, a11y_by_id, status
+    return manifest, a11y_by_id, status, partial
 
 
 def is_dynamic_preview(preview: dict) -> bool:
@@ -133,7 +139,9 @@ def is_dynamic_preview(preview: dict) -> bool:
     return False
 
 
-def select_variants(manifest: dict, a11y_by_id: dict) -> list[dict]:
+def select_variants(
+    manifest: dict, a11y_by_id: dict, partial: bool = False
+) -> list[dict]:
     """Pick one variant per (functionName) and merge in a11y data.
 
     Returns a list of flat dicts with everything readme/comment need:
@@ -148,6 +156,11 @@ def select_variants(manifest: dict, a11y_by_id: dict) -> list[dict]:
     * Scroll / animation captures (``@ScrollingPreview`` /
       ``@AnimatedPreview``) — see [is_dynamic_preview]. Functions whose
       ONLY variants are dynamic drop out of the report entirely.
+    * Previews with no entry in a ``partial`` report — a narrowed
+      ``compose-preview a11y --id X`` run only checked what it was asked
+      for, so the rest were never checked and listing them with empty
+      findings would falsely imply they were (same reasoning as the Tile
+      exclusion above). See issue #3742.
     """
     module = manifest["module"]
     by_fn: dict[str, list[dict]] = {}
@@ -175,6 +188,8 @@ def select_variants(manifest: dict, a11y_by_id: dict) -> list[dict]:
         captures = chosen.get("captures") or []
         render_rel = captures[0]["renderOutput"] if captures else ""
         a11y = a11y_by_id.get(chosen["id"])
+        if partial and a11y is None:
+            continue
         chosen_device = (chosen.get("params") or {}).get("device")
         rows.append({
             "module": module,
@@ -213,8 +228,8 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
 
     for raw_build_dir in build_dirs:
         build_dir = Path(raw_build_dir)
-        manifest, a11y_by_id, status = load_previews(build_dir)
-        rows = select_variants(manifest, a11y_by_id)
+        manifest, a11y_by_id, status, partial = load_previews(build_dir)
+        rows = select_variants(manifest, a11y_by_id, partial)
 
         module = manifest["module"]
         renders_out = out_dir / "renders" / module

@@ -86,9 +86,9 @@ internal object PreviewRenderScope {
     for ((_, manifest) in manifests) {
       for (preview in manifest.previews) {
         discovered++
-        val expanded =
-          matchedExpansion(preview, exactId = exactId, filter = filter, permutations = permutations)
-            ?: continue
+        val expanded = PreviewPermutationsCli.expand(listOf(preview), permutations).map { it.id }
+        if (expanded.none { previewIdMatchesRequest(it, exactId = exactId, filter = filter) })
+          continue
         selected += preview.id
         renderedIds += expanded
       }
@@ -113,55 +113,5 @@ internal object PreviewRenderScope {
 
     val patterns = selected.joinToString(",") { ANCHOR + it }
     return Scope(gradleArgs = listOf("-P$GRADLE_PROPERTY=$patterns"), renderedIds = renderedIds)
-  }
-
-  /**
-   * The *unexpanded* ids in [manifest] that an `--id` / `--filter` request selects — "which
-   * previews did the user ask about", answered against a single module's discovery manifest.
-   *
-   * This is the question [Scope.renderedIds] cannot answer for a non-render consumer (issue #3742).
-   * `renderedIds` is `null` whenever the render wasn't narrowed, which includes a request that
-   * happened to select *every* preview, so a consumer that reads `null` as "no filter" and one that
-   * reads it as "everything" are both right about the render and wrong about the request. Anything
-   * that fans out per preview off the back of a request — the daemon a11y pass in `A11yCommand`,
-   * and any future [ee.schimke.composeai.cli.ReportCommand] data-product hook — narrows through
-   * here instead.
-   *
-   * Returns every id when there is no request. Ids come back in manifest order, unexpanded, because
-   * that is the form the daemon addresses previews in; matching still happens against the
-   * *expanded* ids for the same reason [forRequest] does it (a user's `--id Foo_dark` names a
-   * permutation, not a declared preview).
-   */
-  fun selectedPreviewIds(
-    manifest: PreviewManifest,
-    exactId: String?,
-    filter: String?,
-    permutations: List<String> = emptyList(),
-  ): List<String> {
-    if (exactId == null && filter == null) return manifest.previews.map { it.id }
-    return manifest.previews
-      .filter {
-        matchedExpansion(it, exactId = exactId, filter = filter, permutations = permutations) !=
-          null
-      }
-      .map { it.id }
-  }
-
-  /**
-   * [preview] expanded under [permutations], or `null` when none of those expansions match the
-   * request. The single place the "does this declared preview answer the request" decision is made,
-   * so [forRequest] (which narrows the render) and [selectedPreviewIds] (which narrows everything
-   * else) cannot drift apart.
-   */
-  private fun matchedExpansion(
-    preview: PreviewInfo,
-    exactId: String?,
-    filter: String?,
-    permutations: List<String>,
-  ): List<String>? {
-    val expanded = PreviewPermutationsCli.expand(listOf(preview), permutations).map { it.id }
-    return expanded.takeIf { ids ->
-      ids.any { previewIdMatchesRequest(it, exactId = exactId, filter = filter) }
-    }
   }
 }

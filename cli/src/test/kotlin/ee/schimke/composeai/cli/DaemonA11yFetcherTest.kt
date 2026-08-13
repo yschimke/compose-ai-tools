@@ -233,7 +233,7 @@ class DaemonA11yFetcherTest {
         modulePath = "",
         moduleName = "sample",
         previewIds = listOf("AlphaPreview"),
-        mergeWithExisting = true,
+        modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
@@ -243,6 +243,111 @@ class DaemonA11yFetcherTest {
     assertEquals(listOf("AlphaPreview", "BetaPreview"), report.entries.map { it.previewId })
     assertEquals("fresh", report.entries[0].findings.single().message)
     assertEquals("keep me", report.entries[1].findings.single().message)
+    // Every declared preview ended up covered, so the report speaks for the whole module again.
+    assertFalse(report.partial, "merged entries cover the module")
+  }
+
+  @Test
+  fun `a first-ever narrowed fetch marks the report partial`() {
+    val projectDir = newTempFolder("module-partial-flag")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    val fetcher =
+      DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+    fetcher.fetch(
+      projectDir = projectDir,
+      modulePath = "",
+      moduleName = "sample",
+      previewIds = listOf("AlphaPreview"),
+      modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+    )
+
+    // Nothing on disk to merge with, so the report genuinely covers one of two previews. Without
+    // the flag, a consumer reads `BetaPreview`'s absence as "checked, found nothing" — the module
+    // -wide report would quietly certify a preview ATF never looked at.
+    val report = readReport(projectDir)
+    assertEquals(listOf("AlphaPreview"), report.entries.map { it.previewId })
+    assertTrue(report.partial, "a report covering 1 of 2 previews is partial")
+  }
+
+  @Test
+  fun `a full fetch clears the partial flag`() {
+    val projectDir = newTempFolder("module-partial-cleared")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    val fetcher =
+      DaemonA11yFetcher(
+        factory =
+          FakeFactory(
+            mapOf(
+              "AlphaPreview" to atfPayload(emptyList()),
+              "BetaPreview" to atfPayload(emptyList()),
+            )
+          )
+      )
+    fetcher.fetch(
+      projectDir = projectDir,
+      modulePath = "",
+      moduleName = "sample",
+      previewIds = listOf("AlphaPreview", "BetaPreview"),
+    )
+
+    assertFalse(readReport(projectDir).partial)
+  }
+
+  @Test
+  fun `carrying entries forward from an unavailable report keeps the unavailable stamp`() {
+    val projectDir = newTempFolder("module-merge-status")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    writeExistingReport(
+      projectDir,
+      status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
+      entries = arrayOf(entry("AlphaPreview"), entry("BetaPreview")),
+    )
+
+    DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+        modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+      )
+
+    // `BetaPreview`'s carried-forward entry records a fetch that never ran. This run succeeding for
+    // `AlphaPreview` doesn't make it clean, so the stamp rides along until a full run rewrites.
+    val report = readReport(projectDir)
+    assertEquals(listOf("AlphaPreview", "BetaPreview"), report.entries.map { it.previewId })
+    assertEquals(A11Y_REPORT_STATUS_ATF_UNAVAILABLE, report.status)
+  }
+
+  @Test
+  fun `refetching every carried entry clears the unavailable stamp`() {
+    val projectDir = newTempFolder("module-merge-status-cleared")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+    writeExistingReport(
+      projectDir,
+      status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
+      entries = arrayOf(entry("AlphaPreview")),
+    )
+
+    DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()))))
+      .fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+        modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
+      )
+
+    // Nothing survived from the unavailable run — every entry in the merged report came back from
+    // a successful fetch just now, so the stamp would be reporting a failure that no longer has a
+    // row to point at.
+    assertNull(readReport(projectDir).status)
   }
 
   @Test
@@ -283,7 +388,7 @@ class DaemonA11yFetcherTest {
           modulePath = "",
           moduleName = "sample",
           previewIds = listOf("AlphaPreview"),
-          mergeWithExisting = true,
+          modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
         )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.OpenFailed)
@@ -309,7 +414,7 @@ class DaemonA11yFetcherTest {
         modulePath = "",
         moduleName = "sample",
         previewIds = listOf("AlphaPreview"),
-        mergeWithExisting = true,
+        modulePreviewIds = listOf("AlphaPreview", "BetaPreview"),
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
@@ -505,12 +610,16 @@ class DaemonA11yFetcherTest {
   private fun entry(previewId: String, vararg findings: AccessibilityFinding) =
     AccessibilityEntry(previewId = previewId, findings = findings.toList())
 
-  private fun writeExistingReport(projectDir: File, vararg entries: AccessibilityEntry) {
+  private fun writeExistingReport(
+    projectDir: File,
+    vararg entries: AccessibilityEntry,
+    status: String? = null,
+  ) {
     File(projectDir, "build/compose-previews/accessibility.json")
       .writeText(
         Companion.json.encodeToString(
           AccessibilityReport.serializer(),
-          AccessibilityReport(module = "sample", entries = entries.toList()),
+          AccessibilityReport(module = "sample", entries = entries.toList(), status = status),
         )
       )
   }

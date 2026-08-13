@@ -866,22 +866,24 @@ abstract class Command(
         },
     )
 
-  protected fun matchesRequest(result: PreviewResult): Boolean {
-    return previewIdMatchesRequest(result.id, exactId = exactId, filter = filter)
-  }
+  protected fun matchesRequest(result: PreviewResult): Boolean = matchesRequest(result.id)
+
+  private fun matchesRequest(id: String): Boolean =
+    previewIdMatchesRequest(id, exactId = exactId, filter = filter)
 
   /**
-   * The ids in [manifest] this invocation's `--id` / `--filter` asks about — every declared id when
-   * there is no request. The manifest-side counterpart of [matchesRequest], for the paths that fan
-   * out per preview *before* there are [PreviewResult]s to filter (issue #3742).
+   * The ids in [manifest] this invocation's `--id` / `--filter` asks about — every id when there is
+   * no request. The manifest-side counterpart of [matchesRequest], for the paths that fan out per
+   * preview *before* there are [PreviewResult]s to filter (issue #3742).
+   *
+   * Takes a manifest as [readAllManifests] returns it, i.e. **already expanded** through
+   * [PreviewPermutationsCli] — so the ids here are the same ids the results carry, and this selects
+   * exactly the previews [matchesRequest] will keep. Re-expanding would be wrong twice over: a
+   * `--permutations accessibility` run would match `Foo` (because *its* expansion contains
+   * `Foo_dark`) on an `--id Foo_dark` request and fan out over a preview the user didn't ask for.
    */
   protected fun requestedPreviewIds(manifest: PreviewManifest): List<String> =
-    PreviewRenderScope.selectedPreviewIds(
-      manifest = manifest,
-      exactId = exactId,
-      filter = filter,
-      permutations = permutations,
-    )
+    manifest.previews.map { it.id }.filter { matchesRequest(it) }
 
   private fun modulesMatchingPreviewRequest(
     modules: List<PreviewModule>,
@@ -1756,9 +1758,10 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
    * narrowed to the `--id` / `--filter` request, dropping the modules the request leaves empty.
    *
    * The narrowing is computed from the request itself rather than from
-   * [RawRenderOutcome.renderedIds], because that set is `null` both when there was no request and
-   * when the request happened to select every preview — see
-   * [PreviewRenderScope.selectedPreviewIds].
+   * [RawRenderOutcome.renderedIds]: that set is `null` both when there was no request and when the
+   * request happened to select every preview (the render declines to narrow in that case, because a
+   * filtered `composePreviewRender` isn't build-cacheable), so it cannot answer "what did the user
+   * ask about". [requestedPreviewIds] can, and lands on exactly the previews this run will print.
    */
   protected fun dataProductRequests(
     manifests: List<Pair<PreviewModule, PreviewManifest>>
@@ -1919,7 +1922,8 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
       if (verbose && narrowed) {
         System.err.println(
           "compose-preview a11y: ${module.gradlePath} fetching ATF for ${previewIds.size} of " +
-            "${manifest.previews.size} preview(s); the rest keep the findings the last run wrote."
+            "${manifest.previews.size} preview(s); the rest keep whatever the last run recorded, " +
+            "and the report is marked partial for any still uncovered."
         )
       }
       val outcome =
@@ -1928,9 +1932,10 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
           modulePath = module.gradlePath,
           moduleName = manifest.module,
           previewIds = previewIds,
-          // A narrowed run only speaks for the previews it fetched — carry the rest of the
-          // module's report forward instead of dropping it (issue #3742).
-          mergeWithExisting = narrowed,
+          // A narrowed run only speaks for the previews it fetched, so the fetcher carries the
+          // rest of the module's report forward and marks what it still doesn't cover as partial
+          // rather than publishing a module-wide report full of silent gaps (issue #3742).
+          modulePreviewIds = manifest.previews.map { it.id },
         )
       when (outcome) {
         is DaemonA11yFetcher.Outcome.Ok -> {

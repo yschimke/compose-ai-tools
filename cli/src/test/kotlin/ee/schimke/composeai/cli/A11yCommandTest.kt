@@ -257,6 +257,24 @@ class A11yCommandTest {
   }
 
   @Test
+  fun `an exact id under permutations selects only that permutation`() {
+    // `readAllManifests` hands the hook an ALREADY-expanded manifest, so the ids below are what a
+    // `--permutations accessibility` run really sees. Re-expanding them here would match `Foo`
+    // too — its own expansion contains `Foo_dark` — and fan out over a preview the user didn't ask
+    // for, at the cost of a whole extra daemon render.
+    val cmd = TestableReportCommand(listOf("--id", "Foo_dark", "--permutations", "accessibility"))
+
+    val request =
+      cmd
+        .requestsFor(
+          listOf(manifest("app", "Foo", "Foo_dark", "Foo_rtl", "Foo_fontscale-2x", "Bar"))
+        )
+        .single()
+
+    assertEquals(listOf("Foo_dark"), request.previewIds)
+  }
+
+  @Test
   fun `modules the request does not touch drop out of the work list`() {
     val cmd = TestableReportCommand(listOf("--id", "Alpha"))
 
