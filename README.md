@@ -445,6 +445,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-reference-compare-annotated/dark](renders/serve-reference-compare-annotated.dark.png) |
 | `light` | ![serve-reference-compare-annotated/light](renders/serve-reference-compare-annotated.light.png) |
 
+## serve-reference-compare-pinned
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-reference-compare-pinned/dark](renders/serve-reference-compare-pinned.dark.png) |
+| `light` | ![serve-reference-compare-pinned/light](renders/serve-reference-compare-pinned.light.png) |
+
 ## serve-social-card
 
 | Theme | Capture |
@@ -640,6 +647,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | --- | --- |
 | `dark` | ![serve-viewer-rc-players-player-cmp-android/dark](renders/serve-viewer-rc-players-player-cmp-android.dark.png) |
 | `light` | ![serve-viewer-rc-players-player-cmp-android/light](renders/serve-viewer-rc-players-player-cmp-android.light.png) |
+
+## serve-viewer-revisions
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-revisions/dark](renders/serve-viewer-revisions.dark.png) |
+| `light` | ![serve-viewer-revisions/light](renders/serve-viewer-revisions.light.png) |
 
 ## serve-viewer-signin
 
