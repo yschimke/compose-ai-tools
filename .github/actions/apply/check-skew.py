@@ -167,20 +167,57 @@ def plugin_version_from_build_scripts(workspace: str) -> str | None:
     return None
 
 
+# `gradle.properties` key holding the project version pin (issue #3738). Kept in
+# lockstep with the CLI's `VERSION_PIN_PROPERTY`, the extension's `versionPin.ts`
+# and the install action's `resolve-version.py`.
+PIN_PROPERTY = "composePreview.version"
+
+_PIN_RE = re.compile(
+    r"^[ \t]*" + re.escape(PIN_PROPERTY) + r"[ \t]*[=:][ \t]*(\S+)[ \t]*$",
+    re.MULTILINE,
+)
+
+
+def pin_from_properties(workspace: str) -> str | None:
+    """Read `composePreview.version` from the workspace's `gradle.properties`.
+
+    The project version pin (issue #3738): one value the CLI, the VS Code
+    extension and this action all read, so the version a developer renders
+    against locally is the version CI renders against. When it is set, the CLI
+    auto-injects *that* plugin version — which makes it the most authoritative
+    answer to "which plugin will this build apply", ahead of the catalog and
+    build-script scans below.
+    """
+    path = os.path.join(workspace, "gradle.properties")
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return None
+    match = _PIN_RE.search(text)
+    if not match:
+        return None
+    return match.group(1).strip().lstrip("v") or None
+
+
 def detect_plugin_version(workspace: str, catalog_path: str) -> str | None:
     """Best-effort applied-plugin version for [workspace].
 
-    Catalog first (the documented, Renovate-friendly pin), then a literal
-    declaration in a build script. ``None`` when neither is found — the signal
-    to stay silent rather than guess.
+    The explicit version pin first (`gradle.properties` → `composePreview.version`,
+    which is what auto-inject actually applies), then the catalog's `[plugins]`
+    entry (the older Renovate-friendly pin), then a literal declaration in a
+    build script. ``None`` when none is found — the signal to stay silent rather
+    than guess.
     """
     catalog_file = (
         catalog_path
         if os.path.isabs(catalog_path)
         else os.path.join(workspace, catalog_path)
     )
-    return plugin_version_from_catalog(catalog_file) or plugin_version_from_build_scripts(
-        workspace
+    return (
+        pin_from_properties(workspace)
+        or plugin_version_from_catalog(catalog_file)
+        or plugin_version_from_build_scripts(workspace)
     )
 
 

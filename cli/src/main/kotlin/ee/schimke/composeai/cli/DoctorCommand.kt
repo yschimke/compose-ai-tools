@@ -79,10 +79,12 @@ class DoctorCommand(
 
   /**
    * Version the CLI suggests in remediation messages ("install version X"). Comes from
-   * `--plugin-version` or the CLI's compiled-in default. Distinct from [appliedPluginVersion],
-   * which is what the project actually has on its classpath.
+   * `--plugin-version`, else the project's version pin once [checkVersionPin] has read it, else the
+   * CLI's compiled-in default. Distinct from [appliedPluginVersion], which is what the project
+   * actually has on its classpath — a project can be pinned to one version and still have another
+   * applied, which is exactly the state the pin check exists to surface.
    */
-  private val recommendedPluginVersion = args.flagValue("--plugin-version") ?: BUNDLE_VERSION
+  private var recommendedPluginVersion = args.flagValue("--plugin-version") ?: BUNDLE_VERSION
 
   /**
    * `--variant <name>` forwarded as `-PcomposePreview.variant=<name>` on the Gradle connection,
@@ -335,6 +337,9 @@ class DoctorCommand(
 
   private fun runProjectChecks(projectDir: File) {
     var gradleAccessFailure: GradleAccessFailure? = null
+    // Cheap, disk-only, and independent of the Gradle model — so it runs first and still reports
+    // when the model query below fails. A wrong pin is one of the reasons a query fails.
+    checkVersionPin(projectDir)
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
     val model =
       try {
@@ -587,6 +592,93 @@ class DoctorCommand(
         status = "ok",
         message = "Gradle ${daemonGradleVersion} on $majorStr",
         detail = "daemon java.home: ${daemonJavaHome}",
+      )
+    )
+  }
+
+  /**
+   * Report the project's compose-preview **version pin** — the one place a project names the
+   * version every entrypoint should use (issue #3738; see [resolveVersionPin]).
+   *
+   * Three outcomes, and none of them is an error:
+   * - **no pin** — `ok`, with the "how to pin" remediation. The zero-config path is legitimate:
+   *   each entrypoint uses its own bundled version, which is fine for a single-machine project.
+   * - **pin matches this CLI** — `ok`, the happy state.
+   * - **pin differs from this CLI** — `warning`. The pinned plugin is what gets injected, but the
+   *   daemon and renderer this CLI ships are stuck at [BUNDLE_VERSION], so across a major (where
+   *   the render/daemon wire format changes — docs/VERSIONING.md § 3) they can genuinely disagree.
+   *   A `-SNAPSHOT` on either side stays `ok`: a local snapshot build driving a pinned project is a
+   *   deliberate development flow, not a misconfiguration.
+   */
+  private fun checkVersionPin(projectDir: File) {
+    val pin = resolveVersionPin(projectDir, args, fileSystem = fileSystem)
+    if (pin == null) {
+      addCheck(
+        DoctorCheck(
+          id = "project.version-pin",
+          category = "project",
+          status = "ok",
+          message = "no version pin (each entrypoint uses its own bundled version)",
+          detail =
+            "This CLI is $BUNDLE_VERSION. Pin the project so the CLI, the VS Code extension and " +
+              "the install / apply GitHub actions all drive the same release.",
+          remediation =
+            DoctorRemediation(
+              summary = "Pin the compose-preview version for every entrypoint",
+              commands = listOf("compose-preview pin --cli"),
+              docs = "https://github.com/$REPO/blob/main/docs/VERSION_PIN.md",
+            ),
+        )
+      )
+      return
+    }
+    // Remediation snippets elsewhere in the report ("apply the plugin with version X") should name
+    // the version the project has actually chosen, not this CLI's build.
+    recommendedPluginVersion = pin.version
+    val snapshot = pin.version.endsWith("-SNAPSHOT") || BUNDLE_VERSION.endsWith("-SNAPSHOT")
+    val skew = pin.version != BUNDLE_VERSION && !snapshot
+    val incompatible = skew && versionsIncompatible(pin.version, BUNDLE_VERSION)
+    addCheck(
+      DoctorCheck(
+        id = "project.version-pin",
+        category = "project",
+        status = if (skew) "warning" else "ok",
+        message =
+          if (skew) "pinned to ${pin.version}, but this CLI is $BUNDLE_VERSION"
+          else "pinned to ${pin.version}",
+        detail =
+          buildString {
+            append("Pin source: ${pin.source.display}. ")
+            if (skew) {
+              append(
+                "The pinned plugin version is what gets injected, but the daemon and renderer " +
+                  "this CLI ships are $BUNDLE_VERSION. "
+              )
+              if (incompatible) {
+                append(
+                  "Those are different major versions — the render/daemon wire format differs " +
+                    "across a major, so they can fail to render or misbehave. "
+                )
+              }
+              append("Align the CLI with the pin, or re-pin to this CLI.")
+            } else {
+              append("The CLI matches the pin.")
+            }
+          },
+        remediation =
+          if (skew)
+            DoctorRemediation(
+              summary = "Align the CLI and the project pin",
+              commands =
+                listOf(
+                  "# move the CLI to the pinned version:",
+                  "compose-preview update ${pin.version}",
+                  "# …or re-pin the project to this CLI:",
+                  "compose-preview pin --cli",
+                ),
+              docs = "https://github.com/$REPO/blob/main/docs/VERSION_PIN.md",
+            )
+          else null,
       )
     )
   }

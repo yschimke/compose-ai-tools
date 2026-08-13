@@ -143,6 +143,73 @@ class BuildScriptDetectionTests(unittest.TestCase):
         self.assertIsNone(cs.plugin_version_from_build_scripts(ws))
 
 
+class PropertiesPinDetectionTests(unittest.TestCase):
+    """`gradle.properties` → `composePreview.version`, the cross-entrypoint pin.
+
+    Same precedence question the CLI's `VersionPinTest` and the extension's
+    `versionPin.test.ts` answer for their own resolvers (issue #3738): when the
+    project states a version outright, that is the version that gets applied, so
+    it outranks the catalog and build-script sniffing below.
+    """
+
+    def _workspace(self) -> str:
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        return d
+
+    def test_reads_the_pin(self):
+        ws = self._workspace()
+        Path(os.path.join(ws, "gradle.properties")).write_text(
+            "org.gradle.caching=true\ncomposePreview.version=1.2.3\n", encoding="utf-8"
+        )
+        self.assertEqual(cs.pin_from_properties(ws), "1.2.3")
+
+    def test_colon_form_and_leading_v(self):
+        ws = self._workspace()
+        Path(os.path.join(ws, "gradle.properties")).write_text(
+            "composePreview.version : v1.2.3  \n", encoding="utf-8"
+        )
+        self.assertEqual(cs.pin_from_properties(ws), "1.2.3")
+
+    def test_commented_out_pin_ignored(self):
+        ws = self._workspace()
+        Path(os.path.join(ws, "gradle.properties")).write_text(
+            "# composePreview.version=9.9.9\n", encoding="utf-8"
+        )
+        self.assertIsNone(cs.pin_from_properties(ws))
+
+    def test_missing_file(self):
+        self.assertIsNone(cs.pin_from_properties(self._workspace()))
+
+    def test_pin_outranks_catalog_and_build_scripts(self):
+        ws = self._workspace()
+        Path(os.path.join(ws, "gradle.properties")).write_text(
+            "composePreview.version=1.2.3\n", encoding="utf-8"
+        )
+        os.makedirs(os.path.join(ws, "gradle"))
+        Path(os.path.join(ws, "gradle", "libs.versions.toml")).write_text(
+            '[plugins]\ncp = { id = "ee.schimke.composeai.preview", version = "0.15.8" }\n',
+            encoding="utf-8",
+        )
+        Path(os.path.join(ws, "build.gradle.kts")).write_text(
+            'id("ee.schimke.composeai.preview") version "0.14.0"\n', encoding="utf-8"
+        )
+        self.assertEqual(
+            cs.detect_plugin_version(ws, "gradle/libs.versions.toml"), "1.2.3"
+        )
+
+    def test_no_pin_falls_through_to_catalog(self):
+        ws = self._workspace()
+        os.makedirs(os.path.join(ws, "gradle"))
+        Path(os.path.join(ws, "gradle", "libs.versions.toml")).write_text(
+            '[plugins]\ncp = { id = "ee.schimke.composeai.preview", version = "0.15.8" }\n',
+            encoding="utf-8",
+        )
+        self.assertEqual(
+            cs.detect_plugin_version(ws, "gradle/libs.versions.toml"), "0.15.8"
+        )
+
+
 class DetectPluginCliTests(unittest.TestCase):
     """The `detect-plugin` subcommand backs `cli-version: auto` resolution.
 

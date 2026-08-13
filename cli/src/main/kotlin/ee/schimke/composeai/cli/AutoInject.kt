@@ -571,6 +571,14 @@ internal fun defaultInitScriptStorageDir(version: String): File =
  * Returns the `--init-script <path>` arguments to prepend to every Gradle invocation, or an empty
  * list when auto-inject is disabled. Materialises the script on first call.
  *
+ * The injected plugin version is the **project's version pin** when it has one —
+ * `--plugin-version`, `COMPOSE_PREVIEW_VERSION`, `gradle.properties`' `composePreview.version`, or
+ * the catalog's `[versions] composePreviewCli` (see [resolveVersionPin]) — and this CLI's own
+ * [BUNDLE_VERSION] otherwise. That is what makes a pin mean the same thing here as it does in VS
+ * Code and in the `install` / `apply` actions (issue #3738). Callers that already know the version
+ * they want (the `init-script` command's `--plugin-version`, tests) pass [pluginVersion] explicitly
+ * and no project lookup happens.
+ *
  * Opt-out (any one of these disables auto-inject):
  * - `--no-auto-inject` in [args],
  * - `COMPOSE_PREVIEW_NO_AUTO_INJECT=1` in the environment,
@@ -586,11 +594,12 @@ internal fun defaultInitScriptStorageDir(version: String): File =
  */
 internal fun autoInjectInitScriptArgs(
   args: List<String>,
-  pluginVersion: String = BUNDLE_VERSION,
-  storageDir: File = defaultInitScriptStorageDir(pluginVersion),
+  pluginVersion: String? = null,
+  storageDir: File? = null,
   env: (String) -> String? = System::getenv,
   projectRoot: File? = null,
   stderr: (String) -> Unit = System.err::println,
+  fileSystem: FileSystem = SystemFileSystem,
 ): List<String> {
   if ("--no-auto-inject" in args) return emptyList()
   if (env("COMPOSE_PREVIEW_NO_AUTO_INJECT") == "1") return emptyList()
@@ -603,12 +612,22 @@ internal fun autoInjectInitScriptArgs(
     )
     return emptyList()
   }
+  val effectiveVersion =
+    pluginVersion
+      ?: resolvePluginVersion(
+        projectRoot = projectRoot,
+        args = args,
+        env = env,
+        fileSystem = fileSystem,
+        stderr = stderr,
+      )
+  val dir = storageDir ?: defaultInitScriptStorageDir(effectiveVersion)
   return try {
-    val path = materializeInitScript(storageDir, pluginVersion)
+    val path = materializeInitScript(dir, effectiveVersion, fileSystem)
     listOf("--init-script", path.absolutePath)
   } catch (e: Exception) {
     stderr(
-      "compose-preview: auto-inject disabled — could not materialise init script in $storageDir: ${e.message}"
+      "compose-preview: auto-inject disabled — could not materialise init script in $dir: ${e.message}"
     )
     emptyList()
   }

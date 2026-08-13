@@ -25,6 +25,15 @@ Plugin / CLI / extension share one release-please-driven semver chain (see [RELE
 
 > **Two of those carriers don't exist yet.** `previews.json` and the `HistoryEntry` sidecar are both listed above as carrying a `schemaVersion` field, and neither actually writes one. The per-data-product and bundle schemas do. See § 10.
 
+### 1.1 Consumer-side pinning
+
+The table above is what *we* version. What a *consumer* pins is one value: the
+**project version pin** — `composePreview.version` in `gradle.properties` (or the
+catalog's `[versions] composePreviewCli`), read by the CLI, the VS Code extension and
+the `install` / `apply` composite actions alike, so a project can't render against
+three different releases depending on which door it was entered through. Full
+reference: [VERSION_PIN.md](VERSION_PIN.md). Set it with `compose-preview pin --cli`.
+
 ## 2. Semver rules for the published artifacts
 
 For plugin, CLI, extension, MCP, annotations:

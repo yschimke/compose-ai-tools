@@ -383,6 +383,13 @@ auto-inject / zero-code path, where the CLI injects a matching plugin via
 `--init-script`) it falls back to `latest`, which is correct there because the
 injected plugin always matches the installed CLI.
 
+`auto` checks the [project version pin](../../../docs/VERSION_PIN.md) —
+`composePreview.version` in `gradle.properties`, written by
+`compose-preview pin` — **before** the catalog and build-script scans. That pin
+is what the CLI actually auto-injects and what the VS Code extension applies, so
+a pinned project gets the same version in CI as on a developer's machine with no
+workflow change at all.
+
 If you want to pin the CLI to a *specific* `[versions]` key regardless of the
 plugin (e.g. a dedicated `composePreviewCli` entry), use `cli-version: catalog`
 with `catalog-key`; the same recipe is documented for the standalone

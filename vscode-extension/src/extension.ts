@@ -143,6 +143,7 @@ import {
     hasIncludedPluginBuild,
     materializeInitScript,
 } from "./initScript";
+import { resolveVersionPin } from "./versionPin";
 import {
     ComposePreviewMode,
     ResolvedMode,
@@ -1086,13 +1087,28 @@ export async function activate(
         );
     } else {
         try {
+            // The workspace's version pin wins over the version bundled into
+            // this VSIX, so a project pinned for the CLI and CI renders the
+            // same way here (issue #3738). No pin → BUNDLED_PLUGIN_VERSION,
+            // exactly as before.
+            const pin = resolveVersionPin(workspaceRoot);
+            const pluginVersion = pin?.version ?? BUNDLED_PLUGIN_VERSION;
             const initScriptPath = materializeInitScript(
                 context.globalStorageUri.fsPath,
+                pluginVersion,
             );
             initScriptArgs = ["--init-script", initScriptPath];
             outputChannel.appendLine(
-                `[startup] auto-inject: --init-script ${initScriptPath} (plugin ${BUNDLED_PLUGIN_VERSION})`,
+                `[startup] auto-inject: --init-script ${initScriptPath} (plugin ${pluginVersion}${
+                    pin ? ` — pinned via ${pin.source}` : ""
+                })`,
             );
+            if (pin && pin.version !== BUNDLED_PLUGIN_VERSION) {
+                outputChannel.appendLine(
+                    `[startup] note: this workspace pins compose-preview ${pin.version} (${pin.source}); ` +
+                        `the extension bundles ${BUNDLED_PLUGIN_VERSION}. The pinned plugin is what gets applied.`,
+                );
+            }
         } catch (err) {
             outputChannel.appendLine(
                 `[startup] auto-inject disabled: failed to materialise init script: ${(err as Error).message}`,

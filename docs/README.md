@@ -32,6 +32,7 @@ else.
 
 ## Integration & distribution
 
+- [VERSION_PIN.md](VERSION_PIN.md) — one version pin, honoured by the CLI, the extension and the CI actions.
 - [CONFIG_ONLY_PLUGIN.md](CONFIG_ONLY_PLUGIN.md) — committing `composePreview { }` without pinning the runtime.
 - [NON_GRADLE_INTEGRATION.md](NON_GRADLE_INTEGRATION.md) — driving the renderer from non-Gradle builds.
 - [portable-bundles.md](portable-bundles.md) — the portable-bundle format across build systems.
