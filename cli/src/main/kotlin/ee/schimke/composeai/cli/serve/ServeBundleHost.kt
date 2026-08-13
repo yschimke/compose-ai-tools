@@ -593,11 +593,23 @@ class ServeBundleHost(
    * feature exists to fix, and it would be undetectable from the outside.
    */
   fun pinnedRender(commit: String, previewId: String): ByteArray? =
-    pinnedAsset(commit, branchPath(commit, previewId, bakedBranchPaths) { it.renders })
+    pinnedAsset(
+      commit,
+      branchPath(commit, previewId, bakedBranchPaths, { it.catalogRead }, { it.renders }),
+    )
 
   /** [referenceId]'s canonical reference raster as published at [commit]. See [pinnedRender]. */
   fun pinnedReference(commit: String, referenceId: String): ByteArray? =
-    pinnedAsset(commit, branchPath(commit, referenceId, referenceBranchPaths) { it.references })
+    pinnedAsset(
+      commit,
+      branchPath(
+        commit,
+        referenceId,
+        referenceBranchPaths,
+        { it.referencesRead },
+        { it.references },
+      ),
+    )
 
   /**
    * Where [id]'s asset lived **at [commit]**, preferring that commit's own manifest over the tip's
@@ -611,16 +623,23 @@ class ServeBundleHost(
    * - a **reference** carries its id and its raster path independently, so the id survives while
    *   the path moves. The tip's map then resolves confidently to a path that commit never had.
    *
-   * The tip's map stays as the fallback because it is right in the common case and costs no fetch,
-   * so a commit whose manifests can't be read degrades to the behaviour that existed before rather
-   * than to nothing.
+   * The tip's map is the fallback for **an absent manifest only**, not for an id the manifest
+   * doesn't list. A readable manifest is authoritative about its own revision: if it doesn't name
+   * the id, that revision did not publish it, and the honest answer is nothing. Falling back there
+   * would serve whatever happens to sit at today's path in that commit — a file the revision may
+   * well contain, under an id its own manifest says it never published.
    */
   private fun branchPath(
     commit: String,
     id: String,
     tip: Map<String, String>,
+    wasRead: (ServePinnedManifest.Paths) -> Boolean,
     select: (ServePinnedManifest.Paths) -> Map<String, String>,
-  ): String? = pinnedManifest?.forCommit(commit)?.let(select)?.get(id) ?: tip[id]
+  ): String? {
+    val paths = pinnedManifest?.forCommit(commit)
+    if (paths != null && wasRead(paths)) return select(paths)[id]
+    return tip[id]
+  }
 
   /**
    * One published asset at one commit, memoised.

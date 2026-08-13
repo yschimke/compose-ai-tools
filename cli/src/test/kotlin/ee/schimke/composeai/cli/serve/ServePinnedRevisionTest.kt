@@ -305,6 +305,71 @@ class ServePinnedRevisionTest {
     )
   }
 
+  @Test
+  fun `a render asked for to order is refused under a pin, not answered with the baked one`() {
+    val port = start().port
+
+    // These select a DIFFERENT product by query rather than by suffix: a full-page capture, another
+    // player's raster, an overridden render. Answering any of them with the plain baked PNG would
+    // be a 200 that silently ignores half the URL.
+    for (query in
+      listOf(
+        "scroll=long",
+        "rcPlayer=cmp-jvm",
+        "fontScale=1.5",
+        "device=pixel_8",
+        "knob.size=xl",
+      )) {
+      val url = "http://127.0.0.1:$port/$system/render/$previewId.png?at=$oldCommit&$query"
+      assertEquals(400, get(url).first, query)
+    }
+    // The bare pinned render is unaffected — refusing the combination is not refusing the pin.
+    assertContentEquals(
+      historicalRender,
+      bytes("http://127.0.0.1:$port/$system/render/$previewId.png?at=$oldCommit"),
+    )
+  }
+
+  @Test
+  fun `an id the pinned catalog does not list is not answered from the tip's paths`() {
+    // The old commit publishes a catalog that lists ONLY the legacy component, while the path the
+    // tip knows this preview by happens to resolve at that commit too. A readable manifest is the
+    // authority on its own revision: it does not list this id, so the answer is nothing — not the
+    // file sitting at today's path.
+    val oldCatalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+        {"componentId":"Legacy","images":[{"path":"images/legacy/ideal.png"}]}]}
+      """
+        .trimIndent()
+    val port = startWith { url ->
+      val old = "https://raw.githubusercontent.com/$repo/$oldCommit/"
+      when (url) {
+        "${old}catalog.json" -> oldCatalog.encodeToByteArray()
+        else -> fetch(url)
+      }
+    }
+
+    // …even though the tip's path for it does resolve at that commit (the default stub serves it).
+    assertEquals(
+      404,
+      get("http://127.0.0.1:$port/$system/render/$previewId.png?at=$oldCommit").first,
+    )
+  }
+
+  @Test
+  fun `a pinned comparison draws no annotation layer from the current catalog`() {
+    val port = start().port
+
+    val pinned = text("http://127.0.0.1:$port/$system/compare/$previewId?at=$oldCommit")
+
+    // Annotations describe the current catalog's layout, so over historical pixels they would
+    // label today's bounds as that revision's spec. The controls go with the payload.
+    assertFalse(pinned.contains("cp-annotations"), pinned)
+    assertFalse(pinned.contains("cp-annotation-toggle"), pinned)
+    assertFalse(pinned.contains("data-cp-annotation-kind"), pinned)
+  }
+
   private fun get(url: String): Pair<Int, ByteArray> =
     client.newCall(Request.Builder().url(url).build()).execute().use { response ->
       response.code to (response.body?.bytes() ?: ByteArray(0))

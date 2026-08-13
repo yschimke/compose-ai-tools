@@ -2174,6 +2174,8 @@ class ServeHttpServer(
         respondNotFoundHtml("That preview has no matching design reference.")
         return@withLeasedSession
       }
+      val revisions = catalogRevisions(renderHost)
+      val pinned = revisions.pinned != null
       markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.referenceComparisonPage(
@@ -2192,9 +2194,16 @@ class ServeHttpServer(
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           version = BUNDLE_VERSION,
           displayTitle = catalogBundleHost(renderHost)?.title,
-          referenceAnnotations = renderHost.annotationsForReference(reference.id),
-          actualAnnotations = renderHost.annotationsForPreview(previewId),
-          revisions = catalogRevisions(renderHost),
+          // Annotation layers describe the CURRENT catalog's layout and typography. Drawing them
+          // over a pinned pair would overlay today's bounds on historical pixels and label the
+          // result as that revision's spec — the same "current output on a pinned page" the viewer
+          // refuses, arriving through a payload rather than a lane. They are published per catalog
+          // load, not per revision, so there is nothing historical to draw instead.
+          referenceAnnotations =
+            if (pinned) emptyList() else renderHost.annotationsForReference(reference.id),
+          actualAnnotations =
+            if (pinned) emptyList() else renderHost.annotationsForPreview(previewId),
+          revisions = revisions,
         ),
         ContentType.Text.Html,
       )
@@ -4075,6 +4084,26 @@ class ServeHttpServer(
             "only the baked render is published per revision; drop " +
               "'${ServeCatalogRevision.PARAM}' to ask the daemon for this product",
             status = HttpStatusCode.NotFound,
+          )
+          return@withLeasedSession
+        }
+        // A product can also be selected by *query* rather than by suffix: `?scroll=long` is a
+        // full-page capture, `?rcPlayer=cmp-jvm` is a different player's raster, and any override
+        // (`fontScale`, `device`, `knob.…`) asks for pixels rendered to order. None of those is a
+        // published byte, so answering with the plain baked PNG would hand back a 200 that
+        // silently ignores half the URL — two links claiming different things returning identical
+        // pixels. Refusing names the conflict instead.
+        val onDemand =
+          requestCarriesOverrides() ||
+            call.request.queryParameters["scroll"] != null ||
+            call.request.queryParameters["rcPlayer"] != null ||
+            call.request.queryParameters["mode"] != null ||
+            ServeExplodedSvg.PARAMS.any { call.request.queryParameters[it] != null }
+        if (onDemand) {
+          call.respondText(
+            "'${ServeCatalogRevision.PARAM}' pins the published render, which cannot be " +
+              "re-rendered to order; drop the pin or drop the render parameters",
+            status = HttpStatusCode.BadRequest,
           )
           return@withLeasedSession
         }

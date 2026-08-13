@@ -34,17 +34,32 @@ class ServePinnedManifest(
   private val maxCommits: Int = MAX_COMMITS,
 ) {
 
-  /** One commit's published layout. */
+  /**
+   * One commit's published layout.
+   *
+   * Each lane records **whether its manifest was read**, separately from what it contained, because
+   * the two answer different questions and only one of them licenses a fallback. "The manifest says
+   * this revision had no such id" is an answer — the asset was not published then, and the request
+   * is a 404. "I could not read the manifest" is an absence of one, and there the tip's map is
+   * better than nothing. Collapsing them would let a pin serve a file that merely happens to exist
+   * at that commit under today's path, i.e. claim an asset was published in a revision whose own
+   * manifest omits it.
+   */
   data class Paths(
     /** Preview id → its baked render's path on the branch. */
     val renders: Map<String, String>,
     /** Design-reference id → its canonical raster's path on the branch. */
     val references: Map<String, String>,
+    /** Whether `catalog.json` was fetched and parsed at this commit. */
+    val catalogRead: Boolean = false,
+    /** Whether `references/index.json` was fetched and parsed at this commit. */
+    val referencesRead: Boolean = false,
   ) {
     val isEmpty: Boolean
       get() = renders.isEmpty() && references.isEmpty()
 
     companion object {
+      /** Nothing was read — every lookup falls back to the tip's map. */
       val NONE = Paths(emptyMap(), emptyMap())
     }
   }
@@ -61,27 +76,36 @@ class ServePinnedManifest(
    */
   fun forCommit(commit: String): Paths {
     val pin = ServeCatalogRevision.normalize(commit) ?: return Paths.NONE
-    byCommit[pin]?.let {
-      return it
-    }
+    // `computeIfAbsent` rather than get-then-put: the two panels of a comparison page (and every
+    // image of a pinned grid) race into this method at once, and a check-then-fetch lets each of
+    // them fetch both manifests before any of them stores a result — the memoisation this class
+    // promises, spent. ConcurrentHashMap serialises the mapping function per key, so the first
+    // caller fetches and the rest wait for its answer. The eviction stays outside the mapping
+    // function, which must not touch the map it is being computed into.
     val paths =
-      Paths(
-        renders = read(pin, ServeCatalogRevision.CATALOG_FILE, ::parseCatalog),
-        references = read(pin, ServeCatalogRevision.REFERENCES_FILE, ::parseReferences),
-      )
-    synchronized(byCommit) {
-      if (byCommit.size >= maxCommits) byCommit.keys.firstOrNull()?.let(byCommit::remove)
-      byCommit[pin] = paths
+      byCommit.computeIfAbsent(pin) {
+        val catalog = read(pin, ServeCatalogRevision.CATALOG_FILE, ::parseCatalog)
+        val references = read(pin, ServeCatalogRevision.REFERENCES_FILE, ::parseReferences)
+        Paths(
+          renders = catalog.orEmpty(),
+          references = references.orEmpty(),
+          catalogRead = catalog != null,
+          referencesRead = references != null,
+        )
+      }
+    if (byCommit.size > maxCommits) {
+      synchronized(byCommit) { byCommit.keys.firstOrNull { it != pin }?.let(byCommit::remove) }
     }
     return paths
   }
 
+  /** Null when the manifest could not be read at all — distinct from "read, and it lists none". */
   private fun read(
     commit: String,
     file: String,
-    parse: (String) -> Map<String, String>,
-  ): Map<String, String> =
-    runCatching { fetch(commit, file)?.toString(Charsets.UTF_8)?.let(parse) }.getOrNull().orEmpty()
+    parse: (String) -> Map<String, String>?,
+  ): Map<String, String>? =
+    runCatching { fetch(commit, file)?.toString(Charsets.UTF_8)?.let(parse) }.getOrNull()
 
   companion object {
 
@@ -94,6 +118,20 @@ class ServePinnedManifest(
     private val JSON = Json { ignoreUnknownKeys = true }
 
     /**
+     * The same eligibility rule [ServeCatalogStore] plans an image by: inside `images/`, a PNG, no
+     * traversal. An entry that fails it is one the live catalog never served, so a pinned request
+     * must not resolve to it either.
+     *
+     * Deliberately *not* mirrored: the loader's `maxImages` ceiling. That is a property of the
+     * server reading the catalog, not of the revision — a box with a different cap would otherwise
+     * disagree with itself about what a commit published.
+     */
+    private fun isServable(path: String): Boolean =
+      path.startsWith("${ServeCatalogStore.IMAGES_DIR}/") &&
+        path.endsWith(".png") &&
+        ".." !in path.split("/")
+
+    /**
      * `catalog.json` → preview id → image path, keyed exactly as the loader keys the live catalog
      * ([ServeCatalogStore.previewIdFor]), so a pinned id and a served id are the same string by
      * construction rather than by coincidence.
@@ -101,10 +139,10 @@ class ServePinnedManifest(
      * Tolerant by design: this reads a file published by an older CLI than the one reading it, so a
      * malformed component or image is skipped rather than failing the whole map.
      */
-    fun parseCatalog(json: String): Map<String, String> {
+    fun parseCatalog(json: String): Map<String, String>? {
       val components =
         runCatching { JSON.parseToJsonElement(json).jsonObject["components"]?.jsonArray }
-          .getOrNull() ?: return emptyMap()
+          .getOrNull() ?: return null
       val paths = LinkedHashMap<String, String>()
       for (component in components) {
         val images =
@@ -113,18 +151,28 @@ class ServePinnedManifest(
           val path =
             runCatching { image.jsonObject["path"]?.jsonPrimitive?.content }
               .getOrNull()
-              ?.takeIf { it.isNotBlank() } ?: continue
-          paths.putIfAbsent(ServeCatalogStore.previewIdFor(path), path)
+              ?.takeIf(::isServable) ?: continue
+          // LAST declaration wins, because that is what the live loader does
+          // (`bakedPathById[id] = path`). Two paths can flatten to one route id, and a pin that
+          // resolved such a collision the other way would serve different pixels than the same
+          // catalog served while it was current — the one thing a revision must never do.
+          //
+          // Which is also why the eligibility filter above has to run FIRST. The loader plans only
+          // the images it would serve, so an entry it rejects never reaches its map; accepting one
+          // here and then applying last-wins would let a rejected entry overwrite the served one
+          // under a shared id — a pin answering with bytes that revision never exposed, arrived at
+          // by faithfully copying half of the loader's rule.
+          paths[ServeCatalogStore.previewIdFor(path)] = path
         }
       }
       return paths
     }
 
     /** `references/index.json` → reference id → the canonical raster's path on the branch. */
-    fun parseReferences(json: String): Map<String, String> {
+    fun parseReferences(json: String): Map<String, String>? {
       val references =
         runCatching { JSON.parseToJsonElement(json).jsonObject["references"]?.jsonArray }
-          .getOrNull() ?: return emptyMap()
+          .getOrNull() ?: return null
       val paths = LinkedHashMap<String, String>()
       for (reference in references) {
         val obj = runCatching { reference.jsonObject }.getOrNull() ?: continue
@@ -135,6 +183,10 @@ class ServePinnedManifest(
           runCatching { obj["raster"]?.jsonObject?.get("path")?.jsonPrimitive?.content }
             .getOrNull()
             ?.takeIf { it.isNotBlank() } ?: continue
+        // FIRST declaration wins here, and the asymmetry with the renders above is deliberate: the
+        // reference importer discards a duplicate id (`seen.add(reference.id)`), so first-wins is
+        // what the served catalog does. Each lane mirrors its own loader rather than both being
+        // made consistent with each other.
         paths.putIfAbsent(id, path)
       }
       return paths
