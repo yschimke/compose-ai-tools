@@ -1029,84 +1029,97 @@ keeps the older in-browser lane (baked PNG ↔ the JS player, rendered live), an
 
 ![Every Remote Compose player side by side](design/evidence/serve-rc-player-wall/serve-rc-players-default.png)
 
-## Whole screens (`/<system>/pages`)
+## Design pages (`/<system>/pages`)
 
-Everything above is per component. A catalog that publishes **page backdrops** also answers the
-whole-screen question: *here is the Upcoming screen from the design file — which of its parts do we
-implement, where, and do our renders sit right on top of the design?*
+Everything above is per component. A catalog that publishes **design pages** also answers the
+sheet-level question: *here is the kit's own Shape page — which of these 35 shapes do we implement,
+and does our render sit exactly where the design drew it?*
 
-The landing links `N screens` beside "design parity" when the catalog publishes any; a catalog that
+The landing links `N pages` beside "design parity" when the catalog publishes any; a catalog that
 publishes none is unchanged and the route 404s rather than serving an empty stage.
 
-![A design screen with a rectangle over every component instance, coloured by how it was linked](design/evidence/serve-page-backdrop/serve-page-backdrop.light.png)
+![A design page with an outline over every component node, coloured by how it was linked](design/evidence/serve-design-page/serve-design-page.light.png)
 
-Each screen is the design's own exported pixels, with one rectangle per component instance on it,
-coloured by **how** it was linked: green Code Connect, blue `design-map.json`, amber name match, and
-a dashed red outline for **unlinked** — a part of the screen with no code behind it, which is
-usually the most interesting mark on the page. "Only what we don't implement" mutes everything else,
-which is the fastest read of a screen's coverage. Clicking a rectangle opens that component's
-viewer; a rectangle with no code behind it deep-links into Figma instead.
+Each page is a whole page of the design file **inlined as SVG**, with one outline per component node
+on it, coloured by **how** it was linked: green Code Connect, blue `design-map.json`, amber name
+match, and a dashed red outline for **unlinked** — a component on the sheet with no code behind it,
+which is usually the most interesting mark on the page. "Only what we don't implement" mutes
+everything else, which is the fastest read of a page's coverage. Clicking an outline opens that
+component's viewer; one with no code behind it deep-links into Figma instead.
 
-### The overlay is the reason this lives on the server
+### The swap is the reason this is an SVG and not a screenshot
 
-design-parity ships an offline HTML viewer for the same manifest, and it takes **pre-baked render
-PNGs** as inputs — the caller has to render the catalog first and pass one `--render code=path` per
-component. A preview server needs none of that: it already renders every preview in the catalog on
-demand, so laying the code over the design is `<img src="/render/<previewId>.png">` and inherits
-everything that lane already does — the live daemon on a live catalog, the theme the visitor picked,
-a re-render after a refresh. The design half is fixed at import time; the code half stays live.
+An `<img>` is a picture; an inlined SVG is a document. Because the export carries `data-node-id` on
+every element, the page can find the design's own drawing of `Shape=Circle`, **hide it**, and put
+this catalog's `Shape/Circle` render in the hole it leaves — same sheet, same layout, our pixels.
+Nothing can reach inside an `<img>`, so a raster surface could only ever lay a translucent overlay
+on top and hope the eye separates them.
 
-A render is pinned to its placement's top-left and scaled to the placement's **width**, keeping its
-own aspect ratio. It deliberately does not stretch to fill the box: a component that renders taller
-than its design slot is a real finding, and stretching would hide exactly that. Switch the blend to
-`difference` and matching pixels go black, so only the drift lights up.
+![The same page with the catalog's renders standing in for the design's own shapes](design/evidence/serve-design-page/serve-design-page-swap.light.png)
 
-![The same screen with the catalog's renders laid over it at the difference blend](design/evidence/serve-page-backdrop/serve-page-backdrop-overlay.light.png)
+The render half stays live, too. The server already renders every preview in the catalog on demand,
+so standing in for a node is `<img src="/render/<previewId>.png">` and inherits everything that lane
+does — the live daemon on a live catalog, the theme the visitor picked, a re-render after a refresh.
+Untick *Hide the design's own* to get the older comparison instead: both drawings stacked, with an
+opacity slider and a `difference` blend where matching pixels go black and only the drift lights up.
 
-"Only what we don't implement" is the coverage read — everything mapped is muted, and the dashed-red
-rectangles are what is left:
+"Only what we don't implement" is the coverage read — everything mapped is muted, and the
+dashed-red outlines are what is left:
 
-![Only the unlinked rectangles, with everything this catalog implements muted](design/evidence/serve-page-backdrop/serve-page-backdrop-unlinked-only.light.png)
+![Only the unlinked outlines, with everything this catalog implements muted](design/evidence/serve-design-page/serve-design-page-unlinked-only.light.png)
 
-The overlay images carry `data-src` until the toggle is first switched on. A screen can hold a
-couple of dozen placements and on a live catalog each one is a daemon render, so a visitor who never
-opens the overlay costs the box nothing.
+The renders ride an inert `<template>` until the toggle is first switched on. A sheet can hold
+dozens of nodes and on a live catalog each one is a daemon render, so a visitor who never opens the
+swap costs the box nothing.
 
-### Where a published catalog's screens come from
+### There is no geometry in the manifest, and that is deliberate
 
-The same shape as the design references: the **pipeline** imports them, the server only draws them.
+The SVG knows where its own nodes are. `design-page.js` measures each `[data-node-id]` element and
+places the outline over it, re-measuring on resize; the manifest carries a node id, a name and a
+code handle, and no rectangle at all. Recording one would be a second answer to the same question
+and a worse one — a Figma export box is the *render* box, effect bleed included, so it and the drawn
+shape disagree by a few pixels on anything with a shadow. A node the manifest names that the export
+doesn't carry (a layer the design tool flattened) keeps its row in the list and gets no outline,
+which is the honest state rather than a rectangle over nothing.
 
-[`@design-parity/page-backdrop`](https://github.com/yschimke/design-parity/tree/main/packages/page-backdrop)
-reads the design file's pages and writes a manifest — the frame, and every instance's rectangle,
-design ref, and code handle. The publish job runs that (it already holds `FIGMA_TOKEN`), then
-[`emit-design-pages.mjs`](../scripts/design-artifacts/emit-design-pages.mjs) re-keys each placement
-onto the catalog's **serve** preview ids and writes `pages/index.json` plus one backdrop PNG per
-screen onto `design-artifacts/<system>`. The server stages those like any other catalog asset and
-re-paths each image to a server-owned location.
+### Where a published catalog's pages come from
+
+The **repo** imports them, the pipeline re-keys them, the server draws them.
+
+A catalog repo commits `design-pages.json` (which pages, from which file) and runs its own importer
+— m3-catalog's [`scripts/import-figma-pages.mjs`](https://github.com/yschimke/m3-catalog/blob/main/scripts/import-figma-pages.mjs)
+is the reference implementation — which asks Figma for the page's node tree and for one SVG export
+with `svg_include_node_id=true`, and commits the result under `design/pages/`. That runs on the
+*design file's* cadence, manually, and is the only step that talks to Figma at all.
+
+The publish job then runs [`emit-design-pages.mjs`](../scripts/design-artifacts/emit-design-pages.mjs),
+which re-keys each node onto the catalog's **serve** preview ids and writes `pages/index.json` plus
+one SVG per page onto `design-artifacts/<system>`. It needs no credential, so a fork, a token-less
+run and an offline republish all produce the same pages. The server stages those like any other
+catalog asset and re-paths each export to a server-owned location.
 
 That re-keying is the load-bearing step, and it is the same id problem
-[`design-references.mjs`](../scripts/design-artifacts/design-references.mjs) exists to solve: a
-placement carries the *repo's* discovery preview id, and a published catalog keys everything on the
-route-safe serve id. Handing the manifest over unchanged would give the server ids that render
-nothing.
+[`design-references.mjs`](../scripts/design-artifacts/design-references.mjs) exists to solve: a node
+carries the *repo's* discovery preview id, and a published catalog keys everything on the route-safe
+serve id. Handing the manifest over unchanged would give the server ids that render nothing.
 
-Two rules the manifest's own schema states and the server keeps:
+### Inlining third-party markup is a trust boundary, and it is enforced here
 
-- **Geometry is in frame-local design units, never image pixels.** The backdrop PNG is exported at
-  some scale; pinning placements to the unscaled frame means a re-export at another resolution
-  doesn't invalidate the manifest. The page converts to percentages once, server-side, so
-  `page-backdrop.js` does no geometry at all and the stage stays correct while it is responsive,
-  zoomed, or printed.
-- **An unlinked placement is data, not an omission.** It is published, drawn, and counted, because
-  "this part of the screen has no code behind it" is the finding the surface exists for.
+A catalog branch is third-party data, and this is the one place the server puts its markup into the
+document tree. Every export is run through `SvgSanitizer` **at catalog load** — an allowlist of
+elements and attributes, `on*` handlers dropped before the allowlist is even consulted, no
+`<script>` / `<foreignObject>` / `<a>` / `<animate>`, URL-bearing attributes judged by *value* so
+`url(#clip0)` survives and an `http:` beacon does not, DOCTYPEs refused so an export cannot read a
+file off the host. A page whose export doesn't survive that is dropped, not served unsafely. The
+`/pages/<id>.svg` asset route answers the **same sanitized markup**, because two different answers
+for one URL is how a check gets bypassed.
 
-The server still holds **no Figma credential and never talks to Figma** — the deep link on a
-rectangle is reassembled from a validated file key and node id against a literal origin, exactly
-like the per-preview spec link.
+The server still holds **no Figma credential and never talks to Figma** — the deep link on an
+outline is reassembled from a validated file key and node id against a literal origin, exactly like
+the per-preview spec link.
 
-**Opt-in twice over.** Nothing runs unless the catalog's repo commits a `design-pages.json` with
-`"enabled": true`; the publish step probes that first and stops cleanly otherwise. A repo that has
-never heard of the feature publishes exactly what it did before.
+**Opt-in.** Nothing appears unless the catalog's repo commits an import; a repo that has never heard
+of the feature publishes exactly what it did before.
 
 ## The design-parity view (`/<system>/parity`)
 

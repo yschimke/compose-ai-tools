@@ -1,0 +1,119 @@
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Shape — page</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon.ico" sizes="32x32">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="stylesheet" href="/assets/serve/fixture/serve.css">
+        <!-- Apply the Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <script>try{var p=new URLSearchParams(location.search),t=localStorage.getItem("cp-page-theme")==="system"?"":(p.get("theme")||(p.get("themeProvider")?"theme:"+p.get("themeProvider"):"")||p.get("uiMode"));if(t==="light"||t==="dark")document.documentElement.classList.add("cp-scheme-"+t);}catch(e){}</script>
+      </head>
+      <body>
+        <header class="cp-site-header">
+  <div class="cp-site-lead">
+    <a class="cp-site-brand" href="/" aria-label="compose-preview home">
+      <span class="cp-site-mark" aria-hidden="true">◇</span>
+      <span>compose-preview</span>
+    </a>
+    <nav class="cp-breadcrumb" aria-label="Breadcrumb"><a href="/pages?session=compose-m3">compose-m3</a><span class="cp-crumb-sep" aria-hidden="true">/</span><span class="cp-crumb-current">Shape</span></nav>
+  </div>
+  <div class="cp-site-status">
+    <span class="cp-daemon-status" id="cp-daemon-status" role="status" hidden></span>
+  </div>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <a href="/">Catalogs</a>
+    <a href="/status">Status</a>
+    <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+    <details class="cp-settings">
+      <summary class="cp-settings-btn" title="Settings" aria-label="Settings">
+        <span aria-hidden="true">⚙</span><span class="cp-settings-btn-label">Settings</span>
+      </summary>
+      <div class="cp-settings-panel">
+        <fieldset class="cp-settings-group">
+          <legend class="cp-settings-legend">Page theme</legend>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="match" data-cp-page-theme checked>
+            <span>Match the preview theme</span>
+          </label>
+          <label class="cp-settings-option">
+            <input type="radio" name="cp-page-theme" value="system" data-cp-page-theme>
+            <span>Follow my system</span>
+          </label>
+          <p class="cp-settings-hint">Selecting a Light or Dark preview theme paints this page to
+            match. Turn it off to keep the page on your operating system's setting.</p>
+        </fieldset>
+      </div>
+    </details>
+  </nav>
+</header>
+        <main class="cp-main">
+                <div id="cp-design-page">
+          <h1 class="cp-head cp-catalog-head">Shape <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
+          <p class="cp-sub">5 of 7 components implemented · <a href="https://www.figma.com/design/ocdacdEsnHipMJD3egzxKb?node-id=58548-7093" rel="noreferrer noopener">Open in Figma</a></p>
+          <div class="cp-page-controls" role="group" aria-label="Page layers">
+            <label><input type="checkbox" data-cp-page-outlines checked> Outlines</label>
+            <label><input type="checkbox" data-cp-page-unlinked> Only what we don't implement</label>
+            <label><input type="checkbox" data-cp-page-renders> Show our renders</label>
+            <label><input type="checkbox" data-cp-page-hide checked disabled> Hide the design's own</label>
+            <label>Opacity <input type="range" min="0" max="100" value="100" data-cp-page-opacity>
+              <span data-cp-page-opacity-value>100%</span></label>
+            <label>Blend <select data-cp-page-blend>
+              <option value="normal">normal</option>
+              <option value="difference">difference</option>
+            </select></label>
+          </div>
+          <div class="cp-page-legend">
+            <span data-link="code-connect"><i class="cp-page-swatch" style="color:#2da44e"></i> Code Connect</span>
+            <span data-link="manifest"><i class="cp-page-swatch" style="color:#0969da"></i> design-map</span>
+            <span data-link="convention"><i class="cp-page-swatch" style="color:#bf8700"></i> name match</span>
+            <span data-link="unlinked"><i class="cp-page-swatch" style="color:#cf222e;border-style:dashed"></i> not implemented</span>
+          </div>
+          <div class="cp-page-layout">
+            <div class="cp-page-stage" style="--cp-page-aspect:1.5000">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" height="800" viewBox="0 0 1200 800" width="1200">
+  <rect fill="#F7F2FA" height="800" width="1200"/>
+  <g data-node-id="1:9"><rect fill="#EADDFF" height="64" rx="16" width="1120" x="40" y="32"/></g>
+  <g data-node-id="1:1"><circle cx="180" cy="300" fill="#6750A4" r="90"/></g>
+  <g data-node-id="1:2"><rect fill="#6750A4" height="180" rx="36" width="180" x="330" y="210"/></g>
+  <g data-node-id="1:3"><path d="M690 210 L780 390 L600 390 Z" fill="#6750A4"/></g>
+  <g data-node-id="1:4"><rect fill="#6750A4" height="90" rx="45" width="240" x="840" y="255"/></g>
+  <g data-node-id="1:5"><rect fill="#6750A4" height="180" rx="90" width="180" x="330" y="500"/></g>
+  <g data-node-id="1:6"><rect fill="#6750A4" height="180" width="180" x="600" y="500"/></g>
+</svg>
+              <template data-cp-page-render-source><img class="cp-page-render" alt="" data-cp-node="1:1" src="/render/com.example.ProfileCardPreview.png?session=compose-m3">
+<img class="cp-page-render" alt="" data-cp-node="1:2" src="/render/com.example.ProfileCardPreview.png?session=compose-m3">
+<img class="cp-page-render" alt="" data-cp-node="1:3" src="/render/com.example.ProfileCardPreview.png?session=compose-m3">
+<img class="cp-page-render" alt="" data-cp-node="1:404" src="/render/com.example.ProfileCardPreview.png?session=compose-m3"></template>
+              <a class="cp-page-node" data-link="unlinked" data-cp-node="1:9" href="https://www.figma.com/design/ocdacdEsnHipMJD3egzxKb?node-id=1-9" title=".Header — no code behind this"><span class="cp-visually-hidden">.Header — no code behind this</span></a>
+<a class="cp-page-node" data-link="manifest" data-cp-node="1:1" href="/p/com.example.ProfileCardPreview?session=compose-m3" title="Shape=Circle — ui/Shapes.kt#CircleShape"><span class="cp-visually-hidden">Shape=Circle — ui/Shapes.kt#CircleShape</span></a>
+<a class="cp-page-node" data-link="manifest" data-cp-node="1:2" href="/p/com.example.ProfileCardPreview?session=compose-m3" title="Shape=Square — ui/Shapes.kt#SquareShape"><span class="cp-visually-hidden">Shape=Square — ui/Shapes.kt#SquareShape</span></a>
+<a class="cp-page-node" data-link="convention" data-cp-node="1:3" href="/p/com.example.ProfileCardPreview?session=compose-m3" title="Shape=Triangle — ui/Shapes.kt#TriangleShape"><span class="cp-visually-hidden">Shape=Triangle — ui/Shapes.kt#TriangleShape</span></a>
+<a class="cp-page-node" data-link="manifest" data-cp-node="1:4" href="https://www.figma.com/design/ocdacdEsnHipMJD3egzxKb?node-id=1-4" title="Shape=Pill — ui/Shapes.kt#PillShape"><span class="cp-visually-hidden">Shape=Pill — ui/Shapes.kt#PillShape</span></a>
+<a class="cp-page-node" data-link="unlinked" data-cp-node="1:6" href="https://www.figma.com/design/ocdacdEsnHipMJD3egzxKb?node-id=1-6" title="Shape=Ghost-ish — no code behind this"><span class="cp-visually-hidden">Shape=Ghost-ish — no code behind this</span></a>
+<a class="cp-page-node" data-link="manifest" data-cp-node="1:404" href="/p/com.example.ProfileCardPreview?session=compose-m3" title="Shape=Flattened — ui/Shapes.kt#FlowerShape"><span class="cp-visually-hidden">Shape=Flattened — ui/Shapes.kt#FlowerShape</span></a>
+            </div>
+            <div class="cp-page-list">
+            <div class="cp-page-row" data-link="unlinked" data-cp-node="1:9"><span class="cp-page-dot" aria-hidden="true"></span><span class="cp-page-row-name">.Header</span><span class="cp-page-row-code">no code behind this</span></div>
+<a class="cp-page-row" data-link="manifest" data-cp-node="1:1" href="/p/com.example.ProfileCardPreview?session=compose-m3"><span class="cp-page-dot" aria-hidden="true"></span><span class="cp-page-row-name">Shape=Circle</span><span class="cp-page-row-code">ui/Shapes.kt#CircleShape</span></a>
+<a class="cp-page-row" data-link="manifest" data-cp-node="1:2" href="/p/com.example.ProfileCardPreview?session=compose-m3"><span class="cp-page-dot" aria-hidden="true"></span><span class="cp-page-row-name">Shape=Square</span><span class="cp-page-row-code">ui/Shapes.kt#SquareShape</span></a>
+<a class="cp-page-row" data-link="convention" data-cp-node="1:3" href="/p/com.example.ProfileCardPreview?session=compose-m3"><span class="cp-page-dot" aria-hidden="true"></span><span class="cp-page-row-name">Shape=Triangle</span><span class="cp-page-row-code">ui/Shapes.kt#TriangleShape</span></a>
+<div class="cp-page-row" data-link="manifest" data-cp-node="1:4"><span class="cp-page-dot" aria-hidden="true"></span><span class="cp-page-row-name">Shape=Pill</span><span class="cp-page-row-code">ui/Shapes.kt#PillShape</span></div>
+<div class="cp-page-row" data-link="unlinked" data-cp-node="1:6"><span class="cp-page-dot" aria-hidden="true"></span><span class="cp-page-row-name">Shape=Ghost-ish</span><span class="cp-page-row-code">no code behind this</span></div>
+<a class="cp-page-row" data-link="manifest" data-cp-node="1:404" href="/p/com.example.ProfileCardPreview?session=compose-m3"><span class="cp-page-dot" aria-hidden="true"></span><span class="cp-page-row-name">Shape=Flattened</span><span class="cp-page-row-code">ui/Shapes.kt#FlowerShape</span></a>
+            </div>
+          </div>
+        </div>
+        <script src="/assets/serve/fixture/design-page.js"></script>
+        </main>
+        <footer class="cp-site-footer">
+          <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
+          <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
+        </footer>
+        <script src="/assets/serve/fixture/page-theme.js"></script>
+      </body>
+    </html>

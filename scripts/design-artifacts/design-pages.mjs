@@ -1,18 +1,19 @@
 /**
- * Project a repo's **page-backdrop manifest** onto a published catalog — the producer for the
- * preview server's whole-screen `/{system}/pages/` surface.
+ * Project a repo's **design-page import** onto a published catalog — the producer for the preview
+ * server's `/{system}/pages/` surface.
  *
- * design-parity's page importer writes `design/pages/pages.json`: one key screen from the design
- * file, plus the rectangle of every component instance on it, each linked back to a code component
- * through the repo's `design-map.json`. That file is already a stated wire contract — its schema
- * names "a preview server" as a consumer, and carries `previewId` on every placement *specifically*
- * so a server can render the component without re-deriving the mapping.
+ * A repo imports whole pages of its design file as SVG (m3-catalog's `scripts/import-figma-pages.mjs`
+ * is the reference implementation) and commits them under `design/pages/`: one `pages.json` naming
+ * the component nodes on each page, and one `<id>.svg` per page exported with `data-node-id` on
+ * every element. The server inlines that SVG, finds a node by its id, hides the design's own drawing
+ * of it, and puts the catalog's render in the hole — which is why the ids are load-bearing and the
+ * export cannot be a raster.
  *
- * The catch is the same one `design-references.mjs` exists to solve: the id on a placement is the
- * repo's own **discovery** preview id, and a published catalog keys everything on the route-safe
- * **serve** preview id (`chat-contact__ideal__default__dark__compact`). Handing the manifest to the
- * server unchanged would give it ids that render nothing. So this module re-keys each placement,
- * reusing that module's indexes rather than restating the join:
+ * The catch is the same one `design-references.mjs` exists to solve: the id on a node is the repo's
+ * own **discovery** preview id, and a published catalog keys everything on the route-safe **serve**
+ * preview id (`chat-contact__ideal__default__dark__compact`). Handing the manifest to the server
+ * unchanged would give it ids that render nothing. So this module re-keys each node, reusing that
+ * module's indexes rather than restating the join:
  *
  * 1. **By discovery preview id** ([imagesByPreviewId]) — exact, and the id a design-map entry
  *    already carries to disambiguate light from dark. Handles both id namespaces (raw vs the
@@ -20,14 +21,13 @@
  * 2. **By `@Preview` function name** ([imagesByPreviewFunction], via the `#Member` of the code
  *    handle) — the fallback for a spec-led catalog whose manifest entry named no preview id.
  *
- * A placement that resolves to neither keeps its `code` and its `link`: the mapping is still true
- * and the hotspot still names the file, it just can't be drawn with a render. Dropping it instead
- * would silently understate the screen's coverage, which is the one number this surface exists to
- * report.
+ * A node that resolves to neither keeps its `code` and its `link`: the mapping is still true and
+ * the outline still names the file, it just can't be drawn with a render. Dropping it instead would
+ * silently understate the page's coverage, which is the one number this surface exists to report.
  *
- * Pure and dependency-free (no `@design-parity/*`, no I/O) so it unit-tests without an `npm ci`,
- * like its siblings `design-references.mjs` / `catalog-variants.mjs`. The I/O half — read the
- * repo's manifest, copy the backdrop PNGs into the bundle — lives in `emit-design-pages.mjs`.
+ * Pure and dependency-free (no I/O) so it unit-tests without an `npm ci`, like its siblings
+ * `design-references.mjs` / `catalog-variants.mjs`. The I/O half — read the repo's import, copy the
+ * SVGs into the bundle — lives in `emit-design-pages.mjs`.
  */
 
 import {
@@ -38,30 +38,30 @@ import {
   servePreviewId,
 } from "./design-references.mjs";
 
-/** Directory (bundle-relative) the manifest and its backdrop PNGs are published under. */
+/** Directory (bundle-relative) the manifest and its cached SVGs are published under. */
 export const PAGES_DIR = "pages";
 
-/** The manifest file the server reads (`ServePageBackdropStore.INDEX_FILE`). */
+/** The manifest file the server reads (`ServeDesignPageStore.INDEX_FILE`). */
 export const PAGES_INDEX = "index.json";
 
-/** The newest `PAGE_BACKDROP_VERSION` this producer emits. */
-export const PAGES_VERSION = 1;
+/** The `DESIGN_PAGES_VERSION` this producer emits. */
+export const PAGES_VERSION = 2;
 
-/** `ServePageBackdropStore.SAFE_ID` — a page id is a URL path segment on `/{system}/pages/{id}`. */
+/** `ServeDesignPageStore.SAFE_ID` — a page id is a URL path segment on `/{system}/pages/{id}`. */
 const SAFE_ID = /^[A-Za-z0-9._-]{1,160}$/;
 
 /**
- * `.png` is reserved: the server serves a page's backdrop off the same route as its view with that
- * suffix, so a page id'd `home.png` would be unreachable behind the image of the page `home`. The
- * server refuses one too ([ServePageBackdropStore]); refusing it here as well means the delivery
+ * `.svg` is reserved: the server serves a page's export off the same route as its view with that
+ * suffix, so a page id'd `shape.svg` would be unreachable behind the export of the page `shape`.
+ * The server refuses one too ([ServeDesignPageStore]); refusing it here as well means the delivery
  * branch never carries a page the consumer will silently drop.
  */
-const RESERVED_ID_SUFFIX = /\.png$/i;
+const RESERVED_ID_SUFFIX = /\.svg$/i;
 
 /**
  * `.` and `..` match the id alphabet but are **path segments**, not names: a browser normalises
  * `/pages/..` to `/` before the request is even sent, so such a page could never be opened even
- * though its image published. Refused alongside the reserved suffix.
+ * though its export published. Refused alongside the reserved suffix.
  */
 const DOT_SEGMENT = /^\.{1,2}$/;
 
@@ -75,33 +75,29 @@ function isPositive(value) {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
-function isFiniteNumber(value) {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 /**
- * The published image path for a page: always `<id>.png`, never the producer's own file name.
+ * The published export path for a page: always `<id>.svg`, never the producer's own file name.
  *
  * The server re-paths these again when it stages a catalog, so this is belt-and-braces — but it
- * also means the bundle is self-describing: a reader of the delivery branch can tell which PNG
- * belongs to which screen without parsing the manifest.
+ * also means the bundle is self-describing: a reader of the delivery branch can tell which export
+ * belongs to which page without parsing the manifest.
  */
 export function pageImageName(pageId) {
-  return `${pageId}.png`;
+  return `${pageId}.svg`;
 }
 
 /**
- * The serve preview id for one placement, or null when the catalog publishes no sticker for it.
+ * The serve preview id for one node, or null when the catalog publishes no sticker for it.
  *
  * `candidates` are the catalog images that matched; the first is taken deliberately rather than
- * merged. A screen shows a component in exactly one state, and the catalog may publish that
+ * merged. A specimen sheet shows a component in exactly one state, and the catalog may publish that
  * component in several (light and dark, three sizes) — any of them renders the right component, and
  * a stable choice keeps the published manifest diffable across regenerations. Light-mode stickers
- * sort first in a catalog's own image order, which is also the better default under a design
- * screenshot exported in light mode.
+ * sort first in a catalog's own image order, which is also the better default under a design sheet
+ * exported in light mode.
  */
-function resolveServePreviewId(placement, { byPreviewId, byFunction }) {
-  const declared = typeof placement?.previewId === "string" ? placement.previewId : "";
+function resolveServePreviewId(node, { byPreviewId, byFunction }) {
+  const declared = typeof node?.previewId === "string" ? node.previewId : "";
   if (declared !== "") {
     // Terminal: a declared id that resolves to nothing must NOT fall through to the function name.
     // [matchesForPreviewId] returns empty for a *sanitised bundle-id collision* — a family where an
@@ -111,14 +107,14 @@ function resolveServePreviewId(placement, { byPreviewId, byFunction }) {
     const matches = matchesForPreviewId(byPreviewId, declared);
     return matches.length > 0 ? servePreviewId(matches[0].image?.path) : null;
   }
-  const fn = functionNameOf(placement?.code);
+  const fn = functionNameOf(node?.code);
   if (fn) {
     const matches = byFunction.get(fn) ?? [];
     // Refuse an AMBIGUOUS fallback. `byFunction` is keyed by the bare member name, so two
     // components whose previews are both called `DefaultPreview` share a bucket — and taking the
-    // first would overlay component A inside component B's rectangle, which is worse than showing
-    // no render at all. Same posture as `matchesForPreviewId`'s collision guard: decline, warn, and
-    // leave the hotspot with its mapping.
+    // first would put component A's render inside component B's outline, which is worse than
+    // showing no render at all. Same posture as `matchesForPreviewId`'s collision guard: decline,
+    // warn, and leave the outline with its mapping.
     const componentIds = new Set(matches.map((m) => m.componentId));
     if (matches.length > 0 && componentIds.size === 1) {
       return servePreviewId(matches[0].image?.path);
@@ -127,35 +123,34 @@ function resolveServePreviewId(placement, { byPreviewId, byFunction }) {
   return null;
 }
 
-/** Whether a placement is complete enough for the server to draw. Mirrors the server's own test. */
-function isDrawablePlacement(placement) {
-  const bounds = placement?.bounds;
-  return (
-    !!bounds &&
-    isFiniteNumber(bounds.x) &&
-    isFiniteNumber(bounds.y) &&
-    isPositive(bounds.width) &&
-    isPositive(bounds.height)
-  );
+/**
+ * Whether a node is complete enough for the server to draw. Mirrors the server's own test.
+ *
+ * The node id is the *only* handle this contract carries — there is no recorded rectangle, because
+ * the SVG is the geometry — so a node without one names nothing in the export and could never be
+ * outlined, hidden or swapped.
+ */
+function isDrawableNode(node) {
+  return typeof node?.nodeId === "string" && node.nodeId.trim() !== "";
 }
 
 /**
  * Plan the published `pages/index.json` for `manifest`.
  *
  * Returns `{ manifest, images, warnings }` — the bundle-shaped manifest, the `[{ pageId, from }]`
- * pairs the caller must copy (`from` is the producer's own image path, relative to its manifest),
+ * pairs the caller must copy (`from` is the producer's own export path, relative to its manifest),
  * and human-readable warnings for anything dropped or left unrenderable.
  */
-export function planPageBackdrops({ manifest, spec, catalog }) {
+export function planDesignPages({ manifest, spec, catalog }) {
   const warnings = [];
   if (!manifest || typeof manifest !== "object") {
     return { manifest: null, images: [], warnings };
   }
   const version = manifest.version;
-  if (typeof version !== "number" || version < 1 || version > PAGES_VERSION) {
+  if (version !== PAGES_VERSION) {
     warnings.push(
-      `page-backdrop manifest version ${String(version)} is not one this catalog can publish ` +
-        `(supported: 1..${PAGES_VERSION})`,
+      `design-pages manifest version ${String(version)} is not one this catalog can publish ` +
+        `(supported: ${PAGES_VERSION})`,
     );
     return { manifest: null, images: [], warnings };
   }
@@ -171,7 +166,7 @@ export function planPageBackdrops({ manifest, spec, catalog }) {
   // iterable" here, out of the emitter and into the workflow's `set -e`. The whole point of this
   // lane is that it cannot cost a catalog its publish.
   if (!Array.isArray(manifest.pages)) {
-    warnings.push("page-backdrop manifest declares no usable pages array");
+    warnings.push("design-pages manifest declares no usable pages array");
     return { manifest: null, images: [], warnings };
   }
   for (const page of manifest.pages) {
@@ -184,60 +179,61 @@ export function planPageBackdrops({ manifest, spec, catalog }) {
       warnings.push(`page ${id} is declared twice; keeping the first`);
       continue;
     }
+    // The frame is the export's own viewBox, and the server lays the stage out with its ratio. A
+    // page without one would render as a zero-height box with the sheet squashed into nothing.
     if (!isPositive(page?.frame?.width) || !isPositive(page?.frame?.height)) {
       warnings.push(`page ${id} declares no usable frame size; skipped`);
       continue;
     }
+    const format = typeof page?.image?.format === "string" ? page.image.format : "svg";
+    if (format.toLowerCase() !== "svg") {
+      // Refused rather than republished. The surface's whole capability is addressing nodes inside
+      // the export; a raster is a picture, and a page the server can only stare at is worse than a
+      // page it never advertises.
+      warnings.push(`page ${id} exports as ${format}, not svg; skipped`);
+      continue;
+    }
     const from = typeof page?.image?.uri === "string" ? page.image.uri : "";
     if (from === "") {
-      warnings.push(`page ${id} names no backdrop image; skipped`);
+      warnings.push(`page ${id} names no export; skipped`);
       continue;
     }
     seen.add(id);
 
     let unresolved = 0;
-    const placements = [];
-    for (const placement of Array.isArray(page.placements) ? page.placements : []) {
-      if (!isDrawablePlacement(placement)) continue;
-      const link = LINK_METHODS.has(placement?.link) ? placement.link : "unlinked";
+    const nodes = [];
+    for (const node of Array.isArray(page.nodes) ? page.nodes : []) {
+      if (!isDrawableNode(node)) continue;
+      const link = LINK_METHODS.has(node?.link) ? node.link : "unlinked";
       const previewId =
-        link === "unlinked" ? null : resolveServePreviewId(placement, { byPreviewId, byFunction });
+        link === "unlinked" ? null : resolveServePreviewId(node, { byPreviewId, byFunction });
       if (link !== "unlinked" && previewId === null) unresolved += 1;
-      placements.push({
-        nodeId: String(placement?.nodeId ?? ""),
-        name: String(placement?.name ?? ""),
-        bounds: {
-          x: placement.bounds.x,
-          y: placement.bounds.y,
-          width: placement.bounds.width,
-          height: placement.bounds.height,
-        },
+      nodes.push({
+        nodeId: String(node.nodeId),
+        name: String(node?.name ?? ""),
         // Range-checked, not just integer-checked. The consumer decodes `depth` as a Kotlin Int,
         // so republishing `2147483648` — which `Number.isInteger` happily accepts — fails the parse
-        // for the WHOLE manifest and hides every screen. Same failure shape as an unsupported
+        // for the WHOLE manifest and hides every page. Same failure shape as an unsupported
         // `confidence`, and depth is only a nesting hint, so an out-of-range one becomes 0.
         depth:
-          Number.isInteger(placement?.depth) && placement.depth >= 0 && placement.depth <= 2147483647
-            ? placement.depth
+          Number.isInteger(node?.depth) && node.depth >= 0 && node.depth <= 2147483647
+            ? node.depth
             : 0,
-        ref: String(placement?.ref ?? ""),
+        ...(node?.ref ? { ref: String(node.ref) } : {}),
         link,
-        ...(placement?.code ? { code: String(placement.code) } : {}),
+        ...(node?.code ? { code: String(node.code) } : {}),
         ...(previewId ? { previewId } : {}),
         // Validated, not passed through. The consumer decodes this into a strict enum, so an
         // unrecognised value there is a parse failure for the WHOLE manifest — one bad string in
-        // one placement would hide every screen the catalog publishes. Dropping the field costs
-        // only a styling hint.
-        ...(CONFIDENCE_VALUES.has(placement?.confidence)
-          ? { confidence: placement.confidence }
-          : {}),
-        ...(placement?.matchedRef ? { matchedRef: String(placement.matchedRef) } : {}),
+        // one node would hide every page the catalog publishes. Dropping the field costs only a
+        // styling hint.
+        ...(CONFIDENCE_VALUES.has(node?.confidence) ? { confidence: node.confidence } : {}),
       });
     }
     if (unresolved > 0) {
       warnings.push(
-        `page ${id}: ${unresolved} linked placement(s) map to no published sticker, so they show ` +
-          `as hotspots without a render`,
+        `page ${id}: ${unresolved} linked node(s) map to no published sticker, so they show as ` +
+          `outlines without a render`,
       );
     }
 
@@ -247,11 +243,8 @@ export function planPageBackdrops({ manifest, spec, catalog }) {
       name: String(page?.name ?? id),
       nodeId: String(page?.nodeId ?? ""),
       frame: { width: page.frame.width, height: page.frame.height },
-      image: {
-        uri: pageImageName(id),
-        scale: isPositive(page?.image?.scale) ? page.image.scale : 1,
-      },
-      placements,
+      image: { uri: pageImageName(id), format: "svg" },
+      nodes,
     });
   }
 

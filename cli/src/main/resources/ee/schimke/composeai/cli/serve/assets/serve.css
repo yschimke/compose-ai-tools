@@ -1867,87 +1867,103 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   font-size: 0.72rem;
 }
 
-/* ── Page backdrop ────────────────────────────────────────────────────────────────────────────
-   One design screen, the rectangle of every component instance on it, and (optionally) the
-   catalog's own renders laid on top.
+/* ── Design page ──────────────────────────────────────────────────────────────────────────────
+   One whole page of the design file, inlined as SVG, with an outline over every component node on
+   it and — behind a toggle — this catalog's own renders standing in for the design's own drawing.
 
-   The stage is sized by `aspect-ratio` from the frame's design units and every child is positioned
-   in percentages, so the whole thing scales with its column and needs no JS geometry. */
-.cp-backdrop-layout {
+   Unlike the screen backdrop this replaced, the geometry is NOT in percentages: the SVG is the
+   source of truth for where a node is, so `design-page.js` measures each `[data-node-id]` element
+   and writes the four offsets. Everything here is therefore paint and state, not layout — which is
+   also why the stage stacks above the list rather than beside it: a specimen sheet is wider than
+   it is tall, the opposite of the phone screens the two-column version was shaped for. */
+.cp-page-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.4rem;
   align-items: start;
 }
-@media (max-width: 900px) {
-  .cp-backdrop-layout { grid-template-columns: minmax(0, 1fr); }
-}
-.cp-backdrop-stage {
+.cp-page-stage {
   position: relative;
   width: 100%;
-  aspect-ratio: var(--cp-backdrop-aspect, 0.42);
+  aspect-ratio: var(--cp-page-aspect, 1.2);
   border: 1px solid var(--cp-border);
   border-radius: var(--md-sys-shape-corner-medium, 12px);
   overflow: hidden;
   /* The design's own pixels are the ground truth here, so the stage never tints them: a light
-     screen stays light in dark mode rather than being composited onto a dark surface. */
+     sheet stays light in dark mode rather than being composited onto a dark surface. */
   background: #fff;
 }
-.cp-backdrop-image {
+/* The inlined export. `width/height: 100%` on the element and the frame's own aspect on the stage
+   between them make the SVG's user units and the stage's pixels a fixed ratio, which is what lets
+   a measured node box stay correct through any resize. */
+.cp-page-stage > svg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
   display: block;
 }
-.cp-backdrop-hotspot {
+/* The design's own drawing of a node we have a render for, hidden so ours can stand in its place.
+   `visibility` rather than `display`: a hidden SVG element keeps its box, so the measurement that
+   positioned our render stays valid while it is hidden, and toggling back is free. */
+.cp-page-hide-design .cp-page-replaced { visibility: hidden; }
+.cp-page-node {
   position: absolute;
   display: block;
-  border: 2px solid var(--cp-backdrop-hotspot-color, #2da44e);
+  border: 2px solid var(--cp-page-node-color, #2da44e);
   border-radius: 3px;
-  background: color-mix(in srgb, var(--cp-backdrop-hotspot-color, #2da44e) 10%, transparent);
+  background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 10%, transparent);
   text-decoration: none;
   transition: background 120ms ease, box-shadow 120ms ease;
 }
 /* Colour by *how* the placement was linked, so the weak links read as weak at a glance. An
    unlinked rectangle — a part of the screen no code implements — is the dashed red one, and is the
    single most interesting mark on the page. */
-.cp-backdrop-hotspot[data-link="code-connect"] { --cp-backdrop-hotspot-color: #2da44e; }
-.cp-backdrop-hotspot[data-link="manifest"] { --cp-backdrop-hotspot-color: #0969da; }
-.cp-backdrop-hotspot[data-link="convention"] { --cp-backdrop-hotspot-color: #bf8700; }
-.cp-backdrop-hotspot[data-link="unlinked"] {
-  --cp-backdrop-hotspot-color: #cf222e;
+.cp-page-node[data-link="code-connect"] { --cp-page-node-color: #2da44e; }
+.cp-page-node[data-link="manifest"] { --cp-page-node-color: #0969da; }
+.cp-page-node[data-link="convention"] { --cp-page-node-color: #bf8700; }
+.cp-page-node[data-link="unlinked"] {
+  --cp-page-node-color: #cf222e;
   border-style: dashed;
   background: color-mix(in srgb, #cf222e 8%, transparent);
 }
-.cp-backdrop-hotspot:hover,
-.cp-backdrop-hotspot:focus-visible,
-.cp-backdrop-hotspot.cp-backdrop-active {
-  background: color-mix(in srgb, var(--cp-backdrop-hotspot-color, #2da44e) 26%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cp-backdrop-hotspot-color, #2da44e) 45%, transparent);
+.cp-page-node:hover,
+.cp-page-node:focus-visible,
+.cp-page-node.cp-page-active {
+  background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 26%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cp-page-node-color, #2da44e) 45%, transparent);
   outline: none;
 }
-.cp-backdrop-no-hotspots .cp-backdrop-hotspot { opacity: 0; pointer-events: none; }
+.cp-page-no-outlines .cp-page-node { opacity: 0; pointer-events: none; }
 /* "Only what we don't implement" — keeps the unlinked rectangles and mutes the rest, which is the
    fastest read of a screen's coverage. */
-.cp-backdrop-unlinked-only .cp-backdrop-hotspot:not([data-link="unlinked"]) {
+.cp-page-unlinked-only .cp-page-node:not([data-link="unlinked"]) {
   opacity: 0.12;
   pointer-events: none;
 }
-/* A render is pinned to its placement's top-left and scaled to the placement's WIDTH, keeping its
-   own aspect ratio — deliberately not stretched to fill the box. A component that renders taller
-   than its design slot is a real finding, and stretching would hide exactly that. */
-.cp-backdrop-render {
+/* A render is pinned to its node's top-left and scaled to the node's WIDTH, keeping its own aspect
+   ratio — deliberately not stretched to fill the box. A component that renders taller than the
+   design drew it is a real finding, and stretching would hide exactly that.
+
+   `object-fit: contain` with the node's full height is what centres it in the slot the design left,
+   which is how the swapped-in render lands where the eye expects it rather than hugging the top. */
+.cp-page-render {
   position: absolute;
+  inset: 0;
   display: none;
-  height: auto;
-  opacity: var(--cp-backdrop-render-opacity, 0.5);
-  mix-blend-mode: var(--cp-backdrop-render-blend, normal);
+  width: 100%;
+  height: 100%;
+  opacity: var(--cp-page-render-opacity, 1);
+  mix-blend-mode: var(--cp-page-render-blend, normal);
+  object-fit: contain;
   pointer-events: none;
 }
-.cp-backdrop-overlay-on .cp-backdrop-render { display: block; }
-.cp-backdrop-controls {
+.cp-page-swap-on .cp-page-render { display: block; }
+/* A node the manifest named but the export doesn't carry — a layer the design tool flattened on
+   the way out. Its row stays (the mapping is still true); its outline can't, because there is
+   nothing to put it around. */
+.cp-page-node[data-cp-missing] { display: none; }
+.cp-page-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1955,8 +1971,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   margin: 0.8rem 0;
   font-size: var(--md-sys-typescale-body-small-size, 0.82rem);
 }
-.cp-backdrop-controls label { display: inline-flex; align-items: center; gap: 0.35rem; }
-.cp-backdrop-legend {
+.cp-page-controls label { display: inline-flex; align-items: center; gap: 0.35rem; }
+.cp-page-legend {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
@@ -1964,15 +1980,21 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   color: var(--cp-fg-muted);
   font-size: 0.75rem;
 }
-.cp-backdrop-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
-.cp-backdrop-swatch {
+.cp-page-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.cp-page-swatch {
   width: 0.75rem;
   height: 0.75rem;
   border: 2px solid currentColor;
   border-radius: 2px;
 }
-.cp-backdrop-list { display: flex; flex-direction: column; gap: 0.2rem; }
-.cp-backdrop-row {
+/* A definition sheet carries tens of nodes where a screen carried a dozen, so the list wraps into
+   columns instead of running off the bottom of the page. */
+.cp-page-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.2rem;
+}
+.cp-page-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 0.5rem;
@@ -1983,31 +2005,31 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   color: inherit;
   text-decoration: none;
 }
-.cp-backdrop-row:hover,
-.cp-backdrop-row.cp-backdrop-active {
+.cp-page-row:hover,
+.cp-page-row.cp-page-active {
   border-color: var(--cp-border);
   background: var(--cp-surface);
 }
-.cp-backdrop-row-name { font-weight: 600; }
-.cp-backdrop-row-code {
+.cp-page-row-name { font-weight: 600; }
+.cp-page-row-code {
   grid-column: 2;
   color: var(--cp-fg-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.72rem;
   overflow-wrap: anywhere;
 }
-.cp-backdrop-dot {
+.cp-page-dot {
   width: 0.6rem;
   height: 0.6rem;
   border-radius: 50%;
-  background: var(--cp-backdrop-hotspot-color, #2da44e);
+  background: var(--cp-page-node-color, #2da44e);
 }
-.cp-backdrop-row[data-link="code-connect"] { --cp-backdrop-hotspot-color: #2da44e; }
-.cp-backdrop-row[data-link="manifest"] { --cp-backdrop-hotspot-color: #0969da; }
-.cp-backdrop-row[data-link="convention"] { --cp-backdrop-hotspot-color: #bf8700; }
-.cp-backdrop-row[data-link="unlinked"] { --cp-backdrop-hotspot-color: #cf222e; }
-.cp-backdrop-count { color: var(--cp-fg-muted); font-size: 0.8rem; }
-.cp-backdrop-card {
+.cp-page-row[data-link="code-connect"] { --cp-page-node-color: #2da44e; }
+.cp-page-row[data-link="manifest"] { --cp-page-node-color: #0969da; }
+.cp-page-row[data-link="convention"] { --cp-page-node-color: #bf8700; }
+.cp-page-row[data-link="unlinked"] { --cp-page-node-color: #cf222e; }
+.cp-page-count { color: var(--cp-fg-muted); font-size: 0.8rem; }
+.cp-page-card {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -2017,8 +2039,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   color: inherit;
   text-decoration: none;
 }
-.cp-backdrop-card:hover { border-color: var(--cp-border-strong); background: var(--cp-surface); }
-.cp-backdrop-card img {
+.cp-page-card:hover { border-color: var(--cp-border-strong); background: var(--cp-surface); }
+.cp-page-card img {
   width: 100%;
   max-height: 260px;
   object-fit: contain;
@@ -2026,7 +2048,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   background: #fff;
   border-radius: var(--md-sys-shape-corner-small, 8px);
 }
-.cp-backdrop-cards {
+.cp-page-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 1rem;

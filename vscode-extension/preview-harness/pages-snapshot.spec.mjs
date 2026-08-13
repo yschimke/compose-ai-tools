@@ -62,10 +62,11 @@ const IMAGE_LANES = [
     "**/hero/**",
     "**/reference/**",
     "**/rc-compare/**",
-    // The page-backdrop lane: a whole design SCREEN, not a component. It needs its own stand-in
-    // because the component placeholder would be stretched to a phone frame's aspect ratio and the
-    // hotspot rectangles — the entire subject of that page — would land over nothing recognisable.
-    "**/pages/*.png**",
+    // The design-page lane, which now feeds only the index card's thumbnail: the page VIEW inlines
+    // its export, so there is no request to intercept there at all. It still needs its own stand-in
+    // rather than the component placeholder, because a specimen sheet is wider than it is tall and
+    // the card crops to the top of it.
+    "**/pages/*.svg**",
 ];
 const REFERENCE_PLACEHOLDER = `
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="420" viewBox="0 0 200 420">
@@ -76,35 +77,20 @@ const REFERENCE_PLACEHOLDER = `
   <rect x="20" y="258" width="160" height="64" rx="18" fill="#ffffff"/>
   <circle cx="100" cy="378" r="18" fill="#7657b5"/>
 </svg>`;
-// A phone screen standing in for the exported design frame, drawn at the fixture's own 412×954
-// design units so each hotspot lands over the element it names: status bar, app bar, a carousel,
-// five list items, gesture bar. The point of the shot is the overlay geometry, so the stand-in has
-// to have the geometry.
-const BACKDROP_PLACEHOLDER = `
-<svg xmlns="http://www.w3.org/2000/svg" width="412" height="954" viewBox="0 0 412 954">
-  <rect width="412" height="954" fill="#fffbfe"/>
-  <rect x="0" y="0" width="412" height="48" fill="#efe7f5"/>
-  <rect x="16" y="18" width="52" height="12" rx="6" fill="#8a8296"/>
-  <rect x="344" y="18" width="52" height="12" rx="6" fill="#8a8296"/>
-  <rect x="0" y="48" width="412" height="64" fill="#f7f2fa"/>
-  <rect x="16" y="70" width="150" height="20" rx="10" fill="#4a4458"/>
-  <circle cx="376" cy="80" r="16" fill="#e8def8"/>
-  <rect x="16" y="128" width="240" height="180" rx="20" fill="#d0bcff"/>
-  <rect x="272" y="128" width="124" height="180" rx="20" fill="#e8def8"/>
-  <rect x="16" y="330" width="120" height="16" rx="8" fill="#4a4458"/>
-  <g fill="#f4eff4">
-    <rect x="16" y="362" width="380" height="64" rx="16"/>
-    <rect x="16" y="434" width="380" height="64" rx="16"/>
-    <rect x="16" y="506" width="380" height="64" rx="16"/>
-    <rect x="16" y="578" width="380" height="64" rx="16"/>
-    <rect x="16" y="650" width="380" height="64" rx="16"/>
-  </g>
-  <g fill="#cac4d0">
-    <circle cx="48" cy="394" r="18"/><circle cx="48" cy="466" r="18"/>
-    <circle cx="48" cy="538" r="18"/><circle cx="48" cy="610" r="18"/>
-    <circle cx="48" cy="682" r="18"/>
-  </g>
-  <rect x="150" y="930" width="112" height="5" rx="3" fill="#1d1b20"/>
+// A specimen sheet standing in for the exported design page, at the fixture's own 1200×800 user
+// units and with the same shapes in the same places — the index card crops to the top of it, so a
+// stand-in with no recognisable content would make that card's baseline meaningless. The page VIEW
+// does not use this: it inlines the export the fixture HTML already carries.
+const PAGE_PLACEHOLDER = `
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <rect width="1200" height="800" fill="#F7F2FA"/>
+  <rect x="40" y="32" width="1120" height="64" rx="16" fill="#EADDFF"/>
+  <circle cx="180" cy="300" r="90" fill="#6750A4"/>
+  <rect x="330" y="210" width="180" height="180" rx="36" fill="#6750A4"/>
+  <path d="M690 210 L780 390 L600 390 Z" fill="#6750A4"/>
+  <rect x="840" y="255" width="240" height="90" rx="45" fill="#6750A4"/>
+  <rect x="330" y="500" width="180" height="180" rx="90" fill="#6750A4"/>
+  <rect x="600" y="500" width="180" height="180" fill="#6750A4"/>
 </svg>`;
 // The viewer's inspection lanes (`/render/<id>.a11y`, `/render/<id>.annotations`) are daemon data
 // products, so like the image lanes they have no backend here. These stand in for them, shaped
@@ -281,11 +267,11 @@ const STYLED_FIXTURES = new Set([
     // Deliberately only this fixture and not `serve-playground`: adding the stylesheet there would
     // rewrite an unrelated baseline wholesale for no claim this change makes.
     "serve-playground-uncompilable",
-    // The page backdrop is nothing BUT layout: hotspot rectangles positioned as a share of the
-    // design frame, coloured by how each was linked, over the design's own pixels. Captured bare
-    // it is a list of links under an image and the geometry — the entire claim — moves no
-    // baseline. Its `overlay` state below is the one the feature exists for.
-    "serve-page-backdrop",
+    // The design page is nothing BUT layout: outlines measured off the inlined export and
+    // coloured by how each node was linked. Captured bare it is a list of links under a picture and
+    // the geometry — the entire claim — moves no baseline. Its `swap` state below is the one the
+    // feature exists for.
+    "serve-design-page",
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
@@ -302,7 +288,7 @@ const SERVE_ASSETS = [
     ["rc-lanes.js", "text/javascript"],
     ["catalog-live.js", "text/javascript"],
     ["inspect.js", "text/javascript"],
-    ["page-backdrop.js", "text/javascript"],
+    ["design-page.js", "text/javascript"],
 ];
 
 // Runtime *states* of a page fixture that the committed HTML can't express on its own, captured as
@@ -316,38 +302,42 @@ const SERVE_ASSETS = [
 // accent under test are produced by the real `backendBadgeScript`, not faked here.
 const FIXTURE_STATES = [
     {
-        // The page backdrop with the catalog's own renders laid over the design, at the
-        // `difference` blend where matching pixels go black and only the drift lights up. This is
-        // the state the whole surface exists for and the committed HTML cannot hold it: the
-        // renders carry `data-src` until the overlay is first switched on (a screen has a couple of
-        // dozen placements, and on a live catalog each one is a daemon render). Without this shot,
-        // a change to the overlay's positioning, opacity or blend would move no baseline at all.
-        fixture: "serve-page-backdrop",
-        suffix: "overlay",
+        // The design page with this catalog's renders standing IN PLACE OF the design's own
+        // drawing — the state the whole surface exists for, and one the committed HTML cannot hold
+        // twice over: the renders ride an inert `<template>` until the toggle adopts them, and
+        // every position is measured from the inlined SVG at runtime rather than declared in the
+        // markup. Without this shot, a change to the measuring, the swap or the hiding would move
+        // no baseline at all.
+        fixture: "serve-design-page",
+        suffix: "swap",
         apply: async (page) => {
-            await page.check("[data-cp-backdrop-renders]");
-            await page.selectOption("[data-cp-backdrop-blend]", "difference");
+            await page.check("[data-cp-page-renders]");
             // Requires at least one render, not just "all of them loaded" — `every()` over an
             // empty list is true, so without the length check this shot would go green if the
-            // overlay never armed at all, which is exactly the regression it exists to catch.
+            // swap never armed at all, which is exactly the regression it exists to catch.
             await page.waitForFunction(() => {
-                var imgs = Array.from(document.querySelectorAll(".cp-backdrop-render"));
+                var imgs = Array.from(document.querySelectorAll(".cp-page-render"));
                 return imgs.length > 0 && imgs.every((img) => img.complete && img.naturalWidth > 0);
             });
+            // And that the design's own drawing actually went away underneath them. A swap that
+            // showed our render while leaving theirs visible would look almost right in a diff.
+            await page.waitForFunction(
+                () => document.querySelectorAll("svg .cp-page-replaced").length > 0,
+            );
         },
     },
     {
         // "Only what we don't implement": the coverage read. Everything this catalog implements is
-        // muted and the dashed-red rectangles — the parts of the screen with no code behind them —
-        // are what's left. It is a pure CSS-state claim, so it needs its own shot for the same
-        // reason the overlay does.
-        fixture: "serve-page-backdrop",
+        // muted and the dashed-red outlines — the components on the sheet with no code behind them
+        // — are what's left. It is a pure CSS-state claim, so it needs its own shot for the same
+        // reason the swap does.
+        fixture: "serve-design-page",
         suffix: "unlinked-only",
         apply: async (page) => {
-            // States compose on the already-loaded page: undo the overlay above so this shot is
-            // about the filter alone.
-            await page.uncheck("[data-cp-backdrop-renders]");
-            await page.check("[data-cp-backdrop-unlinked]");
+            // States compose on the already-loaded page: undo the swap above so this shot is about
+            // the filter alone.
+            await page.uncheck("[data-cp-page-renders]");
+            await page.check("[data-cp-page-unlinked]");
         },
     },
     {
@@ -1061,7 +1051,7 @@ for (const fixture of listPageFixtures()) {
                     }
                     if (lane.includes("pages")) {
                         return route.fulfill({
-                            body: BACKDROP_PLACEHOLDER,
+                            body: PAGE_PLACEHOLDER,
                             contentType: "image/svg+xml",
                         });
                     }
