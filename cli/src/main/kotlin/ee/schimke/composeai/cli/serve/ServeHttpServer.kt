@@ -434,7 +434,7 @@ class ServeHttpServer(
             current.response.headers.append(HttpHeaders.Location, "/$rest$query")
             current.respond(HttpStatusCode.PermanentRedirect)
             finish()
-          } else if (first in servedSystems()) {
+          } else if (isForeignSession(first)) {
             current.respondText("not found", status = HttpStatusCode.NotFound)
             finish()
           }
@@ -1037,6 +1037,24 @@ class ServeHttpServer(
     return call.request.queryParameters["session"] to ""
   }
 
+  /**
+   * The catalogs the playground may offer **this** request: every one on the main host, and only
+   * its own on a top-level site.
+   *
+   * The playground lives at constant paths (`/playground`, `/api/<v>/compiler/catalogs`), so the
+   * canonical-path interceptor never sees it — its first segment names no session. Without this, a
+   * site host would list, preselect and compile against every catalog on the box, which is the
+   * one-catalog-per-host contract broken by the one lane that runs code. The pinned "Server
+   * default" entry (empty id) is not a catalog and is kept either way.
+   */
+  private fun RoutingContext.siteScopedCatalogChoices(
+    service: PlaygroundCompileService
+  ): List<PlaygroundCatalogInfo> {
+    val choices = service.catalogChoices()
+    val site = siteSystem() ?: return choices
+    return choices.filter { it.id.isEmpty() || it.id == site }
+  }
+
   /** `POST /{system}/refresh`: check the published catalog branch and reload it when newer. */
   private suspend fun RoutingContext.handleCatalogRefresh(sessionInPath: Boolean) {
     if (rejectBadToken()) return
@@ -1270,7 +1288,7 @@ class ServeHttpServer(
       ServeWeb.playgroundPage(
         token = token,
         isPublic = isPublic,
-        catalogs = service.catalogChoices(),
+        catalogs = siteScopedCatalogChoices(service),
         catalogSelectorEnabled = service.catalogSelectorEnabled,
         seed = seed,
         preselectCatalog = call.request.queryParameters["catalog"],
@@ -1297,7 +1315,7 @@ class ServeHttpServer(
     call.respondText(
       JSON.encodeToString(
         PlaygroundCatalogsResponse.serializer(),
-        PlaygroundCatalogsResponse(service.catalogChoices()),
+        PlaygroundCatalogsResponse(siteScopedCatalogChoices(service)),
       ),
       ContentType.Application.Json,
     )
@@ -1441,6 +1459,18 @@ class ServeHttpServer(
         )
         return
       }
+    // Not advertising a neighbour is not the same as refusing to compile against one: the id is a
+    // request field, so a site host has to reject it outright or the selector's absence is
+    // cosmetic. Empty stays legal — that is the host's pinned default, which is not a catalog.
+    val site = siteSystem()
+    if (site != null && request.catalog.isNotEmpty() && request.catalog != site) {
+      call.respondText(
+        "{\"error\":\"unknown catalog\"}",
+        ContentType.Application.Json,
+        HttpStatusCode.NotFound,
+      )
+      return
+    }
     val response = withContext(Dispatchers.IO) { service.run(request, isSecurityChecked = true) }
     call.respondText(
       JSON.encodeToString(PlaygroundRunResponse.serializer(), response),
@@ -2556,6 +2586,27 @@ class ServeHttpServer(
    */
   private fun servedSystems(): Set<String> = (listedCatalogs() + unlistedCatalogs()).toSet()
 
+  /**
+   * Whether [first] — a request's first path segment on a **site host** — selects some session
+   * other than this site's own, and so must 404 rather than be served through the wrong domain.
+   *
+   * Deliberately broader than [servedSystems]: a catalog row is not the only thing the generic
+   * `/{system}/…` routes can acquire. An uploaded bundle (`--accept-bundles`, `POST /bundles/<n>`)
+   * registers a session under its own name, and a revision session is addressed as `<system>@<rev>`
+   * — both would otherwise slip past a catalog-only check and serve a neighbour on a site hostname.
+   * [ServeSessionRegistry.peekHost] answers for anything registered without resuming it, and the
+   * `@` split covers a revision of a served catalog that has not been built yet, so neither needs
+   * to be enumerated ahead of time.
+   *
+   * A constant route (`render`, `p`, `api`, `assets`, …) names no session and is not a served
+   * system, so it falls through untouched — and [ServeSites] refuses a site whose id would collide
+   * with one, so the two rules cannot disagree.
+   */
+  private fun isForeignSession(first: String): Boolean =
+    first in servedSystems() ||
+      first.substringBefore('@') in servedSystems() ||
+      sessions.peekHost(first) != null
+
   /** `?a=b` for a non-empty query string, else `""` — for rebuilding a URL we are redirecting. */
   private fun String.prefixedQuery(): String = if (isEmpty()) "" else "?$this"
 
@@ -3177,8 +3228,28 @@ class ServeHttpServer(
     val catalogs: List<CatalogStat>,
     val running: List<ServeSessionRegistry.RunningDaemon>,
     val failures: List<DaemonStartupLog.Failure>,
+    /**
+     * The one system this snapshot is about ([ServeSites]), or null for the whole box. Carried
+     * rather than applied only to [catalogs] / [running] because a status page is more than two
+     * lists: the session count and the playground's catalog selector are box-wide reads that would
+     * have kept naming neighbours (and reporting another app's daemons) to a per-site monitor.
+     */
+    val onlySystem: String? = null,
   ) {
     val uptimeSeconds: Long = ((nowMillis - startedAtMillis) / 1000).coerceAtLeast(0)
+
+    /**
+     * Sessions known to this status view: every registered one for the box, or just this site's (0
+     * or 1 — it is registered, or it has not loaded yet).
+     */
+    val knownSessions: Int =
+      if (onlySystem == null) sessions.activeCount()
+      else if (sessions.peekHost(onlySystem) != null) 1 else 0
+
+    /** The playground's offered catalogs, narrowed to what this view is allowed to name. */
+    fun offeredCatalogs(offered: List<String>): List<String> =
+      if (onlySystem == null) offered else offered.filter { it == onlySystem }
+
     /** Live daemons (a render daemon is up), excluding pinned static baked hosts. */
     val liveDaemons: List<ServeSessionRegistry.RunningDaemon> = running.filter { it.hasLiveStream }
     val activeStreams: Int = liveDaemons.sumOf { it.activeStreams }
@@ -3210,7 +3281,7 @@ class ServeHttpServer(
           ),
         daemons =
           DaemonSummaryDto(
-            known = sessions.activeCount(),
+            known = knownSessions,
             running = liveDaemons.size,
             activeStreams = activeStreams,
             liveSeatsTotal = if (liveSeats.unbounded) 0 else liveSeats.totalPermits,
@@ -3317,7 +3388,13 @@ class ServeHttpServer(
                 },
               catalogSelector =
                 h.catalogSelector?.invoke()?.let {
-                  CatalogSelectorDto(offered = it.offered, resolved = it.resolved, limit = it.limit)
+                  // Scoped like everything else on a site's status: the selector must not name a
+                  // neighbouring catalog through a hostname that publishes one app.
+                  CatalogSelectorDto(
+                    offered = offeredCatalogs(it.offered),
+                    resolved = it.resolved,
+                    limit = it.limit,
+                  )
                 },
               rateLimit =
                 playgroundRateLimiter?.let {
@@ -3355,7 +3432,7 @@ class ServeHttpServer(
         add(ServeWeb.Stat("Live daemons running", liveDaemons.size.toString()))
         add(ServeWeb.Stat("Active streams", activeStreams.toString()))
         add(ServeWeb.Stat("Live seats", seatsText))
-        add(ServeWeb.Stat("Known sessions", sessions.activeCount().toString()))
+        add(ServeWeb.Stat("Known sessions", knownSessions.toString()))
         add(ServeWeb.Stat("Uptime", formatDuration(uptimeSeconds)))
         if (renderAgg != null) {
           // One-line human roll-up; full per-daemon detail (cold counts, p50/p95, first-render
@@ -3531,6 +3608,7 @@ class ServeHttpServer(
         daemonLog?.recent().orEmpty().let { failures ->
           if (onlySystem == null) failures else failures.filter { it.session == onlySystem }
         },
+      onlySystem = onlySystem,
     )
   }
 

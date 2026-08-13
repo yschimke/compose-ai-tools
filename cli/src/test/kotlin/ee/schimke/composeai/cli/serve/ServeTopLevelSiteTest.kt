@@ -246,6 +246,72 @@ class ServeTopLevelSiteTest {
   }
 
   @Test
+  fun `an uploaded bundle session is not reachable through a site host`() {
+    // A catalog row is not the only thing `/{system}/…` can acquire: an uploaded bundle registers
+    // a session under its own name, and a catalog-only check let it serve through a site hostname.
+    registry.register(
+      "some-upload",
+      host = bundle("some-upload", listOf("uploaded"), "Some Upload"),
+      pinned = true,
+    )
+    server = newServer()
+    assertEquals(404, get("/some-upload/", host = siteHost).first)
+    assertEquals(404, get("/some-upload/p/uploaded", host = siteHost).first)
+    // …and a revision of a neighbouring catalog, which is addressed as `<system>@<rev>`.
+    assertEquals(404, get("/wear-m3@abc123/", host = siteHost).first)
+    // The main host still serves the upload.
+    assertEquals(200, get("/some-upload/").first)
+  }
+
+  @Test
+  fun `status aggregates are scoped, not just the catalog list`() {
+    server = newServer()
+    val (_, body, _) = get("/status.json", host = siteHost)
+    // `daemons.known` was a box-wide session count, so a per-app monitor was reading the box.
+    // Three sessions are registered; the site knows its own.
+    assertTrue(body.contains("\"known\":1"), "session count is site-scoped: $body")
+    val (_, mainBody, _) = get("/status.json")
+    assertTrue(mainBody.contains("\"known\":3"), "the main host still counts the box: $mainBody")
+  }
+
+  @Test
+  fun `a site cannot claim a built-in route as its system`() {
+    // `/render/<id>.png` on a site mapped to `render` would be read as a canonical prefixed URL and
+    // redirected to `/<id>.png`, breaking every image. Such an id is already unreachable at its
+    // canonical path anyway (the constant route outscores `/{system}`), so it is refused.
+    val problems = mutableListOf<String>()
+    val sites =
+      ServeSites.of(
+        listOf("render.example.test" to "render", "ok.example.test" to "compose-m3"),
+        knownSystems = setOf("render", "compose-m3"),
+        onProblem = problems::add,
+      )
+    assertNull(sites.systemFor("render.example.test"))
+    assertEquals("compose-m3", sites.systemFor("ok.example.test"))
+    assertTrue(problems.single().contains("collides with a built-in route"), problems.toString())
+  }
+
+  @Test
+  fun `an empty known-system set means nothing is known, not skip the check`() {
+    // A module-backed server serves no catalogs at all. A site naming one is a typo to report, not
+    // a mapping to keep — keeping it 404s every route on that hostname instead.
+    val problems = mutableListOf<String>()
+    val sites =
+      ServeSites.of(
+        listOf("app.example.test" to "typo"),
+        knownSystems = emptySet(),
+        onProblem = problems::add,
+      )
+    assertTrue(sites.isEmpty, "an unserved system is dropped")
+    assertTrue(problems.single().contains("does not serve"), problems.toString())
+    // Null still means "don't check" — the tests and callers that validate elsewhere.
+    assertEquals(
+      "typo",
+      ServeSites.of(listOf("app.example.test" to "typo")).systemFor("app.example.test"),
+    )
+  }
+
+  @Test
   fun `parsing drops malformed and unknown-system entries`() {
     val problems = mutableListOf<String>()
     val sites =
@@ -262,6 +328,13 @@ class ServeTopLevelSiteTest {
     assertNull(sites.systemFor("unknown.coo.ee"))
     assertEquals("m3.preview.coo.ee", sites.hostFor("m3-catalog"))
     assertTrue(ServeSites.parse(null).isEmpty)
+    // The `--sites` flag path parses BEFORE the served set is known (ServeCommand re-validates the
+    // combined list against it afterwards), so an unchecked parse must keep its entries rather
+    // than read "no systems supplied" as "no systems exist".
+    assertEquals(
+      "m3-catalog",
+      ServeSites.parse("m3.preview.coo.ee=m3-catalog").systemFor("m3.preview.coo.ee"),
+    )
   }
 
   @Test

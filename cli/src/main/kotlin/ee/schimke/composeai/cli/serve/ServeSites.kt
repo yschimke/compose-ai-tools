@@ -101,7 +101,14 @@ data class ServeSites(private val byHost: Map<String, String>) {
      */
     fun of(
       pairs: List<Pair<String, String>>,
-      knownSystems: Set<String> = emptySet(),
+      /**
+       * The systems this server serves, or null to skip the check entirely (tests, and callers that
+       * validate elsewhere). Deliberately nullable rather than "empty means don't check": a
+       * module-backed server with no catalogs at all knows an EMPTY set, and a site naming anything
+       * on it must be dropped — reading that as "unvalidated" kept a dead hostname that 404s every
+       * route instead of reporting the typo at startup.
+       */
+      knownSystems: Set<String>? = null,
       onProblem: (String) -> Unit = {},
     ): ServeSites {
       val byHost = LinkedHashMap<String, String>()
@@ -115,8 +122,19 @@ data class ServeSites(private val byHost: Map<String, String>) {
           onProblem("site '$host' names an invalid system '$system'")
           continue
         }
-        if (knownSystems.isNotEmpty() && system !in knownSystems) {
+        if (knownSystems != null && system !in knownSystems) {
           onProblem("site '$host' names '$system', which this server does not serve")
+          continue
+        }
+        // A: a site's system id is ALSO the first path segment its canonical URLs use, and the
+        // canonical-path redirect keys off exactly that. An id that collides with a rooted route
+        // — a catalog literally called `render`, `p` or `api` — would make the interceptor read
+        // this site's own `/render/<id>.png` as a prefixed URL and redirect it to `/<id>.png`,
+        // breaking every image on the site. Such an id is already ambiguous on the main host
+        // (the constant route outscores `/{system}`), so it is refused here rather than served
+        // half-working.
+        if (system in RESERVED_SYSTEMS) {
+          onProblem("site '$host' names '$system', which collides with a built-in route")
           continue
         }
         if (byHost.putIfAbsent(host, system) != null) {
@@ -133,7 +151,8 @@ data class ServeSites(private val byHost: Map<String, String>) {
      */
     fun parse(
       spec: String?,
-      knownSystems: Set<String> = emptySet(),
+      /** As [of]: null skips the served-system check, an empty set fails every entry. */
+      knownSystems: Set<String>? = null,
       onProblem: (String) -> Unit = {},
     ): ServeSites {
       if (spec.isNullOrBlank()) return EMPTY
@@ -154,5 +173,54 @@ data class ServeSites(private val byHost: Map<String, String>) {
 
     /** Same alphabet [ServeCatalogsConfig] accepts for a catalog id — a site can only name one. */
     private val SYSTEM_RE = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+
+    /**
+     * First path segments the server routes itself, which a site's system id therefore may not be.
+     * These are the constant routes registered alongside `/{system}/…`; Ktor scores a constant
+     * segment above the parameter, so a catalog with one of these ids is unreachable at its
+     * canonical path on ANY host — a site just makes the collision visible.
+     */
+    private val RESERVED_SYSTEMS =
+      setOf(
+        "healthz",
+        "readyz",
+        "version",
+        "status",
+        "status.json",
+        "robots.txt",
+        "sitemap.xml",
+        "favicon.svg",
+        "favicon.ico",
+        "apple-touch-icon.png",
+        "assets",
+        "wasm",
+        "rc-player",
+        "rc-player-wasm",
+        "doc-player",
+        "hero",
+        "social",
+        "admin",
+        "auth",
+        "bundles",
+        "bundle",
+        "bundle.zip",
+        "docs",
+        "d",
+        "playground",
+        "api",
+        "ws",
+        "p",
+        "render",
+        "history",
+        "compare",
+        "reference",
+        "pages",
+        "rc-compare",
+        "parity",
+        "parity.json",
+        "refresh",
+        "index.json",
+        "iframe.html",
+      )
   }
 }
