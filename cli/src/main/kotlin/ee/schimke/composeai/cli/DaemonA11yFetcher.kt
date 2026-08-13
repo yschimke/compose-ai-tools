@@ -202,23 +202,28 @@ internal class DaemonA11yFetcher(
         // preview, holds the override's pixels. One forced fetch at default overrides fixes both,
         // so it runs even when the declared preview has no entry to file (`--id Foo_dark`): the
         // report gains nothing, but the render on disk stops lying about which configuration it is.
-        val payload = fetchOne(previewId, base?.entryId ?: previewId, forcedDefaultParams())
-        if (base == null) {
-          if (payload == null) {
-            onLog(
-              "could not restore the default render of '$previewId' after its permutations; " +
-                "renders/$previewId.png may still hold a permutation's pixels"
-            )
-          }
-          continue
+        val payload = fetchOne(previewId, base?.entryId ?: previewId, forcedFetchParams(null))
+        if (payload == null) {
+          onLog(
+            "could not restore the default render of '$previewId' after its permutations; " +
+              "renders/$previewId.png may still hold a permutation's pixels"
+          )
+          // Everything under `data/<previewId>/` is still the last permutation's, including the
+          // `a11y-atf.json` sitting at this preview's own cache path — which the *next* run's
+          // unforced fetch would happily serve as the base's findings. Delete them: absent is the
+          // one state that reads correctly here, both for this report (no overlay, no nodes) and
+          // for that next fetch, which sees a missing file and re-renders.
+          discardArtifacts(projectDir, previewId)
         }
+        if (base == null) continue
         if (payload != null) anyFetchOk = true else failedIds += base.entryId
         entries.add(
           AccessibilityEntry(
             previewId = base.entryId,
             findings = payload?.let(::parseFindings).orEmpty(),
-            nodes = readNodes(projectDir, base.entryId),
-            annotatedPath = relativeOverlayPath(projectDir, base.entryId),
+            nodes = if (payload != null) readNodes(projectDir, base.entryId) else emptyList(),
+            annotatedPath =
+              if (payload != null) relativeOverlayPath(projectDir, base.entryId) else null,
           )
         )
       }
@@ -367,15 +372,27 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * The `params` bag for one fetch: the permutation's render overrides, plus a forced re-render so
-   * the daemon produces the artefact at *those* overrides rather than serving whatever the shared
-   * per-preview file already holds. `null` for a declared preview, which wants its own defaults and
-   * can reuse a cached render.
+   * The `params` bag for one fetch: `null` for a declared preview with no permutations in play,
+   * which wants its own defaults and may reuse a cached render — that reuse is the narrow fast
+   * fetch #3742 exists to keep. Every permutation gets [forcedFetchParams].
+   *
+   * The force flag hangs off **being a permutation**, not off carrying a non-empty override bag. A
+   * declared `@Preview(fontScale = 2.0f)` expands to a `_fontscale-2x` variant whose params equal
+   * the base's, so [PreviewPermutationsCli.overridesFor] returns `null` for it — and an unforced
+   * fetch of that variant would serve whatever the *previous* permutation left at the shared cache
+   * path, filing the RTL render's findings under the 2× id. Forced with no overrides is the honest
+   * request for it: its configuration genuinely is the base's.
    */
-  private fun fetchParams(preview: ReportCommand.RequestedPreview): JsonElement? {
-    val overrides = preview.overrides ?: return null
-    return buildJsonObject {
-      put(DataFetchParams.PARAM_FORCE_RERENDER, JsonPrimitive(true))
+  private fun fetchParams(preview: ReportCommand.RequestedPreview): JsonElement? =
+    if (preview.isPermutation) forcedFetchParams(preview.overrides) else null
+
+  /**
+   * A forced re-render carrying [overrides] (or none), so the daemon produces the artefact at
+   * *that* configuration rather than serving whatever the shared per-preview file already holds.
+   */
+  private fun forcedFetchParams(overrides: PreviewOverrides?): JsonElement = buildJsonObject {
+    put(DataFetchParams.PARAM_FORCE_RERENDER, JsonPrimitive(true))
+    if (overrides != null) {
       put(
         DataFetchParams.PARAM_OVERRIDES,
         json.encodeToJsonElement(PreviewOverrides.serializer(), overrides),
@@ -384,12 +401,23 @@ internal class DaemonA11yFetcher(
   }
 
   /**
-   * The `params` bag for the declared preview's fetch when a permutation of it already ran: a
-   * forced re-render carrying **no** overrides, so the daemon rebuilds this preview at its own
-   * configuration instead of serving the file the override left at the shared cache path.
+   * Delete every per-render artefact under `data/[previewId]/`, because what's there describes a
+   * render this preview isn't and no fresh render replaced it.
+   *
+   * Includes `a11y-atf.json`, which is not a report input but *is* the file
+   * `FileBackedDataProductRegistry` serves: it only queues a re-render when that file is
+   * **missing**, so leaving a permutation's copy behind would hand the next unforced fetch of this
+   * preview the override's findings. Deleting makes that next fetch a real render.
    */
-  private fun forcedDefaultParams(): JsonElement = buildJsonObject {
-    put(DataFetchParams.PARAM_FORCE_RERENDER, JsonPrimitive(true))
+  private fun discardArtifacts(projectDir: File, previewId: String) {
+    val dir = projectDir.resolve("build/compose-previews/data/$previewId")
+    for (name in PER_RENDER_FILES) {
+      try {
+        dir.resolve(name).delete()
+      } catch (e: Exception) {
+        onLog("could not discard stale $name for '$previewId': ${e.message}")
+      }
+    }
   }
 
   /**
@@ -493,5 +521,15 @@ internal class DaemonA11yFetcher(
      * `data/<previewId>/` and read back from there by [readNodes] / [relativeOverlayPath].
      */
     private val SNAPSHOT_FILES = listOf("a11y-overlay.png", "a11y-hierarchy.json")
+
+    /**
+     * Everything `AccessibilityDataProducer.writeArtifacts` puts under `data/<previewId>/` for one
+     * render — the two [SNAPSHOT_FILES] plus the cached data product and the touch-target
+     * derivation, neither of which this report reads but both of which describe the render that
+     * produced them. [discardArtifacts] removes the set, so nothing is left claiming to be a
+     * configuration it isn't.
+     */
+    private val PER_RENDER_FILES =
+      listOf("a11y-atf.json", "a11y-hierarchy.json", "a11y-touchTargets.json", "a11y-overlay.png")
   }
 }
