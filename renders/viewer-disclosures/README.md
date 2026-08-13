@@ -12,8 +12,12 @@ server-side, so there is no expanded flash before the drawer script runs. A clos
 names the value its row carried (`STATE · Default`, `THEME · Day`), which is what makes folding by
 default safe.
 
-The markup is in [`ServeWeb.viewerPage`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeWeb.kt)
-(`disclosureToggleHtml`, `AXIS_CHIPS_INLINE`, `THEME_CHIPS_INLINE`), the fold behaviour and its
+The component's renders are now a **subtree of the catalog tree**, filtered to the one component
+on screen and built from the same `primaryVariants` the landing tree uses — one definition of what
+a component's renders are, drawn twice. The markup is in
+[`ServeWeb.viewerPage`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeWeb.kt)
+(`componentSubtreeHtml`, `appendComponentRow`, `disclosureToggleHtml`, `AXIS_ROWS_INLINE`,
+`THEME_CHIPS_INLINE`), the fold behaviour and its
 per-visitor memory in [`viewer-drawers.js`](../../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/viewer-drawers.js).
 
 Captured at 1400×1000 (and 390×760 for the phone shot) from the committed
@@ -26,6 +30,6 @@ shoot it again.
 | `theme-overflow-before.png` | the `serve-viewer-theme-overflow` fixture **before**: eight theme chips on a row of their own, four of them ellipsised, the drawer toggles at either end of the bar |
 | `theme-overflow-after.png` | the same page **after**: the chips fold behind `THEME · Night` on the title row, and the row they occupied is back |
 | `viewer-folded.png` | the resting state on a wide catalog: ten states and five themes folded behind `STATE · Default` / `THEME · Day`, the render starting where three chip rows used to |
-| `viewer-axes-open.png` | both folds opened — the state chips and the theme bar are one click away, and the toggles go tonal to say so |
+| `viewer-axes-open.png` | both folds opened — the component's **subtree** (the catalog tree filtered to this component, current render marked) and the theme bar are one click away, and the toggles go tonal to say so |
 | `viewer-nav-closed.png` | the component list collapsed **on a desktop**, which it could not be before: the 240px column goes back to the stage |
 | `viewer-mobile.png` | a phone, scrolled past the top: the title row is sticky, so all four disclosures stay one tap away over a tall preview |

@@ -11,10 +11,11 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
 /**
- * Pins the **component-state toggle** wiring in [ServeWeb]: baked non-default states
+ * Pins the **component-state** wiring in [ServeWeb]: baked non-default states
  * (`unchecked`/`pressed`/…) are folded out of the landing grid so a component shows ONE card, and
- * the viewer grows a `<nav class="cp-states">` switcher of plain links to the component's other
- * states *in the same theme*. Stateless previews (a plain uploaded bundle) are untouched.
+ * the viewer grows a `.cp-axes-tree` subtree — the catalog tree filtered to this component — of
+ * plain links to its other renders *in the same theme*. Stateless previews (a plain uploaded
+ * bundle) are untouched.
  */
 class ServeWebTest {
 
@@ -99,10 +100,10 @@ class ServeWebTest {
     val html =
       ServeWeb.viewerPage(current, token = "t", basePath = "/compose-m3", siblings = checkbox)
 
-    assertTrue(html.contains("class=\"cp-states\""), "state switcher rendered")
-    // Isolate the switcher nav — other page chrome (the component nav drawer) also links siblings,
-    // so the theme-scoping assertion must look only inside `<nav class="cp-states">…</nav>`.
-    val nav = html.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    assertTrue(html.contains("class=\"cp-tree cp-axes-tree\""), "component subtree rendered")
+    // Isolate the subtree — other page chrome (the component nav drawer) also links siblings, so
+    // the theme-scoping assertion must look only inside the `.cp-axes-tree` nav.
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     // Links to the SAME-THEME (light) unchecked sibling…
     assertTrue(
       nav.contains("/compose-m3/p/checkbox__ideal__unchecked__light"),
@@ -125,8 +126,11 @@ class ServeWebTest {
     val button = listOf(preview("button", "default", "light"), preview("button", "default", "dark"))
     val html =
       ServeWeb.viewerPage(button[0], token = "t", basePath = "/compose-m3", siblings = button)
-    // The `.cp-states` CSS rule ships on every page; assert the absence of the nav *element*.
-    assertFalse(html.contains("class=\"cp-states\""), "no switcher for a one-state component")
+    // The tree CSS ships on every page; assert the absence of the nav *element*.
+    assertFalse(
+      html.contains("class=\"cp-tree cp-axes-tree\""),
+      "no subtree for a one-render component",
+    )
   }
 
   // A component whose non-default states are published UNTAGGED on the primary (light) lane while
@@ -165,8 +169,11 @@ class ServeWebTest {
     val html =
       ServeWeb.viewerPage(current, token = "t", basePath = "/m3-catalog", siblings = mixedTagging)
 
-    assertTrue(html.contains("class=\"cp-states\""), "state switcher rendered on the light lane")
-    val nav = html.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    assertTrue(
+      html.contains("class=\"cp-tree cp-axes-tree\""),
+      "subtree rendered on the light lane",
+    )
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
       nav.contains("/m3-catalog/p/button-filled__ideal__xs") &&
         nav.contains("/m3-catalog/p/button-filled__ideal__xl-square"),
@@ -181,7 +188,7 @@ class ServeWebTest {
     val html =
       ServeWeb.viewerPage(current, token = "t", basePath = "/m3-catalog", siblings = mixedTagging)
 
-    val nav = html.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
       nav.contains("/m3-catalog/p/button-filled__ideal__default__light"),
       "the light default is reachable back from an untagged state",
@@ -196,7 +203,7 @@ class ServeWebTest {
     val html =
       ServeWeb.viewerPage(current, token = "t", basePath = "/m3-catalog", siblings = mixedTagging)
 
-    val nav = html.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(nav.contains("/m3-catalog/p/button-filled__ideal__xs__dark"), "dark siblings link")
     assertFalse(
       nav.contains("/m3-catalog/p/button-filled__ideal__xs\"") ||
@@ -217,8 +224,8 @@ class ServeWebTest {
       )
     val html = ServeWeb.viewerPage(toggle[0], token = "t", basePath = "/catalog", siblings = toggle)
 
-    assertTrue(html.contains("class=\"cp-states\""), "the state switcher is rendered")
-    val nav = html.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    assertTrue(html.contains("class=\"cp-tree cp-axes-tree\""), "the component subtree is rendered")
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
       nav.contains("/catalog/p/toggle__ideal__dark"),
       "a state named `dark` stays in its component's lane rather than being read as a theme",
@@ -241,8 +248,8 @@ class ServeWebTest {
       )
     val html = ServeWeb.viewerPage(mixed[0], token = "t", basePath = "/catalog", siblings = mixed)
 
-    assertTrue(html.contains("aria-label=\"Component variant\""), "variant switcher rendered")
-    val nav = html.substringAfter("aria-label=\"Component variant\"").substringBefore("</nav>")
+    assertTrue(html.contains("class=\"cp-tree cp-axes-tree\""), "component subtree rendered")
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
       nav.contains("/catalog/p/button__ideal__default__content-icon-label"),
       "an untagged props sibling is reachable from the themed default",
@@ -260,7 +267,7 @@ class ServeWebTest {
       )
     val html = ServeWeb.viewerPage(wear[0], token = "t", basePath = "/wear-m3", siblings = wear)
 
-    val nav = html.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(
       nav.contains("/wear-m3/p/edgebutton__ideal__pressed"),
       "an untagged Wear render joins the dark lane rather than stranding alone",
@@ -299,7 +306,8 @@ class ServeWebTest {
     // the icon+label render (a different variant axis).
     val labelHtml =
       ServeWeb.viewerPage(labelDefault, token = "t", basePath = "/compose-m3", siblings = all)
-    val labelNav = labelHtml.substringAfter("class=\"cp-states\"").substringBefore("</nav>")
+    val labelNav =
+      labelHtml.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     assertTrue(labelNav.contains("aria-current=\"page\">Default</a>"), "current state active")
     assertTrue(
       labelNav.contains("/p/button-filled__ideal__pressed__light"),
@@ -307,13 +315,25 @@ class ServeWebTest {
     )
     assertFalse(labelNav.contains("content-icon-label"), "does not cross into the content axis")
 
-    // The icon+label render has no sibling state of its own, so it shows no switcher (rather than a
-    // switcher that navigates back to the label-only button).
+    // The icon+label render has no sibling STATE of its own. The old chip switcher, keyed to the
+    // current render's axes, therefore showed it nothing at all — a dead end you could navigate
+    // into and not back out of. A subtree roots at the COMPONENT, so arriving on a props variant
+    // shows the same tree every other render of that component shows, with this one marked: the
+    // component's renders are a property of the component, not of where you happened to enter.
     val iconHtml =
       ServeWeb.viewerPage(iconLabel, token = "t", basePath = "/compose-m3", siblings = all)
-    assertFalse(
-      iconHtml.contains("class=\"cp-states\""),
-      "the content variant with no state siblings shows no switcher",
+    val iconNav =
+      iconHtml.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
+    assertTrue(
+      iconNav.contains(
+        "/p/button-filled__ideal__default__light__content-icon-label?token=t\" aria-current=\"page\""
+      ),
+      "the render on screen is a row of its own component's tree, and marked: $iconNav",
+    )
+    assertTrue(
+      iconNav.contains("/p/button-filled__ideal__default__light?token=t\"") &&
+        iconNav.contains("/p/button-filled__ideal__pressed__light"),
+      "…and can reach the component's default and its states: $iconNav",
     )
   }
 
@@ -329,7 +349,10 @@ class ServeWebTest {
     assertEquals(2, Regex("class=\"cp-card\"").findAll(grid).count(), "both stateless cards shown")
 
     val viewer = ServeWeb.viewerPage(plain[0], token = "t", basePath = "/bundle", siblings = plain)
-    assertFalse(viewer.contains("class=\"cp-states\""), "no switcher without state metadata")
+    assertFalse(
+      viewer.contains("class=\"cp-tree cp-axes-tree\""),
+      "no subtree without state metadata",
+    )
   }
 
   // Button/Filled with its default render plus two props-axis variants (an RTL render and an ar-XB
@@ -396,8 +419,8 @@ class ServeWebTest {
     val html =
       ServeWeb.viewerPage(current, token = "t", basePath = "/compose-m3", siblings = buttonVariants)
 
-    assertTrue(html.contains("aria-label=\"Component variant\""), "variant switcher rendered")
-    val nav = html.substringAfter("aria-label=\"Component variant\"").substringBefore("</nav>")
+    assertTrue(html.contains("class=\"cp-tree cp-axes-tree\""), "component subtree rendered")
+    val nav = html.substringAfter("class=\"cp-tree cp-axes-tree\"").substringBefore("</nav>")
     // Links the SAME-THEME (light) RTL + locale variants…
     assertTrue(
       nav.contains("/compose-m3/p/button-filled__ideal__default__light__direction-rtl"),

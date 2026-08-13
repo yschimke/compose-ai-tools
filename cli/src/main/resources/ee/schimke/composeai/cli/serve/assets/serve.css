@@ -988,9 +988,33 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 /* The value is the fact the folded row would otherwise have carried, so it is the emphasised half
    and it never ellipsises away to nothing. */
 .cp-toggle-value { max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The folded state/variant rows. A plain block wrapper so `hidden` is all the toggle has to set;
-   the `<nav class="cp-states">` rows inside keep their own layout. */
+/* The folded component subtree. A plain block wrapper so `hidden` is all the toggle has to set;
+   the `<nav class="cp-tree">` inside keeps the tree's own layout. */
 .cp-axes[hidden] { display: none; }
+/* The viewer's subtree is the catalog tree's markup, so it inherits the rails, the twisty and the
+   row shapes for free — but NOT the sidebar geometry. `.cp-tree` is a sticky 216px column inside
+   `.cp-catalog-body` above 960px; here it is a block above the stage, on a page that has no such
+   grid, so both the stickiness and the outer margin are undone. Overriding rather than minting a
+   parallel class is the point: a change to how a tree row looks has to reach both places. */
+.cp-axes-tree { position: static; max-height: none; overflow: visible; margin: 0 0 10px;
+  max-width: 420px; }
+/* The subtree's ROOT is the component itself, so it hangs off nothing and needs no rail or indent
+   of its own; the variants keep theirs, which is what still reads as a tree rather than a list. */
+.cp-axes-tree > .cp-tree-list > li > .cp-tree-component { padding-left: 0; }
+.cp-axes-tree .cp-tree-variants { margin-left: 10px; }
+/* Where you ARE. The landing tree marks a row it scroll-spied to with `aria-current="true"`; here
+   every row is a real navigation, so the render on screen is `aria-current="page"` — the same
+   distinction the component nav drawer already draws, and the same tonal pill it uses. */
+.cp-axes-tree .cp-tree-link[aria-current="page"] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container); font-weight: 500;
+  border-radius: var(--md-sys-shape-corner-full); }
+.cp-axes-tree .cp-tree-variant[aria-current="page"] { text-decoration: none; }
+/* `inline-block`, not the landing tree's `block`: on the landing a variant row is one line in a
+   216px column, but here the marker is a filled pill in a 420px block, and a block-level pill
+   stretches the full width — a bar the length of the panel to say "this one", which reads as a
+   heading rather than a selection. Shrunk to its label it reads as the chip it replaced. */
+.cp-axes-tree .cp-tree-variant { display: inline-block; }
 .cp-preview-primary { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
 /* The stage is the viewer's hero surface — an M3 elevated card at the large corner. */
