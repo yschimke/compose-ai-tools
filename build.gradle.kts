@@ -141,6 +141,14 @@ tasks.register("functionalTestWithAndroid") {
 //     implementation :lottie-preview-runtime (Compottie-backed kind=LOTTIE render path)
 //     implementation :svg-preview-runtime (Skia loadSvgPainter kind=SVG render path)
 //   plus :common-io (the Okio file-IO foundation those modules read/write through).
+//
+// Keep this in sync with the real graph — a missing entry does not fail at configuration time, it
+// fails inside the e2e as `Could not find ee.schimke.composeai:<artifact>` while Gradle resolves
+// the synthetic project's renderer classpath out of `~/.m2`. To re-derive the closure:
+//   ./gradlew :renderer-desktop:dependencies --configuration runtimeClasspath \
+//     | grep -oE "project ':[A-Za-z0-9:._-]+'" | sort -u
+// Every project it prints belongs below. Both e2e jobs here are push-to-main/nightly only (skipped
+// on PRs), so drift lands on `main` before anything notices.
 val bundleRenderFunctionalTestPublishTargets =
   listOf(
     ":renderer-desktop",
