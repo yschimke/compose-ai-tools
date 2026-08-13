@@ -34,6 +34,7 @@ import argparse
 import json
 import shutil
 import sys
+from collections import Counter
 from pathlib import Path
 
 
@@ -118,6 +119,32 @@ def load_previews(build_dir: Path) -> tuple[dict, dict, str | None, bool]:
         for entry in report.get("entries", []):
             a11y_by_id[entry["previewId"]] = entry
     return manifest, a11y_by_id, status, partial
+
+
+def module_identity(build_dir: Path) -> str:
+    """Gradle-path-ish label for the module whose outputs live in ``build_dir``.
+
+    Used only to disambiguate modules whose ``previews.json`` ``module`` field
+    collides — that field is ``project.name``, the leaf, so ``:foo:app`` and
+    ``:bar:app`` are both ``app`` (issue #3763). Mirrors the translation the
+    a11y pipeline already does in shell to match its skip list:
+    ``foo/bar/build/compose-previews`` → ``foo:bar``.
+
+    Falls back to the directory itself when it doesn't follow the
+    ``<module>/build/compose-previews`` convention, which keeps this total for
+    ad-hoc invocations rather than raising on them.
+    """
+    parts = build_dir.parts
+    module_dir = (
+        Path(*parts[:-2])
+        if len(parts) >= 3 and parts[-2:] == ("build", "compose-previews")
+        else build_dir
+    )
+    try:
+        module_dir = module_dir.relative_to(Path.cwd())
+    except ValueError:
+        pass
+    return ":".join(p for p in module_dir.parts if p not in ("/", "")) or build_dir.name
 
 
 def is_dynamic_preview(preview: dict) -> bool:
@@ -261,13 +288,25 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
     # same-named projects; that identity problem is tracked in issue #3763.
     unchecked_previews: list[dict] = []
 
-    for raw_build_dir in build_dirs:
-        build_dir = Path(raw_build_dir)
-        manifest, a11y_by_id, status, partial = load_previews(build_dir)
+    # Load every module up front so a leaf-name collision is visible before the
+    # first render is copied. `module` is `project.name`, so `:foo:app` and
+    # `:bar:app` both report `app` — and the per-module renders dir below is
+    # rmtree'd before it is written, so the second module would delete the
+    # first one's PNGs (issue #3763). Only a genuine collision is renamed, which
+    # keeps every ordinary run byte-identical to before and so leaves the
+    # published baseline's keys alone.
+    loaded = [(Path(raw), *load_previews(Path(raw))) for raw in build_dirs]
+    leaf_counts = Counter(manifest["module"] for _, manifest, _, _, _ in loaded)
+
+    for build_dir, manifest, a11y_by_id, status, partial in loaded:
         module_unchecked: list[str] = []
         rows = select_variants(manifest, a11y_by_id, partial, module_unchecked)
 
         module = manifest["module"]
+        if leaf_counts[module] > 1:
+            module = module_identity(build_dir)
+            for row in rows:
+                row["module"] = module
         unchecked_previews.extend(
             {"module": module, "previewId": preview_id}
             for preview_id in module_unchecked
