@@ -85,23 +85,27 @@ internal object PreviewRenderScope {
     val selected = linkedSetOf<String>()
     val renderedIds = linkedSetOf<String>()
     var discovered = 0
+    // Issue #3786 — a selector naming a `@PreviewParameter` row (`Foo_PARAM_1`, or a bare label
+    // like `Crimson`) picks out an id that only exists once the fan-out is on disk, so it can never
+    // match a manifest entry here. Selecting the parameterized previews it *might* name keeps the
+    // #3730 narrowing working for row requests instead of falling through to
+    // `selected.isEmpty() -> FULL` and rendering the whole module. Gated on there being no direct
+    // match anywhere, so a request that names a real preview still narrows to exactly that one.
+    val matchedDirectly = requestHasDirectMatch(manifests, exactId, filter, previewRef)
     for ((_, manifest) in manifests) {
       for (preview in manifest.previews) {
         discovered++
         val expanded = PreviewPermutationsCli.expand(listOf(preview), permutations).map { it.id }
-        // Issue #3786 — a `@PreviewParameter` row selector (`Foo_PARAM_1`) names an id that only
-        // comes into existence once the fan-out is on disk, so it can never match a manifest entry
-        // here. Selecting its *base* keeps the #3730 narrowing working for row requests instead of
-        // falling through to `selected.isEmpty() -> FULL` and rendering the whole module.
-        val rowAddressed =
+        val mayOwnRequestedRow =
           previewMatchesRequestIncludingRows(
             preview,
             exactId = exactId,
             filter = filter,
             previewRef = previewRef,
+            requestMatchedDirectly = matchedDirectly,
           )
         if (
-          !rowAddressed &&
+          !mayOwnRequestedRow &&
             expanded.none {
               previewIdMatchesRequest(
                 it,

@@ -128,9 +128,8 @@ class PreviewRowSelectorTest {
   }
 
   /**
-   * The prefix test is anchored on a real manifest id *plus* its provider, so it doesn't mis-handle
-   * the case the issue flagged against a naive `substringBeforeLast('_')`: a declared preview whose
-   * id genuinely ends in `_1` is matched under its own name.
+   * A declared preview whose id genuinely ends in `_1` is matched under its own name — the
+   * mis-handling the issue flagged against a naive `substringBeforeLast('_')`.
    */
   @Test
   fun `a declared preview whose id ends in an underscore digit matches as itself`() {
@@ -145,6 +144,75 @@ class PreviewRowSelectorTest {
       )
 
     assertEquals(listOf(":app"), selected.map { it.gradlePath })
+  }
+
+  /**
+   * Review follow-up (#3795). A real preview named `Foo_Dark` in one module and a parameterized
+   * `Foo` in another: `--id Foo_Dark` must resolve to the module that actually declares it. Keeping
+   * both — the second because `Foo_Dark` *could* be a row of `Foo` — makes `serve` abort with "2
+   * modules discovered" before its row-level filtering ever runs, turning a previously working
+   * exact selection into an error. A direct hit anywhere therefore switches the row lane off, the
+   * same way the daemon consults `PreviewRowAddress.split` only on an exact miss.
+   */
+  @Test
+  fun `an exact hit anywhere wins over a hypothetical row of a parameterized preview`() {
+    val app = module(":app")
+    val wear = module(":wear")
+
+    val selected =
+      modulesMatchingPreviewRequest(
+        modules = listOf(app, wear),
+        manifests =
+          listOf(
+            manifest(app, preview("Foo", parameterized = true)),
+            manifest(wear, preview("Foo_Dark")),
+          ),
+        exactId = "Foo_Dark",
+        filter = null,
+      )
+
+    assertEquals(listOf(":wear"), selected.map { it.gradlePath })
+  }
+
+  /**
+   * Review follow-up (#3795). `--filter` is a case-insensitive **substring** of the final id, so
+   * these are ordinary ways to ask for a row — and `ServeCommand.matches(row.id)` would match all
+   * of them. Module selection has to agree, or it drops the module before that check runs. A
+   * `<base>_<row>` prefix rule answered "no" to the last two: a row's label is not a prefix of
+   * anything, and the rule was case-sensitive besides.
+   */
+  @Test
+  fun `filter keeps a parameterized preview for any row-shaped spelling`() {
+    val app = module(":app")
+    val manifests = listOf(manifest(app, preview("Foo", parameterized = true)))
+
+    for (f in listOf("Foo_PARAM_1", "foo_param_1", "PARAM_1", "Crimson")) {
+      assertEquals(
+        listOf(":app"),
+        modulesMatchingPreviewRequest(listOf(app), manifests, exactId = null, filter = f).map {
+          it.gradlePath
+        },
+        "--filter $f must keep the module that owns the rows it could name",
+      )
+    }
+  }
+
+  /** The same undecidability applies to `--preview`, whose loose form is also a substring rule. */
+  @Test
+  fun `preview ref keeps a parameterized preview for a row label`() {
+    val app = module(":app")
+
+    assertEquals(
+      listOf(":app"),
+      modulesMatchingPreviewRequest(
+          listOf(app),
+          listOf(manifest(app, preview("Foo", parameterized = true))),
+          exactId = null,
+          filter = null,
+          previewRef = "Crimson",
+        )
+        .map { it.gradlePath },
+    )
   }
 
   /** The selectors intersect, so a row id on one must not cancel a normal match on another. */
