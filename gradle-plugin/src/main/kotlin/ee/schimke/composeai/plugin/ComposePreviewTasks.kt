@@ -1854,6 +1854,13 @@ internal object ComposePreviewTasks {
      * ordinary preview throw, and for sidecars written by an older renderer.
      */
     val diagnosis: String = "",
+    /**
+     * Full `Throwable.printStackTrace()` text. Read for its `Caused by:` chain and for a stack
+     * frame in the user's own package — [exception] alone is routinely the reflective wrapper the
+     * renderer's `invoke` produced, and [topAppFrame] is derived from that wrapper's frames
+     * (issue #3741). Empty for a sidecar written by a renderer that predates the field.
+     */
+    val stackTrace: String = "",
   ) {
     @kotlinx.serialization.Serializable
     internal data class TopAppFrame(
@@ -1902,6 +1909,48 @@ internal object ComposePreviewTasks {
       if (sidecar != null) result[id] = sidecar
     }
     return result
+  }
+
+  /**
+   * What one sidecar actually says, once its stack trace has been read: the deepest `Caused by:`
+   * (or the sidecar's own exception when there is no chain), the best source frame, and a compact
+   * rendering of the chain. Also the grouping key for the per-preview list — two previews are "the
+   * same failure" when all of this matches, so one broken dependency reports itself once with a
+   * count while genuinely different bugs each keep their own line.
+   */
+  internal data class RenderErrorInsight(
+    val exception: String,
+    val message: String,
+    val frame: ErrorSidecar.TopAppFrame?,
+    /** `InvocationTargetException → NoClassDefFoundError`, or empty when there is no chain. */
+    val chain: String,
+  )
+
+  /**
+   * Read [sidecar] the way a human would: lead with the root cause rather than the reflective
+   * wrapper the renderer's `invoke` produced, and point at a frame in the preview's own package
+   * (from [previewClassName]) rather than at the tooling frame that called it. Falls back to the
+   * sidecar's own `exception` / `message` / `topAppFrame` whenever the trace offers nothing better
+   * — including for sidecars written by a renderer that predates the `stackTrace` field.
+   */
+  internal fun renderErrorInsight(
+    sidecar: ErrorSidecar,
+    previewClassName: String,
+  ): RenderErrorInsight {
+    val chain = RenderErrorTrace.causeChain(sidecar.stackTrace)
+    val root = chain.lastOrNull()
+    val names =
+      (listOf(sidecar.exception) + chain.map { it.exception })
+        .filter { it.isNotBlank() }
+        .map { it.substringAfterLast('.') }
+    return RenderErrorInsight(
+      exception = root?.exception?.takeIf { it.isNotBlank() } ?: sidecar.exception,
+      message = if (root != null) root.message else sidecar.message,
+      frame =
+        RenderErrorTrace.preferredAppFrame(sidecar.stackTrace, previewClassName)
+          ?: sidecar.topAppFrame,
+      chain = if (chain.isEmpty()) "" else names.joinToString(" → "),
+    )
   }
 
   internal fun formatMissingPreviewsMessage(
@@ -1957,25 +2006,26 @@ internal object ComposePreviewTasks {
         // and printing the first one's `at Foo.kt:12` beside a count would blame a file that has
         // nothing to do with the others. Preview order is preserved, so the first failure stays at
         // the top.
-        val groups = withSidecar.groupBy { id ->
-          val s = sidecars.getValue(id)
-          Triple(s.exception, s.message, s.topAppFrame)
+        val classNames = manifest.previews.associate { it.id to it.className }
+        val insights = withSidecar.associateWith { id ->
+          renderErrorInsight(sidecars.getValue(id), classNames[id].orEmpty())
         }
+        val groups = withSidecar.groupBy { insights.getValue(it) }
         var shown = 0
-        for ((_, ids) in groups.entries.take(5)) {
-          val s = sidecars.getValue(ids.first())
+        for ((insight, ids) in groups.entries.take(5)) {
           shown += ids.size
           sb.append("\n  - ")
           if (ids.size == 1) sb.append(ids.first()).append(": ")
-          sb.append(s.exception.substringAfterLast('.'))
-          if (s.message.isNotBlank()) sb.append(": ").append(s.message)
-          s.topAppFrame?.let { f ->
+          sb.append(insight.exception.substringAfterLast('.'))
+          if (insight.message.isNotBlank()) sb.append(": ").append(insight.message)
+          insight.frame?.let { f ->
             if (f.file.isNotBlank()) {
               sb.append(" (at ").append(f.file)
               if (f.line > 0) sb.append(':').append(f.line)
               sb.append(')')
             }
           }
+          if (insight.chain.isNotBlank()) sb.append(" — chain: ").append(insight.chain)
           if (ids.size > 1) {
             sb.append(" — ").append(ids.size).append(" previews, e.g. ")
             sb.append(ids.take(3).joinToString(", "))
