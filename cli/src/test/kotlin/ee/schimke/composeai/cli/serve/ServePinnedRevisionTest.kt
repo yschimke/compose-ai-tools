@@ -281,6 +281,17 @@ class ServePinnedRevisionTest {
     // …and the id is genuinely absent from the live catalog, so this is not the tip's map quietly
     // answering: without the pinned manifest the request above has nowhere to resolve.
     assertEquals(404, get("http://127.0.0.1:$port/$system/render/$retiredId.png").first)
+
+    // The PAGE is what a person actually opened, and it has to resolve too — the session's preview
+    // list is built from the tip, so a renamed-away id is not in it and the viewer used to 404 on
+    // a permalink whose pixels this server could serve perfectly well.
+    val page = text("http://127.0.0.1:$port/$system/p/$retiredId?at=$oldCommit")
+    assertTrue(page.contains("data-preview-id=\"$retiredId\""), page)
+    assertTrue(page.contains("Pinned to catalog revision"), page)
+    // Named by the component that revision declared it under, rather than by the bare id.
+    assertTrue(page.contains("Button/Filled"), page)
+    // Unpinned, the id is simply gone — a retired preview is not resurrected onto the live catalog.
+    assertEquals(404, get("http://127.0.0.1:$port/$system/p/$retiredId").first)
   }
 
   @Test

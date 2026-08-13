@@ -286,6 +286,13 @@ The rules the lane holds to, each of which exists because its opposite would mak
   A manifest that **was read** is authoritative about its own revision: an id it doesn't list was
   not published then, and the answer is a 404 rather than whatever happens to sit at today's path in
   that commit. The tip's map is the fallback only for a manifest that could not be read at all.
+
+  That revision's catalog also answers for the **page**, not just the pixels. A permalink outlives
+  the id it names: when a preview is renamed or reorganised away, every link made before that names
+  an id the session's list — built from the tip — no longer contains, and `/p/<id>?at=<sha>` used to
+  404 even though the pinned revision published it and the server could serve its render. Under a
+  pin, a preview the revision's own catalog lists is paged from there, named by the component it
+  belonged to. Unpinned it stays gone: a retired preview is not resurrected onto the live catalog.
 - **A load reads one commit, not a branch.** The feed is resolved first and every asset of that load
   is fetched through the sha it returned, so a publish landing mid-load can't leave the pages
   advertising one revision while serving a mixture of two. It also means the live catalog and a pin

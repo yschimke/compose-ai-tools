@@ -50,6 +50,15 @@ class ServePinnedManifest(
     val renders: Map<String, String>,
     /** Design-reference id → its canonical raster's path on the branch. */
     val references: Map<String, String>,
+    /**
+     * Preview id → the component it belonged to, when that revision's catalog named one.
+     *
+     * The bare minimum needed to *page* a preview this catalog no longer has: a permalink to one
+     * that has since been renamed away resolves its pixels from [renders], but the viewer also has
+     * to put a name on the page, and the session's own preview list — built from the tip — has
+     * nothing to say about an id it no longer contains.
+     */
+    val labels: Map<String, String> = emptyMap(),
     /** Whether `catalog.json` was fetched and parsed at this commit. */
     val catalogRead: Boolean = false,
     /** Whether `references/index.json` was fetched and parsed at this commit. */
@@ -84,11 +93,14 @@ class ServePinnedManifest(
     // function, which must not touch the map it is being computed into.
     val paths =
       byCommit.computeIfAbsent(pin) {
+        // One read of catalog.json, two maps out of it — the paths a pinned asset resolves
+        // through and the labels a pinned page needs to name a preview the tip no longer lists.
         val catalog = read(pin, ServeCatalogRevision.CATALOG_FILE, ::parseCatalog)
         val references = read(pin, ServeCatalogRevision.REFERENCES_FILE, ::parseReferences)
         Paths(
-          renders = catalog.orEmpty(),
+          renders = catalog?.paths.orEmpty(),
           references = references.orEmpty(),
+          labels = catalog?.labels.orEmpty(),
           catalogRead = catalog != null,
           referencesRead = references != null,
         )
@@ -100,11 +112,7 @@ class ServePinnedManifest(
   }
 
   /** Null when the manifest could not be read at all — distinct from "read, and it lists none". */
-  private fun read(
-    commit: String,
-    file: String,
-    parse: (String) -> Map<String, String>?,
-  ): Map<String, String>? =
+  private fun <T> read(commit: String, file: String, parse: (String) -> T?): T? =
     runCatching { fetch(commit, file)?.toString(Charsets.UTF_8)?.let(parse) }.getOrNull()
 
   companion object {
@@ -139,14 +147,27 @@ class ServePinnedManifest(
      * Tolerant by design: this reads a file published by an older CLI than the one reading it, so a
      * malformed component or image is skipped rather than failing the whole map.
      */
-    fun parseCatalog(json: String): Map<String, String>? {
+    /** What one revision's `catalog.json` says, read in a single pass. */
+    data class CatalogEntries(
+      /** Preview id → image path. */
+      val paths: Map<String, String>,
+      /** Preview id → the component that declared it, where the catalog names one. */
+      val labels: Map<String, String>,
+    )
+
+    fun parseCatalog(json: String): CatalogEntries? {
       val components =
         runCatching { JSON.parseToJsonElement(json).jsonObject["components"]?.jsonArray }
           .getOrNull() ?: return null
       val paths = LinkedHashMap<String, String>()
+      val labels = LinkedHashMap<String, String>()
       for (component in components) {
-        val images =
-          runCatching { component.jsonObject["images"]?.jsonArray }.getOrNull() ?: continue
+        val obj = runCatching { component.jsonObject }.getOrNull() ?: continue
+        val componentId =
+          runCatching { obj["componentId"]?.jsonPrimitive?.content }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+        val images = runCatching { obj["images"]?.jsonArray }.getOrNull() ?: continue
         for (image in images) {
           val path =
             runCatching { image.jsonObject["path"]?.jsonPrimitive?.content }
@@ -162,10 +183,12 @@ class ServePinnedManifest(
           // here and then applying last-wins would let a rejected entry overwrite the served one
           // under a shared id — a pin answering with bytes that revision never exposed, arrived at
           // by faithfully copying half of the loader's rule.
-          paths[ServeCatalogStore.previewIdFor(path)] = path
+          val id = ServeCatalogStore.previewIdFor(path)
+          paths[id] = path
+          componentId?.let { labels[id] = it }
         }
       }
-      return paths
+      return CatalogEntries(paths, labels)
     }
 
     /** `references/index.json` → reference id → the canonical raster's path on the branch. */

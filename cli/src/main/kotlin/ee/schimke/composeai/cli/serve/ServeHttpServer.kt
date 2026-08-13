@@ -3742,7 +3742,16 @@ class ServeHttpServer(
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
       val previewId = call.parameters["name"]
-      val preview = previewId?.let { id -> renderHost.previews.firstOrNull { it.id == id } }
+      val revisions = catalogRevisions(renderHost)
+      val preview = previewId?.let { id ->
+        renderHost.previews.firstOrNull { it.id == id }
+          // A permalink outlives the id it names. When a preview is renamed or reorganised away,
+          // every link made before that names an id this session's list — built from the branch
+          // tip — no longer contains, and the page 404s even though the revision it is pinned to
+          // published that preview and this server can still serve its pixels. Under a pin, the
+          // revision's own catalog gets to answer for it.
+          ?: revisions.pinned?.let { pin -> catalogBundleHost(renderHost)?.pinnedPreview(pin, id) }
+      }
       if (preview == null) {
         respondNotFoundHtml("That preview does not exist in this catalog.")
         return@withLeasedSession
@@ -3958,7 +3967,7 @@ class ServeHttpServer(
           // never both.
           historyInlineJson = localHistoryJson,
           historyLocalRenders = localHistoryJson != null,
-          revisions = catalogRevisions(renderHost),
+          revisions = revisions,
         ),
         ContentType.Text.Html,
       )

@@ -598,6 +598,27 @@ class ServeBundleHost(
       branchPath(commit, previewId, bakedBranchPaths, { it.catalogRead }, { it.renders }),
     )
 
+  /**
+   * A preview this catalog published at [commit] but does **not** list today, as a record the
+   * viewer can page.
+   *
+   * This is the other half of resolving a retired id. [pinnedRender] finds its pixels; without this
+   * the *page* around them still 404s, because the session's preview list is built from the branch
+   * tip and a renamed-away id is not in it — so a permalink made before the rename would answer
+   * with an image but not with the page a person actually opened.
+   *
+   * Null for an id this revision didn't publish either, and null when its catalog can't be read:
+   * inventing a page for an id nothing confirms would be worse than admitting we don't have it.
+   * Deliberately minimal — an id and whatever name that revision gave it. Everything else the
+   * viewer draws (axes, siblings, references, knobs) describes the *current* catalog, and a pinned
+   * page has all of those lanes off anyway.
+   */
+  fun pinnedPreview(commit: String, previewId: String): ServePreview? {
+    val paths = pinnedManifest?.forCommit(commit) ?: return null
+    if (!paths.catalogRead || previewId !in paths.renders) return null
+    return ServePreview(id = previewId, label = paths.labels[previewId] ?: previewId)
+  }
+
   /** [referenceId]'s canonical reference raster as published at [commit]. See [pinnedRender]. */
   fun pinnedReference(commit: String, referenceId: String): PinnedOutcome =
     pinnedAsset(
