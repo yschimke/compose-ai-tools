@@ -149,6 +149,22 @@ class ServeSessionRegistry(
     suspendListeners += listener
   }
 
+  /**
+   * Observers notified when a session is **retired** ([unregister]), so a caller holding a
+   * last-known snapshot of it (see [peekHost]) can drop it.
+   *
+   * The snapshot advice in [peekHost] has no counterpart without this: a holder is told to keep
+   * facts across suspension, and then has no way to learn that the session it kept them for is
+   * gone. On a host with catalog churn — publish, serve, retire, repeat through the admin API —
+   * every retired catalog's snapshot is retained for the life of the process.
+   */
+  private val unregisterListeners = CopyOnWriteArrayList<(String) -> Unit>()
+
+  /** Register a retirement observer. See [unregisterListeners]. */
+  fun addUnregisterListener(listener: (sessionId: String) -> Unit) {
+    unregisterListeners += listener
+  }
+
   // Wall-clock of the most recent acquire/lease/release across all sessions — the basis for the
   // server-level idle check ([idleMillis]) that the ephemeral exit-when-idle watchdog reads.
   @Volatile private var lastActivity: Long = clock()
@@ -249,6 +265,11 @@ class ServeSessionRegistry(
   fun unregister(sessionId: String): Boolean {
     val removed = lock.withLock { sessions.remove(sessionId) }
     removed?.host?.let { runCatching { it.close() } }
+    // Outside the lock and guarded, exactly like the suspend notification: a listener may re-enter
+    // the registry, and one that throws must not leave the session half-retired.
+    if (removed != null) {
+      unregisterListeners.forEach { listener -> runCatching { listener(sessionId) } }
+    }
     return removed != null
   }
 

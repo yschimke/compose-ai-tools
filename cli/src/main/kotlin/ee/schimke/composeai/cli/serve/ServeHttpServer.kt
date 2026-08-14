@@ -319,8 +319,7 @@ class ServeHttpServer(
           // it was suspended. Taken from the host being suspended, so a catalog refreshed and then
           // idled out snapshots the REPLACEMENT — the case a lazily-primed map got wrong, since a
           // stale entry could answer a tab that loaded before the refresh.
-          sessions.isKnownSession(system) ->
-            catalogMetaSeen[system]?.sourceLocations?.get(previewId)
+          sessions.isKnownSession(system) -> catalogSourceLocationsSeen[system]?.get(previewId)
           // Retired: the catalog is gone and every other session-backed route for it 404s. A
           // remembered location would keep answering — and keep re-fetching the old repository
           // once the seed's TTL lapsed — long after the catalog was withdrawn.
@@ -3305,19 +3304,27 @@ class ServeHttpServer(
    */
   private val catalogMetaSeen = ConcurrentHashMap<String, CatalogMeta>()
 
+  /**
+   * Where each preview's source lives, per system, so `/usage/<id>` can answer for a **suspended**
+   * catalog — the snapshot [ServeSessionRegistry.peekHost] tells a caller to keep rather than read
+   * absence as a verdict.
+   *
+   * Its own map beside [catalogMetaSeen] rather than a field inside it, for one reason: it is
+   * written *first*, before the hero thumbnail is baked. That bake decodes and rescales a PNG, and
+   * a session is detached from its host **under** the registry lock while listeners run **after**
+   * it is released — so a Source request arriving in between would find `peekHost` null, the
+   * session still known, and a snapshot not yet installed. Publishing the cheap half up front
+   * closes that window instead of widening it by a decode.
+   *
+   * Same lifecycle as [catalogMetaSeen] otherwise, and dropped in the same places: written on
+   * suspension and on resident reads, replaced wholesale by a refresh, and evicted when the catalog
+   * is retired.
+   */
+  private val catalogSourceLocationsSeen =
+    ConcurrentHashMap<String, Map<String, PlaygroundSeedResolver.Location>>()
+
   /** A resident-time snapshot of one catalog's status facts. See [catalogMetaSeen]. */
   private data class CatalogMeta(
-    /**
-     * Where each preview's source lives, so `/usage/<id>` can answer for a **suspended** catalog.
-     *
-     * Carried in this snapshot rather than in a map of its own precisely because that map turned
-     * out to need every property this one already has: written on suspension, refreshed on every
-     * resident read, replaced wholesale when a refresh re-registers the system, and dropped with
-     * the session. `peekHost` says as much in its own KDoc — a caller that needs a session's facts
-     * keeps a last-known snapshot via the suspend listener rather than reading absence as a
-     * verdict.
-     */
-    val sourceLocations: Map<String, PlaygroundSeedResolver.Location>,
     val title: String?,
     val subtitle: String?,
     val trust: String?,
@@ -3371,6 +3378,13 @@ class ServeHttpServer(
   init {
     // Snapshot a catalog's facts as its daemon goes idle — the last moment they're readable.
     sessions.addSuspendListener { id, host -> rememberCatalogMeta(id, host) }
+    // A retired catalog's snapshots go with it. Without this every published-then-retired system
+    // on a churning host is retained for the life of the process — a pre-existing leak of
+    // [catalogMetaSeen] that the source locations would have made materially heavier.
+    sessions.addUnregisterListener { id ->
+      catalogMetaSeen.remove(id)
+      catalogSourceLocationsSeen.remove(id)
+    }
   }
 
   /**
@@ -3381,27 +3395,29 @@ class ServeHttpServer(
    */
   private fun rememberCatalogMeta(id: String, host: ServeHost) {
     val bundle = catalogBundleHost(host) ?: return
+    // Published BEFORE the hero bake below — see [catalogSourceLocationsSeen] for why the order
+    // matters.
+    val catalogSource = bundle.catalogSource
+    catalogSourceLocationsSeen[id] =
+      if (catalogSource == null) emptyMap()
+      else
+        host.previews
+          .mapNotNull { preview ->
+            val file = preview.sourceFile?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            preview.id to
+              PlaygroundSeedResolver.Location(
+                repo = catalogSource.repo,
+                ref = catalogSource.ref,
+                module = catalogSource.module,
+                sourceFile = file,
+                bodyLine = preview.bodyLine,
+              )
+          }
+          .toMap()
     val heroId = bundle.declaredHeroPreviewId ?: ServeWeb.representativePreviewId(host.previews)
     val heroCrop = heroId?.let { bundle.contentCrop(it) }
-    val catalogSource = bundle.catalogSource
     catalogMetaSeen[id] =
       CatalogMeta(
-        sourceLocations =
-          if (catalogSource == null) emptyMap()
-          else
-            host.previews
-              .mapNotNull { preview ->
-                val file = preview.sourceFile?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                preview.id to
-                  PlaygroundSeedResolver.Location(
-                    repo = catalogSource.repo,
-                    ref = catalogSource.ref,
-                    module = catalogSource.module,
-                    sourceFile = file,
-                    bodyLine = preview.bodyLine,
-                  )
-              }
-              .toMap(),
         title = bundle.title?.takeIf { it.isNotBlank() } ?: host.label,
         subtitle = bundle.subtitle,
         trust = BundleVerifier.summary(bundle.trust),

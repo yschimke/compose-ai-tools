@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertNull
@@ -230,6 +231,32 @@ class ServeSessionRegistryTest {
         assertEquals(0, factory.built.get(), "a registered session is never built by the factory")
         assertEquals(1, opener.opened.get(), "resumed via the opener")
       }
+  }
+
+  /**
+   * The counterpart to [ServeSessionRegistry.addSuspendListener].
+   *
+   * `peekHost` tells a caller that needs a session's facts to keep a last-known snapshot across
+   * suspension. Without a retirement signal that advice has no ending: the holder is told to keep
+   * facts and never told the session they belong to is gone, so a host that publishes, serves and
+   * retires catalogs through the admin API retains every one of them for the life of the process.
+   */
+  @Test
+  fun `unregister notifies snapshot holders so a retired catalog can be dropped`() {
+    val retired = mutableListOf<String>()
+    ServeSessionRegistry(open = Opener()).use { reg ->
+      reg.addUnregisterListener { retired += it }
+      reg.register("compose-m3", stateFor("compose-m3"))
+      reg.register("wear-m3", stateFor("wear-m3"))
+
+      assertTrue(reg.unregister("compose-m3"), "the registered catalog was retired")
+      assertEquals(listOf("compose-m3"), retired, "only the retired catalog is announced")
+
+      // Nothing was removed, so nothing is announced — a holder must not drop a live session's
+      // snapshot because somebody asked to retire a name that was never registered.
+      assertFalse(reg.unregister("never-published"), "an unknown id retires nothing")
+      assertEquals(listOf("compose-m3"), retired, "a no-op retirement announces nothing")
+    }
   }
 
   @Test
