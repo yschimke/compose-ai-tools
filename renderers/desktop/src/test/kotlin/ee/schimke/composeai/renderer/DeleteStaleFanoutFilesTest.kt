@@ -143,6 +143,27 @@ class DeleteStaleFanoutFilesTest {
     assertTrue(File(tmp.root, "Foo_stale.png.error.json").exists())
   }
 
+  /**
+   * A `.json` data-product template makes every companion in the directory end with the template's
+   * own extension, so a classifier that tries the plain extension before the companion suffixes
+   * reads `Foo_Alice.png.error.json` as a JSON output of its own and deletes the PNG's *current*
+   * diagnostics. Note this one predates the companion sweep: the pre-#3822 filter was a bare
+   * `endsWith(".json")`, which matched it just the same.
+   */
+  @Test
+  fun `a json template does not claim another extension's companions`() {
+    val jsonTemplate = File(tmp.root, "Foo.json")
+    touch("Foo_Alice.png.error.json")
+    touch("Foo_Alice.gif.warnings.json")
+    touch("Foo_stale.json.error.json")
+
+    deleteStaleFanoutFiles(jsonTemplate, expectedNames = setOf("Foo_Alice.json"))
+
+    assertTrue(File(tmp.root, "Foo_Alice.png.error.json").exists())
+    assertTrue(File(tmp.root, "Foo_Alice.gif.warnings.json").exists())
+    assertFalse(File(tmp.root, "Foo_stale.json.error.json").exists())
+  }
+
   @Test
   fun `sibling protection covers the sibling's companions (issue 2193)`() {
     val template = File(tmp.root, "Foo.png")

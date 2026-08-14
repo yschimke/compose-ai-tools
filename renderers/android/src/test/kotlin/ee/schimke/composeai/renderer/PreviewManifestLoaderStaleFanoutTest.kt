@@ -174,6 +174,94 @@ class PreviewManifestLoaderStaleFanoutTest {
     assertTrue(File(tmp.root, "Foo_stale.png.error.json").exists())
   }
 
+  /**
+   * A `.json` template makes every companion in the directory end with the template's own
+   * extension, so a classifier that tries the plain extension before the companion suffixes reads
+   * `Foo_Alice.png.error.json` as a JSON output of its own and deletes the PNG's *current*
+   * diagnostics. Predates the companion sweep: the pre-#3822 filter was a bare `endsWith(".json")`,
+   * which matched it just the same.
+   */
+  @Test
+  fun `a json template does not claim another extension's companions`() {
+    val foo = entry("Foo", parameterized = true, "renders/Foo.json")
+    val expandedByEntry = listOf(foo to listOf(fanoutRow(foo, "_Alice")))
+
+    tmp.newFile("Foo_Alice.png.error.json")
+    tmp.newFile("Foo_Alice.gif.warnings.json")
+    tmp.newFile("Foo_stale.json.error.json")
+
+    PreviewManifestLoader.deleteStaleFanoutFiles(
+      outDir = tmp.root,
+      allEntries = listOf(foo),
+      expandedByEntry = expandedByEntry,
+      ownedIds = setOf("Foo_Alice"),
+    )
+
+    assertTrue(File(tmp.root, "Foo_Alice.png.error.json").exists())
+    assertTrue(File(tmp.root, "Foo_Alice.gif.warnings.json").exists())
+    assertFalse(File(tmp.root, "Foo_stale.json.error.json").exists())
+  }
+
+  /**
+   * A `--preview-id` filter selects `Foo` and drops parameterized sibling `Foo_Dark`. The filter
+   * applies to the selection `expandedByEntry` is built from, while `allEntries` stays the full
+   * manifest — so `Foo_Dark` contributes its declared `Foo_Dark.png` and nothing else, and its
+   * fan-out rows are in no expected-name set while still matching `Foo`'s `Foo_*` prefix. The
+   * loader's documented promise is that a filtered-out preview keeps its existing artifacts, so the
+   * declared sibling stem has to shield the whole fan-out — companions included.
+   */
+  @Test
+  fun `a filtered-out parameterized sibling keeps its fan-out and companions`() {
+    val foo = entry("Foo", parameterized = true, "renders/Foo.png")
+    val fooDark = entry("Foo_Dark", parameterized = true, "renders/Foo_Dark.png")
+    // `Foo_Dark` was filtered out, so it is never expanded: only `Foo` reaches expansion.
+    val expandedByEntry = listOf(foo to listOf(fanoutRow(foo, "_Alice")))
+
+    tmp.newFile("Foo_Dark.png") // declared sibling base render
+    tmp.newFile("Foo_Dark_Alice.png") // its fan-out row, never expanded this run
+    tmp.newFile("Foo_Dark_Alice.png.error.json") // that row failed last run
+    tmp.newFile("Foo_stale.png") // genuinely stale fan-out of Foo
+    tmp.newFile("Foo_stale.png.error.json")
+
+    PreviewManifestLoader.deleteStaleFanoutFiles(
+      outDir = tmp.root,
+      allEntries = listOf(foo, fooDark),
+      expandedByEntry = expandedByEntry,
+      ownedIds = setOf("Foo_Alice"),
+    )
+
+    assertTrue(File(tmp.root, "Foo_Dark.png").exists())
+    assertTrue(File(tmp.root, "Foo_Dark_Alice.png").exists())
+    assertTrue(File(tmp.root, "Foo_Dark_Alice.png.error.json").exists())
+    assertFalse(File(tmp.root, "Foo_stale.png").exists())
+    assertFalse(File(tmp.root, "Foo_stale.png.error.json").exists())
+  }
+
+  /**
+   * The sibling-stem guard is same-extension only, mirroring the plugin's `fanoutSiblingStems`:
+   * shielding a different-extension sibling would strand a genuinely stale `Foo_Dark.png` left from
+   * before that sibling's capture became a GIF.
+   */
+  @Test
+  fun `a different-extension sibling stem does not shield same-extension staleness`() {
+    val foo = entry("Foo", parameterized = true, "renders/Foo.png")
+    val fooDarkGif = entry("Foo_Dark", parameterized = false, "renders/Foo_Dark.gif")
+    val expandedByEntry = listOf(foo to listOf(fanoutRow(foo, "_Alice")))
+
+    tmp.newFile("Foo_Dark.png") // stale: this sibling renders a GIF now
+    tmp.newFile("Foo_Dark.gif") // the sibling's current output
+
+    PreviewManifestLoader.deleteStaleFanoutFiles(
+      outDir = tmp.root,
+      allEntries = listOf(foo, fooDarkGif),
+      expandedByEntry = expandedByEntry,
+      ownedIds = setOf("Foo_Alice"),
+    )
+
+    assertFalse(File(tmp.root, "Foo_Dark.png").exists())
+    assertTrue(File(tmp.root, "Foo_Dark.gif").exists())
+  }
+
   @Test
   fun `non-parameterized previews never trigger a sweep`() {
     val plain = entry("Foo", parameterized = false, "renders/Foo.png")

@@ -356,12 +356,20 @@ object PreviewManifestLoader {
    * Deletes stale `<stem>_*<ext>` fan-out files for the parameterized previews in
    * [expandedByEntry].
    *
-   * Two guards keep the prefix match from destroying correct sibling output (issue #2193):
+   * Three guards keep the prefix match from destroying correct sibling output (issue #2193):
    * - **Manifest-wide expected set.** `@Preview(name = …)` / `@Preview(group = …)` variant suffixes
    *   make a sibling preview's stem an underscore-extension of the base stem (`Foo` vs `Foo_Dark`),
    *   so the sibling's base render and its own fan-out (`Foo_Dark_<label>.png`) match `Foo_*`. The
    *   exclusion set therefore spans every manifest entry's outputs — declared ([allEntries]) and
    *   expanded ([expandedByEntry]) — not just the preview whose prefix is being swept.
+   * - **Declared sibling stems.** The expected set only covers a sibling's *expanded* rows when the
+   *   sibling was itself expanded, which a `--preview` / `--preview-id` filter prevents: the filter
+   *   applies to the selection [expandedByEntry] is built from, while [allEntries] stays the full
+   *   manifest. A filtered-out parameterized sibling therefore contributes its declared
+   *   `Foo_Dark.png` and nothing else, leaving `Foo_Dark_<label>.png` and its companions
+   *   unaccounted for under `Foo`'s prefix. [fanoutSiblingStems] shields the whole stem, so the
+   *   loader's promise that a filtered-out preview keeps its existing artifacts holds for a
+   *   parameterized one too — matching what the plugin already computes for the desktop renderer.
    * - **Shard-owned pass.** Every parallel fork (`maxParallelForks = shardCount`) expands the whole
    *   manifest at shard load, at a time when sibling forks may already be rendering — under the old
    *   per-entry expected set a late-loading fork would delete fan-out PNGs another fork had just
@@ -391,6 +399,12 @@ object PreviewManifestLoader {
         .flatMap { it.entry.captures }
         .mapNotNullTo(this) { fanoutLeaf(it.renderOutput) }
     }
+    val declaredOutputFiles =
+      allEntries
+        .flatMap { it.captures }
+        .map { it.renderOutput }
+        .filter { it.isNotEmpty() }
+        .map { File(outDir, it.substringAfter("renders/")) }
     for ((entry, rows) in expandedByEntry) {
       if (entry.params.previewParameterProviderClassName == null) continue
       if (rows.none { it.entry.id in ownedIds }) continue
@@ -400,11 +414,17 @@ object PreviewManifestLoader {
         val stem = templateFile.nameWithoutExtension
         val ext = ".${templateFile.extension}"
         val prefix = stem + "_"
+        val siblingStems = fanoutSiblingStems(declaredOutputFiles, templateFile)
         dir
           .listFiles()
           ?.filter { f ->
             val output = fanoutOutputNameOf(f.name, ext)
-            f.name.startsWith(prefix) && output != null && output !in expectedNames
+            f.name.startsWith(prefix) &&
+              output != null &&
+              output !in expectedNames &&
+              siblingStems.none { sib ->
+                f.name.startsWith("$sib.") || f.name.startsWith("${sib}_")
+              }
           }
           ?.forEach { f ->
             if (!f.delete()) {
@@ -429,16 +449,56 @@ object PreviewManifestLoader {
   /**
    * The render output [name] belongs to: [name] itself when it is an `[ext]` output, the output it
    * names when it is one of that output's [RENDER_COMPANION_SUFFIXES] companions, and `null`
-   * otherwise.
+   * otherwise — `null` meaning "not this template's business", which on a delete path is the answer
+   * that keeps a file.
    *
-   * Companions are matched before the plain extension so an output whose own extension is `.json`
-   * resolves `Foo_Alice.json.error.json` to `Foo_Alice.json` rather than to itself.
+   * A companion is recognised by its suffix **before** the plain-extension fallback is reached, and
+   * is then held to the same per-extension scoping as any other candidate: it belongs to this sweep
+   * only if the output it names carries [ext]. Deciding in the other order breaks down as soon as
+   * [ext] is itself `.json`, because then every `.error.json` in the directory ends with [ext] and
+   * the fallback claims image companions like `Foo_Alice.png.error.json` as JSON outputs of its
+   * own, deleting another output's *current* diagnostics.
    */
   internal fun fanoutOutputNameOf(name: String, ext: String): String? {
     RENDER_COMPANION_SUFFIXES.forEach { companion ->
-      if (name.endsWith(ext + companion)) return name.removeSuffix(companion)
+      if (name.endsWith(companion)) return name.removeSuffix(companion).takeIf { it.endsWith(ext) }
     }
     return name.takeIf { it.endsWith(ext) }
+  }
+
+  /**
+   * Stems of declared manifest outputs in the same directory as [templateFile], with the same
+   * extension, whose name extends [templateFile]'s stem with an underscore — the issue #2193
+   * siblings whose files a prefix-greedy sweep would otherwise mistake for its own fan-out.
+   *
+   * Deliberately built from the **declared** entries rather than the expanded rows, and so from the
+   * FULL manifest rather than the filtered selection: a `@Preview(name = "Dark")` sibling that a
+   * `--preview-id` filter dropped is never expanded, so its fan-out rows (`Foo_Dark_<label>.png` and
+   * their companions) appear in no expected-name set, yet they all match the swept preview's `Foo_*`
+   * prefix. Protecting the declared stem covers the sibling's whole fan-out without requiring it to
+   * have been expanded, which is what makes good on the loader's promise that a filtered-out preview
+   * keeps its existing artifacts.
+   *
+   * Mirrors the plugin's `fanoutSiblingStems`, which computes the same list for the desktop renderer
+   * (that subprocess has no manifest, so the plugin passes the stems on the command line). The
+   * same-extension restriction is load-bearing in both: the sweep only ever deletes files belonging
+   * to an [templateFile]-extension output, so shielding a different-extension sibling's stem would
+   * strand a genuinely stale `Foo_Dark.png` from before that sibling's capture became a GIF.
+   */
+  private fun fanoutSiblingStems(
+    declaredOutputFiles: List<File>,
+    templateFile: File,
+  ): List<String> {
+    val prefix = templateFile.nameWithoutExtension + "_"
+    return declaredOutputFiles
+      .filter {
+        it.parentFile == templateFile.parentFile &&
+          it != templateFile &&
+          it.extension == templateFile.extension
+      }
+      .map { it.nameWithoutExtension }
+      .filter { it.startsWith(prefix) }
+      .distinct()
   }
 
   private fun fanoutLeaf(renderOutput: String): String? {
