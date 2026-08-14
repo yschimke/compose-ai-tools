@@ -155,6 +155,30 @@ class UsageSnippetCorpusTest {
     return spread(components, "component") + spread(variants, "variant")
   }
 
+  /**
+   * Give each snippet its own package, so the corpus compiles as N independent pastes rather than
+   * as one source set.
+   *
+   * Without this the snippets share the default package, and the compile answers a different
+   * question than the one asked in both directions: two previews from the same file that each close
+   * over the same same-file helper collide as redeclarations (a failure the developer pasting *one*
+   * of them would never see), and a catalog symbol one snippet leaks can resolve against a
+   * declaration another snippet happened to copy (a pass the developer would never get). Distinct
+   * packages remove both — nothing here imports anything else here.
+   *
+   * The package goes after any file annotations and before the imports, which is where Kotlin wants
+   * it.
+   */
+  private fun inOwnPackage(text: String, system: String, name: String): String {
+    fun part(raw: String) = raw.replace(Regex("[^A-Za-z0-9]"), "_").lowercase()
+    val decl = "package usagecorpus.${part(system)}.${part(name)}"
+    val lines = text.lines()
+    val at = lines.indexOfFirst { it.trimStart().startsWith("import ") }
+    val insertAt =
+      if (at >= 0) at else lines.indexOfLast { it.trimStart().startsWith("@file:") } + 1
+    return (lines.take(insertAt) + listOf(decl, "") + lines.drop(insertAt)).joinToString("\n")
+  }
+
   private val perKind =
     System.getProperty("composeai.usageCorpus.samples")?.toIntOrNull()?.coerceAtLeast(1) ?: 5
 
@@ -195,7 +219,8 @@ class UsageSnippetCorpusTest {
           continue
         }
         val dir = File(outDir, system).also { it.mkdirs() }
-        File(dir, "${sample.kind}_${sample.function}.kt").writeText(cleaned.text)
+        val name = "${sample.kind}_${sample.function}"
+        File(dir, "$name.kt").writeText(inOwnPackage(cleaned.text, system, name))
         written++
         val residue = if (cleaned.residue.isEmpty()) "clean" else "residue=${cleaned.residue}"
         report.appendLine("- ${sample.kind}/${sample.function}: $residue (${file.name})")

@@ -425,6 +425,101 @@ class PlaygroundSourceCleanerTest {
   }
 
   /**
+   * The same knob written with named arguments. A positional reading emits `Text(default =
+   * "Shopping")`, which is Kotlin that looks right and does not compile — the worst outcome
+   * available, since it reaches the visitor as "plain Compose you can run".
+   */
+  @Test
+  fun `a named-argument knob substitutes as its value, not as the argument label`() {
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.composeai.preview.previewOverrideString
+
+      @Composable
+      fun Title() = Text(previewOverrideString(key = "title", default = "Shopping"))
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Title"), UsageRules.GENERIC)
+      )
+    assertTrue(cleaned.text.contains("""Text("Shopping")"""), cleaned.text)
+  }
+
+  /** Named arguments out of declaration order still bind by name, as Kotlin binds them. */
+  @Test
+  fun `a knob with reordered named arguments still resolves its default`() {
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.composeai.preview.previewOverrideString
+
+      @Composable
+      fun Title() = Text(previewOverrideString(default = "Shopping", key = "title"))
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Title"), UsageRules.GENERIC)
+      )
+    assertTrue(cleaned.text.contains("""Text("Shopping")"""), cleaned.text)
+  }
+
+  /**
+   * A rule that declares no `params` cannot know which parameter a named argument names, so it
+   * declines rather than guessing — and says so, as residue.
+   */
+  @Test
+  fun `a substitute rule without params declines a named-argument call`() {
+    val rules =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "catalogChoice" to UsageRules.Scaffold(kind = UsageRules.Kind.SUBSTITUTE, plain = "\$1")
+          )
+      )
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun Style() = Text(catalogChoice(key = "style", default = "outlined"))
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Style"), rules))
+    assertTrue(cleaned.text.contains("catalogChoice("), cleaned.text)
+    assertTrue(cleaned.residue.contains("catalogChoice"), "${cleaned.residue}")
+  }
+
+  /**
+   * `scaffoldsDeclared` drives a much stronger claim in the Source panel than annotation-stripping
+   * earns, so only a catalog can turn it on. It used to be `scaffolds.isNotEmpty()`, which stopped
+   * meaning that the moment GENERIC carried entries of its own.
+   */
+  @Test
+  fun `inheriting the generic rules is not declaring scaffolding`() {
+    with(UsageRules.Companion) {
+      assertFalse(UsageRules.GENERIC.declaresCatalogScaffolds())
+      assertFalse(assertNotNull(UsageRules.parse("{}")).declaresCatalogScaffolds())
+      assertTrue(
+        assertNotNull(UsageRules.parse("""{"scaffolds":{"Sticker":{"kind":"UNWRAP"}}}"""))
+          .declaresCatalogScaffolds()
+      )
+    }
+  }
+
+  /**
    * A knob that has a plain reading is substituted rather than deleted. `catalogChoice` returns its
    * default on the baked lane by construction, so the default is what the render on screen was made
    * with — and it is the biggest single helper in m3-catalog after the frame and the tally.

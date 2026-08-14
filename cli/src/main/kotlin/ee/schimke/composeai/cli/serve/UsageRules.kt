@@ -77,6 +77,16 @@ data class UsageRules(
     /** [Kind.SUBSTITUTE] only: what the call reads as, with `$0`, `$1`… for its arguments. */
     @SerialName("plain") val plain: String? = null,
     /**
+     * [Kind.SUBSTITUTE] only: the helper's parameter names, in declaration order, so `$0`/`$1`
+     * resolve the way Kotlin does when the call uses **named** arguments —
+     * `previewOverrideString(key = "title", default = "Shopping")` must put `"Shopping"` at `$1`,
+     * not `default = "Shopping"`.
+     *
+     * Optional: a rule that omits it keeps the plain positional reading, and declines to rewrite a
+     * call that uses named arguments at all (reporting it as residue) rather than guessing.
+     */
+    @SerialName("params") val params: List<String> = emptyList(),
+    /**
      * [Kind.INLINE] only: member → replacement, where `$0`, `$1`… are the call's arguments.
      * `counted` declares `{"label": "$0", "onClick": "{}"}`, which is the whole of what that helper
      * means to a reader: the label you passed, and a click handler.
@@ -127,6 +137,9 @@ data class UsageRules(
   }
 
   companion object {
+    /** Every override knob takes `(key, default, index)`; the default is `$1`. */
+    private val OVERRIDE_KNOB_PARAMS = listOf("key", "default", "index")
+
     /**
      * The rules that need no catalog knowledge at all: strip this repo's own preview/catalog
      * annotations, prune the imports that leaves unused. Every catalog gets at least this, so a
@@ -145,16 +158,29 @@ data class UsageRules(
         // Found by the snippet corpus (`scripts/usage-corpus.sh`): two of m3-catalog's ten sampled
         // snippets failed to compile on this alone, and neither was reported as residue — the
         // helpers are not in a scaffold package, so nothing flagged them.
+        //
+        // `params` carries each helper's own parameter names so a named-argument call
+        // (`previewOverrideString(key = "title", default = "Shopping")`) substitutes as the value
+        // and not as `default = "Shopping"`. Every knob takes `(key, default, …)`, so `$1` is the
+        // default in all of them; only the middle parameters differ.
         scaffolds =
-          listOf(
-              "previewOverrideString",
-              "previewOverrideInt",
-              "previewOverrideFloat",
-              "previewOverrideBoolean",
-              "previewOverrideColor",
-              "previewOverrideDp",
+          mapOf(
+              "previewOverrideString" to OVERRIDE_KNOB_PARAMS,
+              "previewOverrideInt" to OVERRIDE_KNOB_PARAMS,
+              "previewOverrideFloat" to OVERRIDE_KNOB_PARAMS,
+              "previewOverrideBoolean" to OVERRIDE_KNOB_PARAMS,
+              "previewOverrideColor" to OVERRIDE_KNOB_PARAMS,
+              "previewOverrideDp" to OVERRIDE_KNOB_PARAMS,
+              "previewOverrideFont" to
+                listOf("key", "default", "suggestions", "googleFonts", "index"),
+              // Two overloads, differing only in the third parameter (`options` / `values`). An
+              // argument naming a parameter this list omits is ignored rather than fatal, so one
+              // entry covers both.
+              "previewOverrideChoice" to listOf("key", "default", "options", "index"),
             )
-            .associateWith { Scaffold(kind = Kind.SUBSTITUTE, plain = "\$1") },
+            .mapValues { (_, params) ->
+              Scaffold(kind = Kind.SUBSTITUTE, plain = "\$1", params = params)
+            },
       )
 
     /**
@@ -166,6 +192,18 @@ data class UsageRules(
      * the shared rules. A catalog can still override any of them by naming the same helper: its own
      * entry wins.
      */
+    /**
+     * Did the **catalog** declare scaffolding, as opposed to inheriting this repo's own rules?
+     *
+     * The Source panel's note turns on this: "the catalog declared its scaffolding, so what is left
+     * is usage code" is a much stronger claim than "this repo stripped its own annotations", and
+     * only the catalog can earn it. Asking `scaffolds.isNotEmpty()` used to answer it, and stopped
+     * being able to the moment [GENERIC] carried entries of its own — every catalog would then
+     * claim a declaration it never made.
+     */
+    fun UsageRules.declaresCatalogScaffolds(): Boolean =
+      scaffolds.keys.any { it !in GENERIC.scaffolds }
+
     private fun UsageRules.withGenericDefaults(): UsageRules =
       copy(
         scaffoldAnnotationPackages =

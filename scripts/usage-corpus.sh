@@ -61,12 +61,31 @@ for repo in "${repos[@]}"; do
   # A failing compile is an expected outcome here, not a script error: the diagnostics ARE the
   # result. Kotlin reports every file it can resolve-check, so one run attributes per snippet.
   log="$out/$system-compile.log"
+  rc=0
   (cd "$here" && ./gradlew --quiet ":tools:usage-compile-check:compileKotlin" \
-    "-PusageCorpus=$dir" --rerun-tasks) >"$log" 2>&1 || true
+    "-PusageCorpus=$dir" --rerun-tasks) >"$log" 2>&1 || rc=$?
 
   failed=$(grep -oE "^e: file://[^:]+\.kt" "$log" | sed 's|.*/||' | sort -u || true)
   nfailed=$(printf '%s\n' "$failed" | grep -c . || true)
   npassed=$((total - nfailed))
+
+  # A nonzero exit with no per-file diagnostic is not "everything compiled" — it is the build
+  # failing before it got as far as type-checking (dependency resolution, a missing toolchain, a
+  # daemon crash). Reporting that as a clean run is the one failure mode that would quietly turn
+  # this whole loop into a no-op, so it is a corpus failure and it says why.
+  if [ "$rc" -ne 0 ] && [ -z "$failed" ]; then
+    {
+      echo "## $system — BUILD FAILED before type-checking (exit $rc)"
+      echo
+      echo "No per-file diagnostics, so nothing can be attributed to a snippet. Tail of the log:"
+      echo '```'
+      tail -20 "$log"
+      echo '```'
+      echo
+    } >>"$summary"
+    status=1
+    continue
+  fi
 
   {
     echo "## $system — $npassed/$total compile"

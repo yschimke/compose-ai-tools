@@ -15,6 +15,11 @@ It samples previews from each checkout (5 default + 5 variant by default,
 `USAGE_CORPUS_SAMPLES=n` to change), runs the real `PlaygroundSourceCleaner` over them with that
 catalog's own rules, and compiles the results. Exit status is 0 when every snippet compiles.
 
+A build that fails *before* type-checking — dependency resolution, a missing toolchain, a daemon
+crash — produces no per-file diagnostic, so the script treats a nonzero exit with nothing to
+attribute as a corpus failure and prints the log tail. Reading it as "no diagnostics, therefore
+everything compiled" is the one bug that would quietly turn the whole loop into a no-op.
+
 ## The compile bar is a consumer's classpath, not the catalog's
 
 `:tools:usage-compile-check` compiles the corpus against **Compose and material3 only**. That is
@@ -24,6 +29,14 @@ and nowhere else. The bar is "a developer pasted this into their own Compose app
 
 The module is empty unless `-PusageCorpus=<dir>` points it at a generated corpus, so it costs a
 normal build nothing.
+
+Each snippet is emitted into **its own package**, so the corpus compiles as N independent pastes
+rather than as one source set. Sharing a package would answer a different question in both
+directions: two previews from the same file that each close over the same helper would collide as
+redeclarations (a failure nobody pasting *one* of them would see), and a catalog symbol one snippet
+leaked could resolve against a declaration another snippet happened to copy (a pass nobody would
+get). It changed neither ratio below, which is worth knowing — the numbers were not an artefact of
+the snippets propping each other up.
 
 ## What it found
 
@@ -52,6 +65,18 @@ rules inherit the generic ones rather than replacing them.
 Residue only ever reported *declared* scaffolding that survived a rule. It cannot see a helper nobody
 declared, which is precisely the case worth catching. **The compiler is the honest signal.**
 
+Two things had to follow from putting those knobs in `GENERIC`:
+
+- **Named arguments.** `previewOverrideString(key = "title", default = "Shopping")` substituted
+  positionally as `default = "Shopping"` — Kotlin that looks right and does not compile, which is
+  the worst outcome available for something presented as runnable. A `SUBSTITUTE` rule now declares
+  the helper's `params`, so `$1` binds the way Kotlin binds it; a rule that declares none declines a
+  named-argument call and reports it as residue rather than guessing.
+- **`scaffoldsDeclared` had to stop meaning `scaffolds.isNotEmpty()`.** That flag drives the Source
+  panel's stronger claim — *the catalog declared its scaffolding, so what is left is usage code* —
+  and only a catalog can earn it. A non-empty `GENERIC` would have had every catalog claiming a
+  declaration it never made, so it now asks whether any scaffold is the catalog's own.
+
 ### m3-catalog's remaining seven failures, by cause
 
 | Cause | Files | Status |
@@ -79,6 +104,20 @@ different premises:
 So for a catalog like meshcore the Source panel shows *the preview, sliced and import-pruned* — not
 usage code, and the panel already says so when a catalog has declared no rules. That is the correct
 outcome, and worth knowing before anyone tries to fix it with rules.
+
+### Known gap: an override *variant* still shows the author's default
+
+Substituting `previewOverride*(key, default, …)` with `default` is right for the default render and
+wrong for a seeded `@OverrideVariant` card: opening the `off` variant of a toggle emits `true`
+because that is what the source says, not the `false` the render was seeded with. The values exist —
+`PreviewInfo.overrides` carries them — but the seed path resolves a *source location*
+(`PlaygroundSeedResolver.Location`), which has no override values in it, so fixing this means
+plumbing them from the preview through the location into a key-aware substitution.
+
+This is not a regression: before the knobs were rewritten at all, the variant's snippet said
+`previewOverrideBoolean("checked", true)`, which did not reproduce the seeded render *and* did not
+compile. It is now honest about the default render and still wrong about the variant, which is
+strictly better and still worth fixing.
 
 ## Running it in CI
 

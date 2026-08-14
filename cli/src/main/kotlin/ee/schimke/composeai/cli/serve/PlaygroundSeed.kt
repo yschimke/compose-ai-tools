@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.serve.UsageRules.Companion.declaresCatalogScaffolds
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -279,7 +280,7 @@ class PlaygroundSeedResolver(
         sliced = cleaned != null || sliced != null,
         cleaned = cleaned != null,
         residue = cleaned?.residue.orEmpty(),
-        scaffoldsDeclared = cleaned != null && rulesFor(where).scaffolds.isNotEmpty(),
+        scaffoldsDeclared = cleaned != null && rulesFor(where).declaresCatalogScaffolds(),
       )
     // Bounded, and deliberately not an LRU: entries are a few KB, a catalog has a fixed number of
     // previews, and a full cache means the ones people actually open are already served from it. A
