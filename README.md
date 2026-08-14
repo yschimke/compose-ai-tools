@@ -123,6 +123,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-design-page-design-lane/dark](renders/serve-design-page-design-lane.dark.png) |
 | `light` | ![serve-design-page-design-lane/light](renders/serve-design-page-design-lane.light.png) |
 
+## serve-design-page-diff-lane
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page-diff-lane/dark](renders/serve-design-page-diff-lane.dark.png) |
+| `light` | ![serve-design-page-diff-lane/light](renders/serve-design-page-diff-lane.light.png) |
+
 ## serve-design-page-hover
 
 | Theme | Capture |
