@@ -441,7 +441,21 @@ tasks.register<Zip>("packageAndroidDaemon") {
   into("lib-daemon-android") { from(stageDaemonAndroidLibs) }
 }
 
-tasks.withType<Test>().configureEach { useJUnitPlatform() }
+tasks.withType<Test>().configureEach {
+  useJUnitPlatform()
+  // Catalog checkouts for the usage-snippet corpus (UsageSnippetCorpusTest). Absent by default, so
+  // the corpus is a no-op in a normal build; `scripts/usage-corpus.sh` supplies them. Forwarded
+  // rather than read from the environment so the paths show up in the build's own inputs.
+  for (key in
+    listOf(
+      "composeai.usageCorpus.m3-catalog",
+      "composeai.usageCorpus.meshcore-mobile",
+      "composeai.usageCorpus.out",
+      "composeai.usageCorpus.samples",
+    )) {
+    providers.systemProperty(key).orNull?.let { systemProperty(key, it) }
+  }
+}
 
 abstract class CheckCliDaemonLibraryBoundary : DefaultTask() {
   @get:Classpath abstract val runtimeClasspath: ConfigurableFileCollection

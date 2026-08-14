@@ -360,7 +360,9 @@ class PlaygroundSourceCleanerTest {
     val text = assertNotNull(cleanAt("""caption = "Highest emphasis""")).let { it }
     val generic = assertNotNull(cleanAt("""caption = "Highest emphasis"""))
     assertFalse(generic.text.contains("@CatalogComponent"))
-    assertTrue(UsageRules.GENERIC.scaffolds.isEmpty())
+    // GENERIC knows only about THIS repo's own API — the preview-override knobs — and nothing about
+    // any catalog's scaffolding.
+    assertTrue(UsageRules.GENERIC.scaffolds.keys.all { it.startsWith("previewOverride") })
     val withGeneric =
       assertNotNull(
         PlaygroundSourceCleaner.clean(
@@ -378,6 +380,48 @@ class PlaygroundSourceCleanerTest {
   fun `malformed rules degrade to generic rather than failing the handoff`() {
     assertNull(UsageRules.parse("{ not json"))
     assertNotNull(UsageRules.parse("""{"scaffoldAnnotationPackages":["a.b"]}"""))
+  }
+
+  /**
+   * The preview-override knobs are this repo's API, not a catalog's, so a catalog that declares its
+   * own scaffolding must still get them — before this, declaring `compose-usage.json` *replaced*
+   * the generic rules, so the catalogs that had done the work were the only ones leaking
+   * `previewOverrideString(...)` into code a developer was invited to copy.
+   */
+  @Test
+  fun `declared rules inherit the generic ones`() {
+    val rules = assertNotNull(UsageRules.parse("""{"scaffolds":{"Sticker":{"kind":"UNWRAP"}}}"""))
+    assertTrue(rules.scaffolds.containsKey("Sticker"))
+    assertTrue(rules.scaffolds.containsKey("previewOverrideString"))
+    assertTrue(rules.scaffoldAnnotationPackages.contains("ee.schimke.composeai.preview"))
+  }
+
+  /**
+   * A knob nothing declared is exactly what residue cannot see: `previewOverrideString` is not in a
+   * scaffold package, so the snippet was reported clean and did not compile. Found by the corpus
+   * (`scripts/usage-corpus.sh`); see `docs/design/USAGE_SNIPPET_CORPUS.md`.
+   */
+  @Test
+  fun `a preview override knob becomes the default the render was baked with`() {
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.material3.Badge
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.composeai.preview.previewOverrideString
+
+      @Composable
+      fun NumberBadge() = Badge { Text(previewOverrideString("label", "3")) }
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun NumberBadge"), UsageRules.GENERIC)
+      )
+    assertTrue(cleaned.text.contains("""Text("3")"""), cleaned.text)
+    assertFalse(cleaned.text.contains("previewOverrideString"), cleaned.text)
   }
 
   /**

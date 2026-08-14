@@ -133,7 +133,45 @@ data class UsageRules(
      * catalog that has declared nothing still opens in the playground without a stack of
      * annotations naming a machinery the visitor has no way to run.
      */
-    val GENERIC = UsageRules(scaffoldAnnotationPackages = listOf("ee.schimke.composeai.preview"))
+    val GENERIC =
+      UsageRules(
+        scaffoldAnnotationPackages = listOf("ee.schimke.composeai.preview"),
+        // The preview-override knobs are **this repo's** API, not a catalog's, so no catalog should
+        // have to declare them — and until they were here, every catalog's "plain Compose" leaked
+        // `previewOverrideString(...)` into code a developer was invited to copy. Each takes
+        // `(key, default, …)`, so the default is what the render on screen was made with and `$1`
+        // is its plain reading.
+        //
+        // Found by the snippet corpus (`scripts/usage-corpus.sh`): two of m3-catalog's ten sampled
+        // snippets failed to compile on this alone, and neither was reported as residue — the
+        // helpers are not in a scaffold package, so nothing flagged them.
+        scaffolds =
+          listOf(
+              "previewOverrideString",
+              "previewOverrideInt",
+              "previewOverrideFloat",
+              "previewOverrideBoolean",
+              "previewOverrideColor",
+              "previewOverrideDp",
+            )
+            .associateWith { Scaffold(kind = Kind.SUBSTITUTE, plain = "\$1") },
+      )
+
+    /**
+     * A catalog's declared rules **plus** the ones that are this repo's business rather than any
+     * catalog's — the preview-override knobs and this repo's annotation packages.
+     *
+     * Without this a declared `compose-usage.json` replaced [GENERIC] wholesale, so the catalogs
+     * that had gone to the trouble of declaring their scaffolding were the only ones NOT getting
+     * the shared rules. A catalog can still override any of them by naming the same helper: its own
+     * entry wins.
+     */
+    private fun UsageRules.withGenericDefaults(): UsageRules =
+      copy(
+        scaffoldAnnotationPackages =
+          (scaffoldAnnotationPackages + GENERIC.scaffoldAnnotationPackages).distinct(),
+        scaffolds = GENERIC.scaffolds + scaffolds,
+      )
 
     private val json = Json {
       ignoreUnknownKeys = true
@@ -146,7 +184,7 @@ data class UsageRules(
      */
     fun parse(text: String, onLog: (String) -> Unit = {}): UsageRules? =
       try {
-        json.decodeFromString<UsageRules>(text)
+        json.decodeFromString<UsageRules>(text).withGenericDefaults()
       } catch (e: Exception) {
         onLog("compose-usage.json is not valid usage rules (${e.message}); using generic rules")
         null
