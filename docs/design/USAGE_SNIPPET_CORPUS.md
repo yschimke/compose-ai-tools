@@ -44,7 +44,7 @@ First run, ten samples per catalog:
 
 | Catalog | Compiles | Rules |
 |---|---|---|
-| m3-catalog | **3 / 10** | 17 declared scaffolds |
+| m3-catalog | **4 / 10** | 22 declared scaffolds |
 | meshcore-mobile | **0 / 10** | none — generic path |
 
 ### Residue is not a proxy for "compiles"
@@ -77,11 +77,11 @@ Two things had to follow from putting those knobs in `GENERIC`:
   and only a catalog can earn it. A non-empty `GENERIC` would have had every catalog claiming a
   declaration it never made, so it now asks whether any scaffold is the catalog's own.
 
-### m3-catalog's remaining seven failures, by cause
+### m3-catalog's remaining six failures, by cause
 
 | Cause | Files | Status |
 |---|---|---|
-| `toggleable` / `editable` destructure a `Pair` | 2 | The known gap in `compose-usage.json`'s `$known-gaps` — needs a `DESTRUCTURE` rule kind whose plain form is `var x by remember { mutableStateOf(…) }` |
+| ~~`toggleable` / `editable` destructure a `Pair`~~ | ~~2~~ → 0 | **Fixed.** The `DESTRUCTURE` rule kind, which the parse made writable — `val (checked, onCheckedChange) = toggleable(true)` now comes out as `var checked by remember { mutableStateOf(true) }` with the setter rebound at its use sites. One of the two compiled immediately; the other is now blocked only on the `stringResource` row below |
 | Conditional `stringResource(if (…) Res.string.a else Res.string.b)` | 2 | The inliner only handles the exact single-key form and declines the rest, correctly — but the snippet then keeps an unresolvable `Res` |
 | `CatalogFilledStars`, a catalog-owned `ImageVector` | 4 | No rule; wants substituting with a stock `Icons.Filled.Star` or similar |
 

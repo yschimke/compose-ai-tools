@@ -14,7 +14,9 @@ import org.jetbrains.kotlin.psi.KtDestructuringDeclaration
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtLambdaArgument
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtValueArgument
+import org.jetbrains.kotlin.psi.KtValueArgumentName
 
 /**
  * Parses Kotlin source and reports the **structure** the usage cleaner needs, as JSON.
@@ -83,6 +85,20 @@ class UsageSourceAnalyzer : AutoCloseable {
           PsiTreeUtil.findChildrenOfType(file, KtDestructuringDeclaration::class.java),
         ) {
           destructuring(it)
+        }
+        // Name references, minus argument *labels*. `Switch(onCheckedChange = onCheckedChange)`
+        // mentions that name twice and only the second is a reference — rebinding the first turns
+        // the label into an expression and the call into nonsense. PSI separates them; a word scan
+        // cannot, which is how the first version of the DESTRUCTURE rule broke this exact call.
+        arrayField(
+          "references",
+          PsiTreeUtil.findChildrenOfType(file, KtNameReferenceExpression::class.java).filter {
+            it.parent !is KtValueArgumentName
+          },
+        ) { reference ->
+          field("name", reference.getReferencedName())
+          number("start", reference.textRange.startOffset)
+          number("end", reference.textRange.endOffset)
         }
       }
     } catch (e: Throwable) {

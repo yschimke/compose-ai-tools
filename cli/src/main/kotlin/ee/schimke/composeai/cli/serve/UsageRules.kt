@@ -85,6 +85,12 @@ data class UsageRules(
     @SerialName("renameTo") val renameTo: String? = null,
     /** An import the replacement needs, e.g. `androidx.compose.material3.MaterialTheme`. */
     @SerialName("addImport") val addImport: String? = null,
+    /**
+     * Imports the replacement needs, when one is not enough — [Kind.DESTRUCTURE]'s `var x by
+     * remember { mutableStateOf(…) }` needs four, including the `getValue`/`setValue` the `by`
+     * delegation reads and which nothing in the snippet mentions by name.
+     */
+    @SerialName("addImports") val addImports: List<String> = emptyList(),
     /** [Kind.SUBSTITUTE] only: what the call reads as, with `$0`, `$1`… for its arguments. */
     @SerialName("plain") val plain: String? = null,
     /**
@@ -97,6 +103,15 @@ data class UsageRules(
      * call that uses named arguments at all (reporting it as residue) rather than guessing.
      */
     @SerialName("params") val params: List<String> = emptyList(),
+    /**
+     * [Kind.DESTRUCTURE] only: what the **second** destructured name reads as at its use sites.
+     *
+     * `val (checked, onCheckedChange) = toggleable(true)` binds a value and its setter.
+     * [Scaffold.plain] replaces the declaration; this replaces every mention of `onCheckedChange`,
+     * which would otherwise refer to a binding that no longer exists. Cites `$value` for the first
+     * name, so `toggleable` declares `{ $value = it }`.
+     */
+    @SerialName("setter") val setter: String? = null,
     /**
      * [Kind.INLINE] only: member → replacement, where `$0`, `$1`… are the call's arguments.
      * `counted` declares `{"label": "$0", "onClick": "{}"}`, which is the whole of what that helper
@@ -145,6 +160,32 @@ data class UsageRules(
      * on a named argument.
      */
     SUBSTITUTE,
+
+    /**
+     * A helper whose result is **destructured into state**, replaced by the state a developer would
+     * write themselves.
+     *
+     * m3-catalog's `toggleable` / `selectable` / `multiSelectable` / `draggable` / `editable` each
+     * return `Pair<T, (T) -> Unit>` so one sticker can be frozen on the baked lane and live on the
+     * interactive one:
+     * ```
+     * val (checked, onCheckedChange) = toggleable(true)
+     * ```
+     *
+     * The plain reading is not a *value* — it is real state, `var checked by remember {
+     * mutableStateOf(true) }`, plus a setter at every use site. That is why none of the other four
+     * kinds could express it, and why `compose-usage.json` carried it as a declared gap: RENAME and
+     * SUBSTITUTE rewrite one expression, DROP deletes, INLINE substitutes members of a binding —
+     * none replaces a declaration *and* rebinds a second name.
+     *
+     * Declares [Scaffold.plain] for the declaration, [Scaffold.setter] for the second name's use
+     * sites, and [Scaffold.addImports] for what the replacement needs.
+     *
+     * **Needs the parser.** A destructuring declaration, its entry names and its initializer are
+     * exactly the structure a regex cannot be trusted with, so this kind applies only when
+     * `:usage-source-psi` is staged; without it the helper is reported as residue, as before.
+     */
+    DESTRUCTURE,
   }
 
   companion object {

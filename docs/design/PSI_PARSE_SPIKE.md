@@ -13,7 +13,7 @@ defect it surfaced was **parser-shaped**:
 | `state.metrics.counted` taken for a package qualifier | qualified expression structure |
 | `counted { }` missed — the regex required `(` | a call is a call |
 | a qualified call neither rewritten nor reported | the callee, regardless of qualifier |
-| `toggleable` destructuring a `Pair` (still open) | destructuring declarations |
+| `toggleable` destructuring a `Pair` | destructuring declarations |
 
 Five symptoms, one missing thing: structure. So: measure before rewriting.
 
@@ -149,7 +149,8 @@ The spike said yes, so the parse is now in the cleaner. The shape is the one the
 actually exercise. Without that the cleaner would fall back silently and every test would still pass,
 having covered none of it.
 
-**The corpus ratios are unchanged: m3-catalog 3/10, meshcore-mobile 0/10, same seven failures.** That
+**On landing, the corpus ratios were unchanged: m3-catalog 3/10, meshcore-mobile 0/10, same seven
+failures** (the `DESTRUCTURE` kind that followed took m3-catalog to 4/10). That
 is the result to expect and the bar the spike set — parity, per snippet, before anything else. The
 parse fixes shapes the text pass got wrong (an argument binding, a receiver chain, a call with no
 parentheses); none of the seven remaining failures is one of those. Moving the ratio needs the new
@@ -163,9 +164,9 @@ positional slot — putting `{ … }` where `default` belongs. Filtered out, and
 
 A parse fixes the **machinery**. It does not move the ratio much on its own:
 
-- m3-catalog's 2 destructuring failures become tractable — the facts now carry
-  `KtDestructuringDeclaration` entries and initialisers, so a `DESTRUCTURE` rule kind whose plain
-  form is `var x by remember { mutableStateOf(…) }` has everything it needs. Not written yet.
+- m3-catalog's 2 destructuring failures: **done**, and the ratio moved 3/10 → 4/10. The
+  `DESTRUCTURE` rule kind reads the facts' entries and initialiser; `compose-usage.json`'s
+  `$known-gaps` entry is retired.
 - The 2 conditional-`stringResource` failures become tractable for the same reason: the inliner can
   see the `if` rather than declining on a regex.
 - `CatalogFilledStars` (×4) still needs a substitution rule — no parse invents an icon.
