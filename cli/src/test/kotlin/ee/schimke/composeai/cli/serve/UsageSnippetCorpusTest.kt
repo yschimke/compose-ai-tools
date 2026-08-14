@@ -94,7 +94,10 @@ class UsageSnippetCorpusTest {
       .walkTopDown()
       .onEnter { it.name !in setOf("build", ".git", ".gradle") }
       .filter { it.isFile && it.extension == "kt" }
-      .filterNot { testSourceSet.containsMatchIn(it.path) }
+      // `invariantSeparatorsPath`, not `path`: on Windows the latter is backslash-separated, the
+      // regex below only knows `/src/…/`, and every fixture would then read as production — which
+      // would fail this class's own source-set test on a Windows checkout.
+      .filterNot { testSourceSet.containsMatchIn(it.invariantSeparatorsPath) }
       .toList()
   }
 
@@ -135,8 +138,9 @@ class UsageSnippetCorpusTest {
   private fun stringsFor(root: File, rules: UsageRules): Map<String, String> {
     val path = rules.stringsPath ?: return emptyMap()
     val file =
-      root.walkTopDown().firstOrNull { it.isFile && it.path.endsWith(path.replace('\\', '/')) }
-        ?: return emptyMap()
+      root.walkTopDown().firstOrNull {
+        it.isFile && it.invariantSeparatorsPath.endsWith(path.replace('\\', '/'))
+      } ?: return emptyMap()
     return Regex(
         """<string\s+name="([A-Za-z0-9_]+)"\s*>(.*?)</string>""",
         RegexOption.DOT_MATCHES_ALL,
