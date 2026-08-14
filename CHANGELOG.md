@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.3.0](https://github.com/yschimke/compose-ai-tools/compare/v1.2.0...v1.3.0) (2026-08-14)
+
+
+### Features
+
+* **cli:** honour --preview as a preview reference on the render commands ([#3780](https://github.com/yschimke/compose-ai-tools/issues/3780)) ([c74baec](https://github.com/yschimke/compose-ai-tools/commit/c74baec5296081d0e19d4fd0800f8d72e3f6a59f))
+* **daemon:** add preview/rows to enumerate @PreviewParameter rows ([#3788](https://github.com/yschimke/compose-ai-tools/issues/3788)) ([6da9bc9](https://github.com/yschimke/compose-ai-tools/commit/6da9bc95ff48043a04c9c5ec0d23a750e0be6514))
+* **serve:** make a design page lead with the sheet, not its annotation ([#3813](https://github.com/yschimke/compose-ai-tools/issues/3813)) ([71e7d6a](https://github.com/yschimke/compose-ai-tools/commit/71e7d6ab7f87118cc30da89fd84a47eae347bd27))
+* **serve:** top-level sites — one catalog on a hostname of its own ([#3783](https://github.com/yschimke/compose-ai-tools/issues/3783)) ([1f9fa26](https://github.com/yschimke/compose-ai-tools/commit/1f9fa2685905cfb23bfccfae430a61534680d4b5))
+
+
+### Bug Fixes
+
+* **cli:** force every permutation's own render, discard a failed restore ([#3784](https://github.com/yschimke/compose-ai-tools/issues/3784)) ([b096f64](https://github.com/yschimke/compose-ai-tools/commit/b096f6405379a0a55b9c012aaff0cf0444d58946))
+* **cli:** keep every render-error sidecar, and only quote fresh ones ([#3789](https://github.com/yschimke/compose-ai-tools/issues/3789)) ([e3d336a](https://github.com/yschimke/compose-ai-tools/commit/e3d336ab1ae03b7bcb58c3956cab0de1741f554c))
+* **cli:** let a @PreviewParameter row id select its module and narrow the render ([#3795](https://github.com/yschimke/compose-ai-tools/issues/3795)) ([8184262](https://github.com/yschimke/compose-ai-tools/commit/81842629b1aad1689a64ae4ecf147cced81e39b3))
+* **cli:** name the renderer that actually skipped, and keep the blank-capture stem ([#3794](https://github.com/yschimke/compose-ai-tools/issues/3794)) ([cf3e9a0](https://github.com/yschimke/compose-ai-tools/commit/cf3e9a0b233242af8707da49a6425666c3001eb0))
+* **cli:** read freshness from the renderer that owns the preview's output ([#3793](https://github.com/yschimke/compose-ai-tools/issues/3793)) ([8e1b2d4](https://github.com/yschimke/compose-ai-tools/commit/8e1b2d47b0728b193340ccf454c7b9a5d49cf521))
+* **cli:** refuse a pre-permutation hold that could not be cleared ([#3791](https://github.com/yschimke/compose-ai-tools/issues/3791)) ([ec9fd2a](https://github.com/yschimke/compose-ai-tools/commit/ec9fd2abdf601908671db80792169ca516b8d8e2))
+* **cli:** resolve @PreviewParameter rows before serve counts modules ([#3800](https://github.com/yschimke/compose-ai-tools/issues/3800)) ([cdac7f8](https://github.com/yschimke/compose-ai-tools/commit/cdac7f8debf54457572634d91151f3ad1bc9154f))
+* **cli:** resolve exact preview ids before treating a selector as a row ([#3798](https://github.com/yschimke/compose-ai-tools/issues/3798)) ([8a747c9](https://github.com/yschimke/compose-ai-tools/commit/8a747c922c02d8cf50eb942e1595ea78e47e384a))
+* **cli:** scope the exact-id row gate to --id, not the substring selectors ([#3799](https://github.com/yschimke/compose-ai-tools/issues/3799)) ([e1d2bfb](https://github.com/yschimke/compose-ai-tools/commit/e1d2bfbbaa56a32722c9a7940a381145c6cb99a5))
+* **daemon:** make preview/rows work on the production desktop host ([#3792](https://github.com/yschimke/compose-ai-tools/issues/3792)) ([afdf50d](https://github.com/yschimke/compose-ai-tools/commit/afdf50dac6f4cd4bdc362fb989f466a17ebd6a30))
+* **serve:** make site isolation an allowlist, not a chase ([#3797](https://github.com/yschimke/compose-ai-tools/issues/3797)) ([6f86fb1](https://github.com/yschimke/compose-ai-tools/commit/6f86fb13861265f5a11a8db2074fae7412bc2772))
+
 ## [1.2.0](https://github.com/yschimke/compose-ai-tools/compare/v1.1.0...v1.2.0) (2026-08-13)
 
 
