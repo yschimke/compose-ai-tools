@@ -2426,7 +2426,7 @@
         wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
       }
     });
-    // The page's Transparent toggle (owned by bg-toggle.js, which flips
+    // The page's Transparent toggle (owned by <cp-bg-toggle> in serve-components.js, which flips
     // `cp-bg-transparent` on <html>) changes what the stage paints — and the app mirrors that
     // backdrop, so it has to hear about it. Watching the class beats reaching across to that
     // script's click handler: the stage also changes with the render theme, and both land here.

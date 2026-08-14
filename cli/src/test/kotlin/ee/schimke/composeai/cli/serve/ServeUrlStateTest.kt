@@ -40,11 +40,10 @@ class ServeUrlStateTest {
     val html = landing()
     assertTrue(html.contains("pushUrl({ tab: current });"), "a tab click must push ?tab=")
     assertTrue(html.contains("pushUrl({ theme: theme });"), "a theme chip must push ?theme=")
-    val bgToggle = ServeWebAssets.load("bg-toggle.js")!!.bytes.decodeToString()
-    assertTrue(
-      bgToggle.contains("urlState.push({ bg: choice });"),
-      "the background toggle must push ?bg=",
-    )
+    // The background toggle's own `?bg=` push is asserted against the real element in
+    // `cli/serve-web/test/bgToggle.test.ts` ("pushes a history entry so the checkerboard view is
+    // shareable"). It used to be a substring match on `bg-toggle.js`'s source here, which could
+    // only prove the file *said* it — and says nothing at all once the source is a minified bundle.
   }
 
   @Test
@@ -86,26 +85,20 @@ class ServeUrlStateTest {
     )
   }
 
-  @Test
-  fun `back restores the background this load opened with, not the stored one`() {
-    val script = ServeWebAssets.load("bg-toggle.js")!!.bytes.decodeToString()
-    // Re-reading localStorage on popstate returns the value the click that we are backing OUT of
-    // just wrote, so Transparent would survive its own Back.
-    assertTrue(script.contains("""paint(urlState.get("bg") || initial);"""), script)
-    assertTrue(
-      script.contains("""var initial = root.classList.contains("cp-bg-transparent")"""),
-      "the fallback is the class the pre-paint script resolved, like tab/theme's initial values",
-    )
-  }
+  // "Back restores the background this load opened with, not the stored one" now lives in
+  // `cli/serve-web/test/bgToggle.test.ts`, where it drives the real element through a real
+  // popstate instead of asserting that a source file contains a particular line. A mutation of
+  // the fallback back to `localStorage.getItem(…)` fails it, which the substring match here could
+  // not have caught once the source became a bundle.
 
   @Test
-  fun `both the grid and the viewer load the shared background toggle`() {
-    val tag = """<script src="${ServeWebAssets.href("bg-toggle.js")}"></script>"""
-    assertTrue(landing().contains(tag), "the grid must load bg-toggle.js")
+  fun `both the grid and the viewer load the shared component bundle`() {
+    val tag = """<script src="${ServeWebAssets.href("serve-components.js")}"></script>"""
+    assertTrue(landing().contains(tag), "the grid must load serve-components.js")
     val preview = ServePreview("plain.Button", "button")
     assertTrue(
       ServeWeb.viewerPage(preview, token = "t", siblings = listOf(preview)).contains(tag),
-      "the viewer carries the same Background/Transparent pair, so it loads the same script",
+      "the viewer carries the same Transparent toggle, so it loads the same bundle",
     )
   }
 

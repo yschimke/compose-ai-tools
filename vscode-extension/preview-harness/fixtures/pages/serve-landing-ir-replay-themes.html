@@ -69,7 +69,7 @@
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
   <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="5"></span>
-  <button type="button" class="cp-bg-btn cp-bg-toggle" aria-pressed="false" title="Show the transparent checkerboard behind each preview">Transparent</button>
+  <cp-bg-toggle label="Show the transparent checkerboard behind each preview"></cp-bg-toggle>
 </div>
 </div>
         <div class="cp-grid" id="cp-grid">
@@ -116,7 +116,7 @@
         </div>
 <p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
 <script src="/assets/serve/fixture/url-state.js"></script>
-<script src="/assets/serve/fixture/bg-toggle.js"></script>
+<script src="/assets/serve/fixture/serve-components.js"></script>
 <script>    (function () {
       var cards = document.querySelectorAll(".cp-card");
       var input = document.getElementById("cp-search");

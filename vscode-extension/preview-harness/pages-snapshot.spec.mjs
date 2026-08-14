@@ -284,7 +284,7 @@ const SERVE_ASSETS = [
     ["playground.css", "text/css"],
     ["url-state.js", "text/javascript"],
     ["page-theme.js", "text/javascript"],
-    ["bg-toggle.js", "text/javascript"],
+    ["serve-components.js", "text/javascript"],
     ["viewer.js", "text/javascript"],
     ["viewer-groups.js", "text/javascript"],
     ["viewer-drawers.js", "text/javascript"],

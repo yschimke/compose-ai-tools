@@ -649,8 +649,12 @@ html.cp-js .cp-section-head { display: none; }
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent); }
 .cp-state-btn[aria-current="page"] { background: var(--md-sys-color-secondary-container);
   border-color: transparent; color: var(--md-sys-color-on-secondary-container); font-weight: 500; }
+/* `<cp-bg-toggle>` (serve-components.js) renders the Transparent button into its own light DOM.
+   `display: contents` drops the wrapper out of layout entirely, so the .cp-bg-btn inside stays the
+   toolbar's own flex item and the upgraded control lays out exactly as the bare button did. */
+cp-bg-toggle { display: contents; }
 /* …and the same filter chip for the theme chips and for the two standalone toggles that used to
-   be segmented pairs — Transparent (.cp-bg-toggle) and the viewer's Fit width (.cp-zoom-toggle).
+   be segmented pairs — Transparent (<cp-bg-toggle>) and the viewer's Fit width (.cp-zoom-toggle).
    One rule so everything on the viewer bar cannot drift apart. `aria-pressed` is a toggle chip's
    selected state, exactly as `aria-current` is a navigation chip's. A disabled chip keeps M3's 38%
    on-surface treatment rather than vanishing — a theme this lane cannot render is information. */
