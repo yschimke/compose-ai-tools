@@ -307,6 +307,22 @@ test("an unsupported confidence is dropped, not republished", () => {
   assert.equal(node.previewId, "top-app-bar-medium__ideal__default__light");
 });
 
+test("a node's design-file type is republished, so containers are exact not inferred", () => {
+  // `DesignPage.coverageGaps` reads `type` to tell a COMPONENT_SET container from the components
+  // inside it, and infers from nesting depth only when no type is stated. Stripping the field here
+  // meant every delivery branch took the inference, which an unlisted frame between two components
+  // can fool.
+  const set = { ...statusBar, nodeId: "1:3", name: "Switch", type: "COMPONENT_SET" };
+  const plan = planDesignPages({ manifest: manifest([page([set, appBar])]), spec, catalog });
+  const [container, component] = plan.manifest.pages[0].nodes;
+  assert.equal(container.type, "COMPONENT_SET");
+  assert.equal(component.type, undefined);
+  // Not a type: an empty string would read as one on the consumer's side.
+  const blank = { ...statusBar, nodeId: "1:4", type: "  " };
+  const other = planDesignPages({ manifest: manifest([page([blank])]), spec, catalog });
+  assert.equal(other.manifest.pages[0].nodes[0].type, undefined);
+});
+
 test("an out-of-range depth is normalised rather than republished", () => {
   // `Number.isInteger(2147483648)` is true, but the consumer decodes depth as a Kotlin Int — so
   // republishing it fails the parse for the whole manifest and hides every page. Depth is only a
