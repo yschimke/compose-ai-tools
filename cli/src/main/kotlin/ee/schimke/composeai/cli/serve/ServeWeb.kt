@@ -2152,11 +2152,15 @@ object ServeWeb {
    * Emitted identically on the landing grid and on the single-preview viewer — the `<html>` class
    * it drives (`cp-bg-transparent`) already backs both `.cp-imgwrap` and `.cp-stage`, and the
    * pre-paint script in [document] already restores the choice on every page, so the viewer was
-   * simply missing the control rather than the behaviour. `bg-toggle.js` wires both.
+   * simply missing the control rather than the behaviour.
+   *
+   * The button itself is rendered by the `<cp-bg-toggle>` Lit element in `serve-components.js`
+   * (source: `cli/serve-web/src/components/BgToggle.ts`), not here — one source of truth for markup
+   * a JS-only control owns. `serve.css` gives the element `display: contents`, so the button stays
+   * the toolbar's own flex item and lays out exactly as the bare button did.
    */
   private fun bgPickerHtml(title: String): String =
-    "<button type=\"button\" class=\"cp-bg-btn cp-bg-toggle\" aria-pressed=\"false\"" +
-      " title=\"${WebEscaping.htmlEscape(title)}\">Transparent</button>"
+    "<cp-bg-toggle label=\"${WebEscaping.htmlEscape(title)}\"></cp-bg-toggle>"
 
   /**
    * The search box for the landing grid: a text input that filters cards to those whose label or id
@@ -5876,7 +5880,7 @@ object ServeWeb {
       else orderedCards.joinToString(", ", "[", "]") { WebEscaping.jsString(themeBase(it)) }
     val filterScript =
       if (hasPreviews)
-        "\n${scriptTag("url-state.js")}\n${scriptTag("bg-toggle.js")}\n<script>${catalogFilterScript(
+        "\n${scriptTag("url-state.js")}\n${scriptTag("serve-components.js")}\n<script>${catalogFilterScript(
           hasThemes,
           hasTabs,
           hasGroups,
@@ -8842,7 +8846,7 @@ $rows
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
       ${scriptTag("url-state.js")}
-      ${scriptTag("bg-toggle.js")}
+      ${scriptTag("serve-components.js")}
       ${scriptTag("viewer-groups.js")}
       ${scriptTag("viewer-drawers.js")}
       ${scriptTag("viewer-history.js")}

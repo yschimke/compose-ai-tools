@@ -18,8 +18,15 @@ internal object ServeWebAssets {
       "codemirror.css" to "text/css; charset=utf-8",
       "codemirror.js" to "text/javascript; charset=utf-8",
       "url-state.js" to "text/javascript; charset=utf-8",
-      // The Transparent toggle, shared by the catalog grid and the viewer.
-      "bg-toggle.js" to "text/javascript; charset=utf-8",
+      // The Lit component bundle, built from `cli/serve-web/` and committed here so the Gradle
+      // build and the release chain stay node-free (`npm run verify` in that directory, wired into
+      // CI, fails if the committed bytes drift from the source). Carries every ported component —
+      // currently `<cp-bg-toggle>`, the Transparent toggle shared by the catalog grid and the
+      // viewer. Loaded whole rather than per-page: Lit is ~6 kB gzipped and an element whose tag
+      // isn't on the page costs nothing but its bytes, so splitting would buy less than it costs.
+      // The heavy per-page scripts selective loading exists for (`codemirror.js`, `viewer.js`,
+      // `format-compare.js`) are untouched and keep their own tags.
+      "serve-components.js" to "text/javascript; charset=utf-8",
       // The header's Settings menu and the Page theme setting it holds — whether the chrome follows
       // the selected preview theme or the OS. Loaded by every page, because the menu is in the site
       // header rather than on one surface.
