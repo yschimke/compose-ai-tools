@@ -342,14 +342,17 @@ object PlaygroundSourceCleaner {
    * comes out marked cleaned with a repository-internal call still in it, which is the one outcome
    * this whole design is built to avoid.
    *
-   * The prefix must be **two or more** lowercase-initial segments — a package path, never a
-   * receiver. `overrides.previewOverrideString` (one segment, possibly a local val) is left alone;
-   * guessing there could rewrite a call on somebody's object.
+   * The prefix must be a package the rules **name** ([UsageRules.scaffoldPackages]), not merely
+   * something package-*shaped*. `state.metrics.counted { }` is two lowercase segments followed by a
+   * declared scaffold name, and it is somebody's ordinary receiver chain; stripping it on that
+   * resemblance would hand the call to the scaffold passes and rewrite it. An allow-list can only
+   * ever *miss* a qualified call, which leaves it as residue — the direction this pass fails in.
    */
   private fun unqualifyScaffoldCalls(text: String, rules: UsageRules): String {
-    if (rules.scaffolds.isEmpty()) return text
+    if (rules.scaffolds.isEmpty() || rules.scaffoldPackages.isEmpty()) return text
     val names = rules.scaffolds.keys.joinToString("|") { Regex.escape(it) }
-    val qualified = Regex("""(?<![A-Za-z0-9_.])(?:[a-z][A-Za-z0-9_]*\.){2,}($names)(?=\s*\()""")
+    val packages = rules.scaffoldPackages.joinToString("|") { Regex.escape(it) }
+    val qualified = Regex("""(?<![A-Za-z0-9_.])(?:$packages)\.($names)(?=\s*\()""")
     val mask = codeMask(text)
     val out = StringBuilder(text.length)
     var at = 0

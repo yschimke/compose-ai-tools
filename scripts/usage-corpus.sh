@@ -36,11 +36,20 @@ fi
 # Gradle side silently ignores any checkout not named in it, so a third catalog would have produced
 # an empty corpus and a passing run.
 spec=""
+seen=""
 for repo in "${repos[@]}"; do
   case "$repo" in
     *,*) echo "usage-corpus: checkout path may not contain a comma: $repo" >&2; exit 2 ;;
   esac
-  spec="${spec:+$spec,}$(basename "$repo")=$repo"
+  name="$(basename "$repo")"
+  # Two checkouts with the same basename share an output directory, and then the empty-corpus check
+  # below sees the other one's snippets and passes a catalog that was never sampled — the exact
+  # silent success this script exists to stop.
+  case ",$seen," in
+    *",$name,"*) echo "usage-corpus: two checkouts are both named '$name'; rename one" >&2; exit 2 ;;
+  esac
+  seen="${seen:+$seen,}$name"
+  spec="${spec:+$spec,}$name=$repo"
 done
 
 rm -rf "$out"

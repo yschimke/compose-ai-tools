@@ -46,6 +46,17 @@ data class UsageRules(
   @SerialName("scaffoldAnnotationPackages")
   val scaffoldAnnotationPackages: List<String> = emptyList(),
 
+  /**
+   * Packages the [scaffolds] themselves live in, so a **package-qualified** call
+   * (`ee.schimke.composeai.overrides.previewOverrideString(…)`) is recognised as the same call.
+   *
+   * An allow-list rather than a shape test, because the shape is ambiguous: `state.metrics.counted
+   * { }` looks exactly like a two-segment package prefix, and unqualifying it would let the
+   * scaffold passes rewrite somebody's ordinary receiver chain. Only a prefix named here is
+   * stripped, so a chain this does not know about keeps its meaning.
+   */
+  @SerialName("scaffoldPackages") val scaffoldPackages: List<String> = emptyList(),
+
   /** Helper name → what the cleaner should do with it. */
   @SerialName("scaffolds") val scaffolds: Map<String, Scaffold> = emptyMap(),
 
@@ -149,6 +160,7 @@ data class UsageRules(
     val GENERIC =
       UsageRules(
         scaffoldAnnotationPackages = listOf("ee.schimke.composeai.preview"),
+        scaffoldPackages = listOf("ee.schimke.composeai.overrides"),
         // The preview-override knobs are **this repo's** API, not a catalog's, so no catalog should
         // have to declare them — and until they were here, every catalog's "plain Compose" leaked
         // `previewOverrideString(...)` into code a developer was invited to copy. Each takes
@@ -184,15 +196,6 @@ data class UsageRules(
       )
 
     /**
-     * A catalog's declared rules **plus** the ones that are this repo's business rather than any
-     * catalog's — the preview-override knobs and this repo's annotation packages.
-     *
-     * Without this a declared `compose-usage.json` replaced [GENERIC] wholesale, so the catalogs
-     * that had gone to the trouble of declaring their scaffolding were the only ones NOT getting
-     * the shared rules. A catalog can still override any of them by naming the same helper: its own
-     * entry wins.
-     */
-    /**
      * Did the **catalog** declare scaffolding, as opposed to inheriting this repo's own rules?
      *
      * The Source panel's note turns on this: "the catalog declared its scaffolding, so what is left
@@ -201,13 +204,34 @@ data class UsageRules(
      * being able to the moment [GENERIC] carried entries of its own — every catalog would then
      * claim a declaration it never made.
      */
-    fun UsageRules.declaresCatalogScaffolds(): Boolean =
-      scaffolds.keys.any { it !in GENERIC.scaffolds }
+    fun UsageRules.declaresCatalogScaffolds(): Boolean = catalogScaffolds().isNotEmpty()
 
+    /**
+     * The scaffolds a catalog declared itself — the merged map minus the generic ones it inherited.
+     *
+     * Compared by **entry**, not by key: a catalog that declares only its own reading of
+     * `previewOverrideString` has declared something, and a key-difference test would call that
+     * catalog undeclared while its rule was busy driving the cleaning.
+     */
+    fun UsageRules.catalogScaffolds(): Map<String, Scaffold> =
+      scaffolds.filter { (name, scaffold) ->
+        GENERIC.scaffolds[name] != scaffold
+      }
+
+    /**
+     * A catalog's declared rules **plus** the ones that are this repo's business rather than any
+     * catalog's — the preview-override knobs and this repo's annotation packages.
+     *
+     * Without this a declared `compose-usage.json` replaced [GENERIC] wholesale, so the catalogs
+     * that had gone to the trouble of declaring their scaffolding were the only ones NOT getting
+     * the shared rules. A catalog can still override any of them by naming the same helper: its own
+     * entry wins.
+     */
     private fun UsageRules.withGenericDefaults(): UsageRules =
       copy(
         scaffoldAnnotationPackages =
           (scaffoldAnnotationPackages + GENERIC.scaffoldAnnotationPackages).distinct(),
+        scaffoldPackages = (scaffoldPackages + GENERIC.scaffoldPackages).distinct(),
         scaffolds = GENERIC.scaffolds + scaffolds,
       )
 
