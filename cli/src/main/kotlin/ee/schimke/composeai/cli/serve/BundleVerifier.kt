@@ -112,11 +112,10 @@ object BundleVerifier {
       // bundle).
       if (sig.digest != expectedDigestHex) continue
       val key = trust.publicKeyFor(sig.keyId) ?: continue
-      val ok =
-        runCatching {
-            BundleSigning.verifyEd25519(key, digest, BundleSigning.decodeBase64(sig.signature))
-          }
-          .getOrDefault(false)
+      val ok = runCatching {
+        BundleSigning.verifyEd25519(key, digest, BundleSigning.decodeBase64(sig.signature))
+      }
+        .getOrDefault(false)
       if (!ok) continue
       bases.add(Basis.Signature(sig.keyId, sig.producer ?: trust.keyName(sig.keyId)))
       // Only now — on a cryptographically verified signature — record a trusted CI identity it

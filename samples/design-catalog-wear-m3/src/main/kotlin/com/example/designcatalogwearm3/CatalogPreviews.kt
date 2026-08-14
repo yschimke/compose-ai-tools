@@ -1,32 +1,25 @@
 package com.example.designcatalogwearm3
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
-import androidx.wear.compose.material3.AppCard
-import androidx.wear.compose.material3.ButtonGroup
-import androidx.wear.compose.material3.CompactButton
-import androidx.wear.compose.material3.Icon
-import androidx.wear.compose.material3.IconButton
-import androidx.wear.compose.material3.LocalContentColor
-import androidx.wear.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -36,18 +29,25 @@ import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.foundation.pager.HorizontalPager
 import androidx.wear.compose.foundation.pager.rememberPagerState
+import androidx.wear.compose.material3.AppCard
 import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.ButtonGroup
 import androidx.wear.compose.material3.Card
-import androidx.wear.compose.material3.OutlinedCard
 import androidx.wear.compose.material3.CheckboxButton
 import androidx.wear.compose.material3.ChildButton
 import androidx.wear.compose.material3.CircularProgressIndicator
+import androidx.wear.compose.material3.CompactButton
 import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.EdgeButtonSize
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.HorizontalPageIndicator
+import androidx.wear.compose.material3.Icon
+import androidx.wear.compose.material3.IconButton
 import androidx.wear.compose.material3.ListHeader
+import androidx.wear.compose.material3.LocalContentColor
+import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.OutlinedButton
+import androidx.wear.compose.material3.OutlinedCard
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.SwitchButton
@@ -84,42 +84,38 @@ import ee.schimke.composeai.preview.slots.PreviewSlot
 @CatalogWearModes
 @OverrideVariant(name = "disabled", booleans = ["enabled=false"])
 @Composable
-fun FilledButton() =
-  WearSticker {
-    val (label, onClick) =
-      wearCounted(previewOverrideString("label", stringResource(R.string.label_filled)))
-    Button(onClick = onClick, enabled = previewOverrideBoolean("enabled", true)) { Text(label) }
-  }
+fun FilledButton() = WearSticker {
+  val (label, onClick) =
+    wearCounted(previewOverrideString("label", stringResource(R.string.label_filled)))
+  Button(onClick = onClick, enabled = previewOverrideBoolean("enabled", true)) { Text(label) }
+}
 
 @CatalogComponent(id = "Button/Tonal", group = "Buttons")
 @CatalogWearModes
 @Composable
-fun FilledTonalButtonSticker() =
-  WearSticker {
-    val (label, onClick) =
-      wearCounted(previewOverrideString("label", stringResource(R.string.label_tonal)))
-    FilledTonalButton(onClick = onClick) { Text(label) }
-  }
+fun FilledTonalButtonSticker() = WearSticker {
+  val (label, onClick) =
+    wearCounted(previewOverrideString("label", stringResource(R.string.label_tonal)))
+  FilledTonalButton(onClick = onClick) { Text(label) }
+}
 
 @CatalogComponent(id = "Button/Outlined", group = "Buttons")
 @CatalogWearModes
 @Composable
-fun OutlinedButtonSticker() =
-  WearSticker {
-    val (label, onClick) =
-      wearCounted(previewOverrideString("label", stringResource(R.string.label_outlined)))
-    OutlinedButton(onClick = onClick) { Text(label) }
-  }
+fun OutlinedButtonSticker() = WearSticker {
+  val (label, onClick) =
+    wearCounted(previewOverrideString("label", stringResource(R.string.label_outlined)))
+  OutlinedButton(onClick = onClick) { Text(label) }
+}
 
 @CatalogComponent(id = "Button/Child", group = "Buttons")
 @CatalogWearModes
 @Composable
-fun ChildButtonSticker() =
-  WearSticker {
-    val (label, onClick) =
-      wearCounted(previewOverrideString("label", stringResource(R.string.label_child)))
-    ChildButton(onClick = onClick) { Text(label) }
-  }
+fun ChildButtonSticker() = WearSticker {
+  val (label, onClick) =
+    wearCounted(previewOverrideString("label", stringResource(R.string.label_child)))
+  ChildButton(onClick = onClick) { Text(label) }
+}
 
 // A workout history the EdgeButton sticker scrolls through. Long enough to
 // overflow the viewport by a few screens so, scrolled to the end, the list fills
@@ -162,44 +158,43 @@ private val edgeButtonHistory =
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
 @Composable
-fun EdgeButtonSticker() =
-  FullScreenWear {
-    val listState = rememberTransformingLazyColumnState()
-    val spec = rememberTransformationSpec()
-    val (edgeLabel, onEdgeClick) =
-      wearCounted(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
-    ScreenScaffold(
-      scrollState = listState,
-      edgeButton = {
-        EdgeButton(onClick = onEdgeClick, buttonSize = EdgeButtonSize.Large) { Text(edgeLabel) }
-      },
-    ) { contentPadding ->
-      TransformingLazyColumn(
-        state = listState,
-        contentPadding = contentPadding,
-        modifier = Modifier.fillMaxSize(),
-      ) {
-        item {
-          ListHeader(
-            modifier = Modifier.transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          ) {
-            Text(previewOverrideString("header", stringResource(R.string.header_workout)))
-          }
+fun EdgeButtonSticker() = FullScreenWear {
+  val listState = rememberTransformingLazyColumnState()
+  val spec = rememberTransformationSpec()
+  val (edgeLabel, onEdgeClick) =
+    wearCounted(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
+  ScreenScaffold(
+    scrollState = listState,
+    edgeButton = {
+      EdgeButton(onClick = onEdgeClick, buttonSize = EdgeButtonSize.Large) { Text(edgeLabel) }
+    },
+  ) { contentPadding ->
+    TransformingLazyColumn(
+      state = listState,
+      contentPadding = contentPadding,
+      modifier = Modifier.fillMaxSize(),
+    ) {
+      item {
+        ListHeader(
+          modifier = Modifier.transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        ) {
+          Text(previewOverrideString("header", stringResource(R.string.header_workout)))
         }
-        items(edgeButtonHistory) { (titleRes, subtitle) ->
-          val (title, onClick) = wearCounted(stringResource(titleRes))
-          TitleCard(
-            onClick = onClick,
-            title = { Text(title) },
-            subtitle = { Text(subtitle) },
-            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          )
-        }
+      }
+      items(edgeButtonHistory) { (titleRes, subtitle) ->
+        val (title, onClick) = wearCounted(stringResource(titleRes))
+        TitleCard(
+          onClick = onClick,
+          title = { Text(title) },
+          subtitle = { Text(subtitle) },
+          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        )
       }
     }
   }
+}
 
 // ---------------------------------------------------------------------------
 // Lists — the Wear M3 scaling TransformingLazyColumn. Items scale + fade toward
@@ -225,37 +220,36 @@ private val scalingListItems =
 )
 @CatalogWearBreakpoints
 @Composable
-fun ScalingListSticker() =
-  FullScreenWear {
-    val listState = rememberTransformingLazyColumnState()
-    val spec = rememberTransformationSpec()
-    ScreenScaffold(scrollState = listState) { contentPadding ->
-      TransformingLazyColumn(
-        state = listState,
-        contentPadding = contentPadding,
-        modifier = Modifier.fillMaxSize(),
-      ) {
-        item {
-          ListHeader(
-            modifier = Modifier.transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          ) {
-            Text(previewOverrideString("header", stringResource(R.string.header_activity)))
-          }
+fun ScalingListSticker() = FullScreenWear {
+  val listState = rememberTransformingLazyColumnState()
+  val spec = rememberTransformationSpec()
+  ScreenScaffold(scrollState = listState) { contentPadding ->
+    TransformingLazyColumn(
+      state = listState,
+      contentPadding = contentPadding,
+      modifier = Modifier.fillMaxSize(),
+    ) {
+      item {
+        ListHeader(
+          modifier = Modifier.transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        ) {
+          Text(previewOverrideString("header", stringResource(R.string.header_activity)))
         }
-        items(scalingListItems) { (titleRes, subtitle) ->
-          val (title, onClick) = wearCounted(stringResource(titleRes))
-          TitleCard(
-            onClick = onClick,
-            title = { Text(title) },
-            subtitle = { Text(subtitle) },
-            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          )
-        }
+      }
+      items(scalingListItems) { (titleRes, subtitle) ->
+        val (title, onClick) = wearCounted(stringResource(titleRes))
+        TitleCard(
+          onClick = onClick,
+          title = { Text(title) },
+          subtitle = { Text(subtitle) },
+          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        )
       }
     }
   }
+}
 
 // ---------------------------------------------------------------------------
 // Layout templates — a blank skeleton of the common Wear list screen at every
@@ -284,38 +278,37 @@ fun ScalingListSticker() =
 // The one sheet whose handlers stay literal `{}` on purpose. Every slot here is deliberately empty
 // — the whole point is the blank skeleton — so there is no label for a click tally to land in, and
 // wiring one would print a stray "(1)" into a slot whose emptiness is the specification.
-fun BlankListLayout() =
-  FullScreenWear {
-    val listState = rememberTransformingLazyColumnState()
-    val spec = rememberTransformationSpec()
-    ScreenScaffold(
-      scrollState = listState,
-      edgeButton = { EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {} },
-    ) { contentPadding ->
-      TransformingLazyColumn(
-        state = listState,
-        contentPadding = contentPadding,
-        modifier = Modifier.fillMaxSize(),
-      ) {
-        item {
-          ListHeader(
-            modifier = Modifier.transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          ) {
-            Text("")
-          }
+fun BlankListLayout() = FullScreenWear {
+  val listState = rememberTransformingLazyColumnState()
+  val spec = rememberTransformationSpec()
+  ScreenScaffold(
+    scrollState = listState,
+    edgeButton = { EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {} },
+  ) { contentPadding ->
+    TransformingLazyColumn(
+      state = listState,
+      contentPadding = contentPadding,
+      modifier = Modifier.fillMaxSize(),
+    ) {
+      item {
+        ListHeader(
+          modifier = Modifier.transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        ) {
+          Text("")
         }
-        items(10) {
-          TitleCard(
-            onClick = {},
-            title = { Text("") },
-            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          ) {}
-        }
+      }
+      items(10) {
+        TitleCard(
+          onClick = {},
+          title = { Text("") },
+          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        ) {}
       }
     }
   }
+}
 
 // ---------------------------------------------------------------------------
 // Scaffold templates — full-screen, pre-built screen skeletons an app copies
@@ -342,42 +335,42 @@ private val templateListItems =
 @CatalogComponent(
   id = "Template/TimeText",
   group = "Scaffold templates",
-  caption = "Full-screen list scaffold with the curved TimeText status strip — the base Wear screen.",
+  caption =
+    "Full-screen list scaffold with the curved TimeText status strip — the base Wear screen.",
   perBreakpoint = true,
 )
 @CatalogWearBreakpoints
 @Composable
-fun TimeTextScaffoldTemplate() =
-  WearScaffoldTemplate {
-    val listState = rememberTransformingLazyColumnState()
-    val spec = rememberTransformationSpec()
-    ScreenScaffold(scrollState = listState) { contentPadding ->
-      TransformingLazyColumn(
-        state = listState,
-        contentPadding = contentPadding,
-        modifier = Modifier.fillMaxSize(),
-      ) {
-        item {
-          ListHeader(
-            modifier = Modifier.transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          ) {
-            Text(previewOverrideString("header", stringResource(R.string.header_activity)))
-          }
+fun TimeTextScaffoldTemplate() = WearScaffoldTemplate {
+  val listState = rememberTransformingLazyColumnState()
+  val spec = rememberTransformationSpec()
+  ScreenScaffold(scrollState = listState) { contentPadding ->
+    TransformingLazyColumn(
+      state = listState,
+      contentPadding = contentPadding,
+      modifier = Modifier.fillMaxSize(),
+    ) {
+      item {
+        ListHeader(
+          modifier = Modifier.transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        ) {
+          Text(previewOverrideString("header", stringResource(R.string.header_activity)))
         }
-        items(templateListItems) { (titleRes, subtitle) ->
-          val (title, onClick) = wearCounted(stringResource(titleRes))
-          TitleCard(
-            onClick = onClick,
-            title = { Text(title) },
-            subtitle = { Text(subtitle) },
-            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          )
-        }
+      }
+      items(templateListItems) { (titleRes, subtitle) ->
+        val (title, onClick) = wearCounted(stringResource(titleRes))
+        TitleCard(
+          onClick = onClick,
+          title = { Text(title) },
+          subtitle = { Text(subtitle) },
+          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        )
       }
     }
   }
+}
 
 // Page-indicator template: a horizontal pager with the Wear M3
 // HorizontalPageIndicator hugging the bottom curve. Seeded on the middle page so
@@ -392,21 +385,22 @@ fun TimeTextScaffoldTemplate() =
 )
 @CatalogWearBreakpoints
 @Composable
-fun PageIndicatorScaffoldTemplate() =
-  WearScaffoldTemplate {
-    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
-    Box(Modifier.fillMaxSize()) {
-      HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-          Text(previewOverrideString("page", stringResource(R.string.label_page, page + 1), index = page))
-        }
+fun PageIndicatorScaffoldTemplate() = WearScaffoldTemplate {
+  val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
+  Box(Modifier.fillMaxSize()) {
+    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+      Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+          previewOverrideString("page", stringResource(R.string.label_page, page + 1), index = page)
+        )
       }
-      HorizontalPageIndicator(
-        pagerState = pagerState,
-        modifier = Modifier.align(Alignment.BottomCenter),
-      )
     }
+    HorizontalPageIndicator(
+      pagerState = pagerState,
+      modifier = Modifier.align(Alignment.BottomCenter),
+    )
   }
+}
 
 // Edge-button template: a list screen anchored by the screen-hugging EdgeButton.
 // Like [EdgeButtonSticker], the ScreenScaffold reveals the edge button only once
@@ -422,44 +416,43 @@ fun PageIndicatorScaffoldTemplate() =
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
 @Composable
-fun EdgeButtonScaffoldTemplate() =
-  WearScaffoldTemplate {
-    val listState = rememberTransformingLazyColumnState()
-    val spec = rememberTransformationSpec()
-    val (edgeLabel, onEdgeClick) =
-      wearCounted(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
-    ScreenScaffold(
-      scrollState = listState,
-      edgeButton = {
-        EdgeButton(onClick = onEdgeClick, buttonSize = EdgeButtonSize.Large) { Text(edgeLabel) }
-      },
-    ) { contentPadding ->
-      TransformingLazyColumn(
-        state = listState,
-        contentPadding = contentPadding,
-        modifier = Modifier.fillMaxSize(),
-      ) {
-        item {
-          ListHeader(
-            modifier = Modifier.transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          ) {
-            Text(previewOverrideString("header", stringResource(R.string.header_workout)))
-          }
+fun EdgeButtonScaffoldTemplate() = WearScaffoldTemplate {
+  val listState = rememberTransformingLazyColumnState()
+  val spec = rememberTransformationSpec()
+  val (edgeLabel, onEdgeClick) =
+    wearCounted(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
+  ScreenScaffold(
+    scrollState = listState,
+    edgeButton = {
+      EdgeButton(onClick = onEdgeClick, buttonSize = EdgeButtonSize.Large) { Text(edgeLabel) }
+    },
+  ) { contentPadding ->
+    TransformingLazyColumn(
+      state = listState,
+      contentPadding = contentPadding,
+      modifier = Modifier.fillMaxSize(),
+    ) {
+      item {
+        ListHeader(
+          modifier = Modifier.transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        ) {
+          Text(previewOverrideString("header", stringResource(R.string.header_workout)))
         }
-        items(edgeButtonHistory) { (titleRes, subtitle) ->
-          val (title, onClick) = wearCounted(stringResource(titleRes))
-          TitleCard(
-            onClick = onClick,
-            title = { Text(title) },
-            subtitle = { Text(subtitle) },
-            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-            transformation = SurfaceTransformation(spec),
-          )
-        }
+      }
+      items(edgeButtonHistory) { (titleRes, subtitle) ->
+        val (title, onClick) = wearCounted(stringResource(titleRes))
+        TitleCard(
+          onClick = onClick,
+          title = { Text(title) },
+          subtitle = { Text(subtitle) },
+          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+          transformation = SurfaceTransformation(spec),
+        )
       }
     }
   }
+}
 
 // ---------------------------------------------------------------------------
 // Selection controls.
@@ -476,17 +469,17 @@ fun EdgeButtonScaffoldTemplate() =
 @CatalogWearModes
 @OverrideVariant(name = "off", booleans = ["checked=false"])
 @Composable
-fun SwitchButtonOn() =
-  WearSticker {
-    val (checked, onCheckedChange) = wearChecked(previewOverrideBoolean("checked", true))
-    SwitchButton(
-      checked = checked,
-      onCheckedChange = onCheckedChange,
-      label = { Text(previewOverrideString("label", stringResource(R.string.label_wifi))) },
-    )
-  }
+fun SwitchButtonOn() = WearSticker {
+  val (checked, onCheckedChange) = wearChecked(previewOverrideBoolean("checked", true))
+  SwitchButton(
+    checked = checked,
+    onCheckedChange = onCheckedChange,
+    label = { Text(previewOverrideString("label", stringResource(R.string.label_wifi))) },
+  )
+}
 
-// The unchecked state rides this function via `@OverrideVariant` (seeding `checked = false`) instead
+// The unchecked state rides this function via `@OverrideVariant` (seeding `checked = false`)
+// instead
 // of a duplicated `CheckboxButtonUnchecked`.
 @CatalogComponent(
   id = "CheckboxButton/Checked",
@@ -496,15 +489,14 @@ fun SwitchButtonOn() =
 @CatalogWearModes
 @OverrideVariant(name = "unchecked", booleans = ["checked=false"])
 @Composable
-fun CheckboxButtonChecked() =
-  WearSticker {
-    val (checked, onCheckedChange) = wearChecked(previewOverrideBoolean("checked", true))
-    CheckboxButton(
-      checked = checked,
-      onCheckedChange = onCheckedChange,
-      label = { Text(previewOverrideString("label", stringResource(R.string.label_sync))) },
-    )
-  }
+fun CheckboxButtonChecked() = WearSticker {
+  val (checked, onCheckedChange) = wearChecked(previewOverrideBoolean("checked", true))
+  CheckboxButton(
+    checked = checked,
+    onCheckedChange = onCheckedChange,
+    label = { Text(previewOverrideString("label", stringResource(R.string.label_sync))) },
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Containment + headers.
@@ -519,16 +511,13 @@ fun CheckboxButtonChecked() =
 @CatalogComponent(id = "Card", group = "Containment")
 @CatalogWearModes
 @Composable
-fun CardSticker() =
-  WearSticker {
-    // A Wear card is a clickable surface (`onClick` is required, unlike M3's plain `Card`), so it
-    // gets the same click tally the buttons do rather than a dead handler.
-    val (label, onClick) =
-      wearCounted(previewOverrideString("label", stringResource(R.string.label_card)))
-    Card(onClick = onClick) {
-      PreviewSlot("content", Modifier.fillMaxWidth()) { Text(label) }
-    }
-  }
+fun CardSticker() = WearSticker {
+  // A Wear card is a clickable surface (`onClick` is required, unlike M3's plain `Card`), so it
+  // gets the same click tally the buttons do rather than a dead handler.
+  val (label, onClick) =
+    wearCounted(previewOverrideString("label", stringResource(R.string.label_card)))
+  Card(onClick = onClick) { PreviewSlot("content", Modifier.fillMaxWidth()) { Text(label) } }
+}
 
 // The outlined card variant (`OutlinedCard`) — the Wear parallel of remote-m3's `Card/Outlined`.
 // Same "Card" label as the filled `Card` above; only the outlined-vs-filled treatment differs.
@@ -539,31 +528,29 @@ fun CardSticker() =
 )
 @CatalogWearModes
 @Composable
-fun OutlinedCardSticker() =
-  WearSticker {
-    val (label, onClick) =
-      wearCounted(previewOverrideString("label", stringResource(R.string.label_card)))
-    OutlinedCard(onClick = onClick) {
-      PreviewSlot("content", Modifier.fillMaxWidth()) { Text(label) }
-    }
+fun OutlinedCardSticker() = WearSticker {
+  val (label, onClick) =
+    wearCounted(previewOverrideString("label", stringResource(R.string.label_card)))
+  OutlinedCard(onClick = onClick) {
+    PreviewSlot("content", Modifier.fillMaxWidth()) { Text(label) }
   }
+}
 
 @CatalogComponent(id = "TitleCard", group = "Containment")
 @CatalogWearModes
 @Composable
-fun TitleCardSticker() =
-  WearSticker {
-    val (title, onClick) =
-      wearCounted(previewOverrideString("title", stringResource(R.string.title_morning_run)))
-    TitleCard(
-      onClick = onClick,
-      title = { PreviewSlot("title", Modifier.fillMaxWidth()) { Text(title) } },
-    ) {
-      PreviewSlot("subtitle", Modifier.fillMaxWidth()) {
-        Text(previewOverrideString("subtitle", "5.2 km · 28 min"))
-      }
+fun TitleCardSticker() = WearSticker {
+  val (title, onClick) =
+    wearCounted(previewOverrideString("title", stringResource(R.string.title_morning_run)))
+  TitleCard(
+    onClick = onClick,
+    title = { PreviewSlot("title", Modifier.fillMaxWidth()) { Text(title) } },
+  ) {
+    PreviewSlot("subtitle", Modifier.fillMaxWidth()) {
+      Text(previewOverrideString("subtitle", "5.2 km · 28 min"))
     }
   }
+}
 
 // No slot marker on the ListHeader: its content is horizontally centred, so a `fillMaxWidth` slot
 // box would left-shift the label in the baked render, and a header isn't a drop target the
@@ -571,8 +558,9 @@ fun TitleCardSticker() =
 @CatalogComponent(id = "ListHeader", group = "Containment")
 @CatalogWearModes
 @Composable
-fun ListHeaderSticker() =
-  WearSticker { ListHeader { Text(previewOverrideString("label", stringResource(R.string.header_today))) } }
+fun ListHeaderSticker() = WearSticker {
+  ListHeader { Text(previewOverrideString("label", stringResource(R.string.header_today))) }
+}
 
 // ---------------------------------------------------------------------------
 // Communication.
@@ -603,11 +591,13 @@ fun CircularProgressSticker() =
 )
 @CatalogWearModes
 @Composable
-fun IndeterminateCircularProgressSticker() =
-  WearSticker { CircularProgressIndicator(modifier = Modifier.size(72.dp)) }
+fun IndeterminateCircularProgressSticker() = WearSticker {
+  CircularProgressIndicator(modifier = Modifier.size(72.dp))
+}
 
 // The same indeterminate ring captured as an **animated GIF** — the shareable, self-playing form of
-// the spinner (the static sticker above only moves in the live interactive lane). `@AnimatedPreview`
+// the spinner (the static sticker above only moves in the live interactive lane).
+// `@AnimatedPreview`
 // drives the paused clock across the animation window and encodes `renders/<id>.gif`;
 // `showCurves = false` keeps it a screenshot-only GIF (no debug curve-plot panel), and the duration
 // auto-detects from the indeterminate `InfiniteTransition`'s iteration so the loop is seamless.
@@ -617,8 +607,9 @@ fun IndeterminateCircularProgressSticker() =
 @Preview(showBackground = false)
 @AnimatedPreview(showCurves = false)
 @Composable
-fun IndeterminateCircularProgressGif() =
-  WearSticker { CircularProgressIndicator(modifier = Modifier.size(72.dp)) }
+fun IndeterminateCircularProgressGif() = WearSticker {
+  CircularProgressIndicator(modifier = Modifier.size(72.dp))
+}
 
 // ---------------------------------------------------------------------------
 // Text options — exercises the maxLines / overflow product on a round screen.
@@ -631,15 +622,14 @@ fun IndeterminateCircularProgressGif() =
 )
 @CatalogWearModes
 @Composable
-fun TextMaxLinesTruncated() =
-  WearSticker {
-    Text(
-      previewOverrideString("text", stringResource(R.string.wear_body_overflow)),
-      modifier = Modifier.width(140.dp),
-      maxLines = 2,
-      overflow = TextOverflow.Ellipsis,
-    )
-  }
+fun TextMaxLinesTruncated() = WearSticker {
+  Text(
+    previewOverrideString("text", stringResource(R.string.wear_body_overflow)),
+    modifier = Modifier.width(140.dp),
+    maxLines = 2,
+    overflow = TextOverflow.Ellipsis,
+  )
+}
 
 // ---------------------------------------------------------------------------
 // States — interaction (pressed / focused; focus matters on Wear for rotary /
@@ -689,12 +679,11 @@ fun TextMaxLinesTruncated() =
 )
 @CatalogWearModes
 @Composable
-fun ButtonPressed() =
-  WearSticker {
-    val (label, onClick) =
-      wearCounted(previewOverrideString("label", stringResource(R.string.label_pressed)))
-    Button(onClick = onClick, interactionSource = pressedSource()) { Text(label) }
-  }
+fun ButtonPressed() = WearSticker {
+  val (label, onClick) =
+    wearCounted(previewOverrideString("label", stringResource(R.string.label_pressed)))
+  Button(onClick = onClick, interactionSource = pressedSource()) { Text(label) }
+}
 
 /**
  * Seeds a held [PressInteraction.Press] so the resting capture shows the pressed state layer.
@@ -719,12 +708,11 @@ private fun pressedSource(): MutableInteractionSource {
 @CatalogWearModes
 @FocusedPreview(indices = [0])
 @Composable
-fun ButtonFocused() =
-  WearSticker {
-    val (label, onClick) =
-      wearCounted(previewOverrideString("label", stringResource(R.string.label_focused)))
-    Button(onClick = onClick) { Text(label) }
-  }
+fun ButtonFocused() = WearSticker {
+  val (label, onClick) =
+    wearCounted(previewOverrideString("label", stringResource(R.string.label_focused)))
+  Button(onClick = onClick) { Text(label) }
+}
 
 // (`ButtonDisabled`, `SwitchButtonOff`, `CheckboxButtonUnchecked` removed — those states now ride
 // their primary function via `@OverrideVariant`, seeding the `enabled` / `checked` knob.)
@@ -767,29 +755,27 @@ private val catalogIcon: ImageVector =
 @CatalogComponent(id = "IconButton", group = "Buttons", caption = "Round icon button.")
 @CatalogWearModes
 @Composable
-fun IconButtonSticker() =
-  WearSticker {
-    // No label to tally into, so the icon button's click toggles a "favourited" reading instead:
-    // the star fills with the theme's primary. Untapped — every baked capture — it renders in the
-    // stock content colour exactly as before.
-    val (favourite, onFavouriteChange) = wearChecked(false)
-    IconButton(onClick = { onFavouriteChange(!favourite) }) {
-      Icon(
-        catalogIcon,
-        "Favourite",
-        tint = if (favourite) MaterialTheme.colorScheme.primary else LocalContentColor.current,
-      )
-    }
+fun IconButtonSticker() = WearSticker {
+  // No label to tally into, so the icon button's click toggles a "favourited" reading instead:
+  // the star fills with the theme's primary. Untapped — every baked capture — it renders in the
+  // stock content colour exactly as before.
+  val (favourite, onFavouriteChange) = wearChecked(false)
+  IconButton(onClick = { onFavouriteChange(!favourite) }) {
+    Icon(
+      catalogIcon,
+      "Favourite",
+      tint = if (favourite) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+    )
   }
+}
 
 @CatalogComponent(id = "CompactButton", group = "Buttons", caption = "Compact single-line button.")
 @CatalogWearModes
 @Composable
-fun CompactButtonSticker() =
-  WearSticker {
-    val (label, onClick) = wearCounted(previewOverrideString("label", "Compact"))
-    CompactButton(onClick = onClick, label = { Text(label) })
-  }
+fun CompactButtonSticker() = WearSticker {
+  val (label, onClick) = wearCounted(previewOverrideString("label", "Compact"))
+  CompactButton(onClick = onClick, label = { Text(label) })
+}
 
 @CatalogComponent(
   id = "ButtonGroup",
@@ -798,16 +784,15 @@ fun CompactButtonSticker() =
 )
 @CatalogWearModes
 @Composable
-fun ButtonGroupSticker() =
-  WearSticker {
-    // Both members tally independently, so a live session can tell which half it hit.
-    val (yes, onYes) = wearCounted("Yes")
-    val (no, onNo) = wearCounted("No")
-    ButtonGroup {
-      Button(onClick = onYes, modifier = Modifier.weight(1f)) { Text(yes) }
-      Button(onClick = onNo, modifier = Modifier.weight(1f)) { Text(no) }
-    }
+fun ButtonGroupSticker() = WearSticker {
+  // Both members tally independently, so a live session can tell which half it hit.
+  val (yes, onYes) = wearCounted("Yes")
+  val (no, onNo) = wearCounted("No")
+  ButtonGroup {
+    Button(onClick = onYes, modifier = Modifier.weight(1f)) { Text(yes) }
+    Button(onClick = onNo, modifier = Modifier.weight(1f)) { Text(no) }
   }
+}
 
 @CatalogComponent(
   id = "AppCard",
@@ -816,19 +801,18 @@ fun ButtonGroupSticker() =
 )
 @CatalogWearModes
 @Composable
-fun AppCardSticker() =
-  WearSticker {
-    val (title, onClick) =
-      wearCounted(previewOverrideString("title", stringResource(R.string.title_morning_run)))
-    AppCard(
-      onClick = onClick,
-      appName = { Text("App") },
-      title = { Text(title) },
-      appImage = { Icon(catalogIcon, null, Modifier.size(16.dp)) },
-    ) {
-      Text("5.2 km · 28 min")
-    }
+fun AppCardSticker() = WearSticker {
+  val (title, onClick) =
+    wearCounted(previewOverrideString("title", stringResource(R.string.title_morning_run)))
+  AppCard(
+    onClick = onClick,
+    appName = { Text("App") },
+    title = { Text(title) },
+    appImage = { Icon(catalogIcon, null, Modifier.size(16.dp)) },
+  ) {
+    Text("5.2 km · 28 min")
   }
+}
 
 @CatalogComponent(id = "Icon", group = "Iconography", caption = "The standalone Icon primitive.")
 @CatalogWearModes
@@ -844,14 +828,13 @@ fun IconSticker() = WearSticker { Icon(catalogIcon, "Star", Modifier.size(48.dp)
 )
 @CatalogWearModes
 @Composable
-fun TypographySpecimen() =
-  WearSticker {
-    Column {
-      Text("Body Large", style = MaterialTheme.typography.bodyLarge)
-      Text("Label Medium", style = MaterialTheme.typography.labelMedium)
-      Text("Label Small", style = MaterialTheme.typography.labelSmall)
-    }
+fun TypographySpecimen() = WearSticker {
+  Column {
+    Text("Body Large", style = MaterialTheme.typography.bodyLarge)
+    Text("Label Medium", style = MaterialTheme.typography.labelMedium)
+    Text("Label Small", style = MaterialTheme.typography.labelSmall)
   }
+}
 
 @CatalogComponent(
   id = "ColorScheme",
@@ -860,11 +843,10 @@ fun TypographySpecimen() =
 )
 @CatalogWearModes
 @Composable
-fun ColorSchemeSpecimen() =
-  WearSticker {
-    Row {
-      Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.primary))
-      Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.surfaceContainer))
-      Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.onBackground))
-    }
+fun ColorSchemeSpecimen() = WearSticker {
+  Row {
+    Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.primary))
+    Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.surfaceContainer))
+    Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.onBackground))
   }
+}

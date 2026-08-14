@@ -110,12 +110,12 @@ class FigmaSvgShowBackgroundBoundsRenderTest {
     val png = ImageIO.read(result.frame)
     assertEquals("capture is the full fixed-size crop", 100, png.width)
     assertEquals(26, png.height)
-    listOf(0 to 0, png.width - 1 to 0, 0 to png.height - 1, png.width - 1 to png.height - 1).forEach {
-      (x, y) ->
-      val argb = png.getRGB(x, y)
-      assertEquals("corner ($x,$y) alpha", 0xff, (argb ushr 24) and 0xff)
-      assertEquals("corner ($x,$y) rgb", nightArgb and 0xffffff, argb and 0xffffff)
-    }
+    listOf(0 to 0, png.width - 1 to 0, 0 to png.height - 1, png.width - 1 to png.height - 1)
+      .forEach { (x, y) ->
+        val argb = png.getRGB(x, y)
+        assertEquals("corner ($x,$y) alpha", 0xff, (argb ushr 24) and 0xff)
+        assertEquals("corner ($x,$y) rgb", nightArgb and 0xffffff, argb and 0xffffff)
+      }
 
     // SVG half: the background rect spans the full 100×26 crop with the same dark fill…
     val svg = result.svg
@@ -123,7 +123,8 @@ class FigmaSvgShowBackgroundBoundsRenderTest {
       "the dark background must cover the whole crop, not the divider bounds:\n$svg",
       svg.contains("""<rect x="0" y="0" width="100" height="26" fill="#1C1B1F""""),
     )
-    // …even though the only child that paints is a single-pixel-tall line (the regression scenario).
+    // …even though the only child that paints is a single-pixel-tall line (the regression
+    // scenario).
     assertTrue(
       "the divider is a hairline, so the background is not shrink-wrapped to it:\n$svg",
       Regex("""<rect[^>]*\bheight="1"[^>]*fill="#FFFFFF"""").containsMatchIn(svg),
@@ -131,16 +132,17 @@ class FigmaSvgShowBackgroundBoundsRenderTest {
     // The canvas IS the full crop — not the ~1px divider extent, and not the crop plus a margin:
     // with the frame size known the export anchors to it, so the SVG and its paired PNG are the
     // same box.
-    val canvasHeight = Regex("""<svg[^>]*\bheight="(\d+)"""").find(svg)?.groupValues?.get(1)?.toInt()
+    val canvasHeight =
+      Regex("""<svg[^>]*\bheight="(\d+)"""").find(svg)?.groupValues?.get(1)?.toInt()
     assertEquals("canvas height is the full crop", 26, canvasHeight)
   }
 
   private class ExportResult(val svg: String, val frame: File)
 
   /**
-   * Renders [content] in a [widthPx]×[heightPx] window painted with [backgroundArgb] (the production
-   * `decorView` background paint), captures the frame, then runs the real capture → figma-svg
-   * export in hybrid mode with the frame supplied — the same path `RenderEngine` drives.
+   * Renders [content] in a [widthPx]×[heightPx] window painted with [backgroundArgb] (the
+   * production `decorView` background paint), captures the frame, then runs the real capture →
+   * figma-svg export in hybrid mode with the frame supplied — the same path `RenderEngine` drives.
    */
   private fun export(
     previewId: String,

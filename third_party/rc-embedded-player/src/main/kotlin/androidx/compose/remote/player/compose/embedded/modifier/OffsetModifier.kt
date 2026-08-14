@@ -28,11 +28,11 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun Modifier.offset(op: OffsetModifierOperation): Modifier {
-    val x = rememberRemoteFloatAsState(op.x).value
-    val y = rememberRemoteFloatAsState(op.y).value
+  val x = rememberRemoteFloatAsState(op.x).value
+  val y = rememberRemoteFloatAsState(op.y).value
 
-    return this.offset(
-        x = (x / LocalDensity.current.density).dp,
-        y = (y / LocalDensity.current.density).dp,
-    )
+  return this.offset(
+    x = (x / LocalDensity.current.density).dp,
+    y = (y / LocalDensity.current.density).dp,
+  )
 }

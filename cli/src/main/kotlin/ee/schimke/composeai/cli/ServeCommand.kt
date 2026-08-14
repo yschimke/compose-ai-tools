@@ -602,12 +602,13 @@ class ServeCommand(args: List<String>) : Command(args) {
    */
   private val catalogsConfig: ServeCatalogsConfig by lazy {
     val file = catalogsFile ?: return@lazy ServeCatalogsConfig.EMPTY
-    val parsed =
-      runCatching { file.load() }
-        .getOrElse {
-          System.err.println("serve: could not read ${file.displayPath}: ${it.message}")
-          ServeCatalogsConfig.EMPTY
-        }
+    val parsed = runCatching {
+      file.load()
+    }
+      .getOrElse {
+        System.err.println("serve: could not read ${file.displayPath}: ${it.message}")
+        ServeCatalogsConfig.EMPTY
+      }
     parsed.problems().forEach { System.err.println("serve: catalogs config: $it") }
     parsed
   }
@@ -1123,62 +1124,61 @@ class ServeCommand(args: List<String>) : Command(args) {
    * mapped ids gain a live lane). Rebuilt on every resume, so suspend/resume works unchanged. Plain
    * project / revision / plain-bundle sessions carry no fallback → the bare daemon.
    */
-  private fun openHost(state: ServeSessionState): ServeHost? =
-    runCatching {
-        fun openDaemon(systemPropertyOverrides: Map<String, String> = emptyMap()): ServeRenderHost =
-          ServeRenderHost.open(
-            descriptorPath = state.descriptor,
-            workspaceRoot = state.workspaceRoot,
-            workspaceName = state.workspaceName,
-            previews = state.previews,
-            label = state.label,
-            declaredThemes = state.declaredThemes,
-            systemPropertyOverrides = systemPropertyOverrides,
-            onLog = { System.err.println("[daemon serve] $it") },
-          )
-        val daemon = openDaemon()
-        val fallback = state.bakedFallback
-        if (fallback != null)
-          ServeCatalogLiveHost(
-              alias = state.previewAliases,
-              live = daemon,
-              baked = fallback(),
-              perPreviewResolve = state.perPreviewResolve,
-              executableBundleAvailable = state.executableBundleAvailable,
-              executableBundleProvider = state.executableBundleProvider,
-              perPreviewStreamCount = state.perPreviewStreamCount,
-              perPreviewRenderStats = state.perPreviewRenderStats,
-              perPreviewPoolStats = state.perPreviewPoolStats,
-              perPreviewReapIdle = state.perPreviewReapIdle,
-              sharedDaemonPool =
-                ServeSharedDaemonPool(
-                  primary = daemon,
-                  liveSeats = liveSeatLimiter,
-                  seatWeight = { state.liveSeatWeight },
-                ) {
-                  // Every daemon writes <outputBaseName>.png and its data products below the
-                  // descriptor's output root. Replicas therefore need separate roots even though
-                  // they share the catalog classpath; otherwise overlapping themes can overwrite
-                  // one another between a completion notification and ServeRenderHost reading the
-                  // file.
-                  openIsolatedSharedDaemonReplica(state.descriptor, ::openDaemon)
-                },
-              catalogThemeCache = state.catalogThemeCache ?: CatalogThemeCache(),
-              serverIdleMillis = state.serverIdleMillis,
-              backgroundWork = state.backgroundWork,
-            )
-            // Warm the daemon off the request path so the first browse already gets the per-variant
-            // SVG lane instead of the baked fallback — critical for a slow-cold-starting Android
-            // daemon, where a lazy first render would otherwise take minutes.
-            .also { it.prewarm() }
-        else daemon
-      }
-      // Previously the exception was swallowed to a silent null; record it so the reason survives
-      // on
-      // the /status page instead of only reaching stderr. The host still degrades to null as
-      // before.
-      .onFailure { daemonLog.record(state.label, it.message ?: it.toString()) }
-      .getOrNull()
+  private fun openHost(state: ServeSessionState): ServeHost? = runCatching {
+    fun openDaemon(systemPropertyOverrides: Map<String, String> = emptyMap()): ServeRenderHost =
+      ServeRenderHost.open(
+        descriptorPath = state.descriptor,
+        workspaceRoot = state.workspaceRoot,
+        workspaceName = state.workspaceName,
+        previews = state.previews,
+        label = state.label,
+        declaredThemes = state.declaredThemes,
+        systemPropertyOverrides = systemPropertyOverrides,
+        onLog = { System.err.println("[daemon serve] $it") },
+      )
+    val daemon = openDaemon()
+    val fallback = state.bakedFallback
+    if (fallback != null)
+      ServeCatalogLiveHost(
+          alias = state.previewAliases,
+          live = daemon,
+          baked = fallback(),
+          perPreviewResolve = state.perPreviewResolve,
+          executableBundleAvailable = state.executableBundleAvailable,
+          executableBundleProvider = state.executableBundleProvider,
+          perPreviewStreamCount = state.perPreviewStreamCount,
+          perPreviewRenderStats = state.perPreviewRenderStats,
+          perPreviewPoolStats = state.perPreviewPoolStats,
+          perPreviewReapIdle = state.perPreviewReapIdle,
+          sharedDaemonPool =
+            ServeSharedDaemonPool(
+              primary = daemon,
+              liveSeats = liveSeatLimiter,
+              seatWeight = { state.liveSeatWeight },
+            ) {
+              // Every daemon writes <outputBaseName>.png and its data products below the
+              // descriptor's output root. Replicas therefore need separate roots even though
+              // they share the catalog classpath; otherwise overlapping themes can overwrite
+              // one another between a completion notification and ServeRenderHost reading the
+              // file.
+              openIsolatedSharedDaemonReplica(state.descriptor, ::openDaemon)
+            },
+          catalogThemeCache = state.catalogThemeCache ?: CatalogThemeCache(),
+          serverIdleMillis = state.serverIdleMillis,
+          backgroundWork = state.backgroundWork,
+        )
+        // Warm the daemon off the request path so the first browse already gets the per-variant
+        // SVG lane instead of the baked fallback — critical for a slow-cold-starting Android
+        // daemon, where a lazy first render would otherwise take minutes.
+        .also { it.prewarm() }
+    else daemon
+  }
+    // Previously the exception was swallowed to a silent null; record it so the reason survives
+    // on
+    // the /status page instead of only reaching stderr. The host still degrades to null as
+    // before.
+    .onFailure { daemonLog.record(state.label, it.message ?: it.toString()) }
+    .getOrNull()
 
   /**
    * Build the `--accept-docs` document store, or null when the operator didn't opt in. In-memory
@@ -2449,14 +2449,15 @@ class ServeCommand(args: List<String>) : Command(args) {
             val (config, result) =
               synchronized(catalogRegistrationLock) {
                 val current = loads.configFor(seed.system) ?: return@synchronized null
-                val result =
-                  runCatching { store.load(current.system, sourceRepo = current.repo) }
-                    .getOrElse {
-                      ServeCatalogStore.Result.Failed(
-                        current.system,
-                        it.message ?: it::class.simpleName ?: "load failed",
-                      )
-                    }
+                val result = runCatching {
+                  store.load(current.system, sourceRepo = current.repo)
+                }
+                  .getOrElse {
+                    ServeCatalogStore.Result.Failed(
+                      current.system,
+                      it.message ?: it::class.simpleName ?: "load failed",
+                    )
+                  }
                 loads.record(result)
                 current to result
               } ?: continue

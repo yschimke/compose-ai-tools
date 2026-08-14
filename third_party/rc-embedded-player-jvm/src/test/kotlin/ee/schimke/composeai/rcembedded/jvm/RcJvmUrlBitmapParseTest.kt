@@ -91,10 +91,10 @@ class RcJvmUrlBitmapParseTest {
       try {
         Limits.ENABLE_IMAGE_URLS = false
         runCatching {
-            ByteArrayInputStream(document).use {
-              CoreDocument().initFromBuffer(RemoteComposeBuffer.fromInputStream(it))
-            }
+          ByteArrayInputStream(document).use {
+            CoreDocument().initFromBuffer(RemoteComposeBuffer.fromInputStream(it))
           }
+        }
           .exceptionOrNull()
       } finally {
         Limits.ENABLE_IMAGE_URLS = restore

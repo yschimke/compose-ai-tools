@@ -16,8 +16,8 @@ import androidx.glance.wear.verticalGradient
 import androidx.wear.compose.remote.material3.RemoteText
 
 /**
- * The Wear widget's **background**, expressed as the host-drawn [WearWidgetBrush] rather than a fill
- * painted inside the content.
+ * The Wear widget's **background**, expressed as the host-drawn [WearWidgetBrush] rather than a
+ * fill painted inside the content.
  *
  * This is the split a Glance Wear widget has to respect. The widget host draws the squircle
  * container — rounded background + padding — and the widget's content is laid out *inside* that
@@ -33,8 +33,7 @@ import androidx.wear.compose.remote.material3.RemoteText
  * `:samples:design-catalog-remote-m3`.
  */
 val RemoteImageWidgetBackground: WearWidgetBrush
-  get() =
-    WearWidgetBrush.verticalGradient(listOf(Color(0xFF1E88E5).rc, Color(0xFF1565C0).rc))
+  get() = WearWidgetBrush.verticalGradient(listOf(Color(0xFF1E88E5).rc, Color(0xFF1565C0).rc))
 
 /**
  * The Wear widget's content — a **Remote Compose** document (`RemoteBox` / `RemoteText`, the same

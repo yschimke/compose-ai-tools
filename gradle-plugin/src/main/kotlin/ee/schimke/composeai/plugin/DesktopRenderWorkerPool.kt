@@ -286,21 +286,21 @@ internal class DesktopRenderWorkerPool(
 
     init {
       Thread {
-          try {
-            process.errorStream.bufferedReader().forEachLine { line ->
-              synchronized(stderrTail) {
-                stderrTail.addLast(line)
-                while (stderrTail.size > STDERR_TAIL_LINES) stderrTail.pollFirst()
-              }
-              // Forwarded as well as buffered: the tail exists for the pool's own failure
-              // messages, but most renderer diagnostics ride a *successful* request and would
-              // otherwise never be seen.
-              stderrSink(line)
+        try {
+          process.errorStream.bufferedReader().forEachLine { line ->
+            synchronized(stderrTail) {
+              stderrTail.addLast(line)
+              while (stderrTail.size > STDERR_TAIL_LINES) stderrTail.pollFirst()
             }
-          } catch (_: IOException) {
-            // Process went away; nothing to drain.
+            // Forwarded as well as buffered: the tail exists for the pool's own failure
+            // messages, but most renderer diagnostics ride a *successful* request and would
+            // otherwise never be seen.
+            stderrSink(line)
           }
+        } catch (_: IOException) {
+          // Process went away; nothing to drain.
         }
+      }
         .apply {
           name = "compose-preview-render-worker-stderr"
           isDaemon = true

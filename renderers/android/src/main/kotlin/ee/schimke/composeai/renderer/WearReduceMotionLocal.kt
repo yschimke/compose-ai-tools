@@ -28,8 +28,8 @@ import androidx.compose.runtime.ProvidableCompositionLocal
  * (`UserClassLoaderHolder.swap()`) — so they are deliberately NOT cached: a map keyed on them would
  * pin each swapped loader (and all its classes) for the daemon's lifetime, and a weak-key map
  * wouldn't help because the cached value (a Wear `CompositionLocal` instance loaded *by* that
- * loader) transitively strong-references the key. Resolving fresh for a child loader is a handful of
- * reflective calls per `figma-svg-long` export, not per frame, so the cost is negligible.
+ * loader) transitively strong-references the key. Resolving fresh for a child loader is a handful
+ * of reflective calls per `figma-svg-long` export, not per frame, so the cost is negligible.
  */
 object WearReduceMotionLocal {
   private val own: ClassLoader? = WearReduceMotionLocal::class.java.classLoader
@@ -48,19 +48,18 @@ object WearReduceMotionLocal {
    * the own loader. Returns null when Wear Compose Foundation isn't reachable from [loader].
    */
   fun get(loader: ClassLoader?): ProvidableCompositionLocal<Boolean>? {
-    // Own loader (or null → own): use the memoised result. A distinct child loader is disposable, so
+    // Own loader (or null → own): use the memoised result. A distinct child loader is disposable,
+    // so
     // resolve fresh rather than caching it (see the class doc's Caching note).
     if (loader == null || loader === own) return ownResult.local
     return resolve(loader)
   }
 
   @Suppress("UNCHECKED_CAST")
-  private fun resolve(loader: ClassLoader): ProvidableCompositionLocal<Boolean>? =
-    runCatching {
-        val clazz =
-          Class.forName("androidx.wear.compose.foundation.CompositionLocalsKt", false, loader)
-        val method = clazz.getDeclaredMethod("getLocalReduceMotion")
-        method.invoke(null) as ProvidableCompositionLocal<Boolean>
-      }
-      .getOrNull()
+  private fun resolve(loader: ClassLoader): ProvidableCompositionLocal<Boolean>? = runCatching {
+    val clazz = Class.forName("androidx.wear.compose.foundation.CompositionLocalsKt", false, loader)
+    val method = clazz.getDeclaredMethod("getLocalReduceMotion")
+    method.invoke(null) as ProvidableCompositionLocal<Boolean>
+  }
+    .getOrNull()
 }

@@ -67,8 +67,8 @@ import java.time.ZoneId
  * `-Dcomposeai.render.fixedTime=…` on the render JVM, forwarded from `-PcomposePreview.fixedTime=…`
  * or the `composePreview.fixedTime` DSL value by the Gradle plugin. Accepts:
  * - `HH:mm` / `HH:mm:ss` — that time on [FIXED_DATE], in the render JVM's default zone. The default
- *   is [DEFAULT_TIME] (`10:10`), the same literal `:samples:wear`'s `FixedPreviewTimeSource` and the
- *   Wear/Remote design catalogs already paint.
+ *   is [DEFAULT_TIME] (`10:10`), the same literal `:samples:wear`'s `FixedPreviewTimeSource` and
+ *   the Wear/Remote design catalogs already paint.
  * - an ISO-8601 local date-time (`2024-01-01T10:10`) — when the date matters too.
  * - a bare epoch-millis number.
  * - `off` (also `false` / `none`) — don't pin; [currentTimeMillis] hands back the host wall clock
@@ -101,8 +101,7 @@ object PreviewClock {
    * is switched off. This is what [ShadowWearTimeSource] hands back in place of
    * `System.currentTimeMillis()`.
    */
-  @JvmStatic
-  fun currentTimeMillis(): Long = pinnedTimeMillis() ?: System.currentTimeMillis()
+  @JvmStatic fun currentTimeMillis(): Long = pinnedTimeMillis() ?: System.currentTimeMillis()
 
   /**
    * Epoch millis this render pins to, or `null` when pinning is switched off. Resolved from
@@ -113,8 +112,8 @@ object PreviewClock {
    * a consumer or a preview can call `TimeZone.setDefault` on) — so any cache has to be keyed on
    * both or it serves a stale instant, and a `10:10` resolved under the old zone then paints a
    * different hour. Resolving costs a `getProperty` and a few allocations, against a call site that
-   * runs once per `TimeText` composition and once per `ACTION_TIME_TICK`; correctness is worth
-   * more than that here.
+   * runs once per `TimeText` composition and once per `ACTION_TIME_TICK`; correctness is worth more
+   * than that here.
    */
   fun pinnedTimeMillis(): Long? = resolve(System.getProperty(PROPERTY), ZoneId.systemDefault())
 
@@ -126,8 +125,8 @@ object PreviewClock {
    * which reads the default zone. Pinning the instant in UTC would paint a different time on a
    * developer's machine than in CI; pinning the local time-of-day paints `10:10` on both.
    *
-   * @throws IllegalArgumentException when [raw] is set but is none of the accepted forms — a typo in
-   *   a determinism knob that silently fell back to the wall clock would be worse than a build
+   * @throws IllegalArgumentException when [raw] is set but is none of the accepted forms — a typo
+   *   in a determinism knob that silently fell back to the wall clock would be worse than a build
    *   failure naming it.
    */
   internal fun resolve(raw: String?, zone: ZoneId): Long? {

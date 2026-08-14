@@ -14,10 +14,10 @@ import ee.schimke.composeai.wear.preview.CapturingWearWidgetPreview
 
 /**
  * Glance Wear widget previews — the exact shape issue #2670 is about: a device-less `@Preview` on a
- * widget composable driven by an `androidx.glance.wear.tooling.preview` `@PreviewParameter` provider
- * (`WearWidgetParams`). Because the provider is under `androidx.glance.wear.*`, discovery's
- * auto-detect recognises these as widgets and crops each render to its intrinsic bounds at wear
- * density — no `retargetWearPreviews` config needed, never the 227dp watch-face canvas.
+ * widget composable driven by an `androidx.glance.wear.tooling.preview` `@PreviewParameter`
+ * provider (`WearWidgetParams`). Because the provider is under `androidx.glance.wear.*`,
+ * discovery's auto-detect recognises these as widgets and crops each render to its intrinsic bounds
+ * at wear density — no `retargetWearPreviews` config needed, never the 227dp watch-face canvas.
  *
  * Each preview goes through [CapturingWearWidgetPreview], so alongside the cropped PNG the render
  * also emits the widget's encoded RemoteCompose document as a `<stem>.rc` sidecar — the widget
@@ -50,11 +50,13 @@ fun ImageWidgetSquircleLargePreview(
 }
 
 // The squircle host spec (240dp screen), spelled out literally — same values as the upstream
-// `SquircleSmallWidgetPreviewParams`. Kept as a plain (non-`@PreviewParameter`) preview so it emits a
+// `SquircleSmallWidgetPreviewParams`. Kept as a plain (non-`@PreviewParameter`) preview so it emits
+// a
 // single capture whose render stem matches its `.rc` sidecar exactly, which is what lets the bundle
 // pack the encoded document under `ir/`. (A `@PreviewParameter` fan-out renders one `.rc` per value
 // under a `_PARAM_N` stem, which the base-stem bundle IR lookup doesn't resolve — so the param
-// previews above still capture their doc as a render sidecar, but the packaged-in-bundle proof rides
+// previews above still capture their doc as a render sidecar, but the packaged-in-bundle proof
+// rides
 // on this fixed one.)
 private val fixedWidgetParams =
   WearWidgetParams(

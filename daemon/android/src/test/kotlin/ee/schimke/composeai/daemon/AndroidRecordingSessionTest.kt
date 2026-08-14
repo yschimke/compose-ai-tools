@@ -82,12 +82,12 @@ class AndroidRecordingSessionTest {
   }
 
   /**
-   * Issues #1964, #2519 — `assert.visible` / `assert.notVisible` resolve against the probe semantics
-   * snapshot ([InteractiveSession.captureProbeSemantics]) by `testTag`, `role`+`text`, or `text`,
-   * producing APPLIED / FAILED evidence via the shared `evaluateVisibilityAssertion`. `role`+`text`
-   * matches a container via its merged descendant text (a bare `Button { Text("Add") }`); `ref`
-   * targets fail with a clear message (the probe snapshot carries no refs). Uses the fake
-   * [RecordingDeltaSession] with canned probe nodes, so no Robolectric sandbox is needed.
+   * Issues #1964, #2519 — `assert.visible` / `assert.notVisible` resolve against the probe
+   * semantics snapshot ([InteractiveSession.captureProbeSemantics]) by `testTag`, `role`+`text`, or
+   * `text`, producing APPLIED / FAILED evidence via the shared `evaluateVisibilityAssertion`.
+   * `role`+`text` matches a container via its merged descendant text (a bare `Button { Text("Add")
+   * }`); `ref` targets fail with a clear message (the probe snapshot carries no refs). Uses the
+   * fake [RecordingDeltaSession] with canned probe nodes, so no Robolectric sandbox is needed.
    */
   @Test
   fun scriptedVisibilityAssertionsResolveAgainstProbeSnapshot() {
@@ -104,7 +104,8 @@ class AndroidRecordingSessionTest {
         probeNodesResult =
           listOf(
             RecordingProbeNode(testTag = "target-box", clickable = true),
-            // A bare `Button { Text("Add") }`: role on the container, text merged up from the child.
+            // A bare `Button { Text("Add") }`: role on the container, text merged up from the
+            // child.
             RecordingProbeNode(role = "Button", clickable = true, mergedText = "Add"),
             RecordingProbeNode(text = "Hello"),
           )
@@ -197,7 +198,12 @@ class AndroidRecordingSessionTest {
       )
 
     fun textEq(target: SemanticsInputTarget, expected: String?) =
-      RecordingScriptEvent(tMs = 0L, kind = "assert.textEquals", target = target, inputText = expected)
+      RecordingScriptEvent(
+        tMs = 0L,
+        kind = "assert.textEquals",
+        target = target,
+        inputText = expected,
+      )
 
     session.postScript(
       listOf(
@@ -226,8 +232,9 @@ class AndroidRecordingSessionTest {
   /**
    * Issue #2519 — `assert.pixels` on Android diffs the frame written for the event's tMs against a
    * committed baseline PNG (path in `inputText`), reusing the shared `pixelAssertVerdict` /
-   * `PixelDiff`. The fake session renders every frame from `sourcePng`, so a baseline byte-identical
-   * to it passes, a different-content baseline fails, and a missing baseline fails closed.
+   * `PixelDiff`. The fake session renders every frame from `sourcePng`, so a baseline
+   * byte-identical to it passes, a different-content baseline fails, and a missing baseline fails
+   * closed.
    */
   @Test
   fun scriptedPixelAssertionsDiffTheWrittenFrameAgainstTheBaseline() {
@@ -274,11 +281,11 @@ class AndroidRecordingSessionTest {
   }
 
   /**
-   * Issue #2519 — `assert.pixels` freezes the frame at the assertion's timeline position, *before* a
-   * later same-bucket input, mirroring the desktop session (rather than diffing the post-input frame
-   * that lands on disk). The fake renders `sourcePng` until an input lands and `postDispatchPng`
-   * after; an `assert.pixels` ordered before a same-tMs `input.click` must match the pre-input
-   * baseline. Without the freeze it would compare the post-click frame and fail.
+   * Issue #2519 — `assert.pixels` freezes the frame at the assertion's timeline position, *before*
+   * a later same-bucket input, mirroring the desktop session (rather than diffing the post-input
+   * frame that lands on disk). The fake renders `sourcePng` until an input lands and
+   * `postDispatchPng` after; an `assert.pixels` ordered before a same-tMs `input.click` must match
+   * the pre-input baseline. Without the freeze it would compare the post-click frame and fail.
    */
   @Test
   fun scriptedPixelAssertionFreezesBeforeLaterSameBucketInput() {
@@ -290,7 +297,11 @@ class AndroidRecordingSessionTest {
     val postInput = File(sourceDir, "post.png")
     ImageIO.write(solidArgb(8, 8, 0xFFCC3366.toInt()), "png", postInput) // red, post-click
     val baseline = File(sourceDir, "baseline.png")
-    ImageIO.write(solidArgb(8, 8, 0xFF3366CC.toInt()), "png", baseline) // matches the pre-click frame
+    ImageIO.write(
+      solidArgb(8, 8, 0xFF3366CC.toInt()),
+      "png",
+      baseline,
+    ) // matches the pre-click frame
 
     val interactive = RecordingDeltaSession(preInput).apply { postDispatchPng = postInput }
     val session =
@@ -305,7 +316,8 @@ class AndroidRecordingSessionTest {
       )
 
     // Same bucket (tMs = 0): the assertion is ordered before the click, so it must observe the
-    // pre-click (blue) frame even though the click (which flips the frame to red) shares the bucket.
+    // pre-click (blue) frame even though the click (which flips the frame to red) shares the
+    // bucket.
     session.postScript(
       listOf(
         RecordingScriptEvent(tMs = 0L, kind = "assert.pixels", inputText = baseline.absolutePath),

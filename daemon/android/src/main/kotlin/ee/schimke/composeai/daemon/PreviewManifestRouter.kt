@@ -181,9 +181,7 @@ class PreviewManifestRouter(
       // every large-font / locale annotation of a function exactly like its default sibling, so
       // their carried data products (layout / semantics / figma-svg) were byte-identical even
       // though the PNGs — rendered by the Gradle path, which never lost them — differed (#2883).
-      (inbound["localeTag"] ?: resolved.locale)?.let {
-        append("localeTag=").append(it).append(';')
-      }
+      (inbound["localeTag"] ?: resolved.locale)?.let { append("localeTag=").append(it).append(';') }
       (inbound["fontScale"] ?: resolved.fontScale?.toString())?.let {
         append("fontScale=").append(it).append(';')
       }
@@ -229,7 +227,8 @@ class PreviewManifestRouter(
       // `@PreviewParameter(SomeProvider::class)` FQN, sourced from `previews.json` for the same
       // reason as the wrapper above (BINARY retention, invisible to runtime reflection). The render
       // body loads the provider and invokes the preview with its first value; without it the
-      // parameterless lookup throws `NoSuchMethodException` for every parameterized preview (#3027).
+      // parameterless lookup throws `NoSuchMethodException` for every parameterized preview
+      // (#3027).
       resolved.previewParameterProviderClassName
         ?.takeIf { it.isNotBlank() }
         ?.let {
@@ -287,23 +286,20 @@ class PreviewManifestRouter(
     baseOverrides: PreviewOverrides?,
   ): String? {
     if (baseOverrides == null) return inboundToken
-    val inbound =
-      inboundToken?.let {
-        runCatching {
-            json.decodeFromString(
-              PreviewOverrides.serializer(),
-              String(java.util.Base64.getUrlDecoder().decode(it), Charsets.UTF_8),
-            )
-          }
-          .getOrNull()
+    val inbound = inboundToken?.let {
+      runCatching {
+        json.decodeFromString(
+          PreviewOverrides.serializer(),
+          String(java.util.Base64.getUrlDecoder().decode(it), Charsets.UTF_8),
+        )
       }
+        .getOrNull()
+    }
     val merged = inbound.layeredOver(baseOverrides) ?: return inboundToken
     return java.util.Base64.getUrlEncoder()
       .withoutPadding()
       .encodeToString(
-        json
-          .encodeToString(PreviewOverrides.serializer(), merged)
-          .toByteArray(Charsets.UTF_8)
+        json.encodeToString(PreviewOverrides.serializer(), merged).toByteArray(Charsets.UTF_8)
       )
   }
 
@@ -446,9 +442,11 @@ data class PreviewManifestEntry(
     val locale = (locale ?: p?.locale)?.takeIf { it.isNotBlank() }
     // A preview that declares an explicit size — or is pinned to a fixed frame by a device or a
     // non-Compose surface (tile / notification / Glance, whose render helpers consume the concrete
-    // widthPx/heightPx) — keeps that frame. One that declares NONE renders wrap-content (AS-parity):
+    // widthPx/heightPx) — keeps that frame. One that declares NONE renders wrap-content
+    // (AS-parity):
     // the render measures the composable's intrinsic size within a generous sandbox bound and crops
-    // to it, so the captured layout/semantics tree — and the figma-svg / wireframe derived from it —
+    // to it, so the captured layout/semantics tree — and the figma-svg / wireframe derived from it
+    // —
     // reflect the preview's natural size instead of the historical fixed 320² frame that clipped
     // wide content and reflowed tall content to zero height. Mirrors the desktop daemon's resolver
     // and the standalone renderer's wrap crop.
@@ -480,7 +478,8 @@ data class PreviewManifestEntry(
     val wrapWidth = explicitWidthPx == null && !pinned
     val wrapHeight = explicitHeightPx == null && !pinned
     // The generous sandbox bound is only for a WRAPPING axis (measured + cropped). A pinned preview
-    // with no explicit size (notification / tile / Glance — their render helpers consume the concrete
+    // with no explicit size (notification / tile / Glance — their render helpers consume the
+    // concrete
     // px) keeps the historical fixed 320px frame, so this fix doesn't resize those surfaces.
     // A per-preview wrap sandbox narrows that bound WITHOUT fixing the axis — `wrapWidth` /
     // `wrapHeight` above are untouched, so the capture still crops to measured size. See
@@ -522,8 +521,7 @@ data class PreviewManifestEntry(
         (previewParameterProviderClassName ?: p?.previewParameterProviderClassName)?.takeIf {
           it.isNotBlank()
         },
-      previewParameterLimit =
-        previewParameterLimit ?: p?.previewParameterLimit ?: Int.MAX_VALUE,
+      previewParameterLimit = previewParameterLimit ?: p?.previewParameterLimit ?: Int.MAX_VALUE,
     )
   }
 
@@ -562,12 +560,12 @@ data class PreviewParamsEntry(
   val widthDp: Int? = null,
   val heightDp: Int? = null,
   /**
-   * Bound a **wrapped** axis is measured against, replacing [PreviewManifestEntry.Companion
-   * .WRAP_SANDBOX_WIDTH_DP] / `WRAP_SANDBOX_HEIGHT_DP`. Mirrors
+   * Bound a **wrapped** axis is measured against, replacing
+   * [PreviewManifestEntry.Companion .WRAP_SANDBOX_WIDTH_DP] / `WRAP_SANDBOX_HEIGHT_DP`. Mirrors
    * `discovery.PreviewParams.wrapSandboxWidthDp`; unlike [widthDp] it does not fix the axis, so
    * [PreviewManifestEntry.resolved] still reports `wrapWidth = true` and the capture still crops to
-   * measured size. This is what lets a Wear module's device-less previews measure against the
-   * 227dp watch screen and still export as tight stickers.
+   * measured size. This is what lets a Wear module's device-less previews measure against the 227dp
+   * watch screen and still export as tight stickers.
    */
   val wrapSandboxWidthDp: Int? = null,
   /** See [wrapSandboxWidthDp]. */
@@ -576,8 +574,8 @@ data class PreviewParamsEntry(
   /**
    * `@Preview(fontScale = …)`. One of the three axes a multi-annotation preview varies on (with
    * `uiMode` and `device`), and the last one the daemon was still dropping: a large-font variant
-   * rendered at 1.0 and produced data products — layout / semantics / figma-svg — byte-identical
-   * to the default variant's (issue #2883). `1.0f` and null are interchangeable ("unset").
+   * rendered at 1.0 and produced data products — layout / semantics / figma-svg — byte-identical to
+   * the default variant's (issue #2883). `1.0f` and null are interchangeable ("unset").
    */
   val fontScale: Float? = null,
   /**
@@ -591,8 +589,8 @@ data class PreviewParamsEntry(
   /**
    * Raw Configuration bits from `@Preview(uiMode = ...)`. Only the `UI_MODE_NIGHT_*` bits are
    * consumed — they drive the `night`/`notnight` resource qualifier so a `_Dark` multipreview
-   * variant actually renders dark (and its captured layout/semantics/figma-svg data products
-   * differ from the `_Light` sibling's). Mirrors the desktop router.
+   * variant actually renders dark (and its captured layout/semantics/figma-svg data products differ
+   * from the `_Light` sibling's). Mirrors the desktop router.
    */
   val uiMode: Int = 0,
   /**
@@ -649,7 +647,9 @@ data class ResolvedRenderParams(
    */
   val wrapWidth: Boolean = false,
   val wrapHeight: Boolean = false,
-  /** Raw `@Preview(uiMode = ...)` Configuration bits; 0 = unset. See [PreviewParamsEntry.uiMode]. */
+  /**
+   * Raw `@Preview(uiMode = ...)` Configuration bits; 0 = unset. See [PreviewParamsEntry.uiMode].
+   */
   val uiMode: Int = 0,
   /** `@Preview(fontScale = ...)`, null when unset (or the redundant `1.0`). */
   val fontScale: Float? = null,

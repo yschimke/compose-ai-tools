@@ -51,9 +51,9 @@ class SubspaceSceneRecorderDuplicateTagTest {
     }
     rule.waitForIdle()
 
-    val error =
-      runCatching { SubspaceSceneRecorder.recordAll(rule, previewId = "dup-test") }
-        .exceptionOrNull()
+    val error = runCatching {
+      SubspaceSceneRecorder.recordAll(rule, previewId = "dup-test")
+    }.exceptionOrNull()
     assertThat(error).isInstanceOf(IllegalStateException::class.java)
     assertThat(error).hasMessageThat().contains("dup")
   }

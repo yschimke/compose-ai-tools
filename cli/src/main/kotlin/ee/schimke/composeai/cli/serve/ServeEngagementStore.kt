@@ -98,13 +98,13 @@ class ServeEngagementStore(
   private fun <T> withFileLock(block: () -> T): T {
     val target = file ?: return block()
     return runCatching {
-        target.parentFile?.mkdirs()
-        val lock = File(target.parentFile ?: File("."), ".${target.name}.lock")
-        FileChannel.open(lock.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use {
-          channel ->
-          channel.lock().use { block() }
-        }
+      target.parentFile?.mkdirs()
+      val lock = File(target.parentFile ?: File("."), ".${target.name}.lock")
+      FileChannel.open(lock.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use {
+        channel ->
+        channel.lock().use { block() }
       }
+    }
       .onFailure {
         System.err.println("serve: engagement file lock unavailable: ${target.path}: ${it.message}")
       }
@@ -160,20 +160,20 @@ class ServeEngagementStore(
   private fun persist() {
     val target = file ?: return
     runCatching {
-        target.parentFile?.mkdirs()
-        val temporary = File(target.parentFile ?: File("."), ".${target.name}.tmp")
-        temporary.writeText(json.encodeToString(state) + "\n")
-        try {
-          Files.move(
-            temporary.toPath(),
-            target.toPath(),
-            StandardCopyOption.ATOMIC_MOVE,
-            StandardCopyOption.REPLACE_EXISTING,
-          )
-        } catch (_: AtomicMoveNotSupportedException) {
-          Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        }
+      target.parentFile?.mkdirs()
+      val temporary = File(target.parentFile ?: File("."), ".${target.name}.tmp")
+      temporary.writeText(json.encodeToString(state) + "\n")
+      try {
+        Files.move(
+          temporary.toPath(),
+          target.toPath(),
+          StandardCopyOption.ATOMIC_MOVE,
+          StandardCopyOption.REPLACE_EXISTING,
+        )
+      } catch (_: AtomicMoveNotSupportedException) {
+        Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
       }
+    }
       .onFailure {
         System.err.println("serve: engagement file not persisted: ${target.path}: ${it.message}")
       }

@@ -180,17 +180,15 @@ internal object BytecodeTargetDetector {
     var best: Int? = null
     for (name in candidateTaskNames) {
       val task = project.tasks.findByName(name) ?: continue
-      val major =
-        runCatching {
-            val opts = task.javaClass.getMethod("getCompilerOptions").invoke(task)
-            val prop =
-              opts.javaClass.methods.firstOrNull { it.name == "getJvmTarget" }?.invoke(opts)
-                ?: return@runCatching null
-            val value =
-              prop.javaClass.getMethod("getOrNull").invoke(prop) ?: return@runCatching null
-            parseTargetMajor(value.toString())
-          }
-          .getOrNull()
+      val major = runCatching {
+        val opts = task.javaClass.getMethod("getCompilerOptions").invoke(task)
+        val prop =
+          opts.javaClass.methods.firstOrNull { it.name == "getJvmTarget" }?.invoke(opts)
+            ?: return@runCatching null
+        val value = prop.javaClass.getMethod("getOrNull").invoke(prop) ?: return@runCatching null
+        parseTargetMajor(value.toString())
+      }
+        .getOrNull()
       if (major != null && (best == null || major > best!!)) best = major
     }
     return best

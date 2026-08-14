@@ -54,15 +54,14 @@ object BundleIrReplayStore {
     irDir: File,
     fileSystem: FileSystem = SystemFileSystem,
   ): Map<String, Entry> {
-    val descriptors =
-      runCatching {
-          JSON.decodeFromString(
-              BundleManifestLite.serializer(),
-              fileSystem.read(bundleManifestFile.path.toPath()) { readUtf8() },
-            )
-            .intermediateRepresentations
-        }
-        .getOrElse { emptyList() }
+    val descriptors = runCatching {
+      JSON.decodeFromString(
+          BundleManifestLite.serializer(),
+          fileSystem.read(bundleManifestFile.path.toPath()) { readUtf8() },
+        )
+        .intermediateRepresentations
+    }
+      .getOrElse { emptyList() }
     val out = LinkedHashMap<String, Entry>()
     for (ir in descriptors) {
       val bytesFile = File(irDir, ir.path.substringAfterLast('/'))

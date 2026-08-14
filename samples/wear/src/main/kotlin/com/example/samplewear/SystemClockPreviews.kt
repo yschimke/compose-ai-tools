@@ -15,9 +15,9 @@ import androidx.wear.compose.ui.tooling.preview.WearPreviewLargeRound
  * Now `ee.schimke.composeai.renderer.PreviewClock` pins `10:10` for every render, so this PNG is
  * byte-stable and the visual-diff bot flags it the moment either half of that fix regresses.
  *
- * Every other Wear preview here passes [FixedPreviewTimeSource] explicitly, which is still the right
- * thing for an authored preview — it keeps the intent visible in the source. This one deliberately
- * does not, because the whole point is to exercise the renderer's guarantee.
+ * Every other Wear preview here passes [FixedPreviewTimeSource] explicitly, which is still the
+ * right thing for an authored preview — it keeps the intent visible in the source. This one
+ * deliberately does not, because the whole point is to exercise the renderer's guarantee.
  */
 @WearPreviewLargeRound
 @Composable

@@ -52,29 +52,28 @@ internal object OfflineXrSession {
   fun providedValue(activity: Activity): ProvidedValue<*>? {
     val bound = binding ?: return null
     return runCatching {
-        val session = bound.createSession(activity) ?: return null
-        bound.local provides session
-      }
+      val session = bound.createSession(activity) ?: return null
+      bound.local provides session
+    }
       .getOrNull()
   }
 
   @Suppress("UNCHECKED_CAST")
-  private fun resolve(): Binding? =
-    runCatching {
-        val local =
-          Class.forName("androidx.xr.compose.platform.LocalSessionKt")
-            .getDeclaredMethod("getLocalSession")
-            .invoke(null) as ProvidableCompositionLocal<Any?>
-        val sessionClass = Class.forName("androidx.xr.runtime.Session")
-        // `create(Activity)` is the Kotlin default-argument entry point, emitted as a real static
-        // on both 1.0.0-alpha15 and 1.0.0-beta01 — no `create$default` synthetic juggling needed.
-        val create = sessionClass.getMethod("create", Activity::class.java)
-        val successClass = Class.forName("androidx.xr.runtime.SessionCreateSuccess")
-        val getSession = successClass.getMethod("getSession")
-        Binding(local) { activity ->
-          val result = create.invoke(null, activity)
-          if (successClass.isInstance(result)) getSession.invoke(result) else null
-        }
-      }
-      .getOrNull()
+  private fun resolve(): Binding? = runCatching {
+    val local =
+      Class.forName("androidx.xr.compose.platform.LocalSessionKt")
+        .getDeclaredMethod("getLocalSession")
+        .invoke(null) as ProvidableCompositionLocal<Any?>
+    val sessionClass = Class.forName("androidx.xr.runtime.Session")
+    // `create(Activity)` is the Kotlin default-argument entry point, emitted as a real static
+    // on both 1.0.0-alpha15 and 1.0.0-beta01 — no `create$default` synthetic juggling needed.
+    val create = sessionClass.getMethod("create", Activity::class.java)
+    val successClass = Class.forName("androidx.xr.runtime.SessionCreateSuccess")
+    val getSession = successClass.getMethod("getSession")
+    Binding(local) { activity ->
+      val result = create.invoke(null, activity)
+      if (successClass.isInstance(result)) getSession.invoke(result) else null
+    }
+  }
+    .getOrNull()
 }

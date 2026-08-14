@@ -564,15 +564,15 @@ class ServeBundleHost(
       // destination must never exist in a half-written state — a reader that saw it would serve a
       // truncated PNG.
       return runCatching {
-          path.parent?.let(fileSystem::createDirectories)
-          // Named per destination, not a shared temp: two ids filling concurrently hold
-          // different locks, so a single shared partial name would let one preview's bytes be
-          // published under another's id.
-          val partial = path.parent!!.resolve(path.name + PARTIAL_SUFFIX)
-          fileSystem.write(partial) { write(bytes) }
-          fileSystem.atomicMove(partial, path)
-          path
-        }
+        path.parent?.let(fileSystem::createDirectories)
+        // Named per destination, not a shared temp: two ids filling concurrently hold
+        // different locks, so a single shared partial name would let one preview's bytes be
+        // published under another's id.
+        val partial = path.parent!!.resolve(path.name + PARTIAL_SUFFIX)
+        fileSystem.write(partial) { write(bytes) }
+        fileSystem.atomicMove(partial, path)
+        path
+      }
         .getOrNull()
     }
   }

@@ -529,15 +529,15 @@ internal constructor(
     // next caller retries.
     val opened = session
     runCatching {
-        opened.enableExtensions(
-          listOf(
-            ComposeFigmaSvgProduct.KIND,
-            ComposeFigmaSvgProduct.KIND_LONG,
-            SCROLL_EXTENSION_ID,
-            A11Y_EXTENSION_ID,
-          )
+      opened.enableExtensions(
+        listOf(
+          ComposeFigmaSvgProduct.KIND,
+          ComposeFigmaSvgProduct.KIND_LONG,
+          SCROLL_EXTENSION_ID,
+          A11Y_EXTENSION_ID,
         )
-      }
+      )
+    }
       .getOrElse { e ->
         onLog("full-page exports unavailable: enable failed: ${e.message}")
         ExtensionsEnableResult(

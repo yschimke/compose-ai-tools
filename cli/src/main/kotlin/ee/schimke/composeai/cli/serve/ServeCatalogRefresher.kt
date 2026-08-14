@@ -145,34 +145,30 @@ internal class ServeCatalogRefresher(
  * failure (git absent, network error, unknown branch), which the refresher treats as "can't check,
  * skip". Best-effort with a bounded wait so a hung remote can't wedge the poll thread.
  */
-internal fun gitLsRemoteHead(repo: String, branch: String): String? =
-  runCatching {
-      val proc =
-        ProcessBuilder("git", "ls-remote", "https://github.com/$repo.git", "refs/heads/$branch")
-          .redirectErrorStream(true)
-          .start()
-      proc.outputStream.close()
-      // Drain stdout on a daemon thread: if git hangs *without* closing stdout (a DNS/TLS/network
-      // stall), a direct `readText()` would block on EOF forever and never reach the `waitFor`
-      // timeout below — wedging the single catalog-refresh thread so no branch ever updates again.
-      // The reader thread lets `waitFor(20s)` bound the wait; `join` after the process exits reads
-      // the (now-complete) output safely.
-      val captured = StringBuilder()
-      val reader =
-        Thread {
-            runCatching {
-              proc.inputStream.bufferedReader().use { r -> captured.append(r.readText()) }
-            }
-          }
-          .apply {
-            isDaemon = true
-            start()
-          }
-      if (!proc.waitFor(20, TimeUnit.SECONDS)) {
-        proc.destroyForcibly()
-        return null
-      }
-      reader.join(2_000)
-      Regex("\\b([0-9a-f]{40})\\b").find(captured.toString())?.groupValues?.get(1)
+internal fun gitLsRemoteHead(repo: String, branch: String): String? = runCatching {
+  val proc =
+    ProcessBuilder("git", "ls-remote", "https://github.com/$repo.git", "refs/heads/$branch")
+      .redirectErrorStream(true)
+      .start()
+  proc.outputStream.close()
+  // Drain stdout on a daemon thread: if git hangs *without* closing stdout (a DNS/TLS/network
+  // stall), a direct `readText()` would block on EOF forever and never reach the `waitFor`
+  // timeout below — wedging the single catalog-refresh thread so no branch ever updates again.
+  // The reader thread lets `waitFor(20s)` bound the wait; `join` after the process exits reads
+  // the (now-complete) output safely.
+  val captured = StringBuilder()
+  val reader = Thread {
+    runCatching { proc.inputStream.bufferedReader().use { r -> captured.append(r.readText()) } }
+  }
+    .apply {
+      isDaemon = true
+      start()
     }
-    .getOrNull()
+  if (!proc.waitFor(20, TimeUnit.SECONDS)) {
+    proc.destroyForcibly()
+    return null
+  }
+  reader.join(2_000)
+  Regex("\\b([0-9a-f]{40})\\b").find(captured.toString())?.groupValues?.get(1)
+}
+  .getOrNull()

@@ -181,8 +181,7 @@ class WrappedPreviewRenderTest {
                   widthDp = 64,
                   heightDp = 96,
                   density = 1.0f,
-                  wrapperClassName =
-                    "ee.schimke.composeai.daemon.RequiredCompositionLocalWrapper",
+                  wrapperClassName = "ee.schimke.composeai.daemon.RequiredCompositionLocalWrapper",
                 ),
             )
           )

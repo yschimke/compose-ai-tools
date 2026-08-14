@@ -1514,7 +1514,9 @@ class FigmaLayeredSvgTest {
             )
           ),
         children =
-          listOf(layoutNode("Label", 44, 50, 99, 86, tokens = null)), // a child that must be dropped
+          listOf(
+            layoutNode("Label", 44, 50, 99, 86, tokens = null)
+          ), // a child that must be dropped
       )
     val svg =
       FigmaLayeredSvg.render(
@@ -1956,7 +1958,10 @@ class FigmaLayeredSvgTest {
           modifiers =
             listOf(
               LayoutInspectorModifier(name = "BackgroundElement"),
-              LayoutInspectorModifier(name = "graphicsLayer", properties = mapOf("alpha" to "0.25")),
+              LayoutInspectorModifier(
+                name = "graphicsLayer",
+                properties = mapOf("alpha" to "0.25"),
+              ),
             ),
           children =
             listOf(

@@ -39,9 +39,11 @@ class RemoteComposeIrReplay {
     val remoteDocument = remember(bytes) { RemoteDocument(bytes) }
     val seededOverrides = RemoteComposeController.namedValues.value
 
-    // Which player draws is read from the controller rather than passed in: the daemon resolves this
+    // Which player draws is read from the controller rather than passed in: the daemon resolves
+    // this
     // composable reflectively against a fixed `(ByteArray)` signature (see the class doc), so there
-    // is no parameter to thread a choice through. Null — the default — keeps the view-backed player.
+    // is no parameter to thread a choice through. Null — the default — keeps the view-backed
+    // player.
     val embedded =
       RemoteComposeController.player.value == RemoteComposePlayerKind.EMBEDDED &&
         isEmbeddedPlayerAvailable
@@ -102,12 +104,12 @@ internal fun Map<String, RemoteNamedValue>.toNamedColorOverrides(): ObjectIntMap
 
 internal val isEmbeddedPlayerAvailable: Boolean by lazy {
   runCatching {
-      Class.forName(
-        "androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayerKt",
-        false,
-        RemoteComposeIrReplay::class.java.classLoader,
-      )
-    }
+    Class.forName(
+      "androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayerKt",
+      false,
+      RemoteComposeIrReplay::class.java.classLoader,
+    )
+  }
     .isSuccess
 }
 

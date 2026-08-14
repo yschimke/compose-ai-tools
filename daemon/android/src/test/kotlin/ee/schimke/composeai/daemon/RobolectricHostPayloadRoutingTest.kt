@@ -1,9 +1,9 @@
 package ee.schimke.composeai.daemon
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -47,7 +47,10 @@ class RobolectricHostPayloadRoutingTest {
     // derived `port` from the same spec (#3552 review).
     val host = host(widthPx = 800, heightPx = 400)
 
-    val spec = RenderSpec.parseFromPayloadOrNull(host.reshapeRenderPayload("previewId=p;orientation=portrait"))
+    val spec =
+      RenderSpec.parseFromPayloadOrNull(
+        host.reshapeRenderPayload("previewId=p;orientation=portrait")
+      )
 
     assertNotNull(spec)
     assertEquals(400, spec!!.widthPx)
@@ -59,7 +62,10 @@ class RobolectricHostPayloadRoutingTest {
   fun `reshape leaves a frame already in the requested orientation alone`() {
     val host = host(widthPx = 400, heightPx = 800)
 
-    val spec = RenderSpec.parseFromPayloadOrNull(host.reshapeRenderPayload("previewId=p;orientation=portrait"))
+    val spec =
+      RenderSpec.parseFromPayloadOrNull(
+        host.reshapeRenderPayload("previewId=p;orientation=portrait")
+      )
 
     assertEquals(400, spec!!.widthPx)
     assertEquals(800, spec.heightPx)

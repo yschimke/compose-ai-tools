@@ -121,26 +121,26 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
     val style = if (key.italic) FontStyle.Italic else FontStyle.Normal
     val resolved =
       runCatching {
-          FontFamily(
-            if (settings == null || settings.settings.isEmpty()) {
-              Font(file = file, weight = FontWeight(key.weight), style = style)
-            } else {
-              // Deliberately the `(identity, data)` overload rather than `Font(file = …)`, and the
-              // identity carries the axes. Compose's skiko font cache keys on a font's *identity*,
-              // and a `FileFont`'s identity is its path alone — so every instance of one variable
-              // file shares a cache entry and the first one built is handed to all of them. That
-              // renders a `wdth` ramp as three identical lines while a `wght` ramp still looks
-              // plausible, because weight alone can be synthesised. Same trap the browser lane hit.
-              Font(
-                identity = "${file.path}|${axes.joinToString(",") { (t, v) -> "$t=$v" }}",
-                data = fileBytes(file),
-                weight = FontWeight(key.weight),
-                style = style,
-                variationSettings = settings,
-              )
-            }
-          )
-        }
+        FontFamily(
+          if (settings == null || settings.settings.isEmpty()) {
+            Font(file = file, weight = FontWeight(key.weight), style = style)
+          } else {
+            // Deliberately the `(identity, data)` overload rather than `Font(file = …)`, and the
+            // identity carries the axes. Compose's skiko font cache keys on a font's *identity*,
+            // and a `FileFont`'s identity is its path alone — so every instance of one variable
+            // file shares a cache entry and the first one built is handed to all of them. That
+            // renders a `wdth` ramp as three identical lines while a `wght` ramp still looks
+            // plausible, because weight alone can be synthesised. Same trap the browser lane hit.
+            Font(
+              identity = "${file.path}|${axes.joinToString(",") { (t, v) -> "$t=$v" }}",
+              data = fileBytes(file),
+              weight = FontWeight(key.weight),
+              style = style,
+              variationSettings = settings,
+            )
+          }
+        )
+      }
         .getOrNull() ?: return null
     fontFamilies[instanceKey] = resolved
     return resolved

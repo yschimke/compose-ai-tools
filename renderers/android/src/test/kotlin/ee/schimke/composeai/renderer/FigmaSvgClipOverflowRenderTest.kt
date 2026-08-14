@@ -75,24 +75,25 @@ class FigmaSvgClipOverflowRenderTest {
       exportSvg("clip-overflow") {
         // A 100dp rounded card that clips its content, holding a 70dp block offset so it runs 40dp
         // off the right edge — the render clips it to the rounded card, the export must too.
-        Box(
-          Modifier.size(100.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFFEEEEEE))
-        ) {
+        Box(Modifier.size(100.dp).clip(RoundedCornerShape(20.dp)).background(Color(0xFFEEEEEE))) {
           Box(Modifier.offset(x = 70.dp).size(70.dp).background(Color(0xFF3366CC)))
         }
       }
 
     // The clip fired end-to-end: modifier → token → model → serializer.
-    assertTrue("a clipPath must be emitted for the overflowing clip:\n$svg", svg.contains("<clipPath id=\"clip-"))
-    assertTrue("the clipping group must reference it:\n$svg", svg.contains("clip-path=\"url(#clip-"))
+    assertTrue(
+      "a clipPath must be emitted for the overflowing clip:\n$svg",
+      svg.contains("<clipPath id=\"clip-"),
+    )
+    assertTrue(
+      "the clipping group must reference it:\n$svg",
+      svg.contains("clip-path=\"url(#clip-"),
+    )
 
     // The canvas is the card (100px) plus the export's transparent padding on each side, NOT the
     // overflow bbox. The child ran to x=140; unclipped the canvas would be ~140 + padding, clipped
     // it stays at ~100 + padding. The threshold cleanly separates the two.
-    val width =
-      Regex("""<svg[^>]*\bwidth="(\d+)"""").find(svg)!!.groupValues[1].toInt()
+    val width = Regex("""<svg[^>]*\bwidth="(\d+)"""").find(svg)!!.groupValues[1].toInt()
     assertTrue(
       "canvas must clamp to the card, not grow to the overflowing child (got width=$width):\n$svg",
       width <= 140,
@@ -139,7 +140,11 @@ class FigmaSvgClipOverflowRenderTest {
 
     val raster = ImageIO.read(File(rootDir, "clip-overflow-raster/$href"))
     assertEquals("declared <image> width must match the written PNG", declaredWidth, raster.width)
-    assertEquals("declared <image> height must match the written PNG", declaredHeight, raster.height)
+    assertEquals(
+      "declared <image> height must match the written PNG",
+      declaredHeight,
+      raster.height,
+    )
   }
 
   private fun exportSvg(previewId: String, content: @Composable () -> Unit): String {

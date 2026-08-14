@@ -39,16 +39,16 @@ package androidx.compose.remote.player.compose.embedded
  *   [androidx.compose.remote.core.RemoteContext] into a family *name*, which may carry a `device:`
  *   or `google:` prefix. Meaningful only when [isTypefaceSet]; the ops treat an unset typeface as
  *   generic `0`.
- * - [argbColor] already has the paint's alpha folded in (`ComposeLocalPaint.effectiveColor()`), so a
- *   platform sets it on its paint verbatim and applies no further alpha.
+ * - [argbColor] already has the paint's alpha folded in (`ComposeLocalPaint.effectiveColor()`), so
+ *   a platform sets it on its paint verbatim and applies no further alpha.
  */
 internal class TextPaintSpec(
-    val textSize: Float,
-    val fontFamily: Int,
-    val isTypefaceSet: Boolean,
-    val fontWeight: Int,
-    val italic: Boolean,
-    val argbColor: Int,
+  val textSize: Float,
+  val fontFamily: Int,
+  val isTypefaceSet: Boolean,
+  val fontWeight: Int,
+  val italic: Boolean,
+  val argbColor: Int,
 )
 
 /**
@@ -61,16 +61,16 @@ internal class TextPaintSpec(
  * different measurement — see the seam comment in `RcPlayerTextPlatform.kt`.
  */
 internal class TextInkBounds(
-    val left: Float,
-    val top: Float,
-    val right: Float,
-    val bottom: Float,
+  val left: Float,
+  val top: Float,
+  val right: Float,
+  val bottom: Float,
 ) {
-    val width: Float
-        get() = right - left
+  val width: Float
+    get() = right - left
 
-    val height: Float
-        get() = bottom - top
+  val height: Float
+    get() = bottom - top
 }
 
 /**
@@ -82,11 +82,11 @@ internal class TextInkBounds(
  * operation interpreter apply AndroidX's flag order exactly on every platform.
  */
 internal class TextMeasureBounds(
-    val left: Float,
-    val top: Float,
-    val right: Float,
-    val bottom: Float,
-    val fontTop: Float,
-    val fontBottom: Float,
-    val advance: Float,
+  val left: Float,
+  val top: Float,
+  val right: Float,
+  val bottom: Float,
+  val fontTop: Float,
+  val fontBottom: Float,
+  val advance: Float,
 )

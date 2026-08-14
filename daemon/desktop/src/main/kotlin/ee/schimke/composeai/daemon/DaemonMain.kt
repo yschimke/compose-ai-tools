@@ -1034,7 +1034,8 @@ internal fun buildDesktopExtensions(
       Extension(
         id = "history/diff-regions",
         displayName = "History diff regions",
-        dataProductRegistry = HistoryDiffRegionsDataProductRegistry(historyManager = historyManager),
+        dataProductRegistry =
+          HistoryDiffRegionsDataProductRegistry(historyManager = historyManager),
       )
     }
   }

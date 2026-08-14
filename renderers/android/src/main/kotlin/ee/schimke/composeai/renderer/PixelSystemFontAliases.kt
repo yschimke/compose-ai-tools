@@ -51,7 +51,8 @@ import ee.schimke.composeai.fonts.google.GoogleFontSource
  * only one of them did, a `DeviceFontFamilyName` family rendered as Roboto in the live stream and
  * as the real face in the baked PNG — a silent typeface change between the two views of the same
  * preview, with no warning on either side (unlike the downloadable-`GoogleFont` path, which fails
- * the preview outright). That's why [seedSystemFonts] is public: the daemon lives in another module.
+ * the preview outright). That's why [seedSystemFonts] is public: the daemon lives in another
+ * module.
  */
 object PixelSystemFontAliases {
 
@@ -127,14 +128,14 @@ object PixelSystemFontAliases {
    * Returns the list of slugs successfully seeded. Empty list when [cache] is unavailable (e.g.
    * `composeai.fonts.cacheDir` unset) or when every downloadable font is missing in offline mode.
    *
-   * Seeding always asks for weight 400, and takes whatever [GoogleFontCache] resolves that to.
-   * Note that for a variable family this is the family's **static 400 instance**, not the
-   * axis-covering variable TTF: `downloadFromGoogleFonts` only falls back to the `wght@100..1000`
-   * range query when the exact-weight query carried no TTF url, and for Roboto Flex / Google Sans
-   * Flex the exact-weight query *does* answer. `Typeface.create(tf, weight, italic)` then synthesises
-   * off-400 weights, the same as it would for a static family. That's a fidelity limit worth knowing
-   * about, but it is not a parity risk: both render tiers go through this identical path, so the
-   * live daemon and the baked snapshot agree on the face either way.
+   * Seeding always asks for weight 400, and takes whatever [GoogleFontCache] resolves that to. Note
+   * that for a variable family this is the family's **static 400 instance**, not the axis-covering
+   * variable TTF: `downloadFromGoogleFonts` only falls back to the `wght@100..1000` range query
+   * when the exact-weight query carried no TTF url, and for Roboto Flex / Google Sans Flex the
+   * exact-weight query *does* answer. `Typeface.create(tf, weight, italic)` then synthesises
+   * off-400 weights, the same as it would for a static family. That's a fidelity limit worth
+   * knowing about, but it is not a parity risk: both render tiers go through this identical path,
+   * so the live daemon and the baked snapshot agree on the face either way.
    */
   internal fun seedSystemFontMap(
     cache: GoogleFontSource? = null,
@@ -177,11 +178,10 @@ object PixelSystemFontAliases {
    * skip, letting the system lookup fall through to Robolectric's own behaviour.
    */
   @Suppress("UNCHECKED_CAST")
-  private fun systemFontMap(): MutableMap<String, Typeface>? =
-    runCatching {
-        val field = Typeface::class.java.getDeclaredField("sSystemFontMap")
-        field.isAccessible = true
-        field.get(null) as? MutableMap<String, Typeface>
-      }
-      .getOrNull()
+  private fun systemFontMap(): MutableMap<String, Typeface>? = runCatching {
+    val field = Typeface::class.java.getDeclaredField("sSystemFontMap")
+    field.isAccessible = true
+    field.get(null) as? MutableMap<String, Typeface>
+  }
+    .getOrNull()
 }

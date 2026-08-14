@@ -144,8 +144,7 @@ internal object ServeBrand {
   }
 
   /** Decode [png], or null when the bytes aren't a readable image. */
-  fun decodePng(png: ByteArray): BufferedImage? =
-    runCatching { ImageIO.read(ByteArrayInputStream(png)) }
-      .getOrNull()
-      ?.takeIf { it.width > 0 && it.height > 0 }
+  fun decodePng(png: ByteArray): BufferedImage? = runCatching {
+    ImageIO.read(ByteArrayInputStream(png))
+  }.getOrNull()?.takeIf { it.width > 0 && it.height > 0 }
 }

@@ -69,9 +69,7 @@ class DialogWindowCaptureTest {
   @Test
   fun `a centred dialog is cropped to the dialog, not the activity frame`() {
     rule.setContent {
-      Dialog(onDismissRequest = {}) {
-        Box(modifier = Modifier.size(64.dp).background(FILL))
-      }
+      Dialog(onDismissRequest = {}) { Box(modifier = Modifier.size(64.dp).background(FILL)) }
     }
     rule.mainClock.advanceTimeBy(SETTLE_MS)
 
@@ -224,12 +222,13 @@ class DialogWindowCaptureTest {
     return true
   }
 
-  private fun Color.toArgbInt(): Int = android.graphics.Color.argb(
-    (alpha * 255).toInt(),
-    (red * 255).toInt(),
-    (green * 255).toInt(),
-    (blue * 255).toInt(),
-  )
+  private fun Color.toArgbInt(): Int =
+    android.graphics.Color.argb(
+      (alpha * 255).toInt(),
+      (red * 255).toInt(),
+      (green * 255).toInt(),
+      (blue * 255).toInt(),
+    )
 
   private companion object {
     val FILL = Color(0xFF42A5F5)

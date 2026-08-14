@@ -169,9 +169,7 @@ internal object AppTourRenderer {
       val intent = Intent(spec.action ?: Intent.ACTION_MAIN)
       spec.data?.let { intent.data = Uri.parse(it) }
       spec.categories.forEach(intent::addCategory)
-      spec.activityClassName?.let {
-        intent.component = ComponentName(application.packageName, it)
-      }
+      spec.activityClassName?.let { intent.component = ComponentName(application.packageName, it) }
       spec.extras.forEach { (key, value) -> intent.putExtra(key, value) }
       return intent
     }
@@ -264,8 +262,7 @@ internal object AppTourRenderer {
       val root = topActivity.window.decorView
       val target =
         click.viewId?.let { id ->
-          val resId =
-            topActivity.resources.getIdentifier(id, "id", topActivity.packageName)
+          val resId = topActivity.resources.getIdentifier(id, "id", topActivity.packageName)
           if (resId != 0) root.findViewById<View>(resId) else null
         } ?: click.text?.let { findViewWithText(root, it) }
       if (target == null || !target.isClickable) return false

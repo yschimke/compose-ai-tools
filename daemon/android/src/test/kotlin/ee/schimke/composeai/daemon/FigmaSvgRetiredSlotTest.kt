@@ -1,6 +1,5 @@
 package ee.schimke.composeai.daemon
 
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -15,9 +14,9 @@ import org.junit.rules.TemporaryFolder
  * with its text attached while Compose stops *placing* it, and an unplaced node reports `(0,0,0,0)`
  * bounds. The export's zero-bounds recovery — meant for a subcomposed field/button whose
  * coordinates were detached — then anchored that row at its **parent's** origin, so retired content
- * came back as a ghost painted over the top of the screen. On JetNews' `Screens/Article` the retired
- * article body reappeared inside the `TopAppBar` group over the hero image; on JetLagged's sleep
- * graph card the retired `1Y` tab reappeared at the card's top-left.
+ * came back as a ghost painted over the top of the screen. On JetNews' `Screens/Article` the
+ * retired article body reappeared inside the `TopAppBar` group over the hero image; on JetLagged's
+ * sleep graph card the retired `1Y` tab reappeared at the card's top-left.
  *
  * [ScrolledLazyColumnPreview] reproduces it on the backend the defect was reported on: the list
  * scrolls to row 9 before capture, so rows 1…8 are retired.

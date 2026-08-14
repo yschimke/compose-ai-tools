@@ -61,71 +61,71 @@ import kotlin.math.roundToInt
  * `DrawText`, and the reason measurement and drawing must both go through this one function.
  */
 private fun TextPaintSpec.toNativeTextPaint(context: RemoteContext): Paint {
-    val resolver = EmbeddedPlayerTypefaceResolver(context)
+  val resolver = EmbeddedPlayerTypefaceResolver(context)
 
-    val fontInstance =
-        if (isTypefaceSet) {
-            if (fontFamily in 0..3) {
-                resolver.resolve(fontFamily, fontWeight, italic, null, 400, false)
-            } else {
-                val name = context.getText(fontFamily)
-                if (name != null) {
-                    resolver.resolve(name, fontWeight, italic, null, 400, false)
-                } else {
-                    resolver.resolve(0, fontWeight, italic, null, 400, false)
-                }
-            }
+  val fontInstance =
+    if (isTypefaceSet) {
+      if (fontFamily in 0..3) {
+        resolver.resolve(fontFamily, fontWeight, italic, null, 400, false)
+      } else {
+        val name = context.getText(fontFamily)
+        if (name != null) {
+          resolver.resolve(name, fontWeight, italic, null, 400, false)
         } else {
-            resolver.resolve(0, fontWeight, italic, null, 400, false)
+          resolver.resolve(0, fontWeight, italic, null, 400, false)
         }
-
-    return Paint().apply {
-        isAntiAlias = true
-        color = argbColor
-        textSize = this@toNativeTextPaint.textSize
-        typeface = fontInstance.getTypeface()
+      }
+    } else {
+      resolver.resolve(0, fontWeight, italic, null, 400, false)
     }
+
+  return Paint().apply {
+    isAntiAlias = true
+    color = argbColor
+    textSize = this@toNativeTextPaint.textSize
+    typeface = fontInstance.getTypeface()
+  }
 }
 
 /** Measures [text]'s ink bounds with the platform's text engine. */
 internal fun measureTextInkBounds(
-    text: String,
-    spec: TextPaintSpec,
-    context: RemoteContext,
+  text: String,
+  spec: TextPaintSpec,
+  context: RemoteContext,
 ): TextInkBounds {
-    val bounds = android.graphics.Rect()
-    spec.toNativeTextPaint(context).getTextBounds(text, 0, text.length, bounds)
-    return TextInkBounds(
-        bounds.left.toFloat(),
-        bounds.top.toFloat(),
-        bounds.right.toFloat(),
-        bounds.bottom.toFloat(),
-    )
+  val bounds = android.graphics.Rect()
+  spec.toNativeTextPaint(context).getTextBounds(text, 0, text.length, bounds)
+  return TextInkBounds(
+    bounds.left.toFloat(),
+    bounds.top.toFloat(),
+    bounds.right.toFloat(),
+    bounds.bottom.toFloat(),
+  )
 }
 
 /** Advance width of [text] with the platform's text engine. */
 internal fun measureTextWidth(text: String, spec: TextPaintSpec, context: RemoteContext): Float =
-    spec.toNativeTextPaint(context).measureText(text)
+  spec.toNativeTextPaint(context).measureText(text)
 
 /** Measures the complete AndroidX `getTextBounds` input tuple with one framework [Paint]. */
 internal fun measureTextBounds(
-    text: String,
-    spec: TextPaintSpec,
-    context: RemoteContext,
+  text: String,
+  spec: TextPaintSpec,
+  context: RemoteContext,
 ): TextMeasureBounds {
-    val paint = spec.toNativeTextPaint(context)
-    val ink = android.graphics.Rect()
-    paint.getTextBounds(text, 0, text.length, ink)
-    val font = paint.fontMetrics
-    return TextMeasureBounds(
-        left = ink.left.toFloat(),
-        top = ink.top.toFloat(),
-        right = ink.right.toFloat(),
-        bottom = ink.bottom.toFloat(),
-        fontTop = font.ascent.roundToInt().toFloat(),
-        fontBottom = font.descent.roundToInt().toFloat(),
-        advance = paint.measureText(text),
-    )
+  val paint = spec.toNativeTextPaint(context)
+  val ink = android.graphics.Rect()
+  paint.getTextBounds(text, 0, text.length, ink)
+  val font = paint.fontMetrics
+  return TextMeasureBounds(
+    left = ink.left.toFloat(),
+    top = ink.top.toFloat(),
+    right = ink.right.toFloat(),
+    bottom = ink.bottom.toFloat(),
+    fontTop = font.ascent.roundToInt().toFloat(),
+    fontBottom = font.descent.roundToInt().toFloat(),
+    advance = paint.measureText(text),
+  )
 }
 
 /**
@@ -133,13 +133,13 @@ internal fun measureTextBounds(
  * [measureTextInkBounds] measures against.
  */
 internal fun DrawScope.drawTextAtOriginPlatform(
-    text: String,
-    x: Float,
-    y: Float,
-    spec: TextPaintSpec,
-    context: RemoteContext,
+  text: String,
+  x: Float,
+  y: Float,
+  spec: TextPaintSpec,
+  context: RemoteContext,
 ) {
-    drawContext.canvas.nativeCanvas.drawText(text, x, y, spec.toNativeTextPaint(context))
+  drawContext.canvas.nativeCanvas.drawText(text, x, y, spec.toNativeTextPaint(context))
 }
 
 /**
@@ -147,18 +147,18 @@ internal fun DrawScope.drawTextAtOriginPlatform(
  * `TextMeasurer` can place glyphs along a path.
  */
 internal fun DrawScope.drawTextOnPathPlatform(
-    text: String,
-    path: Path,
-    hOffset: Float,
-    vOffset: Float,
-    spec: TextPaintSpec,
-    context: RemoteContext,
+  text: String,
+  path: Path,
+  hOffset: Float,
+  vOffset: Float,
+  spec: TextPaintSpec,
+  context: RemoteContext,
 ) {
-    drawContext.canvas.nativeCanvas.drawTextOnPath(
-        text,
-        path.asAndroidPath(),
-        hOffset,
-        vOffset,
-        spec.toNativeTextPaint(context),
-    )
+  drawContext.canvas.nativeCanvas.drawTextOnPath(
+    text,
+    path.asAndroidPath(),
+    hOffset,
+    vOffset,
+    spec.toNativeTextPaint(context),
+  )
 }

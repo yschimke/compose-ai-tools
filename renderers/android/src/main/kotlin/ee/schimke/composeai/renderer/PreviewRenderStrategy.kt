@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.ColorScheme
@@ -72,8 +71,8 @@ internal fun strategyFor(kind: PreviewKind): PreviewRenderStrategy =
  * standalone renderer.
  *
  * The preview daemon receives the same discovery manifest, but owns its own render loop. Exposing
- * this narrow bridge lets it reuse the canonical theme strategies instead of treating the
- * synthetic display [themeName] as a consumer composable method.
+ * this narrow bridge lets it reuse the canonical theme strategies instead of treating the synthetic
+ * display [themeName] as a consumer composable method.
  */
 @Composable
 fun ThemeCatalogPreview(
@@ -245,10 +244,10 @@ internal fun resolvePreviewReceiver(clazz: Class<*>): Any? {
   // private/internal classes work too (Google's screenshotTest classes
   // are typically package-private or internal).
   return runCatching {
-      val ctor = clazz.getDeclaredConstructor()
-      ctor.isAccessible = true
-      ctor.newInstance()
-    }
+    val ctor = clazz.getDeclaredConstructor()
+    ctor.isAccessible = true
+    ctor.newInstance()
+  }
     .getOrNull()
 }
 
@@ -488,21 +487,34 @@ private fun WearThemeSpecimen(previewId: String, themeName: String, loader: Clas
   val chipRows =
     listOf(
         listOfNotNull(chip("primary", "onPrimary")),
-        listOfNotNull(chip("primaryDim", "onPrimary"), chip("primaryContainer", "onPrimaryContainer")),
+        listOfNotNull(
+          chip("primaryDim", "onPrimary"),
+          chip("primaryContainer", "onPrimaryContainer"),
+        ),
         listOfNotNull(chip("secondary", "onSecondary")),
         listOfNotNull(
           chip("secondaryDim", "onSecondary"),
           chip("secondaryContainer", "onSecondaryContainer"),
         ),
-        listOfNotNull(chip("tertiary", "onTertiary"), chip("tertiaryContainer", "onTertiaryContainer")),
+        listOfNotNull(
+          chip("tertiary", "onTertiary"),
+          chip("tertiaryContainer", "onTertiaryContainer"),
+        ),
         listOfNotNull(chip("error", "onError"), chip("errorContainer", "onErrorContainer")),
         listOfNotNull(chip("background", "onBackground")),
-        listOfNotNull(chip("surfaceContainerLow", "onSurface"), chip("surfaceContainer", "onSurface")),
+        listOfNotNull(
+          chip("surfaceContainerLow", "onSurface"),
+          chip("surfaceContainer", "onSurface"),
+        ),
         listOfNotNull(chip("surfaceContainerHigh", "onSurface"), chip("onSurfaceVariant", null)),
         listOfNotNull(chip("outline", null), chip("outlineVariant", null)),
       )
       .filter { it.isNotEmpty() }
-  CatalogSpecimenSheet(colours = chipRows.map { chipRowCell(it) }, types = types, shapes = emptyList())
+  CatalogSpecimenSheet(
+    colours = chipRows.map { chipRowCell(it) },
+    types = types,
+    shapes = emptyList(),
+  )
 }
 
 /**
@@ -591,10 +603,16 @@ private fun ThemeSpecimen(previewId: String, themeName: String) {
       themeName,
       roles.map { (label, color) -> CatalogTokenSidecar.ResolvedToken.Colour(label, color) } +
         types.map { (label, style) -> CatalogTokenSidecar.ResolvedToken.Type(label, style) } +
-        shapeRoles.map { (label, shape) -> CatalogTokenSidecar.ResolvedToken.ShapeToken(label, shape) },
+        shapeRoles.map { (label, shape) ->
+          CatalogTokenSidecar.ResolvedToken.ShapeToken(label, shape)
+        },
     )
   }
-  CatalogSpecimenSheet(colours = chipRows.map { chipRowCell(it) }, types = types, shapes = shapeRoles)
+  CatalogSpecimenSheet(
+    colours = chipRows.map { chipRowCell(it) },
+    types = types,
+    shapes = shapeRoles,
+  )
 }
 
 /** A resolved catalog row — a colour swatch, a type specimen, or a shape — ready to lay out. */
@@ -607,12 +625,12 @@ private sealed interface CatalogRow {
 }
 
 /**
- * Resolves one [CatalogToken] to the row(s) it contributes. A single-token kind
- * (`COLOR` / `TEXT_STYLE` / `SHAPE`) yields one row; a whole-object kind
- * (`COLOR_SCHEME` / `TYPOGRAPHY` / `SHAPES`) reflects the object off the consumer class and expands
- * it into the Material 3 role rows for that scale (each row labelled `<token> · <role>`), so a
- * declared whole `ColorScheme` / `Typography` / `Shapes` — the "entire object" catalog the
- * theme-override surface offers — renders as a full specimen sheet.
+ * Resolves one [CatalogToken] to the row(s) it contributes. A single-token kind (`COLOR` /
+ * `TEXT_STYLE` / `SHAPE`) yields one row; a whole-object kind (`COLOR_SCHEME` / `TYPOGRAPHY` /
+ * `SHAPES`) reflects the object off the consumer class and expands it into the Material 3 role rows
+ * for that scale (each row labelled `<token> · <role>`), so a declared whole `ColorScheme` /
+ * `Typography` / `Shapes` — the "entire object" catalog the theme-override surface offers — renders
+ * as a full specimen sheet.
  */
 private fun catalogRowsFor(token: CatalogToken): List<CatalogRow> =
   when (token.tokenKind) {
@@ -754,8 +772,8 @@ private fun CatalogTypeRow(label: String, style: TextStyle) {
 
 /**
  * One shape specimen row: the token name as a small caption, then a bounded box clipped to the
- * reflected [shape] (filled with the sheet's neutral swatch tint and outlined so the corner geometry
- * reads). The shape counterpart to [CatalogSwatchRow] / [CatalogTypeRow].
+ * reflected [shape] (filled with the sheet's neutral swatch tint and outlined so the corner
+ * geometry reads). The shape counterpart to [CatalogSwatchRow] / [CatalogTypeRow].
  */
 @Composable
 private fun CatalogShapeRow(label: String, shape: Shape) {
@@ -770,7 +788,9 @@ private fun CatalogShapeRow(label: String, shape: Shape) {
           .background(CATALOG_SHAPE_FILL)
           .border(1.dp, CATALOG_SWATCH_BORDER, shape)
     )
-    Box(modifier = Modifier.padding(start = 12.dp)) { BasicText(text = label, style = CATALOG_LABEL_STYLE) }
+    Box(modifier = Modifier.padding(start = 12.dp)) {
+      BasicText(text = label, style = CATALOG_LABEL_STYLE)
+    }
   }
 }
 
@@ -795,11 +815,11 @@ internal class SpecimenCell(
 /**
  * Lays specimen rows out in **as many columns as the canvas needs**, left to right.
  *
- * A single `Column` is what these sheets used to be, and it silently truncated: the canvas is fixed,
- * so every row past the bottom edge was simply not drawn. That cost the Wear sheet all six of its
- * type rows (21 colour swatches alone overflow a 768dp content box) and the mobile sheet four of its
- * five shape rows — in both cases the *last* section, which is the one a reader is least likely to
- * notice is missing. Neither sheet reported anything; the PNG just ended.
+ * A single `Column` is what these sheets used to be, and it silently truncated: the canvas is
+ * fixed, so every row past the bottom edge was simply not drawn. That cost the Wear sheet all six
+ * of its type rows (21 colour swatches alone overflow a 768dp content box) and the mobile sheet
+ * four of its five shape rows — in both cases the *last* section, which is the one a reader is
+ * least likely to notice is missing. Neither sheet reported anything; the PNG just ended.
  *
  * Packing is greedy and order-preserving, so a sheet still reads colours → type → shapes, top to
  * bottom then left to right. Columns share the width evenly via `weight`, which keeps the swatch
@@ -816,7 +836,8 @@ private fun CatalogSpecimenSheet(
   ) {
     // The block layout is the *designed* sheet, but it is only reachable when the content fits the
     // canvas — a theme is free to declare type roles tall enough that colour + type + shape exceeds
-    // it, and a fixed-height `Column` answers that by clipping, which is the bug this file exists to
+    // it, and a fixed-height `Column` answers that by clipping, which is the bug this file exists
+    // to
     // remove. So the fit is checked against the same estimates the packer uses, and the fallback is
     // the generic multi-column packing, which cannot clip because it adds columns instead.
     if (blockLayoutFits(colours, types, shapes, maxHeight.value)) {
@@ -861,8 +882,9 @@ private fun blockLayoutFits(
   available: Float,
 ): Boolean {
   val colourHeight =
-    balanceColumns(colours, CATALOG_COLOUR_COLUMNS)
-      .maxOfOrNull { column -> column.fold(0f) { sum, cell -> sum + cell.height.value } } ?: 0f
+    balanceColumns(colours, CATALOG_COLOUR_COLUMNS).maxOfOrNull { column ->
+      column.fold(0f) { sum, cell -> sum + cell.height.value }
+    } ?: 0f
   val typeHeight = types.fold(0f) { sum, (_, style) -> sum + catalogTypeRowHeight(style).value }
   val shapeHeight = if (shapes.isEmpty()) 0f else CATALOG_SWATCH_ROW_HEIGHT.value
   val headings =
@@ -911,7 +933,9 @@ private fun BlockSpecimenLayout(
   }
 }
 
-/** Fallback for content the block layout can't hold: every row packed into as many columns as fit. */
+/**
+ * Fallback for content the block layout can't hold: every row packed into as many columns as fit.
+ */
 @Composable
 private fun PackedSpecimenLayout(cells: List<SpecimenCell>, available: Float) {
   Row(horizontalArrangement = Arrangement.spacedBy(CATALOG_COLUMN_GAP)) {
@@ -1031,8 +1055,9 @@ private fun chipRowCell(chips: List<ColourChip>) =
   SpecimenCell(CATALOG_CHIP_ROW_HEIGHT) { CatalogChipRow(chips) }
 
 /**
- * Black or white, whichever contrasts with [base] — the fallback for a role that pairs with nothing.
- * Uses relative luminance rather than a naive average so mid-tone yellows and cyans land correctly.
+ * Black or white, whichever contrasts with [base] — the fallback for a role that pairs with
+ * nothing. Uses relative luminance rather than a naive average so mid-tone yellows and cyans land
+ * correctly.
  */
 private fun readableOn(base: Color): Color =
   if (base.luminance() > 0.5f) Color(0xFF1B1B1F) else Color.White
@@ -1117,15 +1142,20 @@ private val CATALOG_SHEET_PADDING: Dp = 16.dp
 private val CATALOG_COLUMN_GAP: Dp = 20.dp
 private const val CATALOG_ROW_GAP_DP: Float = 4f
 private val CATALOG_ROW_GAP: Dp = CATALOG_ROW_GAP_DP.dp
-/** `CatalogSwatchRow` / `CatalogShapeRow`: a 40dp box, 2dp padding either side, plus the row gap. */
+/**
+ * `CatalogSwatchRow` / `CatalogShapeRow`: a 40dp box, 2dp padding either side, plus the row gap.
+ */
 private val CATALOG_SWATCH_ROW_HEIGHT: Dp = (40f + 4f + CATALOG_ROW_GAP_DP).dp
 private const val CATALOG_ROW_PADDING_DP: Float = 4f
 private const val CATALOG_TYPE_CAPTION_DP: Float = 16f
 /** Above this sample size the pangram wraps to a second line in a sheet column. */
 private const val CATALOG_TYPE_WRAP_SP: Float = 24f
-/** Fallback (and floor) line box as a multiple of font size, covering default leading + descenders. */
+/**
+ * Fallback (and floor) line box as a multiple of font size, covering default leading + descenders.
+ */
 private const val CATALOG_TYPE_LINE_FACTOR: Float = 1.5f
 private val CATALOG_SECTION_HEIGHT: Dp = 24.dp
+
 /** A colour chip: two lines of text with 6dp padding above and below. */
 /** Colour roles run in two columns; type and shape get the full sheet width below them. */
 private const val CATALOG_COLOUR_COLUMNS: Int = 2
@@ -1173,16 +1203,15 @@ internal object CatalogValueReflection {
    * backing field holds the object directly — no value-class unboxing, just a plain reflective get
    * (off the `INSTANCE` singleton for a property declared inside a Kotlin `object`).
    */
-  fun reflectTextStyle(className: String, member: String): TextStyle =
-    reflectAs(className, member)
+  fun reflectTextStyle(className: String, member: String): TextStyle = reflectAs(className, member)
 
   /**
    * Reads any ordinary (non-value-class) design-token property value off the consumer's loaded
-   * class and casts it to [T] — the generic sibling of [reflectTextStyle], used for a single `Shape`
-   * and for the whole-object `ColorScheme` / `Typography` / `Shapes` scales. These are all plain
-   * object references (unlike `Color`, which erases to a `long` and needs [reflectColor]'s reboxing),
-   * so a plain reflective get suffices (off the `INSTANCE` singleton for a property declared inside a
-   * Kotlin `object`).
+   * class and casts it to [T] — the generic sibling of [reflectTextStyle], used for a single
+   * `Shape` and for the whole-object `ColorScheme` / `Typography` / `Shapes` scales. These are all
+   * plain object references (unlike `Color`, which erases to a `long` and needs [reflectColor]'s
+   * reboxing), so a plain reflective get suffices (off the `INSTANCE` singleton for a property
+   * declared inside a Kotlin `object`).
    */
   inline fun <reified T> reflectAs(className: String, member: String): T {
     val owner = Class.forName(className)

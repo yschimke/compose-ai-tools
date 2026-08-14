@@ -27,12 +27,13 @@ import java.util.concurrent.CopyOnWriteArrayList
  *    [unregister] on dispose, so [registered] tracks exactly the handlers live in the current
  *    composition (self-cleaning across previews via `onDispose`).
  * 2. [GestureOverrideExtension] calls [set] in its `AroundComposable` body to apply
- *    `renderNow.overrides.gestures` — flipping [hintsShownState] (read by [GestureHint] to force the
- *    real `OneHandedGestureIndicator` visible) and [enabled], and invoking a handler when the
- *    override requests it. `set(null)` on dispose restores defaults so hints/enabled don't leak into
- *    the next render.
- * 3. [GestureInputDispatchObserver] calls [invoke] on an `input.gesture` recording-script event so an
- *    interactive session fires a registered handler's `onGesture` before the next frame captures.
+ *    `renderNow.overrides.gestures` — flipping [hintsShownState] (read by [GestureHint] to force
+ *    the real `OneHandedGestureIndicator` visible) and [enabled], and invoking a handler when the
+ *    override requests it. `set(null)` on dispose restores defaults so hints/enabled don't leak
+ *    into the next render.
+ * 3. [GestureInputDispatchObserver] calls [invoke] on an `input.gesture` recording-script event so
+ *    an interactive session fires a registered handler's `onGesture` before the next frame
+ *    captures.
  *
  * **Threading.** [register], [unregister], [set], [invoke], and [resetForNewSession] synchronise
  * through a single lock. [hintsShownState] is a snapshot state written under the lock and read from
@@ -57,17 +58,18 @@ object GestureStateController {
 
   /**
    * Gestures detected through the **real** framework registry (raw `Modifier.oneHandedGesture`, no
-   * reporting seam), keyed by the SDK gesture-action int (1 = primary, 2 = dismiss). The value fires
-   * the framework's captured `onGesture` callback. Populated by [ShadowSdkGestureInputManager] when
-   * [detectionArmed] — this is what makes an unmodified app's gesture usage observable + invokable.
+   * reporting seam), keyed by the SDK gesture-action int (1 = primary, 2 = dismiss). The value
+   * fires the framework's captured `onGesture` callback. Populated by
+   * [ShadowSdkGestureInputManager] when [detectionArmed] — this is what makes an unmodified app's
+   * gesture usage observable + invokable.
    */
   private val detected = ConcurrentHashMap<Int, () -> Unit>()
 
   /**
    * Whether the connector's SDK-manager shadow should report gestures as available. Armed by
-   * [GestureOverrideExtension] while a gesture override is applied, so the framework's registration +
-   * indicator pipeline runs under the render (off-device the real SDK is absent → the pipeline is
-   * inert). Kept `false` otherwise so non-gesture renders are untouched.
+   * [GestureOverrideExtension] while a gesture override is applied, so the framework's
+   * registration + indicator pipeline runs under the render (off-device the real SDK is absent →
+   * the pipeline is inert). Kept `false` otherwise so non-gesture renders are untouched.
    */
   @Volatile private var detectionArmed: Boolean = false
 
@@ -131,8 +133,8 @@ object GestureStateController {
 
   /**
    * Apply an override. `null` restores defaults (enabled, hints off) — called on the extension's
-   * dispose so a render without a gesture override doesn't inherit the previous render's hint state.
-   * Does not touch [entries] (composition-scoped) or [lastInvoked] (session-scoped).
+   * dispose so a render without a gesture override doesn't inherit the previous render's hint
+   * state. Does not touch [entries] (composition-scoped) or [lastInvoked] (session-scoped).
    */
   fun set(override: GestureOverride?) {
     synchronized(lock) {
@@ -147,9 +149,7 @@ object GestureStateController {
    * override default when no handler registered.
    */
   fun enabled(): Boolean =
-    synchronized(lock) {
-      if (entries.isEmpty()) overrideEnabled else entries.all { it.enabled }
-    }
+    synchronized(lock) { if (entries.isEmpty()) overrideEnabled else entries.all { it.enabled } }
 
   /**
    * Invoke registered handlers of [kind], optionally scoped to a single [label]. Runs each match's

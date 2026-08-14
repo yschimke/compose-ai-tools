@@ -75,9 +75,8 @@ class KeyboardDataProductTest {
     )
     assertFalse(
       "a render that names no device leaves the decision to the surface size",
-      (planner.plan(PreviewOverrides(widthPx = 360, heightPx = 120))
-              as KeyboardOverrideExtension)
-          .isDeviceScoped,
+      (planner.plan(PreviewOverrides(widthPx = 360, heightPx = 120)) as KeyboardOverrideExtension)
+        .isDeviceScoped,
     )
     assertFalse(
       "a blank device string is not a device",

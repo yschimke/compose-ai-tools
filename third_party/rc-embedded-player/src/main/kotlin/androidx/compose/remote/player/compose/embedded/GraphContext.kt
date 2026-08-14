@@ -56,144 +56,143 @@ import androidx.compose.runtime.derivedStateOf
  * state/expression path reaching it via `LocalGraphContext` — to Android for no reason it uses.
  */
 internal class GraphContext(
-    private val realState: SnapshotRemoteComposeState,
-    private val computedOps: Map<Int, Operation>,
-    private val timeMillis: State<Float>,
-    clock: RemoteClock,
+  private val realState: SnapshotRemoteComposeState,
+  private val computedOps: Map<Int, Operation>,
+  private val timeMillis: State<Float>,
+  clock: RemoteClock,
 ) : StoreBackedRemoteContext(clock) {
 
-    init {
-        // Share the leaf store so collections/objects/paths and plain variables resolve against the
-        // same (snapshot-backed) data the rest of the player uses.
-        mRemoteComposeState = realState
-    }
+  init {
+    // Share the leaf store so collections/objects/paths and plain variables resolve against the
+    // same (snapshot-backed) data the rest of the player uses.
+    mRemoteComposeState = realState
+  }
 
-    @Suppress("BanConcurrentHashMap")
-    private val states = java.util.concurrent.ConcurrentHashMap<Int, State<Any?>>()
+  @Suppress("BanConcurrentHashMap")
+  private val states = java.util.concurrent.ConcurrentHashMap<Int, State<Any?>>()
 
-    /**
-     * Particle loops whose state has been seeded (keyed by op identity). Lives here because the
-     * GraphContext is the per-document Compose-side runtime state, remembered across frames — the
-     * particle simulation (see RcPlayerParticles) needs persistent state but runs from the draw
-     * pass, which isn't a composable.
-     */
-    @Suppress("BanConcurrentHashMap")
-    internal val particlesInitialized: MutableSet<Int> =
-        java.util.concurrent.ConcurrentHashMap.newKeySet()
+  /**
+   * Particle loops whose state has been seeded (keyed by op identity). Lives here because the
+   * GraphContext is the per-document Compose-side runtime state, remembered across frames — the
+   * particle simulation (see RcPlayerParticles) needs persistent state but runs from the draw pass,
+   * which isn't a composable.
+   */
+  @Suppress("BanConcurrentHashMap")
+  internal val particlesInitialized: MutableSet<Int> =
+    java.util.concurrent.ConcurrentHashMap.newKeySet()
 
-    /**
-     * The active [RcImageLoader], set by [RcPlayer]. Lives here because the canvas draw path (which
-     * isn't a composable, so can't read [LocalRcImageLoader]) needs it to resolve document image
-     * draws through the same pluggable loader the composable Image layout uses.
-     */
-    /** Carried for the draw path, never called here — see [RcImageSource]. */
-    internal var imageLoader: RcImageSource? = null
+  /**
+   * The active [RcImageLoader], set by [RcPlayer]. Lives here because the canvas draw path (which
+   * isn't a composable, so can't read [LocalRcImageLoader]) needs it to resolve document image
+   * draws through the same pluggable loader the composable Image layout uses.
+   */
+  /** Carried for the draw path, never called here — see [RcImageSource]. */
+  internal var imageLoader: RcImageSource? = null
 
-    // Capture bookkeeping is per-thread: `derivedStateOf` may be evaluated on whichever thread
-    // reads
-    // it (UI phases are main-thread today, but snapshot reads aren't contractually single-thread).
-    // Re-entrancy within a thread (chained ops) is handled by save/restore.
-    private val computing = ThreadLocal.withInitial { HashSet<Int>() }
-    private val captureId = ThreadLocal.withInitial { -1 }
-    private val captured = ThreadLocal<Any?>()
+  // Capture bookkeeping is per-thread: `derivedStateOf` may be evaluated on whichever thread
+  // reads
+  // it (UI phases are main-thread today, but snapshot reads aren't contractually single-thread).
+  // Re-entrancy within a thread (chained ops) is handled by save/restore.
+  private val computing = ThreadLocal.withInitial { HashSet<Int>() }
+  private val captureId = ThreadLocal.withInitial { -1 }
+  private val captured = ThreadLocal<Any?>()
 
-    /** True if [id] is produced by a computed op (vs a leaf variable). */
-    fun isComputed(id: Int): Boolean = computedOps.containsKey(id)
+  /** True if [id] is produced by a computed op (vs a leaf variable). */
+  fun isComputed(id: Int): Boolean = computedOps.containsKey(id)
 
-    private fun computedValue(id: Int): Any? {
-        if (id in computing.get()!!) return null // cycle: break rather than recurse forever
-        val state =
-            states.getOrPut(id) {
-                derivedStateOf {
-                    val op = computedOps[id] ?: return@derivedStateOf null
-                    // Fetch per-thread bookkeeping on the thread actually evaluating the block.
-                    val active: HashSet<Int> = computing.get()!!
-                    val prevId = captureId.get()
-                    val prevCaptured = captured.get()
-                    captureId.set(id)
-                    captured.set(null)
-                    active += id
-                    try {
-                        if (op is VariableSupport)
-                            op.updateVariables(this) // reads inputs (tracked)
-                        op.apply(this) // writes output -> captured
-                        captured.get()
-                    } finally {
-                        captureId.set(prevId)
-                        captured.set(prevCaptured)
-                        active -= id
-                    }
-                }
-            }
-        return state.value
-    }
-
-    override fun getFloat(id: Int): Float =
-        when {
-            // Time variables come from the Compose frame-clock state (matching the resolver's time
-            // special-case), not the raw store — so a time-driven op reads seconds/minutes/hours.
-            id == RemoteContext.ID_CONTINUOUS_SEC || id == RemoteContext.ID_TIME_IN_SEC ->
-                timeMillis.value / 1000f
-            id == RemoteContext.ID_TIME_IN_MIN -> timeMillis.value / 60000f
-            id == RemoteContext.ID_TIME_IN_HR -> timeMillis.value / 3600000f
-            realState.isFloatOverridden(id) -> super.getFloat(id)
-            isComputed(id) -> (computedValue(id) as? Number)?.toFloat() ?: 0f
-            else -> super.getFloat(id)
+  private fun computedValue(id: Int): Any? {
+    if (id in computing.get()!!) return null // cycle: break rather than recurse forever
+    val state =
+      states.getOrPut(id) {
+        derivedStateOf {
+          val op = computedOps[id] ?: return@derivedStateOf null
+          // Fetch per-thread bookkeeping on the thread actually evaluating the block.
+          val active: HashSet<Int> = computing.get()!!
+          val prevId = captureId.get()
+          val prevCaptured = captured.get()
+          captureId.set(id)
+          captured.set(null)
+          active += id
+          try {
+            if (op is VariableSupport) op.updateVariables(this) // reads inputs (tracked)
+            op.apply(this) // writes output -> captured
+            captured.get()
+          } finally {
+            captureId.set(prevId)
+            captured.set(prevCaptured)
+            active -= id
+          }
         }
+      }
+    return state.value
+  }
 
-    override fun getInteger(id: Int): Int =
-        if (isComputed(id)) (computedValue(id) as? Number)?.toInt() ?: 0 else super.getInteger(id)
-
-    override fun getColor(id: Int): Int =
-        if (isComputed(id)) (computedValue(id) as? Number)?.toInt() ?: 0 else super.getColor(id)
-
-    override fun getText(id: Int): String? =
-        if (isComputed(id)) computedValue(id) as? String else super.getText(id)
-
-    // GraphContext is a read-only-store *evaluation* context: a computed op's apply must not mutate
-    // the shared store (that would be a snapshot write during a derivedStateOf read, and would let
-    // one op clobber another's value). The scalar writes capture the op's own output; every other
-    // write is a no-op. This makes the model robust even for ops that write more than once or via
-    // non-scalar channels (e.g. MatrixExpression does putObject + loadFloat; Path/Shader/collection
-    // ops write paths/shaders/collections) — those ops aren't read through the scalar resolvers,
-    // but
-    // if one ever is, it degrades to a captured scalar / default instead of corrupting the store.
-
-    override fun loadFloat(id: Int, value: Float) {
-        if (id == captureId.get()) captured.set(value)
+  override fun getFloat(id: Int): Float =
+    when {
+      // Time variables come from the Compose frame-clock state (matching the resolver's time
+      // special-case), not the raw store — so a time-driven op reads seconds/minutes/hours.
+      id == RemoteContext.ID_CONTINUOUS_SEC || id == RemoteContext.ID_TIME_IN_SEC ->
+        timeMillis.value / 1000f
+      id == RemoteContext.ID_TIME_IN_MIN -> timeMillis.value / 60000f
+      id == RemoteContext.ID_TIME_IN_HR -> timeMillis.value / 3600000f
+      realState.isFloatOverridden(id) -> super.getFloat(id)
+      isComputed(id) -> (computedValue(id) as? Number)?.toFloat() ?: 0f
+      else -> super.getFloat(id)
     }
 
-    override fun loadInteger(id: Int, value: Int) {
-        if (id == captureId.get()) captured.set(value)
-    }
+  override fun getInteger(id: Int): Int =
+    if (isComputed(id)) (computedValue(id) as? Number)?.toInt() ?: 0 else super.getInteger(id)
 
-    override fun loadColor(id: Int, color: Int) {
-        if (id == captureId.get()) captured.set(color)
-    }
+  override fun getColor(id: Int): Int =
+    if (isComputed(id)) (computedValue(id) as? Number)?.toInt() ?: 0 else super.getColor(id)
 
-    override fun loadText(id: Int, text: String) {
-        if (id == captureId.get()) captured.set(text)
-    }
+  override fun getText(id: Int): String? =
+    if (isComputed(id)) computedValue(id) as? String else super.getText(id)
 
-    // Non-scalar / multi-writes during evaluation are suppressed (never reach the real store).
-    override fun putObject(id: Int, value: Any) {}
+  // GraphContext is a read-only-store *evaluation* context: a computed op's apply must not mutate
+  // the shared store (that would be a snapshot write during a derivedStateOf read, and would let
+  // one op clobber another's value). The scalar writes capture the op's own output; every other
+  // write is a no-op. This makes the model robust even for ops that write more than once or via
+  // non-scalar channels (e.g. MatrixExpression does putObject + loadFloat; Path/Shader/collection
+  // ops write paths/shaders/collections) — those ops aren't read through the scalar resolvers,
+  // but
+  // if one ever is, it degrades to a captured scalar / default instead of corrupting the store.
 
-    override fun loadPathData(instanceId: Int, winding: Int, floatPath: FloatArray) {}
+  override fun loadFloat(id: Int, value: Float) {
+    if (id == captureId.get()) captured.set(value)
+  }
 
-    override fun addCollection(id: Int, collection: ArrayAccess) {}
+  override fun loadInteger(id: Int, value: Int) {
+    if (id == captureId.get()) captured.set(value)
+  }
 
-    override fun loadShader(id: Int, value: ShaderData) {}
+  override fun loadColor(id: Int, color: Int) {
+    if (id == captureId.get()) captured.set(color)
+  }
 
-    override fun loadAnimatedFloat(id: Int, animatedFloat: FloatExpression) {}
+  override fun loadText(id: Int, text: String) {
+    if (id == captureId.get()) captured.set(text)
+  }
 
-    override fun loadBitmap(
-        imageId: Int,
-        encoding: Short,
-        type: Short,
-        width: Int,
-        height: Int,
-        data: ByteArray,
-    ) {}
+  // Non-scalar / multi-writes during evaluation are suppressed (never reach the real store).
+  override fun putObject(id: Int, value: Any) {}
 
-    override fun needsRepaint() {}
+  override fun loadPathData(instanceId: Int, winding: Int, floatPath: FloatArray) {}
+
+  override fun addCollection(id: Int, collection: ArrayAccess) {}
+
+  override fun loadShader(id: Int, value: ShaderData) {}
+
+  override fun loadAnimatedFloat(id: Int, animatedFloat: FloatExpression) {}
+
+  override fun loadBitmap(
+    imageId: Int,
+    encoding: Short,
+    type: Short,
+    width: Int,
+    height: Int,
+    data: ByteArray,
+  ) {}
+
+  override fun needsRepaint() {}
 }

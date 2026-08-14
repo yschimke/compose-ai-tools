@@ -42,8 +42,8 @@ object FocusOverlayDesktop {
 
     val image =
       runCatching {
-          ImageIO.read(fileSystem.read(outputFile.path.toPath()) { readByteArray() }.inputStream())
-        }
+        ImageIO.read(fileSystem.read(outputFile.path.toPath()) { readByteArray() }.inputStream())
+      }
         .getOrNull() ?: return
     val g = image.createGraphics()
     try {

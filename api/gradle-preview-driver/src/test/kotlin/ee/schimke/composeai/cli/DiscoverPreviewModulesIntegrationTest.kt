@@ -89,8 +89,9 @@ class DiscoverPreviewModulesIntegrationTest {
         assertEquals(emptyList(), discovered.modules.map { it.gradlePath })
 
         // Control: the old `GradleProject` discovery path realizes the task graph and dies.
-        val failure =
-          runCatching { connection.model(GradleProject::class.java).get() }.exceptionOrNull()
+        val failure = runCatching {
+          connection.model(GradleProject::class.java).get()
+        }.exceptionOrNull()
         assertTrue(
           failure is BuildException,
           "expected GradleProject query to fail by realizing :native's task, got $failure",

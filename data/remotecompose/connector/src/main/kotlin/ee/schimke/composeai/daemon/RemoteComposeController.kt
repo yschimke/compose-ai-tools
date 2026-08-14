@@ -84,9 +84,9 @@ object RemoteComposeController {
   private const val NO_PREVIEW_SCOPE: String = ""
 
   /**
-   * previewId of the render currently composing, stamped by the around-composable via [beginRender].
-   * Scopes the [bridgeForwarder] forwards so a pooled-sandbox run (`sandboxCount > 1`) doesn't leak
-   * one preview's declarations into another's host-side snapshot.
+   * previewId of the render currently composing, stamped by the around-composable via
+   * [beginRender]. Scopes the [bridgeForwarder] forwards so a pooled-sandbox run (`sandboxCount >
+   * 1`) doesn't leak one preview's declarations into another's host-side snapshot.
    */
   @Volatile private var activePreviewId: String? = null
 
@@ -107,9 +107,9 @@ object RemoteComposeController {
   /**
    * Record an editable knob the preview just declared (via a `LocalRemoteComposeHost` named-value
    * read, or an explicit `declareKnob`). Keyed by [RemoteComposeKnobDeclaration.name]; a repeat
-   * declaration of the same name (recomposition) replaces the prior entry while keeping its position
-   * so the viewer's control list stays stable. Idempotent — re-recording an identical declaration
-   * doesn't notify listeners. Mirrors `PreviewOverrideController.record`.
+   * declaration of the same name (recomposition) replaces the prior entry while keeping its
+   * position so the viewer's control list stays stable. Idempotent — re-recording an identical
+   * declaration doesn't notify listeners. Mirrors `PreviewOverrideController.record`.
    */
   fun recordDeclaration(declaration: RemoteComposeKnobDeclaration) {
     val current = declarationsState.value
@@ -133,7 +133,9 @@ object RemoteComposeController {
     )
   }
 
-  /** Active collection sink for [collectingDeclarations]; null when no capture is being collected. */
+  /**
+   * Active collection sink for [collectingDeclarations]; null when no capture is being collected.
+   */
   @Volatile private var declarationCollector: MutableList<RemoteComposeKnobDeclaration>? = null
 
   /**
@@ -143,11 +145,12 @@ object RemoteComposeController {
    *
    * `RemoteOverridablePreview` wraps its memoized `captureSingleRemoteDocument` in this so it can
    * snapshot the knobs the sticker declares while the document is captured, then re-record them on
-   * every subsequent render. That matters on the daemon path: the memoized capture only records once
-   * (during the outer *composition* phase), but `RemoteComposeOverrideExtension`'s render-start
-   * [clearDeclarations] runs from a `DisposableEffect` (the outer *apply* phase, after the capture),
-   * so without re-recording a `renderNow` / `data/fetch` render would report no knobs. Not
-   * re-entrant (one capture at a time per classloader); a nested call restores the outer sink.
+   * every subsequent render. That matters on the daemon path: the memoized capture only records
+   * once (during the outer *composition* phase), but `RemoteComposeOverrideExtension`'s
+   * render-start [clearDeclarations] runs from a `DisposableEffect` (the outer *apply* phase, after
+   * the capture), so without re-recording a `renderNow` / `data/fetch` render would report no
+   * knobs. Not re-entrant (one capture at a time per classloader); a nested call restores the outer
+   * sink.
    */
   fun <T> collectingDeclarations(block: () -> T): Pair<T, List<RemoteComposeKnobDeclaration>> {
     val sink = mutableListOf<RemoteComposeKnobDeclaration>()
@@ -264,8 +267,8 @@ object RemoteComposeController {
 
   /**
    * Replace just the replay player without touching named values, the profile, or the accept-list.
-   * Same merge-don't-replace semantics as [setProfile], so a viewer toggling between the view-backed
-   * and embedded players mid-session doesn't clear the state it seeded earlier.
+   * Same merge-don't-replace semantics as [setProfile], so a viewer toggling between the
+   * view-backed and embedded players mid-session doesn't clear the state it seeded earlier.
    */
   fun setPlayer(player: RemoteComposePlayerKind?) {
     if (playerState.value == player) return
@@ -323,17 +326,18 @@ object RemoteComposeController {
 
   /**
    * Resolved once per JVM, cached even on failure. `null` means the bridge class isn't on the
-   * classpath (plain apps, the desktop daemon, connector unit tests) — every forward no-ops. Mirrors
-   * `PreviewOverrideController`'s `BridgeForwarder`.
+   * classpath (plain apps, the desktop daemon, connector unit tests) — every forward no-ops.
+   * Mirrors `PreviewOverrideController`'s `BridgeForwarder`.
    */
   private val bridgeForwarder: BridgeForwarder? by lazy { BridgeForwarder.tryLoad() }
 
   /**
-   * Reflective handle to `ee.schimke.composeai.daemon.bridge.SandboxRemoteComposeBridge`, which lives
-   * in `:daemon:android` (a downstream module this connector does NOT depend on). Reached via
+   * Reflective handle to `ee.schimke.composeai.daemon.bridge.SandboxRemoteComposeBridge`, which
+   * lives in `:daemon:android` (a downstream module this connector does NOT depend on). Reached via
    * `Class.forName` — same shape as `PreviewOverrideController`'s `BridgeForwarder`. In the
    * production Android daemon the controller is sandbox-loaded and the bridge package is
-   * do-not-acquire on the sandbox classloader, so both sides observe the same single bridge instance.
+   * do-not-acquire on the sandbox classloader, so both sides observe the same single bridge
+   * instance.
    */
   private class BridgeForwarder(
     private val recordMethod: java.lang.reflect.Method,

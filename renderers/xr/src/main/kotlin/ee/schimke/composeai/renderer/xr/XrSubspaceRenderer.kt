@@ -66,12 +66,12 @@ public object XrSubspaceRenderer {
     // failure must never strand the `scene.json`/textures the compositor needs, so a panel whose
     // semantics can't be read just lands with a null `panelContent`.
     runCatching {
-        val tree =
-          SubspaceSceneRecorder.recordTree(rule, previewId = previewId) {
-            ComposeSemanticsDataProducer.buildPayload(it).root
-          }
-        SubspaceSceneWriter.writeSemanticsTree(outputDir, tree)
-      }
+      val tree =
+        SubspaceSceneRecorder.recordTree(rule, previewId = previewId) {
+          ComposeSemanticsDataProducer.buildPayload(it).root
+        }
+      SubspaceSceneWriter.writeSemanticsTree(outputDir, tree)
+    }
       .onFailure {
         System.err.println(
           "XrSubspaceRenderer: spatial-semantics write failed for $previewId: " +
@@ -95,10 +95,10 @@ public object XrSubspaceRenderer {
         return it
       }
     return runCatching {
-        val ctor = clazz.getDeclaredConstructor()
-        ctor.isAccessible = true
-        ctor.newInstance()
-      }
+      val ctor = clazz.getDeclaredConstructor()
+      ctor.isAccessible = true
+      ctor.newInstance()
+    }
       .getOrNull()
   }
 }

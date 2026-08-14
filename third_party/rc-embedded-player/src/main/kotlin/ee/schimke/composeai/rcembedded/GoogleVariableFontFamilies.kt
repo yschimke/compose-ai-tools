@@ -97,10 +97,8 @@ internal class GoogleVariableFontFamilies(private val fonts: GoogleFontSource?) 
       )
     val resolved =
       runCatching {
-          FontFamily(
-            Font(file = file, weight = weight, style = style, variationSettings = settings)
-          )
-        }
+        FontFamily(Font(file = file, weight = weight, style = style, variationSettings = settings))
+      }
         .getOrNull() ?: return null
     families[request] = resolved
     return resolved

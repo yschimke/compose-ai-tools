@@ -190,13 +190,12 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
    * as [resolveAgpVersion]). Returns `null` for non-Android modules, unset minSdk, or any
    * reflection failure — [CompatRules.checkLibraryMinSdk] treats `null` as "not checkable".
    */
-  private fun resolveModuleMinSdk(project: Project): Int? =
-    runCatching {
-        val android = project.extensions.findByName("android") ?: return null
-        val defaultConfig = android.javaClass.getMethod("getDefaultConfig").invoke(android)
-        defaultConfig?.javaClass?.getMethod("getMinSdk")?.invoke(defaultConfig) as? Int
-      }
-      .getOrNull()
+  private fun resolveModuleMinSdk(project: Project): Int? = runCatching {
+    val android = project.extensions.findByName("android") ?: return null
+    val defaultConfig = android.javaClass.getMethod("getDefaultConfig").invoke(android)
+    defaultConfig?.javaClass?.getMethod("getMinSdk")?.invoke(defaultConfig) as? Int
+  }
+    .getOrNull()
 
   /**
    * Resolves the `android-manifest` artifacts on [configName] (the AAR `AndroidManifest.xml`s) and
@@ -207,18 +206,17 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
     val config = project.configurations.findByName(configName) ?: return emptyList()
     if (!config.isCanBeResolved) return emptyList()
     return runCatching {
-        val artifactType =
-          org.gradle.api.attributes.Attribute.of("artifactType", String::class.java)
-        val artifacts =
-          config.incoming
-            .artifactView {
-              lenient(true)
-              attributes.attribute(artifactType, "android-manifest")
-            }
-            .artifacts
-            .artifacts
-        LibraryMinSdkCollector.collect(artifacts)
-      }
+      val artifactType = org.gradle.api.attributes.Attribute.of("artifactType", String::class.java)
+      val artifacts =
+        config.incoming
+          .artifactView {
+            lenient(true)
+            attributes.attribute(artifactType, "android-manifest")
+          }
+          .artifacts
+          .artifacts
+      LibraryMinSdkCollector.collect(artifacts)
+    }
       .getOrElse { emptyList() }
   }
 

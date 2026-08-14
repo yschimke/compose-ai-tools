@@ -2,13 +2,12 @@ package ee.schimke.composeai.renderer
 
 import android.content.Context
 import androidx.compose.runtime.ProvidedValue
-import coil3.EventListener
 import coil3.ColorImage
+import coil3.EventListener
 import coil3.Image
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.compose.AsyncImagePreviewHandler
-
 import coil3.compose.LocalAsyncImagePreviewHandler
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
@@ -25,9 +24,9 @@ import kotlinx.coroutines.Dispatchers
  * override list is shorter, but the load-bearing part is identical: rebind the dispatchers to the
  * immediate main dispatcher so `execute()` runs inline before the capture.
  *
- * The second half is [previewHandlerProvidedValue]. The renderer composes with
- * `LocalInspectionMode = true` by default (AS parity, issue #1584), and coil short-circuits into a
- * placeholder-only branch when that's set. coil 3 makes that branch overridable through
+ * The second half is [previewHandlerProvidedValue]. The renderer composes with `LocalInspectionMode
+ * = true` by default (AS parity, issue #1584), and coil short-circuits into a placeholder-only
+ * branch when that's set. coil 3 makes that branch overridable through
  * `LocalAsyncImagePreviewHandler` — so the renderer supplies a handler that runs the real request,
  * and coil 3 needs no bytecode-level help. coil 2 has no equivalent hook, which is why it needs
  * [ShadowAsyncImagePainter] instead.
@@ -80,18 +79,20 @@ internal class Coil3PreviewInstaller : CoilPreviewInstaller {
    * Requests with no placeholder still use [EMPTY_IMAGE], and [CoilLoadDiagnostics] turns the miss
    * into an explanation in the warnings sidecar.
    */
-  private val previewHandler: AsyncImagePreviewHandler = AsyncImagePreviewHandler {
-    request: ImageRequest ->
-    val loaded: Image? = SingletonImageLoader.get(request.context).execute(request).image
-    coil3ImageWithPlaceholderFallback(request, loaded, EMPTY_IMAGE)
-  }
+  private val previewHandler: AsyncImagePreviewHandler =
+    AsyncImagePreviewHandler { request: ImageRequest ->
+      val loaded: Image? = SingletonImageLoader.get(request.context).execute(request).image
+      coil3ImageWithPlaceholderFallback(request, loaded, EMPTY_IMAGE)
+    }
 
   private companion object {
     /** Transparent and zero-sized, so a failed load contributes no pixels and no intrinsic size. */
     val EMPTY_IMAGE: Image = ColorImage(color = 0, width = 0, height = 0)
   }
 
-  /** coil 3 twin of [Coil2PreviewInstaller]'s listener; same trade-off on replacing the consumer's. */
+  /**
+   * coil 3 twin of [Coil2PreviewInstaller]'s listener; same trade-off on replacing the consumer's.
+   */
   private object DiagnosticEventListener : EventListener() {
     override fun onStart(request: ImageRequest) {
       CoilLoadDiagnostics.onStart(request, describeModel(request.data))

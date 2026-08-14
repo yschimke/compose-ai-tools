@@ -8,8 +8,8 @@ import org.junit.Test
  * Guards the Robolectric native runtime's system-font resources against classpath shadowing.
  *
  * Robolectric's `DefaultNativeRuntimeLoader` extracts the native runtime's system fonts from the
- * `fonts` resource **directory**, resolved through the classloader — so the *first* `fonts/` root on
- * the test classpath wins outright, and nothing merges the rest. A module that ships its own
+ * `fonts` resource **directory**, resolved through the classloader — so the *first* `fonts/` root
+ * on the test classpath wins outright, and nothing merges the rest. A module that ships its own
  * `src/test/resources/fonts/` sorts ahead of `nativeruntime-dist-compat` and replaces
  * `fonts/fonts.xml` plus the ~200 system faces with whatever it happens to contain.
  *

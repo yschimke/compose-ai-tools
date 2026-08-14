@@ -191,7 +191,9 @@ class ComposeFigmaSvgBackgroundOptInTest {
     val svg = rootDir.resolve("pill").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
     assertTrue(
       "the injected fill must take the button's own bounds and radius:\n$svg",
-      svg.contains("""<rect x="20" y="60" width="160" height="80" rx="40" ry="40" fill="#000000""""),
+      svg.contains(
+        """<rect x="20" y="60" width="160" height="80" rx="40" ry="40" fill="#000000""""
+      ),
     )
     assertFalse(
       "…and must not also tile the whole canvas:\n$svg",

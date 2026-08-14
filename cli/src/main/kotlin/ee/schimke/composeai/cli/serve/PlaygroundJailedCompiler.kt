@@ -198,16 +198,15 @@ class PlaygroundJailedCompiler(
     )
   }
 
-  private fun drain(stream: java.io.InputStream, into: StringBuilder): Thread =
-    Thread {
-        runCatching {
-          stream.bufferedReader().forEachLine { synchronized(into) { into.appendLine(it) } }
-        }
-      }
-      .apply {
-        isDaemon = true
-        start()
-      }
+  private fun drain(stream: java.io.InputStream, into: StringBuilder): Thread = Thread {
+    runCatching {
+      stream.bufferedReader().forEachLine { synchronized(into) { into.appendLine(it) } }
+    }
+  }
+    .apply {
+      isDaemon = true
+      start()
+    }
 
   companion object {
     /** Prefix of the child's single report line, so JVM noise on stdout can't be mistaken. */

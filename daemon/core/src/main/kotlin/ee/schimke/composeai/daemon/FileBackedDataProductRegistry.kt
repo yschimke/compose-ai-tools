@@ -201,8 +201,8 @@ abstract class FileBackedDataProductRegistry(
    */
   private fun forceRerender(params: JsonElement?): Boolean =
     runCatching {
-        params?.jsonObject?.get(DataFetchParams.PARAM_FORCE_RERENDER)?.jsonPrimitive?.booleanOrNull
-      }
+      params?.jsonObject?.get(DataFetchParams.PARAM_FORCE_RERENDER)?.jsonPrimitive?.booleanOrNull
+    }
       .getOrNull() == true
 
   companion object {

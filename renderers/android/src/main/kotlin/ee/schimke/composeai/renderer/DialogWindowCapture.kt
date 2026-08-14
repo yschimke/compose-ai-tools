@@ -29,8 +29,9 @@ import java.io.File
  *    that at the capture site, which is why these previews produced a PNG at all rather than
  *    failing loudly. [selectCaptureRoot] picks the subject deliberately instead.
  * 2. **The frame is the screen, not the component.** The capture spans the whole screen with the
- *    dialog's window composited into it wherever its gravity puts it, so the sticker is the activity
- *    frame with the component floating inside. [cropPngToDialogWindow] crops to the window.
+ *    dialog's window composited into it wherever its gravity puts it, so the sticker is the
+ *    activity frame with the component floating inside. [cropPngToDialogWindow] crops to the
+ *    window.
  */
 internal object DialogWindowCapture {
   data class CaptureRoot(
@@ -60,9 +61,9 @@ internal object DialogWindowCapture {
 
   fun resolveCaptureRoot(rule: AndroidComposeTestRule<*, ComponentActivity>): CaptureRoot {
     val interactions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
-    val nodes =
-      runCatching { interactions.fetchSemanticsNodes(atLeastOneRootRequired = false) }
-        .getOrDefault(emptyList())
+    val nodes = runCatching {
+      interactions.fetchSemanticsNodes(atLeastOneRootRequired = false)
+    }.getOrDefault(emptyList())
     if (nodes.size <= 1) return CaptureRoot(rule.onRoot(), nodes.firstOrNull())
     val resolved =
       selectCaptureRoot(nodes, rule.activity.window.decorView)
@@ -73,11 +74,11 @@ internal object DialogWindowCapture {
   /**
    * The semantics root representing the surface being captured, given every `isRoot()` node.
    *
-   * Prefer the activity's own root — the normal single-root case, and a `Popup` over a real surface,
-   * where the popup is decoration and the activity is the subject. The preference yields only when
-   * the activity root has no content of its own *and* another root lives in a shown dialog window,
-   * which is exactly the `Dialog` / `ModalBottomSheet` preview whose whole content composes
-   * elsewhere.
+   * Prefer the activity's own root — the normal single-root case, and a `Popup` over a real
+   * surface, where the popup is decoration and the activity is the subject. The preference yields
+   * only when the activity root has no content of its own *and* another root lives in a shown
+   * dialog window, which is exactly the `Dialog` / `ModalBottomSheet` preview whose whole content
+   * composes elsewhere.
    *
    * Keyed on the dialog window rather than on the activity root merely looking empty: a `Box`
    * carrying only a `background` modifier contributes no semantics node, so "no semantic
@@ -88,8 +89,9 @@ internal object DialogWindowCapture {
     activityDecorView: android.view.View,
   ): SemanticsNode? {
     if (roots.size <= 1) return roots.firstOrNull()
-    val activityRootHasSemantics =
-      roots.any { it.belongsToWindow(activityDecorView) && it.descendantCount() > 1 }
+    val activityRootHasSemantics = roots.any {
+      it.belongsToWindow(activityDecorView) && it.descendantCount() > 1
+    }
     val dialogOwnsThePreview =
       !activityRootHasSemantics && roots.any { shownDialogWindow(it) != null }
     return roots.maxWithOrNull(
@@ -106,12 +108,13 @@ internal object DialogWindowCapture {
     )
   }
 
-  private fun SemanticsNode.belongsToWindow(decorView: android.view.View): Boolean =
-    runCatching { (root as? ViewRootForTest)?.view?.rootView === decorView.rootView }
-      .getOrDefault(false)
+  private fun SemanticsNode.belongsToWindow(decorView: android.view.View): Boolean = runCatching {
+    (root as? ViewRootForTest)?.view?.rootView === decorView.rootView
+  }.getOrDefault(false)
 
-  private fun SemanticsNode.descendantCount(): Int =
-    runCatching { 1 + children.sumOf { it.descendantCount() } }.getOrDefault(1)
+  private fun SemanticsNode.descendantCount(): Int = runCatching {
+    1 + children.sumOf { it.descendantCount() }
+  }.getOrDefault(1)
 
   /**
    * The window of the currently-shown dialog [root] composes into, or `null` when it is not inside
@@ -120,20 +123,19 @@ internal object DialogWindowCapture {
    *
    * `getShownDialogs` keeps dismissed dialogs in the list, hence the `isShowing` filter.
    */
-  fun shownDialogWindow(root: SemanticsNode): android.view.Window? =
-    runCatching {
-        val rootView = (root.root as? ViewRootForTest)?.view ?: return null
-        org.robolectric.shadows.ShadowDialog.getShownDialogs()
-          .lastOrNull { dialog ->
-            val decor = dialog.window?.decorView
-            dialog.isShowing &&
-              decor != null &&
-              generateSequence(rootView as android.view.View) { it.parent as? android.view.View }
-                .any { it === decor }
-          }
-          ?.window
+  fun shownDialogWindow(root: SemanticsNode): android.view.Window? = runCatching {
+    val rootView = (root.root as? ViewRootForTest)?.view ?: return null
+    org.robolectric.shadows.ShadowDialog.getShownDialogs()
+      .lastOrNull { dialog ->
+        val decor = dialog.window?.decorView
+        dialog.isShowing &&
+          decor != null &&
+          generateSequence(rootView as android.view.View) { it.parent as? android.view.View }
+            .any { it === decor }
       }
-      .getOrNull()
+      ?.window
+  }
+    .getOrNull()
 
   /**
    * Crops [file] — a capture spanning the whole screen — down to [window]'s own rectangle.
@@ -144,8 +146,8 @@ internal object DialogWindowCapture {
    * the way the framework does — [android.view.Gravity.apply] against the captured frame, using the
    * window's own gravity — rather than trusting coordinates Robolectric leaves at the origin.
    *
-   * A `ModalBottomSheet`'s window fills the screen, so its rect covers the whole frame and this is a
-   * no-op; a centred `Dialog` / `AlertDialog` crops to the dialog itself.
+   * A `ModalBottomSheet`'s window fills the screen, so its rect covers the whole frame and this is
+   * a no-op; a centred `Dialog` / `AlertDialog` crops to the dialog itself.
    */
   fun cropPngToDialogWindow(file: File, root: SemanticsNode, window: android.view.Window) {
     dialogWindowCropRect(file, root, window)?.let { cropPngToRect(file, it) }

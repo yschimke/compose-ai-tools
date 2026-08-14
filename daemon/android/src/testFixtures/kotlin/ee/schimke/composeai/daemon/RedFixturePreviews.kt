@@ -5,9 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,14 +34,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.lightColorScheme
-import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -61,13 +59,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.tooling.preview.PreviewParameter
-import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewParameter
+import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -99,23 +97,23 @@ fun RedSquare() {
 fun MultipleSemanticsRoots() {
   Box(
     modifier =
-      Modifier.fillMaxSize()
-        .background(Color(0xFFEF5350))
-        .semantics { contentDescription = "activity-surface" }
+      Modifier.fillMaxSize().background(Color(0xFFEF5350)).semantics {
+        contentDescription = "activity-surface"
+      }
   )
   Popup {
     Box(
       modifier =
-        Modifier.size(24.dp)
-          .background(Color(0xFF42A5F5))
-          .semantics { contentDescription = "popup-surface" }
+        Modifier.size(24.dp).background(Color(0xFF42A5F5)).semantics {
+          contentDescription = "popup-surface"
+        }
     )
   }
 }
 
 /**
- * Two-owner fixture whose activity surface renders real content but contributes **no semantics** — a
- * `Box` with only a `background` modifier adds no semantics node. Guards the issue-#3048 root
+ * Two-owner fixture whose activity surface renders real content but contributes **no semantics** —
+ * a `Box` with only a `background` modifier adds no semantics node. Guards the issue-#3048 root
  * selection against keying "is the activity empty?" off the semantics descendant count: this
  * activity looks empty by that measure, so a count-based rule would hand the subject role to the
  * popup and export the wrong tree.
@@ -126,9 +124,9 @@ fun VisualOnlySurfaceWithPopup() {
   Popup {
     Box(
       modifier =
-        Modifier.size(24.dp)
-          .background(Color(0xFF42A5F5))
-          .semantics { contentDescription = "popup-surface" }
+        Modifier.size(24.dp).background(Color(0xFF42A5F5)).semantics {
+          contentDescription = "popup-surface"
+        }
     )
   }
 }
@@ -145,21 +143,21 @@ fun DialogWindowSurface() {
   Dialog(onDismissRequest = {}) {
     Box(
       modifier =
-        Modifier.size(64.dp)
-          .background(Color(0xFF42A5F5))
-          .semantics { contentDescription = "dialog-surface" }
+        Modifier.size(64.dp).background(Color(0xFF42A5F5)).semantics {
+          contentDescription = "dialog-surface"
+        }
     )
   }
 }
 
 /**
- * Wrap-height regression fixture: a `Column` of many text rows whose natural height (~20 rows ×
- * ~40 px ≈ 800 px) far exceeds the historical fixed 320 px daemon frame. Rendered wrap-content, a
- * `Column` hands each child the *remaining* height, so under the old 320 px frame every row past the
- * budget measured to zero lines — the exact mechanism that collapsed `TcpConnectPanel`'s Port field
- * / Connect button in the figma-svg export. With the AS-parity wrap fix the render measures the full
- * ~800 px against the sandbox bound and crops to it, so no row collapses. Declared with `widthDp`
- * only (like the real component previews) so the height wraps.
+ * Wrap-height regression fixture: a `Column` of many text rows whose natural height (~20 rows × ~40
+ * px ≈ 800 px) far exceeds the historical fixed 320 px daemon frame. Rendered wrap-content, a
+ * `Column` hands each child the *remaining* height, so under the old 320 px frame every row past
+ * the budget measured to zero lines — the exact mechanism that collapsed `TcpConnectPanel`'s Port
+ * field / Connect button in the figma-svg export. With the AS-parity wrap fix the render measures
+ * the full ~800 px against the sandbox bound and crops to it, so no row collapses. Declared with
+ * `widthDp` only (like the real component previews) so the height wraps.
  */
 @Composable
 fun TallWrapColumn() {
@@ -176,12 +174,12 @@ fun TallWrapColumn() {
 
 /**
  * Wrap-content sticker fixture mirroring the desktop `WrapContentStickerPreview` (and the
- * design-catalog `CatalogSticker`): a 56.dp badge in 16.dp padding with **no `fillMaxSize`**, so its
- * intrinsic size is 88.dp on both axes — 176 px at density 2, far smaller than the wrap sandbox.
- * Used by [RenderEngineSizeBoundsTest] to prove the Android backend honours the wrapped-axis size
- * bounds (`PreviewOverrides.{min,max}{Width,Height}Px` — the Max / Min / Within size modes) the same
- * way the desktop daemon does, so a `compose-preview serve` size override against an Android module
- * reshapes the crop instead of being silently ignored.
+ * design-catalog `CatalogSticker`): a 56.dp badge in 16.dp padding with **no `fillMaxSize`**, so
+ * its intrinsic size is 88.dp on both axes — 176 px at density 2, far smaller than the wrap
+ * sandbox. Used by [RenderEngineSizeBoundsTest] to prove the Android backend honours the
+ * wrapped-axis size bounds (`PreviewOverrides.{min,max}{Width,Height}Px` — the Max / Min / Within
+ * size modes) the same way the desktop daemon does, so a `compose-preview serve` size override
+ * against an Android module reshapes the crop instead of being silently ignored.
  */
 @Composable
 fun WrapContentStickerPreview() {
@@ -300,9 +298,7 @@ fun EmojiAndAnnotatedText() {
     Text(
       buildAnnotatedString {
         append("body ")
-        withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp)) {
-          append("code")
-        }
+        withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp)) { append("code") }
       },
       modifier = Modifier.testTag("annotated"),
       style = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 16.sp),
@@ -352,11 +348,11 @@ fun GraphicsLayerAndWideVector() {
 /**
  * Android end-to-end fidelity fixture for #2853, the *embedded container* case: Jetchat's
  * `Conversation/Input` row of `InputSelectorButton`s, whose icons the export blew up to their
- * button box. Each button is an M3 `IconButton` holding
- * `Icon(modifier = Modifier.padding(8.dp).size(56.dp))` — the exact chain Jetchat authors — so the
- * painter draws into the *padded, constraint-clamped* box while the node still measures the button.
- * Fitting the vector to the measured box instead of the drawn one is what oversized the five action
- * icons from `scale(0.06)` to `scale(0.1)`.
+ * button box. Each button is an M3 `IconButton` holding `Icon(modifier =
+ * Modifier.padding(8.dp).size(56.dp))` — the exact chain Jetchat authors — so the painter draws
+ * into the *padded, constraint-clamped* box while the node still measures the button. Fitting the
+ * vector to the measured box instead of the drawn one is what oversized the five action icons from
+ * `scale(0.06)` to `scale(0.1)`.
  */
 @Composable
 fun IconButtonRowInputBar() {
@@ -399,12 +395,12 @@ fun IconButtonRowInputBar() {
 
 /**
  * Android end-to-end fidelity fixture for #2853, the alpha-zero clipped background: Jetchat's
- * `Composer/Record button` authors its recording circle with
- * `graphicsLayer { alpha = containerAlpha.value; scaleX = scale; scaleY = scale }`, and idle it
- * evaluates to `alpha = 0`, so the PNG shows only the microphone. The circle here is faded exactly
- * that way — through the lambda block, over a visible vector mic — so the export must carry the
- * evaluated layer alpha onto the group and drop the opaque circle, rather than leaking it as an
- * opaque fill. Embedding it in an input-bar `Row` matches the container the regression appeared in.
+ * `Composer/Record button` authors its recording circle with `graphicsLayer { alpha =
+ * containerAlpha.value; scaleX = scale; scaleY = scale }`, and idle it evaluates to `alpha = 0`, so
+ * the PNG shows only the microphone. The circle here is faded exactly that way — through the lambda
+ * block, over a visible vector mic — so the export must carry the evaluated layer alpha onto the
+ * group and drop the opaque circle, rather than leaking it as an opaque fill. Embedding it in an
+ * input-bar `Row` matches the container the regression appeared in.
  */
 @Composable
 fun AlphaZeroRecordButton() {
@@ -469,8 +465,8 @@ fun AlphaZeroRecordButton() {
  * Jetchat's `Profile/Animating FAB content` scales its create icon through a graphics layer as the
  * FAB expands. The captured draw-time scale is already baked into the icon's drawn bounds, so the
  * export must fit the vector to those bounds *once* (keeping the square icon square) rather than
- * multiplying a layout-slot fit by the captured scale again — the double-count that blew an embedded
- * mic group up from `scale(2.62)` to `scale(6.54)`.
+ * multiplying a layout-slot fit by the captured scale again — the double-count that blew an
+ * embedded mic group up from `scale(2.62)` to `scale(6.54)`.
  */
 @Composable
 fun VectorIconInAnimatedLayout() {
@@ -651,12 +647,13 @@ fun ResourceReadingPreview() {
  * hits on the live preview server when the packed / child-loader resource table doesn't carry its
  * `label_sync` string.
  *
- * Under the missing-resource placeholder fallback (`RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP`)
- * the miss degrades to an obvious placeholder (a non-blank string), so this paints green. Without the
- * fallback the lookup throws `Resources$NotFoundException`; on the interactive held path that throw
- * fails `acquireInteractiveSession` and the panel shows "input requires a live stream — unavailable".
- * Passing a raw int rather than an `R.string.*` constant keeps the miss guaranteed — the id is never
- * added to the resource table.
+ * Under the missing-resource placeholder fallback
+ * (`RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP`) the miss degrades to an obvious placeholder
+ * (a non-blank string), so this paints green. Without the fallback the lookup throws
+ * `Resources$NotFoundException`; on the interactive held path that throw fails
+ * `acquireInteractiveSession` and the panel shows "input requires a live stream — unavailable".
+ * Passing a raw int rather than an `R.string.*` constant keeps the miss guaranteed — the id is
+ * never added to the resource table.
  */
 @Composable
 fun MissingStringResourceSquare() {
@@ -812,8 +809,8 @@ fun RedNotification(context: android.content.Context): android.app.Notification 
  * [Scaffold] with a pinned [TopAppBar] and a hand-rolled bottom navigation bar framing a
  * `LazyColumn` of 30 numbered rows (more than fit a phone-height viewport). Mirrors the desktop
  * `LazyColumnListPreview` so both backends' full-page exports are exercised the same way:
- * [RenderEngineTest] renders it in `figma-svg-long` mode and asserts the exported SVG carries all 30
- * `Row N` layers. Bottom bar hand-built from primitives to stay independent of the M3
+ * [RenderEngineTest] renders it in `figma-svg-long` mode and asserts the exported SVG carries all
+ * 30 `Row N` layers. Bottom bar hand-built from primitives to stay independent of the M3
  * `NavigationBar` artifact.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -869,8 +866,8 @@ fun LazyColumnListPreview() {
  * issue was filed against.
  *
  * Two values on purpose: the daemon renders one frame per preview id, so it must invoke the
- * **first** one ([SquareTintProvider] green), never the second. A regression that silently picks the
- * wrong value fails the pixel assertion rather than passing on "something rendered".
+ * **first** one ([SquareTintProvider] green), never the second. A regression that silently picks
+ * the wrong value fails the pixel assertion rather than passing on "something rendered".
  */
 class SquareTintProvider : PreviewParameterProvider<Long> {
   override val values = sequenceOf(0xFF43A047L, 0xFF1E88E5L)

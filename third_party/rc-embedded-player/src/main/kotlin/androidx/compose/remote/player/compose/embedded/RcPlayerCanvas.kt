@@ -32,42 +32,42 @@ import androidx.compose.ui.text.rememberTextMeasurer
 
 @Composable
 internal fun RcPlayerCanvas(layout: CanvasLayout, modifier: Modifier) {
-    // A CanvasLayout's draw instructions are not in its own op list — they live in the (single)
-    // CanvasContent component nested in its subtree (CanvasLayout -> ... -> CanvasContent ->
-    // draws).
-    // Executing layout.mList directly only runs the modifiers/wrapper, so the draws never render
-    // and
-    // the canvas is blank. Find the CanvasContent and execute its draw list.
-    val operations =
-        remember(layout) { (findCanvasContent(layout.mList)?.mList ?: layout.mList).toList() }
+  // A CanvasLayout's draw instructions are not in its own op list — they live in the (single)
+  // CanvasContent component nested in its subtree (CanvasLayout -> ... -> CanvasContent ->
+  // draws).
+  // Executing layout.mList directly only runs the modifiers/wrapper, so the draws never render
+  // and
+  // the canvas is blank. Find the CanvasContent and execute its draw list.
+  val operations =
+    remember(layout) { (findCanvasContent(layout.mList)?.mList ?: layout.mList).toList() }
 
-    val remoteContext = LocalRemoteContext.current
-    val graph = LocalGraphContext.current
-    val textMeasurer = rememberTextMeasurer()
-    Box(modifier = modifier) {
-        // WIDTH/HEIGHT ComponentValue feedback is published from the component dispatch's
-        // onSizeChanged (RcPlayerComponent), which fires at layout time — before anything draws —
-        // so expressions reading the canvas size are correct on the same frame. Publishing here in
-        // the draw pass (as this used to) is redundant and a frame-lag hazard: a reader drawn
-        // earlier in the pass would see the previous frame's value, and writing snapshot state
-        // during draw re-invalidates the frame.
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            executeOperations(operations, remoteContext, textMeasurer, graph = graph)
-        }
+  val remoteContext = LocalRemoteContext.current
+  val graph = LocalGraphContext.current
+  val textMeasurer = rememberTextMeasurer()
+  Box(modifier = modifier) {
+    // WIDTH/HEIGHT ComponentValue feedback is published from the component dispatch's
+    // onSizeChanged (RcPlayerComponent), which fires at layout time — before anything draws —
+    // so expressions reading the canvas size are correct on the same frame. Publishing here in
+    // the draw pass (as this used to) is redundant and a frame-lag hazard: a reader drawn
+    // earlier in the pass would see the previous frame's value, and writing snapshot state
+    // during draw re-invalidates the frame.
+    Canvas(modifier = Modifier.fillMaxSize()) {
+      executeOperations(operations, remoteContext, textMeasurer, graph = graph)
     }
+  }
 }
 
 /**
  * Depth-first search for the (single) [CanvasContent] holding a canvas layout's draw instructions.
  */
 private fun findCanvasContent(ops: List<Operation>): CanvasContent? {
-    for (op in ops) {
-        if (op is CanvasContent) return op
-        if (op is Component) {
-            findCanvasContent(op.mList)?.let {
-                return it
-            }
-        }
+  for (op in ops) {
+    if (op is CanvasContent) return op
+    if (op is Component) {
+      findCanvasContent(op.mList)?.let {
+        return it
+      }
     }
-    return null
+  }
+  return null
 }

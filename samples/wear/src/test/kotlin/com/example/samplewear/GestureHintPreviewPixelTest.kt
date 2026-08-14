@@ -5,14 +5,14 @@ import java.io.File
 import org.junit.Test
 
 /**
- * End-to-end verification that a clean component can expose its public one-handed-gesture
- * indicator state for deterministic preview capture. Reads the files produced by
+ * End-to-end verification that a clean component can expose its public one-handed-gesture indicator
+ * state for deterministic preview capture. Reads the files produced by
  * `:samples:wear:composePreviewRenderAll` (wired in via `composePreview { renderBeforeUnitTests =
  * true }`) and pixel-asserts that the hint-off vs hint-on renders differ.
  *
- * The two previews render the same `MediaGestureScreen`: one at rest and one with
- * `showIndicators = true`. Both paths use `OneHandedGestureClickIndicatorState.showIndicator()`;
- * there is no alternate hint UI to overlap the button content.
+ * The two previews render the same `MediaGestureScreen`: one at rest and one with `showIndicators =
+ * true`. Both paths use `OneHandedGestureClickIndicatorState.showIndicator()`; there is no
+ * alternate hint UI to overlap the button content.
  */
 class GestureHintPreviewPixelTest {
 

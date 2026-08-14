@@ -193,7 +193,6 @@ class PermissionsDataProductRegistry : DataProductRegistry {
     )
   }
 
-
   override fun onRender(
     previewId: String,
     result: RenderResult,

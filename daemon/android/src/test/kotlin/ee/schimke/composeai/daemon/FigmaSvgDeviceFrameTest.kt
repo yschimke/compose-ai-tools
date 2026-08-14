@@ -14,8 +14,8 @@ import org.junit.rules.TemporaryFolder
  * A `@Preview(device = …)` carries no explicit `widthDp`/`heightDp`, so the router resolves the
  * spec to its fixed fallback frame and lets the device qualifier size the real composition. If the
  * export sizes its canvas off the *spec* instead of the *rendered frame*, a Wear large-round
- * preview exports a small square canvas while the PNG stays at the device's real pixels — the
- * "SVG viewport shrank to 352×352 while the PNG stayed 454×454" cluster on #2615/#2883.
+ * preview exports a small square canvas while the PNG stays at the device's real pixels — the "SVG
+ * viewport shrank to 352×352 while the PNG stayed 454×454" cluster on #2615/#2883.
  */
 class FigmaSvgDeviceFrameTest {
 
@@ -53,9 +53,10 @@ class FigmaSvgDeviceFrameTest {
       val image = ImageIO.read(png)
 
       val svgFile =
-        outputDir.parentFile!!.resolve("data").resolve("wear-device-frame").resolve(
-          "compose-figma.svg"
-        )
+        outputDir.parentFile!!
+          .resolve("data")
+          .resolve("wear-device-frame")
+          .resolve("compose-figma.svg")
       assertTrue("figma SVG must be produced: ${svgFile.absolutePath}", svgFile.exists())
       val svg = svgFile.readText()
       val size =

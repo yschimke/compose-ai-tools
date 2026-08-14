@@ -88,8 +88,8 @@ class RcJvmRenderHarness {
       err.delete()
 
       runCatching {
-          renderRemoteDocumentToPng(rc.readBytes(), entry.width, entry.height, entry.density)
-        }
+        renderRemoteDocumentToPng(rc.readBytes(), entry.width, entry.height, entry.density)
+      }
         .onSuccess { bytes -> png.writeBytes(bytes) }
         .onFailure { t -> err.writeText("${t::class.java.simpleName}: ${t.message?.take(500)}") }
     }

@@ -15,10 +15,11 @@ import org.robolectric.annotation.Config
  * really lands on `Configuration.smallestScreenWidthDp`, and that omitting it really does leave the
  * stale baseline behind.
  *
- * That second assertion is the actual bug from issue #3309: `RuntimeEnvironment.setQualifiers("+…")`
- * is incremental, so a render that set only `w`/`h` produced a 227dp round Wear viewport that still
- * reported `smallestScreenWidthDp == 320`. `fillMaxRectangle()`-style geometry derived from that
- * field came out inscribed in the wrong circle.
+ * That second assertion is the actual bug from issue #3309:
+ * `RuntimeEnvironment.setQualifiers("+…")` is incremental, so a render that set only `w`/`h`
+ * produced a 227dp round Wear viewport that still reported `smallestScreenWidthDp == 320`.
+ * `fillMaxRectangle()`-style geometry derived from that field came out inscribed in the wrong
+ * circle.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -30,9 +31,7 @@ class PreviewSizeQualifiersConfigurationTest {
 
   private val configuration
     get() =
-      ApplicationProvider.getApplicationContext<android.content.Context>()
-        .resources
-        .configuration
+      ApplicationProvider.getApplicationContext<android.content.Context>().resources.configuration
 
   @Test
   fun `wear device qualifiers leave every screen dimension agreeing`() {

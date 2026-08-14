@@ -25,8 +25,8 @@ private const val WEAR_LARGE_ROUND = "id:wearos_large_round"
 /**
  * A **single** Wear Card shown with real `TransformingLazyColumn` item scaling — authored in the
  * normal list-item code (`transformedHeight(this, spec)` + `SurfaceTransformation(spec)`), with no
- * list of its own. `TlcScalingHost` (`:wear-preview-runtime`) hosts it in a real single-item TLC and
- * hands over the genuine scope + spec; the item sits **centred at full scale by default**.
+ * list of its own. `TlcScalingHost` (`:wear-preview-runtime`) hosts it in a real single-item TLC
+ * and hands over the genuine scope + spec; the item sits **centred at full scale by default**.
  *
  * The author pins **nothing** — the scroll harness drives the position and reuses this one preview:
  * `@ScrollingPreview` [ScrollMode.TOP] captures the resting, unscaled frame, and [ScrollMode.END]
@@ -34,23 +34,27 @@ private const val WEAR_LARGE_ROUND = "id:wearos_large_round"
  * faded. `reduceMotion = false` keeps the real scaling transforms on. `maxScrollPx` is tuned to the
  * large-round canvas (454px) so END lands the card at the top edge rather than scrolling it off.
  */
-@Preview(name = "Large Round", device = WEAR_LARGE_ROUND, showBackground = true, backgroundColor = 0xFF000000)
+@Preview(
+  name = "Large Round",
+  device = WEAR_LARGE_ROUND,
+  showBackground = true,
+  backgroundColor = 0xFF000000,
+)
 @ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END], maxScrollPx = 180, reduceMotion = false)
 @Composable
-fun CardScaling() =
-  TlcScalingHost { spec ->
-    val (title, onClick) = wearCounted("Heart rate")
-    Card(
-      onClick = onClick,
-      modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-      transformation = SurfaceTransformation(spec),
-    ) {
-      Column {
-        Text(title)
-        Text("72 bpm")
-      }
+fun CardScaling() = TlcScalingHost { spec ->
+  val (title, onClick) = wearCounted("Heart rate")
+  Card(
+    onClick = onClick,
+    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+    transformation = SurfaceTransformation(spec),
+  ) {
+    Column {
+      Text(title)
+      Text("72 bpm")
     }
   }
+}
 
 private val scrollGifItems =
   listOf(
@@ -63,28 +67,32 @@ private val scrollGifItems =
 
 /**
  * The scaling **animated GIF**: the compose-preview scroll harness drives a real scaling
- * `TransformingLazyColumn`, so the cards scale + fade as they ride through the curved top/bottom edges
- * — one preview, harness-controlled scroll (same mechanism as `:samples:wear`'s
- * `ActivityListGifPreview`). TLC scaling is a list behaviour, so the GIF is authored as a short list
- * rather than a lone item; the isolated-component case is [CardScaling].
+ * `TransformingLazyColumn`, so the cards scale + fade as they ride through the curved top/bottom
+ * edges — one preview, harness-controlled scroll (same mechanism as `:samples:wear`'s
+ * `ActivityListGifPreview`). TLC scaling is a list behaviour, so the GIF is authored as a short
+ * list rather than a lone item; the isolated-component case is [CardScaling].
  */
-@Preview(name = "Large Round", device = WEAR_LARGE_ROUND, showBackground = true, backgroundColor = 0xFF000000)
+@Preview(
+  name = "Large Round",
+  device = WEAR_LARGE_ROUND,
+  showBackground = true,
+  backgroundColor = 0xFF000000,
+)
 @ScrollingPreview(modes = [ScrollMode.GIF], reduceMotion = false)
 @Composable
-fun CardScalingScrollGif() =
-  MaterialTheme {
-    val state = rememberTransformingLazyColumnState()
-    val spec = rememberTransformationSpec()
-    TransformingLazyColumn(state = state, modifier = Modifier.fillMaxSize()) {
-      items(scrollGifItems) { (rowTitle, subtitle) ->
-        val (title, onClick) = wearCounted(rowTitle)
-        TitleCard(
-          onClick = onClick,
-          title = { Text(title) },
-          subtitle = { Text(subtitle) },
-          modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-          transformation = SurfaceTransformation(spec),
-        )
-      }
+fun CardScalingScrollGif() = MaterialTheme {
+  val state = rememberTransformingLazyColumnState()
+  val spec = rememberTransformationSpec()
+  TransformingLazyColumn(state = state, modifier = Modifier.fillMaxSize()) {
+    items(scrollGifItems) { (rowTitle, subtitle) ->
+      val (title, onClick) = wearCounted(rowTitle)
+      TitleCard(
+        onClick = onClick,
+        title = { Text(title) },
+        subtitle = { Text(subtitle) },
+        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+        transformation = SurfaceTransformation(spec),
+      )
     }
   }
+}

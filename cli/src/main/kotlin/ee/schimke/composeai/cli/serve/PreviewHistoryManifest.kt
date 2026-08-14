@@ -203,8 +203,9 @@ object PreviewHistoryManifest {
   fun encode(manifest: Manifest): String = JSON.encodeToString(manifest) + "\n"
 
   /** Lenient on read so a manifest written by a newer CLI (extra fields) still loads. */
-  fun decode(text: String): Manifest? =
-    runCatching { JSON.decodeFromString<Manifest>(text) }.getOrNull()
+  fun decode(text: String): Manifest? = runCatching {
+    JSON.decodeFromString<Manifest>(text)
+  }.getOrNull()
 
   private val JSON = Json {
     prettyPrint = true

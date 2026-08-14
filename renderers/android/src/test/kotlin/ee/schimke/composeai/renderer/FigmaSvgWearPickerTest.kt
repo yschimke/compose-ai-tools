@@ -153,8 +153,7 @@ class FigmaSvgWearPickerTest {
         .find(svg)
         ?.groupValues
         ?.get(1)
-        ?.toDouble()
-        ?: error("resolved separator font size is missing:\n$svg")
+        ?.toDouble() ?: error("resolved separator font size is missing:\n$svg")
     assertEquals(resolvedFontSizePx.toDouble(), emittedFontSize, 0.01)
     assertTrue(
       "API 34 nonlinear scaling should be smaller than the legacy 32sp × 2 × 1.5 result",

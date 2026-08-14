@@ -30,7 +30,6 @@ import ee.schimke.composeai.daemon.protocol.SemanticsTargetCandidate
 import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedCode
 import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
-import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
 import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
 import ee.schimke.composeai.data.layoutinspector.TargetResolution
@@ -474,10 +473,9 @@ open class RobolectricHost(
   /**
    * Number of sandbox slots that have finished booting, in slot order (slots boot sequentially, so
    * ready slots are always the contiguous prefix `0 until readySlotCount`). [chooseSlotIndex]
-   * dispatches across only this prefix so a render never lands on a slot that's still
-   * bootstrapping in the background (see [start]'s background-boot mode). Equals [sandboxCount]
-   * once the pool completes — at which point dispatch is bit-identical with the pre-background
-   * behaviour.
+   * dispatches across only this prefix so a render never lands on a slot that's still bootstrapping
+   * in the background (see [start]'s background-boot mode). Equals [sandboxCount] once the pool
+   * completes — at which point dispatch is bit-identical with the pre-background behaviour.
    */
   private val readySlotCount = java.util.concurrent.atomic.AtomicInteger(0)
 
@@ -497,28 +495,28 @@ open class RobolectricHost(
    * Cold-start cost on a fresh Maven local repo is dominated by downloading
    * `android-all-instrumented-{ver}-{sdk}.jar` (~150 MB, into
    * `~/.m2/repository/org/robolectric/android-all-instrumented/` via Robolectric's own resolver —
-   * see docs/daemon/STARTUP.md) and instrumenting every class on the
-   * daemon's classpath; that can run into minutes. Warm starts (cache hit + no incremental rebuild)
-   * are ~5–15s. The configurable timeout below is the upper bound on the cold path.
+   * see docs/daemon/STARTUP.md) and instrumenting every class on the daemon's classpath; that can
+   * run into minutes. Warm starts (cache hit + no incremental rebuild) are ~5–15s. The configurable
+   * timeout below is the upper bound on the cold path.
    *
    * The protocol model is `daemonReady = sandboxReady`: `initialize` must not return success while
    * the sandbox is still bootstrapping, so the client surfaces a clean "warming" state on its side
    * rather than rendering against a half-built host. Blocking here in [start] delivers that —
    * `JsonRpcServer.run()` only enters its read loop once we return.
    *
-   * **Background pool boot** (`-Dcomposeai.daemon.backgroundSandboxBoot=true`): with a
-   * pool (`sandboxCount > 1`), [start] blocks only until **slot 0** is ready and boots slots
-   * 1..N-1 on a background thread. Sandbox boot is the dominant cold-start cost (~11.6 s measured
-   * per sandbox on a warm `android-all` cache — see the serve cold-render handover), so a
-   * 3-sandbox pool otherwise keeps `initialize` (and therefore serve's first live render) waiting
-   * ~35 s for capacity it doesn't need yet. Dispatch routes only across ready slots
-   * ([readySlotCount]) until the pool completes, so `daemonReady = firstSandboxReady` and the
-   * remaining boots never sit on the request path.
+   * **Background pool boot** (`-Dcomposeai.daemon.backgroundSandboxBoot=true`): with a pool
+   * (`sandboxCount > 1`), [start] blocks only until **slot 0** is ready and boots slots 1..N-1 on a
+   * background thread. Sandbox boot is the dominant cold-start cost (~11.6 s measured per sandbox
+   * on a warm `android-all` cache — see the serve cold-render handover), so a 3-sandbox pool
+   * otherwise keeps `initialize` (and therefore serve's first live render) waiting ~35 s for
+   * capacity it doesn't need yet. Dispatch routes only across ready slots ([readySlotCount]) until
+   * the pool completes, so `daemonReady = firstSandboxReady` and the remaining boots never sit on
+   * the request path.
    *
-   * Two defaults, deliberately different. This sysprop falls back to **off**, so a host
-   * constructed in-process (embedders, harness, unit tests) still boots the whole pool eagerly and
-   * keeps the strict all-sandboxes-ready contract those tests pin. Launch *descriptors* default it
-   * **on** — `composePreview.daemon.backgroundSandboxBoot` (docs/daemon/CONFIG.md), matching what
+   * Two defaults, deliberately different. This sysprop falls back to **off**, so a host constructed
+   * in-process (embedders, harness, unit tests) still boots the whole pool eagerly and keeps the
+   * strict all-sandboxes-ready contract those tests pin. Launch *descriptors* default it **on** —
+   * `composePreview.daemon.backgroundSandboxBoot` (docs/daemon/CONFIG.md), matching what
    * `ServeBundleDaemon` and the deploy image already did — so every spawned daemon answers
    * `initialize` once slot 0 is hot. A descriptor always carries an explicit value, so this
    * fallback only applies where nothing set one.
@@ -577,11 +575,11 @@ open class RobolectricHost(
             "compose-ai-daemon-pool-boot",
           )
           .apply {
-          // Daemon thread: a JVM exiting mid-pool-boot shouldn't be held open by the booter (the
-          // sandbox workers it spawns are non-daemon, but JsonRpcServer exits via System.exit).
-          isDaemon = true
-          start()
-        }
+            // Daemon thread: a JVM exiting mid-pool-boot shouldn't be held open by the booter (the
+            // sandbox workers it spawns are non-daemon, but JsonRpcServer exits via System.exit).
+            isDaemon = true
+            start()
+          }
     }
   }
 
@@ -590,15 +588,15 @@ open class RobolectricHost(
    *
    * [background] picks the failure policy, and the split is deliberate:
    * * `false` (eager boot) — a failed worker throws, and [start] aborts the host. Callers that
-   *   pinned the strict all-sandboxes-ready contract (embedders, `:daemon:harness`, unit tests)
-   *   get told the pool is short rather than silently running degraded.
+   *   pinned the strict all-sandboxes-ready contract (embedders, `:daemon:harness`, unit tests) get
+   *   told the pool is short rather than silently running degraded.
    * * `true` (background boot) — a failed worker **caps** the pool at whatever booted, loudly, and
    *   the daemon keeps serving on its live slots. On the public preview server a single flaky
    *   worker taking the whole daemon down collapses the live lane to baked PNGs, which is far worse
    *   than one fewer sandbox.
    *
-   * Each worker gets a best-effort [warmSlotRender] before it is published into [readySlotCount], so
-   * its first affinity-routed real render doesn't pay the per-sandbox first-render init (Compose
+   * Each worker gets a best-effort [warmSlotRender] before it is published into [readySlotCount],
+   * so its first affinity-routed real render doesn't pay the per-sandbox first-render init (Compose
    * runtime, HardwareRenderer native pipeline, font + text stack, PNG encode). Publishing first
    * would let a live render hash onto the just-advertised slot and queue behind the cold warm-up.
    */
@@ -692,17 +690,17 @@ open class RobolectricHost(
    * A single sandbox occasionally dies during Robolectric bootstrap on a memory-pressured host —
    * observed in production as `Unable to load Robolectric native runtime library` on one slot of a
    * five-sandbox `wear-m3` pool while its siblings (and a prior daemon's full pool) booted fine, so
-   * the failure is transient, not a hard incompatibility. Previously any single slot's failure threw
-   * straight out of [start] and aborted the **whole** host, which on the public preview server
-   * collapsed the entire live (daemon-backed) lane to the baked-PNG snapshot fallback — the `input
-   * requires a live stream` symptom. Retrying the one flaky slot lets the full pool come up instead
-   * of one hiccup taking down every live render.
+   * the failure is transient, not a hard incompatibility. Previously any single slot's failure
+   * threw straight out of [start] and aborted the **whole** host, which on the public preview
+   * server collapsed the entire live (daemon-backed) lane to the baked-PNG snapshot fallback — the
+   * `input requires a live stream` symptom. Retrying the one flaky slot lets the full pool come up
+   * instead of one hiccup taking down every live render.
    *
    * A dead [Thread] can't be restarted, so each retry resets the slot's ready latch + recorded boot
    * error and installs a fresh worker at index [i] (the sandbox never claimed the slot — the native
    * load fails before `registerSandbox` — so the slot's `sandboxClassLoaderRef` is still null and a
-   * fresh sandbox re-claims it cleanly). If every attempt fails the last failure is rethrown exactly
-   * as before, so an unrecoverable slot degrades no worse than the pre-retry behaviour.
+   * fresh sandbox re-claims it cleanly). If every attempt fails the last failure is rethrown
+   * exactly as before, so an unrecoverable slot degrades no worse than the pre-retry behaviour.
    */
   private fun bootSlotWithRetries(i: Int, timeoutMs: Long) {
     var attempt = 0
@@ -724,8 +722,10 @@ open class RobolectricHost(
       // Only a *recorded* boot error is safe to retry. [runJUnit] sets [workerBootErrors] just
       // after `JUnitCore.runClasses` returns, so a non-null entry proves the worker has exited and
       // its slot (never claimed — the failure happens before `registerSandbox`) is free to re-boot.
-      // A bare `awaitSandboxReady` timeout with no recorded error is different: the worker may still
-      // be inside Robolectric bootstrap, so swapping in a replacement would leave two workers racing
+      // A bare `awaitSandboxReady` timeout with no recorded error is different: the worker may
+      // still
+      // be inside Robolectric bootstrap, so swapping in a replacement would leave two workers
+      // racing
       // to `registerSandbox` / count down the slot latch. Treat that as a clean startup failure —
       // the pre-retry behaviour — and only ever replace a worker that demonstrably exited.
       val canRetry = bootErr != null && attempt < MAX_SANDBOX_BOOT_RETRIES
@@ -756,7 +756,8 @@ open class RobolectricHost(
       // The failed worker has exited (its `SandboxRunner` JUnit run returned with the failure);
       // join briefly to be sure, then reset the slot's boot state and install a fresh worker. A
       // fresh ready latch is required because `runJUnit`'s failure path already counted the old one
-      // down; `registerSandbox` / the sandbox prologue counts down whatever latch the slot ref holds
+      // down; `registerSandbox` / the sandbox prologue counts down whatever latch the slot ref
+      // holds
       // at retry time.
       runCatching { workerThreads[i].join(2_000) }
       workerBootErrors.set(i, null)
@@ -997,8 +998,9 @@ open class RobolectricHost(
     // they split one, so the base id comes back off the suffix rather than being re-derived here
     // (where the longest-parameterized-prefix rule isn't available).
     val baseId =
-      spec.previewParameterRow
-        ?.let { previewId.removeSuffix("_$it").takeIf { base -> base != previewId } } ?: previewId
+      spec.previewParameterRow?.let {
+        previewId.removeSuffix("_$it").takeIf { base -> base != previewId }
+      } ?: previewId
 
     val request =
       RenderRequest.ParameterRows(
@@ -1247,7 +1249,8 @@ open class RobolectricHost(
       append("heightPx=").append(inbound["heightPx"] ?: framedHeightPx).append(';')
       // AS-parity wrap flags must ride the serialized payload — `parseFromPayloadOrNull` defaults
       // them false, so a held/stream render of a no-height preview would otherwise reflow past the
-      // frame to zero height. An inbound explicit size (a `device=` override arrives pre-resolved as
+      // frame to zero height. An inbound explicit size (a `device=` override arrives pre-resolved
+      // as
       // widthPx/heightPx per encodeRenderPayload) pins the axis, dropping its wrap flag.
       //
       // The flags name an *axis*, so a rotated frame has to trade them too — a fixed-width /
@@ -1338,16 +1341,15 @@ open class RobolectricHost(
     baseOverrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
   ): String? {
     if (baseOverrides == null) return inboundToken
-    val inbound =
-      inboundToken?.let {
-        runCatching {
-            overridesJson.decodeFromString(
-              ee.schimke.composeai.daemon.protocol.PreviewOverrides.serializer(),
-              String(java.util.Base64.getUrlDecoder().decode(it), Charsets.UTF_8),
-            )
-          }
-          .getOrNull()
+    val inbound = inboundToken?.let {
+      runCatching {
+        overridesJson.decodeFromString(
+          ee.schimke.composeai.daemon.protocol.PreviewOverrides.serializer(),
+          String(java.util.Base64.getUrlDecoder().decode(it), Charsets.UTF_8),
+        )
       }
+        .getOrNull()
+    }
     val merged = inbound.layeredOver(baseOverrides) ?: return inboundToken
     return java.util.Base64.getUrlEncoder()
       .withoutPadding()
@@ -1936,7 +1938,8 @@ open class RobolectricHost(
       // Per-render figma-svg background mode. Null (say nothing) leaves the export
       // background-free. See RenderSpec.svgBackground.
       svgBackground = overrides?.svgBackground ?: base.svgBackground,
-      // Carry a `themeProvider` selection through the held/live path: toExtensionOverrides() drops it
+      // Carry a `themeProvider` selection through the held/live path: toExtensionOverrides() drops
+      // it
       // (renderer-read, not extension-consumed), but the renderer reads spec.overrides directly, so
       // without this a live App-theme change would keep the default wrapper.
       overrides =
@@ -1944,7 +1947,8 @@ open class RobolectricHost(
           .toExtensionOverrides()
           .withThemeProvider(overrides?.themeProvider ?: base.overrides?.themeProvider)
           // Carry size bounds (Max / Min / Within) through the held/live projection for wire parity
-          // with desktop; the Android renderer ignores fields it doesn't model, like other overrides.
+          // with desktop; the Android renderer ignores fields it doesn't model, like other
+          // overrides.
           .withSizeBounds(overrides ?: base.overrides),
       // Recording sessions consume this on disk (`recordings/<recordingId>/...`); interactive
       // sessions pass `"interactive-$previewId"` and never read the field. The `recording-`
@@ -1991,12 +1995,11 @@ open class RobolectricHost(
     const val RECORDINGS_DIR_PROP: String = "composeai.daemon.recordingsDir"
 
     /**
-     * Sysprop knob for [start]'s sandbox-bootstrap deadline. Cold first run on an empty
-     * Maven local repo is dominated by the `android-all-instrumented-{ver}-{sdk}.jar`
-     * download (~150 MB) plus instrumenting every class on the daemon's classpath; the default
-     * 10-minute ceiling covers that. Warm boots (cache hit) are 5–15s and never approach this
-     * limit. Override with `-Dcomposeai.daemon.sandboxBootTimeoutMs=<ms>` for slower CI runners or
-     * constrained networks.
+     * Sysprop knob for [start]'s sandbox-bootstrap deadline. Cold first run on an empty Maven local
+     * repo is dominated by the `android-all-instrumented-{ver}-{sdk}.jar` download (~150 MB) plus
+     * instrumenting every class on the daemon's classpath; the default 10-minute ceiling covers
+     * that. Warm boots (cache hit) are 5–15s and never approach this limit. Override with
+     * `-Dcomposeai.daemon.sandboxBootTimeoutMs=<ms>` for slower CI runners or constrained networks.
      */
     const val SANDBOX_BOOT_TIMEOUT_PROP: String = "composeai.daemon.sandboxBootTimeoutMs"
 
@@ -2086,8 +2089,8 @@ open class RobolectricHost(
      * **Slot 0, i.e. the in-process sandbox** (changed from slot 1 when the pool moved
      * out-of-process for #3072). The held-rule loop needs the sandbox that lives in *this* JVM: the
      * session hands callers an [AndroidInteractiveSession] backed by live bridge queues, frame
-     * latches and a `ComposeTestRule` — object handles, not a serializable request/response pair, so
-     * they cannot be proxied over the worker socket. Normal renders are the ones that serialize
+     * latches and a `ComposeTestRule` — object handles, not a serializable request/response pair,
+     * so they cannot be proxied over the worker socket. Normal renders are the ones that serialize
      * cleanly, so they are what moves to the worker processes: while a session holds slot 0,
      * [chooseSlotIndex] routes every render to slots 1..N-1.
      *
@@ -2114,8 +2117,8 @@ open class RobolectricHost(
 
     /**
      * Deadline for the sandbox round-trip in [previewParameterRows]. Generous because the *first*
-     * enumeration on a cold slot pays the same class-loading cost a first render does — but this
-     * is metadata, not a render, so it must never inherit the render timeout's open-endedness.
+     * enumeration on a cold slot pays the same class-loading cost a first render does — but this is
+     * metadata, not a render, so it must never inherit the render timeout's open-endedness.
      */
     private const val PARAMETER_ROWS_TIMEOUT_MS: Long = 30_000L
 
@@ -2166,9 +2169,9 @@ open class RobolectricHost(
    * #3072 — no per-worker cache-key discriminator any more. It existed to make Robolectric build N
    * distinct sandboxes in one JVM, which is exactly the thing that can't work: this JVM hosts one
    * sandbox and the rest of the pool lives in worker processes. With no discriminator every runner
-   * in this JVM shares one `InstrumentationConfiguration`, which is what lets sequential hosts (test
-   * suites, daemon restarts) reuse the cached sandbox instead of building a second one and tripping
-   * the native-runtime single-classloader constraint.
+   * in this JVM shares one `InstrumentationConfiguration`, which is what lets sequential hosts
+   * (test suites, daemon restarts) reuse the cached sandbox instead of building a second one and
+   * tripping the native-runtime single-classloader constraint.
    */
   private fun runJUnit(workerIndex: Int) {
     val result = JUnitCore.runClasses(SandboxRunner::class.java)
@@ -2274,7 +2277,8 @@ open class RobolectricHost(
         }
       // [GesturePreviewOverrideExtension] plans a [GestureOverrideExtension] whose composition
       // reaches `androidx.wear.compose.material3.onehandedgesture` (gesture API added in
-      // wear-compose 1.7.0-alpha). Gate registration on that package being loadable so plain-Android
+      // wear-compose 1.7.0-alpha). Gate registration on that package being loadable so
+      // plain-Android
       // — or pre-1.7 Wear — consumers never resolve the gesture types. Mirrors the ambient gate.
       val gestureOverrides =
         if (isWearGestureAvailable(javaClass.classLoader)) {
@@ -2361,11 +2365,14 @@ open class RobolectricHost(
               // factory, so wrap it inline here.
               RenderDataArtifactExtensionFactory { ComposeSemanticsExtension() },
               // ComposeSemanticsWireframeExtension is shared too; Android supplies the Robolectric
-              // PNG baker and — like Desktop — renders density-aware, so a percent/CircleShape corner
+              // PNG baker and — like Desktop — renders density-aware, so a percent/CircleShape
+              // corner
               // radius (and density-dependent font-variation axes) resolves against the real render
               // density (`spec.density`, provided on the `RenderArtifactContextKeys.Density` key
-              // above) instead of px-as-dp at density=1 (#1908). Only the resolved *token* values in
-              // the `compose/semantics-wireframe` + `compose/spatial-semantics` payloads change; the
+              // above) instead of px-as-dp at density=1 (#1908). Only the resolved *token* values
+              // in
+              // the `compose/semantics-wireframe` + `compose/spatial-semantics` payloads change;
+              // the
               // wireframe raster is drawn from px bounds + labels, so it's byte-identical.
               RenderDataArtifactExtensionFactory {
                 ComposeSemanticsWireframeExtension(
@@ -2482,9 +2489,7 @@ open class RobolectricHost(
                         ?: Thread.currentThread().contextClassLoader
                         ?: javaClass.classLoader,
                   )
-                ArrayList(
-                  ee.schimke.composeai.renderer.PreviewParameterSupport.rowSuffixes(values)
-                )
+                ArrayList(ee.schimke.composeai.renderer.PreviewParameterSupport.rowSuffixes(values))
               } catch (t: Throwable) {
                 unwrapInvocationTarget(t)
               }
@@ -2626,7 +2631,8 @@ open class RobolectricHost(
         val captureMethod =
           forensicsClass.methods.firstOrNull { it.name == "capture" }
             ?: error("ClassloaderForensics has no capture(...) method")
-        val fixedArgs = arrayOf<Any?>(survey, /*robolectricConfig=*/ null, "daemon-subject", outFile)
+        val fixedArgs =
+          arrayOf<Any?>(survey, /* robolectricConfig= */ null, "daemon-subject", outFile)
         if (captureMethod.parameterCount == fixedArgs.size) {
           captureMethod.invoke(instance, *fixedArgs)
         } else {
@@ -2763,12 +2769,16 @@ open class RobolectricHost(
       }
 
       // Missing-resource fallback — same opt-in the one-shot `RenderEngine.render` path reads (the
-      // detached live / serve daemons set it; see `RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP`).
+      // detached live / serve daemons set it; see
+      // `RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP`).
       // Without mirroring it here, a preview whose `stringResource(...)` isn't in the packed /
-      // child-loader resource table renders fine as a static sticker (the one-shot path substitutes a
-      // placeholder) but throws `Resources$NotFoundException` the instant live mode is enabled — the
+      // child-loader resource table renders fine as a static sticker (the one-shot path substitutes
+      // a
+      // placeholder) but throws `Resources$NotFoundException` the instant live mode is enabled —
+      // the
       // throw surfaces as the `acquireInteractiveSession` start error and the panel shows "input
-      // requires a live stream — unavailable". Applied as a `LocalContext` wrap in `setContent` below.
+      // requires a live stream — unavailable". Applied as a `LocalContext` wrap in `setContent`
+      // below.
       val placeholderMissingResources =
         System.getProperty(RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP) == "true"
 
@@ -3020,9 +3030,12 @@ open class RobolectricHost(
                       recreateRegistryRef.set(recreateRegistry)
                     }
                     // Missing-resource fallback: wrap `LocalContext` so a `stringResource` /
-                    // `colorResource` / `context.getString` miss falls back to a placeholder instead
-                    // of throwing `Resources$NotFoundException` and aborting the held session. Mirrors
-                    // the one-shot `RenderEngine.render` path; gated on the same opt-in prop resolved
+                    // `colorResource` / `context.getString` miss falls back to a placeholder
+                    // instead
+                    // of throwing `Resources$NotFoundException` and aborting the held session.
+                    // Mirrors
+                    // the one-shot `RenderEngine.render` path; gated on the same opt-in prop
+                    // resolved
                     // above so a non-serve daemon still fails loudly. Provided outermost (like the
                     // one-shot path) so every override extension and the preview content see the
                     // guarded context.
@@ -3033,34 +3046,31 @@ open class RobolectricHost(
                           heldBaseContext.wrappedForPlaceholderResources()
                         }
                       else null
-                    val heldProviders =
-                      buildList {
-                          if (heldPlaceholderContext != null) {
-                            add(
-                              androidx.compose.ui.platform.LocalContext provides
-                                heldPlaceholderContext
-                            )
-                          }
-                          add(
-                            androidx.compose.ui.platform.LocalInspectionMode provides
-                              (start.inspectionMode ?: false)
-                          )
-                          ee.schimke.composeai.renderer.LocaleCompositionLocals
-                            .providedValue(
-                              androidx.compose.ui.platform.LocalConfiguration.current,
-                              classLoader,
-                            )
-                            ?.let(::add)
-                          add(
-                            ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
-                              start.clearBackground
-                          )
-                          add(
-                            androidx.compose.runtime.saveable.LocalSaveableStateRegistry provides
-                              recreateRegistry
-                          )
-                        }
-                        .toTypedArray()
+                    val heldProviders = buildList {
+                      if (heldPlaceholderContext != null) {
+                        add(
+                          androidx.compose.ui.platform.LocalContext provides heldPlaceholderContext
+                        )
+                      }
+                      add(
+                        androidx.compose.ui.platform.LocalInspectionMode provides
+                          (start.inspectionMode ?: false)
+                      )
+                      ee.schimke.composeai.renderer.LocaleCompositionLocals.providedValue(
+                          androidx.compose.ui.platform.LocalConfiguration.current,
+                          classLoader,
+                        )
+                        ?.let(::add)
+                      add(
+                        ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                          start.clearBackground
+                      )
+                      add(
+                        androidx.compose.runtime.saveable.LocalSaveableStateRegistry provides
+                          recreateRegistry
+                      )
+                    }
+                      .toTypedArray()
                     androidx.compose.runtime.CompositionLocalProvider(*heldProviders) {
                       androidx.compose.foundation.layout.Box(
                         modifier = androidx.compose.ui.Modifier.fillMaxSize()
@@ -3110,7 +3120,7 @@ open class RobolectricHost(
                           // outside it reports the sandbox rather than the preview. Without this
                           // wrap the held composition filled the window and every streamed frame
                           // was the sandbox device: a wear component sticker arrived as the whole
-                          //454×454 watch face while its own snapshot was wrap-sized.
+                          // 454×454 watch face while its own snapshot was wrap-sized.
                           androidx.compose.foundation.layout.Box(
                             modifier =
                               if (start.wrapWidth || start.wrapHeight) {
@@ -3135,60 +3145,61 @@ open class RobolectricHost(
                               },
                             propagateMinConstraints = true,
                           ) {
-                          if (isProtolayoutIr) {
-                            // v5 IR replay, protolayout — inflate the captured `Layout` +
-                            // `Resources` protos through `TileRenderer`, with no reference to the
-                            // tile function that produced them. Same AndroidView-hosted shape as
-                            // `RenderEngine.render`'s branch, so a held frame and a one-shot
-                            // capture walk an identical Compose tree.
-                            ee.schimke.composeai.renderer.TileIrReplayComposable(
-                              layoutBytes = irReplay!!.bytes,
-                              resourcesBytes = irReplay.resourcesBytes ?: ByteArray(0),
-                              label = "IR replay ${start.previewId ?: start.outputBaseName}",
-                            )
-                          } else if (rcReplayClass != null) {
-                            // v5 IR replay, Remote Compose — paint the captured RemoteDocument
-                            // through the connector's player, reached reflectively. The view
-                            // player owns the document's own state, so the held composition stays
-                            // interactive: a tap dispatched by `interactive/input` lands on the
-                            // document exactly as it would on-device.
-                            InvokeIrReplay(rcReplayClass, irReplay!!.bytes)
-                          } else if (isTile) {
-                            ee.schimke.composeai.renderer.TilePreviewComposable(
-                              className = start.previewClassName,
-                              functionName = start.previewFunctionName,
-                              widthDp = widthDp,
-                              heightDp = heightDp,
-                              device = start.device,
-                              classLoader = classLoader,
-                            )
-                          } else if (isNotification) {
-                            ee.schimke.composeai.renderer.NotificationPreviewComposable(
-                              className = start.previewClassName,
-                              functionName = start.previewFunctionName,
-                              classLoader = classLoader,
-                              widthDp = widthDp,
-                            )
-                          } else if (isGlanceAppWidget) {
-                            ee.schimke.composeai.renderer.GlanceAppWidgetPreviewComposable(
-                              className = start.previewClassName,
-                              functionName = start.previewFunctionName,
-                              widthDp = widthDp,
-                              heightDp = heightDp,
-                              classLoader = classLoader,
-                            )
-                          } else {
-                            // The held composition must obey the same app environment contract as a
-                            // one-shot render. A PreviewWrapperProvider may install required
-                            // composition locals (for example app-owned SharedTransition scopes),
-                            // and a selected theme provider replaces it on the same terms.
-                            InvokeWithOptionalWrapper(
-                              composableMethod = composableMethod!!,
-                              wrapperFqnFromSpec = start.wrapperClassName,
-                              themeProviderFqn = start.themeProviderFqn,
-                              previewArgs = previewArgs,
-                            )
-                          }
+                            if (isProtolayoutIr) {
+                              // v5 IR replay, protolayout — inflate the captured `Layout` +
+                              // `Resources` protos through `TileRenderer`, with no reference to the
+                              // tile function that produced them. Same AndroidView-hosted shape as
+                              // `RenderEngine.render`'s branch, so a held frame and a one-shot
+                              // capture walk an identical Compose tree.
+                              ee.schimke.composeai.renderer.TileIrReplayComposable(
+                                layoutBytes = irReplay!!.bytes,
+                                resourcesBytes = irReplay.resourcesBytes ?: ByteArray(0),
+                                label = "IR replay ${start.previewId ?: start.outputBaseName}",
+                              )
+                            } else if (rcReplayClass != null) {
+                              // v5 IR replay, Remote Compose — paint the captured RemoteDocument
+                              // through the connector's player, reached reflectively. The view
+                              // player owns the document's own state, so the held composition stays
+                              // interactive: a tap dispatched by `interactive/input` lands on the
+                              // document exactly as it would on-device.
+                              InvokeIrReplay(rcReplayClass, irReplay!!.bytes)
+                            } else if (isTile) {
+                              ee.schimke.composeai.renderer.TilePreviewComposable(
+                                className = start.previewClassName,
+                                functionName = start.previewFunctionName,
+                                widthDp = widthDp,
+                                heightDp = heightDp,
+                                device = start.device,
+                                classLoader = classLoader,
+                              )
+                            } else if (isNotification) {
+                              ee.schimke.composeai.renderer.NotificationPreviewComposable(
+                                className = start.previewClassName,
+                                functionName = start.previewFunctionName,
+                                classLoader = classLoader,
+                                widthDp = widthDp,
+                              )
+                            } else if (isGlanceAppWidget) {
+                              ee.schimke.composeai.renderer.GlanceAppWidgetPreviewComposable(
+                                className = start.previewClassName,
+                                functionName = start.previewFunctionName,
+                                widthDp = widthDp,
+                                heightDp = heightDp,
+                                classLoader = classLoader,
+                              )
+                            } else {
+                              // The held composition must obey the same app environment contract as
+                              // a
+                              // one-shot render. A PreviewWrapperProvider may install required
+                              // composition locals (for example app-owned SharedTransition scopes),
+                              // and a selected theme provider replaces it on the same terms.
+                              InvokeWithOptionalWrapper(
+                                composableMethod = composableMethod!!,
+                                wrapperFqnFromSpec = start.wrapperClassName,
+                                themeProviderFqn = start.themeProviderFqn,
+                                previewArgs = previewArgs,
+                              )
+                            }
                           }
                         }
                       }
@@ -3350,9 +3361,9 @@ open class RobolectricHost(
                     // same unmerged-tree fetch + projection target resolution uses, flattened to
                     // the compact probe-node list the codegen path diffs into assertions. Crosses
                     // the sandbox boundary as a JSON string (do-not-acquire); the host re-parses.
-                    val root =
-                      runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }
-                        .getOrNull()
+                    val root = runCatching {
+                      rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
+                    }.getOrNull()
                     cmd.replyNodesJson.set(
                       root?.let { ComposeSemanticsDataProducer.probeNodesJson(it) }
                     )
@@ -3816,8 +3827,9 @@ open class RobolectricHost(
     ): Offset? {
       val target =
         semanticsTargetOf(cmd) ?: return Offset(cmd.pixelX.toFloat(), cmd.pixelY.toFloat())
-      val root =
-        runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }.getOrNull()
+      val root = runCatching {
+        rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
+      }.getOrNull()
       if (root == null) {
         // Nothing rendered yet — no tree to resolve against. Mirror the desktop NO_SEMANTICS_ROOT
         // diagnostic (issue #1784) so the recording path surfaces a structured reason.
@@ -4062,8 +4074,8 @@ open class RobolectricHost(
     }
 
     /**
-     * The focused node that can accept typed text, or `null` when nothing focused can — a
-     * keystroke over a non-editable preview stays a keystroke rather than an error.
+     * The focused node that can accept typed text, or `null` when nothing focused can — a keystroke
+     * over a non-editable preview stays a keystroke rather than an error.
      */
     private fun focusedEditableNode(
       rule:
@@ -4551,21 +4563,22 @@ open class RobolectricHost(
  * `onRoot()` asserts there is exactly one root, and plenty of ordinary content breaks that
  * assumption the moment it becomes interactive: focusing a text field puts Compose's selection
  * handles and magnifier in windows of their own, each of which is another semantics root. Before
- * this, the first focus turned every later injection into "Expected exactly '1' node but found
- * '2'" and pointed the capture at a mostly-empty popup window instead of the preview — so a
- * selection drag appeared to do nothing, and the frame after it went blank.
+ * this, the first focus turned every later injection into "Expected exactly '1' node but found '2'"
+ * and pointed the capture at a mostly-empty popup window instead of the preview — so a selection
+ * drag appeared to do nothing, and the frame after it went blank.
  *
  * Resolution reuses the one-shot renderer's [selectRenderedSurfaceSemanticsRoot], so a live frame
  * and a baked frame of the same preview agree on which surface is "the preview". Falls back to
  * `onRoot()` whenever there is nothing to disambiguate.
  */
 private fun heldSurfaceRoot(
-  rule: androidx.compose.ui.test.junit4.AndroidComposeTestRule<*, androidx.activity.ComponentActivity>
+  rule:
+    androidx.compose.ui.test.junit4.AndroidComposeTestRule<*, androidx.activity.ComponentActivity>
 ): androidx.compose.ui.test.SemanticsNodeInteraction {
   val rootInteractions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
-  val roots =
-    runCatching { rootInteractions.fetchSemanticsNodes(atLeastOneRootRequired = false) }
-      .getOrDefault(emptyList())
+  val roots = runCatching {
+    rootInteractions.fetchSemanticsNodes(atLeastOneRootRequired = false)
+  }.getOrDefault(emptyList())
   if (roots.size <= 1) return rule.onRoot()
   val resolved =
     selectRenderedSurfaceSemanticsRoot(

@@ -22,12 +22,11 @@ package ee.schimke.composeai.renderer
 internal object PreviewParameterLabels {
 
   fun suffixesFor(values: List<Any?>): List<String> {
-    val labels =
-      values.map {
-        rawLabel(it)
-          ?.let(::sanitize)
-          ?.takeIf { s -> s.isNotEmpty() && !RESERVED_INDEX_LABEL.matches(s) }
+    val labels = values.map {
+      rawLabel(it)?.let(::sanitize)?.takeIf { s ->
+        s.isNotEmpty() && !RESERVED_INDEX_LABEL.matches(s)
       }
+    }
     // Duplicate labels would clobber each other on disk. When any two
     // values produce the same label, fall back to `_PARAM_<idx>` for
     // every value in the fan-out (not just the colliders) so the
@@ -65,10 +64,10 @@ internal object PreviewParameterLabels {
       val getter = "get" + candidate.replaceFirstChar { it.uppercase() }
       val method =
         runCatching {
-            v.javaClass.methods.firstOrNull {
-              it.name == getter && it.parameterCount == 0 && it.returnType == String::class.java
-            }
+          v.javaClass.methods.firstOrNull {
+            it.name == getter && it.parameterCount == 0 && it.returnType == String::class.java
           }
+        }
           .getOrNull() ?: continue
       val result = runCatching { method.invoke(v) as? String }.getOrNull()
       if (!result.isNullOrBlank()) return result

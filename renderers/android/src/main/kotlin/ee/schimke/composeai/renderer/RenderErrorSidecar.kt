@@ -58,10 +58,14 @@ internal object RenderErrorSidecar {
       // `LD_LIBRARY_PATH` export reached it (compose-ai-tools#3690).
       sb.append("\"runtime\":{")
       sb.append("\"javaHome\":").append(jsonString(System.getProperty("java.home").orEmpty()))
-      sb.append(",\"javaVersion\":").append(jsonString(System.getProperty("java.version").orEmpty()))
+      sb
+        .append(",\"javaVersion\":")
+        .append(jsonString(System.getProperty("java.version").orEmpty()))
       sb.append(",\"javaVendor\":").append(jsonString(System.getProperty("java.vendor").orEmpty()))
       sb.append(",\"osArch\":").append(jsonString(System.getProperty("os.arch").orEmpty()))
-      sb.append(",\"ldLibraryPath\":").append(jsonString(System.getenv("LD_LIBRARY_PATH").orEmpty()))
+      sb
+        .append(",\"ldLibraryPath\":")
+        .append(jsonString(System.getenv("LD_LIBRARY_PATH").orEmpty()))
       sb.append("},")
       sb.append("\"stackTrace\":").append(jsonString(stack))
       sb.append('}')

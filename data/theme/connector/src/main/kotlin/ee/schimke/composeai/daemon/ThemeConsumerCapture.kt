@@ -120,8 +120,8 @@ object ThemeConsumerCapture {
         as? Shape
     return fromElement
       ?: runCatching {
-          javaClass.getDeclaredField("shape").apply { isAccessible = true }.get(this) as? Shape
-        }
+        javaClass.getDeclaredField("shape").apply { isAccessible = true }.get(this) as? Shape
+      }
         .getOrNull()
   }
 
@@ -132,14 +132,12 @@ object ThemeConsumerCapture {
    * `NodeThemeFacts.shape` even though `ModifierTokenResolver` resolves the same node's shape (it
    * carries the identical fallback). Best-effort reflection, foundation-free.
    */
-  private fun Any.shapeFromBackgroundPainter(): Shape? =
-    runCatching {
-        val painter = javaClass.getDeclaredField("painter").apply { isAccessible = true }.get(this)
-        if (painter?.javaClass?.simpleName != "BackgroundPainter") return null
-        painter.javaClass.getDeclaredField("shape").apply { isAccessible = true }.get(painter)
-          as? Shape
-      }
-      .getOrNull()
+  private fun Any.shapeFromBackgroundPainter(): Shape? = runCatching {
+    val painter = javaClass.getDeclaredField("painter").apply { isAccessible = true }.get(this)
+    if (painter?.javaClass?.simpleName != "BackgroundPainter") return null
+    painter.javaClass.getDeclaredField("shape").apply { isAccessible = true }.get(painter) as? Shape
+  }
+    .getOrNull()
 
   private fun SemanticsConfiguration.layoutThemeFacts(): LayoutThemeFacts? {
     val action = getOrNull(SemanticsActions.GetTextLayoutResult)?.action ?: return null

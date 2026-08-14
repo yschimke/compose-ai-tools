@@ -1922,23 +1922,23 @@ object ServeWeb {
     val variants = withCurrent.filterNot { it.href == href(default) }
     if (variants.isEmpty()) return ""
     return buildString {
-        append("<nav class=\"cp-tree cp-axes-tree\" aria-label=\"Component renders\">\n")
-        append("  <ul class=\"cp-tree-list\" role=\"tree\">\n")
-        appendComponentRow(
-          label = previewDisplayName(default),
-          href = href(default),
-          variants = variants,
-          variantsId = "cp-axes-tree-variants",
-          defaultHref = href(default),
-          // One component, already chosen — a collapsed subtree would be a disclosure inside a
-          // disclosure, and the outer one is the control that decides whether any of this shows.
-          collapsed = false,
-          syntheticDefaultRow = false,
-          currentHref = href(preview),
-          indent = "    ",
-        )
-        append("  </ul>\n</nav>")
-      }
+      append("<nav class=\"cp-tree cp-axes-tree\" aria-label=\"Component renders\">\n")
+      append("  <ul class=\"cp-tree-list\" role=\"tree\">\n")
+      appendComponentRow(
+        label = previewDisplayName(default),
+        href = href(default),
+        variants = variants,
+        variantsId = "cp-axes-tree-variants",
+        defaultHref = href(default),
+        // One component, already chosen — a collapsed subtree would be a disclosure inside a
+        // disclosure, and the outer one is the control that decides whether any of this shows.
+        collapsed = false,
+        syntheticDefaultRow = false,
+        currentHref = href(preview),
+        indent = "    ",
+      )
+      append("  </ul>\n</nav>")
+    }
       .trimEnd()
   }
 
@@ -7036,20 +7036,19 @@ $rows
 
     val lastCode = dashboard.feed.firstOrNull { it.lane == ServeParityDashboard.Lane.CODE }?.at
     val lastDesign = dashboard.feed.firstOrNull { it.lane != ServeParityDashboard.Lane.CODE }?.at
-    val stats =
-      buildList {
-          add("mapped" to "${coverage.mapped}/${coverage.components}")
-          if (dashboard.hasActivity) {
-            add("open comments" to dashboard.openComments.toString())
-            add("last code change" to (lastCode?.let(::prettyDate) ?: "—"))
-            add("last design change" to (lastDesign?.let(::prettyDate) ?: "—"))
-          }
-          if (dashboard.gaps.isNotEmpty()) add("declared gaps" to dashboard.gaps.size.toString())
-        }
-        .joinToString("\n") { (key, value) ->
-          "<div class=\"cp-stat\"><div class=\"cp-stat-key\">${esc(key)}</div>" +
-            "<div class=\"cp-stat-val\">${esc(value)}</div></div>"
-        }
+    val stats = buildList {
+      add("mapped" to "${coverage.mapped}/${coverage.components}")
+      if (dashboard.hasActivity) {
+        add("open comments" to dashboard.openComments.toString())
+        add("last code change" to (lastCode?.let(::prettyDate) ?: "—"))
+        add("last design change" to (lastDesign?.let(::prettyDate) ?: "—"))
+      }
+      if (dashboard.gaps.isNotEmpty()) add("declared gaps" to dashboard.gaps.size.toString())
+    }
+      .joinToString("\n") { (key, value) ->
+        "<div class=\"cp-stat\"><div class=\"cp-stat-key\">${esc(key)}</div>" +
+          "<div class=\"cp-stat-val\">${esc(value)}</div></div>"
+      }
 
     // The coverage meter is a plain bar rather than a chart: one number, and the number is already
     // written beside it. `aria-*` carries the same value for a screen reader.

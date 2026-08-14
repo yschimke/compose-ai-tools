@@ -84,8 +84,7 @@ class ShadowFontsContractCompat {
         )
         return
       }
-      val typeface =
-        runCatching { buildTypefaceFromFile(file, key.weight, key.italic) }.getOrNull()
+      val typeface = runCatching { buildTypefaceFromFile(file, key.weight, key.italic) }.getOrNull()
       if (typeface == null) {
         FontResolutionDiagnostics.recordFallback(
           key,

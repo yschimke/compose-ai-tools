@@ -11,19 +11,19 @@ import androidx.compose.runtime.reflect.getDeclaredComposableMethod
  * row; issue #3749).
  *
  * **Why the provider FQN is passed in rather than read off the method.** The upstream
- * `androidx.compose.ui.tooling.preview.PreviewParameter` annotation has `AnnotationRetention.BINARY`
- * — it is written into the class file but is *not* visible through `Method.parameterAnnotations` at
- * runtime, exactly like `@PreviewWrapper` (issue #1440). The gradle plugin's discovery reads it off
- * the class-file annotation tables into `previews.json`
+ * `androidx.compose.ui.tooling.preview.PreviewParameter` annotation has
+ * `AnnotationRetention.BINARY` — it is written into the class file but is *not* visible through
+ * `Method.parameterAnnotations` at runtime, exactly like `@PreviewWrapper` (issue #1440). The
+ * gradle plugin's discovery reads it off the class-file annotation tables into `previews.json`
  * (`params.previewParameterProviderClassName` / `params.previewParameterLimit`), and both render
  * bodies get it from there. Nothing here can recover it by reflecting on the composable.
  *
  * **What went wrong without this (issue #3027).** The daemon resolved every preview with the
  * parameterless `getDeclaredComposableMethod(functionName)` lookup, which matches only
- * `foo(Composer, int)`. A preview declaring `@PreviewParameter` compiles to
- * `foo(<T>, Composer, int)`, so the lookup threw
- * `NoSuchMethodException: <class>.<function>` before composition ever started — no PNG, no
- * semantics, just a `.error.json`. Observed across 27 previews in one consumer module.
+ * `foo(Composer, int)`. A preview declaring `@PreviewParameter` compiles to `foo(<T>, Composer,
+ * int)`, so the lookup threw `NoSuchMethodException: <class>.<function>` before composition ever
+ * started — no PNG, no semantics, just a `.error.json`. Observed across 27 previews in one consumer
+ * module.
  */
 object PreviewParameterSupport {
 
@@ -37,8 +37,8 @@ object PreviewParameterSupport {
    * A label can only be matched against the label set of the whole fan-out, so without a bound an
    * infinite `generateSequence` provider would be driven to exhaustion. An index-addressed row
    * (`PARAM_<n>`) needs only `n + 1` values, but `n` comes from a caller-supplied previewId and the
-   * annotation's `limit` defaults to `Int.MAX_VALUE` — so it needs the same bound, enforced *before*
-   * enumeration, or one arbitrary id could wedge the renderer.
+   * annotation's `limit` defaults to `Int.MAX_VALUE` — so it needs the same bound, enforced
+   * *before* enumeration, or one arbitrary id could wedge the renderer.
    *
    * Well past any real provider; a fan-out that long is a catalog, not a preview.
    */
@@ -64,7 +64,8 @@ object PreviewParameterSupport {
    * - `"PARAM_<n>"` takes value `n` positionally, enumerating only as far as it must.
    * - anything else is matched against [rowSuffixes] — the same labels the fan-out puts in
    *   `<stem>_<label>.png`, so a row is addressed by the name a caller reads off disk (issue
-   *   #3749). Exact match wins; see [matchLabel] for the case-insensitive fallback.
+   *
+   * #3749). Exact match wins; see [matchLabel] for the case-insensitive fallback.
    *
    * A [row] naming an index past the end, or a label no value carries, throws
    * [PreviewParameterLoadException] listing what IS available — silently falling back to value 0
@@ -72,8 +73,8 @@ object PreviewParameterSupport {
    *
    * The returned method is always opened for reflective invocation ([openForInvoke]) — Kotlin
    * `private fun` previews are idiomatic and resolve fine, but invoking one without that throws
-   * `IllegalAccessException`. Doing it here rather than at each call site is what keeps the daemon's
-   * scroll / `figma-svg-long` / held-session paths from each having to remember.
+   * `IllegalAccessException`. Doing it here rather than at each call site is what keeps the
+   * daemon's scroll / `figma-svg-long` / held-session paths from each having to remember.
    */
   fun resolve(
     clazz: Class<*>,
@@ -162,8 +163,8 @@ object PreviewParameterSupport {
    * pass is still worth having as a fallback — a label comes from user data (a value's
    * `name`/`toString()`, so `"Dark"`) while a hand-written id often spells the same axis
    * differently (`"dark"`), and nothing reconciles the two — but it only decides when exactly one
-   * row matches. Two or more and the caller gets the "no row named …" diagnostic listing every
-   * row, which is the right answer: the request was genuinely ambiguous.
+   * row matches. Two or more and the caller gets the "no row named …" diagnostic listing every row,
+   * which is the right answer: the request was genuinely ambiguous.
    */
   internal fun matchLabel(suffixes: List<String>, requested: String): Int? {
     val exact = suffixes.indexOf(requested)

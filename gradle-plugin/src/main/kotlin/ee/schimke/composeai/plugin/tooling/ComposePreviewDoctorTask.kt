@@ -118,9 +118,9 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
       mainRoot?.let {
         ee.schimke.composeai.plugin.ValidatePreviewToolingPresentTask.containsPreviewTooling(it)
       } ?: false
-    val libraryMinSdks =
-      runCatching { LibraryMinSdkCollector.collect(testManifestArtifacts.getOrElse(emptySet())) }
-        .getOrElse { emptyList() }
+    val libraryMinSdks = runCatching {
+      LibraryMinSdkCollector.collect(testManifestArtifacts.getOrElse(emptySet()))
+    }.getOrElse { emptyList() }
     val findings =
       CompatRules.evaluate(
         main,
@@ -158,8 +158,9 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
     printSummary(report, out)
   }
 
-  private fun decodeInjectedDependencys(raw: String): List<InjectedDependency> =
-    runCatching { JSON.decodeFromString<List<InjectedDependency>>(raw) }.getOrElse { emptyList() }
+  private fun decodeInjectedDependencys(raw: String): List<InjectedDependency> = runCatching {
+    JSON.decodeFromString<List<InjectedDependency>>(raw)
+  }.getOrElse { emptyList() }
 
   /**
    * Mirror the CLI's `emitText` shape at module scope: header, one marker line per finding,

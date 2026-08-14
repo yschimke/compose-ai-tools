@@ -1,8 +1,8 @@
 package ee.schimke.composeai.renderer
 
 import androidx.activity.ComponentActivity
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
@@ -25,9 +25,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.InternalComposeApi
 import androidx.compose.runtime.currentComposer
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.Alignment
@@ -61,11 +61,11 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Regression for #3056 — Jetsnack's `Catalog/Filter screen` shape.
  *
- * A `sharedBounds(… RemeasureToBounds) … .heightIn(max = …).verticalScroll(…).skipToLookaheadSize()`
- * chain measures its scroll content to the FULL content height in the lookahead pass while the
- * approach pass (what the PNG paints) is capped by `heightIn`. The export took the taller
- * lookahead/shared-element box as the owning clip, so below-fold children the render clips away
- * stayed visible in the SVG.
+ * A `sharedBounds(… RemeasureToBounds) … .heightIn(max =
+ * …).verticalScroll(…).skipToLookaheadSize()` chain measures its scroll content to the FULL content
+ * height in the lookahead pass while the approach pass (what the PNG paints) is capped by
+ * `heightIn`. The export took the taller lookahead/shared-element box as the owning clip, so
+ * below-fold children the render clips away stayed visible in the SVG.
  */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -127,8 +127,7 @@ class FigmaSvgSharedBoundsScrollClipTest {
     // Every emitted clip rect for the filter surface must be the RENDERED viewport, never the
     // taller lookahead content box.
     val tallClips =
-      CLIP_RECT
-        .findAll(svg)
+      CLIP_RECT.findAll(svg)
         .map { it.groupValues[1].toDouble() }
         .filter { it > VIEWPORT_DP + SLACK_PX }
         .toList()
@@ -196,8 +195,7 @@ class FigmaSvgSharedBoundsScrollClipTest {
     File(outDir, "jetsnack-filter-sheet.svg").writeText(svg)
 
     val tallClips =
-      CLIP_RECT
-        .findAll(svg)
+      CLIP_RECT.findAll(svg)
         .map { it.groupValues[1].toDouble() }
         .filter { it > VIEWPORT_DP + SLACK_PX }
         .toList()
@@ -209,8 +207,7 @@ class FigmaSvgSharedBoundsScrollClipTest {
 
     // The sheet's own fill is the clipping coordinator's box — the viewport *including* the
     // 24×16dp padding the trailing modifier insets `bounds` by, exactly what the PNG paints.
-    val sheet =
-      SHEET_RECT.find(svg) ?: throw AssertionError("no $SHEET_HEX sheet fill in:\n$svg")
+    val sheet = SHEET_RECT.find(svg) ?: throw AssertionError("no $SHEET_HEX sheet fill in:\n$svg")
     val (width, height) = sheet.groupValues.drop(1).map { it.toDouble() }
     assertEquals("sheet fill height", VIEWPORT_DP.toDouble(), height, SLACK_PX.toDouble())
     assertTrue(

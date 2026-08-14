@@ -11,18 +11,18 @@ import androidx.compose.runtime.ProvidedValue
  *
  * A preview whose content goes through coil captures as a blank/black PNG (issue #2952). The
  * preview is discovered, sized and named correctly — only the pixels are missing, and the knock-on
- * effect is worse than a hole where the artwork should be: with no result, `AsyncImage` reports **no
- * intrinsic size**, so under `ContentScale.FillWidth` it expands to its parent's full height and
- * pushes sibling content out of frame. A screen that should show artwork *plus* a caption captures
- * as solid black — neither element visible.
+ * effect is worse than a hole where the artwork should be: with no result, `AsyncImage` reports
+ * **no intrinsic size**, so under `ContentScale.FillWidth` it expands to its parent's full height
+ * and pushes sibling content out of frame. A screen that should show artwork *plus* a caption
+ * captures as solid black — neither element visible.
  *
  * There are **two** independent reasons, and both have to be fixed or the preview stays blank:
- * 1. **coil never starts the load.** `rememberAsyncImagePainter` copies `LocalInspectionMode.current`
- *    onto the painter, and when it is set coil short-circuits to the request's *placeholder* and
- *    returns without loading anything. The renderer composes with `LocalInspectionMode = true` on
- *    purpose (AS parity, issue #1584), so this branch is taken on every static preview render. With
- *    no placeholder configured — the normal case — that leaves `State.Loading(null)`: nothing to
- *    draw and no intrinsic size.
+ * 1. **coil never starts the load.** `rememberAsyncImagePainter` copies
+ *    `LocalInspectionMode.current` onto the painter, and when it is set coil short-circuits to the
+ *    request's *placeholder* and returns without loading anything. The renderer composes with
+ *    `LocalInspectionMode = true` on purpose (AS parity, issue #1584), so this branch is taken on
+ *    every static preview render. With no placeholder configured — the normal case — that leaves
+ *    `State.Loading(null)`: nothing to draw and no intrinsic size.
  * 2. **Even once it starts, nothing finishes it.** coil's default `ImageLoader` fetches and decodes
  *    on `Dispatchers.IO`, a real thread pool that neither Compose's paused `mainClock` nor
  *    Robolectric's main looper drives, so the painter is still empty at capture time.
@@ -233,8 +233,8 @@ internal interface CoilPreviewInstaller {
  * unresolved loads ride alongside it in `<png>.warnings.json`.
  *
  * Collection is per-preview: the render loop calls [beginPreview] before a render and
- * [drainPreview] after. A one-line stderr note is emitted once per distinct model per process, so
- * a catalog render that asks for the same unreachable URL on 200 stickers says so once.
+ * [drainPreview] after. A one-line stderr note is emitted once per distinct model per process, so a
+ * catalog render that asks for the same unreachable URL on 200 stickers says so once.
  */
 object CoilLoadDiagnostics {
 

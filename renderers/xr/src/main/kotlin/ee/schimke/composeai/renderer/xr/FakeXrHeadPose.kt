@@ -165,20 +165,19 @@ public object FakeXrHeadPose {
     // runtime-device seed above still carries the pose on the next refresh, so warn and skip rather
     // than fail the whole render.
     runCatching {
-        val trackingStateClass = Class.forName("androidx.xr.runtime.TrackingState")
-        val tracking = trackingStateClass.getField("TRACKING").get(null)
-        val stateClass = Class.forName("androidx.xr.arcore.ArDevice\$State")
-        val state =
-          stateClass
-            .getConstructor(Pose::class.java, trackingStateClass, arDeviceClass)
-            .newInstance(headPose, tracking, arDevice)
+      val trackingStateClass = Class.forName("androidx.xr.runtime.TrackingState")
+      val tracking = trackingStateClass.getField("TRACKING").get(null)
+      val stateClass = Class.forName("androidx.xr.arcore.ArDevice\$State")
+      val state =
+        stateClass
+          .getConstructor(Pose::class.java, trackingStateClass, arDeviceClass)
+          .newInstance(headPose, tracking, arDevice)
 
-        val stateField = arDeviceClass.getDeclaredField("_state").apply { isAccessible = true }
-        @Suppress("UNCHECKED_CAST")
-        val mutableState =
-          stateField.get(arDevice) as kotlinx.coroutines.flow.MutableStateFlow<Any?>
-        mutableState.value = state
-      }
+      val stateField = arDeviceClass.getDeclaredField("_state").apply { isAccessible = true }
+      @Suppress("UNCHECKED_CAST")
+      val mutableState = stateField.get(arDevice) as kotlinx.coroutines.flow.MutableStateFlow<Any?>
+      mutableState.value = state
+    }
       .onFailure { warnSeedSkipped("prime the ArDevice state flow", it) }
   }
 }

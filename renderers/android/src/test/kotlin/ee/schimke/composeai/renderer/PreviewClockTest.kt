@@ -14,8 +14,8 @@ import org.junit.Test
 
 /**
  * Pins [PreviewClock]'s resolution of `composeai.render.fixedTime` (issue #3239). Pure JVM — the
- * shadow half is exercised by [WearTimeTextClockTest], which is where the pin's *effect* on a render
- * is worth asserting.
+ * shadow half is exercised by [WearTimeTextClockTest], which is where the pin's *effect* on a
+ * render is worth asserting.
  */
 class PreviewClockTest {
 
@@ -96,9 +96,10 @@ class PreviewClockTest {
 
   @Test
   fun `a value that is not a time fails loudly instead of falling back to the wall clock`() {
-    val failure = assertThrows(IllegalArgumentException::class.java) {
-      PreviewClock.resolve("half past ten", utc)
-    }
+    val failure =
+      assertThrows(IllegalArgumentException::class.java) {
+        PreviewClock.resolve("half past ten", utc)
+      }
 
     assertTrue(failure.message!!.contains(PreviewClock.PROPERTY))
     assertTrue(failure.message!!.contains("half past ten"))

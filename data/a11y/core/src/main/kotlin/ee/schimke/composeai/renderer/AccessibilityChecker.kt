@@ -334,10 +334,10 @@ object AccessibilityChecker {
     val bounds = element?.boundsInScreen?.let { "${it.left},${it.top},${it.right},${it.bottom}" }
     val viewDesc = element?.let { el ->
       buildString {
-          el.className?.let { append(it).append(' ') }
-          el.resourceName?.let { append('#').append(it.substringAfterLast('/')) }
-          el.contentDescription?.let { append(" desc=\"").append(it).append('"') }
-        }
+        el.className?.let { append(it).append(' ') }
+        el.resourceName?.let { append('#').append(it.substringAfterLast('/')) }
+        el.contentDescription?.let { append(" desc=\"").append(it).append('"') }
+      }
         .trim()
         .takeIf { it.isNotEmpty() }
     }

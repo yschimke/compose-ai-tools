@@ -49,36 +49,36 @@ private const val SPACE_AROUND = 8
  * which is exactly what the named `Alignment.TopStart`/`Center`/… constants are.
  */
 internal fun boxContentAlignment(horizontal: Int, vertical: Int): Alignment {
-    val horizontalBias =
-        when (horizontal) {
-            CENTER -> 0f
-            END -> 1f
-            else -> -1f
-        }
-    val verticalBias =
-        when (vertical) {
-            CENTER -> 0f
-            BOTTOM -> 1f
-            else -> -1f
-        }
-    return BiasAlignment(horizontalBias, verticalBias)
+  val horizontalBias =
+    when (horizontal) {
+      CENTER -> 0f
+      END -> 1f
+      else -> -1f
+    }
+  val verticalBias =
+    when (vertical) {
+      CENTER -> 0f
+      BOTTOM -> 1f
+      else -> -1f
+    }
+  return BiasAlignment(horizontalBias, verticalBias)
 }
 
 /** A Column's cross-axis ([Alignment.Horizontal]) from its horizontal positioning. */
 internal fun columnHorizontalAlignment(positioning: Int): Alignment.Horizontal =
-    when (positioning) {
-        CENTER -> Alignment.CenterHorizontally
-        END -> Alignment.End
-        else -> Alignment.Start
-    }
+  when (positioning) {
+    CENTER -> Alignment.CenterHorizontally
+    END -> Alignment.End
+    else -> Alignment.Start
+  }
 
 /** A Row's cross-axis ([Alignment.Vertical]) from its vertical positioning. */
 internal fun rowVerticalAlignment(positioning: Int): Alignment.Vertical =
-    when (positioning) {
-        CENTER -> Alignment.CenterVertically
-        BOTTOM -> Alignment.Bottom
-        else -> Alignment.Top
-    }
+  when (positioning) {
+    CENTER -> Alignment.CenterVertically
+    BOTTOM -> Alignment.Bottom
+    else -> Alignment.Top
+  }
 
 /**
  * A Column's main-axis [Arrangement.Vertical] from its vertical positioning + `spacedBy` gap. The
@@ -86,23 +86,22 @@ internal fun rowVerticalAlignment(positioning: Int): Alignment.Vertical =
  * [rawDimensionDp].
  */
 internal fun columnVerticalArrangement(
-    positioning: Int,
-    spacedBy: Float,
-    behavior: Int,
-    density: Float,
+  positioning: Int,
+  spacedBy: Float,
+  behavior: Int,
+  density: Float,
 ): Arrangement.Vertical {
-    val gap = rawDimensionDp(spacedBy, behavior, density)
-    return when (positioning) {
-        CENTER ->
-            if (spacedBy > 0f) Arrangement.spacedBy(gap, Alignment.CenterVertically)
-            else Arrangement.Center
-        BOTTOM ->
-            if (spacedBy > 0f) Arrangement.spacedBy(gap, Alignment.Bottom) else Arrangement.Bottom
-        SPACE_BETWEEN -> Arrangement.SpaceBetween
-        SPACE_EVENLY -> Arrangement.SpaceEvenly
-        SPACE_AROUND -> Arrangement.SpaceAround
-        else -> if (spacedBy > 0f) Arrangement.spacedBy(gap) else Arrangement.Top
-    }
+  val gap = rawDimensionDp(spacedBy, behavior, density)
+  return when (positioning) {
+    CENTER ->
+      if (spacedBy > 0f) Arrangement.spacedBy(gap, Alignment.CenterVertically)
+      else Arrangement.Center
+    BOTTOM -> if (spacedBy > 0f) Arrangement.spacedBy(gap, Alignment.Bottom) else Arrangement.Bottom
+    SPACE_BETWEEN -> Arrangement.SpaceBetween
+    SPACE_EVENLY -> Arrangement.SpaceEvenly
+    SPACE_AROUND -> Arrangement.SpaceAround
+    else -> if (spacedBy > 0f) Arrangement.spacedBy(gap) else Arrangement.Top
+  }
 }
 
 /**
@@ -111,20 +110,20 @@ internal fun columnVerticalArrangement(
  * [rawDimensionDp].
  */
 internal fun rowHorizontalArrangement(
-    positioning: Int,
-    spacedBy: Float,
-    behavior: Int,
-    density: Float,
+  positioning: Int,
+  spacedBy: Float,
+  behavior: Int,
+  density: Float,
 ): Arrangement.Horizontal {
-    val gap = rawDimensionDp(spacedBy, behavior, density)
-    return when (positioning) {
-        CENTER ->
-            if (spacedBy > 0f) Arrangement.spacedBy(gap, Alignment.CenterHorizontally)
-            else Arrangement.Center
-        END -> if (spacedBy > 0f) Arrangement.spacedBy(gap, Alignment.End) else Arrangement.End
-        SPACE_BETWEEN -> Arrangement.SpaceBetween
-        SPACE_EVENLY -> Arrangement.SpaceEvenly
-        SPACE_AROUND -> Arrangement.SpaceAround
-        else -> if (spacedBy > 0f) Arrangement.spacedBy(gap) else Arrangement.Start
-    }
+  val gap = rawDimensionDp(spacedBy, behavior, density)
+  return when (positioning) {
+    CENTER ->
+      if (spacedBy > 0f) Arrangement.spacedBy(gap, Alignment.CenterHorizontally)
+      else Arrangement.Center
+    END -> if (spacedBy > 0f) Arrangement.spacedBy(gap, Alignment.End) else Arrangement.End
+    SPACE_BETWEEN -> Arrangement.SpaceBetween
+    SPACE_EVENLY -> Arrangement.SpaceEvenly
+    SPACE_AROUND -> Arrangement.SpaceAround
+    else -> if (spacedBy > 0f) Arrangement.spacedBy(gap) else Arrangement.Start
+  }
 }

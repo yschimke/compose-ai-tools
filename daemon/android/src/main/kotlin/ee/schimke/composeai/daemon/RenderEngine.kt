@@ -19,11 +19,11 @@ import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.SemanticsNode
@@ -37,6 +37,8 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
+import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
 import ee.schimke.composeai.data.render.LinkBufferComposer
 import ee.schimke.composeai.data.render.PreviewBackends
 import ee.schimke.composeai.data.render.PreviewContext
@@ -54,8 +56,11 @@ import ee.schimke.composeai.data.render.extensions.provides
 import ee.schimke.composeai.data.theme.NodeThemeFacts
 import ee.schimke.composeai.data.theme.ThemeConsumerAttribution
 import ee.schimke.composeai.data.theme.ThemePayload
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
+import ee.schimke.composeai.renderer.AccessibilityHierarchyContextKeys
+import ee.schimke.composeai.renderer.AccessibilityHierarchyExtension
 import ee.schimke.composeai.renderer.CoilLoadDiagnostics
 import ee.schimke.composeai.renderer.CoilPreviewSupport
 import ee.schimke.composeai.renderer.FontFallbackException
@@ -63,17 +68,12 @@ import ee.schimke.composeai.renderer.FontResolutionDiagnostics
 import ee.schimke.composeai.renderer.PixelSystemFontAliases
 import ee.schimke.composeai.renderer.RenderWarningsSidecar
 import ee.schimke.composeai.renderer.WearScrollSvgAssembler
-import ee.schimke.composeai.renderer.AccessibilityHierarchyContextKeys
-import ee.schimke.composeai.renderer.AccessibilityHierarchyExtension
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorDataProducts
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyContextKeys
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyExtension
 import java.io.File
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
-import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
-import ee.schimke.composeai.data.layoutinspector.FigmaSvgBackgroundMode
-import ee.schimke.composeai.io.SystemFileSystem
 import okio.ByteString.Companion.decodeBase64
 import okio.Path.Companion.toPath
 
@@ -228,9 +228,11 @@ class RenderEngine(
     if (spec.renderMode == SCROLL_LONG_RENDER_MODE || spec.renderMode == SCROLL_GIF_RENDER_MODE) {
       return runScrollScenario(spec = spec, requestId = requestId, classLoader = classLoader)
     }
-    // Full-page figma-svg for a scrolling preview (`compose/figma-svg-long`). Renders at an expanded
+    // Full-page figma-svg for a scrolling preview (`compose/figma-svg-long`). Renders at an
+    // expanded
     // viewport so a virtualised LazyColumn composes every item, then emits the layered SVG over the
-    // whole content instead of just the on-screen rows. SVG-only — the PNG scroll story stays LONG /
+    // whole content instead of just the on-screen rows. SVG-only — the PNG scroll story stays LONG
+    // /
     // GIF above. Mirrors `:daemon:desktop`. See docs/design/SCROLLING_SVG.md.
     if (spec.renderMode == FIGMA_SVG_LONG_RENDER_MODE) {
       return runScrollSvgScenario(spec = spec, requestId = requestId, classLoader = classLoader)
@@ -391,13 +393,16 @@ class RenderEngine(
             // Threaded through the same Compose pipeline as `previewOverrideExtensions` and
             // re-used during the post-capture pass below to write the artefacts.
             //
-            // Built off a placeholder-wrapped context (not the raw activity) so the missing-resource
+            // Built off a placeholder-wrapped context (not the raw activity) so the
+            // missing-resource
             // fallback sits *underneath* these extensions. The resources recorder re-provides
             // `LocalContext` from a `RecordingResources` that delegates to this base
             // (`ResourcesUsedDataProducer.recorder`), which would otherwise shadow the outer
             // `LocalContext provides placeholderContext` below and route a missing `stringResource`
-            // straight to the raw table → `Resources$NotFoundException`. Wrapping the base here keeps
-            // the fallback active through every extension that carries this context onward. The real
+            // straight to the raw table → `Resources$NotFoundException`. Wrapping the base here
+            // keeps
+            // the fallback active through every extension that carries this context onward. The
+            // real
             // activity is threaded separately via `RenderDataArtifactContextKeys.HeldActivity`, so
             // nothing that needs the `ComponentActivity` reads it from this (wrapped) context.
             val builtDataArtifactExtensions =
@@ -429,34 +434,35 @@ class RenderEngine(
                   if (placeholderMissingResources)
                     remember(baseContext) { baseContext.wrappedForPlaceholderResources() }
                   else null
-                val provided =
-                  buildList {
-                      if (placeholderContext != null) {
-                        add(LocalContext provides placeholderContext)
-                      }
-                      add(LocalInspectionMode provides inspectionMode)
-                      // coil 3's inspection-mode branch paints only the placeholder; its
-                      // `LocalAsyncImagePreviewHandler` hook overrides that with a handler that
-                      // runs the real request. Null for coil 2 and for consumers without coil.
-                      // Mirrors `RobolectricRenderTest`. Issue #2952.
-                      CoilPreviewSupport.previewHandlerProvidedValue()?.let(::add)
-                      ee.schimke.composeai.renderer.LocaleCompositionLocals
-                        .providedValue(LocalConfiguration.current, classLoader)
-                        ?.let(::add)
-                      // Cleared background ("crisp outline"): a composable drawing its own opaque
-                      // fill drops it to match the transparent decor-view background. Defaults false.
-                      add(
-                        ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
-                          spec.clearBackground
-                      )
-                      // Flatten Wear `TransformingLazyColumn` scaling for the grown scroll-SVG
-                      // render and for `@ScrollingPreview(reduceMotion = true)` (see
-                      // `prepareRenderEnvironment`); no-op provider when not a Wear app.
-                      if (environment.wearReduceMotionLocal != null) {
-                        add(environment.wearReduceMotionLocal provides true)
-                      }
-                    }
-                    .toTypedArray()
+                val provided = buildList {
+                  if (placeholderContext != null) {
+                    add(LocalContext provides placeholderContext)
+                  }
+                  add(LocalInspectionMode provides inspectionMode)
+                  // coil 3's inspection-mode branch paints only the placeholder; its
+                  // `LocalAsyncImagePreviewHandler` hook overrides that with a handler that
+                  // runs the real request. Null for coil 2 and for consumers without coil.
+                  // Mirrors `RobolectricRenderTest`. Issue #2952.
+                  CoilPreviewSupport.previewHandlerProvidedValue()?.let(::add)
+                  ee.schimke.composeai.renderer.LocaleCompositionLocals.providedValue(
+                      LocalConfiguration.current,
+                      classLoader,
+                    )
+                    ?.let(::add)
+                  // Cleared background ("crisp outline"): a composable drawing its own opaque
+                  // fill drops it to match the transparent decor-view background. Defaults false.
+                  add(
+                    ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                      spec.clearBackground
+                  )
+                  // Flatten Wear `TransformingLazyColumn` scaling for the grown scroll-SVG
+                  // render and for `@ScrollingPreview(reduceMotion = true)` (see
+                  // `prepareRenderEnvironment`); no-op provider when not a Wear app.
+                  if (environment.wearReduceMotionLocal != null) {
+                    add(environment.wearReduceMotionLocal provides true)
+                  }
+                }
+                  .toTypedArray()
                 CompositionLocalProvider(*provided) {
                   // Skipped entirely when the consumer has no Material 3 (see
                   // [material3OnClasspath], probed at the top of `render`); the capture's fields
@@ -478,12 +484,16 @@ class RenderEngine(
                       sink = RecordingExtensionCompositionSink(),
                     ) {
                       // AS-parity wrap: on a wrapped axis, measure the composable with a relaxed
-                      // (min = 0) constraint against the sandbox max and size the box to the child's
+                      // (min = 0) constraint against the sandbox max and size the box to the
+                      // child's
                       // intrinsic size, so the captured tree (and the figma-svg / wireframe /
-                      // semantics derived from it) reflects the preview's natural size instead of the
-                      // fixed sandbox frame — a Column handed only the sandbox height reflows overflow
+                      // semantics derived from it) reflects the preview's natural size instead of
+                      // the
+                      // fixed sandbox frame — a Column handed only the sandbox height reflows
+                      // overflow
                       // children to zero. Fixed axes keep `fillMaxSize` so `fillMax*` / LazyColumn
-                      // still have a finite viewport. Mirrors the desktop daemon + standalone renderer.
+                      // still have a finite viewport. Mirrors the desktop daemon + standalone
+                      // renderer.
                       val contentBoxModifier =
                         if (spec.wrapWidth || spec.wrapHeight) {
                           Modifier.layout { measurable, constraints ->
@@ -495,15 +505,13 @@ class RenderEngine(
                             // keep the AS-parity wrap (min = 0, max = sandbox). Mirrors the desktop
                             // daemon RenderEngine.
                             val maxWBound =
-                              environment.sizeOverrides?.maxWidthPx?.coerceAtMost(
-                                constraints.maxWidth
-                              )
-                                ?: constraints.maxWidth
+                              environment.sizeOverrides
+                                ?.maxWidthPx
+                                ?.coerceAtMost(constraints.maxWidth) ?: constraints.maxWidth
                             val maxHBound =
-                              environment.sizeOverrides?.maxHeightPx?.coerceAtMost(
-                                constraints.maxHeight
-                              )
-                                ?: constraints.maxHeight
+                              environment.sizeOverrides
+                                ?.maxHeightPx
+                                ?.coerceAtMost(constraints.maxHeight) ?: constraints.maxHeight
                             val minWBound =
                               (environment.sizeOverrides?.minWidthPx ?: 0).coerceIn(0, maxWBound)
                             val minHBound =
@@ -620,8 +628,10 @@ class RenderEngine(
                             wrapperFqnFromSpec = spec.wrapperClassName,
                             // A `themeProvider` override (an app-declared @ThemeCatalog
                             // `PreviewWrapperProvider` FQN) replaces the preview's own
-                            // `@PreviewWrapper` — "render this preview under theme X" — but only when
-                            // it resolves; a stale/misspelled FQN falls back to the declared wrapper.
+                            // `@PreviewWrapper` — "render this preview under theme X" — but only
+                            // when
+                            // it resolves; a stale/misspelled FQN falls back to the declared
+                            // wrapper.
                             themeProviderFqn = spec.overrides?.themeProvider,
                             previewArgs = previewArgs,
                           )
@@ -687,9 +697,12 @@ class RenderEngine(
             // BUT the grown Wear scroll render (`flattenWearScroll`) is the isolated throwaway base
             // whose PNG feeds ONLY the hybrid `figma-raster` crops the capsule SVG references — the
             // capsule `<clipPath>` does the visual masking. Circle-cropping it here would zero the
-            // alpha outside the inscribed circle, so any rasterized Image/Icon/Canvas in the revealed
-            // top or bottom of the tall frame would crop to a blank/transparent `<image>` even though
-            // the capsule shows that region. Skip the device crop for the tall render so those crops
+            // alpha outside the inscribed circle, so any rasterized Image/Icon/Canvas in the
+            // revealed
+            // top or bottom of the tall frame would crop to a blank/transparent `<image>` even
+            // though
+            // the capsule shows that region. Skip the device crop for the tall render so those
+            // crops
             // carry real pixels; the SVG's capsule mask clips the frame, not the source PNG.
             val roborazziOptions =
               RoborazziOptions(
@@ -1048,8 +1061,10 @@ class RenderEngine(
     // A downloadable face that couldn't be resolved fell back to Roboto, so this preview would ship
     // the wrong typeface. Fail the render by default (the daemon's per-preview catch drops the PNG
     // and records the reason, so a design-artifacts publish can't silently bake Roboto);
-    // `-Dcomposeai.fonts.failOnFallback=false` downgrades it to a `<png>.warnings.json` sidecar kept
-    // beside the PNG. Mirrors `RobolectricRenderTest`'s gate so both Android render paths behave the
+    // `-Dcomposeai.fonts.failOnFallback=false` downgrades it to a `<png>.warnings.json` sidecar
+    // kept
+    // beside the PNG. Mirrors `RobolectricRenderTest`'s gate so both Android render paths behave
+    // the
     // same.
     val fontFallbacks = FontResolutionDiagnostics.drainPreview()
     if (fontFallbacks.isNotEmpty() && FontResolutionDiagnostics.failOnFallback) {
@@ -1058,7 +1073,11 @@ class RenderEngine(
     // Coil loads that didn't resolve are non-fatal (a blank image can be a legitimate capture) but
     // ride in the same sidecar so the hole in the PNG comes with a reason. Same contract as
     // `RobolectricRenderTest`.
-    RenderWarningsSidecar.writeOrDelete(outputFile, fontFallbacks, CoilLoadDiagnostics.drainPreview())
+    RenderWarningsSidecar.writeOrDelete(
+      outputFile,
+      fontFallbacks,
+      CoilLoadDiagnostics.drainPreview(),
+    )
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     val metrics = SandboxMeasurement.collect(sandboxStats, tookMs = tookMs)
@@ -1245,22 +1264,23 @@ class RenderEngine(
               ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
             else null
           rule.setContent {
-            val provided =
-              buildList {
-                  add(LocalInspectionMode provides false)
-                  // coil 3 needs its preview handler here too — these scenario paths have
-                  // their own `setContent` and don't go through `render`'s local list. #2952
-                  CoilPreviewSupport.previewHandlerProvidedValue()?.let(::add)
-                  ee.schimke.composeai.renderer.LocaleCompositionLocals
-                    .providedValue(LocalConfiguration.current, classLoader)
-                    ?.let(::add)
-                  add(
-                    ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
-                      spec.clearBackground
-                  )
-                  if (scrollReduceMotionLocal != null) add(scrollReduceMotionLocal provides true)
-                }
-                .toTypedArray()
+            val provided = buildList {
+              add(LocalInspectionMode provides false)
+              // coil 3 needs its preview handler here too — these scenario paths have
+              // their own `setContent` and don't go through `render`'s local list. #2952
+              CoilPreviewSupport.previewHandlerProvidedValue()?.let(::add)
+              ee.schimke.composeai.renderer.LocaleCompositionLocals.providedValue(
+                  LocalConfiguration.current,
+                  classLoader,
+                )
+                ?.let(::add)
+              add(
+                ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                  spec.clearBackground
+              )
+              if (scrollReduceMotionLocal != null) add(scrollReduceMotionLocal provides true)
+            }
+              .toTypedArray()
             CompositionLocalProvider(*provided) {
               Box(modifier = Modifier.fillMaxSize().background(Color(bgArgb))) {
                 // A scrolling preview has the same composition contract as its default capture.
@@ -1324,35 +1344,36 @@ class RenderEngine(
    * (`compose/figma-svg-long`), mirroring `:daemon:desktop`'s `runScrollSvgScenario`. A virtualised
    * `LazyColumn` composes only its on-screen rows, so this grows the viewport until the measured
    * content geometry stops increasing (every item composed), then re-renders once at the settled
-   * height so the ordinary figma-svg post-capture extension emits the whole screen — pinned top bar,
-   * every row, pinned bottom bar — as one editable tree. SVG-only; the PNG scroll story stays LONG /
-   * GIF. See docs/design/SCROLLING_SVG.md.
+   * height so the ordinary figma-svg post-capture extension emits the whole screen — pinned top
+   * bar, every row, pinned bottom bar — as one editable tree. SVG-only; the PNG scroll story stays
+   * LONG / GIF. See docs/design/SCROLLING_SVG.md.
    *
    * Android has no `setUp/renderOnce/tearDown` split (one monolithic `render()` under a single
    * `createAndroidComposeRule`, which forbids a second `setContent`), so the growth loop builds a
-   * **fresh rule per probe** ([measureScrollAtHeight]) and the final export re-enters [render] with a
-   * null render mode + an **isolated** output base — so the tall render's `compose/semantics` /
+   * **fresh rule per probe** ([measureScrollAtHeight]) and the final export re-enters [render] with
+   * a null render mode + an **isolated** output base — so the tall render's `compose/semantics` /
    * wireframe / PNG never overwrite the preview's normal-size products. Only the layered SVG (plus
-   * its hybrid `figma-raster/` crops) is copied out to `<dataDir>/<previewId>/figma-long/`, the path
-   * [ComposeFigmaSvgLongDataProductRegistry] reads back. A non-scrolling preview yields its viewport
-   * SVG (nothing to grow). Sizing is by measured **geometry** (deepest composed descendant of the
-   * scroll node), not the coarse LazyList scroll-range estimate.
+   * its hybrid `figma-raster/` crops) is copied out to `<dataDir>/<previewId>/figma-long/`, the
+   * path [ComposeFigmaSvgLongDataProductRegistry] reads back. A non-scrolling preview yields its
+   * viewport SVG (nothing to grow). Sizing is by measured **geometry** (deepest composed descendant
+   * of the scroll node), not the coarse LazyList scroll-range estimate.
    */
   /**
    * `figma-svg-long` dispatch for a **round Wear** scrolling preview — the slice-stitch capsule. In
-   * one held `createAndroidComposeRule`, composes the preview with `LocalReduceMotion = true` (so the
-   * `TransformingLazyColumn` items stack unscaled), then hands the live rule to
-   * [WearScrollSvgAssembler], which drives the real scroll one viewport-step at a time, captures the
-   * layout + semantics trees per slice, and stitches them into one tall capsule via
+   * one held `createAndroidComposeRule`, composes the preview with `LocalReduceMotion = true` (so
+   * the `TransformingLazyColumn` items stack unscaled), then hands the live rule to
+   * [WearScrollSvgAssembler], which drives the real scroll one viewport-step at a time, captures
+   * the layout + semantics trees per slice, and stitches them into one tall capsule via
    * [ee.schimke.composeai.data.layoutinspector.WearScrollSliceStitcher] — chaining by shared-item
-   * movement, placing each row at its true content position, pinning `TimeText`, and compositing the
-   * settled `EdgeButton` crescent as one raster. The assembled trees are baked to
+   * movement, placing each row at its true content position, pinning `TimeText`, and compositing
+   * the settled `EdgeButton` crescent as one raster. The assembled trees are baked to
    * `<dataDir>/<previewId>/figma-long/compose-figma-long.svg` (plus its `figma-raster/` crops), the
-   * same path [ComposeFigmaSvgLongDataProductRegistry] reads back and the served `?scroll=long` SVG.
+   * same path [ComposeFigmaSvgLongDataProductRegistry] reads back and the served `?scroll=long`
+   * SVG.
    *
-   * Returns `null` when the preview has no vertical scrollable (assembler saw nothing to stitch), so
-   * [runScrollSvgScenario] falls back to its grow-tall path (which masks the single viewport to the
-   * inscribed circle). SVG-only; the PNG scroll story stays LONG / GIF.
+   * Returns `null` when the preview has no vertical scrollable (assembler saw nothing to stitch),
+   * so [runScrollSvgScenario] falls back to its grow-tall path (which masks the single viewport to
+   * the inscribed circle). SVG-only; the PNG scroll story stays LONG / GIF.
    */
   @OptIn(ExperimentalRoborazziApi::class)
   private fun runWearScrollSliceSvg(
@@ -1427,22 +1448,23 @@ class RenderEngine(
           val reduceMotionLocal =
             ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
           rule.setContent {
-            val provided =
-              buildList {
-                  add(LocalInspectionMode provides (spec.inspectionMode ?: true))
-                  // coil 3 needs its preview handler here too — these scenario paths have
-                  // their own `setContent` and don't go through `render`'s local list. #2952
-                  CoilPreviewSupport.previewHandlerProvidedValue()?.let(::add)
-                  ee.schimke.composeai.renderer.LocaleCompositionLocals
-                    .providedValue(LocalConfiguration.current, classLoader)
-                    ?.let(::add)
-                  add(
-                    ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
-                      spec.clearBackground
-                  )
-                  if (reduceMotionLocal != null) add(reduceMotionLocal provides true)
-                }
-                .toTypedArray()
+            val provided = buildList {
+              add(LocalInspectionMode provides (spec.inspectionMode ?: true))
+              // coil 3 needs its preview handler here too — these scenario paths have
+              // their own `setContent` and don't go through `render`'s local list. #2952
+              CoilPreviewSupport.previewHandlerProvidedValue()?.let(::add)
+              ee.schimke.composeai.renderer.LocaleCompositionLocals.providedValue(
+                  LocalConfiguration.current,
+                  classLoader,
+                )
+                ?.let(::add)
+              add(
+                ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                  spec.clearBackground
+              )
+              if (reduceMotionLocal != null) add(reduceMotionLocal provides true)
+            }
+              .toTypedArray()
             CompositionLocalProvider(*provided) {
               InspectablePreviewContent(slotCapture) {
                 Box(modifier = Modifier.fillMaxSize().background(Color(bgArgb))) {
@@ -1565,8 +1587,7 @@ class RenderEngine(
     producedSvg.copyTo(destSvg, overwrite = true)
     val producedRasterDir = exportDir.resolve(previewId).resolve(ComposeFigmaSvgProduct.RASTER_DIR)
     if (producedRasterDir.isDirectory) {
-      val destRasterDir =
-        longDir.resolve(ComposeFigmaSvgProduct.RASTER_DIR).also { it.mkdirs() }
+      val destRasterDir = longDir.resolve(ComposeFigmaSvgProduct.RASTER_DIR).also { it.mkdirs() }
       producedRasterDir.listFiles()?.forEach { crop ->
         crop.copyTo(destRasterDir.resolve(crop.name), overwrite = true)
       }
@@ -1605,8 +1626,10 @@ class RenderEngine(
         )
     val startNs = System.nanoTime()
 
-    // A round Wear preview is scrolled + slice-stitched into a vertical capsule (the tree-level twin
-    // of the raster `render-scroll-long` PNG) rather than grown tall: growing a round `ScreenScaffold`
+    // A round Wear preview is scrolled + slice-stitched into a vertical capsule (the tree-level
+    // twin
+    // of the raster `render-scroll-long` PNG) rather than grown tall: growing a round
+    // `ScreenScaffold`
     // balloons its screen-fraction padding, so the faithful path drives the real scroll and places
     // each captured row at its true position. Falls back to the grow-tall path below when the round
     // preview turns out not to be vertically scrollable (nothing to stitch).
@@ -1631,7 +1654,8 @@ class RenderEngine(
         break
       }
       // The chrome pinned below the list (e.g. a Scaffold bottom bar) — the gap between the scroll
-      // container's bottom and the frame bottom. Sizing the frame to `content + this` tucks that bar
+      // container's bottom and the frame bottom. Sizing the frame to `content + this` tucks that
+      // bar
       // directly under the last row.
       val bottomChrome = (probeHeight - measure.scrollNodeBottom).coerceAtLeast(0)
       sizedHeight =
@@ -1690,8 +1714,7 @@ class RenderEngine(
     // scrolling screen) so those layers resolve instead of dangling.
     val tmpRasterDir = tmpDir.resolve(ComposeFigmaSvgProduct.RASTER_DIR)
     if (tmpRasterDir.isDirectory) {
-      val destRasterDir =
-        longDir.resolve(ComposeFigmaSvgProduct.RASTER_DIR).also { it.mkdirs() }
+      val destRasterDir = longDir.resolve(ComposeFigmaSvgProduct.RASTER_DIR).also { it.mkdirs() }
       tmpRasterDir.listFiles()?.forEach { crop ->
         val bytes = SystemFileSystem.read(crop.path.toPath()) { readByteArray() }
         SystemFileSystem.write(destRasterDir.resolve(crop.name).path.toPath()) { write(bytes) }
@@ -1778,31 +1801,34 @@ class RenderEngine(
             if (isRound) ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
             else null
           rule.setContent {
-            val provided =
-              buildList {
-                  // Match the final render's inspection mode so a preview that branches on
-                  // `LocalInspectionMode.current` composes the same content the export will
-                  // (measuring a different branch would size the frame to the wrong extent). The
-                  // final SVG render re-enters `render` in the non-a11y path, i.e.
-                  // `spec.inspectionMode ?: true`.
-                  add(LocalInspectionMode provides (spec.inspectionMode ?: true))
-                  // coil 3 needs its preview handler here too — these scenario paths have
-                  // their own `setContent` and don't go through `render`'s local list. #2952
-                  CoilPreviewSupport.previewHandlerProvidedValue()?.let(::add)
-                  ee.schimke.composeai.renderer.LocaleCompositionLocals
-                    .providedValue(LocalConfiguration.current, classLoader)
-                    ?.let(::add)
-                  add(
-                    ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
-                      spec.clearBackground
-                  )
-                  if (wearReduceMotionLocal != null) add(wearReduceMotionLocal provides true)
-                }
-                .toTypedArray()
+            val provided = buildList {
+              // Match the final render's inspection mode so a preview that branches on
+              // `LocalInspectionMode.current` composes the same content the export will
+              // (measuring a different branch would size the frame to the wrong extent). The
+              // final SVG render re-enters `render` in the non-a11y path, i.e.
+              // `spec.inspectionMode ?: true`.
+              add(LocalInspectionMode provides (spec.inspectionMode ?: true))
+              // coil 3 needs its preview handler here too — these scenario paths have
+              // their own `setContent` and don't go through `render`'s local list. #2952
+              CoilPreviewSupport.previewHandlerProvidedValue()?.let(::add)
+              ee.schimke.composeai.renderer.LocaleCompositionLocals.providedValue(
+                  LocalConfiguration.current,
+                  classLoader,
+                )
+                ?.let(::add)
+              add(
+                ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                  spec.clearBackground
+              )
+              if (wearReduceMotionLocal != null) add(wearReduceMotionLocal provides true)
+            }
+              .toTypedArray()
             CompositionLocalProvider(*provided) {
               Box(modifier = Modifier.fillMaxSize().background(Color(bgArgb))) {
-                // Mirror the normal render's invocation so a `@PreviewWrapper` / theme-provider that
-                // supplies the scrollable content is applied during measurement too, not just at the
+                // Mirror the normal render's invocation so a `@PreviewWrapper` / theme-provider
+                // that
+                // supplies the scrollable content is applied during measurement too, not just at
+                // the
                 // final render.
                 InvokeWithOptionalWrapper(
                   composableMethod,
@@ -1814,8 +1840,9 @@ class RenderEngine(
             }
           }
           rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
-          val root =
-            runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }.getOrNull()
+          val root = runCatching {
+            rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
+          }.getOrNull()
           if (root != null)
             measure = ee.schimke.composeai.renderer.ScrollContentMeasure.measureVerticalScroll(root)
         }
@@ -1952,8 +1979,8 @@ class RenderEngine(
    * the way the framework does — [Gravity.apply] against the captured frame, using the window's own
    * gravity — rather than trusting coordinates Robolectric leaves at the origin.
    *
-   * A `ModalBottomSheet`'s window fills the screen, so its rect covers the whole frame and this is a
-   * no-op; a centred `Dialog`/`AlertDialog` crops to the dialog itself.
+   * A `ModalBottomSheet`'s window fills the screen, so its rect covers the whole frame and this is
+   * a no-op; a centred `Dialog`/`AlertDialog` crops to the dialog itself.
    */
   private fun cropPngToDialogWindow(file: File, root: SemanticsNode, window: android.view.Window) {
     if (!file.exists()) return
@@ -2006,7 +2033,8 @@ class RenderEngine(
 
     // A round Wear frame requested TALLER than it is wide is the grown `figma-svg-long` scroll
     // render re-entering `render()` (a normal round watch face is square). Flatten
-    // `TransformingLazyColumn` edge scaling (`LocalReduceMotion = true`) so its items stack at their
+    // `TransformingLazyColumn` edge scaling (`LocalReduceMotion = true`) so its items stack at
+    // their
     // natural size. Same knob the raster LONG path uses; resolved reflectively via the request
     // classloader, and a no-op when the consumer isn't a Wear app.
     val flattenWearScroll = isRound && spec.heightPx > spec.widthPx
@@ -2024,7 +2052,8 @@ class RenderEngine(
       else null
 
     // Content-size bounds (Max / Min / Within) apply on a wrapped axis, where widthPx/heightPx are
-    // sandbox bounds rather than a fixed frame. Only widen the sandbox; the intrinsic crop trims the
+    // sandbox bounds rather than a fixed frame. Only widen the sandbox; the intrinsic crop trims
+    // the
     // PNG back to measured size. Mirrors the desktop daemon's scene-enlarge.
     val sizeOverrides = spec.overrides
     val sandboxWidthPx =
@@ -2116,7 +2145,9 @@ class RenderEngine(
       // every data product derived from them depend on render order. Resetting to Robolectric's
       // own default locale (`en-rUS`) is the locale analogue of the unconditional `notnight` reset
       // below.
-      add(localeTagToQualifier(effectiveLocaleTag?.takeIf { it.isNotBlank() } ?: DEFAULT_LOCALE_TAG))
+      add(
+        localeTagToQualifier(effectiveLocaleTag?.takeIf { it.isNotBlank() } ?: DEFAULT_LOCALE_TAG)
+      )
       add(if (rtl) "ldrtl" else "ldltr")
       // `sw<n>dp-w<n>dp-h<n>dp` — smallest width has to precede available width in the grammar,
       // and it has to be emitted at all, or Robolectric's baseline `sw320dp` survives the
@@ -2184,10 +2215,10 @@ class RenderEngine(
      * **Off by default, on purpose.** The detached live/serve paths ([serve.ServeBundleDaemon],
      * [BundleDaemonCommand]) set it so a stale/incomplete packed bundle degrades gracefully in the
      * interactive viewer rather than showing a broken image. The `bundle pack --with-semantics`
-     * semantics daemon (spawned from the gradle `daemon-launch.json`) deliberately leaves it off: it
-     * renders from source where the app resource table is *supposed* to resolve, so a miss should
-     * fail loudly (the pack then keeps the standalone `composePreviewRender` PNG) instead of baking a
-     * placeholder into the published catalog sticker.
+     * semantics daemon (spawned from the gradle `daemon-launch.json`) deliberately leaves it off:
+     * it renders from source where the app resource table is *supposed* to resolve, so a miss
+     * should fail loudly (the pack then keeps the standalone `composePreviewRender` PNG) instead of
+     * baking a placeholder into the published catalog sticker.
      */
     const val PLACEHOLDER_MISSING_RESOURCES_PROP: String =
       "composeai.render.placeholderMissingResources"
@@ -2229,7 +2260,9 @@ class RenderEngine(
     /** Max grow iterations before giving up (content whose height keeps shifting as it reflows). */
     private const val SCROLL_SVG_MAX_GROW_ITERATIONS: Int = 10
 
-    /** A few px of slack added to the sized height so the last row's own bottom edge isn't clipped. */
+    /**
+     * A few px of slack added to the sized height so the last row's own bottom edge isn't clipped.
+     */
     private const val SCROLL_SVG_CONTENT_MARGIN_PX: Int = 40
 
     /** Output-base suffix isolating the tall render so it can't clobber the preview's products. */
@@ -2298,12 +2331,14 @@ internal fun isRoundDevice(device: String?): Boolean {
   val lower = device.lowercase()
   if (lower.startsWith("spec:")) {
     val params =
-      lower.removePrefix("spec:").split(',').mapNotNull {
-        val pair = it.split('=', limit = 2)
-        pair.takeIf { it.size == 2 }?.let { values ->
-          values[0].trim() to values[1].trim()
+      lower
+        .removePrefix("spec:")
+        .split(',')
+        .mapNotNull {
+          val pair = it.split('=', limit = 2)
+          pair.takeIf { it.size == 2 }?.let { values -> values[0].trim() to values[1].trim() }
         }
-      }.toMap()
+        .toMap()
     if ("isround" in params || "shape" in params) {
       return params["isround"] == "true" || params["shape"] == "round"
     }
@@ -2319,10 +2354,10 @@ internal fun isRoundDevice(device: String?): Boolean {
  * with the most semantic content. Callers request the unmerged roots up front, so the selected node
  * retains the detailed tree all structured data products need.
  *
- * The activity preference yields in exactly one case (issue #3048): a preview whose whole content is
- * a `Dialog`, `AlertDialog` or `ModalBottomSheet` composes into a window of its own, leaving the
- * activity's root present but **empty**, so preferring it unconditionally selects a tree with nothing
- * in it and the preview exports a blank PNG and no semantics.
+ * The activity preference yields in exactly one case (issue #3048): a preview whose whole content
+ * is a `Dialog`, `AlertDialog` or `ModalBottomSheet` composes into a window of its own, leaving the
+ * activity's root present but **empty**, so preferring it unconditionally selects a tree with
+ * nothing in it and the preview exports a blank PNG and no semantics.
  *
  * The reversal is keyed on the other root living in a **shown dialog window**, not merely on the
  * activity root looking empty. [descendantCount] counts *semantics* nodes, and plenty of real
@@ -2335,8 +2370,9 @@ internal fun selectRenderedSurfaceSemanticsRoot(
   roots: List<SemanticsNode>,
   activityDecorView: android.view.View,
 ): SemanticsNode? {
-  val activityRootHasSemantics =
-    roots.any { it.belongsToWindow(activityDecorView) && it.descendantCount() > 1 }
+  val activityRootHasSemantics = roots.any {
+    it.belongsToWindow(activityDecorView) && it.descendantCount() > 1
+  }
   val dialogOwnsThePreview =
     !activityRootHasSemantics && roots.any { it.shownDialogWindow() != null }
   return roots.maxWithOrNull(
@@ -2362,9 +2398,9 @@ private fun resolveRenderedCaptureRoot(
   rule: AndroidComposeTestRule<*, ComponentActivity>
 ): RenderedCaptureRoot {
   val rootInteractions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
-  val semanticsRoots =
-    runCatching { rootInteractions.fetchSemanticsNodes(atLeastOneRootRequired = false) }
-      .getOrDefault(emptyList())
+  val semanticsRoots = runCatching {
+    rootInteractions.fetchSemanticsNodes(atLeastOneRootRequired = false)
+  }.getOrDefault(emptyList())
   if (semanticsRoots.size <= 1) {
     return RenderedCaptureRoot(rule.onRoot(), semanticsRoots.firstOrNull())
   }
@@ -2380,33 +2416,33 @@ private fun resolveRenderedCaptureRoot(
 }
 
 /**
- * The window of the currently-shown dialog [this] root composes into, or `null` when the root is not
- * inside one — an ordinary activity-hosted preview, or a `Popup`, which installs its own owner
+ * The window of the currently-shown dialog [this] root composes into, or `null` when the root is
+ * not inside one — an ordinary activity-hosted preview, or a `Popup`, which installs its own owner
  * through the window manager but never a `Dialog`.
  *
  * `getShownDialogs` keeps dismissed dialogs in the list, hence the `isShowing` filter.
  */
-internal fun SemanticsNode.shownDialogWindow(): android.view.Window? =
-  runCatching {
-    val rootView = (root as? ViewRootForTest)?.view ?: return null
-    org.robolectric.shadows.ShadowDialog.getShownDialogs()
-      .lastOrNull { dialog ->
-        val decor = dialog.window?.decorView
-        dialog.isShowing &&
-          decor != null &&
-          generateSequence(rootView as android.view.View) { it.parent as? android.view.View }
-            .any { it === decor }
-      }
-      ?.window
-  }
-    .getOrNull()
+internal fun SemanticsNode.shownDialogWindow(): android.view.Window? = runCatching {
+  val rootView = (root as? ViewRootForTest)?.view ?: return null
+  org.robolectric.shadows.ShadowDialog.getShownDialogs()
+    .lastOrNull { dialog ->
+      val decor = dialog.window?.decorView
+      dialog.isShowing &&
+        decor != null &&
+        generateSequence(rootView as android.view.View) { it.parent as? android.view.View }
+          .any { it === decor }
+    }
+    ?.window
+}
+  .getOrNull()
 
-private fun SemanticsNode.belongsToWindow(decorView: android.view.View): Boolean =
-  runCatching { (root as? ViewRootForTest)?.view?.rootView === decorView.rootView }
-    .getOrDefault(false)
+private fun SemanticsNode.belongsToWindow(decorView: android.view.View): Boolean = runCatching {
+  (root as? ViewRootForTest)?.view?.rootView === decorView.rootView
+}.getOrDefault(false)
 
-private fun SemanticsNode.descendantCount(): Int =
-  runCatching { 1 + children.sumOf { it.descendantCount() } }.getOrDefault(1)
+private fun SemanticsNode.descendantCount(): Int = runCatching {
+  1 + children.sumOf { it.descendantCount() }
+}.getOrDefault(1)
 
 /**
  * Tiny @Composable trampoline that invokes [composableMethod] reflectively against the current
@@ -2566,23 +2602,22 @@ private fun resolveWrapperFqnViaReflection(composableMethod: ComposableMethod): 
   }
 }
 
-private fun loadWrapperByFqnOrNull(wrapperFqn: String): Pair<ComposableMethod, Any>? =
-  runCatching {
-      val resolved = loadPreviewWrapperClass(wrapperFqn)
-      val instance = resolved.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
-      // PreviewWrapperProvider.Wrap(content: @Composable () -> Unit) compiles to
-      // Wrap(Function2, Composer, int); getDeclaredComposableMethod handles the synthetic
-      // Composer/changed tail, so we look up by the content param's JVM type.
-      val wrapMethod = resolved.getDeclaredComposableMethod("Wrap", Function2::class.java)
-      wrapMethod to (instance as Any)
-    }
-    .onFailure { t ->
-      System.err.println(
-        "compose-ai-daemon: [render] wrapper resolution failed for $wrapperFqn " +
-          "(${t.javaClass.simpleName}: ${t.message}); rendering without wrapper"
-      )
-    }
-    .getOrNull()
+private fun loadWrapperByFqnOrNull(wrapperFqn: String): Pair<ComposableMethod, Any>? = runCatching {
+  val resolved = loadPreviewWrapperClass(wrapperFqn)
+  val instance = resolved.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+  // PreviewWrapperProvider.Wrap(content: @Composable () -> Unit) compiles to
+  // Wrap(Function2, Composer, int); getDeclaredComposableMethod handles the synthetic
+  // Composer/changed tail, so we look up by the content param's JVM type.
+  val wrapMethod = resolved.getDeclaredComposableMethod("Wrap", Function2::class.java)
+  wrapMethod to (instance as Any)
+}
+  .onFailure { t ->
+    System.err.println(
+      "compose-ai-daemon: [render] wrapper resolution failed for $wrapperFqn " +
+        "(${t.javaClass.simpleName}: ${t.message}); rendering without wrapper"
+    )
+  }
+  .getOrNull()
 
 /**
  * Whether `androidx.compose.material3` is on [loader], i.e. whether the consumer whose classes we
@@ -2593,8 +2628,9 @@ private fun loadWrapperByFqnOrNull(wrapperFqn: String): Pair<ComposableMethod, A
  * from Material 3 — the theme capture and the `compose/theme` payload — is optional metadata, so a
  * `false` here degrades the render to "no Material 3 theme reported" rather than failing it.
  */
-internal fun material3OnClasspath(loader: ClassLoader): Boolean =
-  runCatching { Class.forName("androidx.compose.material3.MaterialTheme", false, loader) }.isSuccess
+internal fun material3OnClasspath(loader: ClassLoader): Boolean = runCatching {
+  Class.forName("androidx.compose.material3.MaterialTheme", false, loader)
+}.isSuccess
 
 @Composable
 private fun CaptureMaterialTheme(
@@ -2675,12 +2711,12 @@ data class RenderSpec(
   /**
    * AS-parity wrap-content flags. Set when the preview declares no explicit size (and no device /
    * system UI), so [widthPx]/[heightPx] are a generous sandbox bound rather than a fixed frame: the
-   * render measures the composable's intrinsic size on the wrapped axis and crops the PNG to it, and
-   * the captured layout tree (figma-svg / wireframe / semantics derived from it) reflects the
-   * preview's natural size. Without this a no-height preview rendered into the historical 320px frame
-   * and any content taller than the frame reflowed to zero height — a `Column` hands each child the
-   * *remaining* height, so once the 320px budget is spent the overflow children measure to 0 lines
-   * (collapsed text fields / buttons in the export). Mirrors the standalone renderer's
+   * render measures the composable's intrinsic size on the wrapped axis and crops the PNG to it,
+   * and the captured layout tree (figma-svg / wireframe / semantics derived from it) reflects the
+   * preview's natural size. Without this a no-height preview rendered into the historical 320px
+   * frame and any content taller than the frame reflowed to zero height — a `Column` hands each
+   * child the *remaining* height, so once the 320px budget is spent the overflow children measure
+   * to 0 lines (collapsed text fields / buttons in the export). Mirrors the standalone renderer's
    * `wrapWidth`/`wrapHeight` and the desktop daemon's identically-named [RenderSpec] fields.
    */
   val wrapWidth: Boolean = false,
@@ -2696,9 +2732,9 @@ data class RenderSpec(
    */
   val clearBackground: Boolean = false,
   /**
-   * Per-render background mode for the `compose/figma-svg` export (`PreviewOverrides.svgBackground`)
-   * — `NONE`, `DEVICE`, `CONTENT_SHAPE`, or `FULL_BLEED`. Only that export reads it; it changes
-   * nothing about the rendered PNG.
+   * Per-render background mode for the `compose/figma-svg` export
+   * (`PreviewOverrides.svgBackground`) — `NONE`, `DEVICE`, `CONTENT_SHAPE`, or `FULL_BLEED`. Only
+   * that export reads it; it changes nothing about the rendered PNG.
    *
    * Null means the caller said nothing and the daemon-wide `composeai.svg.background` default
    * applies, which is itself `NONE`: the export is background-free unless asked, because an
@@ -2880,10 +2916,9 @@ data class RenderSpec(
       encodeDefaults = false
     }
 
-    private fun String.decodePreviewOverrides(): PreviewOverrides? =
-      runCatching {
-          decodeBase64()?.utf8()?.let { json.decodeFromString(PreviewOverrides.serializer(), it) }
-        }
-        .getOrNull()
+    private fun String.decodePreviewOverrides(): PreviewOverrides? = runCatching {
+      decodeBase64()?.utf8()?.let { json.decodeFromString(PreviewOverrides.serializer(), it) }
+    }
+      .getOrNull()
   }
 }

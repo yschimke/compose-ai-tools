@@ -18,9 +18,9 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  *
  * ## A theme can be applied after recording, not only during it
  *
- * This is the load-bearing difference from the Wear sibling. Every sticker is recorded **once, under
- * the default theme**, and a selected theme can then be applied to the already-recorded document by
- * overriding **named values** — no recomposition, and no per-theme capture.
+ * This is the load-bearing difference from the Wear sibling. Every sticker is recorded **once,
+ * under the default theme**, and a selected theme can then be applied to the already-recorded
+ * document by overriding **named values** — no recomposition, and no per-theme capture.
  *
  * That works because `RemoteMaterialTheme`'s scheme is not constant-folded into the document. Each
  * role it draws through is emitted as named state — `USER:WearM3.primary`,
@@ -31,6 +31,7 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  * /render/button-filled__ideal__default__compact.png
  *     ?rc.WearM3.primary=color:%23FF6F61&rc.WearM3.onPrimary=color:%23210F48
  * ```
+ *
  * returns a coral button from the *published* catalog, whose bytecode was dropped at pack time.
  *
  * Recording under the default theme is what makes that possible. A document captured with a theme
@@ -39,19 +40,19 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  * theme-independent document plus a small map of overrides replaces N documents.
  *
  * The recorded documents stay theme-independent because of *how* they are recorded, not because the
- * providers below do nothing: `composePreviewRenderAll` renders each `@Preview` with no provider, so
- * [LocalRemoteCatalogTheme] is null and nothing is installed. A provider is only ever applied when
- * the renderer deliberately wraps a preview in one — a `?themeProvider=` render on a session that
- * can recompose — and there it installs the scheme through [remoteCatalogColorScheme], reading the
- * same [remoteCatalogThemeColors] map the replay path seeds. One definition, two lanes: a theme that
- * recomposed to one palette and replayed to another would be worse than either, and nothing would
- * catch it, because both renders succeed.
+ * providers below do nothing: `composePreviewRenderAll` renders each `@Preview` with no provider,
+ * so [LocalRemoteCatalogTheme] is null and nothing is installed. A provider is only ever applied
+ * when the renderer deliberately wraps a preview in one — a `?themeProvider=` render on a session
+ * that can recompose — and there it installs the scheme through [remoteCatalogColorScheme], reading
+ * the same [remoteCatalogThemeColors] map the replay path seeds. One definition, two lanes: a theme
+ * that recomposed to one palette and replayed to another would be worse than either, and nothing
+ * would catch it, because both renders succeed.
  *
  * ## The typeface half is a host choice, not a named value
  *
  * A named value can carry a colour, a float, an int or a bool — not a face. The typeface is
- * host-side in a different way: the stickers emit the built-in **default family id**, and which face
- * that id resolves to is decided by the player at draw time. So [remoteCatalogFont] /
+ * host-side in a different way: the stickers emit the built-in **default family id**, and which
+ * face that id resolves to is decided by the player at draw time. So [remoteCatalogFont] /
  * [remoteCatalogDisplayFont] are published here as data for that lane to configure its resolver
  * with, rather than being installed into the document. Until a lane does, a type-moving theme
  * (Google Sans Flex, KotlinConf) is declared and its colours apply while its face does not.
@@ -60,10 +61,10 @@ import ee.schimke.composeai.preview.WearThemeCatalog
  * `fonts.json` once a *document* names it — that lane is manifest-only and never fetches, so an
  * unlisted family a document asks for fails `RcComposeSupport.fontFamilyIssue`'s availability check
  * rather than degrading to a substitute. No recorded document names it (recording is default-themed
- * and the wrapper installs colours only), so vendoring it now would add ~651 KB to the Wasm player's
- * size ratchet to buy nothing — it failed that ratchet once already on this branch. It lands with
- * the lane that resolves it. Google Sans Flex stays vendored: it was already there and the ratchet
- * was already raised for it.
+ * and the wrapper installs colours only), so vendoring it now would add ~651 KB to the Wasm
+ * player's size ratchet to buy nothing — it failed that ratchet once already on this branch. It
+ * lands with the lane that resolves it. Google Sans Flex stays vendored: it was already there and
+ * the ratchet was already raised for it.
  *
  * ## What a theme deliberately does not reach
  *
@@ -96,8 +97,8 @@ val REMOTE_THEME_NAMES: List<String> =
  * palette-identical to it on purpose, so a side-by-side of the two is a type comparison and nothing
  * else.
  *
- * A key absent from a given document is simply not overridden — each sticker emits only the roles it
- * actually draws through — so one map applies unchanged across the whole catalog.
+ * A key absent from a given document is simply not overridden — each sticker emits only the roles
+ * it actually draws through — so one map applies unchanged across the whole catalog.
  */
 fun remoteCatalogThemeColors(name: String): Map<String, Color> =
   when (name) {
@@ -133,8 +134,8 @@ fun remoteCatalogThemeColors(name: String): Map<String, Color> =
  * The Google Fonts family [name] draws its **body** text in — data for a player lane to point its
  * default-family resolution at, not something installed into the document.
  *
- * Coral and Teal keep the catalog's own default face (`role: "default"` in the fonts manifest), so a
- * palette comparison isn't also a type comparison; the two type-moving themes name their own.
+ * Coral and Teal keep the catalog's own default face (`role: "default"` in the fonts manifest), so
+ * a palette comparison isn't also a type comparison; the two type-moving themes name their own.
  */
 fun remoteCatalogFont(name: String): String =
   when (name) {
@@ -199,7 +200,8 @@ private fun RemoteThemeOverride(name: String, content: @Composable () -> Unit) {
 // shared base: the renderer resolves the method reflectively **on the concrete class**, so an
 // inherited implementation is a `NoSuchMethodException` and every specimen sheet fails to render.
 //
-// Empty because a theme is not applied while recording — see this file's header. The class exists so
+// Empty because a theme is not applied while recording — see this file's header. The class exists
+// so
 // `@WearThemeCatalog` has something to annotate, which is what puts the theme in the server's Theme
 // select; the values it stands for are in [remoteCatalogThemeColors].
 
@@ -231,7 +233,8 @@ class RemoteTealThemeCatalog : PreviewWrapperProvider {
 @WearThemeCatalog(name = "Google Sans Flex", group = "Wear")
 class RemoteGoogleSansFlexThemeCatalog : PreviewWrapperProvider {
   @Composable
-  override fun Wrap(content: @Composable () -> Unit) = RemoteThemeOverride("Google Sans Flex", content)
+  override fun Wrap(content: @Composable () -> Unit) =
+    RemoteThemeOverride("Google Sans Flex", content)
 }
 
 /**

@@ -802,34 +802,34 @@ class RenderEngine(
         val contextData =
           ExtensionContextData.of(
             *buildList {
-                add(RenderArtifactContextKeys.RootDir provides dataDir)
-                add(RenderArtifactContextKeys.OutputBaseName provides state.spec.outputBaseName)
-                // Thread the protocol previewId when present so extensions that key their dir off
-                // it
-                // (the wireframe/spatial producer) resolve the same path the inline call did.
-                state.spec.previewId?.let { add(RenderArtifactContextKeys.PreviewId provides it) }
-                add(RenderArtifactContextKeys.SemanticsRoot provides semanticsRoot)
-                add(RenderArtifactContextKeys.Density provides state.spec.density)
-                add(
-                  RenderArtifactContextKeys.SlotTables provides
-                    state.slotTableCapture?.snapshot().orEmpty()
-                )
-                add(RenderArtifactContextKeys.FontScale provides (state.spec.fontScale ?: 1.0f))
-                add(RenderArtifactContextKeys.OutputPng provides state.outputFile)
-                add(RenderArtifactContextKeys.RoundClip provides state.spec.isRoundComposePreview())
-                // The background this render painted behind the composable, so the figma-svg
-                // export lays the same colour down as its bottom layer (issue #2884). Resolved the
-                // same way the render itself resolves `bgColor` above; a transparent result
-                // publishes nothing, keeping component exports background-free.
-                previewBackgroundHex(state.spec)?.let {
-                  add(RenderArtifactContextKeys.PreviewBackground provides it)
-                }
-                // …and the shape it was asked for in, if it was. The figma-svg export injects
-                // nothing unless a mode was requested (see the key's KDoc).
-                state.spec.svgBackground?.let {
-                  add(RenderArtifactContextKeys.SvgBackgroundMode provides it)
-                }
+              add(RenderArtifactContextKeys.RootDir provides dataDir)
+              add(RenderArtifactContextKeys.OutputBaseName provides state.spec.outputBaseName)
+              // Thread the protocol previewId when present so extensions that key their dir off
+              // it
+              // (the wireframe/spatial producer) resolve the same path the inline call did.
+              state.spec.previewId?.let { add(RenderArtifactContextKeys.PreviewId provides it) }
+              add(RenderArtifactContextKeys.SemanticsRoot provides semanticsRoot)
+              add(RenderArtifactContextKeys.Density provides state.spec.density)
+              add(
+                RenderArtifactContextKeys.SlotTables provides
+                  state.slotTableCapture?.snapshot().orEmpty()
+              )
+              add(RenderArtifactContextKeys.FontScale provides (state.spec.fontScale ?: 1.0f))
+              add(RenderArtifactContextKeys.OutputPng provides state.outputFile)
+              add(RenderArtifactContextKeys.RoundClip provides state.spec.isRoundComposePreview())
+              // The background this render painted behind the composable, so the figma-svg
+              // export lays the same colour down as its bottom layer (issue #2884). Resolved the
+              // same way the render itself resolves `bgColor` above; a transparent result
+              // publishes nothing, keeping component exports background-free.
+              previewBackgroundHex(state.spec)?.let {
+                add(RenderArtifactContextKeys.PreviewBackground provides it)
               }
+              // …and the shape it was asked for in, if it was. The figma-svg export injects
+              // nothing unless a mode was requested (see the key's KDoc).
+              state.spec.svgBackground?.let {
+                add(RenderArtifactContextKeys.SvgBackgroundMode provides it)
+              }
+            }
               .toTypedArray()
           )
         val productStore = RecordingDataProductStore()
@@ -1781,9 +1781,9 @@ class RenderEngine(
         runCatching { Class.forName("androidx.compose.ui.platform.CompositionLocalsKt") }
           .getOrNull() ?: return null
       return runCatching {
-          holder.getMethod("getLocalProvidableLocaleList").invoke(null)
-            as ProvidableCompositionLocal<LocaleList>
-        }
+        holder.getMethod("getLocalProvidableLocaleList").invoke(null)
+          as ProvidableCompositionLocal<LocaleList>
+      }
         .getOrNull()
     }
 
@@ -2221,12 +2221,11 @@ data class RenderSpec(
       encodeDefaults = false
     }
 
-    private fun String.decodePreviewOverrides(): PreviewOverrides? =
-      runCatching {
-          val bytes = Base64.getUrlDecoder().decode(this)
-          json.decodeFromString(PreviewOverrides.serializer(), bytes.toString(Charsets.UTF_8))
-        }
-        .getOrNull()
+    private fun String.decodePreviewOverrides(): PreviewOverrides? = runCatching {
+      val bytes = Base64.getUrlDecoder().decode(this)
+      json.decodeFromString(PreviewOverrides.serializer(), bytes.toString(Charsets.UTF_8))
+    }
+      .getOrNull()
 
     /**
      * Decode the base64-encoded `PreviewOverrides` bag carried in the `overrides=<b64>` payload
@@ -2340,20 +2339,19 @@ private fun resolveWrapperFqnViaReflection(composableMethod: ComposableMethod): 
   }
 }
 
-private fun loadWrapperByFqnOrNull(wrapperFqn: String): Pair<ComposableMethod, Any>? =
-  runCatching {
-      val resolved = loadPreviewWrapperClass(wrapperFqn)
-      val instance = resolved.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
-      val wrapMethod = resolved.getDeclaredComposableMethod("Wrap", Function2::class.java)
-      wrapMethod to (instance as Any)
-    }
-    .onFailure { t ->
-      System.err.println(
-        "compose-ai-daemon: [render] wrapper resolution failed for $wrapperFqn " +
-          "(${t.javaClass.simpleName}: ${t.message}); rendering without wrapper"
-      )
-    }
-    .getOrNull()
+private fun loadWrapperByFqnOrNull(wrapperFqn: String): Pair<ComposableMethod, Any>? = runCatching {
+  val resolved = loadPreviewWrapperClass(wrapperFqn)
+  val instance = resolved.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+  val wrapMethod = resolved.getDeclaredComposableMethod("Wrap", Function2::class.java)
+  wrapMethod to (instance as Any)
+}
+  .onFailure { t ->
+    System.err.println(
+      "compose-ai-daemon: [render] wrapper resolution failed for $wrapperFqn " +
+        "(${t.javaClass.simpleName}: ${t.message}); rendering without wrapper"
+    )
+  }
+  .getOrNull()
 
 @Composable
 private fun CaptureMaterialTheme(

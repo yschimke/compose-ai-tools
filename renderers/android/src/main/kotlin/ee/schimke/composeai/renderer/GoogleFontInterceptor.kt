@@ -55,10 +55,10 @@ internal object GoogleFontCacheAccess {
  *
  * The `compose/figma-svg` export used to embed a downloadable face by re-fetching a WOFF2 from
  * Google by family name — a second network round-trip, independent of the TTF the render had
- * already resolved. It failed exactly where it mattered: a catalog render whose font cache was
- * warm (so the PNG is correct) but whose egress is closed, or which runs
- * `composeai.fonts.offline`, produced an SVG with no `@font-face` at all, so browsers fell back to
- * sans-serif and every glyph width, line break and ellipsis drifted from the PNG (issue #2906).
+ * already resolved. It failed exactly where it mattered: a catalog render whose font cache was warm
+ * (so the PNG is correct) but whose egress is closed, or which runs `composeai.fonts.offline`,
+ * produced an SVG with no `@font-face` at all, so browsers fell back to sans-serif and every glyph
+ * width, line break and ellipsis drifted from the PNG (issue #2906).
  *
  * Looking the already-resolved file up instead makes the embedded face the same bytes the raster
  * used, by construction, and removes the network from the export path entirely.
@@ -70,7 +70,8 @@ object GoogleFontFiles {
    * degrade rather than fetch a face the raster never saw.
    */
   fun cached(family: String, weight: Int, italic: Boolean): File? {
-    val dir = System.getProperty("composeai.fonts.cacheDir")?.takeIf { it.isNotBlank() } ?: return null
+    val dir =
+      System.getProperty("composeai.fonts.cacheDir")?.takeIf { it.isNotBlank() } ?: return null
     val file = File(dir, GoogleFontKey(family, weight, italic).fileName())
     return file.takeIf { it.isFile && it.length() > 0 }
   }
@@ -82,8 +83,8 @@ object GoogleFontFiles {
  * A `Font(GoogleFont(...))` that can't be resolved — offline, no cache dir, a failed download, or a
  * family/weight Google serves no TTF for — is reported to Compose by [ShadowFontsContractCompat],
  * which then *silently* substitutes the platform default (Roboto). That's the "my branded fonts
- * aren't applied in screenshots" symptom: a preview that asks for Orbitron renders in Roboto with no
- * trace in the render log to say which face fell back or why. That output is *wrong* — a branded
+ * aren't applied in screenshots" symptom: a preview that asks for Orbitron renders in Roboto with
+ * no trace in the render log to say which face fell back or why. That output is *wrong* — a branded
  * sticker rendered in the wrong typeface — so by default the renderer treats a fallback as a
  * **fatal** per-preview error (the render loop drops the PNG and writes the usual `.error.json`).
  *
@@ -92,11 +93,11 @@ object GoogleFontFiles {
  * instead. Use that for a deliberately-offline render, or a catalog that genuinely tolerates the
  * substitute face.
  *
- * Collection is per-preview: the render loop calls [beginPreview] before a render and [drainPreview]
- * after, so each preview only owns the fonts *it* asked for. A one-line stderr note is emitted once
- * per distinct `(family, weight, italic)` per process (a catalog render asks for the same face
- * hundreds of times) — matching the daemon's other self-diagnostics, surfaced in the VS Code
- * extension as `[daemon stderr] …`.
+ * Collection is per-preview: the render loop calls [beginPreview] before a render and
+ * [drainPreview] after, so each preview only owns the fonts *it* asked for. A one-line stderr note
+ * is emitted once per distinct `(family, weight, italic)` per process (a catalog render asks for
+ * the same face hundreds of times) — matching the daemon's other self-diagnostics, surfaced in the
+ * VS Code extension as `[daemon stderr] …`.
  */
 // Public (not `internal`) so BOTH Android render paths can drive it: the gradle-plugin's
 // `RobolectricRenderTest` (same module) and the CLI `bundle pack` / serve daemon's
@@ -121,8 +122,7 @@ object FontResolutionDiagnostics {
    * Read per call so a test / daemon can flip `composeai.fonts.failOnFallback` between renders.
    */
   val failOnFallback: Boolean
-    get() =
-      System.getProperty("composeai.fonts.failOnFallback")?.toBooleanStrictOrNull() ?: true
+    get() = System.getProperty("composeai.fonts.failOnFallback")?.toBooleanStrictOrNull() ?: true
 
   /** Reset the per-preview buffer. Called by the render loop before each preview's render. */
   fun beginPreview() {
@@ -150,8 +150,8 @@ object FontResolutionDiagnostics {
   /**
    * Best-effort explanation for *why* a resolution just failed, from the process's font config. The
    * shadow doesn't get a reason back from the null [GoogleFontCacheAccess.load] result, so we infer
-   * it from the same knobs the cache reads: an unset cache dir, offline mode, else a live fetch that
-   * failed (network, or Google serves no TTF for the family/weight).
+   * it from the same knobs the cache reads: an unset cache dir, offline mode, else a live fetch
+   * that failed (network, or Google serves no TTF for the family/weight).
    */
   fun currentFailureReason(): String {
     val cacheDir = System.getProperty("composeai.fonts.cacheDir")
@@ -180,14 +180,12 @@ object FontResolutionDiagnostics {
 }
 
 /**
- * Thrown by the render loop when a preview asked for one or more downloadable fonts that couldn't be
- * resolved and `composeai.fonts.failOnFallback` is on (the default). Routes through the renderer's
- * existing per-preview `catch (Throwable)` so the failure lands in the `.error.json` sidecar and the
- * (wrong-typeface) PNG is dropped — the same surface a preview that threw uses.
+ * Thrown by the render loop when a preview asked for one or more downloadable fonts that couldn't
+ * be resolved and `composeai.fonts.failOnFallback` is on (the default). Routes through the
+ * renderer's existing per-preview `catch (Throwable)` so the failure lands in the `.error.json`
+ * sidecar and the (wrong-typeface) PNG is dropped — the same surface a preview that threw uses.
  */
-class FontFallbackException(
-  fallbacks: List<FontResolutionDiagnostics.FontFallback>
-) :
+class FontFallbackException(fallbacks: List<FontResolutionDiagnostics.FontFallback>) :
   RuntimeException(
     buildString {
       append("Downloadable font(s) fell back to the platform default (Roboto), so this preview ")

@@ -123,20 +123,19 @@ internal class RcGoogleFontTypefaceResolver(
     // cache. `Typeface.create(base, weight, italic)` instances the `wght` axis of a variable file,
     // so the variable file serves as a base too.
     val file = fonts.load(key) ?: variableFiles.fileFor(key)
-    val instance =
-      file?.let {
-        typefaceLoader(it, weight, italic)?.let { typeface ->
-          VariableFontInstance(
-            typeface = typeface,
-            file = it,
-            // Resolved lazily, and only if the document actually names an axis: the variable file
-            // is ~1.7 MB and a document that draws this family at a fixed weight never needs it.
-            variableFile = { variableFiles.fileFor(key) },
-            weight = weight,
-            italic = italic,
-          )
-        }
+    val instance = file?.let {
+      typefaceLoader(it, weight, italic)?.let { typeface ->
+        VariableFontInstance(
+          typeface = typeface,
+          file = it,
+          // Resolved lazily, and only if the document actually names an axis: the variable file
+          // is ~1.7 MB and a document that draws this family at a fixed weight never needs it.
+          variableFile = { variableFiles.fileFor(key) },
+          weight = weight,
+          italic = italic,
+        )
       }
+    }
     instances[key] = instance
     return instance
   }
@@ -184,12 +183,12 @@ internal class RcGoogleFontTypefaceResolver(
       val source = runCatching { variableFile() }.getOrNull() ?: file
       val instance =
         runCatching {
-            Typeface.Builder(source)
-              .setFontVariationSettings(settings)
-              .setWeight(weight)
-              .setItalic(italic)
-              .build()
-          }
+          Typeface.Builder(source)
+            .setFontVariationSettings(settings)
+            .setWeight(weight)
+            .setItalic(italic)
+            .build()
+        }
           .getOrNull() ?: typeface
       variations[requested] = instance
       return instance
@@ -218,22 +217,23 @@ internal class RcGoogleFontTypefaceResolver(
      * no way to say "this one is local".
      */
     /**
-     * The CSS-ish font-variation string Android's `Typeface.Builder` takes (`'wght' 700,'wdth' 25`),
-     * or null when the request names no usable axis. Tags and values are positional, so an axis
-     * counts only when both halves are present — pairing a tag with a neighbour's value would apply
-     * a silently wrong instance.
+     * The CSS-ish font-variation string Android's `Typeface.Builder` takes (`'wght' 700,'wdth'
+     * 25`), or null when the request names no usable axis. Tags and values are positional, so an
+     * axis counts only when both halves are present — pairing a tag with a neighbour's value would
+     * apply a silently wrong instance.
      */
     fun variationSettings(tags: Array<String>?, values: FloatArray?): String? {
       if (tags == null || values == null) return null
-      val axes =
-        tags.mapIndexedNotNull { index, tag ->
-          val value = values.getOrNull(index) ?: return@mapIndexedNotNull null
-          tag.takeIf { it.isNotBlank() }?.let { "'$it' $value" }
-        }
+      val axes = tags.mapIndexedNotNull { index, tag ->
+        val value = values.getOrNull(index) ?: return@mapIndexedNotNull null
+        tag.takeIf { it.isNotBlank() }?.let { "'$it' $value" }
+      }
       return axes.takeIf { it.isNotEmpty() }?.joinToString(",")
     }
 
-    /** The one axis that also selects a *file*: Google Fonts serves a static instance per weight. */
+    /**
+     * The one axis that also selects a *file*: Google Fonts serves a static instance per weight.
+     */
     private const val WEIGHT_AXIS = "wght"
 
     /**
@@ -289,7 +289,9 @@ internal class GoogleVariableFiles(private val fonts: GoogleFontSource) {
  * serves a range; a file the platform won't parse yields null and the caller falls back.
  */
 private fun loadTypefaceFromFile(file: File, weight: Int, italic: Boolean): Typeface? =
-  runCatching { Typeface.create(Typeface.createFromFile(file), weight, italic) }.getOrNull()
+  runCatching {
+    Typeface.create(Typeface.createFromFile(file), weight, italic)
+  }.getOrNull()
 
 /**
  * The shared machine-local Google font cache, or null when this render was not given one.
@@ -343,7 +345,10 @@ private fun RemoteComposePlayer.remoteContextOrNull(): RemoteContext? {
     for (i in 0 until group.childCount) {
       when (val child = group.getChildAt(i)) {
         is RemoteComposeView -> return child.remoteContext
-        is ViewGroup -> find(child)?.let { return it }
+        is ViewGroup ->
+          find(child)?.let {
+            return it
+          }
         else -> Unit
       }
     }

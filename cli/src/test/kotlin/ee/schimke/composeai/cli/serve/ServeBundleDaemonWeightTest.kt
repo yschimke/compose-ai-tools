@@ -59,7 +59,10 @@ class ServeBundleDaemonWeightTest {
       descriptorFile(
         systemProperties = emptyMap(),
         jvmArgs =
-          listOf("-Drobolectric.graphicsMode=NATIVE", "--add-opens=java.base/java.lang=ALL-UNNAMED"),
+          listOf(
+            "-Drobolectric.graphicsMode=NATIVE",
+            "--add-opens=java.base/java.lang=ALL-UNNAMED",
+          ),
       )
     assertEquals(
       ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT,

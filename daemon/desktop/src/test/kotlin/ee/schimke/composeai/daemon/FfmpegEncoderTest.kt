@@ -89,16 +89,15 @@ class FfmpegEncoderTest {
     assumeTrue("ffmpeg not on PATH; skipping", FfmpegEncoder.available())
     val nonExistent = File(tempFolder.root, "does-not-exist")
     val out = tempFolder.newFile("out.mp4")
-    val thrown =
-      runCatching {
-          FfmpegEncoder.encodeFromPngFrames(
-            framesDir = nonExistent,
-            fps = 30,
-            format = FfmpegEncoder.RecordingFormatChoice.MP4,
-            out = out,
-          )
-        }
-        .exceptionOrNull()
+    val thrown = runCatching {
+      FfmpegEncoder.encodeFromPngFrames(
+        framesDir = nonExistent,
+        fps = 30,
+        format = FfmpegEncoder.RecordingFormatChoice.MP4,
+        out = out,
+      )
+    }
+      .exceptionOrNull()
     assertTrue(
       "expected IllegalArgumentException for missing framesDir; got ${thrown?.javaClass}",
       thrown is IllegalArgumentException,

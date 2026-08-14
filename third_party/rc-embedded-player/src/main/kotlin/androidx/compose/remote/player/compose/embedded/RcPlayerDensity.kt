@@ -41,4 +41,4 @@ import androidx.compose.ui.unit.dp
  * density into that field, so the reader simply converts pixels→dp by dividing by [density].
  */
 internal fun rawDimensionDp(value: Float, behavior: Int, density: Float): Dp =
-    if (behavior == CoreDocument.DENSITY_BEHAVIOR_DP) value.dp else (value / density).dp
+  if (behavior == CoreDocument.DENSITY_BEHAVIOR_DP) value.dp else (value / density).dp

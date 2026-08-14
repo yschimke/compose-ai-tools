@@ -49,9 +49,9 @@ fun UnwrappedFixturePreview() {
 }
 
 /**
- * App-owned preview environment used to model required locals such as
- * `LocalSharedTransitionScope`. The renderer cannot provide an app-specific local itself; it must
- * preserve the preview's declared wrapper in every render mode.
+ * App-owned preview environment used to model required locals such as `LocalSharedTransitionScope`.
+ * The renderer cannot provide an app-specific local itself; it must preserve the preview's declared
+ * wrapper in every render mode.
  */
 private val LocalRequiredPreviewEnvironment = staticCompositionLocalOf { false }
 

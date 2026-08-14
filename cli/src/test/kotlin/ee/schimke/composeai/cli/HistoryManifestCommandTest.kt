@@ -185,9 +185,9 @@ class HistoryManifestCommandTest {
     val repo = deliveryRepo("publish" to "v1")
     val output = File(repo, "history.json")
 
-    val error =
-      runCatching { run(repo, "--output", output.path, "--baselines", "/nope/missing.json") }
-        .exceptionOrNull()
+    val error = runCatching {
+      run(repo, "--output", output.path, "--baselines", "/nope/missing.json")
+    }.exceptionOrNull()
 
     assertEquals(1, assertIs<CommandExit>(error).code)
     assertFalse(output.exists(), "must not write a manifest it could not join")
@@ -202,9 +202,9 @@ class HistoryManifestCommandTest {
     empty.writeText("{}")
     val output = File(repo, "history.json")
 
-    val error =
-      runCatching { run(repo, "--output", output.path, "--baselines", empty.path) }
-        .exceptionOrNull()
+    val error = runCatching {
+      run(repo, "--output", output.path, "--baselines", empty.path)
+    }.exceptionOrNull()
 
     assertEquals(1, assertIs<CommandExit>(error).code)
     assertFalse(output.exists())
@@ -218,19 +218,17 @@ class HistoryManifestCommandTest {
     val repo = deliveryRepo("publish" to "v1")
     val output = File(repo, "history.json")
 
-    val error =
-      runCatching {
-          HistoryManifestCommand(
-              args =
-                listOf("--repo", repo.path, "--branch", "no-such-ref", "--output", output.path),
-              workingDir = repo,
-              stdout = {},
-              stderr = {},
-              exit = { throw CommandExit(it) },
-            )
-            .run()
-        }
-        .exceptionOrNull()
+    val error = runCatching {
+      HistoryManifestCommand(
+          args = listOf("--repo", repo.path, "--branch", "no-such-ref", "--output", output.path),
+          workingDir = repo,
+          stdout = {},
+          stderr = {},
+          exit = { throw CommandExit(it) },
+        )
+        .run()
+    }
+      .exceptionOrNull()
 
     assertEquals(1, assertIs<CommandExit>(error).code)
     assertFalse(output.exists(), "must not overwrite a published manifest with an empty one")
@@ -253,18 +251,17 @@ class HistoryManifestCommandTest {
     val output = File(repo, "history.json")
 
     val err = mutableListOf<String>()
-    val error =
-      runCatching {
-          HistoryManifestCommand(
-              args = listOf("--repo", repo.path, "--branch", "main", "--output", output.path),
-              workingDir = repo,
-              stdout = {},
-              stderr = { err += it },
-              exit = { throw CommandExit(it) },
-            )
-            .run()
-        }
-        .exceptionOrNull()
+    val error = runCatching {
+      HistoryManifestCommand(
+          args = listOf("--repo", repo.path, "--branch", "main", "--output", output.path),
+          workingDir = repo,
+          stdout = {},
+          stderr = { err += it },
+          exit = { throw CommandExit(it) },
+        )
+        .run()
+    }
+      .exceptionOrNull()
 
     assertEquals(1, assertIs<CommandExit>(error).code)
     assertFalse(output.exists())

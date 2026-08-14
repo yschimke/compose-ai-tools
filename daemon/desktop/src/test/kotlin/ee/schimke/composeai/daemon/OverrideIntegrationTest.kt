@@ -57,7 +57,9 @@ class OverrideIntegrationTest {
             OverrideVariantSpec(
               name = "disabled",
               seeds =
-                listOf(OverrideSeed(key = "fill", kind = OverrideSeedKind.COLOR, raw = "#FF42A5F5")),
+                listOf(
+                  OverrideSeed(key = "fill", kind = OverrideSeedKind.COLOR, raw = "#FF42A5F5")
+                ),
             ),
           ),
         )

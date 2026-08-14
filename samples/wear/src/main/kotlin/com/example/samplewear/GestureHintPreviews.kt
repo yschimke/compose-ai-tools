@@ -29,13 +29,13 @@ import kotlinx.coroutines.launch
 
 /**
  * A normal Wear media screen with **two** one-handed gestures: a primary double-pinch that toggles
- * play/pause, and a dismiss wrist-turn mapped to back. Each button wraps its **content** (the label)
- * in [OneHandedGestureClickIndicator], so the public Wear API swaps the label for that gesture's
- * animation on-device while the button pill stays put.
+ * play/pause, and a dismiss wrist-turn mapped to back. Each button wraps its **content** (the
+ * label) in [OneHandedGestureClickIndicator], so the public Wear API swaps the label for that
+ * gesture's animation on-device while the button pill stays put.
  *
  * [showIndicators] is state injection rather than a second rendering implementation: previews can
- * capture a stable animation frame while production leaves it false and lets
- * `onGestureAvailable` drive the exact same public indicator state.
+ * capture a stable animation frame while production leaves it false and lets `onGestureAvailable`
+ * drive the exact same public indicator state.
  */
 @Composable
 fun MediaGestureScreen(showIndicators: Boolean = false, onDismiss: () -> Unit = {}) {
@@ -64,9 +64,7 @@ fun MediaGestureScreen(showIndicators: Boolean = false, onDismiss: () -> Unit = 
             gestureConfiguration = playConfiguration,
             interactionSource = playSource,
             onGestureLabel = if (playing) "Pause" else "Play",
-            onGestureAvailable = {
-              coroutineScope.launch { playIndicatorState.showIndicator() }
-            },
+            onGestureAvailable = { coroutineScope.launch { playIndicatorState.showIndicator() } },
           ) {
             playing = !playing
           },
@@ -84,16 +82,12 @@ fun MediaGestureScreen(showIndicators: Boolean = false, onDismiss: () -> Unit = 
             gestureConfiguration = backConfiguration,
             interactionSource = backSource,
             onGestureLabel = "Back",
-            onGestureAvailable = {
-              coroutineScope.launch { backIndicatorState.showIndicator() }
-            },
+            onGestureAvailable = { coroutineScope.launch { backIndicatorState.showIndicator() } },
           ) {
             onDismiss()
           },
       ) {
-        OneHandedGestureClickIndicator(backConfiguration, backIndicatorState) {
-          Text("Back")
-        }
+        OneHandedGestureClickIndicator(backConfiguration, backIndicatorState) { Text("Back") }
       }
     }
   }
@@ -103,7 +97,9 @@ fun MediaGestureScreen(showIndicators: Boolean = false, onDismiss: () -> Unit = 
 // The same full-screen component, captured with its public indicator states at rest and forced on.
 // ---------------------------------------------------------------------------
 
-/** The resting screen — no override, so both gesture hints stay hidden (as they would off-watch). */
+/**
+ * The resting screen — no override, so both gesture hints stay hidden (as they would off-watch).
+ */
 @Preview(name = "Media — hints off", device = WearDevices.LARGE_ROUND, showBackground = true)
 @Composable
 fun MediaGestureScreenPreview() {
@@ -112,9 +108,7 @@ fun MediaGestureScreenPreview() {
 
 /** The same component with its state override showing both inline indicators. */
 @Preview(name = "Media — hints on", device = WearDevices.LARGE_ROUND, showBackground = true)
-@RoboComposePreviewOptions(
-  manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)]
-)
+@RoboComposePreviewOptions(manualClockOptions = [ManualClockOptions(advanceTimeMillis = 800L)])
 @Composable
 fun MediaGestureScreenHintPreview() {
   MaterialTheme { MediaGestureScreen(showIndicators = true) }

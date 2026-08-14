@@ -16,8 +16,8 @@ import org.junit.runners.model.FrameworkMethod
  * `bundle render` path always got this shadow via its synthesized `robolectric.properties`; this
  * test guards the daemon parity so the gap can't silently reopen.
  *
- * Mirrors [SandboxHoldingRunnerApplicationOverrideTest]'s exposer pattern: construct the runner with
- * a dummy test class and read the resolved shadow set back via a subclass that widens the
+ * Mirrors [SandboxHoldingRunnerApplicationOverrideTest]'s exposer pattern: construct the runner
+ * with a dummy test class and read the resolved shadow set back via a subclass that widens the
  * `protected` [org.robolectric.RobolectricTestRunner.getExtraShadows].
  */
 class SandboxHoldingRunnerFontShadowTest {

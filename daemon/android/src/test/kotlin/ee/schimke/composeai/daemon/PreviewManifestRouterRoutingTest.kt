@@ -62,17 +62,14 @@ class PreviewManifestRouterRoutingTest {
       )
     val router = PreviewManifestRouter(manifest = manifest)
 
-    val baked =
-      RenderSpec.parseFromPayloadOrNull(router.routePayload("previewId=$previewId"))
+    val baked = RenderSpec.parseFromPayloadOrNull(router.routePayload("previewId=$previewId"))
     assertEquals(
       PreviewOverrideValue.BooleanValue(false),
       baked!!.overrides!!.namedOverrides!!["checked"],
     )
 
     val live =
-      PreviewOverrides(
-        namedOverrides = mapOf("checked" to PreviewOverrideValue.BooleanValue(true))
-      )
+      PreviewOverrides(namedOverrides = mapOf("checked" to PreviewOverrideValue.BooleanValue(true)))
     val liveToken =
       Base64.getUrlEncoder()
         .withoutPadding()
@@ -177,7 +174,10 @@ class PreviewManifestRouterRoutingTest {
     val routed = PreviewManifestRouter(manifest = manifest).routePayload("previewId=plain")
 
     assertFalse(routed.contains("previewParameterProvider="))
-    assertEquals(null, RenderSpec.parseFromPayloadOrNull(routed)!!.previewParameterProviderClassName)
+    assertEquals(
+      null,
+      RenderSpec.parseFromPayloadOrNull(routed)!!.previewParameterProviderClassName,
+    )
   }
 
   @Test
@@ -200,12 +200,18 @@ class PreviewManifestRouterRoutingTest {
     val routed = PreviewManifestRouter(manifest = manifest).routePayload("previewId=tcp")
 
     assertTrue("width is pinned → no wrapWidth. payload=$routed", !routed.contains("wrapWidth="))
-    assertTrue("no height → wrapHeight=true must ride the payload. payload=$routed",
-      routed.contains("wrapHeight=true"))
-    assertTrue("pinned width stays 340dp × 2.625 = 893px. payload=$routed",
-      routed.contains("widthPx=893"))
-    assertTrue("wrapped height uses the 800dp sandbox bound (2100px). payload=$routed",
-      routed.contains("heightPx=2100"))
+    assertTrue(
+      "no height → wrapHeight=true must ride the payload. payload=$routed",
+      routed.contains("wrapHeight=true"),
+    )
+    assertTrue(
+      "pinned width stays 340dp × 2.625 = 893px. payload=$routed",
+      routed.contains("widthPx=893"),
+    )
+    assertTrue(
+      "wrapped height uses the 800dp sandbox bound (2100px). payload=$routed",
+      routed.contains("heightPx=2100"),
+    )
   }
 
   @Test
@@ -224,8 +230,14 @@ class PreviewManifestRouterRoutingTest {
       )
     val routed = PreviewManifestRouter(manifest = manifest).routePayload("previewId=sticker")
 
-    assertTrue("wrapWidth=true must ride the payload. payload=$routed", routed.contains("wrapWidth=true"))
-    assertTrue("wrapHeight=true must ride the payload. payload=$routed", routed.contains("wrapHeight=true"))
+    assertTrue(
+      "wrapWidth=true must ride the payload. payload=$routed",
+      routed.contains("wrapWidth=true"),
+    )
+    assertTrue(
+      "wrapHeight=true must ride the payload. payload=$routed",
+      routed.contains("wrapHeight=true"),
+    )
   }
 
   @Test
@@ -244,8 +256,14 @@ class PreviewManifestRouterRoutingTest {
       )
     val routed = PreviewManifestRouter(manifest = manifest).routePayload("previewId=sized")
 
-    assertFalse("explicit size → no wrapWidth token. payload=$routed", routed.contains("wrapWidth="))
-    assertFalse("explicit size → no wrapHeight token. payload=$routed", routed.contains("wrapHeight="))
+    assertFalse(
+      "explicit size → no wrapWidth token. payload=$routed",
+      routed.contains("wrapWidth="),
+    )
+    assertFalse(
+      "explicit size → no wrapHeight token. payload=$routed",
+      routed.contains("wrapHeight="),
+    )
   }
 
   @Test
@@ -265,8 +283,10 @@ class PreviewManifestRouterRoutingTest {
     val routed =
       PreviewManifestRouter(manifest = manifest).routePayload("previewId=tcp;heightPx=900")
 
-    assertFalse("inbound heightPx override pins the axis → no wrapHeight. payload=$routed",
-      routed.contains("wrapHeight="))
+    assertFalse(
+      "inbound heightPx override pins the axis → no wrapHeight. payload=$routed",
+      routed.contains("wrapHeight="),
+    )
     assertTrue("inbound heightPx override wins. payload=$routed", routed.contains("heightPx=900"))
   }
 
@@ -345,8 +365,7 @@ class PreviewManifestRouterRoutingTest {
       )
 
     val routed =
-      PreviewManifestRouter(manifest = manifest)
-        .routePayload("previewId=wearthemecatalog__Dark")
+      PreviewManifestRouter(manifest = manifest).routePayload("previewId=wearthemecatalog__Dark")
     val spec = RenderSpec.parseFromPayloadOrNull(routed)!!
 
     assertTrue(
@@ -419,7 +438,10 @@ class PreviewManifestRouterRoutingTest {
       PreviewManifestRouter(manifest = manifest).routePayload("previewId=screen;uiMode=light")
 
     assertTrue("inbound override wins. payload=$routed", routed.contains("uiMode=light"))
-    assertFalse("manifest bit must not double-emit. payload=$routed", routed.contains("uiMode=dark"))
+    assertFalse(
+      "manifest bit must not double-emit. payload=$routed",
+      routed.contains("uiMode=dark"),
+    )
   }
 
   /**
@@ -439,8 +461,7 @@ class PreviewManifestRouterRoutingTest {
               id = "large-font",
               className = "com.example.PreviewsKt",
               functionName = "FeedScreen",
-              params =
-                PreviewParamsEntry(widthDp = 400, fontScale = 1.5f, locale = "ar-XB"),
+              params = PreviewParamsEntry(widthDp = 400, fontScale = 1.5f, locale = "ar-XB"),
             )
           )
       )
@@ -526,7 +547,10 @@ class PreviewManifestRouterRoutingTest {
 
     assertTrue("device frame width. payload=$routed", routed.contains("widthPx=384;"))
     assertTrue("device frame height. payload=$routed", routed.contains("heightPx=384;"))
-    assertTrue("device id forwarded. payload=$routed", routed.contains("device=id:wearos_small_round"))
+    assertTrue(
+      "device id forwarded. payload=$routed",
+      routed.contains("device=id:wearos_small_round"),
+    )
     assertFalse("a device frame never wraps. payload=$routed", routed.contains("wrapWidth=true"))
   }
 
@@ -551,8 +575,10 @@ class PreviewManifestRouterRoutingTest {
 
     val routed = PreviewManifestRouter(manifest = manifest).routePayload("previewId=phone")
 
-    assertTrue("393dp × 2.75 truncates to 1080, not 1081. payload=$routed",
-      routed.contains("widthPx=1080;"))
+    assertTrue(
+      "393dp × 2.75 truncates to 1080, not 1081. payload=$routed",
+      routed.contains("widthPx=1080;"),
+    )
     assertTrue("851dp × 2.75 truncates to 2340. payload=$routed", routed.contains("heightPx=2340;"))
   }
 
@@ -592,7 +618,10 @@ class PreviewManifestRouterRoutingTest {
     // Pixel Tablet: 1280x800dp at density 2.0 => 2560x1600px landscape, rotated to 1600x2560.
     assertTrue("expected widthPx=1600 in $routed", routed.contains("widthPx=1600;"))
     assertTrue("expected heightPx=2560 in $routed", routed.contains("heightPx=2560;"))
-    assertTrue("orientation token must still ride along in $routed", routed.contains("orientation=portrait"))
+    assertTrue(
+      "orientation token must still ride along in $routed",
+      routed.contains("orientation=portrait"),
+    )
   }
 
   @Test

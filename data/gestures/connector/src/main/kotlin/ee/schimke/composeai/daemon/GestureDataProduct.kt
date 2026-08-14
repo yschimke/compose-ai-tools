@@ -70,7 +70,8 @@ class GestureOverrideExtension(private val override: GestureOverride?) :
 
     val invoke = override?.invoke
     if (invoke != null) {
-      // Keyed on the whole override instance so a fresh `renderNow` (a new GestureOverride) re-fires
+      // Keyed on the whole override instance so a fresh `renderNow` (a new GestureOverride)
+      // re-fires
       // the handler in a held interactive session, even when the invoke kind is unchanged.
       LaunchedEffect(override) { GestureStateController.invoke(invoke, override.invokeLabel) }
     }
@@ -96,8 +97,8 @@ class GesturePreviewOverrideExtension : DataExtension<PreviewOverrides> {
  * Daemon-side registry adapter for `compose/gestures`.
  *
  * Captures [GestureStateController.snapshot] after any gesture-aware render (`overrides.gestures`
- * set) — the snapshot reflects the handlers the preview registered plus the applied enabled / hint /
- * invoke state. A `data/fetch` before any such render, or after the override is dropped, returns
+ * set) — the snapshot reflects the handlers the preview registered plus the applied enabled / hint
+ * / invoke state. A `data/fetch` before any such render, or after the override is dropped, returns
  * [DataProductRegistry.Outcome.NotAvailable]. Clients change the state by sending a fresh
  * `renderNow.overrides.gestures`.
  */
@@ -154,7 +155,6 @@ class GestureDataProductRegistry : DataProductRegistry {
       )
     )
   }
-
 
   override fun onRender(
     previewId: String,

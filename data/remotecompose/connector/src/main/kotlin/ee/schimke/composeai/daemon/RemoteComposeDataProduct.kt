@@ -169,10 +169,10 @@ private object ControllerRemoteComposeHost : RemoteComposeHost {
   /**
    * Record the read name as an editable knob from a `SideEffect`, not directly during composition:
    * mirrors `ControllerPreviewOverrideHost`'s `previewOverride*`. A `SideEffect` runs after the
-   * `DisposableEffect` clear that [RemoteComposeOverrideExtension] performs at render start (Compose
-   * runs every `RememberObserver` before any `SideEffect`), so each pass's declaration set is rebuilt
-   * from scratch, and it never writes controller snapshot state mid-composition (which would risk a
-   * recompose loop).
+   * `DisposableEffect` clear that [RemoteComposeOverrideExtension] performs at render start
+   * (Compose runs every `RememberObserver` before any `SideEffect`), so each pass's declaration set
+   * is rebuilt from scratch, and it never writes controller snapshot state mid-composition (which
+   * would risk a recompose loop).
    */
   @Composable
   private fun declareInComposition(name: String, default: RemoteNamedValue) {
@@ -266,15 +266,18 @@ class RemoteComposeOverrideExtension(private val seed: RemoteComposeOverride? = 
   @Composable
   override fun Around(context: ExtensionComposeContext, content: @Composable () -> Unit) {
     // Stamp the active previewId before content composes so the sandbox-side declaration forwards
-    // land in this preview's bridge scope, not a concurrently-rendering preview's (pooled sandboxes).
+    // land in this preview's bridge scope, not a concurrently-rendering preview's (pooled
+    // sandboxes).
     // Plain call (not a SideEffect) so it runs during composition, ahead of any `named*` read in
     // `content()`. Mirrors PreviewOverridesOverrideExtension.
     RemoteComposeController.beginRender(context.previewId)
     DisposableEffect(seed) {
       RemoteComposeController.set(seed)
       // Clear declarations at render start (mirrors PreviewOverridesOverrideExtension): a held
-      // session re-rendering with a shrunk knob set must not carry stale controls. A DisposableEffect
-      // runs as a RememberObserver, which Compose invokes before any SideEffect, so this clear always
+      // session re-rendering with a shrunk knob set must not carry stale controls. A
+      // DisposableEffect
+      // runs as a RememberObserver, which Compose invokes before any SideEffect, so this clear
+      // always
       // precedes the `named*` reads' SideEffect-recorded declarations for this pass.
       RemoteComposeController.clearDeclarations()
       // Dispose clears only the seed — NOT declarations or the bridge — so the host's post-dispose
@@ -371,9 +374,10 @@ class RemoteComposeDataProductRegistry : DataProductRegistry {
    * knobs. [IrSidecarChannel.peek] first, then [IrSidecarChannel.consume] **only** when the format
    * is Remote Compose — so a protolayout capture waiting for its own drainer is left untouched.
    *
-   * Daemon-only: [onRender] is invoked exclusively by `JsonRpcServer` on the live render path, never
-   * by the batch renderer (which drains the channel itself via `RobolectricRenderTest.writeIrSidecar`
-   * to write the bundle's `ir/<id>.rc` sidecar), so this never competes with bundle capture.
+   * Daemon-only: [onRender] is invoked exclusively by `JsonRpcServer` on the live render path,
+   * never by the batch renderer (which drains the channel itself via
+   * `RobolectricRenderTest.writeIrSidecar` to write the bundle's `ir/<id>.rc` sidecar), so this
+   * never competes with bundle capture.
    */
   private fun captureDocument(previewId: String) {
     val capture = IrSidecarChannel.peek(previewId)
@@ -441,7 +445,6 @@ class RemoteComposeDataProductRegistry : DataProductRegistry {
     return out
   }
 
-
   override fun onRender(
     previewId: String,
     result: RenderResult,
@@ -473,13 +476,13 @@ class RemoteComposeDataProductRegistry : DataProductRegistry {
   }
 
   /**
-   * The knobs declared by the render for [previewId]. The do-not-acquire [SandboxRemoteComposeBridge]
-   * is shared across the sandbox boundary, so prefer it when reachable (its JSON snapshot is decoded
-   * back into typed declarations) — on Android the in-classloader controller the host reads is a
-   * different, empty instance. Falls back to the in-CL `RemoteComposeController` when the bridge
-   * isn't on the classpath (the desktop daemon / connector unit tests, where the controller IS the
-   * source of truth) or the bridge has nothing for this preview. Mirrors
-   * `PreviewOverridesDataProductRegistry.declarationsFor`.
+   * The knobs declared by the render for [previewId]. The do-not-acquire
+   * [SandboxRemoteComposeBridge] is shared across the sandbox boundary, so prefer it when reachable
+   * (its JSON snapshot is decoded back into typed declarations) — on Android the in-classloader
+   * controller the host reads is a different, empty instance. Falls back to the in-CL
+   * `RemoteComposeController` when the bridge isn't on the classpath (the desktop daemon /
+   * connector unit tests, where the controller IS the source of truth) or the bridge has nothing
+   * for this preview. Mirrors `PreviewOverridesDataProductRegistry.declarationsFor`.
    */
   private fun declarationsFor(previewId: String): List<RemoteComposeKnobDeclaration> {
     val controllerDeclarations = RemoteComposeController.declarations()
@@ -493,20 +496,18 @@ class RemoteComposeDataProductRegistry : DataProductRegistry {
   }
 
   /**
-   * Reflective lookup of `ee.schimke.composeai.daemon.bridge.SandboxRemoteComposeBridge`. Cached per
-   * JVM. `null` means the bridge isn't on the classpath (connector-only unit tests; the desktop
+   * Reflective lookup of `ee.schimke.composeai.daemon.bridge.SandboxRemoteComposeBridge`. Cached
+   * per JVM. `null` means the bridge isn't on the classpath (connector-only unit tests; the desktop
    * daemon has no sandbox). Mirrors `PreviewOverridesDataProductRegistry`'s
    * `SandboxPreviewOverridesBridgeReader`.
    */
   private class SandboxRemoteComposeBridgeReader(
     private val snapshotMethod: java.lang.reflect.Method
   ) {
-    fun snapshot(scope: String): List<String> =
-      runCatching {
-          @Suppress("UNCHECKED_CAST")
-          (snapshotMethod.invoke(null, scope) as Array<String>).toList()
-        }
-        .getOrDefault(emptyList())
+    fun snapshot(scope: String): List<String> = runCatching {
+      @Suppress("UNCHECKED_CAST") (snapshotMethod.invoke(null, scope) as Array<String>).toList()
+    }
+      .getOrDefault(emptyList())
 
     companion object {
       private const val BRIDGE_FQN: String =

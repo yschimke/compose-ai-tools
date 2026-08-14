@@ -42,10 +42,10 @@ internal object PreviewParameterLabels {
       val getter = "get" + candidate.replaceFirstChar { it.uppercase() }
       val method =
         runCatching {
-            v.javaClass.methods.firstOrNull {
-              it.name == getter && it.parameterCount == 0 && it.returnType == String::class.java
-            }
+          v.javaClass.methods.firstOrNull {
+            it.name == getter && it.parameterCount == 0 && it.returnType == String::class.java
           }
+        }
           .getOrNull() ?: continue
       val result = runCatching { method.invoke(v) as? String }.getOrNull()
       if (!result.isNullOrBlank()) return result

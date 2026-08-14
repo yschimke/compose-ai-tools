@@ -12,22 +12,22 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * End-to-end guard for issue #3024: on a `fontScale != 1` render the `compose/figma-svg` export must
- * size text at the px the **render resolved**, not at `sp × density × fontScale`.
+ * End-to-end guard for issue #3024: on a `fontScale != 1` render the `compose/figma-svg` export
+ * must size text at the px the **render resolved**, not at `sp × density × fontScale`.
  *
  * Compose resolves `sp` through the platform `FontScaleConverter` on API 34+, whose curve is
  * non-linear in the font scale: body sizes take the full multiplier, display sizes flatten toward
- * identity. The exporter's linear conversion therefore matched the body and over-sized the heading —
- * by 50% on JetNews's `fontScale = 1.5` article title — so the captured line breaks stopped fitting
- * the bounds they were measured in and the last line overflowed its card. The seam tests
- * (`FigmaSvgResolvedTextMetricsTest`) pin the export's preference for the captured px on a synthetic
- * payload; this drives a real scaled render so a regression in the *capture* (which is what has to
- * read the render's own `Density`) can't pass unnoticed.
+ * identity. The exporter's linear conversion therefore matched the body and over-sized the heading
+ * — by 50% on JetNews's `fontScale = 1.5` article title — so the captured line breaks stopped
+ * fitting the bounds they were measured in and the last line overflowed its card. The seam tests
+ * (`FigmaSvgResolvedTextMetricsTest`) pin the export's preference for the captured px on a
+ * synthetic payload; this drives a real scaled render so a regression in the *capture* (which is
+ * what has to read the render's own `Density`) can't pass unnoticed.
  *
  * The assertions are written to hold whether or not the sandbox's API level applies the curve: what
  * they pin is that the exported size is the one the capture resolved, and never larger than the
- * linear prediction. On a converter-applying platform those differ and the old behaviour fails here;
- * on one without a converter they coincide and the plumbing is still covered.
+ * linear prediction. On a converter-applying platform those differ and the old behaviour fails
+ * here; on one without a converter they coincide and the plumbing is still covered.
  */
 class ScaledTypographyExportTest {
 
@@ -109,7 +109,10 @@ class ScaledTypographyExportTest {
       val lineWidths =
         Regex("""textLength="([0-9]+)"""").findAll(svg).map { it.groupValues[1].toInt() }.toList()
       assertTrue("wrapped lines must carry their measured width", lineWidths.isNotEmpty())
-      assertTrue("lengths pin spacing only, never the glyphs", svg.contains("""lengthAdjust="spacing""""))
+      assertTrue(
+        "lengths pin spacing only, never the glyphs",
+        svg.contains("""lengthAdjust="spacing""""),
+      )
       // The regression in one line: no line may be wider than the box it was measured in.
       val available = PARAGRAPH_WIDTH_DP * density
       assertTrue(
@@ -135,7 +138,11 @@ class ScaledTypographyExportTest {
   ): ComposeSemanticsNode {
     fun walk(n: ComposeSemanticsNode): ComposeSemanticsNode? {
       if (n.text?.let(match) == true && n.typography != null) return n
-      n.children.forEach { child -> walk(child)?.let { return it } }
+      n.children.forEach { child ->
+        walk(child)?.let {
+          return it
+        }
+      }
       return null
     }
     return checkNotNull(walk(node)) { "no matching text node in the captured semantics" }

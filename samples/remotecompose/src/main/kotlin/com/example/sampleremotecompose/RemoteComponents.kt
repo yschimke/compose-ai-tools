@@ -19,9 +19,9 @@ import androidx.compose.remote.creation.compose.state.RemoteColor
 import androidx.compose.remote.creation.compose.state.animateRemoteFloat
 import androidx.compose.remote.creation.compose.state.rb
 import androidx.compose.remote.creation.compose.state.rdp
+import androidx.compose.remote.creation.compose.state.rememberMutableRemoteFloat
 import androidx.compose.remote.creation.compose.state.rememberNamedRemoteColor
 import androidx.compose.remote.creation.compose.state.rememberNamedRemoteString
-import androidx.compose.remote.creation.compose.state.rememberMutableRemoteFloat
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.runtime.Composable
@@ -111,8 +111,8 @@ fun RemoteButtonWithShape() {
  * while replaying the document.
  *
  * Keeping this as a pure [RemoteComposable] lets the animated preview exercise both replay
- * implementations — the standard View-backed Remote Compose player and the embedded Compose
- * player — without an app-side animation masking a stalled document clock.
+ * implementations — the standard View-backed Remote Compose player and the embedded Compose player
+ * — without an app-side animation masking a stalled document clock.
  */
 @Composable
 @RemoteComposable
@@ -134,8 +134,7 @@ fun RemoteAnimatedCircularProgressIndicator() {
 
   RemoteCircularProgressIndicator(
     progress = animatedProgress,
-    modifier =
-      RemoteModifier.size(72.rdp).clickable(action = advanceProgress, role = Role.Button),
+    modifier = RemoteModifier.size(72.rdp).clickable(action = advanceProgress, role = Role.Button),
   )
 }
 

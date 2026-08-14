@@ -105,8 +105,9 @@ class DaemonSupervisor(
     require(absolutePath.isDirectory) {
       "registerProject: path '${absolutePath.absolutePath}' is not a directory"
     }
-    val canonical =
-      runCatching { absolutePath.canonicalFile }.getOrDefault(absolutePath.absoluteFile)
+    val canonical = runCatching {
+      absolutePath.canonicalFile
+    }.getOrDefault(absolutePath.absoluteFile)
     val name =
       rootProjectName?.takeIf { it.isNotBlank() }
         ?: canonical.name.takeIf { it.isNotBlank() }
@@ -226,67 +227,67 @@ class DaemonSupervisor(
     // session getter before the runCatching block below populates `initializeResult`.
     supervised.workspaceRootPath = project.path.absolutePath
     runCatching {
-        val result =
-          spawn.client.initialize(
-            workspaceRoot = project.path.absolutePath,
-            moduleId = descriptor.modulePath,
-            moduleProjectDir = descriptor.workingDirectory,
-            attachDataProducts = globalAttachDataProducts.takeIf { it.isNotEmpty() },
+      val result =
+        spawn.client.initialize(
+          workspaceRoot = project.path.absolutePath,
+          moduleId = descriptor.modulePath,
+          moduleProjectDir = descriptor.workingDirectory,
+          attachDataProducts = globalAttachDataProducts.takeIf { it.isNotEmpty() },
+        )
+      // Cache the full result so the public RenderSession view (`supervised.session`) can
+      // expose it through `RenderSession.initializeResult`. Subsequent successful re-spawns
+      // (classpathDirty respawn path) overwrite this with the fresh handshake's result.
+      supervised.initializeResult = result
+      // PROTOCOL.md § 3a — the daemon comes up with every extension inactive so
+      // `initialize.capabilities.dataProducts` / `dataExtensions` / `previewExtensions` are
+      // empty.
+      // Opt the daemon into the configured `defaultExtensions` set; the response carries the
+      // updated public capability lists which we cache below so the MCP catalogue surfaces them
+      // without a follow-up `extensions/list` round-trip.
+      val initialDataProducts: List<DataProductCapability>
+      val initialDataExtensions:
+        List<ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor>
+      if (defaultExtensions.isNotEmpty()) {
+        val enableResult = spawn.client.extensionsEnable(defaultExtensions)
+        if (enableResult.unknown.isNotEmpty()) {
+          System.err.println(
+            "daemon ${project.workspaceId}/${descriptor.modulePath}: extensions/enable " +
+              "skipped unknown ids ${enableResult.unknown}"
           )
-        // Cache the full result so the public RenderSession view (`supervised.session`) can
-        // expose it through `RenderSession.initializeResult`. Subsequent successful re-spawns
-        // (classpathDirty respawn path) overwrite this with the fresh handshake's result.
-        supervised.initializeResult = result
-        // PROTOCOL.md § 3a — the daemon comes up with every extension inactive so
-        // `initialize.capabilities.dataProducts` / `dataExtensions` / `previewExtensions` are
-        // empty.
-        // Opt the daemon into the configured `defaultExtensions` set; the response carries the
-        // updated public capability lists which we cache below so the MCP catalogue surfaces them
-        // without a follow-up `extensions/list` round-trip.
-        val initialDataProducts: List<DataProductCapability>
-        val initialDataExtensions:
-          List<ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor>
-        if (defaultExtensions.isNotEmpty()) {
-          val enableResult = spawn.client.extensionsEnable(defaultExtensions)
-          if (enableResult.unknown.isNotEmpty()) {
-            System.err.println(
-              "daemon ${project.workspaceId}/${descriptor.modulePath}: extensions/enable " +
-                "skipped unknown ids ${enableResult.unknown}"
-            )
-          }
-          initialDataProducts = enableResult.dataProducts
-          initialDataExtensions = enableResult.dataExtensions
-        } else {
-          initialDataProducts = result.capabilities.dataProducts
-          initialDataExtensions = result.capabilities.dataExtensions
         }
-        supervised.dataProductCapabilities = initialDataProducts
-        supervised.dataExtensionDescriptors = initialDataExtensions
-        // PROTOCOL.md § 3 — cache the daemon's advertised supportedOverrides + knownDevice ids so
-        // `DaemonMcpServer.toolRenderPreview` can validate inbound `overrides` against what this
-        // backend will actually apply (instead of silently no-op'ing fields the backend ignores)
-        // and
-        // reject typo'd `device` ids before they fall back to the default. Pre-feature daemons
-        // advertise `[]` for both, in which case validation falls open — clients are exactly where
-        // they were before the capability landed.
-        supervised.supportedOverrides = result.capabilities.supportedOverrides.toSet()
-        supervised.knownDeviceIds = result.capabilities.knownDevices.map { it.id }.toSet()
-        supervised.backendKind = result.capabilities.backend
-        // RECORDING.md § "encoded formats" — same pattern. Empty list pre-feature; validation falls
-        // open and `record_preview` calls round-trip without the diagnostic.
-        supervised.recordingFormats = result.capabilities.recordingFormats.toSet()
-        // Cache the manifest path so the MCP server's background poller can detect a Gradle
-        // `composePreviewDiscover` re-run between renders and re-load the manifest into the catalog
-        // (issue #834). Blank for backends that don't ship a `previews.json`.
-        supervised.manifestPath = result.manifest.path.takeIf { it.isNotBlank() }
-        // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes
-        // via `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
-        // `composePreviewDiscover` task). Synthesise an initial `discoveryUpdated` notification by
-        // reading that file and dispatching it through the router as if it were a wire-level
-        // event.
-        synthesiseInitialDiscovery(supervised, result.manifest.path)
-        supervised.initialDiscoveryComplete = true
+        initialDataProducts = enableResult.dataProducts
+        initialDataExtensions = enableResult.dataExtensions
+      } else {
+        initialDataProducts = result.capabilities.dataProducts
+        initialDataExtensions = result.capabilities.dataExtensions
       }
+      supervised.dataProductCapabilities = initialDataProducts
+      supervised.dataExtensionDescriptors = initialDataExtensions
+      // PROTOCOL.md § 3 — cache the daemon's advertised supportedOverrides + knownDevice ids so
+      // `DaemonMcpServer.toolRenderPreview` can validate inbound `overrides` against what this
+      // backend will actually apply (instead of silently no-op'ing fields the backend ignores)
+      // and
+      // reject typo'd `device` ids before they fall back to the default. Pre-feature daemons
+      // advertise `[]` for both, in which case validation falls open — clients are exactly where
+      // they were before the capability landed.
+      supervised.supportedOverrides = result.capabilities.supportedOverrides.toSet()
+      supervised.knownDeviceIds = result.capabilities.knownDevices.map { it.id }.toSet()
+      supervised.backendKind = result.capabilities.backend
+      // RECORDING.md § "encoded formats" — same pattern. Empty list pre-feature; validation falls
+      // open and `record_preview` calls round-trip without the diagnostic.
+      supervised.recordingFormats = result.capabilities.recordingFormats.toSet()
+      // Cache the manifest path so the MCP server's background poller can detect a Gradle
+      // `composePreviewDiscover` re-run between renders and re-load the manifest into the catalog
+      // (issue #834). Blank for backends that don't ship a `previews.json`.
+      supervised.manifestPath = result.manifest.path.takeIf { it.isNotBlank() }
+      // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes
+      // via `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
+      // `composePreviewDiscover` task). Synthesise an initial `discoveryUpdated` notification by
+      // reading that file and dispatching it through the router as if it were a wire-level
+      // event.
+      synthesiseInitialDiscovery(supervised, result.manifest.path)
+      supervised.initialDiscoveryComplete = true
+    }
       .onFailure { e ->
         System.err.println(
           "daemon initialize failed for ${project.workspaceId}/${descriptor.modulePath}: ${e.message}"
@@ -302,12 +303,12 @@ class DaemonSupervisor(
     if (!file.isFile) return
     val previews =
       runCatching {
-          val text = fileSystem.read(file.path.toPath()) { readUtf8() }
-          val arr =
-            (Json.parseToJsonElement(text) as? JsonObject)?.get("previews")
-              as? kotlinx.serialization.json.JsonArray ?: return@runCatching null
-          arr.mapNotNull { it as? JsonObject }
-        }
+        val text = fileSystem.read(file.path.toPath()) { readUtf8() }
+        val arr =
+          (Json.parseToJsonElement(text) as? JsonObject)?.get("previews")
+            as? kotlinx.serialization.json.JsonArray ?: return@runCatching null
+        arr.mapNotNull { it as? JsonObject }
+      }
         .getOrNull() ?: return
     if (previews.isEmpty()) return
     val params =
@@ -669,12 +670,11 @@ fun interface DescriptorProvider {
           it.isFile && it.name == "daemon-launch.json" && it.parentFile?.name == "compose-previews"
         }
         .forEach { file ->
-          val recorded =
-            runCatching {
-                DaemonLaunchDescriptor.parse(fileSystem.read(file.path.toPath()) { readUtf8() })
-                  .modulePath
-              }
-              .getOrNull()
+          val recorded = runCatching {
+            DaemonLaunchDescriptor.parse(fileSystem.read(file.path.toPath()) { readUtf8() })
+              .modulePath
+          }
+            .getOrNull()
           if (recorded != null) index.putIfAbsent(recorded, file)
         }
       return index

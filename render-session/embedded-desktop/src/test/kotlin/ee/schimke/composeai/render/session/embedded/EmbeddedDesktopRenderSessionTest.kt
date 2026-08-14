@@ -35,13 +35,12 @@ class EmbeddedDesktopRenderSessionTest {
     tempDir.deleteOnExit()
     val missingDescriptor = File(tempDir, "build/compose-previews/daemon-launch.json")
 
-    val ex =
-      runCatching {
-          EmbeddedDesktopRenderSessions.open(
-            RenderSessionConfig(descriptorPath = missingDescriptor, workspaceRoot = tempDir)
-          )
-        }
-        .exceptionOrNull()
+    val ex = runCatching {
+      EmbeddedDesktopRenderSessions.open(
+        RenderSessionConfig(descriptorPath = missingDescriptor, workspaceRoot = tempDir)
+      )
+    }
+      .exceptionOrNull()
 
     assertThat(ex).isInstanceOf(RenderSessionException::class.java)
     assertThat(ex!!.message).contains("Daemon launch descriptor not found")
@@ -58,13 +57,12 @@ class EmbeddedDesktopRenderSessionTest {
         writeText("not valid json {")
       }
 
-    val ex =
-      runCatching {
-          EmbeddedDesktopRenderSessions.open(
-            RenderSessionConfig(descriptorPath = badDescriptor, workspaceRoot = tempDir)
-          )
-        }
-        .exceptionOrNull()
+    val ex = runCatching {
+      EmbeddedDesktopRenderSessions.open(
+        RenderSessionConfig(descriptorPath = badDescriptor, workspaceRoot = tempDir)
+      )
+    }
+      .exceptionOrNull()
 
     assertThat(ex).isInstanceOf(RenderSessionException::class.java)
     assertThat(ex!!.message).contains("unreadable")

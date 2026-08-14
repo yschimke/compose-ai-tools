@@ -388,12 +388,12 @@ class AndroidInteractiveSessionTest {
   /**
    * Issue #3491 — typing on the Android live lane. The pre-fix wire carried only the physical
    * keycode, which drives Compose's *command* keys (caret, Backspace) but can never produce a
-   * character: whether a keycode types depends on the virtual keyboard's `KeyCharacterMap` and
-   * meta state. The character now rides alongside and is committed through the focused node's
+   * character: whether a keycode types depends on the virtual keyboard's `KeyCharacterMap` and meta
+   * state. The character now rides alongside and is committed through the focused node's
    * `InsertTextAtCursor` semantics action — the same entry point an IME commit uses.
    *
-   * Fixture reports in pixels (it lives behind the sandbox classloader, so a shared probe object
-   * is not reachable): red = untouched, green = the value changed.
+   * Fixture reports in pixels (it lives behind the sandbox classloader, so a shared probe object is
+   * not reachable): red = untouched, green = the value changed.
    */
   @Test
   fun keyDownWithTextTypesIntoTheField() {
@@ -555,10 +555,10 @@ class AndroidInteractiveSessionTest {
   /** Press near the start of the text, drag across it, release. One pointer, one device class. */
   private fun dragAcrossText(session: InteractiveSession, pointerType: String?) {
     listOf(
-      InteractiveInputKind.POINTER_DOWN to TEXT_DRAG_START_X,
-      InteractiveInputKind.POINTER_MOVE to TEXT_DRAG_END_X,
-      InteractiveInputKind.POINTER_UP to TEXT_DRAG_END_X,
-    )
+        InteractiveInputKind.POINTER_DOWN to TEXT_DRAG_START_X,
+        InteractiveInputKind.POINTER_MOVE to TEXT_DRAG_END_X,
+        InteractiveInputKind.POINTER_UP to TEXT_DRAG_END_X,
+      )
       .forEach { (kind, x) ->
         session.dispatch(
           InteractiveInputParams(
@@ -1180,11 +1180,13 @@ class AndroidInteractiveSessionTest {
 
   @Test
   fun missingResourceHeldSessionFallsBackToPlaceholderUnderTheServeOptIn() {
-    // Regression for the `wear-m3` live-mode failure: a preview whose `stringResource(...)` isn't in
+    // Regression for the `wear-m3` live-mode failure: a preview whose `stringResource(...)` isn't
+    // in
     // the packed / child-loader resource table renders fine as a static sticker (the one-shot
     // `RenderEngine.render` path substitutes a placeholder under
     // `PLACEHOLDER_MISSING_RESOURCES_PROP`) but the held interactive path used to route the miss
-    // straight to the raw table → `Resources$NotFoundException`, which failed `interactive/start` and
+    // straight to the raw table → `Resources$NotFoundException`, which failed `interactive/start`
+    // and
     // surfaced as "input requires a live stream — unavailable". The fix mirrors the placeholder
     // `LocalContext` wrap into `runHeldInteractiveSession`.
     System.setProperty(
@@ -1197,7 +1199,8 @@ class AndroidInteractiveSessionTest {
     host.start()
     try {
       // Negative control: without the opt-in, the missing lookup throws and the throw fails the
-      // acquire — proving the fixture genuinely exercises the NotFoundException path the fix guards.
+      // acquire — proving the fixture genuinely exercises the NotFoundException path the fix
+      // guards.
       System.clearProperty(RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP)
       try {
         host

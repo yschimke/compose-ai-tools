@@ -182,7 +182,8 @@ class HistoryDiffRegionsDataProductRegistry(
       baselineHistoryId = baselineHistoryId,
       totalPixelsChanged = totalChanged,
       changedFraction = if (totalPixels == 0L) 0.0 else totalChanged.toDouble() / totalPixels,
-      regions = regions.sortedByDescending { it.pixelCount }.take(MAX_REGIONS).map { it.toRegion() },
+      regions =
+        regions.sortedByDescending { it.pixelCount }.take(MAX_REGIONS).map { it.toRegion() },
     )
   }
 

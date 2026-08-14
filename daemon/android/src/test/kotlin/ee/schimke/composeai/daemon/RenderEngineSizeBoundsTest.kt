@@ -14,8 +14,8 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Android (Robolectric) counterpart of `:daemon:desktop`'s `RenderEngineWrapContentTest`
- * size-bound cases — proves the Android backend honours the wrapped-axis content-size bounds
+ * Android (Robolectric) counterpart of `:daemon:desktop`'s `RenderEngineWrapContentTest` size-bound
+ * cases — proves the Android backend honours the wrapped-axis content-size bounds
  * (`PreviewOverrides.{min,max}{Width,Height}Px`, the Max / Min / Within size modes) instead of
  * silently ignoring them.
  *
@@ -24,12 +24,13 @@ import org.junit.rules.TemporaryFolder
  * override against an Android module dropped the constraint — the sticker rendered at its full
  * intrinsic size no matter what "Within 120–400" / "Max 100" the viewer requested. With the fix the
  * wrap measure is clamped to `[min, max]` (and the Robolectric sandbox enlarged for a min bound
- * larger than the frame), then the AS-parity crop trims the PNG to the resulting size — matching the
- * desktop daemon exactly.
+ * larger than the frame), then the AS-parity crop trims the PNG to the resulting size — matching
+ * the desktop daemon exactly.
  *
  * Drives the production path: the base64 `overrides=` payload token is decoded into
  * `RenderSpec.overrides` by `parseFromPayloadOrNull`, the same shape the host builds from a
- * `renderNow.overrides` request. [WrapContentStickerPreview]'s intrinsic size is 176 px (56 dp badge
+ * `renderNow.overrides` request. [WrapContentStickerPreview]'s intrinsic size is 176 px (56 dp
+ * badge
  * + 16 dp padding each side, × density 2), so each bound visibly reshapes the crop.
  */
 class RenderEngineSizeBoundsTest {
@@ -46,9 +47,7 @@ class RenderEngineSizeBoundsTest {
   ): Pair<Int, Int> {
     val overridesB64 =
       Base64.getEncoder()
-        .encodeToString(
-          json.encodeToString(PreviewOverrides.serializer(), overrides).toByteArray()
-        )
+        .encodeToString(json.encodeToString(PreviewOverrides.serializer(), overrides).toByteArray())
     val result =
       host.submit(
         RenderRequest.Render(
@@ -60,7 +59,7 @@ class RenderEngineSizeBoundsTest {
               "widthPx=800;heightPx=1600;density=2.0;" +
               "wrapWidth=true;wrapHeight=true;" +
               "showBackground=true;outputBaseName=$base;" +
-              "overrides=$overridesB64",
+              "overrides=$overridesB64"
         ),
         timeoutMs = 120_000,
       )

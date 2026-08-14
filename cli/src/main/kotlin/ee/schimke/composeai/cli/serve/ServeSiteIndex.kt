@@ -284,12 +284,10 @@ internal object ServeSiteIndex {
     // impossible — which would land in `<lastmod>` and defeat the whole point of validating: a date
     // a crawler rejects invalidates the document, exactly the failure the fail-safe exists to
     // avoid.
-    val parsed =
-      runCatching {
-          if (raw.length == 10) java.time.LocalDate.parse(raw)
-          else java.time.OffsetDateTime.parse(raw)
-        }
-        .isSuccess
+    val parsed = runCatching {
+      if (raw.length == 10) java.time.LocalDate.parse(raw) else java.time.OffsetDateTime.parse(raw)
+    }
+      .isSuccess
     return raw.takeIf { parsed }
   }
 

@@ -61,12 +61,12 @@ object KeyboardController {
 
   /** Snapshot read of the currently highlighted key, or `null` when no key is held. */
   /**
-   * The explicitly *requested* band visibility — a daemon-side `KeyboardOverride(visible = …)` —
-   * or `null` when nobody pinned it and [softInputVisible] is inferred from app-side IME calls.
+   * The explicitly *requested* band visibility — a daemon-side `KeyboardOverride(visible = …)` — or
+   * `null` when nobody pinned it and [softInputVisible] is inferred from app-side IME calls.
    *
-   * Consumers that gate the band on anything of their own (issue #3491's device-vs-component
-   * rule) must let a non-null value here win: an explicit request is a caller saying "render this
-   * with the keyboard up", and a heuristic must not overrule it.
+   * Consumers that gate the band on anything of their own (issue #3491's device-vs-component rule)
+   * must let a non-null value here win: an explicit request is a caller saying "render this with
+   * the keyboard up", and a heuristic must not overrule it.
    */
   val requestedVisible: State<Boolean?>
     get() = forcedVisible

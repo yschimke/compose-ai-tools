@@ -33,24 +33,24 @@ import androidx.compose.ui.graphics.Shape
 
 @Composable
 internal fun Modifier.background(op: BackgroundModifierOperation): Modifier {
-    val data = op.readDataReflection()
-    val color =
-        if (data.useColorId) {
-            rememberRemoteColorAsState(data.colorId).value
-        } else {
-            val r = rememberRemoteFloatAsState(data.rId).value
-            val g = rememberRemoteFloatAsState(data.gId).value
-            val b = rememberRemoteFloatAsState(data.bId).value
-            val a = rememberRemoteFloatAsState(data.aId).value
-            Color(r, g, b, a)
-        }
+  val data = op.readDataReflection()
+  val color =
+    if (data.useColorId) {
+      rememberRemoteColorAsState(data.colorId).value
+    } else {
+      val r = rememberRemoteFloatAsState(data.rId).value
+      val g = rememberRemoteFloatAsState(data.gId).value
+      val b = rememberRemoteFloatAsState(data.bId).value
+      val a = rememberRemoteFloatAsState(data.aId).value
+      Color(r, g, b, a)
+    }
 
-    val shape: Shape =
-        when (data.shapeType) {
-            ShapeType.RECTANGLE -> RectangleShape
-            ShapeType.CIRCLE -> CircleShape
-            else -> RectangleShape // Default to rectangle for now
-        }
+  val shape: Shape =
+    when (data.shapeType) {
+      ShapeType.RECTANGLE -> RectangleShape
+      ShapeType.CIRCLE -> CircleShape
+      else -> RectangleShape // Default to rectangle for now
+    }
 
-    return this.background(color, shape)
+  return this.background(color, shape)
 }

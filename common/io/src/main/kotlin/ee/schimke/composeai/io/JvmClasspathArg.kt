@@ -10,9 +10,9 @@ import java.nio.charset.Charset
  * a non-UTF-8 locale, leaving the spawned daemon unable to resolve its classes. Fall back to the
  * JVM default only if the property is somehow unset/unknown.
  */
-private val ARGFILE_CHARSET: Charset =
-  runCatching { Charset.forName(System.getProperty("sun.jnu.encoding")) }
-    .getOrDefault(Charset.defaultCharset())
+private val ARGFILE_CHARSET: Charset = runCatching {
+  Charset.forName(System.getProperty("sun.jnu.encoding"))
+}.getOrDefault(Charset.defaultCharset())
 
 /**
  * Build the `-classpath` portion of a `java …` command in a form that cannot overflow the OS

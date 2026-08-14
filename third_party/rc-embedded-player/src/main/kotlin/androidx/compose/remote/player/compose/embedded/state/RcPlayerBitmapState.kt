@@ -42,14 +42,14 @@ import androidx.compose.runtime.remember
 
 @Composable
 internal fun rememberRemoteBitmapAsState(id: Int): State<Bitmap?> {
-    val document = LocalCoreDocument.current
-    val remoteContext = LocalRemoteContext.current
-    // Lazy decode: an Image component composing here is the "drawn" trigger. Decode once in a keyed
-    // remember (the snapshot write happens here, outside the derived read), then track the
-    // snapshot-backed data store so a later host swap of the bitmap recomposes — no listener
-    // bridge.
-    remember(document, id) { resolveBitmap(remoteContext, id) }
-    return remember(document, id) {
-        derivedStateOf { remoteContext.mRemoteComposeState.getFromId(id) as? Bitmap }
-    }
+  val document = LocalCoreDocument.current
+  val remoteContext = LocalRemoteContext.current
+  // Lazy decode: an Image component composing here is the "drawn" trigger. Decode once in a keyed
+  // remember (the snapshot write happens here, outside the derived read), then track the
+  // snapshot-backed data store so a later host swap of the bitmap recomposes — no listener
+  // bridge.
+  remember(document, id) { resolveBitmap(remoteContext, id) }
+  return remember(document, id) {
+    derivedStateOf { remoteContext.mRemoteComposeState.getFromId(id) as? Bitmap }
+  }
 }

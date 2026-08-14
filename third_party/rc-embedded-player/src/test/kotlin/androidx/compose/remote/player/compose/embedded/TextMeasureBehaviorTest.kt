@@ -21,42 +21,42 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class TextMeasureBehaviorTest {
-    private val measured =
-        TextMeasureBounds(
-            left = 3f,
-            top = -37f,
-            right = 537f,
-            bottom = 11f,
-            fontTop = -45f,
-            fontBottom = 12f,
-            advance = 539f,
-        )
+  private val measured =
+    TextMeasureBounds(
+      left = 3f,
+      top = -37f,
+      right = 537f,
+      bottom = 11f,
+      fontTop = -45f,
+      fontBottom = 12f,
+      advance = 539f,
+    )
 
-    @Test
-    fun selectorsReadTheAndroidXInkRectangle() {
-        assertEquals(
-            listOf(534f, 48f, 3f, 537f, -37f, 11f),
-            (0..5).map { selectTextMeasureResult(it, measured) },
-        )
-    }
+  @Test
+  fun selectorsReadTheAndroidXInkRectangle() {
+    assertEquals(
+      listOf(534f, 48f, 3f, 537f, -37f, 11f),
+      (0..5).map { selectTextMeasureResult(it, measured) },
+    )
+  }
 
-    @Test
-    fun flagsApplyInAndroidPaintContextOrder() {
-        val monospace = 0x100
-        val fontHeight = 0x200
-        val advance = 0x400
+  @Test
+  fun flagsApplyInAndroidPaintContextOrder() {
+    val monospace = 0x100
+    val fontHeight = 0x200
+    val advance = 0x400
 
-        assertEquals(3f, selectTextMeasureResult(monospace or 2, measured))
-        assertEquals(536f, selectTextMeasureResult(monospace or 3, measured))
-        assertEquals(-45f, selectTextMeasureResult(fontHeight or 4, measured))
-        assertEquals(12f, selectTextMeasureResult(fontHeight or 5, measured))
-        assertEquals(539f, selectTextMeasureResult(advance or 0, measured))
-        assertEquals(57f, selectTextMeasureResult(advance or fontHeight or 1, measured))
-    }
+    assertEquals(3f, selectTextMeasureResult(monospace or 2, measured))
+    assertEquals(536f, selectTextMeasureResult(monospace or 3, measured))
+    assertEquals(-45f, selectTextMeasureResult(fontHeight or 4, measured))
+    assertEquals(12f, selectTextMeasureResult(fontHeight or 5, measured))
+    assertEquals(539f, selectTextMeasureResult(advance or 0, measured))
+    assertEquals(57f, selectTextMeasureResult(advance or fontHeight or 1, measured))
+  }
 
-    @Test
-    fun unknownSelectorLeavesTheDestinationUntouched() {
-        assertNull(selectTextMeasureResult(6, measured))
-        assertNull(selectTextMeasureResult(255, measured))
-    }
+  @Test
+  fun unknownSelectorLeavesTheDestinationUntouched() {
+    assertNull(selectTextMeasureResult(6, measured))
+    assertNull(selectTextMeasureResult(255, measured))
+  }
 }

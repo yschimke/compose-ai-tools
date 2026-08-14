@@ -229,11 +229,11 @@ class ServeCatalogAdmin(
     val file = configFile ?: return "not persisted: no catalogs config file is configured"
     return synchronized(configLock) {
       runCatching {
-          val updated = mutate(file.load())
-          file.save(updated)
-          groups = updated.groups
-          null
-        }
+        val updated = mutate(file.load())
+        file.save(updated)
+        groups = updated.groups
+        null
+      }
         .getOrElse { e ->
           onLog("serve: could not update ${file.displayPath}: ${e.message}")
           "not persisted: ${e.message ?: "write failed"}"

@@ -178,7 +178,8 @@ object PlaygroundSandboxProbe {
     return Launch(
       exitCode = if (finished) process.exitValue() else -1,
       stdout = out.toString(),
-      stderr = if (finished) err.toString() else "probe timed out after ${DEFAULT_TIMEOUT_SECONDS}s",
+      stderr =
+        if (finished) err.toString() else "probe timed out after ${DEFAULT_TIMEOUT_SECONDS}s",
     )
   }
 
@@ -247,18 +248,18 @@ object PlaygroundSandboxProbeMain {
       .getOrDefault(false)
   }
 
-  private fun canReadCanary(canary: File): Boolean =
-    runCatching { canary.readText().isNotEmpty() }.getOrDefault(false)
+  private fun canReadCanary(canary: File): Boolean = runCatching {
+    canary.readText().isNotEmpty()
+  }.getOrDefault(false)
 
-  private fun workDirWritable(workDir: File): Boolean =
-    runCatching {
-        val probeFile = File(workDir, "writable.probe")
-        probeFile.writeText("ok")
-        val readBack = probeFile.readText() == "ok"
-        probeFile.delete()
-        readBack
-      }
-      .getOrDefault(false)
+  private fun workDirWritable(workDir: File): Boolean = runCatching {
+    val probeFile = File(workDir, "writable.probe")
+    probeFile.writeText("ok")
+    val readBack = probeFile.readText() == "ok"
+    probeFile.delete()
+    readBack
+  }
+    .getOrDefault(false)
 
   private val EGRESS_TARGETS = listOf("1.1.1.1" to 443, "8.8.8.8" to 53, "93.184.216.34" to 80)
 

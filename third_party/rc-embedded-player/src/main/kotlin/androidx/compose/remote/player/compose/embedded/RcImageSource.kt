@@ -23,8 +23,8 @@ package androidx.compose.remote.player.compose.embedded
  * [GraphContext] is the case this exists for. It holds a loader purely as a slot — `RcPlayer` sets
  * one, the canvas draw path reads it back — and never calls it. But `RcImageLoader.loadImage`
  * returns a `State<Drawable?>`, so naming that type pinned the evaluator, and the entire
- * state/expression path reaching it through `LocalGraphContext`, to Android over a field it does not
- * use.
+ * state/expression path reaching it through `LocalGraphContext`, to Android over a field it does
+ * not use.
  *
  * The narrowing is deliberate: this interface has no members. Anything that actually *loads* an
  * image casts back to [RcImageLoader], which is honest — decoding an image is genuinely

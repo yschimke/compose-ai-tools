@@ -496,12 +496,11 @@ private object TokenObjectAccess {
       method.returnType != java.lang.Void.TYPE
   }
 
-  private fun Method.invokeOrNull(receiver: Any): Any? =
-    runCatching {
-        isAccessible = true
-        invoke(receiver)
-      }
-      .getOrNull()
+  private fun Method.invokeOrNull(receiver: Any): Any? = runCatching {
+    isAccessible = true
+    invoke(receiver)
+  }
+    .getOrNull()
 
   private fun Method.propertyName(): String =
     name.removePrefix("get").substringBefore("-").replaceFirstChar { it.lowercase() }

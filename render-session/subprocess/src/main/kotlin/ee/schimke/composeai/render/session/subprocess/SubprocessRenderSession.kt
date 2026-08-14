@@ -67,8 +67,9 @@ object SubprocessRenderSessions : RenderSessionFactory {
         )
     }
     val workspaceRoot = config.workspaceRoot
-    val canonicalRoot =
-      runCatching { workspaceRoot.canonicalFile }.getOrDefault(workspaceRoot.absoluteFile)
+    val canonicalRoot = runCatching {
+      workspaceRoot.canonicalFile
+    }.getOrDefault(workspaceRoot.absoluteFile)
     return spawnAndInitialize(
       descriptor = effectiveDescriptor,
       workspaceName = config.workspaceName,
@@ -132,8 +133,9 @@ object SubprocessRenderSessions : RenderSessionFactory {
     factory: DaemonClientFactory = SubprocessDaemonClientFactory(),
   ): RenderSession {
     require(daemonClasspath.isNotEmpty()) { "daemonClasspath must not be empty" }
-    val canonicalRoot =
-      runCatching { workspaceRoot.canonicalFile }.getOrDefault(workspaceRoot.absoluteFile)
+    val canonicalRoot = runCatching {
+      workspaceRoot.canonicalFile
+    }.getOrDefault(workspaceRoot.absoluteFile)
     val descriptor =
       DaemonLaunchDescriptor(
         schemaVersion = DAEMON_DESCRIPTOR_SCHEMA_VERSION,

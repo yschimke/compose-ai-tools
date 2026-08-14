@@ -216,8 +216,9 @@ private constructor(
               (name.startsWith("get") && name.endsWith("Clocks\$ui_tooling"))
           }
           .onEach { it.isAccessible = true }
-      val getTrackedUnsupported =
-        runCatching { clockClass.getMethod("getTrackedUnsupportedAnimations") }.getOrNull()
+      val getTrackedUnsupported = runCatching {
+        clockClass.getMethod("getTrackedUnsupportedAnimations")
+      }.getOrNull()
 
       val labelMethod = animatedPropertyClass.getMethod("getLabel")
       val valueMethod = animatedPropertyClass.getMethod("getValue")
@@ -267,21 +268,22 @@ private constructor(
       )
     }
 
-    private fun findSetClockTimeMethod(clockClass: Class<*>): Method =
-      runCatching { clockClass.getMethod("setClockTime", java.lang.Long.TYPE) }
-        .getOrElse {
-          clockClass.declaredMethods
-            .firstOrNull {
-              (it.name == "setClockTime" || it.name == "setAnimationsTime") &&
-                it.parameterTypes.size == 1 &&
-                it.parameterTypes[0] == java.lang.Long.TYPE
-            }
-            ?.also { it.isAccessible = true }
-            ?: error(
-              "PreviewAnimationClock has no setClockTime(Long) — Compose UI Tooling " +
-                "version is incompatible with @AnimatedPreview(showCurves=true)."
-            )
-        }
+    private fun findSetClockTimeMethod(clockClass: Class<*>): Method = runCatching {
+      clockClass.getMethod("setClockTime", java.lang.Long.TYPE)
+    }
+      .getOrElse {
+        clockClass.declaredMethods
+          .firstOrNull {
+            (it.name == "setClockTime" || it.name == "setAnimationsTime") &&
+              it.parameterTypes.size == 1 &&
+              it.parameterTypes[0] == java.lang.Long.TYPE
+          }
+          ?.also { it.isAccessible = true }
+          ?: error(
+            "PreviewAnimationClock has no setClockTime(Long) — Compose UI Tooling " +
+              "version is incompatible with @AnimatedPreview(showCurves=true)."
+          )
+      }
 
     private fun findGetAnimatedPropertiesMethod(clockClass: Class<*>): Method =
       clockClass.declaredMethods
@@ -421,19 +423,18 @@ internal fun coerceToDouble(value: Any?): Double? =
         "Size" -> sizeArea(value, cls)
         "IntOffset",
         "Offset" -> offsetMagnitude(value, cls)
-        else ->
-          runCatching {
-              val v = cls.getMethod("getValue").invoke(value)
-              (v as? Number)?.toDouble()
-            }
+        else -> runCatching {
+            val v = cls.getMethod("getValue").invoke(value)
+            (v as? Number)?.toDouble()
+          }
             .getOrNull()
             ?: runCatching {
-                // Last resort: a stable scalar identity for the value.
-                // Used for Color (luminance would be nicer, but
-                // packedValue.toDouble() is enough to keep the curve
-                // moving when it actually moves).
-                (cls.getMethod("getPackedValue").invoke(value) as? Long)?.toDouble()
-              }
+              // Last resort: a stable scalar identity for the value.
+              // Used for Color (luminance would be nicer, but
+              // packedValue.toDouble() is enough to keep the curve
+              // moving when it actually moves).
+              (cls.getMethod("getPackedValue").invoke(value) as? Long)?.toDouble()
+            }
               .getOrNull()
       }
     }
@@ -453,12 +454,12 @@ private fun offsetMagnitude(value: Any, cls: Class<*>): Double? {
   return kotlin.math.sqrt(x * x + y * y)
 }
 
-private fun readLongMethod(receiver: Any, cls: Class<*>, name: String): Long? =
-  runCatching { (cls.getMethod(name).invoke(receiver) as? Long) }.getOrNull()
+private fun readLongMethod(receiver: Any, cls: Class<*>, name: String): Long? = runCatching {
+  (cls.getMethod(name).invoke(receiver) as? Long)
+}.getOrNull()
 
-private fun invokeStaticImpl(cls: Class<*>, name: String, packed: Long): Double? =
-  runCatching {
-      val m = cls.getDeclaredMethod(name, java.lang.Long.TYPE)
-      (m.invoke(null, packed) as? Number)?.toDouble()
-    }
-    .getOrNull()
+private fun invokeStaticImpl(cls: Class<*>, name: String, packed: Long): Double? = runCatching {
+  val m = cls.getDeclaredMethod(name, java.lang.Long.TYPE)
+  (m.invoke(null, packed) as? Number)?.toDouble()
+}
+  .getOrNull()

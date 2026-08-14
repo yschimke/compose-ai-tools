@@ -84,12 +84,13 @@ class GradleRevisionBuilder(
       // resolution, a held lock) would otherwise block here forever and the waitFor timeout would
       // never be reached — hanging the request while it holds the registry build lock.
       // destroyForcibly() on timeout closes the stream, ending this thread.
-      val drain =
-        Thread { process.inputStream.bufferedReader().forEachLine { onLog("[gradle] $it") } }
-          .apply {
-            isDaemon = true
-            start()
-          }
+      val drain = Thread {
+        process.inputStream.bufferedReader().forEachLine { onLog("[gradle] $it") }
+      }
+        .apply {
+          isDaemon = true
+          start()
+        }
       if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
         process.destroyForcibly()
         onLog("serve: gradle build timed out after ${timeoutSeconds}s")

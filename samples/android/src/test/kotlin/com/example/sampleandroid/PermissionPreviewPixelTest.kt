@@ -17,9 +17,9 @@ import org.junit.Test
  * `PERMISSION_GRANTED` and the screen takes its viewfinder branch.
  *
  * Reads the files produced by `:samples:android:composePreviewRenderAll` (wired into this module's
- * `test` task via `composePreview { renderBeforeUnitTests = true }`), mirroring
- * `:samples:wear`'s `GestureHintPreviewPixelTest` — the same "two renders of one screen must
- * differ" assertion for the same class of environment override.
+ * `test` task via `composePreview { renderBeforeUnitTests = true }`), mirroring `:samples:wear`'s
+ * `GestureHintPreviewPixelTest` — the same "two renders of one screen must differ" assertion for
+ * the same class of environment override.
  *
  * The renders are located by function-name prefix rather than by a hardcoded filename: the exact
  * stem is owned by discovery's filename normalisation (`docs/RENDER_FILENAMES.md`), which folds the

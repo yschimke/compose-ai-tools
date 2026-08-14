@@ -107,21 +107,19 @@ private fun looksLikeGoogleFont(font: Any): Boolean {
 }
 
 /** A non-blank `String` from [font]'s declared field [name], or null. */
-private fun declaredString(font: Any, name: String): String? =
-  runCatching {
-      font.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(font) as? String
-    }
-    .getOrNull()
-    ?.takeIf { it.isNotBlank() }
+private fun declaredString(font: Any, name: String): String? = runCatching {
+  font.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(font) as? String
+}
+  .getOrNull()
+  ?.takeIf { it.isNotBlank() }
 
 /** A non-blank `String` from [font]'s zero-arg method [name], or null. */
-private fun reflectedString(font: Any, name: String): String? =
-  runCatching {
-      font.javaClass.methods.firstOrNull { it.name == name && it.parameterCount == 0 }?.invoke(font)
-        as? String
-    }
-    .getOrNull()
-    ?.takeIf { it.isNotBlank() }
+private fun reflectedString(font: Any, name: String): String? = runCatching {
+  font.javaClass.methods.firstOrNull { it.name == name && it.parameterCount == 0 }?.invoke(font)
+    as? String
+}
+  .getOrNull()
+  ?.takeIf { it.isNotBlank() }
 
 private val GOOGLE_FONT_IDENTITY = Regex("""GoogleFont\("([^"]+)"""")
 
@@ -250,9 +248,9 @@ object ComposeSemanticsDataProducer {
       } catch (_: Throwable) {
         return null
       }
-    val measurePolicy =
-      runCatching { layoutInfo.javaClass.getMethod("getMeasurePolicy").invoke(layoutInfo) }
-        .getOrNull()
+    val measurePolicy = runCatching {
+      layoutInfo.javaClass.getMethod("getMeasurePolicy").invoke(layoutInfo)
+    }.getOrNull()
     return ModifierTokenResolver.resolve(
       modifierInfo = modifiers,
       measurePolicy = measurePolicy,
@@ -523,16 +521,15 @@ object ComposeSemanticsDataProducer {
     if (spans.isEmpty() || length <= 0) {
       return listOf(EffectiveStyleRange(0, length, paragraph))
     }
-    val boundaries =
-      buildSet {
-          add(0)
-          add(length)
-          spans.forEach {
-            add(it.start.coerceIn(0, length))
-            add(it.end.coerceIn(0, length))
-          }
-        }
-        .sorted()
+    val boundaries = buildSet {
+      add(0)
+      add(length)
+      spans.forEach {
+        add(it.start.coerceIn(0, length))
+        add(it.end.coerceIn(0, length))
+      }
+    }
+      .sorted()
     val ranges =
       boundaries.zipWithNext().mapNotNull { (start, end) ->
         if (start >= end) return@mapNotNull null
@@ -622,10 +619,10 @@ object ComposeSemanticsDataProducer {
     val font = matchingFont(fontList, weight, style) ?: return null
     val settings =
       runCatching {
-          font.javaClass.methods
-            .firstOrNull { it.name == "getVariationSettings" && it.parameterCount == 0 }
-            ?.invoke(font) as? FontVariation.Settings
-        }
+        font.javaClass.methods
+          .firstOrNull { it.name == "getVariationSettings" && it.parameterCount == 0 }
+          ?.invoke(font) as? FontVariation.Settings
+      }
         .getOrNull() ?: return null
     val resolveDensity = Density(density)
     return settings.settings
@@ -667,10 +664,10 @@ object ComposeSemanticsDataProducer {
 
   private fun Font.isItalic(): Boolean =
     runCatching {
-        javaClass.methods
-          .firstOrNull { it.name.startsWith("getStyle") && it.parameterCount == 0 }
-          ?.invoke(this) as? Int
-      }
+      javaClass.methods
+        .firstOrNull { it.name.startsWith("getStyle") && it.parameterCount == 0 }
+        ?.invoke(this) as? Int
+    }
       .getOrNull() == 1
 
   /**
@@ -681,20 +678,20 @@ object ComposeSemanticsDataProducer {
   private fun fontIdentity(font: Font): String? =
     googleFontFamilyName(font)
       ?: runCatching {
-          font.javaClass.methods
-            .firstOrNull { it.name == "getIdentity" && it.parameterCount == 0 }
-            ?.invoke(font) as? String
-        }
+        font.javaClass.methods
+          .firstOrNull { it.name == "getIdentity" && it.parameterCount == 0 }
+          ?.invoke(font) as? String
+      }
         .getOrNull()
         ?.takeIf { it.isNotBlank() }
         // A vendored desktop GoogleFont face carries the `Font(GoogleFont("X", …))` label as its
         // identity; surface the clean display name so the figma-svg names the family, not the blob.
         ?.let { googleFontNameFromIdentity(it) ?: it }
       ?: runCatching {
-          font.javaClass.methods
-            .firstOrNull { it.name == "getResId" && it.parameterCount == 0 }
-            ?.invoke(font) as? Int
-        }
+        font.javaClass.methods
+          .firstOrNull { it.name == "getResId" && it.parameterCount == 0 }
+          ?.invoke(font) as? Int
+      }
         .getOrNull()
         ?.let { "res/font/$it" }
 
@@ -1415,8 +1412,8 @@ internal object ComposeLayoutInspector {
         (name == "background" || modifier.javaClass.simpleName == "BackgroundElement")
     ) {
       runCatching {
-          modifier.javaClass.getDeclaredField("brush").apply { isAccessible = true }.get(modifier)
-        }
+        modifier.javaClass.getDeclaredField("brush").apply { isAccessible = true }.get(modifier)
+      }
         .getOrNull()
         ?.let { properties["brush"] = it.wireValue() }
     }
@@ -1438,11 +1435,11 @@ internal object ComposeLayoutInspector {
       // Compatibility fallback for Compose versions that do not expose `isClipping` on the
       // coordinator: retain the element-field path used for a static graphics-layer clip.
       runCatching {
-          modifier.javaClass
-            .getDeclaredField("clip")
-            .apply { isAccessible = true }
-            .getBoolean(modifier)
-        }
+        modifier.javaClass
+          .getDeclaredField("clip")
+          .apply { isAccessible = true }
+          .getBoolean(modifier)
+      }
         .getOrNull()
         ?.let { if (it) properties["clip"] = "true" }
     }
@@ -1459,11 +1456,10 @@ internal object ComposeLayoutInspector {
     )
   }
 
-  private fun reflectedDeclaredField(instance: Any, name: String): Any? =
-    runCatching {
-        instance.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(instance)
-      }
-      .getOrNull()
+  private fun reflectedDeclaredField(instance: Any, name: String): Any? = runCatching {
+    instance.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(instance)
+  }
+    .getOrNull()
 
   private fun TextUnit.toLayoutTextUnit(): String? =
     when (type) {
@@ -1495,24 +1491,24 @@ internal object ComposeLayoutInspector {
   private fun nonlinearSpToDp(sp: Float, fontScale: Float): Float? {
     if (fontScale == 1f || androidSdkInt()?.let { it < 34 } != false) return null
     return runCatching {
-        val factoryClass =
-          Class.forName("androidx.compose.ui.unit.fontscaling.FontScaleConverterFactory")
-        val factory = factoryClass.getField("INSTANCE").get(null)
-        val converter =
-          factoryClass
-            .getMethod("forScale", Float::class.javaPrimitiveType)
-            .invoke(factory, fontScale) ?: return null
-        (converter.javaClass
-            .getMethod("convertSpToDp", Float::class.javaPrimitiveType)
-            .invoke(converter, sp) as Number)
-          .toFloat()
-      }
+      val factoryClass =
+        Class.forName("androidx.compose.ui.unit.fontscaling.FontScaleConverterFactory")
+      val factory = factoryClass.getField("INSTANCE").get(null)
+      val converter =
+        factoryClass
+          .getMethod("forScale", Float::class.javaPrimitiveType)
+          .invoke(factory, fontScale) ?: return null
+      (converter.javaClass
+          .getMethod("convertSpToDp", Float::class.javaPrimitiveType)
+          .invoke(converter, sp) as Number)
+        .toFloat()
+    }
       .getOrNull()
   }
 
-  private fun androidSdkInt(): Int? =
-    runCatching { Class.forName("android.os.Build\$VERSION").getField("SDK_INT").getInt(null) }
-      .getOrNull()
+  private fun androidSdkInt(): Int? = runCatching {
+    Class.forName("android.os.Build\$VERSION").getField("SDK_INT").getInt(null)
+  }.getOrNull()
 
   private fun roundLayoutTextPx(value: Double): Double = (value * 100.0).roundToInt() / 100.0
 
@@ -1625,9 +1621,9 @@ internal object ComposeLayoutInspector {
       if (!o.javaClass.name.startsWith("androidx")) return
       o.javaClass.declaredFields.forEach { f ->
         runCatching {
-            f.isAccessible = true
-            f.get(o)
-          }
+          f.isAccessible = true
+          f.get(o)
+        }
           .getOrNull()
           ?.let { v -> scan(v, depth + 1, out, seen) }
       }
@@ -1653,11 +1649,10 @@ internal object ComposeLayoutInspector {
       val center = call(info, "getCenterOffset-F1C5BW0") as? Long ?: return null
       val cx = Float.fromBits((center shr 32).toInt()).toDouble()
       val cy = Float.fromBits((center and 0xFFFFFFFFL).toInt()).toDouble()
-      val delegate =
-        runCatching {
-            child.javaClass.getDeclaredField("delegate").apply { isAccessible = true }.get(child)
-          }
-          .getOrNull()
+      val delegate = runCatching {
+        child.javaClass.getDeclaredField("delegate").apply { isAccessible = true }.get(child)
+      }
+        .getOrNull()
       val fontSize = delegate?.let { floatField(it, "fontSizePx") } ?: 0.0
       val clockwise = (call(child, "getClockwise") as? Boolean) ?: true
       val paint = delegate?.let { runCatching { field(it, "paint") }.getOrNull() }
@@ -1683,16 +1678,18 @@ internal object ComposeLayoutInspector {
       )
     }
 
-    private fun call(o: Any, method: String): Any? =
-      runCatching { o.javaClass.getMethod(method).invoke(o) }.getOrNull()
+    private fun call(o: Any, method: String): Any? = runCatching {
+      o.javaClass.getMethod(method).invoke(o)
+    }.getOrNull()
 
     private fun floatCall(o: Any, method: String): Float? = call(o, method) as? Float
 
     private fun field(o: Any, name: String): Any? =
       o.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(o)
 
-    private fun floatField(o: Any, name: String): Double? =
-      runCatching { (field(o, name) as? Float)?.toDouble() }.getOrNull()
+    private fun floatField(o: Any, name: String): Double? = runCatching {
+      (field(o, name) as? Float)?.toDouble()
+    }.getOrNull()
   }
 
   /**
@@ -1719,8 +1716,9 @@ internal object ComposeLayoutInspector {
    * fold together.
    */
   private object VectorGraphicExtractor {
-    fun extract(node: LayoutNodeFacade): LayoutInspectorVectorGraphic? =
-      runCatching { extractOrNull(node) }.getOrNull()
+    fun extract(node: LayoutNodeFacade): LayoutInspectorVectorGraphic? = runCatching {
+      extractOrNull(node)
+    }.getOrNull()
 
     private fun extractOrNull(node: LayoutNodeFacade): LayoutInspectorVectorGraphic? {
       // The `VectorPainter` an `Icon`/`Image` paints with rides in the node's draw modifier — as a
@@ -1760,8 +1758,9 @@ internal object ComposeLayoutInspector {
       // icon generator bakes `"Filled.Menu"` & co. in there — the only signal that separates a
       // stock Material icon from an app's own artwork (see `MaterialIconRef`). Best-effort like
       // everything else here: an unreadable name just leaves the graphic unannotated.
-      val name =
-        runCatching { field(vector, "name") as? String }.getOrNull()?.takeIf { it.isNotBlank() }
+      val name = runCatching {
+        field(vector, "name") as? String
+      }.getOrNull()?.takeIf { it.isNotBlank() }
       return LayoutInspectorVectorGraphic(vw, vh, painted, vectorName = name)
     }
 
@@ -1859,12 +1858,11 @@ internal object ComposeLayoutInspector {
       var c: Class<*>? = o.javaClass
       while (c != null) {
         for (f in c.declaredFields) {
-          val v =
-            runCatching {
-                f.isAccessible = true
-                f.get(o)
-              }
-              .getOrNull()
+          val v = runCatching {
+            f.isAccessible = true
+            f.get(o)
+          }
+            .getOrNull()
           findVectorPainter(v, paintModifier, depth + 1, seen)?.let {
             return it
           }
@@ -2069,11 +2067,13 @@ internal object ComposeLayoutInspector {
 
     private fun field(o: Any, name: String): Any? = findField(o.javaClass, name)?.get(o)
 
-    private fun floatField(o: Any, name: String): Double? =
-      runCatching { (field(o, name) as? Float)?.toDouble() }.getOrNull()
+    private fun floatField(o: Any, name: String): Double? = runCatching {
+      (field(o, name) as? Float)?.toDouble()
+    }.getOrNull()
 
-    private fun longField(o: Any, name: String): Long? =
-      runCatching { findField(o.javaClass, name)?.getLong(o) }.getOrNull()
+    private fun longField(o: Any, name: String): Long? = runCatching {
+      findField(o.javaClass, name)?.getLong(o)
+    }.getOrNull()
 
     private fun findField(cls: Class<*>, name: String): java.lang.reflect.Field? {
       var c: Class<*>? = cls
@@ -2258,12 +2258,12 @@ internal object ComposeLayoutInspector {
           .firstOrNull() ?: return false
       val drawType =
         runCatching {
-            Class.forName(
-              "androidx.compose.ui.node.DrawModifierNode",
-              false,
-              node.javaClass.classLoader,
-            )
-          }
+          Class.forName(
+            "androidx.compose.ui.node.DrawModifierNode",
+            false,
+            node.javaClass.classLoader,
+          )
+        }
           .getOrNull() ?: return false
       val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
 
@@ -2358,24 +2358,22 @@ internal object ComposeLayoutInspector {
         else -> call(value, "unbox-impl") as? Long
       }
 
-    private fun constraintsValue(name: String, raw: Long): Int? =
-      runCatching {
-          Class.forName("androidx.compose.ui.unit.Constraints")
-            .getMethod(name, java.lang.Long.TYPE)
-            .invoke(null, raw) as Int
-        }
-        .getOrNull()
+    private fun constraintsValue(name: String, raw: Long): Int? = runCatching {
+      Class.forName("androidx.compose.ui.unit.Constraints")
+        .getMethod(name, java.lang.Long.TYPE)
+        .invoke(null, raw) as Int
+    }
+      .getOrNull()
 
     private fun constraintsInfinity(): Int =
       Class.forName("androidx.compose.ui.unit.Constraints").getField("Infinity").getInt(null)
 
-    private fun call(receiver: Any, name: String): Any? =
-      runCatching {
-          val method = receiver.javaClass.findZeroArgMethod(name) ?: return null
-          method.isAccessible = true
-          method.invoke(receiver)
-        }
-        .getOrNull()
+    private fun call(receiver: Any, name: String): Any? = runCatching {
+      val method = receiver.javaClass.findZeroArgMethod(name) ?: return null
+      method.isAccessible = true
+      method.invoke(receiver)
+    }
+      .getOrNull()
 
     private fun Class<*>.findZeroArgMethod(name: String): Method? {
       var current: Class<*>? = this

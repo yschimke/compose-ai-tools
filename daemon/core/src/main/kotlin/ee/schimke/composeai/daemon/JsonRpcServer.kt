@@ -2282,13 +2282,12 @@ class JsonRpcServer(
   /**
    * Decodes a [PreviewOverrides] from a fetch's `params` bag ([DataFetchParams.PARAM_OVERRIDES]).
    */
-  private fun decodeFetchOverrides(params: JsonElement?): PreviewOverrides? =
-    runCatching {
-        (params as? JsonObject)?.get(DataFetchParams.PARAM_OVERRIDES)?.let {
-          json.decodeFromJsonElement(PreviewOverrides.serializer(), it)
-        }
-      }
-      .getOrNull()
+  private fun decodeFetchOverrides(params: JsonElement?): PreviewOverrides? = runCatching {
+    (params as? JsonObject)?.get(DataFetchParams.PARAM_OVERRIDES)?.let {
+      json.decodeFromJsonElement(PreviewOverrides.serializer(), it)
+    }
+  }
+    .getOrNull()
 
   /**
    * Returns [params] without the [DataFetchParams.PARAM_FORCE_RERENDER] key (other keys intact).

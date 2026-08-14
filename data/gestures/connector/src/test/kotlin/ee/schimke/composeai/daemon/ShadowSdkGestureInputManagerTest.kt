@@ -20,12 +20,12 @@ import org.robolectric.annotation.Implements
  * mapping it relies on.
  *
  * Like [ShadowAmbientLifecycleObserver], the shadow must declare `@Implements(className = …)` (the
- * FQN string form) rather than the class-literal form: the target `SdkGestureInputManagerImpl` is an
- * internal wear-compose-material3 type, and the class-literal form stores a deferred `Class<?>` in
- * the annotation proxy whose resolution throws `TypeNotPresentException` on any classpath lacking the
- * gesture AAR — deep inside Robolectric's sandbox bootstrap, before [SandboxHoldingRunner]'s gate can
- * intercept. Touching `value()` here makes a regression to the class-literal form fail loudly in this
- * test instead of mid-render.
+ * FQN string form) rather than the class-literal form: the target `SdkGestureInputManagerImpl` is
+ * an internal wear-compose-material3 type, and the class-literal form stores a deferred `Class<?>`
+ * in the annotation proxy whose resolution throws `TypeNotPresentException` on any classpath
+ * lacking the gesture AAR — deep inside Robolectric's sandbox bootstrap, before
+ * [SandboxHoldingRunner]'s gate can intercept. Touching `value()` here makes a regression to the
+ * class-literal form fail loudly in this test instead of mid-render.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], shadows = [ShadowSdkGestureInputManager::class])
@@ -38,8 +38,7 @@ class ShadowSdkGestureInputManagerTest {
 
   @Test
   fun `shadow targets SdkGestureInputManagerImpl by className`() {
-    val annotation =
-      ShadowSdkGestureInputManager::class.java.getAnnotation(Implements::class.java)
+    val annotation = ShadowSdkGestureInputManager::class.java.getAnnotation(Implements::class.java)
     assertNotNull("ShadowSdkGestureInputManager must carry @Implements", annotation)
     assertEquals(
       "androidx.wear.compose.material3.onehandedgesture.SdkGestureInputManagerImpl",
@@ -51,7 +50,8 @@ class ShadowSdkGestureInputManagerTest {
 
   @Test
   fun `sdk gesture-action constants match the library mapping`() {
-    // Mirrors the library's internal `toSdkGestureAction`: primary → 1, dismiss → 2. If wear-compose
+    // Mirrors the library's internal `toSdkGestureAction`: primary → 1, dismiss → 2. If
+    // wear-compose
     // ever renumbers these, the shadow's detection wire names go stale — pin them here.
     assertEquals(1, GestureStateController.SDK_ACTION_PRIMARY)
     assertEquals(2, GestureStateController.SDK_ACTION_DISMISS)
@@ -79,7 +79,9 @@ class ShadowSdkGestureInputManagerTest {
       view = view,
       sdkGestureAction = GestureStateController.SDK_ACTION_PRIMARY,
       enabledInAmbient = false,
-    ) { dispatchedAction = it }
+    ) {
+      dispatchedAction = it
+    }
 
     assertEquals(listOf("primary"), GestureStateController.snapshot().detected)
     assertEquals(1, GestureStateController.invoke(GestureKindOverride.PRIMARY))
@@ -94,7 +96,8 @@ class ShadowSdkGestureInputManagerTest {
     val bridgeClass =
       Class.forName("androidx.wear.compose.material3.onehandedgesture.SdkGestureInputManagerImpl")
     val bridge = bridgeClass.getDeclaredConstructor().newInstance()
-    val isAvailable = bridgeClass.getDeclaredMethod("isAvailable", android.content.Context::class.java)
+    val isAvailable =
+      bridgeClass.getDeclaredMethod("isAvailable", android.content.Context::class.java)
     val context = RuntimeEnvironment.getApplication()
 
     assertEquals(false, isAvailable.invoke(bridge, context))

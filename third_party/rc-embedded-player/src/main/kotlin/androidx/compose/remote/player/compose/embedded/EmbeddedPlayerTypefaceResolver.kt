@@ -34,135 +34,135 @@ import androidx.core.provider.FontsContractCompat
  * "google:" directly without delegation. Supports [FontRequest] API for "google:" fonts.
  */
 internal class EmbeddedPlayerTypefaceResolver(private val remoteContext: RemoteContext) :
-    TypefaceResolver {
+  TypefaceResolver {
 
-    private val cache = mutableMapOf<String, FontInstance>()
+  private val cache = mutableMapOf<String, FontInstance>()
 
-    override fun resolve(
-        fontType: Int,
-        weight: Int,
-        italic: Boolean,
-        fallbackTypeface: Typeface?,
-        fallbackWeight: Int,
-        fallbackItalic: Boolean,
-    ): FontInstance {
-        val baseTypeface =
-            when (fontType) {
-                1 -> Typeface.SANS_SERIF
-                2 -> Typeface.SERIF
-                3 -> Typeface.MONOSPACE
-                else -> Typeface.DEFAULT
-            }
-        val typeface = createTypeface(baseTypeface, weight, italic)
-        return SimpleFontInstance(typeface)
-    }
+  override fun resolve(
+    fontType: Int,
+    weight: Int,
+    italic: Boolean,
+    fallbackTypeface: Typeface?,
+    fallbackWeight: Int,
+    fallbackItalic: Boolean,
+  ): FontInstance {
+    val baseTypeface =
+      when (fontType) {
+        1 -> Typeface.SANS_SERIF
+        2 -> Typeface.SERIF
+        3 -> Typeface.MONOSPACE
+        else -> Typeface.DEFAULT
+      }
+    val typeface = createTypeface(baseTypeface, weight, italic)
+    return SimpleFontInstance(typeface)
+  }
 
-    override fun resolve(
-        fontName: String,
-        weight: Int,
-        italic: Boolean,
-        fallbackTypeface: Typeface?,
-        fallbackWeight: Int,
-        fallbackItalic: Boolean,
-    ): FontInstance {
-        if (fontName.startsWith("google:")) {
-            val key = "$fontName:$weight:$italic"
-            cache[key]?.let {
-                return it
-            }
+  override fun resolve(
+    fontName: String,
+    weight: Int,
+    italic: Boolean,
+    fallbackTypeface: Typeface?,
+    fallbackWeight: Int,
+    fallbackItalic: Boolean,
+  ): FontInstance {
+    if (fontName.startsWith("google:")) {
+      val key = "$fontName:$weight:$italic"
+      cache[key]?.let {
+        return it
+      }
 
-            val androidContext = (remoteContext as? AndroidRemoteContext)?.androidContext
-            if (androidContext != null) {
-                val realFontName = fontName.substring("google:".length)
-                val fallback = fallbackTypeface ?: Typeface.DEFAULT
-                val fontInstance = AsyncFontInstance(fallback)
-                cache[key] = fontInstance
+      val androidContext = (remoteContext as? AndroidRemoteContext)?.androidContext
+      if (androidContext != null) {
+        val realFontName = fontName.substring("google:".length)
+        val fallback = fallbackTypeface ?: Typeface.DEFAULT
+        val fontInstance = AsyncFontInstance(fallback)
+        cache[key] = fontInstance
 
-                val query =
-                    "name=$realFontName&weight=$weight&italic=${if (italic) 1 else 0}&besteffort=true"
-                val request =
-                    FontRequest(
-                        "com.google.android.gms.fonts",
-                        "com.google.android.gms",
-                        query,
-                        GmsFontProviderCertificates,
-                    )
+        val query =
+          "name=$realFontName&weight=$weight&italic=${if (italic) 1 else 0}&besteffort=true"
+        val request =
+          FontRequest(
+            "com.google.android.gms.fonts",
+            "com.google.android.gms",
+            query,
+            GmsFontProviderCertificates,
+          )
 
-                val callback =
-                    object : FontsContractCompat.FontRequestCallback() {
-                        override fun onTypefaceRetrieved(typeface: Typeface) {
-                            Log.d("EmbeddedTypeface", "Successfully retrieved typeface: $fontName")
-                            fontInstance.updateTypeface(typeface)
-                            remoteContext.needsRepaint()
-                        }
-
-                        override fun onTypefaceRequestFailed(reason: Int) {
-                            Log.e(
-                                "EmbeddedTypeface",
-                                "Failed to retrieve typeface: $fontName, reason: $reason",
-                            )
-                        }
-                    }
-
-                val handler = Handler(Looper.getMainLooper())
-                FontsContractCompat.requestFont(
-                    androidContext,
-                    request,
-                    Typeface.NORMAL,
-                    false, /* isBlockingFetch */
-                    0, /* timeout */
-                    handler,
-                    callback,
-                )
-
-                return fontInstance
-            }
-        }
-
-        val actualName =
-            when {
-                fontName.startsWith("device:") -> fontName.substring("device:".length)
-                fontName.startsWith("google:") -> fontName.substring("google:".length)
-                else -> fontName
+        val callback =
+          object : FontsContractCompat.FontRequestCallback() {
+            override fun onTypefaceRetrieved(typeface: Typeface) {
+              Log.d("EmbeddedTypeface", "Successfully retrieved typeface: $fontName")
+              fontInstance.updateTypeface(typeface)
+              remoteContext.needsRepaint()
             }
 
-        val baseTypeface = Typeface.create(actualName, Typeface.NORMAL)
-        val typeface = createTypeface(baseTypeface, weight, italic)
-        return SimpleFontInstance(typeface)
+            override fun onTypefaceRequestFailed(reason: Int) {
+              Log.e(
+                "EmbeddedTypeface",
+                "Failed to retrieve typeface: $fontName, reason: $reason",
+              )
+            }
+          }
+
+        val handler = Handler(Looper.getMainLooper())
+        FontsContractCompat.requestFont(
+          androidContext,
+          request,
+          Typeface.NORMAL,
+          false, /* isBlockingFetch */
+          0, /* timeout */
+          handler,
+          callback,
+        )
+
+        return fontInstance
+      }
     }
 
-    private fun createTypeface(base: Typeface, weight: Int, italic: Boolean): Typeface {
-        return Typeface.create(base, weight, italic)
+    val actualName =
+      when {
+        fontName.startsWith("device:") -> fontName.substring("device:".length)
+        fontName.startsWith("google:") -> fontName.substring("google:".length)
+        else -> fontName
+      }
+
+    val baseTypeface = Typeface.create(actualName, Typeface.NORMAL)
+    val typeface = createTypeface(baseTypeface, weight, italic)
+    return SimpleFontInstance(typeface)
+  }
+
+  private fun createTypeface(base: Typeface, weight: Int, italic: Boolean): Typeface {
+    return Typeface.create(base, weight, italic)
+  }
+
+  private class SimpleFontInstance(private val typeface: Typeface) : FontInstance {
+    override fun getTypeface(): Typeface = typeface
+
+    override fun applyVariationSettings(tags: Array<String>, values: FloatArray): Typeface {
+      return typeface
     }
 
-    private class SimpleFontInstance(private val typeface: Typeface) : FontInstance {
-        override fun getTypeface(): Typeface = typeface
+    override fun setOnLoadedListener(listener: Runnable) {
+      // Already loaded
+    }
+  }
 
-        override fun applyVariationSettings(tags: Array<String>, values: FloatArray): Typeface {
-            return typeface
-        }
+  private class AsyncFontInstance(private var typeface: Typeface) : FontInstance {
+    private var listener: Runnable? = null
 
-        override fun setOnLoadedListener(listener: Runnable) {
-            // Already loaded
-        }
+    fun updateTypeface(typeface: Typeface) {
+      this.typeface = typeface
+      listener?.run()
     }
 
-    private class AsyncFontInstance(private var typeface: Typeface) : FontInstance {
-        private var listener: Runnable? = null
+    override fun getTypeface(): Typeface = typeface
 
-        fun updateTypeface(typeface: Typeface) {
-            this.typeface = typeface
-            listener?.run()
-        }
-
-        override fun getTypeface(): Typeface = typeface
-
-        override fun applyVariationSettings(tags: Array<String>, values: FloatArray): Typeface {
-            return typeface
-        }
-
-        override fun setOnLoadedListener(listener: Runnable) {
-            this.listener = listener
-        }
+    override fun applyVariationSettings(tags: Array<String>, values: FloatArray): Typeface {
+      return typeface
     }
+
+    override fun setOnLoadedListener(listener: Runnable) {
+      this.listener = listener
+    }
+  }
 }

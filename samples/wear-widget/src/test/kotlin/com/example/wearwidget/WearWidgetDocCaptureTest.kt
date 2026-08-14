@@ -11,10 +11,11 @@ import org.junit.Test
  *
  * Every widget preview here is a real `WearWidgetPreview` driven by an
  * `androidx.glance.wear.tooling.preview` `@PreviewParameter` provider, routed through
- * [CapturingWearWidgetPreview]. This asserts both properties that make it a faithful widget fixture:
+ * [CapturingWearWidgetPreview]. This asserts both properties that make it a faithful widget
+ * fixture:
  * - **Cropped, not the watch canvas.** Discovery's auto-detect recognises the glance-wear provider
- *   and crops each render to its intrinsic bounds at wear density — so every PNG is smaller than the
- *   227dp (≈454 px) square watch-face canvas.
+ *   and crops each render to its intrinsic bounds at wear density — so every PNG is smaller than
+ *   the 227dp (≈454 px) square watch-face canvas.
  * - **Encoded document captured.** Each render emits a sibling `<stem>.rc` sidecar — the widget's
  *   encoded RemoteCompose document (`IR_EXT_REMOTECOMPOSE`) — so the widget travels in the portable
  *   bundle as data, not as compiled `@Preview` bytecode. Upstream `WearWidgetPreview` keeps those
@@ -30,7 +31,8 @@ class WearWidgetDocCaptureTest {
   private val watchCanvasPx = 454
 
   private fun widgetPngs(): List<File> =
-    rendersDir.listFiles { f -> f.name.startsWith("ImageWidget") && f.name.endsWith(".png") }
+    rendersDir
+      .listFiles { f -> f.name.startsWith("ImageWidget") && f.name.endsWith(".png") }
       ?.sortedBy { it.name } ?: emptyList()
 
   // The device-less, `@PreviewParameter`-driven squircle previews — the ones discovery auto-detects

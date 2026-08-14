@@ -8,14 +8,16 @@ import org.junit.Test
  * Per-preview scoping + ordering coverage for [SandboxRemoteComposeBridge], the Remote Compose
  * sibling of [SandboxPermissionsBridge].
  *
- * The bridge is a single JVM-wide singleton shared across every Robolectric sandbox (it lives in the
- * do-not-acquire `ee.schimke.composeai.daemon.bridge` package). Keying its map by previewId keeps two
- * concurrent previews — each in its own sandbox, each writing into the same singleton — from
- * cross-polluting each other's host-side declaration snapshot. Declarations cross as JSON strings, so
- * these tests use opaque strings as stand-ins for the serialised `RemoteComposeKnobDeclaration`.
+ * The bridge is a single JVM-wide singleton shared across every Robolectric sandbox (it lives in
+ * the do-not-acquire `ee.schimke.composeai.daemon.bridge` package). Keying its map by previewId
+ * keeps two concurrent previews — each in its own sandbox, each writing into the same singleton —
+ * from cross-polluting each other's host-side declaration snapshot. Declarations cross as JSON
+ * strings, so these tests use opaque strings as stand-ins for the serialised
+ * `RemoteComposeKnobDeclaration`.
  *
- * Plain JUnit (no `@RunWith(SandboxHoldingRunner::class)`) — the bridge is plain host-side state; its
- * cross-classloader visibility is exercised end-to-end by the Remote Compose Robolectric render path.
+ * Plain JUnit (no `@RunWith(SandboxHoldingRunner::class)`) — the bridge is plain host-side state;
+ * its cross-classloader visibility is exercised end-to-end by the Remote Compose Robolectric render
+ * path.
  */
 class SandboxRemoteComposeBridgeTest {
 
@@ -56,7 +58,10 @@ class SandboxRemoteComposeBridgeTest {
   fun `snapshot of an unseen preview is empty`() {
     SandboxRemoteComposeBridge.record("preview-a", "label", "{a}")
 
-    assertEquals(emptyList<String>(), SandboxRemoteComposeBridge.snapshot("never-rendered").toList())
+    assertEquals(
+      emptyList<String>(),
+      SandboxRemoteComposeBridge.snapshot("never-rendered").toList(),
+    )
   }
 
   @Test

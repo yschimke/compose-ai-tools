@@ -27,16 +27,16 @@ import androidx.compose.ui.Modifier
 
 @Composable
 internal fun Modifier.alignBy(op: AlignByModifierOperation, rowScope: RowScope? = null): Modifier {
-    val line = op.lineReflection
-    return if (Utils.isVariable(line)) {
-        when (Utils.idFromNan(line)) {
-            AlignByModifierOperation.ID_FIRST_BASELINE -> with(rowScope!!) { alignByBaseline() }
-            AlignByModifierOperation.ID_LAST_BASELINE -> with(rowScope!!) { alignByBaseline() }
-            else -> this
-        }
-    } else {
-        // If it's a literal value, we don't have a direct mapping to standard baselines
-        // but we could theoretically use a custom HorizontalAlignmentLine if needed.
-        this
+  val line = op.lineReflection
+  return if (Utils.isVariable(line)) {
+    when (Utils.idFromNan(line)) {
+      AlignByModifierOperation.ID_FIRST_BASELINE -> with(rowScope!!) { alignByBaseline() }
+      AlignByModifierOperation.ID_LAST_BASELINE -> with(rowScope!!) { alignByBaseline() }
+      else -> this
     }
+  } else {
+    // If it's a literal value, we don't have a direct mapping to standard baselines
+    // but we could theoretically use a custom HorizontalAlignmentLine if needed.
+    this
+  }
 }

@@ -78,7 +78,8 @@ class S7LatencyRecordOnlyRealModeTest {
           scenario = "s7-real",
           preview = "$previewId@$tag",
           actualMs = took,
-          notes = "S7 real: daemon reported tookMs=$daemonTookMs (wire metric is hardcoded 0 today)",
+          notes =
+            "S7 real: daemon reported tookMs=$daemonTookMs (wire metric is hardcoded 0 today)",
         )
         System.err.println(
           "S7LatencyRecordOnlyRealModeTest: $tag wall=${took}ms daemonTookMs=$daemonTookMs"

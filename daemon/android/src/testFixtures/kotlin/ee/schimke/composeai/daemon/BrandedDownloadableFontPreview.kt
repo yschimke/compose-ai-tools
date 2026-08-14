@@ -86,9 +86,9 @@ fun BrandedDownloadableText() {
 /**
  * The JetLagged shape (issue #2906): a single `Font(GoogleFont("Lato"))` declared at its default
  * weight, drawn in a heading at a heavier weight the family never declares a face for. The
- * downloadable provider is therefore requested at the default weight while the `<text>` — and so the
- * `compose/figma-svg` export — asks about the heading weight, the mismatch that made the export's
- * old exact-weight recovery miss and drop the `@font-face` for Lato entirely.
+ * downloadable provider is therefore requested at the default weight while the `<text>` — and so
+ * the `compose/figma-svg` export — asks about the heading weight, the mismatch that made the
+ * export's old exact-weight recovery miss and drop the `@font-face` for Lato entirely.
  *
  * The heading weight is [FontWeight.Medium] (500) rather than JetLagged's literal 600 for a sandbox
  * reason, not a product one: Compose applies fake-bold synthesis at weight >= 600, and the daemon's

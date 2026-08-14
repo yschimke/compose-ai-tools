@@ -83,6 +83,4 @@ private fun FocusRingSticker(content: @Composable () -> Unit) {
 )
 @FocusedPreview(indices = [0])
 @Composable
-fun FilledButtonFocused() = FocusRingSticker {
-  Button(onClick = {}) { Text("Focused") }
-}
+fun FilledButtonFocused() = FocusRingSticker { Button(onClick = {}) { Text("Focused") } }

@@ -8,10 +8,9 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * End-to-end guard for the Material-icon reference path: a real render of
- * [MaterialIconRowPreview] — real `Icon`s, real `VectorPainter`s — must emit a `compose/figma-svg`
- * whose icon layers carry their canonical fonts.google.com identity and share one `<defs>` entry
- * per drawing.
+ * End-to-end guard for the Material-icon reference path: a real render of [MaterialIconRowPreview]
+ * — real `Icon`s, real `VectorPainter`s — must emit a `compose/figma-svg` whose icon layers carry
+ * their canonical fonts.google.com identity and share one `<defs>` entry per drawing.
  *
  * This is the half no model-level test can cover. `FigmaSvgMaterialIconRefTest` drives the emitter
  * from a synthetic payload with the name already set; the *name* itself comes from reflecting
@@ -50,12 +49,16 @@ class MaterialIconRefE2ETest {
     val host = PreviewManifestRouter(manifest = manifest)
     host.start()
     try {
-      host.submit(RenderRequest.Render(payload = "previewId=material-icon-row"), timeoutMs = 120_000)
+      host.submit(
+        RenderRequest.Render(payload = "previewId=material-icon-row"),
+        timeoutMs = 120_000,
+      )
 
       val svgFile =
-        outputDir.parentFile!!.resolve("data").resolve("material-icon-row").resolve(
-          "compose-figma.svg"
-        )
+        outputDir.parentFile!!
+          .resolve("data")
+          .resolve("material-icon-row")
+          .resolve("compose-figma.svg")
       assertTrue("figma SVG must be produced: ${svgFile.absolutePath}", svgFile.exists())
       val svg = svgFile.readText()
 
@@ -65,10 +68,13 @@ class MaterialIconRefE2ETest {
           svgFile.copyTo(File(dump, "material-icon-row.svg"), overwrite = true)
           // The render the SVG is supposed to reproduce, alongside it — the pair is what makes an
           // export regression eyeballable rather than only assertable.
-          outputDir.walkTopDown().firstOrNull { it.name.endsWith(".png") }?.copyTo(
-            File(dump, "material-icon-row.png"),
-            overwrite = true,
-          )
+          outputDir
+            .walkTopDown()
+            .firstOrNull { it.name.endsWith(".png") }
+            ?.copyTo(
+              File(dump, "material-icon-row.png"),
+              overwrite = true,
+            )
         }
 
       // The identity, recovered from the live painter — not from anything the test supplied.
@@ -82,7 +88,8 @@ class MaterialIconRefE2ETest {
           """data-material-icon-url="https://fonts.gstatic.com/s/i/materialicons/menu/v1/24px.svg""""
         ),
       )
-      // A different style must resolve to a different CDN family, not collapse onto `materialicons`.
+      // A different style must resolve to a different CDN family, not collapse onto
+      // `materialicons`.
       assertTrue(
         "Outlined.AccountCircle keeps its own style",
         svg.contains(

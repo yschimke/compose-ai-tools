@@ -67,7 +67,10 @@ class PerfettoTraceDataProductRegistryTest {
     PerfettoTraceDataProducer.writeArtifacts(
       root,
       previewId,
-      TracePayload(traceEvents = emptyList(), metadata = TraceMetadata(previewId, backend = "test")),
+      TracePayload(
+        traceEvents = emptyList(),
+        metadata = TraceMetadata(previewId, backend = "test"),
+      ),
     )
     val registry = PerfettoTraceDataProductRegistry(root)
 

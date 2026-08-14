@@ -70,13 +70,10 @@ class RcAnimatedInteractionTest {
           content = {
             val progress = rememberMutableRemoteFloat { 0.25f.rf }
             val animatedProgress = animateRemoteFloat(progress, 0.25f)
-            val advanceProgress =
-              valueChange(progress, ((progress + 0.25f) % 1f).createReference())
+            val advanceProgress = valueChange(progress, ((progress + 0.25f) % 1f).createReference())
 
             RemoteColumn(modifier = RemoteModifier.size(160.rdp)) {
-              RemoteBox(
-                modifier = RemoteModifier.size(160.rdp, 40.rdp).clickable(advanceProgress)
-              )
+              RemoteBox(modifier = RemoteModifier.size(160.rdp, 40.rdp).clickable(advanceProgress))
               RemoteBox(
                 modifier =
                   RemoteModifier.semantics { contentDescription = "animated-progress".rs }
@@ -95,11 +92,7 @@ class RcAnimatedInteractionTest {
       }
 
     rule.mainClock.autoAdvance = false
-    rule.setContent {
-      Box(modifier = Modifier.size(200.dp)) {
-        RcPlayer(document = document)
-      }
-    }
+    rule.setContent { Box(modifier = Modifier.size(200.dp)) { RcPlayer(document = document) } }
 
     rule.mainClock.advanceTimeBy(300)
     val progressNode = rule.onNodeWithContentDescription("animated-progress")

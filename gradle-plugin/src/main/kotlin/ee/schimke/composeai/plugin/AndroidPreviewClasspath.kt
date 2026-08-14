@@ -312,10 +312,10 @@ internal object AndroidPreviewClasspath {
   private fun sdkDirFromLocalProperties(localProperties: File): String? {
     if (!localProperties.isFile) return null
     return runCatching {
-        val props = java.util.Properties()
-        localProperties.inputStream().use { props.load(it) }
-        props.getProperty("sdk.dir")?.takeIf { it.isNotBlank() }
-      }
+      val props = java.util.Properties()
+      localProperties.inputStream().use { props.load(it) }
+      props.getProperty("sdk.dir")?.takeIf { it.isNotBlank() }
+    }
       .getOrNull()
   }
 
@@ -333,8 +333,9 @@ internal object AndroidPreviewClasspath {
       ?.second
   }
 
-  private fun jarContainsEntry(jar: File, entryPath: String): Boolean =
-    runCatching { ZipFile(jar).use { it.getEntry(entryPath) != null } }.getOrDefault(false)
+  private fun jarContainsEntry(jar: File, entryPath: String): Boolean = runCatching {
+    ZipFile(jar).use { it.getEntry(entryPath) != null }
+  }.getOrDefault(false)
 
   /**
    * Static JVM open flags that the composePreviewRender test JVM needs. Pure data — no Gradle DSL

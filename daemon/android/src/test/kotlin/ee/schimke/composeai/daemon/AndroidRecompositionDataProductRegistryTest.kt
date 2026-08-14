@@ -103,7 +103,9 @@ class AndroidRecompositionDataProductRegistryTest {
         sandboxCount = 2,
         previewSpecResolver = resolver,
         interactiveSessionListener =
-          RobolectricHost.InteractiveSessionListener { event -> registry.onSessionLifecycle(event) },
+          RobolectricHost.InteractiveSessionListener { event ->
+            registry.onSessionLifecycle(event)
+          },
       )
     host.start()
     try {

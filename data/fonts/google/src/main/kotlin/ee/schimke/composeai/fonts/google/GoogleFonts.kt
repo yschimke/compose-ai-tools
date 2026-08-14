@@ -27,24 +27,23 @@ data class GoogleFontKey(val name: String, val weight: Int, val italic: Boolean)
 
   companion object {
     /** Lowercase + replace non-alphanumerics with `-`, no leading/trailing hyphens. */
-    fun slugify(name: String): String =
-      buildString {
-          var prevDash = true
-          for (ch in name) {
-            val lower = ch.lowercaseChar()
-            if (lower in 'a'..'z' || lower in '0'..'9') {
-              append(lower)
-              prevDash = false
-            } else if (!prevDash) {
-              append('-')
-              prevDash = true
-            }
-          }
+    fun slugify(name: String): String = buildString {
+      var prevDash = true
+      for (ch in name) {
+        val lower = ch.lowercaseChar()
+        if (lower in 'a'..'z' || lower in '0'..'9') {
+          append(lower)
+          prevDash = false
+        } else if (!prevDash) {
+          append('-')
+          prevDash = true
         }
-        .trim('-')
-        // A name with no alphanumerics at all would otherwise slug to "", giving every such family
-        // the same `-400.ttf` cache filename.
-        .ifEmpty { "font" }
+      }
+    }
+      .trim('-')
+      // A name with no alphanumerics at all would otherwise slug to "", giving every such family
+      // the same `-400.ttf` cache filename.
+      .ifEmpty { "font" }
   }
 }
 
@@ -380,11 +379,10 @@ private val fontHttpClient: OkHttpClient by lazy {
 private fun httpGet(url: String, userAgent: String): String? =
   httpGetBytes(url, userAgent)?.toString(Charsets.UTF_8)
 
-private fun httpGetBytes(url: String, userAgent: String): ByteArray? =
-  runCatching {
-      val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
-      fontHttpClient.newCall(request).execute().use { response ->
-        if (response.isSuccessful) response.body?.bytes() else null
-      }
-    }
-    .getOrNull()
+private fun httpGetBytes(url: String, userAgent: String): ByteArray? = runCatching {
+  val request = Request.Builder().url(url).header("User-Agent", userAgent).build()
+  fontHttpClient.newCall(request).execute().use { response ->
+    if (response.isSuccessful) response.body?.bytes() else null
+  }
+}
+  .getOrNull()

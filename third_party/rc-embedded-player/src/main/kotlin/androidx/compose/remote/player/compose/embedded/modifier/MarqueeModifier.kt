@@ -33,23 +33,23 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun Modifier.marquee(op: MarqueeModifierOperation): Modifier {
-    // Note: To support precise remote-core marquee we'd need a custom modifier, but we can map the
-    // basic parameters to Compose's basicMarquee. The spacing may be a NaN-encoded
-    // variable/expression (e.g. a dp recorded against the density variable), so resolve it before
-    // scaling; remote-core scales it by density only under DP (rawDimensionDp). Velocity is not
-    // density-scaled.
-    val data = op.readDataReflection()
-    val density = LocalDensity.current.density
-    val behavior = LocalCoreDocument.current.densityBehavior
-    val spacing = rememberRemoteFloatAsState(data.spacing).value
-    return this.basicMarquee(
-        iterations = if (data.iterations == -1) Int.MAX_VALUE else data.iterations,
-        animationMode =
-            if (data.animationMode == 0) MarqueeAnimationMode.Immediately
-            else MarqueeAnimationMode.WhileFocused,
-        repeatDelayMillis = data.repeatDelayMillis.toInt(),
-        initialDelayMillis = data.initialDelayMillis.toInt(),
-        spacing = MarqueeSpacing(rawDimensionDp(spacing, behavior, density)),
-        velocity = data.velocity.dp,
-    )
+  // Note: To support precise remote-core marquee we'd need a custom modifier, but we can map the
+  // basic parameters to Compose's basicMarquee. The spacing may be a NaN-encoded
+  // variable/expression (e.g. a dp recorded against the density variable), so resolve it before
+  // scaling; remote-core scales it by density only under DP (rawDimensionDp). Velocity is not
+  // density-scaled.
+  val data = op.readDataReflection()
+  val density = LocalDensity.current.density
+  val behavior = LocalCoreDocument.current.densityBehavior
+  val spacing = rememberRemoteFloatAsState(data.spacing).value
+  return this.basicMarquee(
+    iterations = if (data.iterations == -1) Int.MAX_VALUE else data.iterations,
+    animationMode =
+      if (data.animationMode == 0) MarqueeAnimationMode.Immediately
+      else MarqueeAnimationMode.WhileFocused,
+    repeatDelayMillis = data.repeatDelayMillis.toInt(),
+    initialDelayMillis = data.initialDelayMillis.toInt(),
+    spacing = MarqueeSpacing(rawDimensionDp(spacing, behavior, density)),
+    velocity = data.velocity.dp,
+  )
 }

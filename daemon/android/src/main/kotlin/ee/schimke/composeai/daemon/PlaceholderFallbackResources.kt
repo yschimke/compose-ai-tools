@@ -15,10 +15,10 @@ import android.graphics.drawable.Drawable
  * A classic `@Composable @Preview` that calls `stringResource(R.string.…)` / `colorResource(…)` /
  * `context.getString(…)` needs the app's compiled resource table (the `0x7f` package). A **detached
  * render** — a packed bundle spawned by `bundle daemon` / a `serve --catalogs` live bundle — only
- * has that table when the bundle actually carries it (see [AndroidBundleResources] on the CLI side).
- * When the table is absent, stale, or simply missing one id, the very first `0x7f…` lookup throws
- * `Resources$NotFoundException` and the *entire* preview fails to render — the viewer shows a broken
- * image rather than the (otherwise fine) UI.
+ * has that table when the bundle actually carries it (see [AndroidBundleResources] on the CLI
+ * side). When the table is absent, stale, or simply missing one id, the very first `0x7f…` lookup
+ * throws `Resources$NotFoundException` and the *entire* preview fails to render — the viewer shows
+ * a broken image rather than the (otherwise fine) UI.
  *
  * This wrapper makes that failure mode graceful and legible: a resolvable resource is returned
  * untouched (transparent pass-through), and only a **miss** falls back to an obvious marker — a
@@ -34,8 +34,8 @@ import android.graphics.drawable.Drawable
  * rationale [PseudolocaleResources] documents. The placeholder token carries no `%` conversions, so
  * a later `String.format` with args leaves it unchanged. Value resources ([getColor], the dimension
  * family, [getDrawable]) don't route through a shared accessor, so each is guarded directly. The
- * base class's `AssetManager` / `DisplayMetrics` / `Configuration` are reused, so every *resolvable*
- * resource still takes the normal Android path. Drawables are guarded on **all four**
+ * base class's `AssetManager` / `DisplayMetrics` / `Configuration` are reused, so every
+ * *resolvable* resource still takes the normal Android path. Drawables are guarded on **all four**
  * `loadDrawable` entry points — `getDrawable(id)`, `getDrawable(id, theme)`, and both
  * `getDrawableForDensity(...)` overloads — because a density-aware caller
  * (`ResourcesCompat.getDrawableForDensity`, RemoteViews / ImageView inflation, image loaders)
@@ -125,7 +125,8 @@ internal class PlaceholderFallbackResources(private val base: Resources) :
   // The density-aware variants are a *separate* entry into `ResourcesImpl.loadDrawable` — the same
   // method that throws `NotFoundException: Drawable <pkg>:drawable/<name> with resource ID #0x…`.
   // `getDrawable(id[, theme])` funnels here internally, so overriding those two catches an app-code
-  // `getDrawable(...)`; but a caller that reaches `getDrawableForDensity(...)` directly (density-aware
+  // `getDrawable(...)`; but a caller that reaches `getDrawableForDensity(...)` directly
+  // (density-aware
   // image-loading paths, `ResourcesCompat.getDrawableForDensity`, RemoteViews/ImageView inflation)
   // bypasses those overrides and the miss escapes as a hard render abort (issue #2976:
   // `splash_background` on the `pocketcasts-wear` live server). Guard both overloads too so every
@@ -158,8 +159,8 @@ internal class PlaceholderFallbackResources(private val base: Resources) :
  * `ContextWrapper` that returns a [PlaceholderFallbackResources] from `getResources()`.
  * `LocalContext.current` is what `androidx.compose.ui.res.stringResource` (and user code calling
  * `context.getString(...)`) walks to resolve resource ids, so providing this wrapper for
- * `LocalContext` in the render's around-composable seam makes every miss fall back to a placeholder.
- * Mirrors [PseudolocaleContext].
+ * `LocalContext` in the render's around-composable seam makes every miss fall back to a
+ * placeholder. Mirrors [PseudolocaleContext].
  */
 internal class PlaceholderFallbackContext(
   base: Context,

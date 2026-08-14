@@ -157,6 +157,7 @@ internal object RenderNativeEnv {
   private fun isStorePath(path: String): Boolean = STORE_PREFIXES.any { path.startsWith(it) }
 
   /** Best effort: an unresolvable path is judged as written rather than assumed store-free. */
-  private fun canonicalPathOf(path: String): String =
-    runCatching { File(path).canonicalPath }.getOrDefault(path)
+  private fun canonicalPathOf(path: String): String = runCatching {
+    File(path).canonicalPath
+  }.getOrDefault(path)
 }

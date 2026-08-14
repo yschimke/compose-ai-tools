@@ -241,23 +241,23 @@ object SvgSanitizer {
     if (bytes.isEmpty() || bytes.size > MAX_BYTES) return null
     val document =
       runCatching {
-          val factory = DocumentBuilderFactory.newInstance()
-          factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-          // The two that actually stop entity attacks. Set individually rather than in one
-          // runCatching so a parser missing one still gets the others.
-          runCatching { factory.setFeature(DISALLOW_DOCTYPE, true) }
-          runCatching { factory.setFeature(EXTERNAL_GENERAL_ENTITIES, false) }
-          runCatching { factory.setFeature(EXTERNAL_PARAMETER_ENTITIES, false) }
-          runCatching { factory.setFeature(LOAD_EXTERNAL_DTD, false) }
-          factory.isXIncludeAware = false
-          factory.isExpandEntityReferences = false
-          factory.isNamespaceAware = true
-          val builder = factory.newDocumentBuilder()
-          // Belt and braces: if a parser silently ignored `disallow-doctype-decl`, this makes every
-          // external reference resolve to nothing instead of to a file on this host.
-          builder.setEntityResolver { _, _ -> InputSource(ByteArrayInputStream(ByteArray(0))) }
-          builder.parse(InputSource(ByteArrayInputStream(bytes)))
-        }
+        val factory = DocumentBuilderFactory.newInstance()
+        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+        // The two that actually stop entity attacks. Set individually rather than in one
+        // runCatching so a parser missing one still gets the others.
+        runCatching { factory.setFeature(DISALLOW_DOCTYPE, true) }
+        runCatching { factory.setFeature(EXTERNAL_GENERAL_ENTITIES, false) }
+        runCatching { factory.setFeature(EXTERNAL_PARAMETER_ENTITIES, false) }
+        runCatching { factory.setFeature(LOAD_EXTERNAL_DTD, false) }
+        factory.isXIncludeAware = false
+        factory.isExpandEntityReferences = false
+        factory.isNamespaceAware = true
+        val builder = factory.newDocumentBuilder()
+        // Belt and braces: if a parser silently ignored `disallow-doctype-decl`, this makes every
+        // external reference resolve to nothing instead of to a file on this host.
+        builder.setEntityResolver { _, _ -> InputSource(ByteArrayInputStream(ByteArray(0))) }
+        builder.parse(InputSource(ByteArrayInputStream(bytes)))
+      }
         .getOrNull() ?: return null
 
     val root = document.documentElement ?: return null
@@ -265,17 +265,17 @@ object SvgSanitizer {
     scrub(root)
 
     return runCatching {
-        val factory = TransformerFactory.newInstance()
-        runCatching { factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true) }
-        val transformer = factory.newTransformer()
-        // No `<?xml …?>` prologue: the output is spliced into an HTML document, where a prologue is
-        // a parse error rather than a declaration.
-        transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes")
-        transformer.setOutputProperty(OutputKeys.METHOD, "xml")
-        val writer = StringWriter()
-        transformer.transform(DOMSource(root), StreamResult(writer))
-        writer.toString()
-      }
+      val factory = TransformerFactory.newInstance()
+      runCatching { factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true) }
+      val transformer = factory.newTransformer()
+      // No `<?xml …?>` prologue: the output is spliced into an HTML document, where a prologue is
+      // a parse error rather than a declaration.
+      transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes")
+      transformer.setOutputProperty(OutputKeys.METHOD, "xml")
+      val writer = StringWriter()
+      transformer.transform(DOMSource(root), StreamResult(writer))
+      writer.toString()
+    }
       .getOrNull()
   }
 

@@ -473,14 +473,14 @@ abstract class BenchCompileStagesTask : DefaultTask() {
       val proc = ProcessBuilder(cmd).directory(rootDir).redirectErrorStream(true).start()
       val builds = LinkedBlockingQueue<Long>()
       Thread {
-          proc.inputStream.bufferedReader().forEachLine { line ->
-            val ms = parseBuildSuccessful(line)
-            when {
-              ms != null -> builds.offer(ms)
-              line.contains("BUILD FAILED") -> builds.offer(-1L)
-            }
+        proc.inputStream.bufferedReader().forEachLine { line ->
+          val ms = parseBuildSuccessful(line)
+          when {
+            ms != null -> builds.offer(ms)
+            line.contains("BUILD FAILED") -> builds.offer(-1L)
           }
         }
+      }
         .apply {
           isDaemon = true
           start()

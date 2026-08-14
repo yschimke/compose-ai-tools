@@ -50,11 +50,11 @@ internal object UiAutomatorEvidence {
   /**
    * [compute], serialised for the sandbox→host hop.
    *
-   * [compute] runs under Robolectric's instrumenting classloader, so the [UiAutomatorUnsupportedReason]
-   * it returns is loaded by the sandbox — handing that reference to the host fails the host-side cast
-   * with a same-name `ClassCastException`. Only a String may cross, exactly as
-   * `ComposeSemanticsDataProducer.probeNodesJson` does for probe nodes and `CaptureA11yFindings` does
-   * for ATF findings; [decode] re-parses it into the host's own class.
+   * [compute] runs under Robolectric's instrumenting classloader, so the
+   * [UiAutomatorUnsupportedReason] it returns is loaded by the sandbox — handing that reference to
+   * the host fails the host-side cast with a same-name `ClassCastException`. Only a String may
+   * cross, exactly as `ComposeSemanticsDataProducer.probeNodesJson` does for probe nodes and
+   * `CaptureA11yFindings` does for ATF findings; [decode] re-parses it into the host's own class.
    */
   fun computeJson(
     rule: AndroidComposeTestRule<*, androidx.activity.ComponentActivity>,
@@ -86,8 +86,9 @@ internal object UiAutomatorEvidence {
       )
     }
     val selector = decodeSelectorJson(selectorJson)
-    val parsedSelector =
-      runCatching { WireJson.decodeFromString(SelectorJson.serializer(), selectorJson) }.getOrNull()
+    val parsedSelector = runCatching {
+      WireJson.decodeFromString(SelectorJson.serializer(), selectorJson)
+    }.getOrNull()
     val matches = UiAutomator.findObjects(rule, selector, useUnmergedTree = useUnmergedTree)
     if (matches.size >= 2) {
       val firstMatched = matches.first().node

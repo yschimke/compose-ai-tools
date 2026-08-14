@@ -354,9 +354,9 @@ private object NotificationSidecar {
   private fun readSenderName(bundle: Bundle): String? {
     val person: Parcelable? = @Suppress("DEPRECATION") bundle.getParcelable("sender_person")
     if (person != null) {
-      val name =
-        runCatching { person.javaClass.getMethod("getName").invoke(person) as? CharSequence }
-          .getOrNull()
+      val name = runCatching {
+        person.javaClass.getMethod("getName").invoke(person) as? CharSequence
+      }.getOrNull()
       if (name != null) return name.toString()
     }
     return bundle.getCharSequence("sender")?.toString()

@@ -45,14 +45,14 @@ import org.robolectric.annotation.GraphicsMode
  * Robolectric render (measure + draw + z-sort), then runs the production figma-svg export in
  * **hybrid raster mode** (a frame PNG is passed, so `DEFAULT_RASTER_COMPONENTS` is active and an
  * `Icon` is opaque-by-name — the pre-change behaviour cropped it as an `<image>`). It asserts the
- * export now emits the icon as an editable `<path>` and schedules **no** raster crop for it. This is
- * the on-device counterpart of the synthetic `FigmaSvgVectorIconTest` in `:data-layoutinspector-core`
- * — it exercises `VectorGraphicExtractor`'s reflection against the *live* `VectorPainter` tree that a
- * material `Icon` builds, which the synthetic test cannot cover.
+ * export now emits the icon as an editable `<path>` and schedules **no** raster crop for it. This
+ * is the on-device counterpart of the synthetic `FigmaSvgVectorIconTest` in
+ * `:data-layoutinspector-core` — it exercises `VectorGraphicExtractor`'s reflection against the
+ * *live* `VectorPainter` tree that a material `Icon` builds, which the synthetic test cannot cover.
  *
- * A draw is forced (`captureRoboImage`) before reading the tree because the layout inspector reflects
- * over `LayoutNode.getZSortedChildren`, empty until measure/draw z-sort the children — the same seam
- * `WearScrollSvgGrowthTest` relies on.
+ * A draw is forced (`captureRoboImage`) before reading the tree because the layout inspector
+ * reflects over `LayoutNode.getZSortedChildren`, empty until measure/draw z-sort the children — the
+ * same seam `WearScrollSvgGrowthTest` relies on.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -173,9 +173,11 @@ class FigmaSvgVectorIconRenderTest {
   fun `a rendered ImageVector Icon exports as an editable path, not an opaque image crop`() {
     val svg = renderIconSvg("icon-star") { Icon(catalogStar, "Star", Modifier.size(48.dp)) }
 
-    // The whole point: with a frame PNG present (hybrid mode) an `Icon` is opaque-by-name and used to
+    // The whole point: with a frame PNG present (hybrid mode) an `Icon` is opaque-by-name and used
+    // to
     // crop out as an `<image>`. Tier-1 captures the VectorPainter, so it is now a real `<path>`.
-    // Persist the exported SVG as before/after evidence for the PR (the pre-Tier-1 form of this same
+    // Persist the exported SVG as before/after evidence for the PR (the pre-Tier-1 form of this
+    // same
     // preview was `<image href="figma-raster/…png">`).
     File("build/figma-svg-vector-icon").mkdirs()
     File("build/figma-svg-vector-icon/icon-star.svg").writeText(svg)
@@ -202,10 +204,14 @@ class FigmaSvgVectorIconRenderTest {
       }
     assertTrue("a tinted icon still vectorises:\n$svg", svg.contains("<path "))
     assertFalse("no <image> raster crop for a vectorised icon:\n$svg", svg.contains("<image "))
-    // `Icon` applies its tint as a SrcIn colorFilter at draw time; the export must recolour the path
+    // `Icon` applies its tint as a SrcIn colorFilter at draw time; the export must recolour the
+    // path
     // to that tint, not emit the ImageVector's intrinsic white fill.
     assertTrue("the path carries the tint:\n$svg", svg.contains("fill=\"#112233\""))
-    assertFalse("the source white fill must not leak through:\n$svg", svg.contains("fill=\"#FFFFFF\""))
+    assertFalse(
+      "the source white fill must not leak through:\n$svg",
+      svg.contains("fill=\"#FFFFFF\""),
+    )
   }
 
   @Test
@@ -214,7 +220,10 @@ class FigmaSvgVectorIconRenderTest {
     // The gradient fill can't be represented as a flat colour, so the whole graphic falls back to a
     // raster crop rather than silently vectorising into a partial/empty icon.
     assertTrue("a gradient-filled icon rasters:\n$svg", svg.contains("<image "))
-    assertFalse("no vector path for an unrepresentable gradient icon:\n$svg", svg.contains("<path "))
+    assertFalse(
+      "no vector path for an unrepresentable gradient icon:\n$svg",
+      svg.contains("<path "),
+    )
   }
 
   @Test
@@ -227,7 +236,10 @@ class FigmaSvgVectorIconRenderTest {
     assertFalse("no <image> raster crop for a vectorised icon:\n$svg", svg.contains("<image "))
     // The vector's own `tintColor` is applied through the intrinsic colour filter on its component.
     assertTrue("the intrinsic tint is applied:\n$svg", svg.contains("fill=\"#445566\""))
-    assertFalse("the source white fill must not leak through:\n$svg", svg.contains("fill=\"#FFFFFF\""))
+    assertFalse(
+      "the source white fill must not leak through:\n$svg",
+      svg.contains("fill=\"#FFFFFF\""),
+    )
   }
 
   @Test

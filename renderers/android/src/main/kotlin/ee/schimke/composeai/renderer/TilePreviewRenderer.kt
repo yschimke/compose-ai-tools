@@ -160,15 +160,14 @@ internal object TileScopeResourcesCompat {
         ?: return requested
     val hasResources =
       runCatching {
-          scope.javaClass.getMethod("hasResources").invoke(scope) as? Boolean
-        }
+        scope.javaClass.getMethod("hasResources").invoke(scope) as? Boolean
+      }
         .getOrNull() == true
     if (!hasResources) return requested
     val scopeResources =
       runCatching {
-          scope.javaClass.getMethod("collectResources").invoke(scope)
-            as? ResourceBuilders.Resources
-        }
+        scope.javaClass.getMethod("collectResources").invoke(scope) as? ResourceBuilders.Resources
+      }
         .getOrNull() ?: return requested
     val merged =
       ResourceProto.Resources.newBuilder()

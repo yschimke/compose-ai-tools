@@ -4,16 +4,15 @@ import ee.schimke.composeai.data.render.PerfettoTraceDataProducer
 
 /**
  * `androidx.tracing`-backed [PerfettoTraceDataProducer.TraceSectionBackend] — mirrors every
- * render-phase span the daemon already times (`classloader:loadPreviewClass`,
- * `compose:setContent`, `compose:advanceClock`, `render:captureRoboImage`, `dataArtifact:*`, …)
- * onto `android.os.Trace` sections, so those phases line up with the framework's and Compose's own
- * sections in an atrace-level capture instead of living only in the daemon's private
- * chrome-trace JSON.
+ * render-phase span the daemon already times (`classloader:loadPreviewClass`, `compose:setContent`,
+ * `compose:advanceClock`, `render:captureRoboImage`, `dataArtifact:*`, …) onto `android.os.Trace`
+ * sections, so those phases line up with the framework's and Compose's own sections in an
+ * atrace-level capture instead of living only in the daemon's private chrome-trace JSON.
  *
  * **Opt-in** via `-Dcomposeai.daemon.atrace=true` (profiling runs only). Robolectric routes
- * `android.os.Trace` through `ShadowTrace`, which accumulates section history in static state
- * with no test-lifecycle resets in a long-lived daemon — an always-on default would be a slow
- * leak, so the backend installs only when asked for.
+ * `android.os.Trace` through `ShadowTrace`, which accumulates section history in static state with
+ * no test-lifecycle resets in a long-lived daemon — an always-on default would be a slow leak, so
+ * the backend installs only when asked for.
  *
  * Capture recipes once enabled:
  * - Robolectric's own reporting (`PerfStatsCollector`, `ShadowTrace`) picks the sections up
@@ -25,10 +24,10 @@ import ee.schimke.composeai.data.render.PerfettoTraceDataProducer
  *   against the same section names via the `compose-ai-daemon` stderr markers.
  *
  * Must only be installed from **inside the sandbox** (see [installIfEnabled]'s call site in
- * `RobolectricHost.SandboxRunner`): on the host side of the classloader boundary
- * `android.os.Trace` is the android.jar stub and every call throws. Both entry points are
- * additionally try/caught by the callers ([PerfettoTraceDataProducer.Recorder.section] and
- * [traced]) so a tracer failure can never fail a render.
+ * `RobolectricHost.SandboxRunner`): on the host side of the classloader boundary `android.os.Trace`
+ * is the android.jar stub and every call throws. Both entry points are additionally try/caught by
+ * the callers ([PerfettoTraceDataProducer.Recorder.section] and [traced]) so a tracer failure can
+ * never fail a render.
  */
 internal object AndroidxTraceSections : PerfettoTraceDataProducer.TraceSectionBackend {
 

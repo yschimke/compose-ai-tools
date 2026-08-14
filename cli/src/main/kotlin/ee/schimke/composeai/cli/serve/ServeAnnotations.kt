@@ -131,8 +131,8 @@ private constructor(
       if (!fileSystem.exists(index)) return EMPTY
       val manifest =
         runCatching {
-            JSON.decodeFromString<AnnotationManifest>(fileSystem.read(index) { readUtf8() })
-          }
+          JSON.decodeFromString<AnnotationManifest>(fileSystem.read(index) { readUtf8() })
+        }
           .getOrNull() ?: return EMPTY
       if (manifest.schema != AnnotationManifest.SCHEMA) return EMPTY
       return ServeAnnotationStore(

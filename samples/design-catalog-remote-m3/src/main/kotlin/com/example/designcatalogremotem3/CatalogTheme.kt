@@ -32,14 +32,14 @@ import ee.schimke.composeai.daemon.RemoteOverridablePreview
  *
  * **The recorded documents are default-themed**, which is what lets a theme be applied to them
  * afterwards by overriding named values (`USER:WearM3.<role>`) — see `RemoteThemeCatalogs.kt`. That
- * falls out of how they are recorded rather than needing enforcement here: `composePreviewRenderAll`
- * renders each `@Preview` with no provider, so [LocalRemoteCatalogTheme] is null and the branch
- * below takes the un-themed path. A capture with a theme baked in would carry that theme's colours
- * as constants, so every theme would need its own capture and a published catalog could only show
- * the one it was packed with.
+ * falls out of how they are recorded rather than needing enforcement here:
+ * `composePreviewRenderAll` renders each `@Preview` with no provider, so [LocalRemoteCatalogTheme]
+ * is null and the branch below takes the un-themed path. A capture with a theme baked in would
+ * carry that theme's colours as constants, so every theme would need its own capture and a
+ * published catalog could only show the one it was packed with.
  *
- * The themed branch is for the other case: a **recomposing** session asked for `?themeProvider=`, so
- * the renderer wraps the preview in a provider and this installs the scheme for that render. It
+ * The themed branch is for the other case: a **recomposing** session asked for `?themeProvider=`,
+ * so the renderer wraps the preview in a provider and this installs the scheme for that render. It
  * reads the same [remoteCatalogThemeColors] map the replay path seeds, so the two lanes cannot
  * disagree about what a theme is.
  *
@@ -83,19 +83,19 @@ fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
  * needs more room than a single button.
  *
  * The render density is declared here in the **preview configuration** rather than left to the
- * default (~2.625, a phone density). A Remote Compose document is authored for a target density, and
- * this catalog mirrors **Wear** Compose Material 3, so `dpi=320` pins it to **density 2.0** — the
- * same scale as the `design-catalog-wear-m3` sibling (`227dp → 454px`). A `spec:` device sets size +
- * density with no device frame, so the transparent centred-sticker contract is unchanged; #2760
- * stamps this density into the captured `.rc` so the player replays the dp-typed size modifiers at
- * the same scale.
+ * default (~2.625, a phone density). A Remote Compose document is authored for a target density,
+ * and this catalog mirrors **Wear** Compose Material 3, so `dpi=320` pins it to **density 2.0** —
+ * the same scale as the `design-catalog-wear-m3` sibling (`227dp → 454px`). A `spec:` device sets
+ * size + density with no device frame, so the transparent centred-sticker contract is
+ * unchanged; #2760 stamps this density into the captured `.rc` so the player replays the dp-typed
+ * size modifiers at the same scale.
  */
 @Preview(showBackground = false, device = "spec:width=200dp,height=200dp,dpi=320")
 annotation class CatalogRemoteModes
 
 /**
- * A larger single-capture multipreview for the components that need more room than a single button —
- * cards, the app card, a button group, the TimeText strip, and the theme (typography / colour)
+ * A larger single-capture multipreview for the components that need more room than a single button
+ * — cards, the app card, a button group, the TimeText strip, and the theme (typography / colour)
  * specimens. Same transparent, single-dark-mode contract as [CatalogRemoteModes] (including the
  * `dpi=320` density-2.0 pin, matching Wear); only the canvas is bigger so the content isn't clipped
  * by the 200×200 frame.
@@ -110,9 +110,9 @@ annotation class CatalogRemoteLarge
  *
  * Unlike the component stickers, a screen template paints its own surface (see
  * [com.example.designcatalogremotem3.WatchScreenRemote]) rather than rasterising onto transparency:
- * a screen IS a background plus its content, and the whole point of the capture is to read as a real
- * watch screen rather than a floating component. `showBackground = false` therefore still holds — the
- * fill comes from the document, not the preview frame.
+ * a screen IS a background plus its content, and the whole point of the capture is to read as a
+ * real watch screen rather than a floating component. `showBackground = false` therefore still
+ * holds — the fill comes from the document, not the preview frame.
  */
 @Preview(showBackground = false, device = "spec:width=227dp,height=227dp,dpi=320")
 annotation class CatalogRemoteScreen

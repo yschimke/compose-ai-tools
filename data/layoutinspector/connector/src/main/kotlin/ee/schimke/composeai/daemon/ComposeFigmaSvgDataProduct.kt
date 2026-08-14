@@ -458,8 +458,8 @@ object ComposeFigmaSvgDataProducer {
   private fun fontFileFamily(bytes: ByteArray, path: okio.Path): String =
     typographicFamily(bytes)
       ?: runCatching {
-          java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, ByteArrayInputStream(bytes)).family
-        }
+        java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, ByteArrayInputStream(bytes)).family
+      }
         .getOrNull()
         ?.takeIf { it.isNotBlank() }
       ?: path.name.substringBeforeLast('.')
@@ -469,20 +469,19 @@ object ComposeFigmaSvgDataProducer {
    * the common case for a plain Regular/Bold, where ID 1 already *is* the typographic family. Read
    * through FontBox (already the subsetter's parser) rather than by hand.
    */
-  private fun typographicFamily(bytes: ByteArray): String? =
-    runCatching {
-        val naming =
-          org.apache.fontbox.ttf
-            .TTFParser(true)
-            .parse(org.apache.pdfbox.io.RandomAccessReadBuffer(bytes))
-            .naming ?: return@runCatching null
-        naming.nameRecords
-          .firstOrNull { it.nameId == NAME_ID_TYPOGRAPHIC_FAMILY }
-          ?.string
-          ?.trim()
-          ?.takeIf { it.isNotBlank() }
-      }
-      .getOrNull()
+  private fun typographicFamily(bytes: ByteArray): String? = runCatching {
+    val naming =
+      org.apache.fontbox.ttf
+        .TTFParser(true)
+        .parse(org.apache.pdfbox.io.RandomAccessReadBuffer(bytes))
+        .naming ?: return@runCatching null
+    naming.nameRecords
+      .firstOrNull { it.nameId == NAME_ID_TYPOGRAPHIC_FAMILY }
+      ?.string
+      ?.trim()
+      ?.takeIf { it.isNotBlank() }
+  }
+    .getOrNull()
 
   private const val NAME_ID_TYPOGRAPHIC_FAMILY = 16
 
@@ -593,22 +592,21 @@ object ComposeFigmaSvgDataProducer {
    * extent-based background sizing rather than stranding the SVG. Bytes come through the injected
    * [fileSystem] so a fake/in-memory filesystem is honoured (docs/AGENTS.md).
    */
-  private fun readImageSize(file: File, fileSystem: FileSystem): Pair<Int, Int>? =
-    runCatching {
-        val bytes = fileSystem.read(file.path.toPath()) { readByteArray() }
-        ImageIO.createImageInputStream(ByteArrayInputStream(bytes)).use { stream ->
-          val readers = ImageIO.getImageReaders(stream)
-          if (!readers.hasNext()) return@runCatching null
-          val reader = readers.next()
-          try {
-            reader.input = stream
-            reader.getWidth(reader.minIndex) to reader.getHeight(reader.minIndex)
-          } finally {
-            reader.dispose()
-          }
-        }
+  private fun readImageSize(file: File, fileSystem: FileSystem): Pair<Int, Int>? = runCatching {
+    val bytes = fileSystem.read(file.path.toPath()) { readByteArray() }
+    ImageIO.createImageInputStream(ByteArrayInputStream(bytes)).use { stream ->
+      val readers = ImageIO.getImageReaders(stream)
+      if (!readers.hasNext()) return@runCatching null
+      val reader = readers.next()
+      try {
+        reader.input = stream
+        reader.getWidth(reader.minIndex) to reader.getHeight(reader.minIndex)
+      } finally {
+        reader.dispose()
       }
-      .getOrNull()
+    }
+  }
+    .getOrNull()
 }
 
 /**

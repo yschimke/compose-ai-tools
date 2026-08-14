@@ -62,9 +62,9 @@ class AndroidPreviewClasspathTest {
     val noisy = tmp.newFile("noise.jar")
     writeJar(noisy, mapOf("some/other/Class.class" to ByteArray(8)))
 
-    val thrown =
-      runCatching { AndroidPreviewClasspath.validateApplicationOnClasspath(listOf(noisy)) }
-        .exceptionOrNull()
+    val thrown = runCatching {
+      AndroidPreviewClasspath.validateApplicationOnClasspath(listOf(noisy))
+    }.exceptionOrNull()
 
     assertThat(thrown).isInstanceOf(IllegalStateException::class.java)
     assertThat(thrown!!.message).contains("issue #1243")

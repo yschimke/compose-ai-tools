@@ -68,15 +68,14 @@ class DeviceFrameCompositorTest {
 
   @Test
   fun missingBackLayerFailsLoudly() {
-    val ex =
-      runCatching {
-          DeviceFrameCompositor.composite(
-            screenshot = solid(10, 10, Color.BLUE),
-            layers = emptyMap(),
-            spec = DeviceArtCatalog.WEAR_ROUND,
-          )
-        }
-        .exceptionOrNull()
+    val ex = runCatching {
+      DeviceFrameCompositor.composite(
+        screenshot = solid(10, 10, Color.BLUE),
+        layers = emptyMap(),
+        spec = DeviceArtCatalog.WEAR_ROUND,
+      )
+    }
+      .exceptionOrNull()
     assertNotNull("compositing without a back layer should throw", ex)
   }
 

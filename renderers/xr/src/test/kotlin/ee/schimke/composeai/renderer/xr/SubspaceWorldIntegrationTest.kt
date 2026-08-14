@@ -105,9 +105,9 @@ class SubspaceWorldIntegrationTest {
     SubspaceSceneWriter.captureViewTextures(outDir, scene.panels, recorded.panelViews)
     val sceneFile = SubspaceSceneWriter.writeScene(outDir, scene)
 
-    val decoded =
-      Json { ignoreUnknownKeys = true }
-        .decodeFromString(SpatialScene.serializer(), sceneFile.readText())
+    val decoded = Json {
+      ignoreUnknownKeys = true
+    }.decodeFromString(SpatialScene.serializer(), sceneFile.readText())
     assertThat(decoded.previewId).isEqualTo("spatial-world")
     for (panel in decoded.panels) {
       val texture = File(outDir, panel.texture)

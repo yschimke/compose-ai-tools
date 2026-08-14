@@ -178,8 +178,8 @@ internal fun PreviewResult.a11yEntry(): AccessibilityEntry? {
   val payload = dataExtensions["a11y"] ?: return null
   if (payload.schema != A11Y_PAYLOAD_SCHEMA_V1) return null
   return runCatching {
-      a11yDecodeJson.decodeFromJsonElement(AccessibilityEntry.serializer(), payload.payload)
-    }
+    a11yDecodeJson.decodeFromJsonElement(AccessibilityEntry.serializer(), payload.payload)
+  }
     .getOrNull()
 }
 

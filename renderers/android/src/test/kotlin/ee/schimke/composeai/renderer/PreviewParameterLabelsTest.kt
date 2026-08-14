@@ -94,12 +94,13 @@ class PreviewParameterLabelsTest {
    */
   @Test
   fun `a label that looks like a positional row token falls back to its own index`() {
-    val suffixes =
-      PreviewParameterLabels.suffixesFor(listOf(Labeled("PARAM_1"), Labeled("Dark")))
+    val suffixes = PreviewParameterLabels.suffixesFor(listOf(Labeled("PARAM_1"), Labeled("Dark")))
     assertEquals(listOf("_PARAM_0", "_Dark"), suffixes)
   }
 
-  /** Only the exact `PARAM_<digits>` shape is reserved — a label merely starting with it is fine. */
+  /**
+   * Only the exact `PARAM_<digits>` shape is reserved — a label merely starting with it is fine.
+   */
   @Test
   fun `labels that only resemble the reserved shape are kept`() {
     val suffixes =

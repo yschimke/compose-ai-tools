@@ -46,7 +46,9 @@ class PreviewRowResultSelectionTest {
     PreviewModule(
       gradlePath = name,
       projectDir =
-        tempDir.resolve(name.trim(':')).apply { resolve("build/compose-previews/renders").mkdirs() },
+        tempDir.resolve(name.trim(':')).apply {
+          resolve("build/compose-previews/renders").mkdirs()
+        },
     )
 
   private fun preview(id: String, parameterized: Boolean = true) =

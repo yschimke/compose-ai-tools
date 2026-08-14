@@ -24,10 +24,10 @@ import org.junit.rules.TemporaryFolder
  *
  * `RenderEngine.render` has replayed those previews from their carried IR since schema v5, but
  * `RobolectricHost`'s held-rule loop did not — it went straight to `Class.forName`, so every
- * `interactive/start` against a fully IR-backed catalog failed with
- * `ClassNotFoundException` and the viewer reported "input requires a live stream — unavailable".
- * The published `remote-m3` catalog is exactly that shape: all 28 previews carry an `ir/<id>.rc`
- * document and its `classes/app.jar` is an empty 22-byte jar, so live mode could never work there.
+ * `interactive/start` against a fully IR-backed catalog failed with `ClassNotFoundException` and
+ * the viewer reported "input requires a live stream — unavailable". The published `remote-m3`
+ * catalog is exactly that shape: all 28 previews carry an `ir/<id>.rc` document and its
+ * `classes/app.jar` is an empty 22-byte jar, so live mode could never work there.
  *
  * [replaysIrBackedPreviewAndStillFailsWithoutIr] pins the fix in both directions: the IR-backed id
  * now composes its replay, while an identically-shaped id the bundle carries no IR for still fails
@@ -197,7 +197,9 @@ class AndroidInteractiveIrReplayTest {
       "com.example.designcatalogremotem3.CatalogPreviewsKt." +
         "ButtonGroupRemote_width_320dp_height_240dp_dpi_320"
 
-    /** Same absent class, but an id the seeded bundle carries no `intermediateRepresentation` for. */
+    /**
+     * Same absent class, but an id the seeded bundle carries no `intermediateRepresentation` for.
+     */
     const val NO_IR_PREVIEW_ID: String =
       "com.example.designcatalogremotem3.CatalogPreviewsKt." +
         "CardRemote_width_320dp_height_240dp_dpi_320"
@@ -213,8 +215,8 @@ class AndroidInteractiveIrReplayTest {
 }
 
 /**
- * Registered via `src/test/resources/META-INF/services/...IrReplayComposableProvider`, mirroring how
- * `:data-remotecompose-connector` registers `RemoteComposeIrReplay`.
+ * Registered via `src/test/resources/META-INF/services/...IrReplayComposableProvider`, mirroring
+ * how `:data-remotecompose-connector` registers `RemoteComposeIrReplay`.
  */
 class FakeRemoteComposeIrReplayProvider : IrReplayComposableProvider {
   override val format: String = BundleIrReplayStore.FORMAT_REMOTECOMPOSE

@@ -26,11 +26,10 @@ internal object ScrollCaptureInProgressLocal {
   fun get(): ProvidableCompositionLocal<Boolean>? = cached
 
   @Suppress("UNCHECKED_CAST")
-  private fun resolve(): ProvidableCompositionLocal<Boolean>? =
-    runCatching {
-        val clazz = Class.forName("androidx.compose.ui.platform.CompositionLocalsKt")
-        val method = clazz.getDeclaredMethod("getLocalProvidableScrollCaptureInProgress")
-        method.invoke(null) as ProvidableCompositionLocal<Boolean>
-      }
-      .getOrNull()
+  private fun resolve(): ProvidableCompositionLocal<Boolean>? = runCatching {
+    val clazz = Class.forName("androidx.compose.ui.platform.CompositionLocalsKt")
+    val method = clazz.getDeclaredMethod("getLocalProvidableScrollCaptureInProgress")
+    method.invoke(null) as ProvidableCompositionLocal<Boolean>
+  }
+    .getOrNull()
 }

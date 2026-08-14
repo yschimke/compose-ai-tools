@@ -2,6 +2,8 @@
 
 package ee.schimke.composeai.daemon
 
+import androidx.compose.remote.core.RemoteClock
+import androidx.compose.remote.core.SystemClock
 import androidx.compose.remote.creation.compose.capture.RemoteCreationDisplayInfo
 import androidx.compose.remote.creation.compose.capture.RemoteDensity
 import androidx.compose.remote.creation.compose.capture.RemoteDensityBehavior
@@ -9,8 +11,6 @@ import androidx.compose.remote.creation.compose.capture.captureSingleRemoteDocum
 import androidx.compose.remote.creation.compose.layout.RemoteComposable
 import androidx.compose.remote.creation.profile.Profile
 import androidx.compose.remote.creation.profile.RcPlatformProfiles
-import androidx.compose.remote.core.RemoteClock
-import androidx.compose.remote.core.SystemClock
 import androidx.compose.remote.player.compose.RemoteDocumentPlayer
 import androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayer
 import androidx.compose.remote.player.core.RemoteDocument
@@ -21,12 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.PreviewWrapperProvider
 import androidx.compose.ui.unit.LayoutDirection
-import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
+import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.render.IrSidecarChannel
-import kotlinx.coroutines.runBlocking
 import java.time.Clock
 import java.time.ZoneId
+import kotlinx.coroutines.runBlocking
 
 /**
  * `PreviewWrapperProvider` that bridges `renderNow.overrides.remoteCompose.namedValues` into the
@@ -106,7 +106,8 @@ fun RemoteOverridablePreview(
 
   val displayMetrics = context.resources.displayMetrics
   // Capture in `Dp` density behavior, not the 3-arg default (`Legacy`). Legacy serialises the
-  // dp-typed size modifiers (`size(dp)`, `heightIn(dp)` / `buttonSizeModifier`) inconsistently, so a
+  // dp-typed size modifiers (`size(dp)`, `heightIn(dp)` / `buttonSizeModifier`) inconsistently, so
+  // a
   // player can't reproduce the generation-density render — Material3 button/card fills and the
   // circular-progress indicator come out ~1/density too small. `Dp` keeps those dimensions in dp so
   // a player can scale them by the generation density. That density is written into the header
@@ -138,12 +139,14 @@ fun RemoteOverridablePreview(
               )
               .bytes
           // The `Dp` capture keeps size modifiers in dp but the alpha writer doesn't record the
-          // generation density *value* (only DOC_WIDTH/HEIGHT in px and the density behavior). Stamp
+          // generation density *value* (only DOC_WIDTH/HEIGHT in px and the density behavior).
+          // Stamp
           // DOC_DENSITY_AT_GENERATION into the header so the rc-player can scale the dp modifiers
           // back to px; without it the fills/indicator render ~1/density too small. Best-effort and
           // idempotent — never fail the render over it.
-          val stamped =
-            runCatching { stampGenerationDensity(bytes, displayMetrics.density) }.getOrDefault(bytes)
+          val stamped = runCatching {
+            stampGenerationDensity(bytes, displayMetrics.density)
+          }.getOrDefault(bytes)
           // Offer the captured RC doc so a bundle can carry + replay it without this composable's
           // bytecode; the render harness drains it into the `renders/<stem>.rc` sidecar that
           // `BundlePreviewTask.resolvePreviewIr` packs. No-op outside a daemon/test render (no
@@ -159,8 +162,10 @@ fun RemoteOverridablePreview(
 
   // Re-record the captured knobs on EVERY render. The memoized capture above records them only once
   // (during the outer composition phase); on the daemon path `RemoteComposeOverrideExtension`'s
-  // render-start `clearDeclarations()` runs afterwards (from a `DisposableEffect`, the apply phase),
-  // so without this a `renderNow` / `data/fetch` render would surface no knobs. A `SideEffect` lands
+  // render-start `clearDeclarations()` runs afterwards (from a `DisposableEffect`, the apply
+  // phase),
+  // so without this a `renderNow` / `data/fetch` render would surface no knobs. A `SideEffect`
+  // lands
   // in the apply phase after that clear (Compose runs every `RememberObserver` before any
   // `SideEffect`). Idempotent, so the standalone Gradle path (which clears before rendering) is
   // unaffected.

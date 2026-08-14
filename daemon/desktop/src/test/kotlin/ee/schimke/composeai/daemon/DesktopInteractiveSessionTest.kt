@@ -431,14 +431,13 @@ class DesktopInteractiveSessionTest {
     val host = DesktopHost(engine = RenderEngine(outputDir = tempFolder.newFolder("ignored")))
     host.start()
     try {
-      val thrown =
-        runCatching {
-            host.acquireInteractiveSession(
-              previewId = FIXTURE_PREVIEW_ID,
-              classLoader = DesktopInteractiveSessionTest::class.java.classLoader!!,
-            )
-          }
-          .exceptionOrNull()
+      val thrown = runCatching {
+        host.acquireInteractiveSession(
+          previewId = FIXTURE_PREVIEW_ID,
+          classLoader = DesktopInteractiveSessionTest::class.java.classLoader!!,
+        )
+      }
+        .exceptionOrNull()
       assertNotNull(
         "DesktopHost without a resolver must throw on acquireInteractiveSession",
         thrown,
@@ -461,14 +460,13 @@ class DesktopInteractiveSessionTest {
       )
     host.start()
     try {
-      val thrown =
-        runCatching {
-            host.acquireInteractiveSession(
-              previewId = "unknown-preview",
-              classLoader = DesktopInteractiveSessionTest::class.java.classLoader!!,
-            )
-          }
-          .exceptionOrNull()
+      val thrown = runCatching {
+        host.acquireInteractiveSession(
+          previewId = "unknown-preview",
+          classLoader = DesktopInteractiveSessionTest::class.java.classLoader!!,
+        )
+      }
+        .exceptionOrNull()
       assertTrue(
         "expected UnsupportedOperationException for null resolver result; got ${thrown?.javaClass}",
         thrown is UnsupportedOperationException,

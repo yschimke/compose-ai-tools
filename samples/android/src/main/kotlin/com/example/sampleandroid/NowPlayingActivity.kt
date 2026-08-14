@@ -34,9 +34,7 @@ class NowPlayingActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     setContent {
       MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
-          NowPlayingScreen(onClose = { finish() })
-        }
+        Surface(modifier = Modifier.fillMaxSize()) { NowPlayingScreen(onClose = { finish() }) }
       }
     }
   }

@@ -133,14 +133,14 @@ data class AndroidStringCatalog(
     ) {
       val doc =
         runCatching {
-            DocumentBuilderFactory.newInstance()
-              .apply {
-                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-                isExpandEntityReferences = false
-              }
-              .newDocumentBuilder()
-              .parse(file)
-          }
+          DocumentBuilderFactory.newInstance()
+            .apply {
+              setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+              isExpandEntityReferences = false
+            }
+            .newDocumentBuilder()
+            .parse(file)
+        }
           .getOrNull() ?: return
       val nodes = doc.getElementsByTagName("string")
       for (i in 0 until nodes.length) {

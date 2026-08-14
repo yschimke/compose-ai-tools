@@ -13,9 +13,9 @@ import org.junit.Test
  * The `<stem>.rc` sidecar (the encoded doc that `BundlePreviewTask.resolvePreviewIr` packs) is
  * captured only through the RemoteCompose wrapper — `RemoteOverridablePreviewWrapper.Wrap` runs
  * `captureSingleRemoteDocument`. `RemoteWidgetSquirclePreview` frames the widget in a squircle via
- * [SquircleRemoteWidgetWrapper], which **extends** that wrapper rather than replacing it, so both the
- * shape and the doc survive. A shape wrapper that swapped out the RemoteCompose wrapper would render
- * the same PNG but produce no `.rc` — this test fails in that case.
+ * [SquircleRemoteWidgetWrapper], which **extends** that wrapper rather than replacing it, so both
+ * the shape and the doc survive. A shape wrapper that swapped out the RemoteCompose wrapper would
+ * render the same PNG but produce no `.rc` — this test fails in that case.
  *
  * The extension is `.rc`; it was `.rcdoc` until the serve canvas lane renamed it (#2720). This test
  * kept asking for the old name and so had been failing — i.e. NOT guarding the invariant — until
@@ -57,7 +57,8 @@ class RemoteWidgetDocCaptureTest {
     val cs = ((corner shr 16) and 0xff) + ((corner shr 8) and 0xff) + (corner and 0xff)
     assertThat(cs).isLessThan(30)
 
-    // Interior carries the widget's blue fill (0xFF1E88E5-ish), proving the remote content rendered.
+    // Interior carries the widget's blue fill (0xFF1E88E5-ish), proving the remote content
+    // rendered.
     val inside = img.getRGB(img.width / 4, img.height / 2)
     val ir = (inside shr 16) and 0xff
     val ib = inside and 0xff

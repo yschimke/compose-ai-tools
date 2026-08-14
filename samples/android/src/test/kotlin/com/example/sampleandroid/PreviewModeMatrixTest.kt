@@ -12,15 +12,15 @@ import org.junit.Test
  * for them (the module sets `renderBeforeUnitTests`, so `check` renders first) and pins each to the
  * geometry **Android Studio** resolves for the same annotation.
  *
- * The numbers below are not read back from our own resolver — they are written out as `dp × density`
- * from Studio's own device catalog, so the test says "we match Studio", not "we match ourselves". The
- * two rounding rules are the ones the pipeline actually implements:
+ * The numbers below are not read back from our own resolver — they are written out as `dp ×
+ * density` from Studio's own device catalog, so the test says "we match Studio", not "we match
+ * ourselves". The two rounding rules are the ones the pipeline actually implements:
  * - an explicit **fixed** axis (`widthDp`/`heightDp`) rounds half-up to Studio's whole-pixel frame;
  * - a **wrapped** axis is the composable's measured size, rounded up to the enclosing pixel.
  *
  * Together with the fixture this is the answer to "do we match Studio by default?": a regression in
- * `DeviceDimensions.resolveForRender`, in the Robolectric qualifier plumbing, or in the multipreview
- * walk fails here instead of silently shipping differently-shaped pixels.
+ * `DeviceDimensions.resolveForRender`, in the Robolectric qualifier plumbing, or in the
+ * multipreview walk fails here instead of silently shipping differently-shaped pixels.
  */
 class PreviewModeMatrixTest {
 
@@ -72,14 +72,14 @@ class PreviewModeMatrixTest {
 
   @Test
   fun `every preview mode renders at the size Android Studio resolves`() {
-    val mismatches =
-      expectedSizes.mapNotNull { (stem, expected) ->
-        val file = renderFile(rendersDir, stem)
-        if (!file.exists()) return@mapNotNull "$stem: no PNG rendered"
-        val img = ImageIO.read(file) ?: return@mapNotNull "$stem: unreadable PNG"
-        val actual = img.width to img.height
-        if (actual == expected) null else "$stem: expected ${expected.pretty()}, got ${actual.pretty()}"
-      }
+    val mismatches = expectedSizes.mapNotNull { (stem, expected) ->
+      val file = renderFile(rendersDir, stem)
+      if (!file.exists()) return@mapNotNull "$stem: no PNG rendered"
+      val img = ImageIO.read(file) ?: return@mapNotNull "$stem: unreadable PNG"
+      val actual = img.width to img.height
+      if (actual == expected) null
+      else "$stem: expected ${expected.pretty()}, got ${actual.pretty()}"
+    }
     assertThat(mismatches).isEmpty()
   }
 
@@ -96,12 +96,12 @@ class PreviewModeMatrixTest {
   fun `backgroundColor paints the declared colour behind the composable`() {
     // The probe is a small black box centred in a larger frame, so the corners are pure background.
     val img = readRender("MatrixBackgroundColorPreview_Background_colour")
-    listOf(0 to 0, img.width - 1 to 0, 0 to img.height - 1, img.width - 1 to img.height - 1).forEach {
-      (x, y) ->
-      val argb = img.getRGB(x, y)
-      assertThat((argb ushr 24) and 0xff).isEqualTo(0xff)
-      assertThat(argb and 0xffffff).isEqualTo(0x00FF00)
-    }
+    listOf(0 to 0, img.width - 1 to 0, 0 to img.height - 1, img.width - 1 to img.height - 1)
+      .forEach { (x, y) ->
+        val argb = img.getRGB(x, y)
+        assertThat((argb ushr 24) and 0xff).isEqualTo(0xff)
+        assertThat(argb and 0xffffff).isEqualTo(0x00FF00)
+      }
   }
 
   @Test
@@ -174,7 +174,8 @@ class PreviewModeMatrixTest {
   fun `PreviewLightDark fans out into two visibly different captures`() {
     // A fan-out that renders the same pixels twice would still satisfy a filename count, so pin the
     // outcome: the probe colours itself from `isSystemInDarkTheme()`, and the dark entry must land
-    // darker. This is what proves each nested @Preview's params reach the render, not just its name.
+    // darker. This is what proves each nested @Preview's params reach the render, not just its
+    // name.
     val light = readRender("MatrixLightDarkMultiPreview_Light")
     val dark = readRender("MatrixLightDarkMultiPreview_Dark")
     assertThat(meanLuminance(dark)).isLessThan(meanLuminance(light))
@@ -185,7 +186,10 @@ class PreviewModeMatrixTest {
     // The two nested @Preview entries name different devices, so the fan-out must produce two
     // differently-shaped captures — this is what distinguishes a real transitive multipreview walk
     // from one that renders the same spec twice.
-    val sizes = rendersFor("MatrixMetaAnnotationMultiPreview").map { ImageIO.read(it) }.map { it.width to it.height }
+    val sizes =
+      rendersFor("MatrixMetaAnnotationMultiPreview")
+        .map { ImageIO.read(it) }
+        .map { it.width to it.height }
     assertThat(sizes).containsExactly(1080 to 2340, 384 to 384)
   }
 

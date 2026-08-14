@@ -12,12 +12,12 @@ import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposePayload
 import ee.schimke.composeai.data.render.IrSidecarChannel
 import ee.schimke.composeai.data.render.PreviewContext
-import java.util.Base64
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
 import ee.schimke.composeai.data.render.extensions.compose.hasAroundComposableHook
+import java.util.Base64
 import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -342,8 +342,7 @@ class RemoteComposeDataProductTest {
     )
     val jsonStr = controller.declarationsJson()
     assertNotNull(jsonStr)
-    val payload =
-      Json.decodeFromString(RemoteComposeDeclarationsPayload.serializer(), jsonStr!!)
+    val payload = Json.decodeFromString(RemoteComposeDeclarationsPayload.serializer(), jsonStr!!)
     assertEquals(2, payload.declarations.size)
     assertEquals("label", payload.declarations[0].name)
     assertEquals(RemoteNamedValue.StringValue("Filled"), payload.declarations[0].default)
@@ -365,13 +364,20 @@ class RemoteComposeDataProductTest {
     val rc = byteArrayOf(1, 2, 3, 4, 5)
     offerIr("preview-1", rc)
 
-    registry.onRender("preview-1", stubRenderResult(), overrides = null, previewContext = stubContext())
+    registry.onRender(
+      "preview-1",
+      stubRenderResult(),
+      overrides = null,
+      previewContext = stubContext(),
+    )
 
-    val outcome = registry.fetch("preview-1", "compose/remotecompose-doc", params = null, inline = true)
+    val outcome =
+      registry.fetch("preview-1", "compose/remotecompose-doc", params = null, inline = true)
     assertTrue(outcome is DataProductRegistry.Outcome.Ok)
     val result = (outcome as DataProductRegistry.Outcome.Ok).result
     assertEquals("compose/remotecompose-doc", result.kind)
-    val payload = Json.decodeFromJsonElement(RemoteComposeDocumentPayload.serializer(), result.payload!!)
+    val payload =
+      Json.decodeFromJsonElement(RemoteComposeDocumentPayload.serializer(), result.payload!!)
     assertArrayEquals(rc, Base64.getDecoder().decode(payload.documentBase64))
     // The render drained the channel — a second render with nothing offered clears the document.
     assertNull(IrSidecarChannel.peek("preview-1"))
@@ -384,7 +390,12 @@ class RemoteComposeDataProductTest {
     val registry = RemoteComposeDataProductRegistry()
     offerIr("preview-1", byteArrayOf(9, 9, 9))
 
-    registry.onRender("preview-1", stubRenderResult(), overrides = null, previewContext = stubContext())
+    registry.onRender(
+      "preview-1",
+      stubRenderResult(),
+      overrides = null,
+      previewContext = stubContext(),
+    )
 
     assertEquals(
       "no knobs → the knob facet is unavailable",
@@ -402,9 +413,19 @@ class RemoteComposeDataProductTest {
   fun a_render_with_no_capture_clears_a_stale_document() {
     val registry = RemoteComposeDataProductRegistry()
     offerIr("preview-1", byteArrayOf(7))
-    registry.onRender("preview-1", stubRenderResult(), overrides = null, previewContext = stubContext())
+    registry.onRender(
+      "preview-1",
+      stubRenderResult(),
+      overrides = null,
+      previewContext = stubContext(),
+    )
     // Next render offers nothing — the previously captured document must not linger.
-    registry.onRender("preview-1", stubRenderResult(), overrides = null, previewContext = stubContext())
+    registry.onRender(
+      "preview-1",
+      stubRenderResult(),
+      overrides = null,
+      previewContext = stubContext(),
+    )
     assertEquals(
       DataProductRegistry.Outcome.NotAvailable,
       registry.fetch("preview-1", "compose/remotecompose-doc", params = null, inline = true),
@@ -418,7 +439,12 @@ class RemoteComposeDataProductTest {
     val registry = RemoteComposeDataProductRegistry()
     offerIr("preview-1", byteArrayOf(4, 2), format = IrSidecarChannel.FORMAT_PROTOLAYOUT)
 
-    registry.onRender("preview-1", stubRenderResult(), overrides = null, previewContext = stubContext())
+    registry.onRender(
+      "preview-1",
+      stubRenderResult(),
+      overrides = null,
+      previewContext = stubContext(),
+    )
 
     assertEquals(
       "a non-RC capture yields no RC document",

@@ -212,7 +212,8 @@ internal fun installComposePreviewHandlers(
   listResources: () -> List<ee.schimke.composeai.mcp.protocol.ResourceDescriptor>,
   readResource:
     (
-      uri: String, progressToken: JsonElement?,
+      uri: String,
+      progressToken: JsonElement?,
     ) -> ee.schimke.composeai.mcp.protocol.ReadResourceResult,
   subscribe: (uri: String) -> Unit,
   unsubscribe: (uri: String) -> Unit,

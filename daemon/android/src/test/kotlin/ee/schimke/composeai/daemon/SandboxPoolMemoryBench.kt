@@ -51,8 +51,10 @@ class SandboxPoolMemoryBench {
       val report = buildString {
         appendLine("---- sandbox-pool memory bench (out-of-process, #3072) ----")
         appendLine("daemon JVM (slot 0, 1 sandbox):")
-        appendLine("  baseline: heap=${baseline.heapMb} MiB  committedVirtual=${baseline
-          .nativeHeapMb} MiB")
+        appendLine(
+          "  baseline: heap=${baseline.heapMb} MiB  committedVirtual=${baseline
+          .nativeHeapMb} MiB"
+        )
         appendLine("  warm:     heap=${warm.heapMb} MiB  committedVirtual=${warm.nativeHeapMb} MiB")
         appendLine("workers (${workerPids.size} × 1 sandbox):")
         for ((pid, rss) in workerRssMb) appendLine("  pid=$pid rss=$rss MiB")
@@ -86,25 +88,23 @@ class SandboxPoolMemoryBench {
     System.gc()
     val r = Runtime.getRuntime()
     val heapMb = (r.totalMemory() - r.freeMemory()) / (1024L * 1024L)
-    val nativeHeapMb: Long =
-      runCatching {
-          val osBean = ManagementFactory.getOperatingSystemMXBean() as? OperatingSystemMXBean
-          osBean?.committedVirtualMemorySize?.div(1024L * 1024L) ?: 0L
-        }
-        .getOrDefault(0L)
+    val nativeHeapMb: Long = runCatching {
+      val osBean = ManagementFactory.getOperatingSystemMXBean() as? OperatingSystemMXBean
+      osBean?.committedVirtualMemorySize?.div(1024L * 1024L) ?: 0L
+    }
+      .getOrDefault(0L)
     return Sample(heapMb = heapMb, nativeHeapMb = nativeHeapMb)
   }
 
   /** Resident set of [pid] in MiB from `/proc`; `0` where that isn't readable (non-Linux, gone). */
-  private fun residentSetMb(pid: Long): Long =
-    runCatching {
-        File("/proc/$pid/status")
-          .takeIf { it.isFile }
-          ?.readLines()
-          ?.firstOrNull { it.startsWith("VmRSS:") }
-          ?.filter(Char::isDigit)
-          ?.toLongOrNull()
-          ?.div(1024L) ?: 0L
-      }
-      .getOrDefault(0L)
+  private fun residentSetMb(pid: Long): Long = runCatching {
+    File("/proc/$pid/status")
+      .takeIf { it.isFile }
+      ?.readLines()
+      ?.firstOrNull { it.startsWith("VmRSS:") }
+      ?.filter(Char::isDigit)
+      ?.toLongOrNull()
+      ?.div(1024L) ?: 0L
+  }
+    .getOrDefault(0L)
 }

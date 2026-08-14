@@ -112,15 +112,12 @@ private constructor(
     ): ServeDesignReferenceStore {
       val root = bundleDir.toOkioPath()
       val manifestPath = root / DIRECTORY / INDEX_FILE
-      val manifest =
-        runCatching {
-            if (!fileSystem.exists(manifestPath)) return@runCatching null
-            JSON.decodeFromString<DesignReferenceManifest>(
-              fileSystem.read(manifestPath) { readUtf8() }
-            )
-          }
-          .getOrNull()
-          ?.takeIf { it.schema == DesignReferenceManifest.SCHEMA }
+      val manifest = runCatching {
+        if (!fileSystem.exists(manifestPath)) return@runCatching null
+        JSON.decodeFromString<DesignReferenceManifest>(fileSystem.read(manifestPath) { readUtf8() })
+      }
+        .getOrNull()
+        ?.takeIf { it.schema == DesignReferenceManifest.SCHEMA }
       if (manifest == null) return ServeDesignReferenceStore(root, emptyList(), fileSystem)
 
       val seen = HashSet<String>()

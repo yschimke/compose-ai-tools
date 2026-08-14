@@ -35,11 +35,11 @@ import androidx.compose.remote.core.operations.utilities.easing.Easing as Remote
  */
 
 internal fun mapEasing(type: Int): ComposeEasing {
-    return when (type) {
-        RemoteEasing.CUBIC_LINEAR -> LinearEasing
-        RemoteEasing.CUBIC_STANDARD -> FastOutSlowInEasing
-        RemoteEasing.CUBIC_ACCELERATE -> FastOutLinearInEasing
-        RemoteEasing.CUBIC_DECELERATE -> LinearOutSlowInEasing
-        else -> LinearEasing
-    }
+  return when (type) {
+    RemoteEasing.CUBIC_LINEAR -> LinearEasing
+    RemoteEasing.CUBIC_STANDARD -> FastOutSlowInEasing
+    RemoteEasing.CUBIC_ACCELERATE -> FastOutLinearInEasing
+    RemoteEasing.CUBIC_DECELERATE -> LinearOutSlowInEasing
+    else -> LinearEasing
+  }
 }

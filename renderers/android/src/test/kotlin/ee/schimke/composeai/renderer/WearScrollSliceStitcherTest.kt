@@ -40,7 +40,9 @@ class WearScrollSliceStitcherTest {
         },
     )
 
-  /** A slice: a subcomposition container of cards, optional curved TimeText, and matching semantics. */
+  /**
+   * A slice: a subcomposition container of cards, optional curved TimeText, and matching semantics.
+   */
   private fun slice(
     cards: List<LayoutInspectorNode>,
     timeText: Boolean = false,
@@ -96,7 +98,12 @@ class WearScrollSliceStitcherTest {
   @Test
   fun `chains overlapping slices and de-dups items to true positions`() {
     // Slice 0 shows A@50,B@100; slice 1 (scrolled 50) shows B@50,C@100. Shared B fixes the offset.
-    val s0 = slice(listOf(card("A", 50), card("B", 100)), timeText = true, rows = listOf("A" to 50, "B" to 100))
+    val s0 =
+      slice(
+        listOf(card("A", 50), card("B", 100)),
+        timeText = true,
+        rows = listOf("A" to 50, "B" to 100),
+      )
     val s1 = slice(listOf(card("B", 50), card("C", 100)), rows = listOf("B" to 50, "C" to 100))
 
     val out = WearScrollSliceStitcher.stitch(rootId = "t", width = width, slices = listOf(s0, s1))

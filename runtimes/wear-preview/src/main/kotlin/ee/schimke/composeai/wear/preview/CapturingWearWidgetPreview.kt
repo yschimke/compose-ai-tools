@@ -30,7 +30,8 @@ import kotlinx.coroutines.runBlocking
  * rendered PNG.
  *
  * The capture is best-effort: outside a daemon/test render there is no current preview id, so
- * [IrSidecarChannel.offer] is a no-op and only the raster runs (e.g. Android Studio's preview pane).
+ * [IrSidecarChannel.offer] is a no-op and only the raster runs (e.g. Android Studio's preview
+ * pane).
  *
  * ## Backgrounds belong here, not in [content]
  *
@@ -60,11 +61,10 @@ fun CapturingWearWidgetPreview(
     // (linkage errors are not `Exception`s) and say so on stderr, so a missing sidecar is
     // diagnosable from the render log instead of being invisible.
     try {
-      val raw =
-        runBlocking {
-          WearWidgetDocument(background, content)
-            .captureRawContent(context, params, /* isInspectionMode = */ true)
-        }
+      val raw = runBlocking {
+        WearWidgetDocument(background, content)
+          .captureRawContent(context, params, /* isInspectionMode= */ true)
+      }
       IrSidecarChannel.offer(IrSidecarChannel.FORMAT_REMOTECOMPOSE, raw.rcDocument)
     } catch (t: Throwable) {
       System.err.println(
