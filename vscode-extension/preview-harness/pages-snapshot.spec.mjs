@@ -397,6 +397,52 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // A render the server could not produce — a preview that throws, a daemon that fell over, a
+        // 404. The page opens on the render lane, so the design's own drawing must come BACK in
+        // that slot rather than leaving a hole where the whole claim is that something stands in
+        // it. Driven by dispatching the same `error` event the browser fires, on an image that has
+        // already loaded, so this exercises the production handler rather than a stub of it.
+        fixture: "serve-design-page",
+        suffix: "render-failed",
+        apply: async (page) => {
+            await page.click(".cp-page-nodes > summary");
+            const failed = await page.evaluate(() => {
+                const img = document.querySelector(".cp-page-render");
+                if (!img) return null;
+                img.dispatchEvent(new Event("error"));
+                return img.getAttribute("data-cp-node");
+            });
+            // The node's own drawing is showing again and the broken image is out of the way.
+            // Compared against THAT node rather than "any node", so a handler that restored the
+            // wrong target — or every target — would fail here instead of passing on a count.
+            await page.waitForFunction(
+                (id) => {
+                    const target = Array.from(document.querySelectorAll("svg [data-node-id]")).find(
+                        (el) =>
+                            el.getAttribute("data-node-id") === id ||
+                            el.getAttribute("data-node-id") === String(id).replace(/:/g, "-"),
+                    );
+                    const img = document.querySelector(`.cp-page-render[data-cp-node="${id}"]`);
+                    return (
+                        !!target &&
+                        !target.classList.contains("cp-page-replaced") &&
+                        !!img &&
+                        // COMPUTED display, not the `hidden` property. The property was true while
+                        // the image was still painted on top of the restored drawing: the swap
+                        // lane's `display: block` is a two-class selector and outranked the UA
+                        // stylesheet's `[hidden]`. Asserting the property passed that bug straight
+                        // through; asserting what the browser actually draws does not.
+                        getComputedStyle(img).display === "none" &&
+                        // The rest of the sheet must be untouched — this is one slot falling back,
+                        // not the lane collapsing.
+                        document.querySelectorAll("svg .cp-page-replaced").length > 0
+                    );
+                },
+                failed,
+            );
+        },
+    },
+    {
         // A component opened onto its variants — the state the two deepest levels exist for, and
         // one the committed HTML cannot hold: components ship collapsed, so without this the
         // variant rows would never appear in a baseline at all.

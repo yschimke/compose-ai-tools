@@ -72,13 +72,35 @@
       // and nothing to hide. Skipping leaves the row in the list, which is the honest state.
       if (!entry) continue;
       entry.overlay.appendChild(image);
-      // Marked here rather than at load: the class is what "hide the design's own" acts on, and a
-      // node with no render must keep showing the design's drawing whatever the toggles say.
-      entry.target.classList.add("cp-page-replaced");
+      standIn(image, entry.target);
     }
     renderSource.remove();
     renderSource = null;
     measure();
+  }
+
+  // The design's drawing is hidden ONLY once ours has actually arrived, and comes back if it never
+  // does. Hiding on adoption instead — which is what this did while the swap was opt-in — leaves an
+  // empty slot for any render the server can't produce: a preview that throws, a daemon that falls
+  // over, a 404. That was survivable while the reader had opted in and could untick "hide the
+  // design's own" to get the sheet back; the page opens on this lane now and that control is gone,
+  // so a failed render would be a hole where the whole point is that something is in the slot.
+  //
+  // Also hides the failed `<img>` itself, or the browser's broken-image glyph would sit on top of
+  // the drawing we just restored.
+  function standIn(image, target) {
+    if (image.complete && image.naturalWidth > 0) {
+      target.classList.add("cp-page-replaced");
+      return;
+    }
+    image.addEventListener("load", function () {
+      image.hidden = false;
+      target.classList.add("cp-page-replaced");
+    });
+    image.addEventListener("error", function () {
+      image.hidden = true;
+      target.classList.remove("cp-page-replaced");
+    });
   }
 
   // Figma writes node ids with a colon (`58548:7249`); the same id appears hyphenated in its own
@@ -251,8 +273,13 @@
         if (overlays[e].getAttribute("data-cp-node") === selected) spot = overlays[e];
       }
       select(null);
-      // Focus would otherwise be left on an element that no longer says anything about itself.
-      if (spot) spot.focus();
+      // Focus goes back to the node that was selected — but only while that node is still exposed.
+      // The coverage filter takes the nodes it mutes out of the accessibility tree, and a selection
+      // survives the filter being switched on, so the node Escape wants to hand focus back to may
+      // by then be `aria-hidden` and 12% opaque. Focusing it would drop a keyboard or screen-reader
+      // user onto an element the page has deliberately hidden; leaving focus where it is (on the
+      // filter they just used) is the honest alternative.
+      if (spot && !spot.hasAttribute("aria-hidden")) spot.focus();
     }
   });
 
