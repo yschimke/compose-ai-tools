@@ -527,6 +527,49 @@ class ServeSessionRegistryTest {
       }
   }
 
+  /**
+   * The GC is the *second* removal path, and it has to discard too.
+   *
+   * Every suspended session is captured, a forked revision host included, so a reclaim that removed
+   * the entry without its snapshot would leak one per reclaimed revision — defeating the bound this
+   * GC exists to enforce, on the surface with the most churn.
+   */
+  @Test
+  fun `reclaiming a forked session discards its snapshot`() {
+    val clock = AtomicLong(0)
+    val held = mutableSetOf<String>()
+    val factory = ServeSessionFactory { id -> stateFor(id) }
+    ServeSessionRegistry(
+        open = Opener(),
+        factory = factory,
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        suspendedGcTimeoutMillis = 1_000,
+        clock = clock::get,
+      )
+      .use { reg ->
+        reg.setSessionSnapshots(
+          object : ServeSessionRegistry.SessionSnapshots {
+            override fun capture(sessionId: String, host: ServeHost) {
+              held += sessionId
+            }
+
+            override fun discard(sessionId: String) {
+              held -= sessionId
+            }
+          }
+        )
+        assertNotNull(reg.acquire("rev1"))
+        clock.set(200)
+        assertEquals(1, reg.suspendIdle())
+        assertEquals(setOf("rev1"), held, "suspended, so a snapshot is held for it")
+
+        clock.set(1_500)
+        assertEquals(1, reg.reclaimIdleForked(), "past the GC window → reclaimed")
+        assertEquals(emptySet(), held, "and the GC discarded its snapshot with it")
+      }
+  }
+
   @Test
   fun `a long-idle suspended forked session is reclaimed and its worktree pruned`() {
     val clock = AtomicLong(0)

@@ -3394,7 +3394,12 @@ class ServeHttpServer(
     sessions.setSessionSnapshots(
       object : ServeSessionRegistry.SessionSnapshots {
         override fun capture(sessionId: String, host: ServeHost) {
-          catalogSourceLocationsSeen[sessionId] = sourceLocationsOf(host)
+          // Nothing stored for a host with no catalog source — a forked revision session, a plain
+          // module — rather than an empty map per session. The GC discards these anyway, but an
+          // entry that can never answer is not worth holding in the first place.
+          val locations = sourceLocationsOf(host)
+          if (locations.isEmpty()) catalogSourceLocationsSeen.remove(sessionId)
+          else catalogSourceLocationsSeen[sessionId] = locations
         }
 
         override fun discard(sessionId: String) {

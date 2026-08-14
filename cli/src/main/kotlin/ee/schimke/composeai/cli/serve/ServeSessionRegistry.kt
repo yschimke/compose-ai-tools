@@ -487,6 +487,12 @@ class ServeSessionRegistry(
     }
     for ((id, entry) in stale) {
       sessions.remove(id)
+      // The second removal path, and it has to discard too. Every suspended session is captured —
+      // a forked revision host included, which contributes an empty map since it is no catalog —
+      // so a GC that removed the entry without the snapshot would leak one per reclaimed revision
+      // and defeat exactly the bound this function exists to enforce. Under the same lock as the
+      // removal, like [unregister].
+      snapshots?.let { runCatching { it.discard(id) } }
       runCatching { entry.state?.reclaim?.invoke() }
     }
     stale.size
