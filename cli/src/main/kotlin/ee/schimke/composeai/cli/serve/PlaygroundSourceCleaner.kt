@@ -174,9 +174,18 @@ object PlaygroundSourceCleaner {
    * pattern unanchored would match the `val c = counted(…)` inside a body and report the block as
    * declaring `c`.
    */
+  /**
+   * Modifiers are matched as "any run of lowercase words" rather than as a closed list. Kotlin has
+   * many, and a closed list missed exactly the ones that change what a declaration *is* — `data
+   * class`, `enum class`, `sealed class`, `value class`. A preview referencing a same-file `data
+   * class Model` then had that block left out of the closure while the seed still claimed to be
+   * clean, so `Model(...)` came back unresolved with no residue to warn about it. Over-matching is
+   * harmless here: the pattern is still anchored at column 0 and still has to reach a real
+   * declaration keyword.
+   */
   private val DECLARATION =
     Regex(
-      """^(?:(?:private|internal|public|expect|actual)\s+)*(?:fun|val|var|class|object|interface)\s+(?:<[^>]*>\s+)?([A-Za-z_][A-Za-z0-9_]*)"""
+      """^(?:[a-z]+\s+)*(?:fun|val|var|class|object|interface|typealias)\s+(?:<[^>]*>\s+)?([A-Za-z_][A-Za-z0-9_]*)"""
     )
 
   /**
@@ -192,20 +201,31 @@ object PlaygroundSourceCleaner {
   // Header
   // ---------------------------------------------------------------------------------------------
 
-  /** simple name (or alias) → fully-qualified name, for every `import` in the file. */
-  private fun importMap(lines: List<String>): Map<String, String> {
-    val out = LinkedHashMap<String, String>()
-    for (line in lines) {
-      val t = line.trim()
-      if (!t.startsWith("import ")) continue
-      val spec = t.removePrefix("import ").trim()
-      val alias = spec.substringAfter(" as ", "").trim()
-      val fqn = spec.substringBefore(" as ").trim()
-      val simple = alias.ifEmpty { fqn.substringAfterLast('.') }
-      if (simple.isNotEmpty()) out[simple] = fqn
-    }
-    return out
+  /**
+   * One `import` line: what the body refers to it by ([name] — the alias when there is one), where
+   * it points, and how to write it back out.
+   *
+   * Aliases are carried rather than collapsed to the FQN's last segment. Deriving the name from the
+   * FQN would look up `Bar` for `import foo.Bar as Baz` — so a body that says `Baz` would prune the
+   * import it needs, and an import that survived would be re-emitted without its `as Baz`.
+   */
+  private data class Import(val name: String, val fqn: String, val alias: String?) {
+    fun render(): String = if (alias == null) "import $fqn" else "import $fqn as $alias"
   }
+
+  private fun importsOf(lines: List<String>): List<Import> = lines.mapNotNull { line ->
+    val t = line.trim()
+    if (!t.startsWith("import ")) return@mapNotNull null
+    val spec = t.removePrefix("import ").trim()
+    val alias = spec.substringAfter(" as ", "").trim().ifEmpty { null }
+    val fqn = spec.substringBefore(" as ").trim()
+    val name = alias ?: fqn.substringAfterLast('.')
+    if (name.isEmpty()) null else Import(name, fqn, alias)
+  }
+
+  /** Name → FQN, for resolving an annotation's simple name against the file's own imports. */
+  private fun importMap(lines: List<String>): Map<String, String> =
+    importsOf(lines).associate { it.name to it.fqn }
 
   /**
    * The cleaned file header: the imports [body] still uses, plus the ones the rewrites introduced,
@@ -228,31 +248,56 @@ object PlaygroundSourceCleaner {
     rules: UsageRules,
     residue: MutableSet<String>,
   ): String {
+    // Kept whole, by paren balance rather than by line. A ktfmt-wrapped
+    // `@file:OptIn(\n  A::class,\n  B::class,\n)` is one annotation across five lines, and a
+    // line-at-a-time filter would emit its opening line alone — an unterminated annotation, and a
+    // header that then prunes the imports only its discarded arguments referenced.
     val fileAnnotations =
-      lines
-        .takeWhile { !it.trimStart().startsWith("package ") }
-        .filter { it.trimStart().startsWith("@file:") }
-        .filterNot { line ->
-          val name =
-            line.trim().removePrefix("@file:").takeWhile { it.isLetterOrDigit() || it == '_' }
-          isScaffoldAnnotation(name, imports, rules)
-        }
+      annotationBlocks(lines.takeWhile { !it.trimStart().startsWith("package ") })
+        .filterNot { isScaffoldAnnotation(it.name, imports, rules) }
+        .map { it.text }
     val kept =
-      imports.values.filter { fqn ->
-        val simple = fqn.substringAfterLast('.')
-        if (isScaffoldPackage(fqn, rules)) {
+      importsOf(lines).filter { import ->
+        if (isScaffoldPackage(import.fqn, rules)) {
           // A scaffold import that is still referenced means a rule is missing, not that the import
           // should be kept — record it and drop it, so the residue names the gap.
-          if (mentionsWord(body, simple)) residue.add(simple)
+          if (mentionsIdentifier(body, import.name)) residue.add(import.name)
           false
         } else {
-          mentionsWord(body, simple) || fileAnnotations.any { mentionsWord(it, simple) }
+          mentionsIdentifier(body, import.name) ||
+            fileAnnotations.any { mentionsIdentifier(it, import.name) }
         }
       }
-    val all = (kept + addedImports).distinct().sorted().map { "import $it" }
+    val all = (kept.map { it.render() } + addedImports.map { "import $it" }).distinct().sorted()
     return (fileAnnotations + (if (fileAnnotations.isEmpty()) emptyList() else listOf("")) + all)
       .joinToString("\n")
       .trim()
+  }
+
+  private data class AnnotationBlock(val name: String, val text: String)
+
+  /**
+   * The file-level annotations in [lines], each as one block however many lines it spans. Also used
+   * by [stripScaffoldAnnotations], so the two agree about where an annotation ends.
+   */
+  private fun annotationBlocks(lines: List<String>): List<AnnotationBlock> {
+    val out = mutableListOf<AnnotationBlock>()
+    var i = 0
+    while (i < lines.size) {
+      if (!lines[i].trimStart().startsWith("@file:")) {
+        i++
+        continue
+      }
+      val end = annotationEnd(lines, i)
+      out.add(
+        AnnotationBlock(
+          name = annotationName(lines[i]),
+          text = lines.subList(i, end + 1).joinToString("\n"),
+        )
+      )
+      i = end + 1
+    }
+    return out
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -318,24 +363,34 @@ object PlaygroundSourceCleaner {
         i++
         continue
       }
-      val name =
-        trimmed.removePrefix("@").removePrefix("file:").takeWhile {
-          it.isLetterOrDigit() || it == '_'
-        }
-      // Consume the whole annotation, however many lines its argument list spans.
-      var depth = 0
-      var end = i
-      while (end < lines.size) {
-        depth += parenBalance(lines[end])
-        if (depth <= 0) break
-        end++
+      val end = annotationEnd(lines, i)
+      if (!isScaffoldAnnotation(annotationName(line), imports, rules)) {
+        for (j in i..end) out.add(lines[j])
       }
-      if (!isScaffoldAnnotation(name, imports, rules)) {
-        for (j in i..minOf(end, lines.lastIndex)) out.add(lines[j])
-      }
-      i = minOf(end, lines.lastIndex) + 1
+      i = end + 1
     }
     return out.joinToString("\n")
+  }
+
+  /** `@file:OptIn(...)` / `@CatalogComponent(...)` → `OptIn` / `CatalogComponent`. */
+  private fun annotationName(line: String): String =
+    line.trimStart().removePrefix("@").removePrefix("file:").takeWhile {
+      it.isLetterOrDigit() || it == '_'
+    }
+
+  /**
+   * The index of the last line of the annotation starting at [start] — the same line when it takes
+   * no arguments or fits on one, and the line closing its argument list when ktfmt has wrapped it.
+   */
+  private fun annotationEnd(lines: List<String>, start: Int): Int {
+    var depth = 0
+    var end = start
+    while (end < lines.size) {
+      depth += parenBalance(lines[end])
+      if (depth <= 0) break
+      end++
+    }
+    return minOf(end, lines.lastIndex)
   }
 
   private fun parenBalance(line: String): Int {
@@ -359,11 +414,22 @@ object PlaygroundSourceCleaner {
    */
   private fun inlineStringResources(text: String, strings: Map<String, String>): String {
     if (strings.isEmpty()) return text
-    return Regex("""stringResource\(\s*Res\.string\.([A-Za-z0-9_]+)\s*\)""").replace(text) { m ->
-      strings[m.groupValues[1]]?.let {
-        "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
-      } ?: m.value
+    // Masked like every other pass. A doc comment or a literal may quote a lookup verbatim
+    // (`Text("Use stringResource(Res.string.label)")`), and substituting there would splice a
+    // quoted string into the middle of a quoted string.
+    val mask = codeMask(text)
+    val sb = StringBuilder()
+    var last = 0
+    for (m in Regex("""stringResource\(\s*Res\.string\.([A-Za-z0-9_]+)\s*\)""").findAll(text)) {
+      val value = strings[m.groupValues[1]] ?: continue
+      if (!mask[m.range.first]) continue
+      sb.append(text, last, m.range.first)
+      sb.append("\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
+      last = m.range.last + 1
     }
+    if (last == 0) return text
+    sb.append(text, last, text.length)
+    return sb.toString()
   }
 
   private fun applyRename(
@@ -394,12 +460,22 @@ object PlaygroundSourceCleaner {
         val lambdaClose = matchBrace(out, lambdaOpen) ?: break
         val inner = out.substring(lambdaOpen + 1, lambdaClose)
         val callIndent = indentOf(out, call.start)
-        // Splice from the start of the call's *line*, not from the call itself: the line's own
-        // indent is already the column the body is being re-indented to, and leaving it in place
-        // would indent the lifted body twice.
         val lineStart = out.lastIndexOf('\n', call.start - 1) + 1
+        val prefix = out.substring(lineStart, call.start)
+        val body = dedent(inner, callIndent)
+        // Where the splice starts depends on what precedes the call on its own line.
+        //
+        // When the line is only indentation, splice from the line start: that indent is already the
+        // column the lifted body is being re-indented to, and keeping it would indent it twice.
+        //
+        // When something else precedes it, that something belongs to the declaration — the wrapper
+        // is the expression body of the preview (`fun Card() = ButtonFrame(size) { … }`). Splicing
+        // from the line start there deleted `fun Card() =` along with the wrapper, left the lifted
+        // body at top level, and still called the result cleaned. So keep the prefix, and drop the
+        // body's own first-line indent, which the prefix now supplies.
         out =
-          out.substring(0, lineStart) + dedent(inner, callIndent) + out.substring(lambdaClose + 1)
+          if (prefix.isBlank()) out.substring(0, lineStart) + body + out.substring(lambdaClose + 1)
+          else out.substring(0, call.start) + body.trimStart() + out.substring(lambdaClose + 1)
       }
     }
     return out
@@ -449,13 +525,21 @@ object PlaygroundSourceCleaner {
       if (scaffold.kind != UsageRules.Kind.INLINE) continue
       var guard = 0
       while (guard++ < MAX_REWRITES) {
-        val binding = findBinding(out, name) ?: break
-        out = removeLines(out, binding.lineRange)
-        for ((member, template) in scaffold.members) {
-          val replacement =
+        val binding = findValBinding(out, name) ?: break
+        val replacements =
+          scaffold.members.mapValues { (_, template) ->
             Regex("""\$(\d+)""").replace(template) { m ->
               binding.arguments.getOrNull(m.groupValues[1].toInt())?.trim() ?: m.value
             }
+          }
+        // The same guard applySubstitute carries, and for the same reason — plus a worse failure
+        // if it is missing. A template citing an argument the call does not supply emits a literal
+        // `$1` into the editor, and this path would already have deleted the binding that made the
+        // code work. Leave the declaration alone; the residue check then reports the unwritten
+        // rule.
+        if (replacements.values.any { it.contains(Regex("""\$\d""")) }) break
+        out = removeLines(out, binding.lineRange)
+        for ((member, replacement) in replacements) {
           out = replaceWord(out, "${binding.name}.$member", replacement)
         }
       }
@@ -491,8 +575,8 @@ object PlaygroundSourceCleaner {
       dropped.add(name)
       var guard = 0
       while (guard++ < MAX_REWRITES) {
-        val binding = findBinding(out, name) ?: break
-        if (binding.name.isNotEmpty()) dropped.add(binding.name)
+        val binding = findValBinding(out, name) ?: break
+        dropped.add(binding.name)
         out = removeLines(out, binding.lineRange)
       }
     }
@@ -607,6 +691,37 @@ object PlaygroundSourceCleaner {
   internal fun mentionsWord(text: String, word: String): Boolean =
     wordOccurrences(text, word).isNotEmpty()
 
+  /**
+   * Whether [text] refers to [name] *at all*, including as the member half of a qualified
+   * expression — which is what deciding an import's fate requires, and what [mentionsWord] must not
+   * do.
+   *
+   * [mentionsWord] rejects an occurrence preceded by `.`, correctly: it drives the rewrites, and
+   * `foo.counted` is not the `counted` a scaffold rule means. But Compose is built on imported
+   * extensions used through receiver syntax — `Modifier.padding(16.dp)`, `16.dp`,
+   * `Modifier.height(…)` — where every reference to the imported name follows a dot. Pruning on the
+   * strict test therefore deleted `import androidx.compose.foundation.layout.padding` and `import
+   * androidx.compose.ui.unit.dp` out from under a body that still used them, producing a seed
+   * advertised as runnable that did not compile, with no residue to say so.
+   *
+   * Erring the other way costs an unused import — a warning, not a failure — which is the direction
+   * this whole pass is supposed to fail in.
+   */
+  private fun mentionsIdentifier(text: String, name: String): Boolean {
+    val mask = codeMask(text)
+    var from = 0
+    while (true) {
+      val at = text.indexOf(name, from).takeIf { it >= 0 } ?: return false
+      from = at + 1
+      if (!mask[at]) continue
+      val before = text.getOrNull(at - 1)
+      val after = text.getOrNull(at + name.length)
+      if (before?.let { isIdentifierChar(it) } == true) continue
+      if (after?.let { isIdentifierChar(it) } == true) continue
+      return true
+    }
+  }
+
   private fun replaceWord(text: String, word: String, replacement: String): String {
     val hits = wordOccurrences(text, word)
     if (hits.isEmpty()) return text
@@ -620,34 +735,46 @@ object PlaygroundSourceCleaner {
     return sb.toString()
   }
 
-  private fun findCall(text: String, name: String): Call? {
-    for (at in wordOccurrences(text, name)) {
+  private fun findCall(text: String, name: String): Call? = findCalls(text, name).firstOrNull()
+
+  private fun findCalls(text: String, name: String): List<Call> =
+    wordOccurrences(text, name).mapNotNull { at ->
       var k = at + name.length
       while (k < text.length && text[k].isWhitespace()) k++
-      if (k < text.length && text[k] == '(') {
-        val close = matchParen(text, k) ?: continue
-        return Call(at, k, close)
-      }
+      if (k < text.length && text[k] == '(') matchParen(text, k)?.let { Call(at, k, it) } else null
+    }
+
+  /**
+   * `val <name> = <scaffold>(<args>)` — the binding, its arguments, and the lines it occupies, or
+   * **null when the call is not bound to a `val` at all**.
+   *
+   * Reporting an unbound call as a nameless binding, as this first did, was a real bug and not a
+   * tidy default. Both callers delete `lineRange`, and for a direct call that range is the whole
+   * physical line the call sits on — so a ktfmt-legal one-liner `Button(onClick = {}, enabled =
+   * catalogEnabled()) { … }` was deleted **whole** rather than merely losing its `enabled`
+   * argument, and the cleaner then returned an empty themed preview with no residue to show for it.
+   * It looked right on the fixture only because ktfmt had wrapped that call and put every knob on a
+   * line of its own, where deleting the line happens to be the correct answer.
+   *
+   * An unbound call is not this function's business: [filterCallArguments] removes it where it sits
+   * in a named argument, and the survivor check reports it where it does not.
+   */
+  private fun findValBinding(text: String, scaffold: String): Binding? {
+    for (call in findCalls(text, scaffold)) {
+      val lineStart = text.lastIndexOf('\n', call.start - 1) + 1
+      val prefix = text.substring(lineStart, call.start)
+      val name =
+        Regex("""^\s*val\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*$""").find(prefix)?.groupValues?.get(1)
+          ?: continue
+      val args =
+        splitTopLevel(text.substring(call.argsStart + 1, call.argsEnd)).map {
+          it.trim(',', ' ', '\n')
+        }
+      val firstLine = text.substring(0, lineStart).count { it == '\n' }
+      val lastLine = text.substring(0, call.argsEnd).count { it == '\n' }
+      return Binding(name, args, firstLine..lastLine)
     }
     return null
-  }
-
-  /** `val <name> = <scaffold>(<args>)` — the binding, its arguments, and the lines it occupies. */
-  private fun findBinding(text: String, scaffold: String): Binding? {
-    val call = findCall(text, scaffold) ?: return null
-    val lineStart = text.lastIndexOf('\n', call.start - 1) + 1
-    val prefix = text.substring(lineStart, call.start)
-    val match = Regex("""^\s*val\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*$""").find(prefix)
-    val name = match?.groupValues?.get(1)
-    val args =
-      splitTopLevel(text.substring(call.argsStart + 1, call.argsEnd)).map {
-        it.trim(',', ' ', '\n')
-      }
-    val firstLine = text.substring(0, lineStart).count { it == '\n' }
-    val lastLine = text.substring(0, call.argsEnd).count { it == '\n' }
-    // A scaffold call that is not bound to a `val` still needs consuming, or the loop that calls
-    // this would spin on it forever. Reported with an empty name, which matches nothing downstream.
-    return Binding(name ?: "", args, firstLine..lastLine)
   }
 
   private fun matchParen(text: String, open: Int): Int? = matchDelimiter(text, open, '(', ')')

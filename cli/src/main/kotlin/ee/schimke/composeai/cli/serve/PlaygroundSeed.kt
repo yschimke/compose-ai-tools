@@ -55,6 +55,19 @@ data class PlaygroundSeed(
    * carrying names that will not resolve — and the note says so instead of over-promising.
    */
   val residue: List<String> = emptyList(),
+  /**
+   * True when the catalog actually declared what its own helpers mean (a `compose-usage.json` with
+   * scaffold rules), as opposed to getting [UsageRules.GENERIC].
+   *
+   * The distinction has to reach the editor's note, because the two produce very different buffers
+   * from the same code path. With rules, `Sticker`/`counted`/the knobs are resolved away and "press
+   * Run" is true. Without them only the shared annotations come off — the catalog's own helpers
+   * stay exactly where they were, and they will not resolve against the published bundle. They are
+   * not [residue] either, since residue reports *declared* scaffolding that survived a rule and
+   * under generic rules nothing was declared. So without this flag the note claimed the frame and
+   * knobs were gone while they were still on screen.
+   */
+  val scaffoldsDeclared: Boolean = false,
 )
 
 /**
@@ -207,6 +220,7 @@ class PlaygroundSeedResolver(
         sliced = cleaned != null || sliced != null,
         cleaned = cleaned != null,
         residue = cleaned?.residue.orEmpty(),
+        scaffoldsDeclared = cleaned != null && rulesFor(where).scaffolds.isNotEmpty(),
       )
     // Bounded, and deliberately not an LRU: entries are a few KB, a catalog has a fixed number of
     // previews, and a full cache means the ones people actually open are already served from it. A
@@ -255,7 +269,13 @@ class PlaygroundSeedResolver(
         ?.takeIf { it.size <= maxBytes }
         ?.decodeToString()
         ?.let { UsageRules.parse(it, onLog) } ?: UsageRules.GENERIC
-    rulesCache[key] = rules to now
+    // Bounded and swept, like the seed cache beside it. A TTL alone only stops an expired value
+    // being *returned* — it never removes the key, so a long-running host seeing catalogs
+    // republished under changing refs would keep an entry per historical ref forever, each holding
+    // a
+    // parsed rules object and (below) up to the fetch cap of string data.
+    evictExpired(rulesCache, now)
+    if (rulesCache.size < maxEntries) rulesCache[key] = rules to now
     return rules
   }
 
@@ -294,8 +314,14 @@ class PlaygroundSeedResolver(
         STRING_RESOURCE.findAll(text).associate {
           it.groupValues[1] to unescapeAndroidString(it.groupValues[2])
         }
-    stringsCache[key] = strings to now
+    evictExpired(stringsCache, now)
+    if (stringsCache.size < maxEntries) stringsCache[key] = strings to now
     return strings
+  }
+
+  /** Drops every entry past its TTL. Called before an insert, so the caps stay reachable. */
+  private fun <K, V> evictExpired(cache: ConcurrentHashMap<K, Pair<V, Long>>, now: Long) {
+    cache.entries.removeIf { now - it.value.second >= ttlSeconds * 1000 }
   }
 
   companion object {

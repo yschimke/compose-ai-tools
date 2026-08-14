@@ -450,6 +450,242 @@ class PlaygroundSourceCleanerTest {
     assertTrue(text.contains("catalogChoice(\"style\", \"outlined\")"), text)
   }
 
+  // -----------------------------------------------------------------------------------------
+  // Regressions found by review of the first cut. Each of these produced a seed that was
+  // advertised as runnable and did not compile — the one failure mode the design says it must
+  // not have. They survived the original fixture because ktfmt had wrapped its calls, putting
+  // every knob on a line of its own where the buggy behaviour happened to be correct.
+  // -----------------------------------------------------------------------------------------
+
+  /**
+   * Compose is built on imported extensions reached through receiver syntax, where every reference
+   * to the imported name follows a dot. Pruning imports on the strict word test deleted `padding`
+   * and `dp` out from under a body that still used them.
+   */
+  @Test
+  fun `imports used through receiver syntax survive the prune`() {
+    val source =
+      """
+      package demo
+
+      import androidx.compose.foundation.layout.padding
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import androidx.compose.ui.Modifier
+      import androidx.compose.ui.unit.dp
+      import ee.schimke.m3catalog.Sticker
+
+      @Composable
+      fun Padded() = Sticker {
+        Text("hi", modifier = Modifier.padding(16.dp))
+      }
+      """
+        .trimIndent()
+    val text =
+      assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "Text(\"hi\""), rules))
+        .text
+    assertTrue(text.contains("import androidx.compose.foundation.layout.padding"), text)
+    assertTrue(text.contains("import androidx.compose.ui.unit.dp"), text)
+    assertTrue(text.contains("import androidx.compose.ui.Modifier"), text)
+  }
+
+  /** An aliased import must keep both the name the body uses and its `as` clause. */
+  @Test
+  fun `aliased imports keep their alias`() {
+    val source =
+      """
+      package demo
+
+      import androidx.compose.material3.Text as Label
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.Sticker
+
+      @Composable
+      fun Aliased() = Sticker {
+        Label("hi")
+      }
+      """
+        .trimIndent()
+    val text =
+      assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "Label(\"hi\")"), rules))
+        .text
+    assertTrue(text.contains("import androidx.compose.material3.Text as Label"), text)
+  }
+
+  /**
+   * The worst of them. A ktfmt-legal one-line call with a DROP helper in a named argument was
+   * deleted whole, because the unbound call reported a "binding" whose line range was the entire
+   * call's line — leaving an empty themed preview, with no residue to show for it.
+   */
+  @Test
+  fun `a drop helper on a one-line call loses only its argument`() {
+    val source =
+      """
+      package demo
+
+      import androidx.compose.material3.Button
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.Sticker
+      import ee.schimke.m3catalog.catalogEnabled
+
+      @Composable
+      fun One() = Sticker {
+        Button(onClick = {}, enabled = catalogEnabled()) { Text("Go") }
+      }
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "Button("), rules))
+    assertTrue(result.text.contains("""Button(onClick = {}) { Text("Go") }"""), result.text)
+    assertEquals(emptyList(), result.residue)
+  }
+
+  /**
+   * An UNWRAP helper as the preview's expression body must not take `fun Card() =` with it. The
+   * splice started at the line, not at the call.
+   */
+  @Test
+  fun `unwrapping an expression body keeps the declaration`() {
+    val source =
+      """
+      package demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.ButtonFrame
+
+      @Composable
+      fun Card() = ButtonFrame(2) {
+        Text("inside")
+      }
+      """
+        .trimIndent()
+    val text =
+      assertNotNull(
+          PlaygroundSourceCleaner.clean(source, lineIn(source, "Text(\"inside\")"), rules)
+        )
+        .text
+    assertTrue(text.contains("fun Card() ="), text)
+    assertFalse(text.contains("ButtonFrame"), text)
+  }
+
+  /** A same-file `data class` the body still needs must come along with it. */
+  @Test
+  fun `modified type declarations are recognised by the closure`() {
+    val source =
+      """
+      package demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.Sticker
+
+      data class Model(val label: String)
+
+      @Composable
+      fun Row() = Sticker {
+        Text(Model("hi").label)
+      }
+      """
+        .trimIndent()
+    val text =
+      assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "Text(Model"), rules)).text
+    assertTrue(text.contains("data class Model(val label: String)"), text)
+  }
+
+  /** A wrapped `@file:OptIn(...)` must be emitted whole, not as its opening line. */
+  @Test
+  fun `a multiline file annotation survives intact`() {
+    val source =
+      """
+      @file:OptIn(
+        ExperimentalMaterial3ExpressiveApi::class,
+        ExperimentalMaterial3Api::class,
+      )
+
+      package demo
+
+      import androidx.compose.material3.ExperimentalMaterial3Api
+      import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.Sticker
+
+      @Composable
+      fun Opted() = Sticker {
+        Text("hi")
+      }
+      """
+        .trimIndent()
+    val text =
+      assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "Text(\"hi\")"), rules))
+        .text
+    assertTrue(text.contains("ExperimentalMaterial3Api::class,\n)"), text)
+    assertTrue(text.contains("import androidx.compose.material3.ExperimentalMaterial3Api"), text)
+  }
+
+  /** String-resource inlining is masked like every other pass. */
+  @Test
+  fun `a resource lookup quoted inside a literal is not substituted`() {
+    val source =
+      """
+      package demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.Sticker
+
+      @Composable
+      fun Doc() = Sticker {
+        Text("Use stringResource(Res.string.label_filled) for the label")
+      }
+      """
+        .trimIndent()
+    val text =
+      assertNotNull(
+          PlaygroundSourceCleaner.clean(source, lineIn(source, "Use string"), rules, strings)
+        )
+        .text
+    assertTrue(
+      text.contains("""Text("Use stringResource(Res.string.label_filled) for the label")"""),
+      text,
+    )
+  }
+
+  /** An INLINE template citing an argument the call lacks must not delete the binding either. */
+  @Test
+  fun `an inline template that cannot be filled leaves the code alone`() {
+    val badRules =
+      rules.copy(
+        scaffolds =
+          mapOf(
+            "counted" to
+              UsageRules.Scaffold(kind = UsageRules.Kind.INLINE, members = mapOf("label" to "\$3"))
+          )
+      )
+    val source =
+      """
+      package demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.m3catalog.counted
+
+      @Composable
+      fun Tally() {
+        val c = counted("Filled")
+        Text(c.label)
+      }
+      """
+        .trimIndent()
+    val result =
+      assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "val c ="), badRules))
+    assertFalse(result.text.contains("\$3"), result.text)
+    assertTrue(result.text.contains("""val c = counted("Filled")"""), result.text)
+    assertEquals(listOf("counted"), result.residue)
+  }
+
   private fun lineIn(text: String, needle: String): Int =
     text.lines().indexOfFirst { it.contains(needle) } + 1
 }
