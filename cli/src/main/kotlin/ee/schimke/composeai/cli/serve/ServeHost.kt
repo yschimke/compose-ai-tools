@@ -48,6 +48,20 @@ interface ServeHost : AutoCloseable {
   fun annotationsForReference(referenceId: String): List<DesignAnnotation> = emptyList()
 
   /**
+   * The **published** tag index for [previewId] — `testTag → {count, bounds}`, the element identity
+   * a scoped parity acceptance resolves against. Empty by default and for any host that publishes
+   * none.
+   *
+   * This is the *static* half of the pair: a published catalog's renders happened in CI, so its
+   * index is computed there and read back by [ServeBundleHost] from `tags/index.json`. A
+   * daemon-backed [ServeRenderHost] instead projects the same shape live, per render, inside its
+   * `.annotations` response ([ServeSemanticsTags]) — where it can be keyed to the frame it came
+   * from. Two producers, one projection, deliberately not one code path: only one of them has a
+   * daemon.
+   */
+  fun tagIndexForPreview(previewId: String): Map<String, ServeSemanticsTags.TagEntry> = emptyMap()
+
+  /**
    * The design-parity activity feed this catalog published (`parity/activity.json`), or null when
    * it publishes none — the common case, and the one every host defaults to. Drives the
    * `/<system>/parity` view's code / Figma feeds; the coverage half of that page is derived from

@@ -114,6 +114,7 @@ import {
   bridgeLivePreviewIds,
   expandDeferredRecords,
   stampPreviewDensities,
+  resolveSemanticsIds,
 } from "./bridge-live-preview-ids.mjs";
 import { catalogTagIndex } from "./tag-index.mjs";
 import {
@@ -1648,7 +1649,14 @@ for (const component of indexManifest.components ?? []) {
 // `previewId` that keys the bundle's sidecar and the `path` the served route id derives from, so
 // neither namespace is re-derived.
 {
-  const tags = catalogTagIndex(indexManifest, [bundle, extraBundle]);
+  // The unfiltered id map covers images `bridgeLivePreviewIds` deliberately withheld a live alias
+  // from (an Android-only supplement override): their pixels have a carried tree even though their
+  // live lane does not exist.
+  const tags = catalogTagIndex(
+    indexManifest,
+    [bundle, extraBundle],
+    resolveSemanticsIds(indexManifest, spec, [bundle, extraBundle]),
+  );
   const tagsDir = join(outPath, "tags");
   await mkdir(tagsDir, { recursive: true });
   await writeFile(

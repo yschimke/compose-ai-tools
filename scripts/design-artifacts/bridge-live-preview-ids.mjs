@@ -522,3 +522,95 @@ export function stampPreviewDensities(manifest, spec, bundles) {
   }
   return stamped;
 }
+
+
+/**
+ * `functionName → candidates`, where a **later bundle REPLACES an earlier one** for any function it
+ * also renders — rather than adding to it.
+ *
+ * [previewsByFunction] cannot express that. It dedupes by preview *id* and appends, so feeding it
+ * reversed bundles only reorders the candidates: a primary and a supplement preview of the same
+ * function, carrying differently-qualified ids (a theme-folded `Foo_Dark` against a bare `Foo`),
+ * both stay in the list and [pickVariantId] can score the primary higher. The picked tree would then
+ * describe pixels the supplement drew — wrong bounds, published as fact, which is worse than the
+ * absent entry it replaced.
+ *
+ * Pass bundles in priority order, primary first: the supplement's baked pixels win, so its tree must
+ * win with them.
+ */
+function previewsByFunctionReplacing(bundles) {
+  const out = new Map();
+  for (const bundle of (Array.isArray(bundles) ? bundles : [bundles]).filter(Boolean)) {
+    const perBundle = new Map();
+    const seen = new Set();
+    for (const preview of bundle.previews ?? []) {
+      if (seen.has(preview.id)) continue;
+      seen.add(preview.id);
+      const fn = preview.functionName ?? preview.id;
+      const list = perBundle.get(fn) ?? [];
+      list.push(variantIdentity(preview));
+      perBundle.set(fn, list);
+    }
+    for (const [fn, list] of perBundle) out.set(fn, list);
+  }
+  return out;
+}
+
+/**
+ * `image.path → daemon preview id` for every image, **ignoring live-alias eligibility**.
+ *
+ * The sibling of [stampPreviewDensities] and there for the same reason it is: that function already
+ * documents why a second, unfiltered pass exists — "static catalogs and intentionally unbridged
+ * supplement images still need the density". Carried semantics are the same kind of fact.
+ *
+ * [bridgeLivePreviewIds] withholds `previewId` from an image whose function the Android-only
+ * supplement overrode, because those baked pixels are not what the *primary desktop daemon* would
+ * draw, so routing a live request there would serve the wrong thing. That is a statement about
+ * which daemon may re-render the image — not about whether a semantics tree for those exact pixels
+ * exists. It does: the supplement's own bundle carries it. Reusing the live alias to find semantics
+ * therefore silently drops the tag index for precisely those variants (compose-m3's inset
+ * focus-ring stickers among them), and an element gate could never run on them.
+ *
+ * So this resolves the id from the render bundles directly, with no `overriddenFunctions` filter and
+ * no mutation of the manifest. Callers that need the *live* alias must keep using `image.previewId`.
+ */
+export function resolveSemanticsIds(manifest, spec, bundles) {
+  const previewForState = previewForStateOf(spec);
+  const allPreviewIds = new Set();
+  for (const bundle of (Array.isArray(bundles) ? bundles : [bundles]).filter(Boolean)) {
+    for (const preview of bundle.previews ?? []) allPreviewIds.add(preview.id);
+  }
+  const previewsByFn = previewsByFunctionReplacing(bundles);
+  const breakpointForSize = breakpointForSizeOf(spec);
+  const out = new Map();
+  for (const component of manifest?.components ?? []) {
+    for (const image of component?.images ?? []) {
+      if (typeof image?.path !== "string") continue;
+      const state = image.state ?? "default";
+      const fn = resolveFunction(previewForState, component.componentId, image, state);
+      const daemonId = pickVariantId(previewsByFn.get(fn) ?? [], image, breakpointForSize);
+      if (daemonId) {
+        out.set(image.path, daemonId);
+        continue;
+      }
+      // `@OverrideVariant` fallback, mirroring [bridgeLivePreviewIds]. A non-default state with no
+      // spec `variants` entry is a synthetic `<baseId>_VARIANT_<state>` preview, so `resolveFunction`
+      // finds nothing for it. Without this the images would carry no tag index at all on a catalog
+      // built with neither `--publish-live-bundle` nor `--source-module` — where the bridge never
+      // runs, so there is no `image.previewId` to fall back to either.
+      if (
+        state !== "default" &&
+        !fn &&
+        (image.props == null || Object.keys(image.props).length === 0)
+      ) {
+        const baseFn = previewForState.get(variantKey(component.componentId, "default"));
+        const baseId = pickVariantId(previewsByFn.get(baseFn) ?? [], image, breakpointForSize);
+        const variantId = baseId && `${baseId}_VARIANT_${state}`;
+        // Only when it actually rendered — a reconstructed id that no bundle carries would key
+        // nothing, and silently yield no entry anyway.
+        if (variantId && allPreviewIds.has(variantId)) out.set(image.path, variantId);
+      }
+    }
+  }
+  return out;
+}

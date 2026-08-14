@@ -145,15 +145,21 @@ export function semanticsByIds(bundles) {
  * Returns the index plus the counts the driver reports, so a whole bundle silently missing its
  * semantics shows up as a number rather than as an empty file nobody looks at.
  */
-export function catalogTagIndex(manifest, bundles) {
+export function catalogTagIndex(manifest, bundles, semanticsIdByPath) {
   const treesById = semanticsByIds(bundles);
   const previews = Object.create(null);
   let indexed = 0;
   let gaps = 0;
   for (const component of manifest?.components ?? []) {
     for (const image of component?.images ?? []) {
-      if (!image?.previewId || typeof image.path !== "string") continue;
-      const tree = treesById.get(image.previewId);
+      if (typeof image?.path !== "string") continue;
+      // The live alias first (it alone reconstructs `@OverrideVariant` ids), then the unfiltered
+      // resolution — which is what covers an image `bridgeLivePreviewIds` withheld an alias from
+      // because the Android-only supplement overrode its function. Those pixels have a semantics
+      // tree in the supplement's own bundle; only their *live* lane is unavailable.
+      const semanticsId = image.previewId ?? semanticsIdByPath?.get(image.path);
+      if (!semanticsId) continue;
+      const tree = treesById.get(semanticsId);
       if (!tree) {
         gaps += 1;
         continue;

@@ -39,12 +39,31 @@ import okio.Path.Companion.toPath
 data class TagIndexManifest(
   val schema: String = SCHEMA,
   /** Keyed by the **served** preview id (`button-filled__ideal__default__light`). */
-  val previews: Map<String, Map<String, ServeSemanticsTags.TagEntry>> = emptyMap(),
+  val previews: Map<String, Map<String, WireTagEntry>> = emptyMap(),
 ) {
   companion object {
     const val SCHEMA = "compose-preview-tags/v1"
   }
 }
+
+/**
+ * The on-the-wire shape of one entry, deliberately **not** [ServeSemanticsTags.TagEntry].
+ *
+ * The difference is [space], which is nullable here and defaulted there. Decoding straight into the
+ * producer type would fill a missing `space` in with the Kotlin default, and the host could no
+ * longer tell "the publisher declared render-pixels" from "the publisher declared nothing" — which
+ * is precisely what the discriminator exists to distinguish. A later element gate reading an
+ * undeclared index would then compare or transform bounds in a plane nobody stated.
+ *
+ * So the wire type keeps absence representable, [ServeTagIndexStore] rejects it, and only validated
+ * entries are converted to the producer type.
+ */
+@Serializable
+data class WireTagEntry(
+  val count: Int = 0,
+  val bounds: AnnotationBounds? = null,
+  val space: String? = null,
+)
 
 /** Validated, read-only view of a catalog's `tags/index.json`. */
 class ServeTagIndexStore
@@ -93,18 +112,32 @@ private constructor(private val byPreview: Map<String, Map<String, ServeSemantic
       if (manifest.previews.size > MAX_PREVIEWS) return EMPTY
       return ServeTagIndexStore(
         manifest.previews
-          .mapValues { (_, tags) -> tags.filterValues { it.isUsable() } }
+          .mapValues { (_, tags) ->
+            tags.mapNotNull { (tag, e) -> e.validated()?.let { tag to it } }.toMap()
+          }
           .filterValues { it.isNotEmpty() }
       )
     }
 
     /**
+     * The entry as [ServeSemanticsTags.TagEntry], or null when it is not usable.
+     *
      * A count below 1 is not a tag anything carried, and a zero-area box is not geometry a gate can
-     * measure against — both indicate a producer bug rather than something to resolve badly. The
-     * bounds may legitimately be absent (a tag whose every node had unusable bounds still counts,
-     * which is the point of `count`), so absence is not a rejection.
+     * measure against — both indicate a producer bug rather than something to resolve badly. Absent
+     * bounds are *not* a rejection: a tag whose every node had unusable bounds still counts, which
+     * is the point of `count`.
+     *
+     * An **absent or unrecognised `space` is** a rejection. Silently defaulting it would let an
+     * index that declared no coordinate space read as though it had declared render pixels, and a
+     * gate would then compare bounds in a plane nobody stated — the exact confusion the field was
+     * added to prevent. An unknown value is refused for the same reason rather than assumed: a
+     * future canonical-plane producer must not be read as render-pixel by an older host.
      */
-    private fun ServeSemanticsTags.TagEntry.isUsable(): Boolean =
-      count >= 1 && bounds?.let { it.width > 0 && it.height > 0 } != false
+    private fun WireTagEntry.validated(): ServeSemanticsTags.TagEntry? {
+      if (count < 1) return null
+      if (space != ServeSemanticsTags.RENDER_PIXELS) return null
+      if (bounds != null && (bounds.width <= 0 || bounds.height <= 0)) return null
+      return ServeSemanticsTags.TagEntry(count = count, bounds = bounds, space = space)
+    }
   }
 }

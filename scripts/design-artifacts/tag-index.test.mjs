@@ -213,3 +213,123 @@ test("an empty or absent manifest yields an empty index rather than throwing", (
   assert.deepEqual(Object.keys(catalogTagIndex(undefined, []).previews), []);
   assert.deepEqual(Object.keys(catalogTagIndex({}, undefined).previews), []);
 });
+
+// `bridgeLivePreviewIds` withholds a live alias from an image whose function the Android-only
+// supplement overrode — a statement about which daemon may re-render it, not about whether a
+// semantics tree exists. It does, in the supplement's bundle. Skipping those would silently deny
+// an element gate to exactly the compose-m3 inset-focus-ring variants.
+test("an image with no live alias still indexes from the unfiltered id map", () => {
+  const out = catalogTagIndex(
+    manifestWith([
+      { path: "images/button-filled/ideal__focus.png" }, // overridden by the supplement: no previewId
+    ]),
+    [bundleWith({ Filled_Focus: { root: node("0,0,100,40", undefined, [node("4,4,20,20", "ring")]) } })],
+    new Map([["images/button-filled/ideal__focus.png", "Filled_Focus"]]),
+  );
+  assert.deepEqual(Object.keys(out.previews), ["button-filled__ideal__focus"]);
+  assert.equal(out.previews["button-filled__ideal__focus"].ring.count, 1);
+});
+
+test("the live alias wins over the unfiltered map when both resolve", () => {
+  const out = catalogTagIndex(
+    manifestWith([
+      { path: "images/button-filled/ideal__default.png", previewId: "From_Alias" },
+    ]),
+    [
+      bundleWith({
+        From_Alias: { root: node("0,0,10,10", "via-alias") },
+        From_Map: { root: node("0,0,10,10", "via-map") },
+      }),
+    ],
+    new Map([["images/button-filled/ideal__default.png", "From_Map"]]),
+  );
+  assert.deepEqual(Object.keys(out.previews["button-filled__ideal__default"]), ["via-alias"]);
+});
+
+test("with no id map at all, behaviour is unchanged", () => {
+  const out = catalogTagIndex(
+    manifestWith([{ path: "images/button-filled/ideal__focus.png" }]),
+    [bundleWith({ Filled_Focus: { root: node("0,0,10,10", "ring") } })],
+  );
+  assert.deepEqual(Object.keys(out.previews), []);
+});
+
+// --- supplement candidates must REPLACE primary ones ------------------------
+
+// Reversing the bundle list only reorders candidates: `previewsByFunction` dedupes by preview id
+// and appends, so a primary `Foo_Dark` and a supplement `Foo` for one function both stayed in the
+// list, and `pickVariantId` could score the primary higher — publishing bounds from pixels the
+// supplement drew. This is the case that catches it.
+test("resolveSemanticsIds prefers the supplement's preview over a better-qualified primary", async () => {
+  const { resolveSemanticsIds } = await import("./bridge-live-preview-ids.mjs");
+  const spec = {
+    system: "t",
+    groups: [
+      { components: [{ componentId: "Button/Filled", preview: "Filled", state: "default" }] },
+    ],
+  };
+  // Primary carries the theme-qualified id; the supplement's is bare. Both share one functionName.
+  const primary = {
+    previews: [
+      { id: "Filled_Dark", functionName: "Filled", params: { uiMode: 0x20 } },
+    ],
+  };
+  const supplement = {
+    previews: [{ id: "Filled_Android", functionName: "Filled", params: {} }],
+  };
+  const ids = resolveSemanticsIds(
+    { components: [{ componentId: "Button/Filled", images: [
+      { path: "images/button-filled/ideal__default__dark.png", state: "default", theme: "dark" },
+    ] }] },
+    spec,
+    [primary, supplement],
+  );
+  assert.equal(
+    ids.get("images/button-filled/ideal__default__dark.png"),
+    "Filled_Android",
+    "the supplement replaced the primary for this function, so its tree must be the one used",
+  );
+});
+
+// A catalog built with neither --publish-live-bundle nor --source-module never runs
+// `bridgeLivePreviewIds`, so there is no `image.previewId` to fall back to. An `@OverrideVariant`
+// state also has no spec `variants` entry, so `resolveFunction` finds nothing for it — without the
+// synthetic reconstruction these images carry no tag index at all.
+test("resolveSemanticsIds reconstructs synthetic @OverrideVariant ids", async () => {
+  const { resolveSemanticsIds } = await import("./bridge-live-preview-ids.mjs");
+  const spec = {
+    system: "t",
+    groups: [{ components: [{ componentId: "Switch", preview: "SwitchOn", state: "default" }] }],
+  };
+  const bundle = {
+    previews: [
+      { id: "SwitchOn_Light", functionName: "SwitchOn", params: {} },
+      { id: "SwitchOn_Light_VARIANT_off", functionName: "SwitchOn", params: {} },
+    ],
+  };
+  const ids = resolveSemanticsIds(
+    { components: [{ componentId: "Switch", images: [
+      { path: "images/switch/ideal__off.png", state: "off" },
+    ] }] },
+    spec,
+    [bundle],
+  );
+  assert.equal(ids.get("images/switch/ideal__off.png"), "SwitchOn_Light_VARIANT_off");
+});
+
+test("a reconstructed id that never rendered is not used", async () => {
+  const { resolveSemanticsIds } = await import("./bridge-live-preview-ids.mjs");
+  const spec = {
+    system: "t",
+    groups: [{ components: [{ componentId: "Switch", preview: "SwitchOn", state: "default" }] }],
+  };
+  const bundle = { previews: [{ id: "SwitchOn_Light", functionName: "SwitchOn", params: {} }] };
+  const ids = resolveSemanticsIds(
+    { components: [{ componentId: "Switch", images: [
+      { path: "images/switch/ideal__off.png", state: "off" },
+    ] }] },
+    spec,
+    [bundle],
+  );
+  assert.equal(ids.get("images/switch/ideal__off.png"), undefined);
+});
