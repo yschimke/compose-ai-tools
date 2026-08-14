@@ -13,6 +13,7 @@ import org.jetbrains.kotlin.com.intellij.psi.PsiFileFactory
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.psi.KtCallExpression
+import org.jetbrains.kotlin.psi.KtDestructuringDeclaration
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedFunction
@@ -49,17 +50,40 @@ import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
 @OptIn(CompilerConfiguration.Internals::class, K1Deprecation::class)
 class PsiParseSpikeTest {
 
-  private fun sampleSources(): List<Pair<String, String>> {
-    val corpus = File("build/usage-corpus")
+  /**
+   * Where `scripts/usage-corpus.sh` actually writes, which is **not** this project's `build/`.
+   *
+   * A Gradle test runs from the project directory, so a bare `build/usage-corpus` resolves to
+   * `cli/build/usage-corpus` while the script writes to `<repo>/build/usage-corpus`. Reading the
+   * wrong one is not a null result — it silently measures whatever else happens to be there. The
+   * first version of this spike did exactly that and reported "35 files" that were 20 real snippets
+   * plus 15 fixture files [UsageSnippetCorpusTest] had written next to them.
+   */
+  private fun corpusDir(): File {
+    System.getProperty("composeai.usageCorpus.out")
+      ?.takeIf { it.isNotBlank() }
+      ?.let {
+        return File(it)
+      }
+    val repoRoot = File("../build/usage-corpus")
+    return if (repoRoot.isDirectory) repoRoot else File("build/usage-corpus")
+  }
+
+  private fun sampleSources(): Pair<File, List<Pair<String, String>>> {
+    val corpus = corpusDir()
     val generated =
       corpus
         .walkTopDown()
+        // `source-set-fixture` is another test's scratch tree, not generated usage code. Counting
+        // it inflated the measurement by 15 files.
+        .onEnter { it.name != "source-set-fixture" }
         .filter { it.isFile && it.extension == "kt" }
         .map { it.name to it.readText() }
         .toList()
     // The fixture stands in when no corpus has been generated on this machine, so the spike still
-    // reports something rather than silently measuring nothing.
-    return generated.ifEmpty { listOf("Fixture.kt" to FIXTURE) }
+    // reports something rather than silently measuring nothing — and the printed path says which.
+    return if (generated.isEmpty()) File("(built-in fixture)") to listOf("Fixture.kt" to FIXTURE)
+    else corpus to generated
   }
 
   @Test
@@ -79,7 +103,7 @@ class PsiParseSpikeTest {
         factory = PsiFileFactory.getInstance(env.project)
       }
 
-      val sources = sampleSources()
+      val (corpus, sources) = sampleSources()
       var files = 0
       var functions = 0
       var calls = 0
@@ -112,6 +136,7 @@ class PsiParseSpikeTest {
         """
         |
         |=== parse-only PSI spike ===
+        |  corpus            : ${corpus.absolutePath}
         |  environment setup : $setup   (once per process)
         |  parsed            : $files files, $bytes chars, in $parsing
         |  per file          : ${if (files > 0) parsing / files else parsing}
@@ -119,7 +144,7 @@ class PsiParseSpikeTest {
         |  what the tree carried, which the text passes each had to guess at:
         |    named functions        : $functions
         |    call expressions       : $calls
-        |    named arguments        : $namedArgs   (argument binding, no `params` list needed)
+        |    named arguments        : $namedArgs   (bind by label; positional still needs `params`)
         |    qualified expressions  : $qualified   (receiver vs package, structurally)
         """
           .trimMargin()
@@ -153,9 +178,18 @@ class PsiParseSpikeTest {
       val calls = ktFile.collectDescendantsOfType<KtCallExpression>()
       val byName = calls.groupBy { it.calleeExpression?.text }
 
-      // 1. Named arguments resolve by name, in any order — no `params` declaration required.
-      val named = byName["previewOverrideString"].orEmpty()
-      val defaults = named.mapNotNull { call ->
+      // 1. A **named** argument binds by its own label, in any order, with no rule declaring the
+      //    callee's parameters. A **positional** one does not, and cannot: parse-only PSI has no
+      //    resolution, so nothing in `previewOverrideString("subtitle", "Basket")` says which
+      //    position is `default`. That still needs the callee's signature — the rule's `params`
+      //    list, or a resolved call. Asserting both halves, because the first version of this
+      //    spike checked only the labelled call and concluded `params` was unnecessary.
+      val overrides = byName["previewOverrideString"].orEmpty()
+      val labelled = overrides.filter { call ->
+        call.valueArguments.any { (it as? KtValueArgument)?.getArgumentName() != null }
+      }
+      val positional = overrides - labelled.toSet()
+      val defaults = labelled.mapNotNull { call ->
         call.valueArguments
           .firstOrNull {
             (it as? KtValueArgument)?.getArgumentName()?.asName?.asString() == "default"
@@ -163,13 +197,42 @@ class PsiParseSpikeTest {
           ?.getArgumentExpression()
           ?.text
       }
-      println("previewOverrideString defaults, bound by name: $defaults")
-      assertTrue(defaults.contains("\"Shopping\""), "named-argument binding failed: $defaults")
+      println("previewOverrideString: ${labelled.size} labelled → defaults $defaults")
+      println(
+        "previewOverrideString: ${positional.size} positional → " +
+          "${positional.map { c -> c.valueArguments.map { it.getArgumentExpression()?.text } }}" +
+          " (no label; still needs the callee's parameter list)"
+      )
+      assertTrue(defaults == listOf("\"Shopping\""), "named-argument binding failed: $defaults")
+      // Two of them: the bare `("subtitle", "Basket")` and the package-qualified `("k", "v")`.
+      assertTrue(positional.size == 2, "expected two positional calls, got ${positional.size}")
+      assertTrue(
+        positional.all { call ->
+          call.valueArguments.all { (it as? KtValueArgument)?.getArgumentName() == null }
+        },
+        "a positional call must carry no argument names — that is the whole point",
+      )
 
-      // 2. A trailing-lambda call is a call, parentheses or not.
+      // 2. A trailing-lambda call is a call, parentheses or not. Each of the fixture's three forms
+      //    identified structurally rather than by counting, so the assertion cannot be satisfied by
+      //    two of one kind.
       val tally = byName["counted"].orEmpty()
-      println("counted call sites: ${tally.size} (trailing-lambda forms included)")
-      assertTrue(tally.size >= 2, "trailing-lambda call not seen as a call: ${tally.size}")
+      val trailingOnly = tally.filter {
+        it.lambdaArguments.isNotEmpty() && it.valueArgumentList == null
+      }
+      val parenthesised = tally.filter { it.valueArgumentList != null }
+      val qualifiedTrailing = trailingOnly.filter { it.parent is KtDotQualifiedExpression }
+      println(
+        "counted: ${tally.size} calls — ${trailingOnly.size} trailing-lambda " +
+          "(${qualifiedTrailing.size} of them qualified), ${parenthesised.size} parenthesised"
+      )
+      assertTrue(tally.size == 3, "expected 3 counted calls, got ${tally.size}")
+      assertTrue(trailingOnly.size == 2, "trailing-lambda calls: ${trailingOnly.size}")
+      assertTrue(parenthesised.size == 1, "parenthesised calls: ${parenthesised.size}")
+      assertTrue(
+        qualifiedTrailing.size == 1,
+        "qualified trailing-lambda: ${qualifiedTrailing.size}",
+      )
 
       // 3. A qualified call knows its own receiver text, so package vs receiver chain is a
       //    structural question rather than a regex guess.
@@ -189,8 +252,21 @@ class PsiParseSpikeTest {
       )
 
       // 4. Destructuring — the `toggleable` / `editable` gap the rules file still records as open.
-      val destructured = ktFile.text.contains("val (checked, onCheckedChange)")
-      println("destructuring declaration present in fixture: $destructured")
+      //    Read off the tree, not off `ktFile.text`: the text is just the input echoed back, so a
+      //    `contains` check there passes even if PSI exposes nothing, which is how the first
+      //    version of this assertion could not fail.
+      val destructuring = ktFile.collectDescendantsOfType<KtDestructuringDeclaration>()
+      val entries = destructuring.map { d -> d.entries.map { it.name } }
+      val initialisers = destructuring.map { it.initializer?.text }
+      println("destructuring declarations: $entries ← $initialisers")
+      assertTrue(
+        entries == listOf(listOf("checked", "onCheckedChange")),
+        "destructuring entries not exposed by PSI: $entries",
+      )
+      assertTrue(
+        initialisers.single()?.startsWith("toggleable(") == true,
+        "destructuring initialiser not exposed: $initialisers",
+      )
     } finally {
       Disposer.dispose(disposable)
     }

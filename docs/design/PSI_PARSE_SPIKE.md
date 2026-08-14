@@ -30,27 +30,29 @@ classpath, no source roots, no resolution — is enough to get a `PsiFileFactory
 
 ### 2. What does it cost?
 
-Measured over the 35 snippets the corpus generates:
+Measured over the 20 snippets `scripts/usage-corpus.sh` generates:
 
 ```
-environment setup : ~420 ms   (once per process)
-parsed            : 35 files, 41,824 chars, in ~81 ms
-per file          : ~2.3 ms
+corpus            : <repo>/build/usage-corpus
+environment setup : ~540 ms   (once per process)
+parsed            : 20 files, 42,707 chars, in ~74 ms
+per file          : ~3.7 ms
 ```
 
-Against a seed path that already does a network fetch from GitHub raw, ~2 ms per file is free, and
-the ~420 ms setup is one-off and lazy — it need not happen until the first seed is cleaned.
+Against a seed path that already does a network fetch from GitHub raw, ~4 ms per file is free, and
+the ~540 ms setup is one-off and lazy — it need not happen until the first seed is cleaned.
 
 ### 3. Does the tree carry what the rewrites need?
 
-Over those same snippets: 49 named functions, 332 call expressions, **334 named arguments**, 1380
+Over those same snippets: 49 named functions, 330 call expressions, **334 named arguments**, 1412
 qualified expressions. Each of those numbers is something a text pass had to infer and got wrong at
 least once.
 
 On a fixture holding every shape the review rounds broke on, the tree separates all of them:
 
 - `previewOverrideString(key = "title", default = "Shopping")` → `default` binds to `"Shopping"` by
-  name, in any order, with no `params` list to declare.
+  its own label, in any order. **A positional call still needs the callee's parameter list** — see
+  the correction below.
 - `counted { }` and `counted("label")` are both call expressions.
 - `ee.schimke.composeai.overrides.previewOverrideString(…)` and `state.metrics.counted { }` are both
   `KtDotQualifiedExpression`, and each knows its own receiver text — so package vs receiver chain
@@ -62,8 +64,8 @@ On a fixture holding every shape the review rounds broke on, the tree separates 
 
 The spike also loads the parser from the **staged `lib-bta/`** through a `URLClassLoader` whose
 parent is the platform loader — the same isolation `PlaygroundBtaCompiler` already uses for the
-compiler. Load + parse through that route: **~520 ms**, 13 jars, no dependency on the CLI's own
-classpath.
+compiler. Load + parse through that route: **~0.5–5 s** depending on page cache (13 jars, 70 MB), no
+dependency on the CLI's own classpath. Warm, it sits near the in-process figure.
 
 So the constraint the text passes exist to respect is not actually in the way. What was in the way
 was assuming it was.
@@ -73,9 +75,21 @@ only, and should not survive: a real implementation wants one small module compi
 against the frontend, jarred beside `lib-bta/`, and entered through a single reflective call — rather
 than the reflection sprawl this spike uses to prove the route.
 
-## One caveat, which was mine
+## Correction: a parse does not remove the `params` list
 
-The isolated-loader test first failed only when `PlaygroundBtaCompilerTest` ran before it, which
+The first version of this note claimed named-argument binding worked "with no `params` list to
+declare". That is only true of arguments that *carry* a label. Parse-only PSI has no resolution, so
+in `previewOverrideString("subtitle", "Basket")` nothing in the syntax says which position is
+`default` — that still requires the callee's signature, which is exactly what a rule's `params` list
+supplies. The spike now asserts both halves: one labelled call binding by name, and two positional
+calls carrying no labels at all.
+
+So a parse **narrows** what `params` is for (labels stop needing it) without retiring it. The
+argument for parsing rests on the other four shapes, which it settles outright.
+
+## Two caveats, both mine
+
+**The reflection was order-dependent.** The isolated-loader test first failed only when `PlaygroundBtaCompilerTest` ran before it, which
 looked exactly like a prior in-process compile leaving global frontend state — a serious finding, had
 it been true. It was not. `Class.getMethods()` has no specified order, so `methods.first { … }` was
 selecting a different `createFileFromText` overload between runs. Selecting by exact signature fixed
@@ -83,6 +97,14 @@ it, and it has been stable since.
 
 Worth recording because the false version was the more interesting story, and nothing but checking
 told them apart.
+
+**The first measurement read the wrong directory.** A Gradle test runs from its project directory, so
+`build/usage-corpus` resolved to `cli/build/usage-corpus` while the script writes to
+`<repo>/build/usage-corpus`. That is not a null result — it silently measured whatever was there,
+which was 20 stale snippets plus 15 fixture files another test had written beside them, and got
+reported as "35 snippets the corpus generates". The spike now honours `composeai.usageCorpus.out`,
+falls back to the repository root, skips the fixture tree, and **prints the path it measured** so the
+number can be checked rather than trusted.
 
 ## What this does and does not buy
 
