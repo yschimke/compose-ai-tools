@@ -359,7 +359,7 @@ object ServeWeb {
       }
     if (revisions.revisions.isEmpty()) return "$banner\n"
     val rows =
-      revisions.revisions.joinToString("\n          ") { revision ->
+      revisions.revisions.joinToString("\n            ") { revision ->
         val isCurrent = revision.commit == current
         // A pin is what the page URL says; with no pin the page is showing the branch tip, so that
         // is the row marked. One row is marked either way, and never two.
@@ -378,18 +378,47 @@ object ServeWeb {
           "<span class=\"cp-revision-date\">${WebEscaping.htmlEscape(date)}</span>" +
           "<code class=\"cp-revision-sha\">${WebEscaping.htmlEscape(label)}</code>$currentTag</a>"
       }
-    val summary =
-      if (pinned == null) "Revisions"
-      else "Revisions · pinned ${ServeCatalogRevision.short(pinned)}"
+    // The trigger names the revision the page is *on* — the pin when there is one, the tip
+    // otherwise — so the closed menu already answers "which version am I looking at?", which was
+    // the question the flat wall of chips answered only by making the reader hunt for the
+    // highlighted one. Its accessible name is that visible text, deliberately: an `aria-label` here
+    // would override the date, sha and current/pinned state and announce the control as bare
+    // "Revision".
+    //
+    // It looks like a menu button and is a plain disclosure, which is what the ARIA says too. No
+    // `role="menu"`/`menuitem`: those promise the menu keyboard model — arrow-key navigation, Esc
+    // to dismiss, managed focus — and nothing here implements it, so the roles would describe
+    // behaviour a keyboard user does not get. `<details>` + a list of links gives real disclosure
+    // and ordinary Tab order for free; the `<nav>` is what names the list for a screen reader.
+    val shown = revisions.revisions.firstOrNull { it.commit == (pinned ?: current) }
+    val shownDate =
+      shown?.date?.takeIf { it.isNotBlank() }?.let { prettyDate(it) }
+        ?: pinned?.let { ServeCatalogRevision.short(it) }
+        ?: shown?.short
+        ?: ""
+    val shownSha =
+      shown?.sourceSha ?: shown?.short ?: pinned?.let { ServeCatalogRevision.short(it) }
+    val shownTag =
+      if (pinned == null) "<span class=\"cp-revision-tag\">current</span>"
+      else "<span class=\"cp-revision-tag cp-revision-tag--pinned\">pinned</span>"
     return banner +
       """
-      <details class="cp-revisions"${if (pinned == null) "" else " open"}>
-        <summary>${WebEscaping.htmlEscape(summary)}</summary>
-        <div class="cp-revision-list">
-          $rows
+      <details class="cp-revisions">
+        <summary class="cp-revisions-btn">
+          <span class="cp-revisions-key">Revision</span>
+          <span class="cp-revision-date">${WebEscaping.htmlEscape(shownDate)}</span>
+          ${shownSha?.let { "<code class=\"cp-revision-sha\">${WebEscaping.htmlEscape(it)}</code>" }.orEmpty()}
+          $shownTag
+          <span class="cp-revisions-caret" aria-hidden="true">▾</span>
+        </summary>
+        <div class="cp-revisions-menu">
+          <nav class="cp-revision-list" aria-label="Published revisions">
+            $rows
+          </nav>
+          <p class="cp-revision-note">Every publish of this design system is a commit on its
+          delivery branch. Opening one pins this page — and the pixels on it — to that publish for
+          good.</p>
         </div>
-        <p class="cp-revision-note">Every publish of this design system is a commit on its delivery
-        branch. Opening one pins this page — and the pixels on it — to that publish for good.</p>
       </details>
       """
         .trimIndent() +
@@ -397,15 +426,24 @@ object ServeWeb {
   }
 
   /**
-   * Add `at=<sha>` to a link's query suffix (either empty or already `?…`), or return it unchanged
-   * when the page carries no pin. One helper because a pinned page has to pin *everything* it links
-   * — the render, the reference, its sibling variants — and a single missed suffix is a panel
-   * quietly showing the present next to the past.
+   * Add `at=<sha>` to a link, or return it unchanged when the page carries no pin. One helper
+   * because a pinned page has to pin *everything* it links — the render, the reference, its sibling
+   * variants — and a single missed suffix is a panel quietly showing the present next to the past.
+   *
+   * Callers pass either a bare query suffix (empty, or already `?…`) or a whole URL that may or may
+   * not carry a query, so the separator is chosen from what the string actually contains rather
+   * than from whether it is empty. Getting that wrong is not a cosmetic slip: a public server
+   * builds token-free links, so `/<system>/p/<id>` has no `?` at all, and appending `&at=<sha>`
+   * folds the pin into the *path* — the URL 404s and every revision in the menu is a dead link.
    */
-  private fun withPin(querySuffix: String, pinned: String?): String {
-    val pin = pinned?.takeIf { it.isNotBlank() } ?: return querySuffix
+  private fun withPin(link: String, pinned: String?): String {
+    val pin = pinned?.takeIf { it.isNotBlank() } ?: return link
     val param = "${ServeCatalogRevision.PARAM}=${WebEscaping.urlEncodeSegment(pin)}"
-    return if (querySuffix.isEmpty()) "?$param" else "$querySuffix&$param"
+    return when {
+      !link.contains('?') -> "$link?$param"
+      link.endsWith('?') || link.endsWith('&') -> "$link$param"
+      else -> "$link&$param"
+    }
   }
 
   /** Canonical source repo, used for the "source" / branch / workflow links. */

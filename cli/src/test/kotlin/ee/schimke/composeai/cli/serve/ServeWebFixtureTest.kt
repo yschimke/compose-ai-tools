@@ -1582,6 +1582,20 @@ class ServeWebFixtureTest {
             repo = "yschimke/compose-ai-tools",
           ),
       )
+    // The same page with the revision menu popped open. The control is a `<details>` menu that
+    // ships closed, so a screenshot of the page above only ever captures its trigger — and the list
+    // of publishes, the part a change to this feature is most likely to break visually, would never
+    // be diffed. Forcing the disclosure open is the whole difference between the two fixtures; the
+    // markup inside it is the server's own.
+    val viewerRevisionsOpen =
+      viewerRevisions.replace(
+        "<details class=\"cp-revisions\">",
+        "<details class=\"cp-revisions\" open>",
+      )
+    assertFalse(
+      viewerRevisionsOpen == viewerRevisions,
+      "the revision menu's <details> tag changed shape — update this fixture's open-state rewrite",
+    )
     // The design page's inlined export. Run through the real [SvgSanitizer] rather than pasted in
     // whole, so the golden HTML is what the server would actually emit — including anything the
     // sanitizer strips.
@@ -2253,6 +2267,7 @@ class ServeWebFixtureTest {
         "serve-reference-compare.html" to referenceComparison,
         "serve-reference-compare-pinned.html" to referenceComparisonPinned,
         "serve-viewer-revisions.html" to viewerRevisions,
+        "serve-viewer-revisions-open.html" to viewerRevisionsOpen,
         "serve-viewer-pinned-lanes.html" to viewerPinnedLanes,
         "serve-design-page.html" to designPageHtml,
         "serve-design-page-index.html" to designPageIndex,
