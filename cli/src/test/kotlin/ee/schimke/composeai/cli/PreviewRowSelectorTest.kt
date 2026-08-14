@@ -249,11 +249,13 @@ class PreviewRowSelectorTest {
   }
 
   /**
-   * Review follow-up (#3799). The conservative row lane is opt-in, because only `serve` can cash it
-   * in: it expands the fan-out off disk after the render and re-filters, so a speculative keep is
-   * proven or discarded before anything is shown. `render` / `show` / `a11y` filter their output by
-   * base id — `PreviewResultBuilder` carries a row as a capture's `parameterLabel`, not as an id —
-   * so for them a speculative keep could only ever render a module and then print nothing from it.
+   * Review follow-up (#3799). The conservative row lane stays opt-in: a command may only keep a
+   * module on a "maybe" if it can cash the keep in after the render, or a speculative keep just
+   * renders a module and prints nothing from it. `serve` cashes it in with `ServeParameterRows`,
+   * and since #3819 `show` / `list` / `render` cash it in with [selectRequestedResults] — but the
+   * extension commands (`a11y` and friends) drive their per-preview data production off the
+   * discovery manifest, which knows only declared ids, so they stay strict and a row selector fails
+   * there *before* a render rather than after one.
    */
   @Test
   fun `the row lane is off for commands that cannot expand rows`() {
@@ -347,5 +349,38 @@ class PreviewRowSelectorTest {
       listOf("-P${PreviewRenderScope.GRADLE_PROPERTY}=${PreviewRenderScope.ANCHOR}Foo"),
       scope.gradleArgs,
     )
+  }
+
+  /**
+   * Issue #3819. The same narrowing, reached through the command that actually runs it — the flag
+   * [Command.rowAwareSelection] is what routes a row request into the lane above, and `show` /
+   * `render` now set it because they can cash the keep in ([selectRequestedResults] matches the row
+   * ids `PreviewResultBuilder` carries on each capture).
+   *
+   * Both halves matter and neither is enough alone: without the flag the request selects nothing
+   * here and falls back to `FULL`, paying for every preview in the module to answer a single-row
+   * question; with the flag but no row-aware output filtering, the render happens and the command
+   * prints "No previews matched." anyway — the state the issue was filed about.
+   */
+  @Test
+  fun `show and render narrow a row id to its base preview`() {
+    val app = module(":app")
+    val manifests = listOf(manifest(app, preview("Foo", parameterized = true), preview("Other")))
+    val expected = listOf("-P${PreviewRenderScope.GRADLE_PROPERTY}=${PreviewRenderScope.ANCHOR}Foo")
+
+    for (command in
+      listOf(
+        ShowCommand(listOf("--id", "Foo_PARAM_1")),
+        RenderCommand(listOf("--id", "Foo_PARAM_1")),
+      )) {
+      val scope =
+        command.previewRenderScope(
+          renderModules = listOf(app),
+          discoveryManifests = manifests,
+          discoverySucceeded = true,
+        )
+      assertEquals(expected, scope.gradleArgs, "${command::class.simpleName} must narrow to Foo")
+      assertEquals(setOf("Foo"), scope.renderedIds)
+    }
   }
 }

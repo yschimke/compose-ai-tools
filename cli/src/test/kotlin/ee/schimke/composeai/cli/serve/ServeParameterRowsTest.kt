@@ -99,6 +99,26 @@ class ServeParameterRowsTest {
     assertEquals(listOf("Foo_Crimson"), rows(foo, foo, fooDark).map { it.id })
   }
 
+  /**
+   * Issue #3819. A *longer-stemmed* sibling owns its own fan-out: with `Foo` and `Foo_Dark` both
+   * real previews, `Foo_Dark_Alice.png` is `Foo_Dark`'s row, not `Foo`'s row `Dark_Alice`. The
+   * builder that feeds `show` / `list` / `render` always applied that rule
+   * (`parameterFanoutOwnedBySibling`) and this glob didn't — the exact drift that makes two
+   * derivations of one id dangerous: `serve` would list a row id that resolves to a different
+   * preview's render everywhere else. Both now go through `PreviewParameterFanout`.
+   */
+  @Test
+  fun `a longer-stemmed sibling's fan-out is not a row of the shorter one`() {
+    val foo = preview("Foo")
+    val fooDark = preview("Foo_Dark", output = "renders/Foo_Dark.png")
+    touch("Foo_Dark.png")
+    touch("Foo_Dark_Alice.png")
+    touch("Foo_Crimson.png")
+
+    assertEquals(listOf("Foo_Crimson"), rows(foo, foo, fooDark).map { it.id })
+    assertEquals(listOf("Foo_Dark_Alice"), rows(fooDark, foo, fooDark).map { it.id })
+  }
+
   /** A preview's own non-row captures (scroll variants) are claimed by it, so they're excluded. */
   @Test
   fun `the preview's own extra captures are not rows`() {

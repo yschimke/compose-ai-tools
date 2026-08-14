@@ -137,6 +137,88 @@ class PreviewResultBuilderTest {
       listOf("parameter 0", "parameter 2", "parameter 10"),
       captures.map { it.parameterLabel },
     )
+    // Issue #3819: the label is a lossy human coordinate, so each row also carries the id it can be
+    // selected by — the same `<baseId>_<row>` id `serve` routes on, derived once by
+    // `PreviewParameterFanout`.
+    assertEquals(
+      listOf("ParamShow_PARAM_0", "ParamShow_PARAM_2", "ParamShow_PARAM_10"),
+      captures.map { it.parameterRowId },
+    )
+  }
+
+  /** Rows of a permutation sibling are addressed under *their* preview, not the base one. */
+  @Test
+  fun `fan-out row ids are scoped to the preview that owns the file`() {
+    val module = module(":params-row-ids")
+    writeManifest(
+      module,
+      PreviewManifest(
+        module = ":params-row-ids",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "ParamShow",
+              functionName = "ParamShow",
+              className = "com.params.ParamShowKt",
+              params =
+                PreviewParams(previewParameterProviderClassName = "com.params.SampleProvider"),
+              captures = listOf(Capture(renderOutput = "ParamShow.png")),
+            ),
+            PreviewInfo(
+              id = "ParamShow_dark",
+              functionName = "ParamShow",
+              className = "com.params.ParamShowKt",
+              params =
+                PreviewParams(previewParameterProviderClassName = "com.params.SampleProvider"),
+              captures = listOf(Capture(renderOutput = "ParamShow_dark.png")),
+            ),
+          ),
+      ),
+    )
+    writePng(module, "ParamShow_Crimson.png")
+    writePng(module, "ParamShow_dark_Crimson.png")
+
+    val results =
+      PreviewResultBuilder.build(listOf(module to PreviewResultBuilder.readManifest(module)!!))
+
+    val byId = results.associateBy { it.id }
+    assertEquals(
+      listOf("ParamShow_Crimson"),
+      byId.getValue("ParamShow").captures.map { it.parameterRowId },
+    )
+    assertEquals(
+      listOf("ParamShow_dark_Crimson"),
+      byId.getValue("ParamShow_dark").captures.map { it.parameterRowId },
+    )
+  }
+
+  /** An ordinary preview has no rows, so nothing there is addressable as one. */
+  @Test
+  fun `captures that are not provider rows carry no row id`() {
+    val module = module(":no-rows")
+    writeManifest(
+      module,
+      PreviewManifest(
+        module = ":no-rows",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "Plain",
+              functionName = "Plain",
+              className = "com.app.PlainKt",
+              captures = listOf(Capture(renderOutput = "renders/Plain.png")),
+            )
+          ),
+      ),
+    )
+    writePng(module, "renders/Plain.png")
+
+    val results =
+      PreviewResultBuilder.build(listOf(module to PreviewResultBuilder.readManifest(module)!!))
+
+    assertEquals(listOf<String?>(null), results.single().captures.map { it.parameterRowId })
   }
 
   @Test

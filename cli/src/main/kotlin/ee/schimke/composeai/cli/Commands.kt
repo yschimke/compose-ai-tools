@@ -150,12 +150,19 @@ abstract class Command(
    * so wants module selection to keep previews whose (unknowable) rows might satisfy the request —
    * issue #3786's conservative lane, see [previewMatchesRequestIncludingRows].
    *
-   * Only `serve` can: it expands the fan-out off disk via `ServeParameterRows` after the render,
-   * and then re-filters, so a module kept on a "maybe" is proven or discarded before anything is
-   * shown. Every other command filters its output by base id (`PreviewResultBuilder` carries a row
-   * as a capture's `parameterLabel`, not as an id), so for them a speculative keep could only ever
-   * render a module and then print nothing from it. Opt-in rather than global, so the conservatism
-   * costs build time exactly where it buys a correct answer.
+   * The condition for opting in is being able to *cash the maybe in*: expand the fan-out after the
+   * render and re-filter, so a module kept speculatively is proven or discarded before anything is
+   * shown. `serve` does it with `ServeParameterRows`; since issue #3819 the result-shaped commands
+   * (`show`, `list`, `render`) do it with [selectRequestedResults], which matches the row ids
+   * `PreviewResultBuilder` now carries on each capture — both derived by `PreviewParameterFanout`,
+   * so a row kept here is a row that can be selected there.
+   *
+   * Still opt-in rather than global, because a command can filter row-aware and *still* be unable
+   * to act on a row: the extension commands (`a11y` and friends) drive per-preview data production
+   * off the discovery manifest ([requestedPreviewIds] / `dataProductRequests`), which only knows
+   * declared ids, so a speculative keep would render a module and produce no data for the row that
+   * motivated it. Those keep the strict lane, and a row selector still fails fast there rather than
+   * after a render.
    */
   protected open val rowAwareSelection: Boolean
     get() = false
@@ -850,9 +857,16 @@ abstract class Command(
     captures.any { it.changed == true } || changed == true
 
   /** Filters by `--id` / `--filter` and (optionally) `--changed-only`. */
-  protected fun applyFilters(all: List<PreviewResult>): List<PreviewResult> = all.filter {
-    matchesRequest(it) && (!changedOnly || it.anyChanged())
-  }
+  protected fun applyFilters(all: List<PreviewResult>): List<PreviewResult> =
+    selectRequested(all).filter { !changedOnly || it.anyChanged() }
+
+  /**
+   * This invocation's `--id` / `--filter` / `--preview` applied to rendered results, honouring
+   * `@PreviewParameter` row ids — see [selectRequestedResults]. `--changed-only` is deliberately
+   * *not* applied here, so it can be evaluated against the rows the request actually selected.
+   */
+  protected fun selectRequested(all: List<PreviewResult>): List<PreviewResult> =
+    selectRequestedResults(all, exactId = exactId, filter = filter, previewRef = previewRef)
 
   /**
    * @param results rows to emit (after `--id`/`--filter`/`--changed-only`)
@@ -915,16 +929,6 @@ abstract class Command(
             r.captures.all { c -> c.pngPath == null } &&
             r.captures.any { c -> !c.optional }
         },
-    )
-
-  protected fun matchesRequest(result: PreviewResult): Boolean =
-    previewIdMatchesRequest(
-      result.id,
-      exactId = exactId,
-      filter = filter,
-      previewRef = previewRef,
-      className = result.className,
-      functionName = result.functionName,
     )
 
   protected fun matchesRequest(preview: PreviewInfo): Boolean =
@@ -1180,7 +1184,97 @@ internal fun manifestsDeclareExactId(
   manifests: List<Pair<PreviewModule, PreviewManifest>>,
   exactId: String?,
 ): Boolean =
-  exactId != null && manifests.any { (_, manifest) -> manifest.previews.any { it.id == exactId } }
+  declaresExactId(
+    exactId,
+    manifests.asSequence().flatMap { (_, manifest) -> manifest.previews.asSequence().map { it.id } },
+  )
+
+/**
+ * [manifestsDeclareExactId] over rendered results — the same gate on the same `--id`, one step
+ * later in the pipeline, where [selectRequestedResults] decides whether a row id may be honoured.
+ *
+ * Shares the rule rather than restating it: the two run over different id sources (the discovery
+ * manifest before the render, the built results after it) but must answer identically, or `--id
+ * Foo_Dark` would keep a module for a real `Foo_Dark` and then print `Foo`'s row of the same name.
+ */
+internal fun resultsDeclareExactId(results: List<PreviewResult>, exactId: String?): Boolean =
+  declaresExactId(exactId, results.asSequence().map { it.id })
+
+private fun declaresExactId(exactId: String?, ids: Sequence<String>): Boolean =
+  exactId != null && ids.any { it == exactId }
+
+/**
+ * The `--id` / `--filter` / `--preview` selection over **rendered results**, with
+ * `@PreviewParameter` row ids honoured (issue #3819).
+ *
+ * `show`, `list` and `render` print one line per [PreviewResult] and used to filter on its base id
+ * alone, so `--id Foo_PARAM_1` matched nothing — after paying for the render, and while the very
+ * row it named was sitting in `Foo`'s capture list. The rows were already there; what was missing
+ * were their **ids**. A capture carries `parameterLabel` (`parameter 1`), a lossy human coordinate
+ * that can't be turned back into a selector, so the id is now derived once by
+ * `PreviewParameterFanout` and carried as [CaptureResult.parameterRowId] — the same derivation
+ * `serve` addresses its cards with, so the two can't disagree about what a row is called.
+ *
+ * The rule mirrors `serve`'s (`ServeCommand.servablePreviewsOf`):
+ * - the base id matches → the whole preview, every row, because asking for a parameterized preview
+ *   means asking for its states;
+ * - otherwise a row id matches → the preview, narrowed to the matching rows;
+ * - `--id` naming a preview that really exists ([resultsDeclareExactId]) turns the row lane off, so
+ *   a real `Foo_Dark` outranks `Foo`'s hypothetical row of that name — the #3798 / #3799
+ *   precedence, deliberately scoped to `--id` because the substring selectors legitimately name
+ *   many previews at once.
+ *
+ * Rows are matched by id alone, without the class / function metadata: a synthetic row id has no
+ * manifest row of its own, and the `<Class>.<function>` and bare-function forms of `--preview` were
+ * already tested against the base id above.
+ */
+internal fun selectRequestedResults(
+  results: List<PreviewResult>,
+  exactId: String?,
+  filter: String?,
+  previewRef: String? = null,
+): List<PreviewResult> {
+  if (exactId == null && filter == null && previewRef == null) return results
+  val exactIdExists = resultsDeclareExactId(results, exactId)
+  return results.mapNotNull { result ->
+    if (
+      previewIdMatchesRequest(
+        result.id,
+        exactId = exactId,
+        filter = filter,
+        previewRef = previewRef,
+        className = result.className,
+        functionName = result.functionName,
+      )
+    ) {
+      return@mapNotNull result
+    }
+    if (exactIdExists) return@mapNotNull null
+    val rows =
+      result.captures.filter { capture ->
+        capture.parameterRowId?.let {
+          previewIdMatchesRequest(it, exactId = exactId, filter = filter, previewRef = previewRef)
+        } == true
+      }
+    if (rows.isEmpty()) null else result.withCaptures(rows)
+  }
+}
+
+/**
+ * [PreviewResult] narrowed to [captures], with the back-compat `pngPath` / `sha256` / `changed`
+ * mirrors re-pointed at the first *surviving* capture. Without the re-point, selecting one row
+ * would report the PNG of a row that was filtered out — the mirrors are documented as "the first
+ * capture".
+ */
+private fun PreviewResult.withCaptures(captures: List<CaptureResult>): PreviewResult {
+  val first = captures.firstOrNull()
+  return copy(
+    captures = captures,
+    pngPath = first?.pngPath,
+    sha256 = first?.sha256,
+    changed = first?.changed,
+  )
+}
 
 /**
  * Like [previewIdMatchesRequest], but a **`@PreviewParameter` preview** whose rows might satisfy
@@ -1396,6 +1490,16 @@ internal fun captureCoordLabel(c: CaptureResult): String =
     .ifEmpty { "default" }
 
 class ShowCommand(args: List<String>) : Command(args) {
+
+  /**
+   * `show` prints the `@PreviewParameter` rows and, since issue #3819, selects on them — so it
+   * wants the module and the narrowed render a row id implies. The keep is cashed in by
+   * [applyFilters]: a module kept for a row that turned out not to exist contributes nothing to the
+   * output.
+   */
+  override val rowAwareSelection: Boolean
+    get() = true
+
   private val jsonOutput = "--json" in args
   // Auto-on when stdout is an interactive TTY in a kitty-graphics-capable terminal. Users
   // opt out with `--images=off`; `--images=kitty` forces it on (still TTY-gated). `--json`
@@ -1458,7 +1562,7 @@ class ShowCommand(args: List<String>) : Command(args) {
     // rendered that set. Once `--id` / `--filter` narrows the Gradle drive (issue #3730) the
     // previews outside the request were deliberately not rendered, so counting their absent PNGs
     // as `missing` would report 63 render failures for a run that did exactly what was asked.
-    val countsScope = if (outcome.renderedIds == null) all else all.filter { matchesRequest(it) }
+    val countsScope = if (outcome.renderedIds == null) all else selectRequested(all)
 
     if (filtered.isEmpty()) {
       if (jsonOutput) println(encodeResponse(emptyList(), countsScope = countsScope))
@@ -1563,6 +1667,15 @@ class ShowCommand(args: List<String>) : Command(args) {
 }
 
 class ListCommand(args: List<String>) : Command(args) {
+
+  /**
+   * `list` selects on row ids too (issue #3819) — it runs discovery only, so the rows it can list
+   * are whatever an earlier render left on disk. Set for consistency with the filtering it now
+   * performs; `list` drives no render of its own, so nothing is spent on a "maybe".
+   */
+  override val rowAwareSelection: Boolean
+    get() = true
+
   private val jsonOutput = "--json" in args
 
   override fun run() {
@@ -1581,7 +1694,7 @@ class ListCommand(args: List<String>) : Command(args) {
       // List runs discovery only — PNGs may not exist, so sha/changed are null.
       // `--changed-only` is meaningless without rendering; ignore it here.
       val all = buildResults(manifests)
-      val filtered = all.filter { matchesRequest(it) }
+      val filtered = selectRequested(all)
 
       if (filtered.isEmpty()) {
         if (jsonOutput) println(encodeResponse(emptyList(), countsScope = null))
@@ -1601,6 +1714,15 @@ class ListCommand(args: List<String>) : Command(args) {
 }
 
 class RenderCommand(args: List<String>) : Command(args) {
+
+  /**
+   * `render` reports the rows it rendered and selects on their ids (issue #3819), so it takes the
+   * same conservative keep `show` does — including for `--output`, where a row id is the only way
+   * to ask for one value of a provider's PNG.
+   */
+  override val rowAwareSelection: Boolean
+    get() = true
+
   private val output: String? = args.flagValue("--output")
 
   /**
@@ -1697,7 +1819,7 @@ class RenderCommand(args: List<String>) : Command(args) {
       // `render` ignores `--changed-only` so the agent can ask "render
       // the world, but report only what changed" via a follow-up
       // `show --changed-only`.
-      val filtered = all.filter { matchesRequest(it) }
+      val filtered = selectRequested(all)
 
       if (filtered.isEmpty()) {
         System.err.println("No previews matched.")
@@ -2176,8 +2298,8 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
     }
 
     val filtered =
-      outcome.results.filter {
-        matchesRequest(it) && renderer.hasData(it) && (!changedOnly || it.anyChanged())
+      selectRequested(outcome.results).filter {
+        renderer.hasData(it) && (!changedOnly || it.anyChanged())
       }
 
     if (jsonOutput) {
