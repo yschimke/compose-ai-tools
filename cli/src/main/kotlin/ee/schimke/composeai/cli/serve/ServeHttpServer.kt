@@ -296,23 +296,6 @@ class ServeHttpServer(
    * a preview id, and everything that forms the fetch URL comes from the catalog metadata behind
    * them. Null when no fetcher was supplied, or the lane isn't wired at all.
    */
-  /**
-   * The last source location resolved for a `(system, previewId)`, so a **suspended** catalog can
-   * still answer for a preview someone has already opened.
-   *
-   * A session's metadata lives on its `ServeHost`, and `peekHost` returns null once the daemon has
-   * idled out — deliberately, since peeking must not resume anything. But the viewer page takes a
-   * lease, so it resumes the session and renders the Source chip; the panel's fetch arrives later
-   * and unleased, and found nothing. The chip worked and its panel 404'd, on exactly the catalogs
-   * that idle out — which is every quiet one on a shared host.
-   *
-   * Remembering only what has actually been resolved keeps this small and self-targeting: an entry
-   * exists precisely because somebody opened that preview, which is who asks again. Refreshed
-   * whenever a live host answers, so a republished catalog overwrites rather than shadows.
-   */
-  private val lastKnownSourceLocation =
-    ConcurrentHashMap<Pair<String, String>, PlaygroundSeedResolver.Location>()
-
   private val playgroundSeeds: PlaygroundSeedResolver? = playgroundSourceFetch
   // Deliberately NOT gated on `playgroundService`. The resolver reads and cleans a preview's
   // source, which the viewer's Source panel wants on every host that can browse a catalog —
@@ -322,35 +305,53 @@ class ServeHttpServer(
   ?.let { fetch ->
     PlaygroundSeedResolver(
       locate = { system, previewId ->
-        // peekHost, not lease: this is a metadata read, and leasing would stand a daemon up
-        // just to answer where a file lives.
-        val bundleHost = sessions.peekHost(system)?.let { catalogBundleHost(it) }
-        val source = bundleHost?.catalogSource
-        val preview = bundleHost?.previews?.firstOrNull { it.id == previewId }
-        val sourceFile = preview?.sourceFile?.takeIf { it.isNotBlank() }
-        if (source != null && sourceFile != null)
-          PlaygroundSeedResolver.Location(
-              repo = source.repo,
-              ref = source.ref,
-              module = source.module,
-              sourceFile = sourceFile,
-              // Absent on a catalog published before discovery recorded it, which is exactly the
-              // case the resolver falls back to whole-file seeding for.
-              bodyLine = preview.bodyLine,
-            )
-            .also {
-              if (lastKnownSourceLocation.size < MAX_REMEMBERED_SOURCE_LOCATIONS) {
-                lastKnownSourceLocation[system to previewId] = it
-              }
-            }
-        // No live host — a suspended session — so fall back to what this preview resolved to the
-        // last time one answered. Null when it never has here, which is the honest answer.
-        else lastKnownSourceLocation[system to previewId]
+        // peekHost, not lease: this is a metadata read, and leasing would stand a daemon up just
+        // to answer where a file lives.
+        val host = sessions.peekHost(system)
+        when {
+          // Resident: authoritative, in BOTH directions. A live host that does not list this
+          // preview — a catalog refreshed under the same id with it dropped, or its source
+          // metadata cleared — has to answer "no". Falling through to a remembered location there
+          // would serve the previous publication's source instead of a 404, so its negative
+          // answer drops the stale entry too.
+          host != null -> sourceLocationOf(host, previewId)
+          // Suspended, but still a session this server serves: answer from the snapshot taken as
+          // it was suspended. Taken from the host being suspended, so a catalog refreshed and then
+          // idled out snapshots the REPLACEMENT — the case a lazily-primed map got wrong, since a
+          // stale entry could answer a tab that loaded before the refresh.
+          sessions.isKnownSession(system) ->
+            catalogMetaSeen[system]?.sourceLocations?.get(previewId)
+          // Retired: the catalog is gone and every other session-backed route for it 404s. A
+          // remembered location would keep answering — and keep re-fetching the old repository
+          // once the seed's TTL lapsed — long after the catalog was withdrawn.
+          else -> null
+        }
       },
       fetch = fetch,
       onLog = { System.err.println("serve: playground seed: $it") },
     )
   }
+
+  /** Where a preview's source lives according to [host], or null when it cannot say. */
+  private fun sourceLocationOf(
+    host: ServeHost,
+    previewId: String,
+  ): PlaygroundSeedResolver.Location? {
+    val bundleHost = catalogBundleHost(host) ?: return null
+    val source = bundleHost.catalogSource ?: return null
+    val preview = bundleHost.previews.firstOrNull { it.id == previewId } ?: return null
+    val sourceFile = preview.sourceFile?.takeIf { it.isNotBlank() } ?: return null
+    return PlaygroundSeedResolver.Location(
+      repo = source.repo,
+      ref = source.ref,
+      module = source.module,
+      sourceFile = sourceFile,
+      // Absent on a catalog published before discovery recorded it, which is exactly the case the
+      // resolver falls back to whole-file seeding for.
+      bodyLine = preview.bodyLine,
+    )
+  }
+
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
 
@@ -3306,6 +3307,17 @@ class ServeHttpServer(
 
   /** A resident-time snapshot of one catalog's status facts. See [catalogMetaSeen]. */
   private data class CatalogMeta(
+    /**
+     * Where each preview's source lives, so `/usage/<id>` can answer for a **suspended** catalog.
+     *
+     * Carried in this snapshot rather than in a map of its own precisely because that map turned
+     * out to need every property this one already has: written on suspension, refreshed on every
+     * resident read, replaced wholesale when a refresh re-registers the system, and dropped with
+     * the session. `peekHost` says as much in its own KDoc — a caller that needs a session's facts
+     * keeps a last-known snapshot via the suspend listener rather than reading absence as a
+     * verdict.
+     */
+    val sourceLocations: Map<String, PlaygroundSeedResolver.Location>,
     val title: String?,
     val subtitle: String?,
     val trust: String?,
@@ -3371,8 +3383,25 @@ class ServeHttpServer(
     val bundle = catalogBundleHost(host) ?: return
     val heroId = bundle.declaredHeroPreviewId ?: ServeWeb.representativePreviewId(host.previews)
     val heroCrop = heroId?.let { bundle.contentCrop(it) }
+    val catalogSource = bundle.catalogSource
     catalogMetaSeen[id] =
       CatalogMeta(
+        sourceLocations =
+          if (catalogSource == null) emptyMap()
+          else
+            host.previews
+              .mapNotNull { preview ->
+                val file = preview.sourceFile?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                preview.id to
+                  PlaygroundSeedResolver.Location(
+                    repo = catalogSource.repo,
+                    ref = catalogSource.ref,
+                    module = catalogSource.module,
+                    sourceFile = file,
+                    bodyLine = preview.bodyLine,
+                  )
+              }
+              .toMap(),
         title = bundle.title?.takeIf { it.isNotBlank() } ?: host.label,
         subtitle = bundle.subtitle,
         trust = BundleVerifier.summary(bundle.trust),
@@ -5912,13 +5941,6 @@ class ServeHttpServer(
      */
     internal fun prebakedImageCacheControl(isPublic: Boolean): String =
       if (isPublic) HERO_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
-
-    /**
-     * Cap on [lastKnownSourceLocation]. Entries are a handful of short strings and only exist for
-     * previews somebody has actually opened, so this is far above any real browsing session while
-     * still bounding a long-running public host.
-     */
-    private const val MAX_REMEMBERED_SOURCE_LOCATIONS = 4096
 
     private val JSON = Json { encodeDefaults = true }
 
