@@ -62,6 +62,8 @@
                 <span>Our renders</span></label>
               <label><input type="radio" name="cp-page-lane" value="design" data-cp-page-lane>
                 <span>Design spec</span></label>
+              <label><input type="radio" name="cp-page-lane" value="diff" data-cp-page-lane>
+                <span>Diff %</span></label>
             </div>
             <label class="cp-page-opt"><input type="checkbox" data-cp-page-outlines> Outline every component</label>
             <label class="cp-page-opt"><input type="checkbox" data-cp-page-unlinked> Only what we don't implement</label>
@@ -88,6 +90,10 @@
 <img class="cp-page-render" alt="" loading="lazy" data-cp-node="1:2" src="/render/com.example.ProfileCardPreview.png?session=compose-m3">
 <img class="cp-page-render" alt="" loading="lazy" data-cp-node="1:3" src="/render/com.example.ProfileCardPreview.png?session=compose-m3">
 <img class="cp-page-render" alt="" loading="lazy" data-cp-node="1:404" src="/render/com.example.ProfileCardPreview.png?session=compose-m3"></template>
+              <template data-cp-page-diff-links><a class="cp-page-diff-link" tabindex="-1" aria-hidden="true" data-cp-node="1:1" href="/p/com.example.ProfileCardPreview?session=compose-m3&mode=spec&amp;specView=diff"></a>
+<a class="cp-page-diff-link" tabindex="-1" aria-hidden="true" data-cp-node="1:2" href="/p/com.example.ProfileCardPreview?session=compose-m3&mode=spec&amp;specView=diff"></a>
+<a class="cp-page-diff-link" tabindex="-1" aria-hidden="true" data-cp-node="1:3" href="/p/com.example.ProfileCardPreview?session=compose-m3&mode=spec&amp;specView=diff"></a>
+<a class="cp-page-diff-link" tabindex="-1" aria-hidden="true" data-cp-node="1:404" href="/p/com.example.ProfileCardPreview?session=compose-m3&mode=spec&amp;specView=diff"></a></template>
               <button type="button" class="cp-page-node" aria-pressed="false" data-link="unlinked" data-cp-node="1:9" title=".Header — no code behind this"><span class="cp-visually-hidden">.Header — no code behind this</span></button>
 <button type="button" class="cp-page-node" aria-pressed="false" data-link="manifest" data-cp-node="1:1" title="Shape=Circle — ui/Shapes.kt#CircleShape"><span class="cp-visually-hidden">Shape=Circle — ui/Shapes.kt#CircleShape</span></button>
 <button type="button" class="cp-page-node" aria-pressed="false" data-link="manifest" data-cp-node="1:2" title="Shape=Square — ui/Shapes.kt#SquareShape"><span class="cp-visually-hidden">Shape=Square — ui/Shapes.kt#SquareShape</span></button>
@@ -113,6 +119,7 @@
             </details>
           </div>
         </div>
+        <script src="/assets/serve/fixture/format-compare.js"></script>
         <script src="/assets/serve/fixture/design-page.js"></script>
         </main>
         <footer class="cp-site-footer">

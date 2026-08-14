@@ -368,6 +368,42 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // The diff lane: one number per slot, saying how far our render is from the design's own
+        // drawing of that node. Every part of it is produced at runtime — the sheet is cropped per
+        // node, rasterised and scored in the browser — so the committed HTML holds none of it and
+        // a change to the scoring, the bands or the badge would move no baseline without this.
+        fixture: "serve-design-page",
+        suffix: "diff-lane",
+        apply: async (page) => {
+            await page.click('.cp-page-lane label:has([data-cp-page-lane][value="diff"])');
+            // Hold for the settled numbers rather than the "…" placeholders, and require at least
+            // one: `every()` over an empty list is true, so without the length check this would go
+            // green if the scoring never ran at all.
+            await page.waitForFunction(() => {
+                const badges = Array.from(document.querySelectorAll(".cp-page-score"));
+                return (
+                    badges.length > 0 &&
+                    badges.every((b) => b.textContent !== "…" && b.textContent !== "")
+                );
+            });
+            // Only nodes we can actually draw get a number. A badge on a node with no render would
+            // be reporting "absent" as "100% different", which is the one wrong thing this readout
+            // could say.
+            const badges = await page.locator(".cp-page-score").count();
+            const renders = await page.locator(".cp-page-render").count();
+            expect(badges).toBe(renders);
+            // Where the lane leads. Asserted on the anchor rather than by clicking it, so this
+            // stays a capture rather than a navigation — but it still fails if the deep link stops
+            // naming the viewer's Figma comparison.
+            const href = await page
+                .locator(".cp-page-diff-link")
+                .first()
+                .getAttribute("href");
+            expect(href).toContain("mode=spec");
+            expect(href).toContain("specView=diff");
+        },
+    },
+    {
         // "Only what we don't implement": the coverage read. Everything this catalog implements is
         // muted and the dashed-red outlines — the components on the sheet with no code behind them
         // — are what's left. Asking for the filter turns the outline layer on by itself, since a

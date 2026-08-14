@@ -6734,6 +6734,26 @@ $rows
         }
         .joinToString("\n")
 
+    // The way out of the diff lane, one anchor per scoreable node, riding the same inert template
+    // trick as the renders. `?mode=spec&specView=diff` is the viewer's own deep link into the full
+    // Figma comparison — the diff map, the triptych, the wipe — so the sheet's number and the view
+    // it opens are the same instrument.
+    //
+    // An ANCHOR the script clicks, rather than a URL in a data attribute the script reads and
+    // assigns to `location`. That assignment is the taint path (`js/xss-through-dom`) the renders
+    // already avoid, and the destination here is built from a preview id that came off a design
+    // file. Cloning a server-built, server-escaped element has no sink in it at all.
+    val diffLinks =
+      page.nodes
+        .mapNotNull { node ->
+          val previewId = renderable(node) ?: return@mapNotNull null
+          val sep = if (q.isEmpty()) "?" else "&"
+          "<a class=\"cp-page-diff-link\" tabindex=\"-1\" aria-hidden=\"true\" " +
+            "data-cp-node=\"${WebEscaping.htmlEscape(node.nodeId)}\" " +
+            "href=\"$basePath/p/${WebEscaping.urlEncodeSegment(previewId)}$q${sep}mode=spec&amp;specView=diff\"></a>"
+        }
+        .joinToString("\n")
+
     // The audit list, and now also the source the selection strip is cloned from — which is why
     // every row is a link wherever it can be. A node with code goes to its preview; a node without
     // goes to the design file, built from the node's own id rather than parsed out of its `ref`
@@ -6795,6 +6815,8 @@ $rows
                 <span>Our renders</span></label>
               <label><input type="radio" name="cp-page-lane" value="design" data-cp-page-lane>
                 <span>Design spec</span></label>
+              <label><input type="radio" name="cp-page-lane" value="diff" data-cp-page-lane>
+                <span>Diff %</span></label>
             </div>
             <label class="cp-page-opt"><input type="checkbox" data-cp-page-outlines> Outline every component</label>
             <label class="cp-page-opt"><input type="checkbox" data-cp-page-unlinked> Only what we don't implement</label>
@@ -6809,6 +6831,7 @@ $rows
             <div class="cp-page-stage" style="--cp-page-aspect:$aspect">
               $svg
               <template data-cp-page-render-source>$renders</template>
+              <template data-cp-page-diff-links>$diffLinks</template>
               $outlines
             </div>
             <div class="cp-page-selection" data-cp-page-selection aria-live="polite">
@@ -6822,6 +6845,7 @@ $rows
             </details>
           </div>
         </div>
+        ${scriptTag("format-compare.js")}
         ${scriptTag("design-page.js")}
         """
           .trimIndent(),
