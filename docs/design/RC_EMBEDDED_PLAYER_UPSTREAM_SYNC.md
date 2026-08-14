@@ -357,6 +357,16 @@ against the fact that the reason for vendoring is expiring:
   single change; there is no intermediate state where we take the new alpha *and* keep the patched
   sources. (Renaming the vendored package would also break the collision, at the cost of the
   verbatim-snapshot property that makes a refresh a plain `diff -r`. Not worth it.)
+
+  **And the pin does not move alone.** `gradle/libs.versions.toml` requires `compose-remote`,
+  `wear-compose-remote` and `glance-wear` to move in lockstep, to versions actually built against
+  each other — the catalog's own comments record `wear-compose-remote` publishing *behind*
+  `compose-remote` (#2823 pinned a version that did not exist yet and took `main` red) and a bump of
+  `compose-remote` alone reintroducing a runtime `NoClassDefFoundError`. So the atomic change is
+  four things, not two: the `compose-remote` bump, its paired `wear-compose-remote` /`glance-wear`
+  versions, the source→artifact transition, and a render of the affected catalogs to prove the set
+  agrees. Check Google Maven for the trio before starting; a version that hasn't published yet is
+  the failure mode that has already bitten once.
 - **Migrating the Android lane to the artifact is gated on eight items, plus a deliberate call on
   a ninth.** A binary cannot be patched, and keeping the patches in the jvm snapshot does nothing for Android — so
   switching while any of these is still ours regresses the Android lane to upstream's pixels. The
@@ -367,7 +377,10 @@ against the fact that the reason for vendoring is expiring:
      upstream's `BasicText` rewrite looks like a refactor rather than a behaviour change*
   4. host-override precedence, `isFloatOverridden` (§3.8)
   5. animated-expression-chain routing (§3.8)
-  6. `ID_CONTINUOUS_SEC` in the float resolver (§3.8)
+  6. `ID_CONTINUOUS_SEC` in the float resolver (§3.8) — and file it *correctly*: ours aliases the id
+     to `ID_TIME_IN_SEC`'s `timeMillis / 1000f`, but continuous seconds carries the sub-second
+     fraction of the wall-clock position (`minute*60 + second + ms*1e-3` in the remote-core mirror)
+     where `TIME_IN_SEC` is integral. The aliasing advances, which is why it survived here
 
   Two further gate items are **our** work rather than upstream's, and are just as blocking:
 

@@ -33,6 +33,18 @@ still holds **the tests** — so most fixes touch two modules:
 ./gradlew :compose:remote:integration-tests:player-compose-embedded:test
 ```
 
+**Those two do not run the instrumented tests** — `compileDebugKotlin` only compiles production
+code and `test` runs local unit tests. Item 1's regression test is a draw-order property that only
+an on-device test can see, so it needs a connected device or emulator:
+
+```sh
+./gradlew :compose:remote:integration-tests:player-compose-embedded:connectedDebugAndroidTest
+```
+
+Put whichever command actually exercised your test in that CL's `Test:` trailer — for item 1 that
+is the connected task, not `:test`. (The module declares `addGoldenImageAssets()`, so screenshot
+cases follow androidx's golden-image workflow; regenerate and commit goldens as that flow requires.)
+
 **How to submit.** `compose:remote` is **not** one of the library groups that accepts GitHub pull
 requests (see the mirror's `CONTRIBUTING.md` — the list is Activity, AppCompat, Biometric,
 Collection, Compose *Runtime*, Core, DataStore, Fragment, Lifecycle, Lint, Navigation, Paging, Room,
@@ -253,14 +265,25 @@ keep the frame loop alive, but the resolver's time branch handles only `ID_TIME_
 `ID_TIME_IN_MIN` and `ID_TIME_IN_HR`. So the loop runs for such a document and the value still never
 updates — the worst combination, since it also burns frames.
 
-**The fix:** add it to both the guard and the `when`, taking the same `timeMillis / 1000f` as
-`ID_TIME_IN_SEC`.
+**The fix:** add it to the guard and the `when` — but **derive its value from the document clock,
+not by aliasing `ID_TIME_IN_SEC`.** The two ids are distinct: in the remote-core mirror
+(`third_party/remote-compose-player/src/core/RemoteClock.ts:59,61`) continuous seconds is
+`minute * 60 + second + millisOfSecond * 1e-3` — wall-clock position within the hour, *with* the
+sub-second fraction — while `getTimeInSec()` is the integral `minute * 60 + second`. A document
+using continuous seconds as a smooth phase input (sweep hands, continuous rotations) needs that
+fraction; the integral sibling makes it step.
 
-**Test:** `RcPlayerExpressionTest.kt` — assert a `ID_CONTINUOUS_SEC`-bound value advances with the
-clock.
+**Our own delta gets this wrong** — `state/RcPlayerState.kt:133` and `GraphContext.kt:135` both
+alias it to `timeMillis / 1000f` alongside `ID_TIME_IN_SEC`. Do not copy ours here; it advances,
+which is why the aliasing survived. Take the clock snapshot instead.
 
-**Ours:** `state/RcPlayerState.kt`, `GraphContext.kt` (the same id is handled in the graph's leaf
-read).
+**Test:** `RcPlayerExpressionTest.kt`. Assert the **value**, not merely that it moves: pin the clock
+to a known instant and check the resolved value carries the expected within-hour phase and
+fractional part, and that it differs from `ID_TIME_IN_SEC` at the same instant. An "it advances"
+assertion passes on the aliased implementation and so cannot detect this.
+
+**Ours:** `state/RcPlayerState.kt`, `GraphContext.kt` — both carrying the aliasing bug described
+above, which this item should fix rather than propagate.
 
 ---
 
@@ -411,18 +434,34 @@ workaround for the throw, not a fix for the abort-everything behaviour.
 
 Upstream moves; re-confirm before writing a CL. Against an `androidx-main` checkout:
 
+**One command per item — never one command for two items, and never `\|` across the predicates of a
+single item.** Each of these must be checked independently:
+
 ```sh
 NEW=compose/remote/remote-player-compose/src/main/java/androidx/compose/remote/player/compose/embedded
-git -C <androidx> grep -n "roundedRectRadiusScale\|Modifier.clip(shape).then" -- $NEW   # items 1, 2
-git -C <androidx> grep -n "isFloatOverridden"                                -- $NEW   # item 3
-git -C <androidx> grep -n "expressionDependsOnAnimation"                     -- $NEW   # item 4
-git -C <androidx> grep -n "ID_CONTINUOUS_SEC" -- $NEW/state/RcPlayerState.kt           # item 5
-git -C <androidx> grep -n "mAutosize\|mJustificationMode\|mLineBreakStrategy" -- $NEW   # item 6
+G="git -C <androidx> grep -n"
+
+$G "Modifier.clip(shape).then\|clip(shape).then(this)" -- $NEW/modifier/ClipModifier.kt  # item 1
+$G "roundedRectRadiusScale"                            -- $NEW/modifier/ClipModifier.kt  # item 2
+$G "isFloatOverridden"                                 -- $NEW                           # item 3
+$G "expressionDependsOnAnimation"                      -- $NEW                           # item 4
+$G "ID_CONTINUOUS_SEC"                     -- $NEW/state/RcPlayerState.kt                 # item 5
+
+# item 6 is done only when EVERY one of these hits — check them one at a time, not as an alternation
+for f in mAutosize mMinFontSize mMaxFontSize mJustificationMode mLineBreakStrategy \
+         mHyphenationFrequency StartEllipsis MiddleEllipsis; do
+  printf '%-24s ' "$f"; $G -c "$f" -- $NEW | head -1 || echo "MISSING"
+done
 ```
 
-A hit means upstream has taken it and the item is done. All of the above were absent at
-`2f88db18` (2026-08-14).
+A hit means upstream has taken that item and it can be dropped. **A partial hit means the item is
+still open**, with the landed part removed from its scope: items 1 and 2 are independent fixes in
+one file, and item 6 is eight separate behaviours — landing radius normalisation alone, or
+`mAutosize` alone, says nothing about the rest. All of the above were absent at `2f88db18`
+(2026-08-14).
 
-Note item 5's search is scoped to `state/RcPlayerState.kt` deliberately: `ID_CONTINUOUS_SEC` already
+Item 5's search is scoped to `state/RcPlayerState.kt` deliberately: `ID_CONTINUOUS_SEC` already
 appears in `RcPlayer.kt`'s frame-loop scan and always will, so an unscoped grep answers "done" for a
-fix that has not landed. That is the bug being fixed — the loop runs, the value doesn't move.
+fix that has not landed. That is the bug being fixed — the loop runs, the value doesn't move. And a
+hit here is necessary but not sufficient: check that the value comes from the clock rather than
+being aliased to `ID_TIME_IN_SEC` (see item 5).
