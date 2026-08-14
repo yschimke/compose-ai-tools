@@ -1259,14 +1259,39 @@ unchanged either way, and the route 404s rather than serving an empty stage.
 
 ![The Pages branch at the foot of the navigation tree, beside the chip it replaces](design/evidence/serve-catalog-tree-pages/compare.png)
 
-![A design page with an outline over every component node, coloured by how it was linked](design/evidence/serve-design-page/serve-design-page.light.png)
+![A design page: the sheet with this catalog's renders in it, carrying no annotation at all](design/evidence/serve-design-page/serve-design-page.light.png)
 
-Each page is a whole page of the design file **inlined as SVG**, with one outline per component node
-on it, coloured by **how** it was linked: green Code Connect, blue `design-map.json`, amber name
-match, and a dashed red outline for **unlinked** — a component on the sheet with no code behind it,
-which is usually the most interesting mark on the page. "Only what we don't implement" mutes
-everything else, which is the fastest read of a page's coverage. Clicking an outline opens that
-component's viewer; one with no code behind it deep-links into Figma instead.
+Each page is a whole page of the design file **inlined as SVG**, opening on **this catalog's
+renders** standing in the slots the design left for them — and carrying no marks at all. The sheet
+is the content, so annotation is something the reader asks for rather than the page's opening
+statement. An earlier cut opened with an outline over all thirty-eight nodes, a four-colour legend
+above them and every node's code path listed below, and the sheet lost to its own annotation.
+
+Pointing at a component is how the sheet is interrogated instead. **The outline appears under the
+pointer** — one node at a time, whether or not the opt-in layer is on — which is what keeps an
+unmarked sheet discoverable rather than inert:
+
+![A component under the pointer, outlined, on a sheet carrying no other marks](design/evidence/serve-design-page/serve-design-page-hover.light.png)
+
+Keyboard focus draws the same mark, so tabbing the sheet reads the same way as sweeping it. Clicking
+one **selects it in place**: a ring on that node, and its name and code path directly under the
+sheet, with the link out. The reader stays on the page, which is what makes checking several
+components in a row possible; Escape clears it, and clicking the selected node again does too.
+
+![One component selected: a ring on the node, its code path under the sheet](design/evidence/serve-design-page/serve-design-page-selected.light.png)
+
+The coverage read is still one checkbox away. *Outline every component* turns the whole layer on —
+green Code Connect, blue `design-map.json`, amber name match, dashed red for **unlinked**, a
+component on the sheet with no code behind it — and the legend appears with it, since a legend over
+an unmarked sheet names four colours nothing is wearing. *Only what we don't implement* mutes the
+rest and turns the marks on by itself, because a filter over an unmarked sheet would show nothing:
+
+![Only the unlinked outlines, with everything this catalog implements muted](design/evidence/serve-design-page/serve-design-page-unlinked-only.light.png)
+
+Every node, linked or not, is still listed — behind a disclosure that says what it holds
+(`35 of 38 components implemented`). It is an inventory to go and check rather than the first thing
+to read, and it is also where the selection strip gets its text: the strip is that row, cloned, so
+there is one description of a node instead of two that can disagree.
 
 ### The swap is the reason this is an SVG and not a screenshot
 
@@ -1276,27 +1301,31 @@ this catalog's `Shape/Circle` render in the hole it leaves — same sheet, same 
 Nothing can reach inside an `<img>`, so a raster surface could only ever lay a translucent overlay
 on top and hope the eye separates them.
 
-![The same page with the catalog's renders standing in for the design's own shapes](design/evidence/serve-design-page/serve-design-page-swap.light.png)
+That swap is a **flip**, not a composite. One control, two lanes — *Our renders* and *Design spec*
+— drawing the same sheet in the same layout, so the eye compares two clean frames instead of one
+muddy one:
+
+![The same page flipped to the design's own drawing](design/evidence/serve-design-page/serve-design-page-design-lane.light.png)
+
+The opacity slider and `difference` blend that used to stack the two drawings on top of each other
+are gone with it. Asking *how close are these two pictures* is the parity view's job; this page
+answers *what does the spec say, and what did we build*, and a selection survives the flip — so a
+component can be held while both of its answers are shown.
 
 The render half stays live, too. The server already renders every preview in the catalog on demand,
 so standing in for a node is `<img src="/render/<previewId>.png">` and inherits everything that lane
 does — the live daemon on a live catalog, the theme the visitor picked, a re-render after a refresh.
-Untick *Hide the design's own* to get the older comparison instead: both drawings stacked, with an
-opacity slider and a `difference` blend where matching pixels go black and only the drift lights up.
 
-"Only what we don't implement" is the coverage read — everything mapped is muted, and the
-dashed-red outlines are what is left:
-
-![Only the unlinked outlines, with everything this catalog implements muted](design/evidence/serve-design-page/serve-design-page-unlinked-only.light.png)
-
-The renders ride an inert `<template>` until the toggle is first switched on. A sheet can hold
-dozens of nodes and on a live catalog each one is a daemon render, so a visitor who never opens the
-swap costs the box nothing.
+The renders still ride an inert `<template>`, adopted when the lane that draws them is entered.
+That is now the lane the page opens on, so they are `loading="lazy"`: a sheet can hold dozens of
+nodes and on a live catalog each one is a daemon render, so the box is asked only for the part of
+the sheet actually on screen — and a reader who flips to the spec and never flips back still pays
+for nothing.
 
 ### There is no geometry in the manifest, and that is deliberate
 
 The SVG knows where its own nodes are. `design-page.js` measures each `[data-node-id]` element and
-places the outline over it, re-measuring on resize; the manifest carries a node id, a name and a
+places that node's hit area over it, re-measuring on resize; the manifest carries a node id, a name and a
 code handle, and no rectangle at all. Recording one would be a second answer to the same question
 and a worse one — a Figma export box is the *render* box, effect bleed included, so it and the drawn
 shape disagree by a few pixels on anything with a shadow. A node the manifest names that the export

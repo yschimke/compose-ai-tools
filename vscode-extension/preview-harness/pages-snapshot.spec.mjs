@@ -267,10 +267,11 @@ const STYLED_FIXTURES = new Set([
     // Deliberately only this fixture and not `serve-playground`: adding the stylesheet there would
     // rewrite an unrelated baseline wholesale for no claim this change makes.
     "serve-playground-uncompilable",
-    // The design page is nothing BUT layout: outlines measured off the inlined export and
-    // coloured by how each node was linked. Captured bare it is a list of links under a picture and
-    // the geometry — the entire claim — moves no baseline. Its `swap` state below is the one the
-    // feature exists for.
+    // The design page is nothing BUT layout: this catalog's renders measured into the slots the
+    // design left for them, on the sheet's own geometry. Captured bare it is a list of links under
+    // a picture and the entire claim moves no baseline. The page opens on the render lane, so the
+    // default shot IS the swap; its `design-lane` and `selected` states below are the flip it
+    // exists to support and the affordance that replaced the resting outlines.
     "serve-design-page",
 ]);
 const SERVE_ASSETS = [
@@ -314,42 +315,85 @@ async function openThemeBar(page) {
 
 const FIXTURE_STATES = [
     {
-        // The design page with this catalog's renders standing IN PLACE OF the design's own
-        // drawing — the state the whole surface exists for, and one the committed HTML cannot hold
-        // twice over: the renders ride an inert `<template>` until the toggle adopts them, and
-        // every position is measured from the inlined SVG at runtime rather than declared in the
-        // markup. Without this shot, a change to the measuring, the swap or the hiding would move
-        // no baseline at all.
+        // A component under the POINTER. The sheet carries no resting marks, so this is the whole
+        // discovery story: the outline appears where you point, and it appears whether or not the
+        // opt-in layer is on (this shot is taken with it off, which is the default). A hover state
+        // exists only under a pointer, so it is invisible to every other shot here — exactly the
+        // kind of affordance that reaches production unreviewed. Shot before `selected` below so
+        // the page under it is the untouched default.
         fixture: "serve-design-page",
-        suffix: "swap",
+        suffix: "hover",
         apply: async (page) => {
-            await page.check("[data-cp-page-renders]");
-            // Requires at least one render, not just "all of them loaded" — `every()` over an
-            // empty list is true, so without the length check this shot would go green if the
-            // swap never armed at all, which is exactly the regression it exists to catch.
-            await page.waitForFunction(() => {
-                var imgs = Array.from(document.querySelectorAll(".cp-page-render"));
-                return imgs.length > 0 && imgs.every((img) => img.complete && img.naturalWidth > 0);
+            await page.addStyleTag({
+                content: "*, *::before, *::after { transition-duration: 0ms !important; }",
             });
-            // And that the design's own drawing actually went away underneath them. A swap that
-            // showed our render while leaving theirs visible would look almost right in a diff.
+            await page.hover('.cp-page-node[data-link="manifest"]');
+        },
+    },
+    {
+        // A component SELECTED on the sheet. This is the page's primary affordance — the sheet
+        // carries no resting marks, so pointing at a node is how it is interrogated — and it is
+        // invisible to the default shot twice over: the ring is drawn only on the selected node,
+        // and the detail strip under the sheet is a clone of that node's row made at click time.
+        // Without this, a change to the highlight or to what selection reports would move nothing.
+        fixture: "serve-design-page",
+        suffix: "selected",
+        apply: async (page) => {
+            // A linked node, deliberately: its strip carries a code path and a link out, which is
+            // the full state. An unlinked one would shoot the degenerate half of the same card.
+            await page.click('.cp-page-node[data-link="manifest"]');
+            await page.waitForSelector(".cp-page-selection-card");
+        },
+    },
+    {
+        // The flip, thrown to the design's own drawing. The page OPENS on our renders, so the spec
+        // lane is the half no ordinary shot holds — and the two lanes are the same sheet in the
+        // same layout, which is exactly the pair a pixel diff is good at telling apart.
+        fixture: "serve-design-page",
+        suffix: "design-lane",
+        apply: async (page) => {
+            // Clicked by its LABEL, not `check()` on the input: the lane radios are visually
+            // removed (the segmented pill is the control a reader sees), so the input itself is
+            // not an actionable target. Driving the label is both what a person does and what
+            // keeps this honest — a pill that stopped forwarding its click would fail here.
+            await page.click('.cp-page-lane label:has([data-cp-page-lane][value="design"])');
+            // The design's own drawing must come BACK, not just our renders go away: a lane that
+            // hid both would read as a blank slot rather than a flip.
             await page.waitForFunction(
                 () => document.querySelectorAll("svg .cp-page-replaced").length > 0,
+            );
+            await page.waitForFunction(
+                () => !document.querySelector(".cp-page-stage").classList.contains("cp-page-hide-design"),
             );
         },
     },
     {
         // "Only what we don't implement": the coverage read. Everything this catalog implements is
         // muted and the dashed-red outlines — the components on the sheet with no code behind them
-        // — are what's left. It is a pure CSS-state claim, so it needs its own shot for the same
-        // reason the swap does.
+        // — are what's left. Asking for the filter turns the outline layer on by itself, since a
+        // filter over an unmarked sheet would show the reader nothing at all; that coupling is part
+        // of what this shot pins.
         fixture: "serve-design-page",
         suffix: "unlinked-only",
         apply: async (page) => {
-            // States compose on the already-loaded page: undo the swap above so this shot is about
-            // the filter alone.
-            await page.uncheck("[data-cp-page-renders]");
+            // States compose on the already-loaded page: put the flip back on our renders so this
+            // shot is about the filter alone.
+            await page.click('.cp-page-lane label:has([data-cp-page-lane][value="code"])');
             await page.check("[data-cp-page-unlinked]");
+            await page.waitForFunction(
+                () => document.querySelector(".cp-page-stage").classList.contains("cp-page-outlines-on"),
+            );
+        },
+    },
+    {
+        // The audit list, opened. It ships collapsed now, so the inventory every row of which used
+        // to be the bottom half of this page would otherwise be diffed by nothing at all.
+        fixture: "serve-design-page",
+        suffix: "nodes-open",
+        apply: async (page) => {
+            await page.uncheck("[data-cp-page-unlinked]");
+            await page.click(".cp-page-nodes > summary");
+            await page.waitForSelector(".cp-page-nodes[open]");
         },
     },
     {
@@ -1144,6 +1188,22 @@ for (const fixture of listPageFixtures()) {
             await page.goto(
                 `/preview-harness/fixtures/pages/${fixture}.html${FIXTURE_QUERY[fixture] || ""}`,
             );
+
+            // The design page's renders are `loading="lazy"` — a live catalog serves one daemon
+            // render per node and the sheet is taller than the fold, so the production page must
+            // not ask for all of them at once. A full-page screenshot does not itself scroll, so
+            // without a pass down the page the below-fold slots would shoot empty and the generic
+            // image wait below would burn its whole timeout on images that never started.
+            if (fixture === "serve-design-page") {
+                await page.evaluate(async () => {
+                    const step = window.innerHeight;
+                    for (let y = 0; y < document.body.scrollHeight; y += step) {
+                        window.scrollTo(0, y);
+                        await new Promise((r) => requestAnimationFrame(r));
+                    }
+                    window.scrollTo(0, 0);
+                });
+            }
 
             // Wait until every (placeholder-stubbed) image has decoded so the
             // shot isn't a pre-image-load frame. Tolerant: pages with no

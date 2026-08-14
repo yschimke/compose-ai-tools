@@ -23,13 +23,13 @@
   var svg = stage && stage.querySelector("svg");
   if (!stage || !svg) return;
 
+  var lanes = root.querySelectorAll("[data-cp-page-lane]");
   var outlinesToggle = root.querySelector("[data-cp-page-outlines]");
-  var rendersToggle = root.querySelector("[data-cp-page-renders]");
-  var hideToggle = root.querySelector("[data-cp-page-hide]");
-  var opacity = root.querySelector("[data-cp-page-opacity]");
-  var opacityOut = root.querySelector("[data-cp-page-opacity-value]");
-  var blend = root.querySelector("[data-cp-page-blend]");
   var unlinkedToggle = root.querySelector("[data-cp-page-unlinked]");
+  var legend = root.querySelector(".cp-page-legend");
+  var selection = root.querySelector("[data-cp-page-selection]");
+  var list = root.querySelector(".cp-page-list");
+  var disclosure = root.querySelector(".cp-page-nodes");
 
   var nodes = [];
   var byId = Object.create(null);
@@ -51,9 +51,10 @@
     byId[id] = entry;
   }
 
-  // The renders are served inside an inert `<template>` and adopted the first time the toggle is
-  // switched on. A sheet can carry dozens of nodes and on a live catalog each render is a daemon
-  // render, so a visitor who never opens the swap should cost the server nothing.
+  // The renders are served inside an inert `<template>` and adopted when the lane that draws them
+  // is entered. That is the lane the page opens on, so this normally runs on first paint; the
+  // images carry `loading="lazy"`, which is what keeps a tall sheet from asking the daemon for
+  // every node at once. A reader who flips to the spec and never flips back still pays nothing.
   //
   // A template rather than a `data-src` swap, deliberately: template content is inert, so the
   // browser parses it and loads none of its images until it is adopted — and it keeps every URL
@@ -125,16 +126,18 @@
     return (value / span) * 100 + "%";
   }
 
-  // An outline that is hidden or muted is also taken out of the tab order and the accessibility
-  // tree. CSS alone can't do this: `opacity: 0` + `pointer-events: none` still leaves an anchor
-  // focusable, so a keyboard user could tab onto an invisible rectangle — no focus ring, no
-  // indication of where they are — and press Enter to navigate.
+  // A muted overlay is also taken out of the tab order and the accessibility tree. CSS alone can't
+  // do this: `opacity: 0` + `pointer-events: none` still leaves a control focusable, so a keyboard
+  // user could tab onto an invisible rectangle — no focus ring, no indication of where they are.
+  //
+  // Only the "what we don't implement" filter does this now. Whether the resting outlines are drawn
+  // no longer decides whether a node can be pointed at: an unmarked sheet is the default, and a
+  // sheet you cannot interrogate would be a picture.
   function syncFocusability() {
-    var hidden = outlinesToggle && !outlinesToggle.checked;
     var unlinkedOnly = unlinkedToggle && unlinkedToggle.checked;
     for (var n = 0; n < overlays.length; n++) {
       var spot = overlays[n];
-      var inert = hidden || (unlinkedOnly && spot.getAttribute("data-link") !== "unlinked");
+      var inert = unlinkedOnly && spot.getAttribute("data-link") !== "unlinked";
       if (inert) {
         spot.setAttribute("tabindex", "-1");
         spot.setAttribute("aria-hidden", "true");
@@ -145,45 +148,113 @@
     }
   }
 
+  // The resting layer of colour over every node: off by default, because the sheet is the content
+  // and thirty-eight coloured rectangles are an answer to a question nobody asked yet. The legend
+  // only explains marks that are actually on screen, so it follows the toggle rather than standing
+  // above an unmarked sheet naming four colours it isn't showing.
   function applyOutlines() {
     if (!outlinesToggle) return;
-    stage.classList.toggle("cp-page-no-outlines", !outlinesToggle.checked);
-    syncFocusability();
+    stage.classList.toggle("cp-page-outlines-on", outlinesToggle.checked);
+    if (legend) legend.hidden = !outlinesToggle.checked;
   }
 
   function applyUnlinked() {
     if (!unlinkedToggle) return;
-    stage.classList.toggle("cp-page-unlinked-only", unlinkedToggle.checked);
+    var on = unlinkedToggle.checked;
+    stage.classList.toggle("cp-page-unlinked-only", on);
+    // A coverage filter with nothing to draw on is a no-op the reader can't see, so asking for it
+    // turns the marks on. Unchecking leaves them on: it was an explicit state to arrive at, and
+    // silently repainting the sheet plain would read as the filter having broken something.
+    if (on && outlinesToggle && !outlinesToggle.checked) {
+      outlinesToggle.checked = true;
+      applyOutlines();
+    }
     syncFocusability();
   }
 
-  function applyRenders() {
-    if (!rendersToggle) return;
-    var on = rendersToggle.checked;
-    if (on) armRenders();
-    stage.classList.toggle("cp-page-swap-on", on);
-    // Hiding the design's own shape only means anything while ours is showing, so the control
-    // follows the one it depends on instead of leaving a hole in the sheet.
-    if (hideToggle) hideToggle.disabled = !on;
-    applyHide();
+  // The flip. One sheet, two lanes: this catalog's renders standing in the design's slots, or the
+  // design's own drawing. Deliberately not a composite — no opacity, no difference blend. Those
+  // answered "how close are these two pictures", which is the parity view's job; this page answers
+  // "what does the spec say, and what did we build", and the eye compares two clean frames in the
+  // same layout better than one muddy one.
+  function applyLane() {
+    var design = false;
+    for (var l = 0; l < lanes.length; l++) {
+      if (lanes[l].checked) design = lanes[l].value === "design";
+    }
+    if (!design) armRenders();
+    stage.classList.toggle("cp-page-swap-on", !design);
+    stage.classList.toggle("cp-page-hide-design", !design);
   }
 
-  function applyHide() {
-    var on = rendersToggle && rendersToggle.checked && hideToggle && hideToggle.checked;
-    stage.classList.toggle("cp-page-hide-design", !!on);
+  // Selecting a node puts its detail under the sheet and keeps the reader on the page, which is
+  // what makes scanning several components in a row possible.
+  //
+  // The detail is the audit list's own row, CLONED. That keeps one server-built description of a
+  // node instead of two that can disagree, and — the reason it is a clone rather than markup built
+  // here — the row's `href` never passes through JavaScript as a string, so the link out cannot
+  // become the taint path `armRenders` avoids for the same reason.
+  var selected = null;
+
+  function rowFor(nodeId) {
+    if (!list) return null;
+    var rows = list.querySelectorAll("[data-cp-node]");
+    for (var r = 0; r < rows.length; r++) {
+      if (rows[r].getAttribute("data-cp-node") === nodeId) return rows[r];
+    }
+    return null;
   }
 
-  function applyOpacity() {
-    if (!opacity) return;
-    var value = Number(opacity.value);
-    stage.style.setProperty("--cp-page-render-opacity", String(value / 100));
-    if (opacityOut) opacityOut.textContent = value + "%";
+  function select(nodeId) {
+    selected = nodeId;
+    for (var s = 0; s < overlays.length; s++) {
+      var on = overlays[s].getAttribute("data-cp-node") === nodeId;
+      overlays[s].classList.toggle("cp-page-selected", on);
+      overlays[s].setAttribute("aria-pressed", on ? "true" : "false");
+    }
+    if (!selection) return;
+    selection.textContent = "";
+    var row = nodeId && rowFor(nodeId);
+    if (row) {
+      var clone = row.cloneNode(true);
+      clone.classList.add("cp-page-selection-card");
+      // The clone is a second element carrying the same `data-cp-node`, which is what makes the
+      // hover pairing light the selection card too — wanted — but it must not answer `rowFor` on
+      // the next selection, or the strip would start cloning itself.
+      clone.removeAttribute("data-cp-node");
+      selection.appendChild(clone);
+    } else {
+      var hint = document.createElement("p");
+      hint.className = "cp-page-selection-hint";
+      hint.textContent = "Pick a component on the sheet to see what implements it.";
+      selection.appendChild(hint);
+    }
   }
 
-  function applyBlend() {
-    if (!blend) return;
-    stage.style.setProperty("--cp-page-render-blend", blend.value);
+  for (var o = 0; o < overlays.length; o++) {
+    (function (spot) {
+      spot.addEventListener("click", function () {
+        var id = spot.getAttribute("data-cp-node");
+        // Pressing the selected node again clears it, so the sheet can be put back to plain
+        // without hunting for a control that undoes it.
+        select(selected === id ? null : id);
+      });
+    })(overlays[o]);
   }
+
+  // Escape clears the selection from anywhere on the page — including from inside the disclosure,
+  // where a reader who arrived by keyboard is most likely to be.
+  root.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && selected) {
+      var spot = null;
+      for (var e = 0; e < overlays.length; e++) {
+        if (overlays[e].getAttribute("data-cp-node") === selected) spot = overlays[e];
+      }
+      select(null);
+      // Focus would otherwise be left on an element that no longer says anything about itself.
+      if (spot) spot.focus();
+    }
+  });
 
   // Hovering a row in the list highlights its node on the sheet, and vice versa — the cheapest way
   // to answer "which one is that?" on a sheet with thirty-five near-identical silhouettes.
@@ -220,16 +291,14 @@
 
   if (outlinesToggle) outlinesToggle.addEventListener("change", applyOutlines);
   if (unlinkedToggle) unlinkedToggle.addEventListener("change", applyUnlinked);
-  if (rendersToggle) rendersToggle.addEventListener("change", applyRenders);
-  if (hideToggle) hideToggle.addEventListener("change", applyHide);
-  if (opacity) opacity.addEventListener("input", applyOpacity);
-  if (blend) blend.addEventListener("change", applyBlend);
+  for (var v = 0; v < lanes.length; v++) lanes[v].addEventListener("change", applyLane);
+  // Opening the audit list changes nothing about the sheet, but it does change how tall the stage's
+  // container is on a short viewport, and every overlay is placed off a measured box.
+  if (disclosure) disclosure.addEventListener("toggle", measure);
 
   applyOutlines();
   applyUnlinked();
-  applyRenders();
-  applyOpacity();
-  applyBlend();
+  applyLane();
   measure();
 
   if (typeof ResizeObserver === "function") {

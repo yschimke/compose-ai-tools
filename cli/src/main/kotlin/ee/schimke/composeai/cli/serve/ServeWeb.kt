@@ -6678,43 +6678,54 @@ $rows
     fun renderable(node: PageNode): String? =
       node.renderablePreviewId?.takeIf { it in renderablePreviewIds }
 
+    // A hit area per node, and nothing else: no resting outline, no colour, no fill. The sheet is
+    // the content here, so a mark is something the reader asks for — by pointing at a component,
+    // or by turning the whole layer on — rather than the page's opening statement.
+    //
+    // A `<button>`, not an `<a>`, because pointing at a component now SELECTS it in place: the
+    // detail lands under the sheet and the reader stays where they are, which is what makes
+    // scanning several components in a row possible at all. The link out lives on the selection
+    // (and on the audit list below), where it is a deliberate second step. Without script none of
+    // these do anything — which is why the list keeps its anchors and its disclosure works closed.
     val outlines =
       page.nodes.joinToString("\n") { node ->
-        val previewId = renderable(node)
-        val href =
-          previewId?.let { "$basePath/p/${WebEscaping.urlEncodeSegment(it)}$q" }
-            // Built from the node's own id rather than parsed out of its `ref`. The two are the
-            // same thing by definition (`ref` IS `figma:<fileKey>/<nodeId>`), but `ref` is optional
-            // and an unlinked node's deep link is the only link it has.
-            ?: ServeFigmaSpec.url(fileKey, node.nodeId)
         val label =
           if (node.isUnlinked) "${node.name} — no code behind this"
           else "${node.name} — ${node.code.orEmpty()}"
-        val tag = if (href == null) "span" else "a"
-        val hrefAttr = href?.let { " href=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
-        "<$tag class=\"cp-page-node\" data-link=\"${WebEscaping.htmlEscape(node.link.wire)}\" " +
-          "data-cp-node=\"${WebEscaping.htmlEscape(node.nodeId)}\"$hrefAttr " +
+        "<button type=\"button\" class=\"cp-page-node\" aria-pressed=\"false\" " +
+          "data-link=\"${WebEscaping.htmlEscape(node.link.wire)}\" " +
+          "data-cp-node=\"${WebEscaping.htmlEscape(node.nodeId)}\" " +
           "title=\"${WebEscaping.htmlEscape(label)}\"><span class=\"cp-visually-hidden\">" +
-          "${WebEscaping.htmlEscape(label)}</span></$tag>"
+          "${WebEscaping.htmlEscape(label)}</span></button>"
       }
 
-    // The renders live in an inert `<template>` and are adopted by the viewer the first time the
-    // toggle is switched on. A sheet can carry dozens of nodes, and on a live catalog each render
-    // is a daemon render — a visitor who never opens the swap should cost the server nothing.
+    // The renders live in an inert `<template>` and are adopted when the lane that needs them is
+    // entered. The page now OPENS on that lane, so on a live catalog this is a daemon render per
+    // node on first paint — `loading="lazy"` is what keeps that bounded, since a specimen sheet is
+    // tall and most of it is below the fold. The template still earns its place: a reader who flips
+    // to the spec and never flips back pays for nothing, and every URL in it stays server-built and
+    // server-escaped (reading one out of the DOM into `img.src` is CodeQL's `js/xss-through-dom`).
     val renders =
       page.nodes
         .mapNotNull { node ->
           val previewId = renderable(node) ?: return@mapNotNull null
-          "<img class=\"cp-page-render\" alt=\"\" " +
+          "<img class=\"cp-page-render\" alt=\"\" loading=\"lazy\" " +
             "data-cp-node=\"${WebEscaping.htmlEscape(node.nodeId)}\" " +
             "src=\"$basePath/render/${WebEscaping.urlEncodeSegment(previewId)}.png$q\">"
         }
         .joinToString("\n")
 
+    // The audit list, and now also the source the selection strip is cloned from — which is why
+    // every row is a link wherever it can be. A node with code goes to its preview; a node without
+    // goes to the design file, built from the node's own id rather than parsed out of its `ref`
+    // (the two are the same thing by definition, but `ref` is optional and this deep link is the
+    // only link an unlinked node has).
     val rows =
       page.nodes.joinToString("\n") { node ->
         val previewId = renderable(node)
-        val href = previewId?.let { "$basePath/p/${WebEscaping.urlEncodeSegment(it)}$q" }
+        val href =
+          previewId?.let { "$basePath/p/${WebEscaping.urlEncodeSegment(it)}$q" }
+            ?: ServeFigmaSpec.url(fileKey, node.nodeId)
         val tag = if (href == null) "div" else "a"
         val hrefAttr = href?.let { " href=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
         val code = node.code
@@ -6759,19 +6770,17 @@ $rows
         <div id="cp-design-page">
           <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(page.name)}${compactTrustBadge(trust)}</h1>
           <p class="cp-sub">$linked of ${page.nodes.size} components implemented$figmaLink</p>
-          <div class="cp-page-controls" role="group" aria-label="Page layers">
-            <label><input type="checkbox" data-cp-page-outlines checked> Outlines</label>
-            <label><input type="checkbox" data-cp-page-unlinked> Only what we don't implement</label>
-            <label><input type="checkbox" data-cp-page-renders> Show our renders</label>
-            <label><input type="checkbox" data-cp-page-hide checked disabled> Hide the design's own</label>
-            <label>Opacity <input type="range" min="0" max="100" value="100" data-cp-page-opacity>
-              <span data-cp-page-opacity-value>100%</span></label>
-            <label>Blend <select data-cp-page-blend>
-              <option value="normal">normal</option>
-              <option value="difference">difference</option>
-            </select></label>
+          <div class="cp-page-controls">
+            <div class="cp-page-lane" role="radiogroup" aria-label="What the sheet shows">
+              <label><input type="radio" name="cp-page-lane" value="code" data-cp-page-lane checked>
+                <span>Our renders</span></label>
+              <label><input type="radio" name="cp-page-lane" value="design" data-cp-page-lane>
+                <span>Design spec</span></label>
+            </div>
+            <label class="cp-page-opt"><input type="checkbox" data-cp-page-outlines> Outline every component</label>
+            <label class="cp-page-opt"><input type="checkbox" data-cp-page-unlinked> Only what we don't implement</label>
           </div>
-          <div class="cp-page-legend">
+          <div class="cp-page-legend" hidden>
             <span data-link="code-connect"><i class="cp-page-swatch" style="color:#2da44e"></i> Code Connect</span>
             <span data-link="manifest"><i class="cp-page-swatch" style="color:#0969da"></i> design-map</span>
             <span data-link="convention"><i class="cp-page-swatch" style="color:#bf8700"></i> name match</span>
@@ -6783,9 +6792,15 @@ $rows
               <template data-cp-page-render-source>$renders</template>
               $outlines
             </div>
-            <div class="cp-page-list">
-            $rows
+            <div class="cp-page-selection" data-cp-page-selection aria-live="polite">
+              <p class="cp-page-selection-hint">Pick a component on the sheet to see what implements it.</p>
             </div>
+            <details class="cp-page-nodes">
+              <summary>$linked of ${page.nodes.size} components implemented</summary>
+              <div class="cp-page-list">
+              $rows
+              </div>
+            </details>
           </div>
         </div>
         ${scriptTag("design-page.js")}
