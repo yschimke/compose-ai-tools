@@ -225,7 +225,9 @@ Verified directly against the published artifacts:
 
 So the refresh carries **two new build-gap deltas** (drop the calls, record them in
 `PROVENANCE.md` under the existing "cannot reach a symbol upstream compiles against in-tree"
-pattern) — *or* the refresh waits for the next alpha and takes them wholesale. Note the frame
+pattern) — *or* the refresh waits for the next alpha and takes them wholesale, which is **not** a
+free option: bumping the pin past alpha17 collides the artifact's `…/embedded/` classes with our
+vendored sources, so it is the same change as migrating off them (§4). Note the frame
 `Limiter` is worth thinking about beyond compilation: a `delay()` inside the frame loop is a new
 timing input to our hermetic Robolectric renders, and should be re-verified by md5 across the
 `remote-m3` lane the way the `withInfiniteAnimationFrameMillis` change was.
@@ -278,8 +280,9 @@ The 11 added files are mechanical to re-extract, but three landing zones moved u
 `isFloatOverridden`, the animated-expression-chain routing, and `ID_CONTINUOUS_SEC` in
 `rememberRemoteFloatAsState` have **no** upstream counterpart (upstream added `ID_CONTINUOUS_SEC`
 only to `RcPlayer`'s time-dependence *scan*, at `RcPlayer.kt:315`, not to the value resolver). Same
-for the six `CoreText` reflection fields and everything they feed. All re-apply; all are worth
-filing.
+for the six `CoreText` reflection fields and everything they feed. All re-apply. The first three are
+filing candidates and appear in the consolidated migration gate in §4; the `CoreText` fields are a
+feature addition rather than a fix and do not gate anything.
 
 ### 3.9 Watch the reflection surface
 
@@ -301,22 +304,34 @@ vendoring is expiring:
 - **Do not refresh onto `androidx-main` right now** unless something specific is needed from it.
   The tree is mid-promotion — API files unregenerated, and two of its new code paths cannot be
   built against the alphas we pin.
-- **Watch for the alpha after 17 — but artifact consumption is conditional, not automatic.** When
-  `remote-player-compose` ships with `…/embedded/` classes, the Android lane *could* consume the
-  artifact directly (with `RestrictedApi` suppressed) — but only once the fixes upstream has **not**
-  taken have landed there. A binary cannot be patched: switching the Android lane to the AAR while
-  the clip ordering/normalisation, host-override precedence, animated-expression routing and the
-  text-style behaviour are still ours would regress the Android lane to upstream's pixels, and
-  keeping those patches in the jvm snapshot does nothing for Android. So: artifact for Android
-  **after** those four land upstream (§3.8 is the filing list that gets us there); patched sources
-  until then.
-- **The jvm/CMP lane still needs sources**, so `rc-embedded-player-jvm` keeps the vendored module
-  alive regardless — the seams cannot be applied to a binary. A plausible end state is: Android
-  lane on the artifact, jvm lane on a vendored snapshot carrying only the seams plus the fixes
-  upstream hasn't taken.
-- **File the four upstream-worthy fixes now**, so the delta list shrinks by itself: rounded-clip
-  radius normalisation, rounded-clip ordering vs. `DrawContent`, host-override precedence
-  (`isFloatOverridden`), and the animated-expression-chain routing.
+- **The `compose-remote` pin cannot move past alpha17 on its own.** This is a hard constraint, not
+  a preference. `third_party/rc-embedded-player/build.gradle.kts:125` declares
+  `implementation(libs.compose.remote.player.compose)` — and the module needs it, for
+  `ExperimentalRemotePlayerApi`, `utils.getPath` and `utils.getTweenPath` (plus `RemoteDocumentPlayer`
+  in the comparison harness), none of which live anywhere else. The moment that artifact starts
+  shipping `…/embedded/`, the AAR and our vendored sources define **the same fully-qualified
+  classes** on one classpath. So the alpha bump and the source→artifact transition have to be a
+  single change; there is no intermediate state where we take the new alpha *and* keep the patched
+  sources. (Renaming the vendored package would also break the collision, at the cost of the
+  verbatim-snapshot property that makes a refresh a plain `diff -r`. Not worth it.)
+- **Migrating the Android lane to the artifact is gated on six fixes landing upstream.** A binary
+  cannot be patched, and keeping the patches in the jvm snapshot does nothing for Android — so
+  switching while any of these is still ours regresses the Android lane to upstream's pixels. The
+  complete list, which is also the filing list (§3.1, §3.2, §3.8):
+  1. rounded-clip radius normalisation (§3.1)
+  2. rounded-clip ordering vs. `DrawContent` (§3.1)
+  3. the ambient-`LocalTextStyle` text behaviour (§3.2) — *the one most easily forgotten, because
+     upstream's `BasicText` rewrite looks like a refactor rather than a behaviour change*
+  4. host-override precedence, `isFloatOverridden` (§3.8)
+  5. animated-expression-chain routing (§3.8)
+  6. `ID_CONTINUOUS_SEC` in the float resolver (§3.8)
+
+  The six `CoreText` reflection fields are a *feature* addition rather than a fix; they can ride
+  along or stay ours, and they do not gate the migration.
+- **The jvm/CMP lane still needs sources**, so `rc-embedded-player-jvm` keeps a vendored snapshot
+  alive regardless — the seams cannot be applied to a binary. A plausible end state is: Android lane
+  on the artifact, jvm lane on a snapshot carrying only the seams.
+- **File all six now**, so the gate opens by itself rather than on our schedule.
 
 ---
 
