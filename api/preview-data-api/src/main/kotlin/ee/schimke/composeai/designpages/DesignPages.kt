@@ -123,7 +123,27 @@ public data class PageNode(
   val link: PageNodeLink = PageNodeLink.UNLINKED,
   /** Null when unlinked. Stated by the producer so we don't hardcode which methods are weak. */
   val confidence: PageNodeConfidence? = null,
+  /**
+   * The node's type in the design file — `COMPONENT`, `COMPONENT_SET`, `INSTANCE`.
+   *
+   * A fact, not a judgement: it is what tells a container apart from the components inside it,
+   * which is the difference between "35 shapes, all implemented" and "36 things, one missing". Kept
+   * as free text rather than an enum so a design tool can grow a type without this refusing to
+   * parse; a producer that emits none is handled by [DesignPage.coverageGaps].
+   */
+  val type: String? = null,
 ) {
+  /**
+   * A component the design file marks as **private** — Figma's leading-dot convention, used for the
+   * internal furniture of a sheet: `.Header`, `.Legend`, the swatch a specimen grid repeats.
+   *
+   * Private components are not published to the design system's consumers, so no catalog is
+   * expected to implement one, and counting them as missing coverage makes a complete sheet look
+   * incomplete. They stay on the page and stay addressable — they are just not gaps.
+   */
+  public val isPrivate: Boolean
+    get() = name.startsWith(".")
+
   /** Whether this node can be drawn by us, i.e. it names a preview we could ask for. */
   public val isRenderable: Boolean
     get() = previewId != null
@@ -187,9 +207,45 @@ public data class DesignPage(
   public val linked: List<PageNode>
     get() = nodes.filter { !it.isUnlinked }
 
-  /** Nodes with no code behind them — the coverage gaps. */
+  /** Nodes with no code behind them. Not the same as [coverageGaps] — see there. */
   public val unlinked: List<PageNode>
     get() = nodes.filter { it.isUnlinked }
+
+  /**
+   * The nodes a reader means by *what we haven't implemented yet*: unlinked, and actually a
+   * component someone could implement.
+   *
+   * Two kinds of unlinked node are not gaps, and on a real specimen sheet they are most of them:
+   *
+   * 1. **Private components** ([PageNode.isPrivate]) — the sheet's own furniture, never published.
+   * 2. **Containers.** A `COMPONENT_SET`'s variants are the components; the set is the box they
+   *    came in. Its variants are listed here in their own right, so counting the set as well
+   *    reports one missing component for a family that is fully implemented.
+   *
+   * Container-ness is read from [PageNode.type] when the producer states it, and otherwise inferred
+   * from the walk: nodes are emitted depth-first in document order, so a node immediately followed
+   * by a DEEPER one has component children on this page and is therefore a box rather than a leaf.
+   * The inference exists so that a manifest imported before `type` was recorded still reads
+   * correctly — a published page should not have to wait for a re-import to stop miscounting.
+   */
+  public val coverageGaps: List<PageNode>
+    get() = nodes.filterIndexed { index, node ->
+      val hasNestedChildren = nodes.getOrNull(index + 1)?.let { it.depth > node.depth } ?: false
+      val isContainer =
+        when (node.type?.uppercase()) {
+          "COMPONENT_SET" -> true
+          null -> hasNestedChildren
+          else -> false
+        }
+      node.isUnlinked && !node.isPrivate && !isContainer
+    }
+
+  /**
+   * How many components on this page a catalog could implement — the denominator behind "N of M
+   * implemented", and deliberately not `nodes.size`.
+   */
+  public val coverageTotal: Int
+    get() = linked.size + coverageGaps.size
 }
 
 /** A committed design-page import. */

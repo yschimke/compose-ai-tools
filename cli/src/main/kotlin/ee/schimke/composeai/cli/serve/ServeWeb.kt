@@ -6605,12 +6605,15 @@ $rows
     val cards =
       pages.joinToString("\n") { page ->
         val id = WebEscaping.urlEncodeSegment(page.id)
+        // Counted against what a catalog could actually implement, not against every node on the
+        // sheet: a private component and a variant-set container are furniture, and counting them
+        // reports a complete family as one short. See `DesignPage.coverageGaps`.
         val linked = page.linked.size
         """
         <a class="cp-page-card" href="$basePath/pages/$id$q">
           <img loading="lazy" alt="" src="$basePath/pages/$id.svg$q">
           <strong>${WebEscaping.htmlEscape(page.name)}</strong>
-          <span class="cp-page-count">$linked of ${page.nodes.size} components implemented</span>
+          <span class="cp-page-count">$linked of ${page.coverageTotal} components implemented</span>
         </a>
         """
           .trimIndent()
@@ -6713,25 +6716,44 @@ $rows
     fun renderable(node: PageNode): String? =
       node.renderablePreviewId?.takeIf { it in renderablePreviewIds }
 
+    // Which unlinked nodes are actually missing components. `data-cp-gap` is what the "only what we
+    // don't implement" filter keys on — NOT `data-link="unlinked"`, which also catches the sheet's
+    // private furniture and its variant-set containers. Filtering on the latter is what made a
+    // fully-implemented Shape page report `.Header`, `.Header` and `Shape Set` as work to do.
+    val gaps = page.coverageGaps.toSet()
+
     // A hit area per node, and nothing else: no resting outline, no colour, no fill. The sheet is
     // the content here, so a mark is something the reader asks for — by pointing at a component,
     // or by turning the whole layer on — rather than the page's opening statement.
     //
-    // A `<button>`, not an `<a>`, because pointing at a component now SELECTS it in place: the
-    // detail lands under the sheet and the reader stays where they are, which is what makes
-    // scanning several components in a row possible at all. The link out lives on the selection
-    // (and on the audit list below), where it is a deliberate second step. Without script none of
-    // these do anything — which is why the list keeps its anchors and its disclosure works closed.
+    // An `<a>`, because pointing and going are now split. POINTING describes: the node's detail
+    // lands under the sheet as the pointer sweeps, so a reader can read several components without
+    // committing to any of them. CLICKING goes there.
+    //
+    // A control that navigates should BE a link, and making it one is not a formality: the middle
+    // click, the modifier click and the status-bar preview all start working, the destination is
+    // announced instead of a pressed state that was never true, and the sheet still navigates with
+    // no script at all.
     val outlines =
       page.nodes.joinToString("\n") { node ->
         val label =
           if (node.isUnlinked) "${node.name} — no code behind this"
           else "${node.name} — ${node.code.orEmpty()}"
-        "<button type=\"button\" class=\"cp-page-node\" aria-pressed=\"false\" " +
-          "data-link=\"${WebEscaping.htmlEscape(node.link.wire)}\" " +
+        // A node with code goes to its preview; one without goes to the design file, which is the
+        // only link it has.
+        val href =
+          renderable(node)?.let { "$basePath/p/${WebEscaping.urlEncodeSegment(it)}$q" }
+            ?: ServeFigmaSpec.url(fileKey, node.nodeId)
+        val tag = if (href == null) "span" else "a"
+        val hrefAttr = href?.let { " href=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
+        "<$tag class=\"cp-page-node\" " +
+          "data-link=\"${WebEscaping.htmlEscape(node.link.wire)}\"" +
+          (if (node in gaps) " data-cp-gap" else "") +
+          hrefAttr +
+          " " +
           "data-cp-node=\"${WebEscaping.htmlEscape(node.nodeId)}\" " +
           "title=\"${WebEscaping.htmlEscape(label)}\"><span class=\"cp-visually-hidden\">" +
-          "${WebEscaping.htmlEscape(label)}</span></button>"
+          "${WebEscaping.htmlEscape(label)}</span></$tag>"
       }
 
     // The renders live in an inert `<template>` and are adopted when the lane that needs them is
@@ -6785,7 +6807,9 @@ $rows
         val hrefAttr = href?.let { " href=\"${WebEscaping.htmlEscape(it)}\"" }.orEmpty()
         val code = node.code
         val detail = if (code != null) WebEscaping.htmlEscape(code) else "no code behind this"
-        "<$tag class=\"cp-page-row\" data-link=\"${WebEscaping.htmlEscape(node.link.wire)}\" " +
+        "<$tag class=\"cp-page-row\" data-link=\"${WebEscaping.htmlEscape(node.link.wire)}\"" +
+          (if (node in gaps) " data-cp-gap" else "") +
+          " " +
           "data-cp-node=\"${WebEscaping.htmlEscape(node.nodeId)}\"$hrefAttr>" +
           "<span class=\"cp-page-dot\" aria-hidden=\"true\"></span>" +
           "<span class=\"cp-page-row-name\">${WebEscaping.htmlEscape(node.name)}</span>" +
@@ -6793,6 +6817,10 @@ $rows
       }
 
     val linked = page.linked.size
+    // Counted against what a catalog could actually implement, not against every node on the sheet:
+    // a private component and a variant-set container are furniture, and counting them reports a
+    // complete family as one short. See `DesignPage.coverageGaps`.
+    val total = page.coverageTotal
     val figmaLink =
       ServeFigmaSpec.url(fileKey, page.nodeId)
         ?.let {
@@ -6812,7 +6840,7 @@ $rows
     return document(
       title = "${page.name} — page",
       unfurlTitle = "$heading — ${page.name}",
-      unfurlDescription = "$linked of ${page.nodes.size} components on this page are implemented",
+      unfurlDescription = "$linked of $total components on this page are implemented",
       unfurl = unfurl,
       version = version,
       navSuffix = navSuffix,
@@ -6824,7 +6852,7 @@ $rows
         """
         <div id="cp-design-page">
           <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(page.name)}${compactTrustBadge(trust)}</h1>
-          <p class="cp-sub">$linked of ${page.nodes.size} components implemented$figmaLink</p>
+          <p class="cp-sub">$linked of $total components implemented$figmaLink</p>
           <div class="cp-page-controls">
             <div class="cp-page-lane" role="radiogroup" aria-label="What the sheet shows">
               <label><input type="radio" name="cp-page-lane" value="code" data-cp-page-lane checked>
@@ -6849,12 +6877,10 @@ $rows
               <template data-cp-page-render-source>$renders</template>
               <template data-cp-page-diff-links>$diffLinks</template>
               $outlines
-            </div>
-            <div class="cp-page-selection" data-cp-page-selection aria-live="polite">
-              <p class="cp-page-selection-hint">Pick a component on the sheet to see what implements it.</p>
+              <div class="cp-page-tip" data-cp-page-tip hidden aria-live="polite"></div>
             </div>
             <details class="cp-page-nodes">
-              <summary>$linked of ${page.nodes.size} components implemented</summary>
+              <summary>$linked of $total components implemented</summary>
               <div class="cp-page-list">
               $rows
               </div>

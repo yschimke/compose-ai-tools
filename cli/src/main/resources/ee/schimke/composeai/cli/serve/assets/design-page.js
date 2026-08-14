@@ -27,7 +27,7 @@
   var outlinesToggle = root.querySelector("[data-cp-page-outlines]");
   var unlinkedToggle = root.querySelector("[data-cp-page-unlinked]");
   var legend = root.querySelector(".cp-page-legend");
-  var selection = root.querySelector("[data-cp-page-selection]");
+  var tip = root.querySelector("[data-cp-page-tip]");
   var list = root.querySelector(".cp-page-list");
   var disclosure = root.querySelector(".cp-page-nodes");
 
@@ -159,7 +159,9 @@
     var unlinkedOnly = unlinkedToggle && unlinkedToggle.checked;
     for (var n = 0; n < overlays.length; n++) {
       var spot = overlays[n];
-      var inert = unlinkedOnly && spot.getAttribute("data-link") !== "unlinked";
+      // Keyed on the GAP, not on "unlinked" — the filter shows components with no code behind
+      // them, and the sheet's private furniture and variant-set containers are neither.
+      var inert = unlinkedOnly && !spot.hasAttribute("data-cp-gap");
       if (inert) {
         spot.setAttribute("tabindex", "-1");
         spot.setAttribute("aria-hidden", "true");
@@ -215,28 +217,7 @@
     stage.classList.toggle("cp-page-swap-on", ours);
     stage.classList.toggle("cp-page-hide-design", ours);
     stage.classList.toggle("cp-page-diff-on", which === "diff");
-    syncNodeSemantics(which === "diff");
     if (which === "diff") score();
-  }
-
-  // What a node SAYS it does has to match what it does. Outside the diff lane an overlay is a
-  // toggle — it selects, and `aria-pressed` is the truth. Inside it, activating leaves the page, so
-  // announcing a pressed state would tell a screen-reader user they are changing a selection when
-  // they are actually navigating. Swap to link semantics, and name the destination.
-  function syncNodeSemantics(diff) {
-    for (var n = 0; n < overlays.length; n++) {
-      var spot = overlays[n];
-      var leaves = diff && !!spot.querySelector(".cp-page-diff-link");
-      if (leaves) {
-        spot.setAttribute("role", "link");
-        spot.removeAttribute("aria-pressed");
-        spot.setAttribute("data-cp-leaves", "");
-      } else {
-        spot.removeAttribute("role");
-        spot.removeAttribute("data-cp-leaves");
-        spot.setAttribute("aria-pressed", spot.classList.contains("cp-page-selected") ? "true" : "false");
-      }
-    }
   }
 
   // ---- the diff lane -------------------------------------------------------------------------
@@ -471,14 +452,18 @@
   }
   armDiffLinks();
 
-  // Selecting a node puts its detail under the sheet and keeps the reader on the page, which is
-  // what makes scanning several components in a row possible.
+  // Describing a node follows the POINTER rather than landing in a strip under the sheet.
   //
-  // The detail is the audit list's own row, CLONED. That keeps one server-built description of a
-  // node instead of two that can disagree, and — the reason it is a clone rather than markup built
-  // here — the row's `href` never passes through JavaScript as a string, so the link out cannot
-  // become the taint path `armRenders` avoids for the same reason.
-  var selected = null;
+  // The strip was in the wrong place: a specimen sheet is taller than the fold, so on the shapes
+  // two thirds down the page the answer appeared somewhere the reader could not see it while
+  // pointing. A tooltip at the cursor is the same information where the eye already is.
+  //
+  // Its content is the audit list's own row, CLONED — one server-built description of a node
+  // instead of two that can disagree, and the row's `href` never passes through JavaScript as a
+  // string, so the tip cannot become the taint path `armRenders` avoids for the same reason. The
+  // tip itself is inert (`pointer-events: none`), so it can never eat the click meant for the node
+  // underneath it.
+  var described = null;
 
   function rowFor(nodeId) {
     if (!list) return null;
@@ -489,53 +474,82 @@
     return null;
   }
 
-  function select(nodeId) {
-    selected = nodeId;
+  function describe(nodeId) {
+    described = nodeId;
     for (var s = 0; s < overlays.length; s++) {
-      var on = overlays[s].getAttribute("data-cp-node") === nodeId;
-      overlays[s].classList.toggle("cp-page-selected", on);
-      // Only while the overlay IS a toggle. In the diff lane it is a link, and a link with
-      // `aria-pressed` announces a state it does not have.
-      if (!overlays[s].hasAttribute("data-cp-leaves")) {
-        overlays[s].setAttribute("aria-pressed", on ? "true" : "false");
-      }
+      overlays[s].classList.toggle(
+        "cp-page-selected",
+        overlays[s].getAttribute("data-cp-node") === nodeId,
+      );
     }
-    if (!selection) return;
-    selection.textContent = "";
+    if (!tip) return;
     var row = nodeId && rowFor(nodeId);
-    if (row) {
-      var clone = row.cloneNode(true);
-      clone.classList.add("cp-page-selection-card");
-      // The clone is a second element carrying the same `data-cp-node`, which is what makes the
-      // hover pairing light the selection card too — wanted — but it must not answer `rowFor` on
-      // the next selection, or the strip would start cloning itself.
-      clone.removeAttribute("data-cp-node");
-      selection.appendChild(clone);
-    } else {
-      var hint = document.createElement("p");
-      hint.className = "cp-page-selection-hint";
-      hint.textContent = "Pick a component on the sheet to see what implements it.";
-      selection.appendChild(hint);
+    if (!row) {
+      tip.hidden = true;
+      tip.textContent = "";
+      return;
     }
+    tip.textContent = "";
+    var clone = row.cloneNode(true);
+    clone.classList.add("cp-page-tip-card");
+    // A second element carrying the same `data-cp-node` would answer `rowFor` on the next hover and
+    // the tip would start cloning itself.
+    clone.removeAttribute("data-cp-node");
+    tip.appendChild(clone);
+    tip.hidden = false;
+  }
+
+  // Positioned against the STAGE, and flipped rather than allowed to leave it: a tip that ran off
+  // the right-hand shapes (or off the bottom row) would be describing something the reader cannot
+  // read. Offset from the cursor so it never sits under the pointer itself.
+  function moveTip(clientX, clientY) {
+    if (!tip || tip.hidden) return;
+    var box = stage.getBoundingClientRect();
+    var size = tip.getBoundingClientRect();
+    var pad = 14;
+    var x = clientX - box.left + pad;
+    var y = clientY - box.top + pad;
+    if (x + size.width > box.width) x = clientX - box.left - size.width - pad;
+    if (y + size.height > box.height) y = clientY - box.top - size.height - pad;
+    tip.style.left = Math.max(0, x) + "px";
+    tip.style.top = Math.max(0, y) + "px";
+  }
+
+  // A keyboard reader gets the same tip, parked at the node instead of at a pointer that isn't
+  // there. Without this, tabbing the sheet would light the outline and say nothing.
+  function parkTipAt(spot) {
+    if (!tip || tip.hidden) return;
+    var box = stage.getBoundingClientRect();
+    var rect = spot.getBoundingClientRect();
+    moveTip(rect.left + rect.width / 2, rect.bottom);
+    if (rect.bottom - box.top + tip.getBoundingClientRect().height > box.height) {
+      moveTip(rect.left + rect.width / 2, rect.top - tip.getBoundingClientRect().height);
+    }
+  }
+
+  function hideTip() {
+    if (!tip) return;
+    tip.hidden = true;
+    tip.textContent = "";
+    described = null;
+    for (var h = 0; h < overlays.length; h++) overlays[h].classList.remove("cp-page-selected");
   }
 
   for (var o = 0; o < overlays.length; o++) {
     (function (spot) {
-      spot.addEventListener("click", function () {
-        var id = spot.getAttribute("data-cp-node");
-        // In the diff lane a click leaves for the full comparison instead of selecting. A node with
-        // no link — nothing to compare, so nothing to open — falls back to selecting, which at
-        // least says what the node is.
-        if (lane() === "diff") {
-          var out = spot.querySelector(".cp-page-diff-link");
-          if (out) {
-            out.click();
-            return;
-          }
-        }
-        // Pressing the selected node again clears it, so the sheet can be put back to plain
-        // without hunting for a control that undoes it.
-        select(selected === id ? null : id);
+      // Clicking GOES. The overlay is an anchor, so the browser already does the right thing for
+      // the ordinary case, for the middle click and for a modifier click — this handler exists only
+      // to redirect the diff lane, where the destination is the component's full comparison rather
+      // than its preview. Redirected by clicking a second server-built anchor, never by assigning a
+      // URL, and only for a plain left click so "open in a new tab" keeps working.
+      spot.addEventListener("click", function (event) {
+        if (lane() !== "diff") return;
+        if (event.defaultPrevented || event.button !== 0) return;
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        var out = spot.querySelector(".cp-page-diff-link");
+        if (!out) return;
+        event.preventDefault();
+        out.click();
       });
     })(overlays[o]);
   }
@@ -543,12 +557,12 @@
   // Escape clears the selection from anywhere on the page — including from inside the disclosure,
   // where a reader who arrived by keyboard is most likely to be.
   root.addEventListener("keydown", function (event) {
-    if (event.key === "Escape" && selected) {
+    if (event.key === "Escape" && described) {
       var spot = null;
       for (var e = 0; e < overlays.length; e++) {
-        if (overlays[e].getAttribute("data-cp-node") === selected) spot = overlays[e];
+        if (overlays[e].getAttribute("data-cp-node") === described) spot = overlays[e];
       }
-      select(null);
+      hideTip();
       // Focus goes back to the node that was selected — but only while that node is still exposed.
       // The coverage filter takes the nodes it mutes out of the accessibility tree, and a selection
       // survives the filter being switched on, so the node Escape wants to hand focus back to may
@@ -577,17 +591,35 @@
   for (var q = 0; q < linked.length; q++) {
     (function (el) {
       var id = el.getAttribute("data-cp-node");
-      el.addEventListener("mouseenter", function () {
+      // Pointing DESCRIBES. Sweeping the sheet fills the strip below it, so several components can
+      // be read in one pass without committing to any of them — the reading motion the page is for.
+      // Keyboard focus does exactly the same thing, so tabbing the sheet reads like sweeping it.
+      //
+      // Leaving does NOT clear the description. The commonest next move after finding the one you
+      // wanted is to go to its link, and a strip that emptied itself on the way to being read would
+      // be unusable — so the last thing pointed at stays described until something else is.
+      el.addEventListener("mouseenter", function (event) {
         pair(id, true);
+        describe(id);
+        moveTip(event.clientX, event.clientY);
+      });
+      el.addEventListener("mousemove", function (event) {
+        moveTip(event.clientX, event.clientY);
       });
       el.addEventListener("mouseleave", function () {
         pair(id, false);
+        // Unlike the strip it replaced, the tip DOES clear on the way out — it sits over the sheet,
+        // so leaving it up would cover the very drawing the reader moved on to look at.
+        if (described === id) hideTip();
       });
       el.addEventListener("focus", function () {
         pair(id, true);
+        describe(id);
+        parkTipAt(el);
       });
       el.addEventListener("blur", function () {
         pair(id, false);
+        if (described === id) hideTip();
       });
     })(linked[q]);
   }

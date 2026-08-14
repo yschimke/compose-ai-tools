@@ -336,18 +336,26 @@ const FIXTURE_STATES = [
         },
     },
     {
-        // A component SELECTED on the sheet. This is the page's primary affordance — the sheet
-        // carries no resting marks, so pointing at a node is how it is interrogated — and it is
-        // invisible to the default shot twice over: the ring is drawn only on the selected node,
-        // and the detail strip under the sheet is a clone of that node's row made at click time.
-        // Without this, a change to the highlight or to what selection reports would move nothing.
+        // A component under the pointer, DESCRIBED. The sheet carries no resting marks, so
+        // pointing is how it is interrogated, and the answer is a tooltip at the cursor rather than
+        // a strip under a sheet that is taller than the fold. Invisible to every other shot: the
+        // tip only exists under a pointer, and it is built by cloning that node's audit row.
         fixture: "serve-design-page",
         suffix: "selected",
         apply: async (page) => {
+            // HOVERED, not clicked: pointing is what describes a node now, and clicking navigates.
             // A linked node, deliberately: its strip carries a code path and a link out, which is
             // the full state. An unlinked one would shoot the degenerate half of the same card.
-            await page.click('.cp-page-node[data-link="manifest"]');
-            await page.waitForSelector(".cp-page-selection-card");
+            await page.hover('.cp-page-node[data-link="manifest"]');
+            await page.waitForSelector(".cp-page-tip:not([hidden]) .cp-page-tip-card");
+            // The overlay is a real link now — that is what makes clicking it GO, and what makes a
+            // middle click, a modifier click and the status-bar preview work. A `<button>` here
+            // would pass every pixel assertion and none of that.
+            const tag = await page.locator('.cp-page-node[data-link="manifest"]').first().evaluate(
+                (el) => el.tagName.toLowerCase() + "|" + (el.getAttribute("href") || ""),
+            );
+            expect(tag.startsWith("a|")).toBe(true);
+            expect(tag).toContain("/p/");
         },
     },
     {
@@ -397,12 +405,19 @@ const FIXTURE_STATES = [
             const badges = await page.locator(".cp-page-score").count();
             const renders = await page.locator(".cp-page-render").count();
             expect(badges).toBe(renders);
-            // A control that navigates must not announce itself as a pressed toggle.
+            // A control that navigates must not announce itself as a pressed toggle. It is a real
+            // anchor in every lane now, so this is checked on the element itself rather than on a
+            // role swapped in for one lane — and `aria-pressed` must be gone everywhere, since a
+            // link that claims a pressed state is describing something it does not have.
             const semantics = await page.evaluate(() => {
-                const spot = document.querySelector(".cp-page-node[data-cp-leaves]");
-                return spot && { role: spot.getAttribute("role"), pressed: spot.hasAttribute("aria-pressed") };
+                const spots = Array.from(document.querySelectorAll(".cp-page-node"));
+                return {
+                    anchors: spots.filter((s) => s.tagName.toLowerCase() === "a").length,
+                    pressed: spots.filter((s) => s.hasAttribute("aria-pressed")).length,
+                };
             });
-            expect(semantics).toEqual({ role: "link", pressed: false });
+            expect(semantics.pressed).toBe(0);
+            expect(semantics.anchors).toBeGreaterThan(0);
             // Where the lane leads. Asserted on the anchor rather than by clicking it, so this
             // stays a capture rather than a navigation — but it still fails if the deep link stops
             // naming the viewer's Figma comparison.

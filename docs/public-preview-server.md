@@ -1267,26 +1267,54 @@ is the content, so annotation is something the reader asks for rather than the p
 statement. An earlier cut opened with an outline over all thirty-eight nodes, a four-colour legend
 above them and every node's code path listed below, and the sheet lost to its own annotation.
 
-Pointing at a component is how the sheet is interrogated instead. **The outline appears under the
-pointer** — one node at a time, whether or not the opt-in layer is on — which is what keeps an
-unmarked sheet discoverable rather than inert:
+Pointing at a component is how the sheet is interrogated instead, and **pointing and going are
+split**: the pointer *describes*, a click *goes*. The outline appears under the pointer — one node
+at a time, whether or not the opt-in layer is on — together with a tooltip at the cursor naming the
+component and the code behind it:
 
 ![A component under the pointer, outlined, on a sheet carrying no other marks](design/evidence/serve-design-page/serve-design-page-hover.light.png)
 
-Keyboard focus draws the same mark, so tabbing the sheet reads the same way as sweeping it. Clicking
-one **selects it in place**: a ring on that node, and its name and code path directly under the
-sheet, with the link out. The reader stays on the page, which is what makes checking several
-components in a row possible; Escape clears it, and clicking the selected node again does too.
+Keyboard focus draws the same mark and parks the same tooltip at the node, so tabbing the sheet
+reads the same way as sweeping it. Clicking **goes** to that component — its preview, or the design
+file for a node with no code behind it.
+
+The tooltip follows the cursor because the answer has to be where the eye is. It began as a strip
+under the sheet, which on a specimen sheet taller than the fold put the answer somewhere the reader
+could not see while pointing at the question. Each overlay is a real `<a>`, which is what makes the
+middle click, the modifier click and the status-bar preview work, and what keeps the sheet navigable
+with no script at all.
 
 ![One component selected: a ring on the node, its code path under the sheet](design/evidence/serve-design-page/serve-design-page-selected.light.png)
 
 The coverage read is still one checkbox away. *Outline every component* turns the whole layer on —
-green Code Connect, blue `design-map.json`, amber name match, dashed red for **unlinked**, a
-component on the sheet with no code behind it — and the legend appears with it, since a legend over
-an unmarked sheet names four colours nothing is wearing. *Only what we don't implement* mutes the
-rest and turns the marks on by itself, because a filter over an unmarked sheet would show nothing:
+green Code Connect, blue `design-map.json`, amber name match, dashed red for a **gap** — and the
+legend appears with it, since a legend over an unmarked sheet names four colours nothing is wearing.
+*Only what we don't implement* mutes the rest and turns the marks on by itself, because a filter over
+an unmarked sheet would show nothing:
 
 ![Only the unlinked outlines, with everything this catalog implements muted](design/evidence/serve-design-page/serve-design-page-unlinked-only.light.png)
+
+### A gap is a component, not everything unlinked
+
+Red is reserved for something a catalog could actually implement and hasn't. Two kinds of unlinked
+node are **not** gaps, and on a real specimen sheet they are most of them:
+
+- **Private components** — Figma's leading-dot convention (`.Header`), the sheet's own furniture,
+  never published to a design system's consumers.
+- **Containers** — a `COMPONENT_SET`'s variants are the components; the set is the box they came in.
+  Its variants are listed in their own right, so counting the set as well reports one missing
+  component for a family that is completely implemented.
+
+Both pass the importer's filter, because both genuinely *are* Figma components. Keying the coverage
+filter on "unlinked" therefore made the kit's Shape page — all 35 shapes implemented — light up
+`.Header`, `.Header` and `Shape Set` in dashed red, three marks no amount of code would ever clear,
+while the count read `35 of 38`. It now reads `35 of 35`, those nodes take a neutral grey, and the
+red is only ever the answer to *what is left to build*.
+
+Container-ness is read from the node's `type` where the producer records it, and otherwise inferred
+from the walk — nodes arrive depth-first in document order, so a node immediately followed by a
+deeper one has component children on this page and is a box rather than a leaf. The inference is
+what lets an already-published page stop miscounting without waiting for a re-import.
 
 Every node, linked or not, is still listed — behind a disclosure that says what it holds
 (`35 of 38 components implemented`). It is an inventory to go and check rather than the first thing

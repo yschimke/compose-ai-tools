@@ -2091,15 +2091,19 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-page-node[data-link="code-connect"] { --cp-page-node-color: #2da44e; }
 .cp-page-node[data-link="manifest"] { --cp-page-node-color: #0969da; }
 .cp-page-node[data-link="convention"] { --cp-page-node-color: #bf8700; }
-.cp-page-node[data-link="unlinked"] { --cp-page-node-color: #cf222e; }
+/* Red is reserved for a real gap. An unlinked node that is furniture — a private component, a
+   variant-set container — is structure rather than missing work, so it takes the neutral grey and
+   stops competing for the eye with the thing the reader is hunting for. */
+.cp-page-node[data-link="unlinked"] { --cp-page-node-color: #6e7781; }
+.cp-page-node[data-cp-gap] { --cp-page-node-color: #cf222e; }
 /* The opt-in layer: every node marked at once, which is the coverage read rather than the reading
    view. */
 .cp-page-outlines-on .cp-page-node {
   border-color: var(--cp-page-node-color, #2da44e);
   background: color-mix(in srgb, var(--cp-page-node-color, #2da44e) 10%, transparent);
 }
-.cp-page-outlines-on .cp-page-node[data-link="unlinked"] {
-  border-style: dashed;
+.cp-page-outlines-on .cp-page-node[data-link="unlinked"] { border-style: dashed; }
+.cp-page-outlines-on .cp-page-node[data-cp-gap] {
   background: color-mix(in srgb, #cf222e 8%, transparent);
 }
 /* Pointing, keyboard focus, and selection all mark ONE node — and do it whether or not the resting
@@ -2121,9 +2125,15 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
     0 0 0 2px #fff,
     0 0 0 4px var(--cp-page-node-color, #2da44e);
 }
-/* "Only what we don't implement" — keeps the unlinked rectangles and mutes the rest, which is the
-   fastest read of a screen's coverage. */
-.cp-page-unlinked-only .cp-page-node:not([data-link="unlinked"]) {
+/* "Only what we don't implement" — keeps the components with no code behind them and mutes the
+   rest, which is the fastest read of a page's coverage.
+
+   Keyed on `data-cp-gap`, NOT on `data-link="unlinked"`. Unlinked also catches the sheet's own
+   furniture: a private component (Figma's leading-dot convention) and the `COMPONENT_SET` container
+   whose variants ARE the components listed beside it. Filtering on unlinked made a Shape page whose
+   35 shapes are all implemented light up `.Header`, `.Header` and `Shape Set` as work to do — three
+   marks that no amount of code would ever clear. */
+.cp-page-unlinked-only .cp-page-node:not([data-cp-gap]) {
   opacity: 0.12;
   pointer-events: none;
 }
@@ -2245,32 +2255,26 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
   border: 2px solid currentColor;
   border-radius: 2px;
 }
-/* What the selected node is, directly under the sheet it was picked on. Reserves its height in the
-   hint state so selecting doesn't shove the page down — the sheet must not move under a reader who
-   is pointing at it. */
-.cp-page-selection {
-  display: flex;
-  align-items: center;
-  min-height: 3rem;
+/* The pointer tooltip: what the node under the cursor is, where the eye already is.
+   
+   It replaced a strip under the sheet, which on a specimen sheet taller than the fold put the
+   answer somewhere the reader could not see while pointing at the question. Inert, so it can never
+   eat the click meant for the node beneath it, and positioned by script against the stage. */
+.cp-page-tip {
+  position: absolute;
+  z-index: 2;
+  max-width: min(360px, 80%);
   padding: 0.15rem;
   border: 1px solid var(--cp-border);
   border-radius: var(--md-sys-shape-corner-medium, 12px);
   background: var(--cp-surface);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+  pointer-events: none;
 }
-.cp-page-selection-hint {
-  margin: 0;
-  padding: 0 0.7rem;
-  color: var(--cp-fg-muted);
-  font-size: 0.82rem;
-}
-/* The clone of the node's row. Larger than it is in the list, because here it is the answer to a
-   question rather than one line of an inventory. */
-.cp-page-selection-card {
-  flex: 1;
-  padding: 0.5rem 0.7rem;
-  font-size: 0.92rem;
-}
-.cp-page-selection-card .cp-page-row-code { font-size: 0.78rem; }
+.cp-page-tip[hidden] { display: none; }
+.cp-page-tip-card { padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+.cp-page-tip-card .cp-page-row-code { font-size: 0.74rem; }
+
 /* The audit list, collapsed. It is a coverage inventory — every node, linked or not — which is a
    thing to go and check rather than the first thing to read, so it ships closed and says what it
    holds. */
@@ -2321,7 +2325,8 @@ html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: tr
 .cp-page-row[data-link="code-connect"] { --cp-page-node-color: #2da44e; }
 .cp-page-row[data-link="manifest"] { --cp-page-node-color: #0969da; }
 .cp-page-row[data-link="convention"] { --cp-page-node-color: #bf8700; }
-.cp-page-row[data-link="unlinked"] { --cp-page-node-color: #cf222e; }
+.cp-page-row[data-link="unlinked"] { --cp-page-node-color: #6e7781; }
+.cp-page-row[data-cp-gap] { --cp-page-node-color: #cf222e; }
 .cp-page-count { color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-page-card {
   display: flex;
