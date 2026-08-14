@@ -157,6 +157,17 @@ dependencies {
   // `lib-bta/`, not here.
   implementation("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
 
+  // SPIKE, test-only: the Kotlin frontend, for `PsiParseSpikeTest` to measure whether a
+  // *parse-only*
+  // PSI pass is cheap enough to replace the cleaner's text passes. Deliberately
+  // `testImplementation`
+  // and nothing else — the CLI's own runtime classpath must stay free of the frontend (see the
+  // `lib-bta/` note above). If the spike says yes, the real change loads these jars through the
+  // existing isolated `lib-bta/` classloader, not from here.
+  testImplementation(
+    "org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}"
+  )
+
   // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types,
   // `ExtensionPayload`). `api` so the existing in-package imports across this module (and the
   // CLI tests) keep resolving without an explicit `import` change — same source-compat pattern
