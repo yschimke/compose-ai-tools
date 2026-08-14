@@ -1308,9 +1308,34 @@ muddy one:
 ![The same page flipped to the design's own drawing](design/evidence/serve-design-page/serve-design-page-design-lane.light.png)
 
 The opacity slider and `difference` blend that used to stack the two drawings on top of each other
-are gone with it. Asking *how close are these two pictures* is the parity view's job; this page
-answers *what does the spec say, and what did we build*, and a selection survives the flip — so a
-component can be held while both of its answers are shown.
+are gone with it. Stacking answered *how close are these two pictures* by making the reader squint;
+a selection survives the flip instead, so a component can be held while both of its answers are
+shown — and the third lane answers the same question with a number.
+
+### `Diff %` — the drift, per node, on the sheet
+
+The third lane scores each slot: how far our render is from **the design's own drawing of that same
+node**, as one number per component.
+
+![The diff lane: each slot carrying a percentage, banded by how far it has drifted](design/evidence/serve-design-page/serve-design-page-diff-lane.light.png)
+
+The reference is this page's own SVG, cropped to the node — not the component's imported reference
+raster. Both are defensible; only one is already on the page. Cropping the export needs no round
+trip and no manifest field, it covers every node that has a render rather than only those with an
+imported reference, and it answers the question the page actually poses: how far is our pixel from
+the design's pixel *in this slot*, at this size, in the layout the designer drew. The scoring itself
+is `ComposePreviewCompare` — the same normalise-then-count the viewer's spec lane and the format
+wall use — so a number here means what a number there means.
+
+Three bands rather than a gradient, because the reader is triaging and *does this need looking at*
+is a decision, not a measurement: green under 2%, amber under 10%, red beyond. A node with no render
+gets no badge at all — printing `100%` for *absent* is the one wrong thing this readout could say.
+
+**A number and not a diff map**, deliberately: thirty-eight magenta thumbnails at slot size is the
+annotated sheet this surface was just rescued from. The map is one click away instead — in this lane
+a click leaves for that component's full comparison (`?mode=spec&specView=diff`), where the diff,
+the triptych and the wipe are at a size that can actually be read. The number on the sheet is the
+invitation; the comparison is the destination.
 
 The render half stays live, too. The server already renders every preview in the catalog on demand,
 so standing in for a node is `<img src="/render/<previewId>.png">` and inherits everything that lane

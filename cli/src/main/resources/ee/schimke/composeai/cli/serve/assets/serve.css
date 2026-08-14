@@ -2118,6 +2118,37 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    the way out. Its row stays (the mapping is still true); its outline can't, because there is
    nothing to put it around. */
 .cp-page-node[data-cp-missing] { display: none; }
+/* The diff lane's readout: how far our render is from the design's drawing of that same node, as
+   one number per slot. Hidden outside the lane rather than not built, so flipping back into it is
+   free and the scoring runs once.
+
+   A number and not a diff map, deliberately — thirty-eight magenta thumbnails at slot size is the
+   annotated sheet this page was rescued from. The map is one click away at a readable size. */
+.cp-page-score { display: none; }
+.cp-page-diff-on .cp-page-score {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  display: block;
+  padding: 0.05rem 0.3rem;
+  border-radius: 999px;
+  background: var(--cp-score-bg, #6e7781);
+  color: #fff;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  pointer-events: none;
+}
+/* Three bands, not a gradient: the reader is triaging, and "does this need looking at" is a
+   decision rather than a measurement. */
+.cp-page-score[data-cp-score="close"] { --cp-score-bg: #1a7f37; }
+.cp-page-score[data-cp-score="drifting"] { --cp-score-bg: #9a6700; }
+.cp-page-score[data-cp-score="far"] { --cp-score-bg: #cf222e; }
+.cp-page-score[data-cp-score="none"] { --cp-score-bg: #6e7781; }
+/* In the diff lane every scoreable node is a way out to its full comparison, so the whole slot
+   reads as a link rather than as something to select in place. */
+.cp-page-diff-on .cp-page-node { cursor: zoom-in; }
+.cp-page-diff-link { display: none; }
 .cp-page-controls {
   display: flex;
   flex-wrap: wrap;

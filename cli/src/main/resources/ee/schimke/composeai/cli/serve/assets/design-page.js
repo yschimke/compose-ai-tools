@@ -194,20 +194,151 @@
     syncFocusability();
   }
 
-  // The flip. One sheet, two lanes: this catalog's renders standing in the design's slots, or the
-  // design's own drawing. Deliberately not a composite — no opacity, no difference blend. Those
-  // answered "how close are these two pictures", which is the parity view's job; this page answers
-  // "what does the spec say, and what did we build", and the eye compares two clean frames in the
-  // same layout better than one muddy one.
-  function applyLane() {
-    var design = false;
+  // The flip. One sheet, three lanes: this catalog's renders standing in the design's slots, the
+  // design's own drawing, or the difference between them scored per node.
+  //
+  // The first two are deliberately not a composite — no opacity slider, no `difference` blend over
+  // the whole sheet. Those answered "how close are these two pictures" by making the reader squint;
+  // the diff lane answers it with a number and a map, and the eye compares two clean frames better
+  // than one muddy one.
+  function lane() {
     for (var l = 0; l < lanes.length; l++) {
-      if (lanes[l].checked) design = lanes[l].value === "design";
+      if (lanes[l].checked) return lanes[l].value;
     }
-    if (!design) armRenders();
-    stage.classList.toggle("cp-page-swap-on", !design);
-    stage.classList.toggle("cp-page-hide-design", !design);
+    return "code";
   }
+
+  function applyLane() {
+    var which = lane();
+    var ours = which !== "design";
+    if (ours) armRenders();
+    stage.classList.toggle("cp-page-swap-on", ours);
+    stage.classList.toggle("cp-page-hide-design", ours);
+    stage.classList.toggle("cp-page-diff-on", which === "diff");
+    if (which === "diff") score();
+  }
+
+  // ---- the diff lane -------------------------------------------------------------------------
+  //
+  // WHAT IS COMPARED, AND WHY IT IS THE SHEET ITSELF
+  //
+  // The reference is this page's own SVG, cropped to the node — not the component's imported
+  // reference raster. Both are defensible, but only one is on the page already: cropping the export
+  // needs no server round trip, no manifest field, and covers every node that has a render rather
+  // than only those with an imported reference. It also answers the question the page actually
+  // poses, which is about THIS slot: how far is our pixel from the design's pixel, here, at this
+  // size, in the layout the designer drew.
+  //
+  // The scoring itself is `ComposePreviewCompare` — the same normalise-then-count used by the
+  // viewer's spec lane and the format wall, so a number here means what a number there means.
+  var compare = window.ComposePreviewCompare;
+  var scored = false;
+
+  // The node's own drawing, as an image, at the size we draw our render. Serialised from a CLONE of
+  // the export with the viewBox narrowed to the node's box: the browser then rasterises exactly the
+  // region the slot covers, at whatever resolution we ask for, with no manual transform maths and
+  // no second copy of the geometry to keep in step with `measure()`.
+  function sheetImage(target, width, height) {
+    var box = target.getBBox();
+    if (!(box.width > 0 && box.height > 0)) return Promise.resolve(null);
+    var clone = svg.cloneNode(true);
+    clone.setAttribute("viewBox", box.x + " " + box.y + " " + box.width + " " + box.height);
+    clone.setAttribute("width", String(Math.max(1, Math.round(width))));
+    clone.setAttribute("height", String(Math.max(1, Math.round(height))));
+    clone.removeAttribute("style");
+    var markup = new XMLSerializer().serializeToString(clone);
+    // A `data:` URL rather than a blob: nothing is allocated to leak, and the string is one this
+    // script just built out of the page's own markup rather than anything a URL could be read from.
+    var url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(markup);
+    return new Promise(function (resolve) {
+      var image = new Image();
+      image.onload = function () {
+        resolve(image);
+      };
+      // A sheet that cannot be rasterised (a font it cannot reach, markup a browser refuses) scores
+      // nothing rather than scoring wrongly.
+      image.onerror = function () {
+        resolve(null);
+      };
+      image.src = url;
+    });
+  }
+
+  function badgeFor(overlay) {
+    var badge = overlay.querySelector(".cp-page-score");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "cp-page-score";
+      overlay.appendChild(badge);
+    }
+    return badge;
+  }
+
+  // Scored once per page. The numbers cannot move without the renders moving, and re-scoring on
+  // every flip back would redo dozens of rasterise-and-count passes for an answer already on
+  // screen.
+  function score() {
+    if (scored || !compare) return;
+    scored = true;
+    for (var s = 0; s < nodes.length; s++) {
+      (function (entry) {
+        var render = entry.overlay.querySelector(".cp-page-render");
+        // No render, or one the server could not produce: there is nothing to compare the design
+        // against, and saying so beats printing a 100% that means "absent" rather than "different".
+        if (!render || render.hidden) return;
+        var badge = badgeFor(entry.overlay);
+        badge.textContent = "…";
+        var rect = render.getBoundingClientRect();
+        sheetImage(entry.target, rect.width || 240, rect.height || 240)
+          .then(function (reference) {
+            // The badge is the whole readout, deliberately. A per-node diff MAP was the obvious
+            // next thing and is the wrong thing here: thirty-eight magenta thumbnails at slot size
+            // is the annotated sheet this page was just rescued from. The number triages; the map
+            // is one click away, at a size where it can be read.
+            return reference ? compare.scoreImages(reference, render) : null;
+          })
+          .then(function (result) {
+            if (!result) {
+              badge.textContent = "—";
+              badge.setAttribute("data-cp-score", "none");
+              return;
+            }
+            var percent = result.percent;
+            badge.textContent = percent.toFixed(1) + "%";
+            // Three bands rather than a gradient: the reader is triaging, and "which of these needs
+            // looking at" is a decision, not a measurement.
+            badge.setAttribute(
+              "data-cp-score",
+              percent < 2 ? "close" : percent < 10 ? "drifting" : "far",
+            );
+            entry.overlay.setAttribute("data-cp-score-value", percent.toFixed(1));
+          })
+          .catch(function () {
+            badge.textContent = "—";
+            badge.setAttribute("data-cp-score", "none");
+          });
+      })(nodes[s]);
+    }
+  }
+
+  // The way out. In the diff lane a node's click leaves for the component's full Figma comparison
+  // rather than selecting in place — the number on the sheet is the invitation, and the diff map,
+  // triptych and wipe are what it opens onto. Clicking a server-built anchor, never assigning a URL.
+  var diffLinkSource = stage.querySelector("[data-cp-page-diff-links]");
+
+  function armDiffLinks() {
+    if (!diffLinkSource) return;
+    var links = diffLinkSource.content.querySelectorAll(".cp-page-diff-link");
+    for (var d = 0; d < links.length; d++) {
+      var link = links[d];
+      var entry = byId[link.getAttribute("data-cp-node") || ""];
+      if (!entry) continue;
+      entry.overlay.appendChild(link);
+    }
+    diffLinkSource.remove();
+    diffLinkSource = null;
+  }
+  armDiffLinks();
 
   // Selecting a node puts its detail under the sheet and keeps the reader on the page, which is
   // what makes scanning several components in a row possible.
@@ -257,6 +388,16 @@
     (function (spot) {
       spot.addEventListener("click", function () {
         var id = spot.getAttribute("data-cp-node");
+        // In the diff lane a click leaves for the full comparison instead of selecting. A node with
+        // no link — nothing to compare, so nothing to open — falls back to selecting, which at
+        // least says what the node is.
+        if (lane() === "diff") {
+          var out = spot.querySelector(".cp-page-diff-link");
+          if (out) {
+            out.click();
+            return;
+          }
+        }
         // Pressing the selected node again clears it, so the sheet can be put back to plain
         // without hunting for a control that undoes it.
         select(selected === id ? null : id);
