@@ -615,6 +615,12 @@ object PlaygroundSourceCleaner {
         facts.calls
           .asSequence()
           .filter { rules.scaffolds[it.callee]?.kind == UsageRules.Kind.SUBSTITUTE }
+          // A matching *name* is not a matching call. `state.previewOverrideString(…)` is
+          // somebody's
+          // member function, and the replacement range covers the whole qualified expression — so
+          // substituting on the name alone would delete their receiver and their call. Only a bare
+          // call, or one qualified by a package the rules name, is this scaffold.
+          .filter { it.receiver == null || it.receiver in rules.scaffoldPackages }
           .sortedByDescending { it.start }
           .mapNotNull { call ->
             val scaffold = rules.scaffolds.getValue(call.callee)

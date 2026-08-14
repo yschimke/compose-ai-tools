@@ -138,7 +138,10 @@ private constructor(private val analyzer: Any, private val analyze: java.lang.re
     try {
       val raw = analyze.invoke(analyzer, source) as? String ?: return null
       json.decodeFromString<UsageSourceFacts>(raw).takeIf { it.error == null }
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
+      // Throwable, not Exception: a staged closure that is incomplete or built for a newer JVM
+      // raises `NoClassDefFoundError` / `UnsupportedClassVersionError`, which are `Error`s. Letting
+      // one through would take down a playground request over an optional sidecar.
       null
     }
 
@@ -188,8 +191,11 @@ private constructor(private val analyzer: Any, private val analyze: java.lang.re
           val instance = type.getDeclaredConstructor().newInstance()
           val method = type.getMethod("analyze", String::class.java)
           UsageSourceParser(instance, method).also { cached = it }
-        } catch (e: Exception) {
-          onLog("usage-source-psi failed to load (${e.message}); cleaning with the text passes")
+        } catch (e: Throwable) {
+          // Same reason as [facts]: a broken or mismatched staged closure fails with a
+          // `LinkageError`, not an `Exception`, and the documented behaviour for an unusable
+          // sidecar is to fall back rather than to fail the request.
+          onLog("usage-source-psi failed to load ($e); cleaning with the text passes")
           null
         }
       }
