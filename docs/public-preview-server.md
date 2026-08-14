@@ -1316,6 +1316,11 @@ The render half stays live, too. The server already renders every preview in the
 so standing in for a node is `<img src="/render/<previewId>.png">` and inherits everything that lane
 does — the live daemon on a live catalog, the theme the visitor picked, a re-render after a refresh.
 
+A node's own drawing is hidden **only once ours has arrived**, and comes back if it never does. A
+preview that throws, a daemon that falls over, a 404: the slot falls back to the design's drawing
+rather than becoming a hole. That matters more than it did while the swap was opt-in — the page
+opens on this lane now, and there is no *untick to get the sheet back* control to recover with.
+
 The renders still ride an inert `<template>`, adopted when the lane that draws them is entered.
 That is now the lane the page opens on, so they are `loading="lazy"`: a sheet can hold dozens of
 nodes and on a live catalog each one is a daemon render, so the box is asked only for the part of

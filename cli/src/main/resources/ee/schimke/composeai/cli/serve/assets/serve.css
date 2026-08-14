@@ -2109,6 +2109,11 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   pointer-events: none;
 }
 .cp-page-swap-on .cp-page-render { display: block; }
+/* A render the server could not produce. `design-page.js` restores the design's own drawing in that
+   slot and hides the failed image — but the rule above is a two-class selector and would beat the
+   UA stylesheet's `[hidden]`, leaving the browser's broken-image glyph sitting on top of the
+   drawing just restored. Specificity has to be answered explicitly. */
+.cp-page-swap-on .cp-page-render[hidden] { display: none; }
 /* A node the manifest named but the export doesn't carry — a layer the design tool flattened on
    the way out. Its row stays (the mapping is still true); its outline can't, because there is
    nothing to put it around. */
