@@ -3309,16 +3309,20 @@ class ServeHttpServer(
    * catalog — the snapshot [ServeSessionRegistry.peekHost] tells a caller to keep rather than read
    * absence as a verdict.
    *
-   * Its own map beside [catalogMetaSeen] rather than a field inside it, for one reason: it is
-   * written *first*, before the hero thumbnail is baked. That bake decodes and rescales a PNG, and
-   * a session is detached from its host **under** the registry lock while listeners run **after**
-   * it is released — so a Source request arriving in between would find `peekHost` null, the
-   * session still known, and a snapshot not yet installed. Publishing the cheap half up front
-   * closes that window instead of widening it by a decode.
+   * Written and removed **only** by [ServeSessionRegistry.SessionSnapshots], under the registry's
+   * own lock, as part of the detach and retire transitions. That single-writer rule is what makes
+   * it correct rather than merely narrow: a reader sees the session resident (and uses the live
+   * host) or suspended-with-a-snapshot, never the gap between, and a retirement cannot be overtaken
+   * by a slower writer still holding the removed host.
    *
-   * Same lifecycle as [catalogMetaSeen] otherwise, and dropped in the same places: written on
-   * suspension and on resident reads, replaced wholesale by a refresh, and evicted when the catalog
-   * is retired.
+   * Two earlier shapes did not hold, and both failed the same way — the storage was the registry's
+   * business but lived outside it. Refreshing this from resident reads gave it a second writer
+   * outside the lock, which is how a retired catalog's entry came back. Publishing it from a
+   * suspend listener only shortened the window, because listeners run after the lock is released.
+   *
+   * Nothing is written while a session is resident, and nothing needs to be: the live host answers
+   * then, and the snapshot is taken from the host being detached, which is fresher than anything a
+   * resident read could have left behind.
    */
   private val catalogSourceLocationsSeen =
     ConcurrentHashMap<String, Map<String, PlaygroundSeedResolver.Location>>()
@@ -3378,13 +3382,50 @@ class ServeHttpServer(
   init {
     // Snapshot a catalog's facts as its daemon goes idle — the last moment they're readable.
     sessions.addSuspendListener { id, host -> rememberCatalogMeta(id, host) }
-    // A retired catalog's snapshots go with it. Without this every published-then-retired system
-    // on a churning host is retained for the life of the process — a pre-existing leak of
-    // [catalogMetaSeen] that the source locations would have made materially heavier.
-    sessions.addUnregisterListener { id ->
-      catalogMetaSeen.remove(id)
-      catalogSourceLocationsSeen.remove(id)
-    }
+    // A retired catalog's status snapshot goes with it. Without this every published-then-retired
+    // system on a churning host is retained for the life of the process. This one is a listener
+    // rather than a registry transition because [catalogMetaSeen] is also written from resident
+    // status reads, so it has other writers by design and cannot claim the guarantee below; the
+    // eviction is still strictly better than never evicting.
+    sessions.addUnregisterListener { id -> catalogMetaSeen.remove(id) }
+    // The source locations ride the registry's own transitions instead — see
+    // [catalogSourceLocationsSeen]. Both halves are pure map operations: no I/O, no blocking, no
+    // re-entry into the registry, which is what the under-lock contract requires.
+    sessions.setSessionSnapshots(
+      object : ServeSessionRegistry.SessionSnapshots {
+        override fun capture(sessionId: String, host: ServeHost) {
+          catalogSourceLocationsSeen[sessionId] = sourceLocationsOf(host)
+        }
+
+        override fun discard(sessionId: String) {
+          catalogSourceLocationsSeen.remove(sessionId)
+        }
+      }
+    )
+  }
+
+  /**
+   * Every preview's source location on [host], as the suspended-catalog snapshot keeps them.
+   *
+   * Runs under the registry lock (see [ServeSessionRegistry.SessionSnapshots]), so it walks the
+   * preview list, builds a map, and does nothing else — no render, no decode, no I/O.
+   */
+  private fun sourceLocationsOf(host: ServeHost): Map<String, PlaygroundSeedResolver.Location> {
+    val bundle = catalogBundleHost(host) ?: return emptyMap()
+    val source = bundle.catalogSource ?: return emptyMap()
+    return host.previews
+      .mapNotNull { preview ->
+        val file = preview.sourceFile?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        preview.id to
+          PlaygroundSeedResolver.Location(
+            repo = source.repo,
+            ref = source.ref,
+            module = source.module,
+            sourceFile = file,
+            bodyLine = preview.bodyLine,
+          )
+      }
+      .toMap()
   }
 
   /**
@@ -3395,25 +3436,6 @@ class ServeHttpServer(
    */
   private fun rememberCatalogMeta(id: String, host: ServeHost) {
     val bundle = catalogBundleHost(host) ?: return
-    // Published BEFORE the hero bake below — see [catalogSourceLocationsSeen] for why the order
-    // matters.
-    val catalogSource = bundle.catalogSource
-    catalogSourceLocationsSeen[id] =
-      if (catalogSource == null) emptyMap()
-      else
-        host.previews
-          .mapNotNull { preview ->
-            val file = preview.sourceFile?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            preview.id to
-              PlaygroundSeedResolver.Location(
-                repo = catalogSource.repo,
-                ref = catalogSource.ref,
-                module = catalogSource.module,
-                sourceFile = file,
-                bodyLine = preview.bodyLine,
-              )
-          }
-          .toMap()
     val heroId = bundle.declaredHeroPreviewId ?: ServeWeb.representativePreviewId(host.previews)
     val heroCrop = heroId?.let { bundle.contentCrop(it) }
     catalogMetaSeen[id] =
