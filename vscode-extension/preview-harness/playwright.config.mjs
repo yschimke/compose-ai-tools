@@ -53,7 +53,30 @@ export default defineConfig({
             // points at a Chromium binary when the default Playwright
             // download isn't present (some CI sandboxes ship only the
             // full build, not the headless shell).
-            args: ["--enable-unsafe-swiftshader", "--use-gl=angle"],
+            //
+            // The two `--disable-*-raster`/`-opts` flags make rasterization
+            // deterministic (issue #3837). Without them a handful of captures
+            // differ between two runs of IDENTICAL code by 20–30 pixels, always
+            // ±1–3 colour units on the antialiased rounded corners of a card —
+            // `serve-design-page-index` was the worst, latching onto one of two
+            // variants for a whole process, so it read as a real diff on PRs
+            // that touched nothing near it. Partial raster reuses cached tiles
+            // across frames, and the Skia runtime opts pick CPU-feature-
+            // dependent code paths; either can round an edge differently
+            // depending on what the compositor did just before.
+            //
+            // Measured: these two flags alone leave every already-stable
+            // capture byte-identical (0 px changed) while making the flaky ones
+            // stable across four runs. Do NOT add `--disable-lcd-text` or
+            // `--disable-gpu-rasterization` — they also fix the flake, but they
+            // change glyph rasterization and move 12–20k pixels on EVERY
+            // capture, which is a full rebaseline of all 234 for no benefit.
+            args: [
+                "--enable-unsafe-swiftshader",
+                "--use-gl=angle",
+                "--disable-partial-raster",
+                "--disable-skia-runtime-opts",
+            ],
             ...(process.env.HARNESS_CHROMIUM
                 ? { executablePath: process.env.HARNESS_CHROMIUM }
                 : {}),

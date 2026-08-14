@@ -122,11 +122,9 @@ against a moving fixture baseline:
    Set `HARNESS_CHROMIUM` when the sandbox's Chromium build doesn't match the
    pinned Playwright (`/opt/pw-browsers/chromium-*/chrome-linux/chrome`).
 
-   A handful of `serve-*` captures are **flaky today** — `serve-design-page-index`,
-   `serve-landing-tree-depth-component-open`, `serve-playground-multifile` and
-   `serve-viewer-catalog-knobs-scroll-full-page` differ between two runs of
-   identical code. Compare a suspicious capture against a re-run of the *same*
-   tree before believing it, and see issue #3837.
+   These captures are deterministic (#3837): two runs of the same tree produce
+   byte-identical PNGs for all 196. So a capture that moves is a real change —
+   take it seriously rather than re-running until it agrees.
 
 Suggested order, cheapest seam first: `backend-badge.js` (33 lines),
 `viewer-groups.js` (16), `rc-fonts.js` (50), then `url-state.js` itself — that
