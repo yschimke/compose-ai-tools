@@ -66,12 +66,16 @@ class ServeDesignPageRoutingTest {
        "frame":{"width":1200,"height":800},
        "image":{"uri":"shape.svg","format":"svg"},
        "nodes":[
+         {"nodeId":"1:8","name":"Shape Set","depth":2,
+          "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:8","link":"unlinked"},
          {"nodeId":"1:1","name":"Shape=Circle","depth":3,
           "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:1","link":"manifest",
           "code":"ui/Shapes.kt#CircleShape","previewId":"com.example.Circle","confidence":"high"},
          {"nodeId":"1:3","name":"Shape=Pill","depth":3,
           "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:3","link":"manifest",
           "code":"ui/Shapes.kt#PillShape","previewId":"com.example.NotPublished"},
+         {"nodeId":"1:12","name":"Shape=Gem","depth":3,
+          "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:12","link":"unlinked"},
          {"nodeId":"1:9","name":".Header","depth":2,
           "ref":"figma:ocdacdEsnHipMJD3egzxKb/1:9","link":"unlinked"}]}]}
     """
@@ -113,9 +117,32 @@ class ServeDesignPageRoutingTest {
     assertEquals(200, code)
     assertTrue(type.startsWith("text/html"))
     assertTrue(body.contains("Shape"))
-    // Two of three components are linked; the sheet's header has nothing behind it.
-    assertTrue(body.contains("2 of 3 components implemented"))
+    // FIVE nodes on the sheet, but only THREE are components a catalog could implement, and the
+    // count says so. `Shape Set` is the variant-set container the two linked shapes came out of,
+    // and `.Header` is a private component (Figma's leading-dot convention) — furniture, not work.
+    // Counting every node instead reported `2 of 5` and told a reader three components were
+    // missing when one was.
+    assertTrue(body.contains("2 of 3 components implemented"), body)
     assertTrue(body.contains("/m3-catalog/pages/shape"))
+  }
+
+  @Test
+  fun `only a real missing component is marked as a coverage gap`() {
+    val (_, _, body) = get("/m3-catalog/pages/shape")
+    // `Shape=Gem` is unlinked and IS a component, so it is the gap the filter exists to show.
+    assertTrue(
+      Regex("data-cp-node=\"1:12\"[^>]*data-cp-gap|data-cp-gap[^>]*data-cp-node=\"1:12\"")
+        .containsMatchIn(body),
+      "expected 1:12 to be a gap in:\n$body",
+    )
+    // The container and the private component are unlinked too, and neither is a gap.
+    for (id in listOf("1:8", "1:9")) {
+      assertFalse(
+        Regex("data-cp-node=\"$id\"[^>]*data-cp-gap|data-cp-gap[^>]*data-cp-node=\"$id\"")
+          .containsMatchIn(body),
+        "expected $id NOT to be a gap in:\n$body",
+      )
+    }
   }
 
   @Test
