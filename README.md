@@ -704,6 +704,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-revisions/dark](renders/serve-viewer-revisions.dark.png) |
 | `light` | ![serve-viewer-revisions/light](renders/serve-viewer-revisions.light.png) |
 
+## serve-viewer-revisions-open
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-revisions-open/dark](renders/serve-viewer-revisions-open.dark.png) |
+| `light` | ![serve-viewer-revisions-open/light](renders/serve-viewer-revisions-open.light.png) |
+
 ## serve-viewer-signin
 
 | Theme | Capture |
