@@ -116,6 +116,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-design-page/dark](renders/serve-design-page.dark.png) |
 | `light` | ![serve-design-page/light](renders/serve-design-page.light.png) |
 
+## serve-design-page-design-lane
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page-design-lane/dark](renders/serve-design-page-design-lane.dark.png) |
+| `light` | ![serve-design-page-design-lane/light](renders/serve-design-page-design-lane.light.png) |
+
+## serve-design-page-hover
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page-hover/dark](renders/serve-design-page-hover.dark.png) |
+| `light` | ![serve-design-page-hover/light](renders/serve-design-page-hover.light.png) |
+
 ## serve-design-page-index
 
 | Theme | Capture |
@@ -123,12 +137,19 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-design-page-index/dark](renders/serve-design-page-index.dark.png) |
 | `light` | ![serve-design-page-index/light](renders/serve-design-page-index.light.png) |
 
-## serve-design-page-swap
+## serve-design-page-nodes-open
 
 | Theme | Capture |
 | --- | --- |
-| `dark` | ![serve-design-page-swap/dark](renders/serve-design-page-swap.dark.png) |
-| `light` | ![serve-design-page-swap/light](renders/serve-design-page-swap.light.png) |
+| `dark` | ![serve-design-page-nodes-open/dark](renders/serve-design-page-nodes-open.dark.png) |
+| `light` | ![serve-design-page-nodes-open/light](renders/serve-design-page-nodes-open.light.png) |
+
+## serve-design-page-selected
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-design-page-selected/dark](renders/serve-design-page-selected.dark.png) |
+| `light` | ![serve-design-page-selected/light](renders/serve-design-page-selected.light.png) |
 
 ## serve-design-page-unlinked-only
 
