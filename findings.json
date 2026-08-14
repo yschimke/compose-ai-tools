@@ -1,14 +1,14 @@
 {
   "declaredFanoutBases": [],
   "declaredPreviewIds": [
-    "bigTextNotificationPreview",
-    "simpleNotificationPreview"
+    "bigTextNotificationPreview-9345e706",
+    "simpleNotificationPreview-b6d7cbbe"
   ],
   "entries": [
     {
       "module": "android",
-      "pngBasename": "bigTextNotificationPreview.png",
-      "previewId": "bigTextNotificationPreview",
+      "pngBasename": "bigTextNotificationPreview-9345e706.png",
+      "previewId": "bigTextNotificationPreview-9345e706",
       "sha256": "64b748d4c5cd69d0a38c4a7ffaa10e60441540aea933b705654a0035095b8dc2",
       "sidecarBasename": ""
     },
@@ -168,8 +168,8 @@
     },
     {
       "module": "android",
-      "pngBasename": "simpleNotificationPreview.png",
-      "previewId": "simpleNotificationPreview",
+      "pngBasename": "simpleNotificationPreview-b6d7cbbe.png",
+      "previewId": "simpleNotificationPreview-b6d7cbbe",
       "sha256": "733e071a273cb43edd78490c1be89fcc7ff0a61167bd62699a2393b077db5cad",
       "sidecarBasename": ""
     }

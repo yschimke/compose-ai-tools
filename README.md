@@ -4,9 +4,9 @@ _Auto-generated from `compose-preview/notifications/main`. 24 notification previ
 
 Browse inline; image URLs reference the branch tip so links keep resolving as long as the branch advances.
 
-### `bigTextNotificationPreview`
+### `bigTextNotificationPreview-9345e706`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/notifications/main/renders/bigTextNotificationPreview.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/notifications/main/renders/bigTextNotificationPreview-9345e706.png" width="400" />
 
 ### `com.example.sampleandroid.NotificationPreviewsKt.bigTextNotificationPreview`
 
@@ -100,6 +100,6 @@ Browse inline; image URLs reference the branch tip so links keep resolving as lo
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/notifications/main/renders/com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_Light.png" width="400" />
 
-### `simpleNotificationPreview`
+### `simpleNotificationPreview-b6d7cbbe`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/notifications/main/renders/simpleNotificationPreview.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/notifications/main/renders/simpleNotificationPreview-b6d7cbbe.png" width="400" />
