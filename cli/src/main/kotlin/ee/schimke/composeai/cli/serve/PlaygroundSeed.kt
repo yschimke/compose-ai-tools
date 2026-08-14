@@ -42,6 +42,19 @@ data class PlaygroundSeed(
    * hunting for the rest.
    */
   val sliced: Boolean = false,
+  /**
+   * True when [text] has been rewritten into plain Compose by [PlaygroundSourceCleaner] — the
+   * catalog's annotations, sticker frame, click tally and knobs resolved away — rather than carried
+   * verbatim. This changes what the editor may claim: a verbatim seed is "the preview's source, and
+   * some of it will not resolve"; a cleaned one is "usage code, ready to Run".
+   */
+  val cleaned: Boolean = false,
+  /**
+   * Declared scaffolding that survived cleaning ([PlaygroundSourceCleaner.Result.residue]). Empty
+   * is the good case. Non-empty means the seed is *partly* cleaned — better than verbatim, but
+   * carrying names that will not resolve — and the note says so instead of over-promising.
+   */
+  val residue: List<String> = emptyList(),
 )
 
 /**
@@ -162,15 +175,38 @@ class PlaygroundSeedResolver(
       onLog("$rawUrl is not valid UTF-8; playground seed unavailable")
       return null
     }
+    // Cleaning first, slicing as the fallback. The cleaner does its own slicing (it has to — it
+    // closes over the same-file helpers the cleaned body still calls, which a single-declaration
+    // slice would have cut away), so this is one choice between two whole strategies rather than
+    // two passes. Null means it found nothing it could safely do, and the verbatim slice stands.
+    //
+    // Gated on the anchor, which is also why the rules file is not fetched for a catalog whose
+    // manifest predates `bodyLine`: without an anchor the cleaner cannot say which declaration was
+    // clicked, so there is nothing to clean and no reason to ask GitHub for rules describing it.
+    val cleaned =
+      try {
+        if (where.bodyLine == null) null
+        else {
+          val rules = rulesFor(where)
+          PlaygroundSourceCleaner.clean(text, where.bodyLine, rules, stringsFor(where, rules))
+        }
+      } catch (e: Exception) {
+        // A seed is a convenience. A cleaner bug must degrade to the verbatim slice that worked
+        // before it existed, never take the playground handoff down with it.
+        onLog("cleaning $system/$previewId failed (${e.message}); seeding the verbatim slice")
+        null
+      }
     val sliced = sliceDeclaration(text, where.bodyLine)
     val seed =
       PlaygroundSeed(
         catalog = system,
         previewId = previewId,
         fileName = fileNameFor(where.sourceFile),
-        text = sliced ?: text,
+        text = cleaned?.text ?: sliced ?: text,
         blobUrl = ServeUrls.githubBlobUrl(where.repo, where.ref, where.module, where.sourceFile),
-        sliced = sliced != null,
+        sliced = cleaned != null || sliced != null,
+        cleaned = cleaned != null,
+        residue = cleaned?.residue.orEmpty(),
       )
     // Bounded, and deliberately not an LRU: entries are a few KB, a catalog has a fixed number of
     // previews, and a full cache means the ones people actually open are already served from it. A
@@ -183,7 +219,110 @@ class PlaygroundSeedResolver(
     return seed
   }
 
+  /**
+   * The catalog's own [UsageRules], read from `compose-usage.json` at the repo root, at the same
+   * `ref` the catalog was published from — so the rules and the source they describe can never be
+   * from different revisions.
+   *
+   * Cached per `(repo, ref)` rather than per preview: one catalog has one rules file, and every
+   * preview in it wants the same one. A catalog that ships no rules file caches the *absence* too
+   * (as [UsageRules.GENERIC]), so browsing a catalog without one does not re-ask GitHub for a file
+   * that isn't there on every card.
+   */
+  private val rulesCache = ConcurrentHashMap<Pair<String, String>, Pair<UsageRules, Long>>()
+
+  private val stringsCache =
+    ConcurrentHashMap<Pair<String, String>, Pair<Map<String, String>, Long>>()
+
+  private fun rulesFor(where: Location): UsageRules {
+    val key = where.repo to where.ref
+    val now = clock()
+    rulesCache[key]
+      ?.takeIf { now - it.second < ttlSeconds * 1000 }
+      ?.let {
+        return it.first
+      }
+    val url = ServeUrls.githubRawUrl(where.repo, where.ref, null, USAGE_RULES_FILE)
+    val rules =
+      url
+        ?.let { u ->
+          try {
+            fetch(u)
+          } catch (_: Exception) {
+            null
+          }
+        }
+        ?.takeIf { it.size <= maxBytes }
+        ?.decodeToString()
+        ?.let { UsageRules.parse(it, onLog) } ?: UsageRules.GENERIC
+    rulesCache[key] = rules to now
+    return rules
+  }
+
+  /**
+   * The catalog's English string resources, so `stringResource(Res.string.label_filled)` can be
+   * inlined as the label the sticker actually renders.
+   *
+   * Parsed with a deliberately narrow regex rather than an XML parser: this reads one known
+   * generated file shape, and a `<string name="x">y</string>` it does not recognise simply is not
+   * inlined, which leaves the lookup in place — the safe direction.
+   */
+  private fun stringsFor(where: Location, rules: UsageRules): Map<String, String> {
+    val path = rules.stringsPath?.takeIf { it.isNotBlank() } ?: return emptyMap()
+    val key = where.repo to "${where.ref}:${where.module}:$path"
+    val now = clock()
+    stringsCache[key]
+      ?.takeIf { now - it.second < ttlSeconds * 1000 }
+      ?.let {
+        return it.first
+      }
+    val url = ServeUrls.githubRawUrl(where.repo, where.ref, where.module, path)
+    val text =
+      url
+        ?.let { u ->
+          try {
+            fetch(u)
+          } catch (_: Exception) {
+            null
+          }
+        }
+        ?.takeIf { it.size <= maxBytes }
+        ?.decodeToString()
+    val strings =
+      if (text == null) emptyMap()
+      else
+        STRING_RESOURCE.findAll(text).associate {
+          it.groupValues[1] to unescapeAndroidString(it.groupValues[2])
+        }
+    stringsCache[key] = strings to now
+    return strings
+  }
+
   companion object {
+    /**
+     * Where a catalog declares what its own scaffolding is. Repo root, beside `catalog.spec.json`.
+     */
+    const val USAGE_RULES_FILE = "compose-usage.json"
+
+    private val STRING_RESOURCE =
+      Regex("""<string\s+name="([A-Za-z0-9_]+)"\s*>(.*?)</string>""", RegexOption.DOT_MATCHES_ALL)
+
+    /**
+     * The Android/CMP resource escapes a label can carry. Not a general XML unescape — an entity
+     * this does not know is left as written, which shows up in the snippet as itself rather than as
+     * a wrong character.
+     */
+    internal fun unescapeAndroidString(raw: String): String =
+      raw
+        .replace("\\'", "'")
+        .replace("\\\"", "\"")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+        .trim()
+
     /** A preview source file. Well above any real one, well below "somebody linked a blob". */
     const val DEFAULT_MAX_BYTES = 256 * 1024
 

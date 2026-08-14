@@ -3997,9 +3997,28 @@ object ServeWeb {
                 WebEscaping.htmlEscape(seed.fileName)
               }</a>"""
           } ?: WebEscaping.htmlEscape(seed.fileName)
-        // Which of the two it is matters to a reader: told "the whole file" while looking at one
-        // function, they would go hunting for the rest of it.
-        if (seed.sliced)
+        // Which of the three it is matters to a reader, and they promise different things. A
+        // cleaned seed is usage code — the catalog's annotations, sticker frame, click tally and
+        // knobs resolved away — so it may say "ready to Run"; the other two may not.
+        if (seed.cleaned) {
+          val caveat =
+            if (seed.residue.isEmpty()) ""
+            else {
+              val names =
+                seed.residue.joinToString(", ") { "<code>${WebEscaping.htmlEscape(it)}</code>" }
+              " Some of this catalog's own helpers ($names) had no plain-Compose form to rewrite " +
+                "to, so they are still here and will not resolve — delete them or replace them " +
+                "with your own values."
+            }
+          """
+
+          <p id="pg-seed" class="cp-sub">Opened from $where — <code>${
+              WebEscaping.htmlEscape(seed.previewId)
+            }</code> in <code>${WebEscaping.htmlEscape(seed.catalog)}</code>, rewritten as the
+            plain Compose that produces this render. The catalog's annotations, sticker frame and
+            variant knobs are not code you need in order to use the component, so they are gone.
+            Press Run.$caveat</p>"""
+        } else if (seed.sliced)
           """
 
           <p id="pg-seed" class="cp-sub">Opened from $where — the declaration of
