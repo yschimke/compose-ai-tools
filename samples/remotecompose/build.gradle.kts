@@ -12,7 +12,7 @@ composePreview {
   // `:samples:android` for the broader JDK 17 toolchain rationale.
   sdkVersion.set(35)
 
-  // `RemoteWidgetDocCaptureTest` reads the `.rcdoc` sidecar + PNG from
+  // `RemoteWidgetDocCaptureTest` reads the `.rc` sidecar + PNG from
   // `build/compose-previews/renders/`; chain the unit-test tasks onto `composePreviewRenderAll`.
   renderBeforeUnitTests.set(true)
 }

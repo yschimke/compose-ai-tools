@@ -49,10 +49,20 @@ android {
 }
 
 dependencies {
-  // `compose-bom-stable` (2026.05.x — Compose 1.10.x) aligns with what
-  // Glimmer alpha13's POM resolves to (`androidx.compose.foundation:1.10.0`),
-  // so no manual `compose-ui` pin needed. The BOM also brings tooling /
-  // preview alongside Compose itself.
+  // `compose-bom-stable` aligns with what Glimmer's own POM resolves to, so no manual `compose-ui`
+  // pin is needed here; the BOM also brings tooling / preview alongside Compose itself.
+  //
+  // Deliberately NOT naming the resolved Compose version in this comment. It used to read
+  // "2026.05.x — Compose 1.10.x", which was true of Glimmer alpha13 and went stale the moment
+  // either ref moved: the module resolves `androidx.compose.runtime:1.12.0-beta02` today, because
+  // Glimmer's alpha line drags Compose forward and conflict resolution takes the higher version.
+  // A stale version in a comment is worse than none — it was read as evidence that this module
+  // sits below the Compose 1.11.0 floor where `ComposeRuntimeFlags.isLinkBufferComposerEnabled`
+  // does not exist, and therefore that the repo-wide `composePreview.linkBufferComposer=true`
+  // (gradle.properties, see docs/LINK_BUFFER_COMPOSER.md) would abort this module's renders.
+  // It does not: `./gradlew :samples:xr-glimmer:composePreviewRenderAll` renders clean.
+  // Check the resolved graph, not this comment:
+  //   ./gradlew :samples:xr-glimmer:dependencies --configuration debugRuntimeClasspath
   implementation(platform(libs.compose.bom.stable))
   implementation(libs.compose.ui)
   implementation(libs.compose.foundation)
@@ -60,8 +70,8 @@ dependencies {
   implementation(libs.activity.compose)
   debugImplementation("androidx.compose.ui:ui-tooling")
 
-  // Glimmer itself. Pulls `androidx.compose.foundation:1.10.0` and
-  // `androidx.compose.ui:1.10.0` transitively per the alpha13 POM.
+  // Glimmer itself. Pulls Compose foundation / ui transitively per its own POM — again, see the
+  // resolved graph rather than a version pinned in prose here.
   implementation(libs.xr.glimmer)
 
   // `@FocusedPreview` — read by FQN at discovery time; the annotation is binary-retained
