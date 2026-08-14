@@ -360,7 +360,9 @@ class PlaygroundSourceCleanerTest {
     val text = assertNotNull(cleanAt("""caption = "Highest emphasis""")).let { it }
     val generic = assertNotNull(cleanAt("""caption = "Highest emphasis"""))
     assertFalse(generic.text.contains("@CatalogComponent"))
-    assertTrue(UsageRules.GENERIC.scaffolds.isEmpty())
+    // GENERIC knows only about THIS repo's own API — the preview-override knobs — and nothing about
+    // any catalog's scaffolding.
+    assertTrue(UsageRules.GENERIC.scaffolds.keys.all { it.startsWith("previewOverride") })
     val withGeneric =
       assertNotNull(
         PlaygroundSourceCleaner.clean(
@@ -378,6 +380,143 @@ class PlaygroundSourceCleanerTest {
   fun `malformed rules degrade to generic rather than failing the handoff`() {
     assertNull(UsageRules.parse("{ not json"))
     assertNotNull(UsageRules.parse("""{"scaffoldAnnotationPackages":["a.b"]}"""))
+  }
+
+  /**
+   * The preview-override knobs are this repo's API, not a catalog's, so a catalog that declares its
+   * own scaffolding must still get them — before this, declaring `compose-usage.json` *replaced*
+   * the generic rules, so the catalogs that had done the work were the only ones leaking
+   * `previewOverrideString(...)` into code a developer was invited to copy.
+   */
+  @Test
+  fun `declared rules inherit the generic ones`() {
+    val rules = assertNotNull(UsageRules.parse("""{"scaffolds":{"Sticker":{"kind":"UNWRAP"}}}"""))
+    assertTrue(rules.scaffolds.containsKey("Sticker"))
+    assertTrue(rules.scaffolds.containsKey("previewOverrideString"))
+    assertTrue(rules.scaffoldAnnotationPackages.contains("ee.schimke.composeai.preview"))
+  }
+
+  /**
+   * A knob nothing declared is exactly what residue cannot see: `previewOverrideString` is not in a
+   * scaffold package, so the snippet was reported clean and did not compile. Found by the corpus
+   * (`scripts/usage-corpus.sh`); see `docs/design/USAGE_SNIPPET_CORPUS.md`.
+   */
+  @Test
+  fun `a preview override knob becomes the default the render was baked with`() {
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.material3.Badge
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.composeai.preview.previewOverrideString
+
+      @Composable
+      fun NumberBadge() = Badge { Text(previewOverrideString("label", "3")) }
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun NumberBadge"), UsageRules.GENERIC)
+      )
+    assertTrue(cleaned.text.contains("""Text("3")"""), cleaned.text)
+    assertFalse(cleaned.text.contains("previewOverrideString"), cleaned.text)
+  }
+
+  /**
+   * The same knob written with named arguments. A positional reading emits `Text(default =
+   * "Shopping")`, which is Kotlin that looks right and does not compile — the worst outcome
+   * available, since it reaches the visitor as "plain Compose you can run".
+   */
+  @Test
+  fun `a named-argument knob substitutes as its value, not as the argument label`() {
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.composeai.preview.previewOverrideString
+
+      @Composable
+      fun Title() = Text(previewOverrideString(key = "title", default = "Shopping"))
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Title"), UsageRules.GENERIC)
+      )
+    assertTrue(cleaned.text.contains("""Text("Shopping")"""), cleaned.text)
+  }
+
+  /** Named arguments out of declaration order still bind by name, as Kotlin binds them. */
+  @Test
+  fun `a knob with reordered named arguments still resolves its default`() {
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+      import ee.schimke.composeai.preview.previewOverrideString
+
+      @Composable
+      fun Title() = Text(previewOverrideString(default = "Shopping", key = "title"))
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(
+        PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Title"), UsageRules.GENERIC)
+      )
+    assertTrue(cleaned.text.contains("""Text("Shopping")"""), cleaned.text)
+  }
+
+  /**
+   * A rule that declares no `params` cannot know which parameter a named argument names, so it
+   * declines rather than guessing — and says so, as residue.
+   */
+  @Test
+  fun `a substitute rule without params declines a named-argument call`() {
+    val rules =
+      UsageRules(
+        scaffolds =
+          mapOf(
+            "catalogChoice" to UsageRules.Scaffold(kind = UsageRules.Kind.SUBSTITUTE, plain = "\$1")
+          )
+      )
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.material3.Text
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun Style() = Text(catalogChoice(key = "style", default = "outlined"))
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Style"), rules))
+    assertTrue(cleaned.text.contains("catalogChoice("), cleaned.text)
+    assertTrue(cleaned.residue.contains("catalogChoice"), "${cleaned.residue}")
+  }
+
+  /**
+   * `scaffoldsDeclared` drives a much stronger claim in the Source panel than annotation-stripping
+   * earns, so only a catalog can turn it on. It used to be `scaffolds.isNotEmpty()`, which stopped
+   * meaning that the moment GENERIC carried entries of its own.
+   */
+  @Test
+  fun `inheriting the generic rules is not declaring scaffolding`() {
+    with(UsageRules.Companion) {
+      assertFalse(UsageRules.GENERIC.declaresCatalogScaffolds())
+      assertFalse(assertNotNull(UsageRules.parse("{}")).declaresCatalogScaffolds())
+      assertTrue(
+        assertNotNull(UsageRules.parse("""{"scaffolds":{"Sticker":{"kind":"UNWRAP"}}}"""))
+          .declaresCatalogScaffolds()
+      )
+    }
   }
 
   /**

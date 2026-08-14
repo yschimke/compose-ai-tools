@@ -481,6 +481,47 @@ object PlaygroundSourceCleaner {
     return out
   }
 
+  /** A `name = value` argument, as distinct from a positional one. */
+  private val NAMED_ARG =
+    Regex("""^([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(.+)$""", RegexOption.DOT_MATCHES_ALL)
+
+  /**
+   * Resolve a call's arguments to the positions a `$0`/`$1` template cites, so a **named** argument
+   * substitutes as its value rather than as `default = "Shopping"`.
+   *
+   * [params] names the callee's parameters in declaration order. With it, positional arguments fill
+   * parameters left to right and named ones fill by name, which is exactly Kotlin's own rule, so
+   * `previewOverrideString(key = "title", default = "Shopping")` and
+   * `previewOverrideString("title", "Shopping")` both put `"Shopping"` at `$1`.
+   *
+   * Without it — a rule declared before this existed — the old positional reading stands, except
+   * that a call using named arguments returns null so the caller leaves the call alone and reports
+   * it as residue. Guessing would be the one outcome worse than not rewriting: it emits Kotlin that
+   * looks right and does not compile.
+   *
+   * An argument naming a parameter [params] does not list (a second overload's, say) is ignored
+   * rather than fatal, and does not consume a positional slot — matching how Kotlin resolves it.
+   */
+  private fun bindArguments(args: List<String>, params: List<String>): List<String?>? {
+    val named = args.map { NAMED_ARG.find(it) }
+    if (params.isEmpty()) return if (named.any { it != null }) null else args
+    val bound = arrayOfNulls<String>(params.size)
+    var next = 0
+    for ((i, arg) in args.withIndex()) {
+      val match = named[i]
+      if (match == null) {
+        // Positional: the next parameter no named argument has already claimed.
+        while (next < params.size && bound[next] != null) next++
+        if (next >= params.size) continue // beyond the declared list; nothing cites it
+        bound[next++] = arg
+      } else {
+        val at = params.indexOf(match.groupValues[1])
+        if (at >= 0) bound[at] = match.groupValues[2].trim()
+      }
+    }
+    return bound.toList()
+  }
+
   /**
    * `catalogChoice("style", "outlined", "outlined", "elevated")` → `"outlined"` — the whole call
    * expression replaced by what it evaluates to on the lane the render was baked on.
@@ -500,7 +541,11 @@ object PlaygroundSourceCleaner {
       var guard = 0
       while (guard++ < MAX_REWRITES) {
         val call = findCall(out, name) ?: break
-        val args = splitTopLevel(out.substring(call.argsStart + 1, call.argsEnd)).map { it.trim() }
+        val args =
+          bindArguments(
+            splitTopLevel(out.substring(call.argsStart + 1, call.argsEnd)).map { it.trim() },
+            scaffold.params,
+          ) ?: break
         val rendered =
           Regex("""\$(\d+)""").replace(plain) { m ->
             args.getOrNull(m.groupValues[1].toInt()) ?: m.value
