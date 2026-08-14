@@ -248,6 +248,42 @@ class PreviewRowSelectorTest {
     assertEquals(listOf(":app", ":ui"), selected.map { it.gradlePath })
   }
 
+  /**
+   * Review follow-up (#3799). The conservative row lane is opt-in, because only `serve` can cash it
+   * in: it expands the fan-out off disk after the render and re-filters, so a speculative keep is
+   * proven or discarded before anything is shown. `render` / `show` / `a11y` filter their output by
+   * base id — `PreviewResultBuilder` carries a row as a capture's `parameterLabel`, not as an id —
+   * so for them a speculative keep could only ever render a module and then print nothing from it.
+   */
+  @Test
+  fun `the row lane is off for commands that cannot expand rows`() {
+    val app = module(":app")
+    val manifests = listOf(manifest(app, preview("Foo", parameterized = true)))
+
+    assertTrue(
+      modulesMatchingPreviewRequest(
+          listOf(app),
+          manifests,
+          exactId = null,
+          filter = "Crimson",
+          rowAware = false,
+        )
+        .isEmpty(),
+      "a non-row-aware command must not render a module on a maybe",
+    )
+    assertEquals(
+      listOf(":app"),
+      modulesMatchingPreviewRequest(
+          listOf(app),
+          manifests,
+          exactId = null,
+          filter = "Crimson",
+          rowAware = true,
+        )
+        .map { it.gradlePath },
+    )
+  }
+
   /** The same undecidability applies to `--preview`, whose loose form is also a substring rule. */
   @Test
   fun `preview ref keeps a parameterized preview for a row label`() {
