@@ -368,6 +368,14 @@ object PreviewManifestLoader {
    *   written. The manifest-wide set makes that impossible (every fork's outputs are expected), and
    *   gating the sweep on [ownedIds] additionally keeps forks whose shard was assigned none of a
    *   preview's fan-out from redundantly re-sweeping its prefix.
+   *
+   * A stale row's companions go with it. A failed row writes `<stem>_<label><ext>.error.json`
+   * ([RenderErrorSidecar]) and no PNG, so an extension-only filter never matched the one file the
+   * row actually left behind, and the orphan outlived every subsequent run — the CLI's
+   * missing-render report then rediscovers it by directory glob and can present an obsolete
+   * exception as a failure of the current run (PR #3815). A companion is classified by the output
+   * it names ([fanoutOutputNameOf]), so it is kept exactly when that output is expected and swept
+   * exactly when that output is stale.
    */
   internal fun deleteStaleFanoutFiles(
     outDir: File?,
@@ -395,7 +403,8 @@ object PreviewManifestLoader {
         dir
           .listFiles()
           ?.filter { f ->
-            f.name.startsWith(prefix) && f.name.endsWith(ext) && f.name !in expectedNames
+            val output = fanoutOutputNameOf(f.name, ext)
+            f.name.startsWith(prefix) && output != null && output !in expectedNames
           }
           ?.forEach { f ->
             if (!f.delete()) {
@@ -404,6 +413,32 @@ object PreviewManifestLoader {
           }
       }
     }
+  }
+
+  /**
+   * Suffixes a renderer appends to a render output's own file name to make a companion that lives
+   * beside it — `renders/Foo.png` → `renders/Foo.png.error.json` ([RenderErrorSidecar.pathFor]) and
+   * `renders/Foo.png.warnings.json` ([RenderWarningsSidecar.pathFor]).
+   *
+   * Kept in sync with the desktop renderer's `RENDER_COMPANION_SUFFIXES`: the two sweeps answer the
+   * same question about the same directory layout, and a suffix known to one but not the other
+   * would leave an orphan on whichever backend rendered the module.
+   */
+  internal val RENDER_COMPANION_SUFFIXES = listOf(".error.json", ".warnings.json")
+
+  /**
+   * The render output [name] belongs to: [name] itself when it is an `[ext]` output, the output it
+   * names when it is one of that output's [RENDER_COMPANION_SUFFIXES] companions, and `null`
+   * otherwise.
+   *
+   * Companions are matched before the plain extension so an output whose own extension is `.json`
+   * resolves `Foo_Alice.json.error.json` to `Foo_Alice.json` rather than to itself.
+   */
+  internal fun fanoutOutputNameOf(name: String, ext: String): String? {
+    RENDER_COMPANION_SUFFIXES.forEach { companion ->
+      if (name.endsWith(ext + companion)) return name.removeSuffix(companion)
+    }
+    return name.takeIf { it.endsWith(ext) }
   }
 
   private fun fanoutLeaf(renderOutput: String): String? {
