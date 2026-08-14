@@ -253,3 +253,83 @@ test("with no id map at all, behaviour is unchanged", () => {
   );
   assert.deepEqual(Object.keys(out.previews), []);
 });
+
+// --- supplement candidates must REPLACE primary ones ------------------------
+
+// Reversing the bundle list only reorders candidates: `previewsByFunction` dedupes by preview id
+// and appends, so a primary `Foo_Dark` and a supplement `Foo` for one function both stayed in the
+// list, and `pickVariantId` could score the primary higher — publishing bounds from pixels the
+// supplement drew. This is the case that catches it.
+test("resolveSemanticsIds prefers the supplement's preview over a better-qualified primary", async () => {
+  const { resolveSemanticsIds } = await import("./bridge-live-preview-ids.mjs");
+  const spec = {
+    system: "t",
+    groups: [
+      { components: [{ componentId: "Button/Filled", preview: "Filled", state: "default" }] },
+    ],
+  };
+  // Primary carries the theme-qualified id; the supplement's is bare. Both share one functionName.
+  const primary = {
+    previews: [
+      { id: "Filled_Dark", functionName: "Filled", params: { uiMode: 0x20 } },
+    ],
+  };
+  const supplement = {
+    previews: [{ id: "Filled_Android", functionName: "Filled", params: {} }],
+  };
+  const ids = resolveSemanticsIds(
+    { components: [{ componentId: "Button/Filled", images: [
+      { path: "images/button-filled/ideal__default__dark.png", state: "default", theme: "dark" },
+    ] }] },
+    spec,
+    [primary, supplement],
+  );
+  assert.equal(
+    ids.get("images/button-filled/ideal__default__dark.png"),
+    "Filled_Android",
+    "the supplement replaced the primary for this function, so its tree must be the one used",
+  );
+});
+
+// A catalog built with neither --publish-live-bundle nor --source-module never runs
+// `bridgeLivePreviewIds`, so there is no `image.previewId` to fall back to. An `@OverrideVariant`
+// state also has no spec `variants` entry, so `resolveFunction` finds nothing for it — without the
+// synthetic reconstruction these images carry no tag index at all.
+test("resolveSemanticsIds reconstructs synthetic @OverrideVariant ids", async () => {
+  const { resolveSemanticsIds } = await import("./bridge-live-preview-ids.mjs");
+  const spec = {
+    system: "t",
+    groups: [{ components: [{ componentId: "Switch", preview: "SwitchOn", state: "default" }] }],
+  };
+  const bundle = {
+    previews: [
+      { id: "SwitchOn_Light", functionName: "SwitchOn", params: {} },
+      { id: "SwitchOn_Light_VARIANT_off", functionName: "SwitchOn", params: {} },
+    ],
+  };
+  const ids = resolveSemanticsIds(
+    { components: [{ componentId: "Switch", images: [
+      { path: "images/switch/ideal__off.png", state: "off" },
+    ] }] },
+    spec,
+    [bundle],
+  );
+  assert.equal(ids.get("images/switch/ideal__off.png"), "SwitchOn_Light_VARIANT_off");
+});
+
+test("a reconstructed id that never rendered is not used", async () => {
+  const { resolveSemanticsIds } = await import("./bridge-live-preview-ids.mjs");
+  const spec = {
+    system: "t",
+    groups: [{ components: [{ componentId: "Switch", preview: "SwitchOn", state: "default" }] }],
+  };
+  const bundle = { previews: [{ id: "SwitchOn_Light", functionName: "SwitchOn", params: {} }] };
+  const ids = resolveSemanticsIds(
+    { components: [{ componentId: "Switch", images: [
+      { path: "images/switch/ideal__off.png", state: "off" },
+    ] }] },
+    spec,
+    [bundle],
+  );
+  assert.equal(ids.get("images/switch/ideal__off.png"), undefined);
+});
