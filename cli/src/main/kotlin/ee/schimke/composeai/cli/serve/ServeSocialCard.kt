@@ -64,8 +64,17 @@ internal class ServeSocialCard {
     /** Content hash + `.png`; the `/social/{name}` segment and the ETag. */
     val fileName: String,
     val etag: String,
-    /** The catalog this card depicts; null for the front door's. See [Spec.system]. */
-    val system: String? = null,
+    /**
+     * The catalogs allowed to serve this card; empty for the front door's own.
+     *
+     * A **set**, not one owner: the file name is a content hash, so two catalogs that draw an
+     * identical card — same title, same preview count, same hero bytes — collapse onto one entry.
+     * Recording a single owner cached the second catalog's card under the first's name, and the
+     * second site then 404'd the very card its own `og:image` advertised. Every spec that produced
+     * these bytes is remembered instead, so a shared hash serves for all of them and none of their
+     * neighbours. See [Spec.system].
+     */
+    val systems: Set<String> = emptySet(),
   ) {
     /** Always [WIDTH] — declared so callers fill `og:image:width` from the card, not a constant. */
     val width: Int = WIDTH
@@ -163,10 +172,26 @@ internal class ServeSocialCard {
     }
     val bytes = ServeBrand.encodePng(image) ?: return null
     val hash = sha256Hex(bytes).take(HASH_CHARS)
-    val card = Card(bytes = bytes, fileName = "$hash.png", etag = "\"$hash\"", system = spec.system)
-    // putIfAbsent, not put: two specs that draw to identical bytes share the URL, and the first
-    // registration is already the right answer.
-    return byFileName.putIfAbsent(card.fileName, card) ?: card
+    val card =
+      Card(
+        bytes = bytes,
+        fileName = "$hash.png",
+        etag = "\"$hash\"",
+        systems = setOfNotNull(spec.system),
+      )
+    // Two specs that draw to identical bytes share the URL, so the bytes are already right and
+    // only the OWNERS have to accumulate: a card drawn identically for a second catalog must stay
+    // serveable by that catalog's site too, which first-wins (`putIfAbsent`) silently prevented —
+    // the second site 404'd the very card its own og:image advertised.
+    return byFileName.compute(card.fileName) { _, existing ->
+      when {
+        existing == null -> card
+        // Identical spec, identical owner: the registration already there IS the right answer, and
+        // handing back the same instance is what callers (and ServeSocialCardTest) rely on.
+        card.systems.all { it in existing.systems } -> existing
+        else -> existing.copy(systems = existing.systems + card.systems)
+      }
+    } ?: card
   }
 
   /** The product mark and wordmark, top-left — the same pair the site header opens with. */

@@ -181,11 +181,17 @@ data class ServeSites(private val byHost: Map<String, String>) {
      * canonical path on ANY host — a site just makes the collision visible.
      *
      * Enumerated from [ServeHttpServer]'s routing block — every `get("/x…` / `post("/x…` /
-     * `webSocket("/x…` whose first segment is a literal. Re-derive it the same way when a new
-     * top-level route is added; a missing entry lets a site claim that prefix and swallow the route
-     * (`pg` did exactly that, breaking playground redemption on a site host).
+     * `webSocket("/x…` whose first segment is a literal, **including the ones built from a
+     * constant** (`ServeRcFonts.URL_BASE`, `/hero`, `/social`, `/auth/…`), which are the easy ones
+     * to miss.
+     *
+     * The list is load-bearing twice over, so keep it complete when adding a top-level route. A
+     * missing entry lets a site *claim* that prefix and swallow the route — `pg` did exactly that,
+     * breaking playground redemption — and, because the site interceptor uses this as its allowlist
+     * of "not a session", a missing entry also 404s that route on every site host.
+     * `ServeTopLevelSiteTest` walks the whole list against a live server to keep the two honest.
      */
-    private val RESERVED_SYSTEMS =
+    internal val RESERVED_SYSTEMS =
       setOf(
         "healthz",
         "readyz",
@@ -201,6 +207,9 @@ data class ServeSites(private val byHost: Map<String, String>) {
         "wasm",
         "rc-player",
         "rc-player-wasm",
+        // Registered dynamically from `ServeRcFonts.URL_BASE` — the vendored Remote Compose
+        // typefaces. Easy to miss precisely because the path is built from a constant.
+        "rc-fonts",
         "doc-player",
         "hero",
         "social",

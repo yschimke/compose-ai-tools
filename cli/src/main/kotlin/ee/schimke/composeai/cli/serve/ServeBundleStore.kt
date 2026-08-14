@@ -246,6 +246,15 @@ class ServeBundleStore(
       // File(root, ".")/File(root, "..") resolve to the upload root or its parent, and add() calls
       // deleteRecursively() on that path before unpacking — which would wipe the wrong directory.
       if (trimmed.isEmpty() || trimmed.all { it == '.' }) return null
+      // …and reject a name that collides with one of the server's own top-level routes. Such a
+      // session is ambiguous everywhere — Ktor scores the constant segment above `/{system}`, so
+      // `/api/` could never reach a bundle called `api` at its own landing anyway — and on a
+      // top-level site it is worse than ambiguous: the site interceptor lets a reserved first
+      // segment through as "that's a route, not a session", and a path the routes don't actually
+      // match (`/api/`) then falls to `/{system}/` and serves the foreign bundle. Refusing the
+      // NAME is what makes "a reserved segment is never a session" true, which is the invariant
+      // the interceptor rests on.
+      if (trimmed in ServeSites.RESERVED_SYSTEMS) return null
       return trimmed.takeIf { it.matches(Regex("[A-Za-z0-9._@-]{1,128}")) }
     }
   }

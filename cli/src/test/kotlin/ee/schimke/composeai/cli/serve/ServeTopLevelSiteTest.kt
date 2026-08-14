@@ -332,6 +332,110 @@ class ServeTopLevelSiteTest {
   }
 
   @Test
+  fun `real routes reach their handlers on a site host`() {
+    // Written OUT independently of ServeSites.RESERVED_SYSTEMS, and asserting each path reaches its
+    // handler — not merely that it wasn't redirected. Iterating the allowlist could never catch an
+    // omission from the allowlist (a missing route is missing from the loop too), and "not a 308"
+    // passes on the interceptor's own 404, which is precisely the failure a missing entry causes.
+    server = newServer()
+    val routes =
+      mapOf(
+        "/healthz" to "ok",
+        "/version" to "\"public\"",
+        "/robots.txt" to "User-agent",
+        "/sitemap.xml" to "<urlset",
+        "/status.json" to "compose-preview-serve/status",
+        "/api/previews" to "button-filled",
+        "/p/button-filled" to "<!doctype html>",
+        "/render/button-filled.png" to "",
+        "/assets/serve/serve.css" to "",
+      )
+    for ((path, marker) in routes) {
+      val (code, body, location) = get(path, host = siteHost)
+      assertEquals(200, code, "'$path' should reach its handler (Location: $location)")
+      if (marker.isNotEmpty()) {
+        assertTrue(body.contains(marker), "'$path' answered something else: ${body.take(200)}")
+      }
+    }
+  }
+
+  @Test
+  fun `an unauthenticated refusal never carries the access token`() {
+    // The interceptor runs BEFORE the routes' own token gate, and the styled 404 threads the access
+    // token through its links — so on a token-gated box a made-up path would have handed the secret
+    // to any unauthenticated caller, which is every scanner.
+    registry.register(
+      "compose-m3",
+      host = bundle("compose-m3", listOf("button-filled"), "Compose Material 3"),
+      pinned = true,
+    )
+    val secret = "s3cret-token"
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = secret,
+          sessions = registry,
+          defaultSessionId = "",
+          isPublic = false,
+          catalogSessions = listOf("compose-m3"),
+          sites = ServeSites.of(listOf(siteHost to "compose-m3")),
+        )
+        .also { it.start() }
+    val (code, body, _) = get("/not-a-catalog/", host = siteHost)
+    assertEquals(404, code)
+    assertFalse(body.contains(secret), "the refusal must not disclose the access token: $body")
+    // With the token it is the site's own styled 404 again.
+    val (okCode, okBody, _) = get("/not-a-catalog/?token=$secret", host = siteHost)
+    assertEquals(404, okCode)
+    assertTrue(okBody.contains("<!doctype html>"), okBody.take(200))
+  }
+
+  @Test
+  fun `no ingestion path can name a session after a route`() {
+    // The upload lane was only one of five ways a session gets named (`--bundles` directories,
+    // `--bundle`, catalog ids and revision refs are the others), and fixing them one at a time is
+    // how the previous two rounds went. The registry is where every one of them converges, so the
+    // invariant is enforced there: a session called `api` would make `/api/` — which no constant
+    // route matches — fall to `/{system}/` and serve through a site hostname. "There" is two
+    // methods, not one: `register` (below) and the on-demand fork in `entryFor`, covered by
+    // `ServeSessionRegistryTest.a reserved route name is never bound to a session`.
+    server = newServer()
+    registry.register("api", host = bundle("api", listOf("sneaky"), "Sneaky"), pinned = true)
+    assertFalse(registry.isKnownSession("api"), "the registry refuses a route's name")
+    assertEquals(404, get("/api/", host = siteHost).first)
+    // …and the real /api/ routes still answer. (On the main host this fixture has no default
+    // session, so the route needs an explicit one — that is the pre-existing behaviour, not the
+    // interceptor.)
+    assertEquals(200, get("/api/previews", host = siteHost).first)
+    assertEquals(200, get("/api/previews?session=wear-m3").first)
+  }
+
+  @Test
+  fun `an uploaded bundle may not take a route's name`() {
+    // A session called `api` would be reachable at `/api/` — a path no constant route matches, so
+    // it falls to `/{system}/` — which is how a reserved first segment could still resolve to a
+    // foreign session on a site host. The invariant the interceptor rests on is that no session
+    // can be named a route.
+    for (reserved in listOf("api", "render", "p", "status", "rc-fonts")) {
+      assertNull(ServeBundleStore.sanitizeName(reserved), "'$reserved' must be refused as a name")
+    }
+    assertEquals("my-bundle", ServeBundleStore.sanitizeName("my-bundle"))
+  }
+
+  @Test
+  fun `an unknown first segment is refused rather than resolved`() {
+    // With --revisions a raw ref like `main` is not a registered session until the generic route
+    // leases it and the factory BUILDS it, so no enumeration of existing sessions can catch it in
+    // time. The gate is an allowlist for exactly that reason: anything that is neither this site's
+    // system nor one of the server's routes is refused before it can be created.
+    server = newServer()
+    for (unknown in listOf("main", "some-ref", "not-a-catalog", "wear-m3@abc123")) {
+      assertEquals(404, get("/$unknown/", host = siteHost).first, "'/$unknown/' must be refused")
+    }
+  }
+
+  @Test
   fun `a neighbour's social card is not served through a site host`() {
     server = newServer()
     // Bake the neighbour's card the way the main host does — by rendering its landing — then take
