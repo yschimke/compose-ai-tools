@@ -115,6 +115,7 @@ import {
   expandDeferredRecords,
   stampPreviewDensities,
 } from "./bridge-live-preview-ids.mjs";
+import { catalogTagIndex } from "./tag-index.mjs";
 import {
   catalogImagePath,
   derivationMismatches,
@@ -1635,6 +1636,33 @@ for (const component of indexManifest.components ?? []) {
     figmaVariantSvgPaths.add(target);
     figmaVariantSvgCount += 1;
   }
+}
+
+// The published tag index (`tags/index.json`) — `served preview id → {testTag: {count, bounds}}`,
+// the element identity a scoped parity acceptance resolves against (compose-ai-tools#3680).
+//
+// It has to be published rather than projected on demand: the serve host derives this from a live
+// daemon render, and a published catalog has no daemon, so for a catalog the projection can only
+// happen HERE, where the semantics trees the render produced are still in hand. Same join as the
+// per-variant figma-svg emit above and for the same reason — each image already carries the
+// `previewId` that keys the bundle's sidecar and the `path` the served route id derives from, so
+// neither namespace is re-derived.
+{
+  const tags = catalogTagIndex(indexManifest, [bundle, extraBundle]);
+  const tagsDir = join(outPath, "tags");
+  await mkdir(tagsDir, { recursive: true });
+  await writeFile(
+    join(tagsDir, "index.json"),
+    `${JSON.stringify({ schema: tags.schema, previews: tags.previews }, null, 2)}\n`,
+    "utf8",
+  );
+  console.log(
+    `[${spec.system}] tag index: ${tags.indexed} preview(s) indexed` +
+      (tags.gaps > 0
+        ? `, ${tags.gaps} bridged image(s) carried no semantics tree (pack with --with-semantics ` +
+          `to close the gap — an unindexed preview simply gets no element gate)`
+        : ""),
+  );
 }
 
 // Figma Code Connect manifest next to the figma-svg vectors: one mapping per component binding its
