@@ -296,6 +296,23 @@ class ServeHttpServer(
    * a preview id, and everything that forms the fetch URL comes from the catalog metadata behind
    * them. Null when no fetcher was supplied, or the lane isn't wired at all.
    */
+  /**
+   * The last source location resolved for a `(system, previewId)`, so a **suspended** catalog can
+   * still answer for a preview someone has already opened.
+   *
+   * A session's metadata lives on its `ServeHost`, and `peekHost` returns null once the daemon has
+   * idled out — deliberately, since peeking must not resume anything. But the viewer page takes a
+   * lease, so it resumes the session and renders the Source chip; the panel's fetch arrives later
+   * and unleased, and found nothing. The chip worked and its panel 404'd, on exactly the catalogs
+   * that idle out — which is every quiet one on a shared host.
+   *
+   * Remembering only what has actually been resolved keeps this small and self-targeting: an entry
+   * exists precisely because somebody opened that preview, which is who asks again. Refreshed
+   * whenever a live host answers, so a republished catalog overwrites rather than shadows.
+   */
+  private val lastKnownSourceLocation =
+    ConcurrentHashMap<Pair<String, String>, PlaygroundSeedResolver.Location>()
+
   private val playgroundSeeds: PlaygroundSeedResolver? = playgroundSourceFetch
   // Deliberately NOT gated on `playgroundService`. The resolver reads and cleans a preview's
   // source, which the viewer's Source panel wants on every host that can browse a catalog —
@@ -313,15 +330,22 @@ class ServeHttpServer(
         val sourceFile = preview?.sourceFile?.takeIf { it.isNotBlank() }
         if (source != null && sourceFile != null)
           PlaygroundSeedResolver.Location(
-            repo = source.repo,
-            ref = source.ref,
-            module = source.module,
-            sourceFile = sourceFile,
-            // Absent on a catalog published before discovery recorded it, which is exactly the
-            // case the resolver falls back to whole-file seeding for.
-            bodyLine = preview.bodyLine,
-          )
-        else null
+              repo = source.repo,
+              ref = source.ref,
+              module = source.module,
+              sourceFile = sourceFile,
+              // Absent on a catalog published before discovery recorded it, which is exactly the
+              // case the resolver falls back to whole-file seeding for.
+              bodyLine = preview.bodyLine,
+            )
+            .also {
+              if (lastKnownSourceLocation.size < MAX_REMEMBERED_SOURCE_LOCATIONS) {
+                lastKnownSourceLocation[system to previewId] = it
+              }
+            }
+        // No live host — a suspended session — so fall back to what this preview resolved to the
+        // last time one answered. Null when it never has here, which is the honest answer.
+        else lastKnownSourceLocation[system to previewId]
       },
       fetch = fetch,
       onLog = { System.err.println("serve: playground seed: $it") },
@@ -4180,7 +4204,11 @@ class ServeHttpServer(
   private suspend fun RoutingContext.handleUsage(sessionInPath: Boolean) {
     if (rejectBadToken()) return
     val sessionId = selectedSessionId(sessionInPath)
-    val previewId = call.parameters["name"]?.let { decodeSegment(it) }
+    // Ktor hands route parameters over already decoded, which is why every neighbouring handler
+    // (`handleViewer`, `handleRender`) reads this straight. Decoding a second time turned a `%2B`
+    // inside a legitimately-escaped preview id into a space and a `%2F` into a separator, so the
+    // resolver could not find a preview whose viewer page rendered perfectly.
+    val previewId = call.parameters["name"]
     val seeds = playgroundSeeds
     if (seeds == null || previewId.isNullOrBlank()) {
       respondNoUsage()
@@ -5884,6 +5912,13 @@ class ServeHttpServer(
      */
     internal fun prebakedImageCacheControl(isPublic: Boolean): String =
       if (isPublic) HERO_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
+
+    /**
+     * Cap on [lastKnownSourceLocation]. Entries are a handful of short strings and only exist for
+     * previews somebody has actually opened, so this is far above any real browsing session while
+     * still bounding a long-running public host.
+     */
+    private const val MAX_REMEMBERED_SOURCE_LOCATIONS = 4096
 
     private val JSON = Json { encodeDefaults = true }
 
