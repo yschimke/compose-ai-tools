@@ -327,7 +327,9 @@ object PlaygroundSourceCleaner {
     out = applyDrop(out, rules, residue)
     out = applyRename(out, rules, addedImports)
     if (isEntry) out = stampPreview(out, rules, addedImports)
-    for (name in rules.scaffolds.keys) if (mentionsWord(out, name)) residue.add(name)
+    for (name in rules.scaffolds.keys) {
+      if (mentionsWord(out, name) || mentionsQualifiedCall(out, name)) residue.add(name)
+    }
     return out.trimEnd()
   }
 
@@ -342,14 +344,23 @@ object PlaygroundSourceCleaner {
    * comes out marked cleaned with a repository-internal call still in it, which is the one outcome
    * this whole design is built to avoid.
    *
-   * The prefix must be **two or more** lowercase-initial segments — a package path, never a
-   * receiver. `overrides.previewOverrideString` (one segment, possibly a local val) is left alone;
-   * guessing there could rewrite a call on somebody's object.
+   * The prefix must be a package the rules **name** ([UsageRules.scaffoldPackages]), not merely
+   * something package-*shaped*. `state.metrics.counted { }` is two lowercase segments followed by a
+   * declared scaffold name, and it is somebody's ordinary receiver chain; stripping it on that
+   * resemblance would hand the call to the scaffold passes and rewrite it.
+   *
+   * An allow-list therefore *misses* a qualified call whose package nobody declared — and a miss is
+   * only safe because [mentionsQualifiedCall] reports it as residue. [mentionsWord] alone cannot:
+   * it rejects a name preceded by `.` by design, which is what made a package-qualified call
+   * invisible in the first place.
    */
   private fun unqualifyScaffoldCalls(text: String, rules: UsageRules): String {
-    if (rules.scaffolds.isEmpty()) return text
+    if (rules.scaffolds.isEmpty() || rules.scaffoldPackages.isEmpty()) return text
     val names = rules.scaffolds.keys.joinToString("|") { Regex.escape(it) }
-    val qualified = Regex("""(?<![A-Za-z0-9_.])(?:[a-z][A-Za-z0-9_]*\.){2,}($names)(?=\s*\()""")
+    val packages = rules.scaffoldPackages.joinToString("|") { Regex.escape(it) }
+    // `[({]` and not just `(`: a trailing-lambda call — `counted { }` — has no parentheses at all,
+    // and that is the shape most scaffolding wrappers are written in.
+    val qualified = Regex("""(?<![A-Za-z0-9_.])(?:$packages)\.($names)(?=\s*[({])""")
     val mask = codeMask(text)
     val out = StringBuilder(text.length)
     var at = 0
@@ -767,6 +778,28 @@ object PlaygroundSourceCleaner {
 
   internal fun mentionsWord(text: String, word: String): Boolean =
     wordOccurrences(text, word).isNotEmpty()
+
+  /**
+   * Whether [text] still calls [name] through **any** qualifier — `com.acme.counted(…)`.
+   *
+   * This is the residue half of [unqualifyScaffoldCalls]. That pass only rewrites a call whose
+   * package the rules named, which is right (a receiver chain must not be stripped on a
+   * resemblance) but leaves everything else unrewritten — and [mentionsWord] rejects a name
+   * preceded by `.`, so nothing reported it either. A declared scaffold could therefore survive
+   * into a seed marked *cleaned*, which is the failure this class exists to make impossible.
+   *
+   * Deliberately not trying to tell a package from a receiver: it cannot, without the resolution
+   * this pass does not have. So it over-reports — `state.metrics.counted(…)` lands in residue too.
+   * A false residue costs a note saying a helper may not have been rewritten; a false silence costs
+   * a snippet advertised as runnable that does not compile. Only one of those is worth avoiding.
+   */
+  private fun mentionsQualifiedCall(text: String, name: String): Boolean {
+    if (name.isEmpty()) return false
+    val mask = codeMask(text)
+    val qualified =
+      Regex("""(?<![A-Za-z0-9_])(?:[A-Za-z_][A-Za-z0-9_]*\.)+${Regex.escape(name)}(?=\s*[({])""")
+    return qualified.findAll(text).any { mask[it.range.first] }
+  }
 
   /**
    * Whether [text] refers to [name] *at all*, including as the member half of a qualified

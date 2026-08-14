@@ -477,9 +477,46 @@ class PlaygroundSourceCleanerTest {
     assertFalse(cleaned.text.contains("previewOverrideString"), cleaned.text)
   }
 
-  /** A single-segment receiver is not a package, and must not be unqualified on a guess. */
+  /**
+   * A receiver chain is not a package, however much it looks like one. `state.metrics.counted { }`
+   * is two lowercase segments followed by a declared scaffold name — matching on that shape would
+   * strip the receiver and let the scaffold passes rewrite somebody's ordinary call. Only a package
+   * the rules actually name is stripped.
+   */
   @Test
   fun `a member call that shares a scaffold name is left alone`() {
+    val rules =
+      UsageRules(
+        scaffoldPackages = listOf("ee.schimke.m3catalog"),
+        scaffolds = mapOf("counted" to UsageRules.Scaffold(kind = UsageRules.Kind.UNWRAP)),
+      )
+    val source =
+      """
+      package ee.schimke.demo
+
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun Tally() {
+        stats.counted { }
+        state.metrics.counted { }
+      }
+      """
+        .trimIndent()
+    val cleaned =
+      assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "stats.counted"), rules))
+    assertTrue(cleaned.text.contains("stats.counted"), cleaned.text)
+    assertTrue(cleaned.text.contains("state.metrics.counted"), cleaned.text)
+  }
+
+  /**
+   * A qualified call the rules cannot unqualify must still be *reported*. The allow-list only
+   * rewrites packages the rules name, so an undeclared one is left in place — and `mentionsWord`
+   * rejects a name preceded by `.`, so nothing else would have said so. That combination is how a
+   * seed gets marked cleaned with a catalog-internal call still in it.
+   */
+  @Test
+  fun `an unlisted qualified scaffold call is reported as residue`() {
     val rules =
       UsageRules(scaffolds = mapOf("counted" to UsageRules.Scaffold(kind = UsageRules.Kind.UNWRAP)))
     val source =
@@ -489,12 +526,13 @@ class PlaygroundSourceCleanerTest {
       import androidx.compose.runtime.Composable
 
       @Composable
-      fun Tally() = stats.counted { }
+      fun Tally() = com.acme.counted { }
       """
         .trimIndent()
     val cleaned =
       assertNotNull(PlaygroundSourceCleaner.clean(source, lineIn(source, "fun Tally"), rules))
-    assertTrue(cleaned.text.contains("stats.counted"), cleaned.text)
+    assertTrue(cleaned.text.contains("com.acme.counted"), cleaned.text)
+    assertTrue(cleaned.residue.contains("counted"), "${cleaned.residue}")
   }
 
   /** Named arguments out of declaration order still bind by name, as Kotlin binds them. */

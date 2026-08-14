@@ -39,13 +39,30 @@ class UsageSnippetCorpusTest {
    * ignores any checkout whose name is not in it, which would have produced an empty corpus and a
    * passing run for a catalog nobody sampled.
    */
-  private fun repos(): List<Pair<String, File>> =
-    System.getProperty("composeai.usageCorpus.repos").orEmpty().split(',').mapNotNull { entry ->
-      val at = entry.indexOf('=').takeIf { it > 0 } ?: return@mapNotNull null
-      val name = entry.substring(0, at).trim()
-      val path = entry.substring(at + 1).trim()
-      if (name.isEmpty() || path.isEmpty()) null else name to File(path)
+  private fun repos(): List<Pair<String, File>> {
+    // Absent means "no checkouts wired", and is the normal build. *Present but malformed* is a typo
+    // in the documented property, and must not read as the same thing: silently dropping the entry
+    // turns a wrong invocation into a successful no-op, which is the failure this whole loop is
+    // built to stop reporting as a pass.
+    val spec = System.getProperty("composeai.usageCorpus.repos") ?: return emptyList()
+    // `-Dcomposeai.usageCorpus.repos=` — present and empty — is a wrong invocation too, and
+    // dropping through to the empty list would make it the same silent no-op as not setting it.
+    require(spec.isNotBlank() && spec.any { it != ',' && !it.isWhitespace() }) {
+      "composeai.usageCorpus.repos is set but empty; omit it, or pass <name>=<path>,…"
     }
+    return spec
+      .split(',')
+      .filter { it.isNotBlank() }
+      .map { entry ->
+        val at = entry.indexOf('=')
+        val name = if (at > 0) entry.substring(0, at).trim() else ""
+        val path = if (at > 0) entry.substring(at + 1).trim() else ""
+        require(name.isNotEmpty() && path.isNotEmpty()) {
+          "composeai.usageCorpus.repos entry is not <name>=<path>: '$entry'"
+        }
+        name to File(path)
+      }
+  }
 
   private val outDir =
     File(System.getProperty("composeai.usageCorpus.out") ?: "build/usage-corpus").also {
@@ -58,16 +75,22 @@ class UsageSnippetCorpusTest {
    * The source-set names matter here: `/test/` alone misses every Kotlin Multiplatform layout —
    * `src/commonTest`, `src/jvmTest`, `src/desktopTest`, `src/androidUnitTest` — and both catalogs
    * sampled are multiplatform. A test fixture picked up as a production preview would quietly move
-   * the reported ratio, so the filter matches any `src/<name>Test…` segment as well as the
-   * single-platform spellings.
+   * the reported ratio.
+   *
+   * Matched at the source-set name's **boundary**, not as a substring: `src/latestMain` and
+   * `src/contestMain` contain `test` and are production, and excluding them would drop real
+   * previews just as quietly in the other direction. A test source set's name ends in `Test`
+   * (`commonTest`, `jvmTest`, `androidUnitTest`) or `TestFixtures` (`commonTestFixtures`,
+   * `androidTestFixtures`), or is `test` / `testFixtures` outright.
    */
   private fun sources(root: File): List<File> {
-    val testSourceSet = Regex("""/src/[A-Za-z0-9]*([Tt]est|TestFixtures)[A-Za-z0-9]*/""")
+    val testSourceSet =
+      Regex("""/src/(test|testFixtures|[A-Za-z0-9]*Test|[A-Za-z0-9]*TestFixtures)/""")
     return root
       .walkTopDown()
       .onEnter { it.name !in setOf("build", ".git", ".gradle") }
       .filter { it.isFile && it.extension == "kt" }
-      .filterNot { testSourceSet.containsMatchIn(it.path) || it.path.contains("/testFixtures/") }
+      .filterNot { testSourceSet.containsMatchIn(it.path) }
       .toList()
   }
 
@@ -225,8 +248,9 @@ class UsageSnippetCorpusTest {
         annotationSamples(system, root, perKind).ifEmpty { specSamples(system, root, perKind) }
       report.appendLine(
         // The catalog's *own* scaffolds, not the merged map — counting the inherited generic rules
-        // would credit every catalog with rules it never wrote.
-        "## $system — ${samples.size} samples, rules: ${if (declared) "declared (${rules.scaffolds.keys.count { it !in UsageRules.GENERIC.scaffolds }} scaffolds)" else "GENERIC (none declared)"}"
+        // would credit every catalog with rules it never wrote. Compared by entry, so a catalog
+        // that declared only its own reading of a generic knob still counts.
+        "## $system — ${samples.size} samples, rules: ${if (declared) "declared (${with(UsageRules.Companion) { rules.catalogScaffolds() }.size} scaffolds)" else "GENERIC (none declared)"}"
       )
       for (sample in samples) {
         val found = findFunction(files, sample.function)
