@@ -374,15 +374,22 @@ object ServeWeb {
         // would index a dozen near-duplicates of every preview, and the version worth indexing is
         // the live one. The pages stay perfectly shareable — a link someone pastes is followed by
         // a person and unfurled by a fetcher, neither of which is a crawl.
-        "<a class=\"cp-revision\" role=\"menuitem\" rel=\"nofollow\" " +
-          "href=\"${WebEscaping.htmlEscape(href)}\"$mark>" +
+        "<a class=\"cp-revision\" rel=\"nofollow\" href=\"${WebEscaping.htmlEscape(href)}\"$mark>" +
           "<span class=\"cp-revision-date\">${WebEscaping.htmlEscape(date)}</span>" +
           "<code class=\"cp-revision-sha\">${WebEscaping.htmlEscape(label)}</code>$currentTag</a>"
       }
     // The trigger names the revision the page is *on* — the pin when there is one, the tip
     // otherwise — so the closed menu already answers "which version am I looking at?", which was
     // the question the flat wall of chips answered only by making the reader hunt for the
-    // highlighted one.
+    // highlighted one. Its accessible name is that visible text, deliberately: an `aria-label` here
+    // would override the date, sha and current/pinned state and announce the control as bare
+    // "Revision".
+    //
+    // It looks like a menu button and is a plain disclosure, which is what the ARIA says too. No
+    // `role="menu"`/`menuitem`: those promise the menu keyboard model — arrow-key navigation, Esc
+    // to dismiss, managed focus — and nothing here implements it, so the roles would describe
+    // behaviour a keyboard user does not get. `<details>` + a list of links gives real disclosure
+    // and ordinary Tab order for free; the `<nav>` is what names the list for a screen reader.
     val shown = revisions.revisions.firstOrNull { it.commit == (pinned ?: current) }
     val shownDate =
       shown?.date?.takeIf { it.isNotBlank() }?.let { prettyDate(it) }
@@ -397,17 +404,17 @@ object ServeWeb {
     return banner +
       """
       <details class="cp-revisions">
-        <summary class="cp-revisions-btn" aria-haspopup="menu" aria-label="Revision">
+        <summary class="cp-revisions-btn">
           <span class="cp-revisions-key">Revision</span>
           <span class="cp-revision-date">${WebEscaping.htmlEscape(shownDate)}</span>
           ${shownSha?.let { "<code class=\"cp-revision-sha\">${WebEscaping.htmlEscape(it)}</code>" }.orEmpty()}
           $shownTag
           <span class="cp-revisions-caret" aria-hidden="true">▾</span>
         </summary>
-        <div class="cp-revisions-menu" role="menu" aria-label="Published revisions">
-          <div class="cp-revision-list">
+        <div class="cp-revisions-menu">
+          <nav class="cp-revision-list" aria-label="Published revisions">
             $rows
-          </div>
+          </nav>
           <p class="cp-revision-note">Every publish of this design system is a commit on its
           delivery branch. Opening one pins this page — and the pixels on it — to that publish for
           good.</p>
