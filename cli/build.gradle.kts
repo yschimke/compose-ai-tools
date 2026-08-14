@@ -140,6 +140,21 @@ val composePreviewBta =
     isCanBeConsumed = false
   }
 
+// Sidecar configuration carrying `:usage-source-psi` — the Kotlin *parser* behind the usage
+// cleaner.
+// Same isolation story as `lib-bta/` above, and loaded together with it: the analyzer needs a
+// frontend, and the frontend must never be on the CLI's own classpath. Resolved into
+// `cli/build/install/compose-preview/lib-usage-psi/`, located at runtime via
+// `APP_HOME/lib-usage-psi/` (or `-Dcomposeai.cli.libUsagePsiDir`).
+//
+// Just this module's jar: `:usage-source-psi` declares the frontend `compileOnly`, so its runtime
+// closure is the Kotlin stdlib the CLI already ships, and the compiler jars ride in `lib-bta/`.
+val composePreviewUsagePsi =
+  configurations.create("composePreviewUsagePsi") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
 dependencies {
   // The BTA implementation + Compose compiler plugin jars, staged into `lib-bta/` (see the
   // `composePreviewBta` configuration above). `kotlin-build-tools-impl` pulls
@@ -152,6 +167,7 @@ dependencies {
     "composePreviewBta",
     "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:${libs.versions.kotlin.get()}",
   )
+  add("composePreviewUsagePsi", project(":usage-source-psi"))
   // BTA *interfaces only* — the CLI references `BtaCompileSession`'s build-tools-api parameter
   // types
   // (`CompilerPlugin`, `KotlinLogger`, `SourcesChanges`) to drive an in-process playground compile.
@@ -433,6 +449,7 @@ distributions {
       into("lib-daemon-desktop") { from(stageDaemonDesktopLibs) }
       into("lib-rcjvm") { from(stageRcJvmLibs) }
       into("lib-bta") { from(stageBtaLibs) }
+      into("lib-usage-psi") { from(composePreviewUsagePsi) }
       // Static browser sidecar: release-matched CMP/Skiko Remote Compose player assets.
       into("rc-player-wasm") { from(rcPlayerWasmDist) }
     }
@@ -482,10 +499,20 @@ tasks.withType<Test>().configureEach {
   // time.
   val btaJars = composePreviewBta.incoming.files
   inputs.files(btaJars).withPropertyName("libBtaJars").withNormalizer(ClasspathNormalizer::class)
+  // And `:usage-source-psi` beside them, so `PlaygroundSourceCleaner` takes its **parsed** path
+  // under test instead of silently falling back to the text passes — which would leave the
+  // parser-backed rewrite, the whole point of the change, with no coverage at all.
+  val usagePsiJars = composePreviewUsagePsi.incoming.files
+  inputs
+    .files(usagePsiJars)
+    .withPropertyName("libUsagePsiJars")
+    .withNormalizer(ClasspathNormalizer::class)
   jvmArgumentProviders.add(
     CommandLineArgumentProvider {
       listOf(
-        "-Dcomposeai.libBtaJars=" + btaJars.joinToString(File.pathSeparator) { it.absolutePath }
+        "-Dcomposeai.libBtaJars=" + btaJars.joinToString(File.pathSeparator) { it.absolutePath },
+        "-Dcomposeai.usagePsi.jars=" +
+          (usagePsiJars + btaJars).joinToString(File.pathSeparator) { it.absolutePath },
       )
     }
   )

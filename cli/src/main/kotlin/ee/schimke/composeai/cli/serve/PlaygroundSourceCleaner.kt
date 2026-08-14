@@ -34,18 +34,25 @@ package ee.schimke.composeai.cli.serve
  *    This is the step that turns "expect unresolved references" into a buffer that compiles.
  * 6. **Prune imports** to what survived, add what the rewrites need, stamp a real `@Preview`.
  *
- * ### Why this is a text pass and not a parse
+ * ### Part parse, part text scan
  *
- * A PSI pass would be more general, and it is not available here: the Kotlin frontend is
- * deliberately kept off the CLI's classpath (`cli/build.gradle.kts` — it is staged into `lib-bta/`
- * and loaded in an isolated classloader only for an actual compile). Pulling a compiler frontend
- * into the serve process to prettify a seed would be a bad trade.
+ * This began as pure text, because the Kotlin frontend is deliberately kept off the CLI's classpath
+ * (`cli/build.gradle.kts`). The snippet corpus then showed what that cost: named-argument binding,
+ * a receiver chain mistaken for a package qualifier, a trailing-lambda call with no parentheses, a
+ * qualified call no pass could see — five defects, all of them structure being guessed at.
  *
- * So this scans text, and it is built to **fail in the safe direction**: every pass is masked
- * against string and comment content so it cannot rewrite inside a literal, and anything it does
- * not understand it leaves alone. [Result.residue] reports declared scaffolding that survived, so a
- * seed that came out half-cleaned can say so rather than pretending. The caller falls back to the
- * verbatim slice when [clean] returns null.
+ * So the structural questions now go to a real parse. [UsageSourceParser] loads `:usage-source-psi`
+ * into the *same kind* of isolated classloader the playground compiler already uses, so the
+ * frontend still never reaches the CLI's own classpath; [applySubstituteParsed] and the residue
+ * scan read [UsageSourceFacts] rather than regex. The remaining passes are still text, and the
+ * whole parse is optional: a host with no staged sidecar keeps the text path, which is what shipped
+ * before.
+ *
+ * Either way it is built to **fail in the safe direction**: every text pass is masked against
+ * string and comment content so it cannot rewrite inside a literal, anything it does not understand
+ * it leaves alone, and [Result.residue] reports declared scaffolding that survived — so a seed that
+ * came out half-cleaned says so rather than pretending. The caller falls back to the verbatim slice
+ * when [clean] returns null.
  *
  * The formatting assumptions are ktfmt's (Google style), which every catalog in these repos is
  * formatted with: one argument per line in a wrapped call, a blank line between top-level
@@ -77,6 +84,7 @@ object PlaygroundSourceCleaner {
     bodyLine: Int?,
     rules: UsageRules,
     strings: Map<String, String> = emptyMap(),
+    parser: UsageSourceParser? = UsageSourceParser.of(),
   ): Result? {
     if (bodyLine == null) return null
     val lines = source.lines()
@@ -111,6 +119,7 @@ object PlaygroundSourceCleaner {
           isEntry = index == entryIndex,
           residue = residue,
           addedImports = addedImports,
+          parser = parser,
         )
       cleanedByIndex[index] = cleaned
       for ((name, at) in declaredAt) {
@@ -312,6 +321,7 @@ object PlaygroundSourceCleaner {
     isEntry: Boolean,
     residue: MutableSet<String>,
     addedImports: MutableSet<String>,
+    parser: UsageSourceParser?,
   ): String {
     var out = stripScaffoldAnnotations(text, imports, rules)
     out = inlineStringResources(out, strings)
@@ -322,13 +332,24 @@ object PlaygroundSourceCleaner {
     // substitution lands before DROP inspects the argument it sits in. DROP, then RENAME last —
     // renaming early would hide a name the other passes match on.
     out = applyUnwrap(out, rules)
-    out = applySubstitute(out, rules, addedImports)
+    // The parse settles argument binding, trailing-lambda calls and qualifiers; the text pass is
+    // the fallback for a host with no staged sidecar (see [UsageSourceParser]).
+    out =
+      if (parser != null) applySubstituteParsed(out, rules, addedImports, parser)
+      else applySubstitute(out, rules, addedImports)
     out = applyInline(out, rules)
     out = applyDrop(out, rules, residue)
     out = applyRename(out, rules, addedImports)
     if (isEntry) out = stampPreview(out, rules, addedImports)
+    // Residue: declared scaffolding that survived. With a parse, every *call* is visible however it
+    // is qualified — which is what the text scan structurally could not do, since it rejects a name
+    // after a `.` by design. The word scan stays alongside it for non-call references (a binding, a
+    // resource key) that no call node would report.
+    val calledNames =
+      parser?.facts(out)?.calls?.map { it.callee }?.toSet()
+        ?: rules.scaffolds.keys.filter { mentionsQualifiedCall(out, it) }.toSet()
     for (name in rules.scaffolds.keys) {
-      if (mentionsWord(out, name) || mentionsQualifiedCall(out, name)) residue.add(name)
+      if (name in calledNames || mentionsWord(out, name)) residue.add(name)
     }
     return out.trimEnd()
   }
@@ -563,6 +584,58 @@ object PlaygroundSourceCleaner {
       }
     }
     return bound.toList()
+  }
+
+  /**
+   * [applySubstitute] over a real parse: the same rules, with the guesswork removed.
+   *
+   * What changes against the text pass, all of it something the snippet corpus caught:
+   * - arguments bind the way Kotlin binds them, named or positional, in any order;
+   * - a trailing-lambda call (`counted { }`) is a call, though it has no parentheses;
+   * - a qualified call replaces as a whole — no separate unqualifying step, and no regex deciding
+   *   from shape whether `state.metrics` was a package.
+   *
+   * Re-parses after each rewrite rather than batching edits, so a knob nested inside another call
+   * (`counted(catalogChoice(…))`) is plain by the time the outer call's argument text is read.
+   * Innermost-first — descending start offset — for the same reason. Blocks are a declaration each
+   * and parsing one costs well under a millisecond, so the loop is cheaper than the bookkeeping
+   * that would replace it.
+   */
+  private fun applySubstituteParsed(
+    text: String,
+    rules: UsageRules,
+    addedImports: MutableSet<String>,
+    parser: UsageSourceParser,
+  ): String {
+    var out = text
+    var guard = 0
+    while (guard++ < MAX_REWRITES) {
+      val facts = parser.facts(out) ?: return out
+      val edit =
+        facts.calls
+          .asSequence()
+          .filter { rules.scaffolds[it.callee]?.kind == UsageRules.Kind.SUBSTITUTE }
+          .sortedByDescending { it.start }
+          .mapNotNull { call ->
+            val scaffold = rules.scaffolds.getValue(call.callee)
+            val plain = scaffold.plain ?: return@mapNotNull null
+            val args = facts.bind(call, scaffold.params) ?: return@mapNotNull null
+            val rendered =
+              Regex("""\$(\d+)""").replace(plain) { m ->
+                args.getOrNull(m.groupValues[1].toInt()) ?: m.value
+              }
+            // A template citing an argument the call does not have would emit a literal `$1`. Leave
+            // the call alone; the residue scan then reports it as an unwritten rule.
+            if (rendered.contains(Regex("""\$\d"""))) null
+            else Triple(call.replaceStart, call.replaceEnd, rendered to scaffold)
+          }
+          .firstOrNull() ?: return out
+      val (start, end, replacement) = edit
+      if (start < 0 || end > out.length || start >= end) return out
+      out = out.substring(0, start) + replacement.first + out.substring(end)
+      replacement.second.addImport?.let { addedImports.add(it) }
+    }
+    return out
   }
 
   /**
