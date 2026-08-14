@@ -218,6 +218,20 @@ class ServePinnedRevisionTest {
   }
 
   @Test
+  fun `a revision link on a token-free page starts its query, and resolves`() {
+    val port = start().port
+
+    val page = text("http://127.0.0.1:$port/$system/p/$previewId")
+
+    // A public server builds token-free links, so the page URL carries no query at all and the pin
+    // has to *open* one. `&at=` there would fold the sha into the path — the shape that made every
+    // revision in the menu a 404 rather than a permalink.
+    assertTrue(page.contains("/p/$previewId?at=$oldCommit"), page)
+    assertFalse(page.contains("/p/$previewId&at="), page)
+    assertEquals(200, get("http://127.0.0.1:$port/$system/p/$previewId?at=$oldCommit").first)
+  }
+
+  @Test
   fun `a daemon-produced lane is refused under a pin rather than answered from today`() {
     val port = start().port
 
