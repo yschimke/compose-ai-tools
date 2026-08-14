@@ -193,3 +193,31 @@ data class PlaygroundRunResponse(
   val previewId: String? = null,
   val previews: List<String> = emptyList(),
 )
+
+/**
+ * `GET /usage/{previewId}`: the plain-Compose usage code behind one catalog card — what the
+ * viewer's **Source** panel shows, and the same derivation the playground handoff seeds from.
+ *
+ * Served as its own lazily-fetched resource rather than baked into the viewer page. Producing it
+ * costs a GitHub read on a cold cache ([PlaygroundSeedResolver]), and most visitors to a preview
+ * never open the panel — so a page load must not pay for it.
+ */
+@Serializable
+data class UsageSnippetResponse(
+  /** The cleaned Kotlin. */
+  val text: String,
+  /** The declaration the card's render comes from, for the panel's caption. */
+  val entryFunction: String? = null,
+  /**
+   * True when the catalog declared what its own helpers mean. False ⇒ only the shared annotations
+   * came off and the catalog's own helpers are still in [text]; the panel says so rather than
+   * presenting machinery as usage.
+   */
+  val scaffoldsDeclared: Boolean = false,
+  /** Declared scaffolding that survived, so the panel can name what will not resolve. */
+  val residue: List<String> = emptyList(),
+  /** The preview's source on GitHub — "the whole sticker" for anyone who wants it. */
+  val blobUrl: String? = null,
+  /** Where "open in playground" goes, so the panel and the provenance row cannot disagree. */
+  val playgroundHref: String? = null,
+)

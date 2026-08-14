@@ -1471,6 +1471,40 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
    It swaps the static snapshot between the raster PNG and the resolution-independent vector
    render; pressing it while Live is on drops back to the static SVG. */
+/* The Source panel: the usage code, on the stage in place of the render.
+
+   Scrolls within itself rather than growing the stage, so entering and leaving the lane does not
+   resize the page around the visitor — and `max-width` keeps a long line from stretching the stage
+   wider than the render it replaced. The surface is the container colour rather than the stage's
+   own backing: this is a document, not a render, and it should not look like one that failed to
+   load. */
+.cp-source-panel { display: none; box-sizing: border-box; width: 100%; max-width: 72ch;
+  max-height: min(70vh, 640px); overflow: auto; text-align: left;
+  padding: 16px; border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface); }
+.cp-viewer[data-mode="source"] .cp-source-panel { display: block; }
+/* The stage's own backing exists to show a RENDER on a neutral field, and the backend badge names
+   the engine that drew one. Neither means anything over a code panel: on a dark page the backing
+   framed the panel in a white card, and the badge sat on top of the first line of source. Both are
+   suppressed for the duration of the lane rather than restyled — the panel brings its own
+   surface. */
+.cp-viewer[data-mode="source"] .cp-stage { box-shadow: none; padding: 0; }
+/* Written at the same specificity as the Day/Night stage-backing rules above, and after them, or
+   they win: those paint the stage `#fff` / `#1d1d20` to give a RENDER a known field to sit on, and
+   on a dark page that framed the code panel in a white card. */
+html:not(.cp-bg-transparent) .cp-viewer[data-mode="source"] .cp-stage,
+html.cp-bg-transparent .cp-viewer[data-mode="source"] .cp-stage { background: transparent; }
+.cp-viewer[data-mode="source"] .cp-backend { display: none; }
+.cp-source-panel pre { margin: 0; white-space: pre; overflow-x: auto;
+  font-family: var(--cp-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.8125rem; line-height: 1.55; }
+.cp-source-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  margin-top: 12px; }
+.cp-source-note { margin: 0 0 12px; color: var(--cp-fg-muted); font-size: 0.75rem;
+  line-height: 1.5; }
+.cp-source-note--warn { color: light-dark(#573100, #ffd8a3); }
+
 /* `.cp-spec-chip` shares this shape on purpose: the design-spec lane is now a top-level toggle on
    the viewer bar (not an <option> buried in the renderer combo), and it is the same *kind* of
    control as the SVG format toggle — "swap what is on the stage" — so it reads as one family with

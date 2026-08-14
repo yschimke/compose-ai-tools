@@ -1302,6 +1302,148 @@
     img.style.removeProperty("display");
     img.hidden = false;
   }
+  // ---- The Source lane -------------------------------------------------------------------------
+  // The usage code behind this card, on the stage in place of the render.
+  //
+  // Not a renderer, so not an option in the renderer combo — a chip of its own, exactly like the
+  // design-spec chip beside it and for the same reason. The snippet is fetched from `/usage/<id>`
+  // on FIRST ENTRY, never at page load: deriving it costs the server a GitHub read on a cold cache,
+  // and most visitors to a preview never open this.
+  var sourceChip = document.getElementById("cp-source-chip");
+  var sourcePanel = document.getElementById("cp-source-panel");
+  var sourceToggle = document.getElementById("cp-source-toggle");
+  var sourceLoaded = false;
+  function sourceAvailable() { return !!(sourceChip && sourcePanel && usageSrc()); }
+  // The radio, not `data-mode` — exactly as specActive() does. On a URL restore the radio is
+  // checked before the transition paints, so reading the stage attribute here would report the
+  // lane as inactive while the page was in the middle of entering it.
+  function sourceActive() { return !!(sourceToggle && sourceToggle.checked); }
+  // Same origin check the spec raster and the Wasm frame get: the URL arrives on a server-set
+  // data- attribute, and is refused unless it resolves onto our own origin.
+  function usageSrc() {
+    var raw = sourceChip ? (sourceChip.getAttribute("data-usage-src") || "") : "";
+    if (!raw) return "";
+    var u;
+    try { u = new URL(raw, location.origin); } catch (e) { return ""; }
+    if (u.origin !== location.origin) return "";
+    return u.href;
+  }
+  function openSource() {
+    if (!sourceAvailable()) return;
+    root.setAttribute("data-mode", "source");
+    // Out of flow rather than merely hidden, like the spec lane: the stage sizes to the panel
+    // instead of reserving the render's box underneath it.
+    img.style.display = "none";
+    canvas.hidden = true;
+    sourcePanel.hidden = false;
+    if (status) status.textContent = "";
+    if (!sourceLoaded) {
+      sourceLoaded = true;
+      renderSourceMessage("Loading…");
+      fetch(usageSrc(), { credentials: "same-origin" })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(renderSource)
+        .catch(function () {
+          // A cleaner that declined, or a catalog whose source moved, answers 404 — which is a
+          // real answer and not an error to shout about. The `source` link in the provenance row
+          // still reaches the preview's own Kotlin, so say that rather than leaving a blank panel.
+          sourceLoaded = false;
+          renderSourceMessage(
+            "The usage source for this preview could not be derived. The \u201csource\u201d link "
+            + "above opens the preview\u2019s own Kotlin on GitHub.");
+        });
+    }
+  }
+  function closeSource() {
+    if (!sourcePanel) return;
+    // `data-mode`, not sourceActive(): by the time a transition calls this the radio for the lane
+    // being entered is already checked, so the flag would say we are not on Source and the stage
+    // would keep its attribute. Same split the spec lane makes for the same reason.
+    if (root.getAttribute("data-mode") === "source") root.setAttribute("data-mode", "snapshot");
+    sourcePanel.hidden = true;
+    img.style.removeProperty("display");
+    img.hidden = false;
+  }
+  function renderSourceMessage(text) {
+    if (!sourcePanel) return;
+    sourcePanel.textContent = "";
+    var p = document.createElement("p");
+    p.className = "cp-source-note";
+    p.textContent = text;
+    sourcePanel.appendChild(p);
+  }
+  /**
+   * Paints the fetched snippet.
+   *
+   * Every node here is created and filled through `textContent`, never through innerHTML: the
+   * payload is Kotlin source read from a catalog's repository, so it is exactly the kind of content
+   * that must never be parsed as markup.
+   */
+  function renderSource(data) {
+    if (!sourcePanel) return;
+    sourcePanel.textContent = "";
+    // Says what this is, and — when the catalog has not declared what its own helpers mean — is
+    // honest that what follows still carries them. The playground's seed note makes the same
+    // distinction; the two must not disagree about the same snippet.
+    var note = document.createElement("p");
+    note.className = "cp-source-note";
+    if (data && data.scaffoldsDeclared === false) {
+      note.className += " cp-source-note--warn";
+      note.textContent = "This catalog has not declared what its own helpers mean in plain "
+        + "Compose, so some of the code below is catalog machinery rather than usage.";
+    } else if (data && data.residue && data.residue.length) {
+      note.className += " cp-source-note--warn";
+      note.textContent = "Usage code, with " + data.residue.join(", ")
+        + " left as the catalog wrote them \u2014 those will not resolve outside it.";
+    } else {
+      note.textContent = "The plain Compose that produces this render.";
+    }
+    sourcePanel.appendChild(note);
+    var pre = document.createElement("pre");
+    var code = document.createElement("code");
+    code.textContent = (data && data.text) || "";
+    pre.appendChild(code);
+    sourcePanel.appendChild(pre);
+    var actions = document.createElement("div");
+    actions.className = "cp-source-actions";
+    var copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "cp-fmt-toggle";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", function () {
+      var text = (data && data.text) || "";
+      var done = function () {
+        copy.textContent = "Copied";
+        setTimeout(function () { copy.textContent = "Copy"; }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () {
+          copy.textContent = "Press \u2318C";
+        });
+      } else {
+        copy.textContent = "Press \u2318C";
+      }
+    });
+    actions.appendChild(copy);
+    // Onward to the editor, but only where this host can actually compile the catalog — the
+    // server decides that and sends a href or nothing, so the panel never offers a dead run.
+    if (data && data.playgroundHref) {
+      var run = document.createElement("a");
+      run.className = "cp-format-link";
+      run.href = data.playgroundHref;
+      run.textContent = "open in playground \u2192";
+      actions.appendChild(run);
+    }
+    if (data && data.blobUrl) {
+      var whole = document.createElement("a");
+      whole.className = "cp-format-link";
+      whole.href = data.blobUrl;
+      whole.rel = "noopener";
+      whole.textContent = "the whole sticker \u2192";
+      actions.appendChild(whole);
+    }
+    sourcePanel.appendChild(actions);
+  }
   /**
    * The render the spec is compared against: the exact bytes that were on the stage when we can
    * name them, and a fresh `/render` URL when we cannot.
@@ -1655,6 +1797,9 @@
     // The spec lane is closed by EVERY other transition (it has no per-branch close call below),
     // so leaving it always restores the snapshot <img> to the stage.
     if (m !== "spec") closeSpec();
+    // Closed by EVERY other transition, exactly as the spec lane is: leaving Source always puts the
+    // render back on the stage, whichever control the visitor left by.
+    if (m !== "source") closeSource();
     if (m === "live") {
       cancelSnapshotLoading();
       snapshotExt = ".png";
@@ -1687,6 +1832,20 @@
       closeWasm();
       closeRc();
       openRcWasm();
+    } else if (m === "source") {
+      // Reading the code is not a render either: same treatment as the spec lane — cancel any
+      // in-flight snapshot, leave every interactive lane, and put the panel on the stage. Going
+      // through the branch rather than returning early keeps the transition in the one path that
+      // reconciles the picker, the chips and the URL, so `?mode=source` is bookmarkable and Back
+      // returns to the lane the visitor came from.
+      cancelSnapshotLoading();
+      snapshotExt = ".png";
+      dropVectorModes();
+      closeStream();
+      closeWasm();
+      closeRc();
+      closeRcWasm();
+      openSource();
     } else if (m === "spec") {
       // Looking at the spec is not a render: cancel any in-flight snapshot, drop every interactive
       // lane, and paint the imported reference instead. Nothing is re-requested on the way in.
@@ -1719,7 +1878,8 @@
     // query() includes an rc.* value edited before the Wasm detour in the first snapshot render
     // (and its direct links) instead of skipping the still-disabled control. The live/wasm lanes
     // drive their own render (openStream / openWasm), so only the static lane renders here.
-    if (m !== "live" && m !== "wasm" && m !== "rc" && m !== "rc-wasm" && m !== "spec")
+    if (m !== "live" && m !== "wasm" && m !== "rc" && m !== "rc-wasm" && m !== "spec"
+        && m !== "source")
       refreshSnapshot();
     // The interactive lanes drive their own render and never reach refreshLinks, so the URL would
     // still describe the snapshot the visitor just left — the chosen lane unbookmarkable until
@@ -1985,12 +2145,14 @@
   // Programmatic switch (the live toggle, or a wasm-only control auto-enabling Wasm): tick the
   // hidden mode radio so its state is consistent, then run the transition.
   function setMode(m) {
-    var r = document.getElementById(
+    var radioId = (
       m === "live" ? "cp-live" :
       m === "wasm" ? "cp-wasm-toggle" :
       m === "rc-wasm" ? "cp-rc-wasm-toggle" :
       m === "spec" ? "cp-spec-toggle" :
+      m === "source" ? "cp-source-toggle" :
       m === "rc" ? "cp-rc-toggle" : "cp-mode-png");
+    var r = radioId ? document.getElementById(radioId) : null;
     if (r) r.checked = true;
     enterMode(m);
   }
@@ -2081,6 +2243,16 @@
         ? "Showing the imported design spec — click to return to the render"
         : specChip.getAttribute("data-spec-chip-tip") || specChip.title;
     }
+    // The Source chip reports its lane the same way, and from the same place, so every route out
+    // of it (the Live chip, a combo pick, the spec chip, Back/Forward) un-presses it too.
+    if (sourceChip) {
+      var onSourceLane = sourceActive();
+      sourceChip.setAttribute("aria-pressed", onSourceLane ? "true" : "false");
+      sourceChip.disabled = !sourceAvailable() && !onSourceLane;
+      sourceChip.title = onSourceLane
+        ? "Showing the usage source \u2014 click to return to the render"
+        : sourceChip.getAttribute("data-source-chip-tip") || sourceChip.title;
+    }
     // …and the tooltip, from the same state. The chip's meaning inverts as the visitor moves
     // through the lanes — on the static snapshot a click enters Live, on an interactive lane it
     // exits back to the snapshot — so a fixed `title` would end up describing the opposite of what
@@ -2094,7 +2266,8 @@
           : "Static snapshot — this session has no live lane to switch to");
     }
     if (modeHint) {
-      modeHint.textContent = specActive() ? "imported design spec — not a render"
+      modeHint.textContent = sourceActive() ? "usage source — not a render"
+        : specActive() ? "imported design spec — not a render"
         : interactive ? "interactive — click / scroll the preview"
         // "no live lane" is only true when there is genuinely nothing to switch to. When the lane
         // exists and is merely behind sign-in, the transport radio is (correctly) disabled, so
@@ -2122,6 +2295,15 @@
     specChip.addEventListener("click", function () {
       if (specActive()) setMode("png");
       else if (specAvailable()) setMode("spec");
+    });
+  }
+  // The Source chip: in and straight back out, like the spec chip. Leaving returns to the static
+  // snapshot rather than to whichever interactive lane was up, for the same reason — the code is
+  // read against the *render*, and that is the lane it was entered from.
+  if (sourceChip) {
+    sourceChip.addEventListener("click", function () {
+      if (sourceActive()) setMode("png");
+      else if (sourceAvailable()) setMode("source");
     });
   }
   // ---- The renderer combo box ------------------------------------------------------------------

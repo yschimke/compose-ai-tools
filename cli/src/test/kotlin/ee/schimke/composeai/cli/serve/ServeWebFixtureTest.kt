@@ -1164,6 +1164,18 @@ class ServeWebFixtureTest {
         hasSvgExport = true,
         hasScrollExport = true,
       )
+    // A viewer offering the **Source** chip: the usage code behind the card, on the stage in place
+    // of the render. Its own fixture rather than a flag on `viewer` because the chip changes the
+    // control row, and the `source-panel` state below — which is where the panel is actually drawn
+    // — needs a page that carries the chip to press.
+    val viewerSource =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.ProfileCardPreview", "Profile card"),
+        token,
+        sessionId = "compose-m3",
+        canApplyOverrides = true,
+        usageHref = "/usage/com.example.ProfileCardPreview",
+      )
     // A daemon-backed viewer for a preview detected to support one-handed gesture hints
     // (`@GestureHintPreview`) on an Android-backed session (`gesturesRenderable = true`): the
     // "Detected features" group shows the "Show gesture hints" control. Captured so the visual-diff
@@ -2211,6 +2223,7 @@ class ServeWebFixtureTest {
         "serve-viewer-inspect.html" to viewerInspect,
         "serve-viewer-exploded.html" to viewerExploded,
         "serve-viewer-gestures.html" to viewerGestures,
+        "serve-viewer-source.html" to viewerSource,
         "serve-landing-path.html" to landingPath,
         "serve-landing-site.html" to landingSite,
         "serve-viewer-path.html" to viewerPath,
