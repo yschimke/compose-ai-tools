@@ -68,8 +68,13 @@ Consequences, in order of importance:
 | `SnapshotRemoteComposeState.kt` | +5 | `isFloatOverridden(id)` — records that a host/action override happened, so it can take precedence over the id's authored expression |
 | `GraphContext.kt` | +12 −8 | `ID_CONTINUOUS_SEC`; honours `isFloatOverridden`; reparented onto `StoreBackedRemoteContext` (below); carries the neutral `RcImageSource` |
 | `CoreDataAccessors.kt` / `CoreDataModel.kt` | +36 / +6 | Six extra `CoreText` reflection fields — `mLineBreakStrategy`, `mHyphenationFrequency`, `mJustificationMode`, `mAutosize`, `mMinFontSize`, `mMaxFontSize` — plumbed onto `CoreTextData`. These are what the text fixes above read |
+| `RcPlayerPaint.kt` (`GRADIENT`) | — | A gradient stop that is a **colour-id reference** rather than a literal ARGB int is resolved through `read.getColor(word)`, keyed off the bitmask in the meta word's high 16 bits. Upstream masked the meta word down to the colour count and read every stop as a literal, so a named/overridable stop reached `Color(...)` as raw reference bits — the ~89% `ShaderGradientSticker` divergence ([`rc-gradient-bound-color`](evidence/rc-gradient-bound-color/README.md)) |
+| `RcPlayerDispatch.kt` | — | The component's draw ops are executed **once**, by `toModifier`'s `DrawContentOperation` branch. Upstream passed `drawOpsList` to `toModifier` *and* ran the same list again from a second `drawWithContent` in `RcPlayerComponent`, redrawing background/border chrome at a different point in the chain ([`rc-outlined-card-double-draw`](evidence/rc-outlined-card-double-draw/README.md)) |
 | `RcPlayer.kt` | +16 −203 | Frame loop through `withInfiniteAnimationFrameMillis` (so the composition can reach idle and `waitForIdle()` returns), dead `autoUpdate` knob removed, plus the `RcPlayerDispatch` / `RcPlayerEasing` extractions |
 | `ExperimentalRemoteDocumentPlayer.kt` | −2 | `autoUpdate` removed from the wrapper too |
+
+**Four of these are now converged with upstream** — the frame loop, `autoUpdate`, the gradient
+bound-colour resolution, and the `DrawContent` double execution. See §2 and §3.4.
 
 ### 1b. Structural seams (the CMP android/jvm split)
 
@@ -113,6 +118,15 @@ fully-qualified names lifted to imports — this is most of the 28-file, ~1100-l
   composition idle, so `waitForIdle()` blocks forever) is fixed upstream.
 - **`autoUpdate` deleted** from both `RcPlayer` overloads and `ExperimentalRemoteDocumentPlayer` —
   the same dead knob our delta removed.
+- **Gradient stops that are colour-id references resolve through `read.getColor(word)`.** Upstream's
+  `RcPlayerPaint.kt:411` now carries the identical `register` bitmask and lookup as our delta (it
+  additionally rewrote the ascending-stops check into a loop). Our `ShaderGradientSticker` fix is
+  upstream.
+- **`DrawContent` is executed once.** Upstream deleted the second `drawWithContent` block from
+  `RcPlayerComponent` and now relies on `toModifier(drawOpsList)`, which applies it at the
+  `DrawContentOperation`'s position in the wire modifier list (appending at the end when the op is
+  absent). That is the same ownership change our `RcPlayerDispatch.kt` made — upstream had *both*
+  paths live, hence the doubled chrome.
 
 **Fixes that converge with ours — but only partially:**
 
@@ -145,9 +159,6 @@ fully-qualified names lifted to imports — this is most of the 28-file, ~1100-l
   takes a `fontCertsResId` and **skips the downloadable-font path entirely when it is 0**, which is
   the default. `RcPlayer` gained a `typefaceResolver: TypefaceResolver? = LocalTypefaceResolver.current`
   parameter and re-provides it down the tree.
-- **`DrawContent` moved out of `RcPlayerComponent`** into `ComponentModifiers.toModifier(drawOpsList)`,
-  where the `drawWithContent` is now applied *at the `DrawContentOperation`'s position in the wire
-  modifier list* (with an append-at-end fallback when the op is absent).
 - **`buildComputedOpIndex` returns `IntObjectMap`**, `GraphContext` takes `IntObjectMap<Operation>` —
   a signature change on a class we subclass/reparent.
 
@@ -190,10 +201,16 @@ render and before/after evidence, not a compile.
 Straight pickup from upstream; re-render the density fixtures (`docs/design/evidence/rc-density-behavior`,
 `rc-density-corners`) since it changes non-DP documents.
 
-### 3.4 Retire two deltas — the frame loop and `autoUpdate`
+### 3.4 Retire four deltas that upstream has adopted
 
-Both are upstream now. Delete them from `PROVENANCE.md`'s "Behaviour delta" section and keep the
-`RcIdleProbeTest`, which pins the property regardless of who owns the fix.
+The frame loop, `autoUpdate`, the gradient bound-colour resolution, and the `DrawContent` single
+execution. Delete them from `PROVENANCE.md` and keep every test and fixture that pins the
+behaviour — `RcIdleProbeTest`, and the `rc-gradient-bound-color` / `rc-outlined-card-double-draw`
+evidence — which stay meaningful regardless of who owns the fix. The two rendering ones in
+particular are worth *re-verifying* after the refresh rather than assumed: the gradient path is
+byte-identical to ours, but upstream's `DrawContent` placement is position-in-the-wire-list where
+`RcPlayerDispatch` simply dropped the duplicate, so re-render `rc-outlined-card` and confirm the
+chrome is still drawn once, in the right place.
 
 ### 3.5 Version skew: two upstream additions do **not** compile against alpha17
 
@@ -213,9 +230,14 @@ pattern) — *or* the refresh waits for the next alpha and takes them wholesale.
 timing input to our hermetic Robolectric renders, and should be re-verified by md5 across the
 `remote-m3` lane the way the `withInfiniteAnimationFrameMillis` change was.
 
-If the gate *is* taken later, every harness that composes `RcPlayer`
-(`RcEmbeddedRenderHarness`, `RcJvmRenderer`, `RcPlayerBackend`, the module's own tests) must set
-`RemoteComposePlayerFlags.isEmbeddedPlayerEnabled = true` or it throws at composition.
+If the gate *is* taken later, everything that reaches `RcPlayer` must set
+`RemoteComposePlayerFlags.isEmbeddedPlayerEnabled = true` or it throws at composition. The
+production callers are the two daemon paths — `RemoteOverridablePreview.kt:178` and
+`RemoteComposeIrReplay.kt:53`, both via the `ExperimentalRemoteDocumentPlayer` wrapper — plus this
+module's own harnesses (`RcEmbeddedRenderHarness`, `RcSemanticsExtractionTest`, `RcIdleProbeTest`,
+`RcFigmaSvgExportTest`) and the two tests that call `RcPlayer` directly. Two things that look like
+call sites are not: `RcJvmRenderer` composes its own `RcPlayerJvm`, and `RcPlayerBackend` is an
+enum naming the lanes.
 
 ### 3.6 Reshape the Google-font certificate delta onto `HasFontCerts`
 
@@ -246,7 +268,10 @@ The 11 added files are mechanical to re-extract, but three landing zones moved u
   class where "the bodies are upstream's, not ours" is load-bearing: re-port
   `StoreBackedRemoteContext` from the **new** `AndroidRemoteContext` if that class changed too.
 - **`RcPlayerPaint.kt` / `RcPlayerDrawing.kt`** — upstream re-flowed both (imports, `fastForEach`),
-  so our seam subtractions will not apply as patches. Re-extract rather than merge.
+  so our seam subtractions will not apply as patches. Re-extract rather than merge. Note
+  `RcPlayerPaint.kt` is **not** a pure seam delta: it also carries the gradient bound-colour fix
+  (§3.4), which upstream has adopted — so re-extracting the seam there means keeping upstream's
+  `GRADIENT` body, not ours.
 
 ### 3.8 Keep our state/expression fixes and report them upstream
 
@@ -276,9 +301,15 @@ vendoring is expiring:
 - **Do not refresh onto `androidx-main` right now** unless something specific is needed from it.
   The tree is mid-promotion — API files unregenerated, and two of its new code paths cannot be
   built against the alphas we pin.
-- **Watch for the alpha after 17.** When `remote-player-compose` ships with `…/embedded/` classes,
-  the Android lane can consume the artifact directly (with `RestrictedApi` suppressed) and our
-  delta list collapses to the handful that are genuine fixes.
+- **Watch for the alpha after 17 — but artifact consumption is conditional, not automatic.** When
+  `remote-player-compose` ships with `…/embedded/` classes, the Android lane *could* consume the
+  artifact directly (with `RestrictedApi` suppressed) — but only once the fixes upstream has **not**
+  taken have landed there. A binary cannot be patched: switching the Android lane to the AAR while
+  the clip ordering/normalisation, host-override precedence, animated-expression routing and the
+  text-style behaviour are still ours would regress the Android lane to upstream's pixels, and
+  keeping those patches in the jvm snapshot does nothing for Android. So: artifact for Android
+  **after** those four land upstream (§3.8 is the filing list that gets us there); patched sources
+  until then.
 - **The jvm/CMP lane still needs sources**, so `rc-embedded-player-jvm` keeps the vendored module
   alive regardless — the seams cannot be applied to a binary. A plausible end state is: Android
   lane on the artifact, jvm lane on a vendored snapshot carrying only the seams plus the fixes
@@ -292,6 +323,9 @@ vendoring is expiring:
 ## Reproducing this comparison
 
 ```sh
+# Absolute path to *this* repo, captured before we cd anywhere else.
+V="$PWD/third_party/rc-embedded-player/src/main/kotlin/androidx/compose/remote/player/compose/embedded"
+
 # Blobless sparse clone — the full androidx checkout is not needed.
 GIT_LFS_SKIP_SMUDGE=1 git clone --filter=blob:none --sparse --depth 1 \
   https://github.com/androidx/androidx /tmp/androidx
@@ -300,13 +334,17 @@ cd /tmp/androidx && git sparse-checkout set compose/remote
 OLD=compose/remote/integration-tests/player-compose-embedded/src/main/java/androidx/compose/remote/player/compose/embedded
 NEW=compose/remote/remote-player-compose/src/main/java/androidx/compose/remote/player/compose/embedded
 PIN=c8e7d738d7c76df3a87281ba8c3b880622df6282   # PROVENANCE.md's pinned commit
+# The upstream head this audit's counts and conclusions describe. Substitute a newer revision
+# deliberately (and expect different numbers) — do NOT leave this as a bare `HEAD`.
+UP=2f88db18a19ffcb109f359511edbee9117a46f57
 
-mkdir -p /tmp/rc/base /tmp/rc/head
-git archive $PIN $OLD  | tar -x -C /tmp/rc/base --strip-components=13
-git archive HEAD $NEW  | tar -x -C /tmp/rc/head --strip-components=12
+# Recreate from scratch: tar overwrites matching paths but never deletes stale ones, so a
+# second run against different commits would otherwise inflate the file counts.
+rm -rf /tmp/rc && mkdir -p /tmp/rc/base /tmp/rc/head
+git archive $PIN $OLD | tar -x -C /tmp/rc/base --strip-components=13
+git archive $UP  $NEW | tar -x -C /tmp/rc/head --strip-components=12
 rm -rf /tmp/rc/base/demos /tmp/rc/base/integration   # not vendored
 
-V=third_party/rc-embedded-player/src/main/kotlin/androidx/compose/remote/player/compose/embedded
 diff -r /tmp/rc/base /tmp/rc/head     # upstream drift since the pin
 diff -r /tmp/rc/base "$V"             # our local deltas
 diff -r "$V" /tmp/rc/head             # the merge we would actually have to do
