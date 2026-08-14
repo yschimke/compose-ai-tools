@@ -251,6 +251,20 @@ if (expression != null) {
 `expressionDependsOnAnimation` walks the expression's NaN-encoded source operands, following id
 references into other expressions, with a visited set for cycles.
 
+**Springs are animated too, and `mFloatAnimation` does not see them.** Verified against
+`remote-core-1.0.0-alpha17.jar`: `FloatExpression` declares **both**
+`public FloatAnimation mFloatAnimation` and `private SpringStopEngine mSpring`, and the constructor
+populates one *or* the other — a spring spec (`animation.length > 4 && animation[0] == 0` in the
+mirror, `FloatExpression.ts:47-52`) sets `mSpring` and leaves `mFloatAnimation` null. So every
+`mFloatAnimation != null` test misses spring-backed expressions: the branch above, the dependency
+walker, `buildComputedOpIndex` (`RcPlayerCompositionLocals.kt`), **and upstream's own `hasAnimations`
+frame-loop predicate in `RcPlayer.kt`** — meaning a spring-only document may not even keep the loop
+running. Treat "is this expression animated?" as one predicate covering both fields, apply it at all
+four sites, and note `mSpring` is `private`, so it needs the same reflection accessor pattern the
+file already uses. Cover a direct spring expression *and* an outer expression depending on one.
+
+**Ours has this gap too** — every check in our delta looks at `mFloatAnimation` alone.
+
 **Test:** `RcPlayerExpressionTest.kt` — a two-level chain (animated inner, plain outer); advance the
 test clock and assert the outer value changes.
 
@@ -474,8 +488,15 @@ G="git -C <androidx> grep -n"
 
 $G "Modifier.clip(shape).then\|clip(shape).then(this)" -- $NEW/modifier/ClipModifier.kt  # item 1
 $G "roundedRectRadiusScale"                            -- $NEW/modifier/ClipModifier.kt  # item 2
-$G "isFloatOverridden"                                 -- $NEW                           # item 3
+# item 3 — THREE predicates; a hit on any one alone does not retire it
+$G "isFloatOverridden"        -- $NEW/SnapshotRemoteComposeState.kt   # the tracking
+$G "isFloatOverridden"        -- $NEW/GraphContext.kt                 # the graph leaf read
+$G "isFloatOverridden"        -- $NEW/state/RcPlayerState.kt          # the resolver-level check…
+# …and read it: the check must sit *before* the mFloatAnimation / dependency branches, or an
+# animated authored expression still ignores host writes. Grep cannot see ordering.
+
 $G "expressionDependsOnAnimation"                      -- $NEW                           # item 4
+$G "mSpring"                                           -- $NEW                           # item 4 (spring half)
 # item 5 — BOTH must hit; the resolver and the graph carry separate copies of the time branch
 $G "ID_CONTINUOUS_SEC"                     -- $NEW/state/RcPlayerState.kt
 $G "ID_CONTINUOUS_SEC"                     -- $NEW/GraphContext.kt
@@ -494,6 +515,12 @@ done
 (Use `grep -q` in an `if`, not `grep -c … | head -1 || echo MISSING`: in a pipeline Bash reports
 `head`'s status, so the `||` branch never runs and an absent field prints a blank line that reads as
 a pass. Verified — that was the first version of this loop.)
+
+**Item 6 has a ninth behaviour with no token to grep for:** the `StaticLayout`-compatible `maxLines`
+cap. Eight `present` lines above therefore do **not** retire item 6 — read how `maxLines` reaches
+the text call and confirm the overflow-dependent cap is applied, or look for a regression test that
+pins the line count against the View player. Same caveat as item 3's ordering: a grep can prove
+something landed, never that a *behaviour* is right.
 
 A hit means upstream has taken that item and it can be dropped. **A partial hit means the item is
 still open**, with the landed part removed from its scope: items 1 and 2 are independent fixes in

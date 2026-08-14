@@ -415,6 +415,15 @@ against the fact that the reason for vendoring is expiring:
 - **The jvm/CMP lane still needs sources**, so `rc-embedded-player-jvm` keeps a vendored snapshot
   alive regardless — the seams cannot be applied to a binary. A plausible end state is: Android lane
   on the artifact, jvm lane on a snapshot carrying only the seams.
+
+  **That split needs the snapshot moved first.** Today the jvm module has no sources of its own for
+  the shared player: `third_party/rc-embedded-player-jvm/build.gradle.kts:149` pulls them straight
+  out of the Android module with `srcDir("../rc-embedded-player/src/main/kotlin")` (and `:166` does
+  the same for test resources). So the two halves of the end state conflict as the tree stands —
+  deleting the Android sources to avoid the artifact class collision also removes the jvm player's
+  inputs, while keeping them means still compiling the colliding classes into the Android lane.
+  The migration therefore has to relocate the snapshot to storage the jvm module owns (or exclude it
+  from Android compilation) as part of the same change, not afterwards.
 - **File the six upstream ones now**, so that half of the gate opens by itself rather than on our
   schedule. Items 7 and 8 are ours whenever we choose to do them.
 
