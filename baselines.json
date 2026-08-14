@@ -184,110 +184,110 @@
     "serve-design-page-design-lane.dark.png": {
       "fixture": "serve-design-page-design-lane",
       "theme": "dark",
-      "sha256": "59c846833f466f28a56c6fc4f3518fc08d2bd8cd639db91f30bb15c61c28709a",
-      "size": 58533
+      "sha256": "af8a3a9060b6772c7a5eb78f0ea6446ca0504be75a8076d362740434948e6f77",
+      "size": 51960
     },
     "serve-design-page-design-lane.light.png": {
       "fixture": "serve-design-page-design-lane",
       "theme": "light",
-      "sha256": "03454424d2370e151236502ba58c00dc5b597d56da182f7303b19b525a016392",
-      "size": 57719
+      "sha256": "6c632f3dcc25bf71c6406fe4b7ba00618e3f5107a1e15ee235c15b20ce40aba1",
+      "size": 51492
     },
     "serve-design-page-diff-lane.dark.png": {
       "fixture": "serve-design-page-diff-lane",
       "theme": "dark",
-      "sha256": "b9d414fb751027e7ebe6c1d668d6d35b3dcccc67c5329489184247416cb41941",
-      "size": 60140
+      "sha256": "97e02336f91e97b3d1afa064522133cc76b4361933ed3348a78b78c515441d79",
+      "size": 53058
     },
     "serve-design-page-diff-lane.light.png": {
       "fixture": "serve-design-page-diff-lane",
       "theme": "light",
-      "sha256": "d519d2e1dd4d2098e2ae83761c1ff03f80684715220b29e75f8a0688ce8d2a25",
-      "size": 59179
+      "sha256": "d49be7d4b60746e2e199b011b5e4feb80bd4a1194c6341058b6f6fdc9105ba3c",
+      "size": 52372
     },
     "serve-design-page-hover.dark.png": {
       "fixture": "serve-design-page-hover",
       "theme": "dark",
-      "sha256": "81c24bd4e5f50856d3db72f26800730560ea5ba484db387761eefa47500ffb4f",
-      "size": 55609
+      "sha256": "e65684fc12217aead6e44d7ca00f917cbfda4e229fcdca12bdc82d797de8b820",
+      "size": 58767
     },
     "serve-design-page-hover.light.png": {
       "fixture": "serve-design-page-hover",
       "theme": "light",
-      "sha256": "711dd5fd7c3a4827ff4f8837770e80693a85fd2daa09c49edb8aa4d0e3e14baf",
-      "size": 54621
+      "sha256": "f0b7adbf8f71a6b5a22154938d49c55c244e10bc1a4d8868d9bfb8a8a0b6915b",
+      "size": 58011
     },
     "serve-design-page-index.dark.png": {
       "fixture": "serve-design-page-index",
       "theme": "dark",
-      "sha256": "757f632d5612e3828e31f1c8603e84c697ffe48c37b2228da62e75e0e359d110",
-      "size": 38197
+      "sha256": "3753496a5bfc0d11e4cde2d9a20cb80824c78048b491922cca8f381089dd2f88",
+      "size": 38276
     },
     "serve-design-page-index.light.png": {
       "fixture": "serve-design-page-index",
       "theme": "light",
-      "sha256": "e58e983b26b1e84c7adcdf219a014fe70a3577dbd6c379d2e10eeabc4a55c908",
-      "size": 37270
+      "sha256": "f9cfb14d49d22818fe229cf53a8500eef5362dcf4a1f10081d7048955f36347f",
+      "size": 37340
     },
     "serve-design-page-nodes-open.dark.png": {
       "fixture": "serve-design-page-nodes-open",
       "theme": "dark",
-      "sha256": "ec853c65a8515671c7c96bc52c54e3e168dcd41561d77a2c2f8bcfae8f022b05",
-      "size": 93148
+      "sha256": "43951d89e7b87d13f21b209f9ad9e615f50de757e604aa6c3f4382ad265d4385",
+      "size": 86022
     },
     "serve-design-page-nodes-open.light.png": {
       "fixture": "serve-design-page-nodes-open",
       "theme": "light",
-      "sha256": "e45f61d8e80bb3ca26c4ad1f1034868f4addebdc69bb7537b39cec86766b64ac",
-      "size": 91871
+      "sha256": "b7ac316433354eb8321866eab014965408a9ee57705df1ac9db0f14f6a504570",
+      "size": 84987
     },
     "serve-design-page-render-failed.dark.png": {
       "fixture": "serve-design-page-render-failed",
       "theme": "dark",
-      "sha256": "00f7bb1847ae75b0bf6d2654445552ae01b42476c0d4815acf2dbc6f87995457",
-      "size": 67907
+      "sha256": "70f8760c19152c5a4e277467fff55181d09273f701727481c5be4065604f93b1",
+      "size": 60978
     },
     "serve-design-page-render-failed.light.png": {
       "fixture": "serve-design-page-render-failed",
       "theme": "light",
-      "sha256": "d7a8ac9728fe0abccc3faf4f092b6353297b8a239b1fa802b81237e1de5472ff",
-      "size": 66955
+      "sha256": "c0e1b77c522b7e40be1d0190f59b88b57fafcaa2ef241249a3913c8d9fd7f3a1",
+      "size": 60297
     },
     "serve-design-page-selected.dark.png": {
       "fixture": "serve-design-page-selected",
       "theme": "dark",
-      "sha256": "54260245904919cc8cd8ba865208ebfa6d461c31b3c7f4315a60fb2e8aca1e91",
-      "size": 57763
+      "sha256": "e65684fc12217aead6e44d7ca00f917cbfda4e229fcdca12bdc82d797de8b820",
+      "size": 58767
     },
     "serve-design-page-selected.light.png": {
       "fixture": "serve-design-page-selected",
       "theme": "light",
-      "sha256": "380ab8d87663661786a10a16d080b3f821e71126530872eac97694eb744b993d",
-      "size": 56816
+      "sha256": "f0b7adbf8f71a6b5a22154938d49c55c244e10bc1a4d8868d9bfb8a8a0b6915b",
+      "size": 58011
     },
     "serve-design-page-unlinked-only.dark.png": {
       "fixture": "serve-design-page-unlinked-only",
       "theme": "dark",
-      "sha256": "8a6f7865e16431990e6631c0bc8d82f812a017b3666f9ec1213b803b65134360",
-      "size": 66143
+      "sha256": "2db85434b7608b74cee5354a8088961a0872b9f6d1c144fc14406ec097a2cd1e",
+      "size": 57630
     },
     "serve-design-page-unlinked-only.light.png": {
       "fixture": "serve-design-page-unlinked-only",
       "theme": "light",
-      "sha256": "03c0131514c250cd4cb0c3c5da53610ba9eee0494935c44ab31051f4a41dc306",
-      "size": 65182
+      "sha256": "b42c92645dc1d3bc27cf088756d037ef73e844a80d0417c2990eec058a549f55",
+      "size": 56908
     },
     "serve-design-page.dark.png": {
       "fixture": "serve-design-page",
       "theme": "dark",
-      "sha256": "512ca0d7917b2b377ef842d79f496d5826953452614678bb9370e7df86028dc1",
-      "size": 55257
+      "sha256": "8365eeaa91ab4262fb23cba359524785af9a51bf05e18fb9aac86ad5e8ee90b6",
+      "size": 50668
     },
     "serve-design-page.light.png": {
       "fixture": "serve-design-page",
       "theme": "light",
-      "sha256": "06ccaaa47d7a35baed4a1ecd54e20876d8398d4b64d32232bfbeab1314a23f87",
-      "size": 54270
+      "sha256": "9193a578591b717b6c983ab2de46f99c885c6bee7a3b01bb97dcd166118c8280",
+      "size": 50010
     },
     "serve-doc-lottie.dark.png": {
       "fixture": "serve-doc-lottie",
